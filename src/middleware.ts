@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
 const AUTH_COOKIE = "auth_token";
-const LOGIN_PATH = "/auth/v2/login";
+const LOGIN_PATH = "/auth/organizer/login";
 
 /**
  * Routes that require authentication.

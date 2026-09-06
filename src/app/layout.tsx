@@ -9,6 +9,7 @@ import { APP_CONFIG } from "@/config/app-config";
 import { fontVars } from "@/lib/fonts/registry";
 import { PREFERENCE_DEFAULTS } from "@/lib/preferences/preferences-config";
 import { ThemeBootScript } from "@/scripts/theme-boot";
+import { AuthStoreProvider } from "@/stores/auth/auth-provider";
 import { PreferencesStoreProvider } from "@/stores/preferences/preferences-provider";
 
 import "./globals.css";
@@ -39,10 +40,12 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
       </head>
       <body className={`${fontVars} min-h-screen antialiased`}>
         <TooltipProvider>
-          <PreferencesStoreProvider initialValues={PREFERENCE_DEFAULTS}>
-            {children}
-            <Toaster />
-          </PreferencesStoreProvider>
+          <AuthStoreProvider>
+            <PreferencesStoreProvider initialValues={PREFERENCE_DEFAULTS}>
+              {children}
+              <Toaster />
+            </PreferencesStoreProvider>
+          </AuthStoreProvider>
         </TooltipProvider>
         {/* Used for this project's hosted demo. Feel free to remove it; it is not required for template functionality. */}
         <Analytics />

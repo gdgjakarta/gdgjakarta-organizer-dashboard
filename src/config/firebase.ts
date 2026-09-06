@@ -1,24 +1,22 @@
-// Import the functions you need from the SDKs you need
+import { getApp, getApps, initializeApp } from "firebase/app";
+import { GoogleAuthProvider, getAuth } from "firebase/auth";
 
-import { getAnalytics } from "firebase/analytics";
-import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
-
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
-
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+// Your web app's Firebase configuration read from environment variables
 const firebaseConfig = {
-  apiKey: "AIzaSyCVk8ECyA8Lqd7KNqdnItxYUu9jdFzoohU",
-  authDomain: "gdgjakarta-app.firebaseapp.com",
-  projectId: "gdgjakarta-app",
-  storageBucket: "gdgjakarta-app.firebasestorage.app",
-  messagingSenderId: "883556294048",
-  appId: "1:883556294048:web:364631a561bd411a0ed8c5",
-  measurementId: "G-YK2P07NQHZ",
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
+// Initialize Firebase (safely handling hot reloads in Next.js)
+const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+
 export const auth = getAuth(app);
+export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({
+  prompt: "select_account",
+});
