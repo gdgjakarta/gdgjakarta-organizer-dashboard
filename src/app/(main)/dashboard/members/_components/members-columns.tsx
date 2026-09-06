@@ -2,7 +2,7 @@
 import type { ColumnDef } from "@tanstack/react-table";
 import { Subscribe } from "@tanstack/react-table";
 import { parse } from "date-fns";
-import { Check, Clock, MoreHorizontal, X } from "lucide-react";
+import { MoreHorizontal } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarGroup, AvatarGroupCount, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -57,38 +57,7 @@ function getAvatarTone(name: string) {
   return tones[name.length % tones.length];
 }
 
-function getLastActiveBadge(lastActive: number) {
-  if (lastActive < 1) {
-    return {
-      className: "bg-green-600 text-green-950 [&>svg]:text-white",
-      icon: Check,
-    };
-  }
-
-  if (lastActive < 4 * 60) {
-    return {
-      className: "bg-amber-500 text-amber-950",
-      icon: Clock,
-    };
-  }
-
-  if (lastActive < 7 * 24 * 60) {
-    return {
-      className: "bg-destructive",
-      icon: null,
-    };
-  }
-
-  return {
-    className: "bg-muted-foreground text-muted",
-    icon: X,
-  };
-}
-
-function AvatarCell({ lastActive, name, avatarUrl }: { lastActive: number; name: string; avatarUrl?: string }) {
-  const badge = getLastActiveBadge(lastActive);
-  const BadgeIcon = badge.icon;
-
+function AvatarCell({ name, avatarUrl }: { name: string; avatarUrl?: string }) {
   return (
     <Avatar size="lg" className={cn("font-medium", getAvatarTone(name))}>
       {avatarUrl ? <AvatarImage src={avatarUrl} alt={name} /> : null}
@@ -164,7 +133,7 @@ export const membersColumns: ColumnDef<DataTableFeatures, MemberRow>[] = [
     header: "Member",
     cell: ({ row }) => (
       <div className="flex items-center gap-3">
-        <AvatarCell name={row.original.name} lastActive={row.original.lastActive} avatarUrl={row.original.avatarUrl} />
+        <AvatarCell name={row.original.name} avatarUrl={row.original.avatarUrl} />
         <div className="min-w-0">
           <div className="truncate font-medium text-foreground text-sm">{row.original.name}</div>
           <div className="truncate text-muted-foreground text-sm">{row.original.email}</div>

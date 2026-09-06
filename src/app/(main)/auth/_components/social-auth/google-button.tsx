@@ -35,12 +35,12 @@ export function GoogleButton({
       if (isAllowed) {
         toast.success(`Welcome back, ${organizer.name}! (${organizer.chapterRole ?? "Organizer"})`);
         const callbackUrl = searchParams.get("callbackUrl");
-        const targetUrl = callbackUrl?.startsWith("/") ? callbackUrl : "/dashboard/admin";
+        const targetUrl = callbackUrl?.startsWith("/") ? callbackUrl : "/dashboard/organizer";
         router.push(targetUrl);
       } else {
         toast.info(`Signed in as ${organizer.name}. Note: Your account is listed as a Community Member.`);
         const callbackUrl = searchParams.get("callbackUrl");
-        const targetUrl = callbackUrl?.startsWith("/") ? callbackUrl : "/dashboard/admin";
+        const targetUrl = callbackUrl?.startsWith("/") ? callbackUrl : "/dashboard/organizer";
         router.push(targetUrl);
       }
 
