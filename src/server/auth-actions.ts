@@ -16,8 +16,6 @@ export type LoginResult = { success: false; error: string } | { success: true };
  */
 export async function loginAction(email: string, password: string, remember: boolean): Promise<LoginResult> {
   // ── Demo auth ─────────────────────────────────────────────────────────────
-  // Replace this block with a real API call, database lookup, or NextAuth.
-  // Example: const res = await fetch(`${process.env.API_URL}/auth/login`, { ... })
   const isDemoLogin = email === "admin@gdgjakarta.com" && password === "password";
   if (!isDemoLogin) {
     return { success: false, error: "Invalid email or password." };
@@ -43,5 +41,5 @@ export async function loginAction(email: string, password: string, remember: boo
 export async function logoutAction(): Promise<void> {
   const cookieStore = await cookies();
   cookieStore.delete(AUTH_COOKIE);
-  redirect("/auth/v2/login");
+  redirect("/auth/organizer/login");
 }

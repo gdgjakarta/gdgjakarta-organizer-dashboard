@@ -78,7 +78,7 @@ There is currently no automated test command. Run build, lint, check, or other v
 ## User authentication
 
 This project uses Firebase auth with Google Sign In provider.
-Login page is at `src/app/(main)/admin/auth/login/page.tsx`. 
+Login page is at `src/app/(main)/organizer/auth/login/page.tsx`. 
 
 ## Co-location-based structure
 
