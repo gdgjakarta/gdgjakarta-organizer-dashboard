@@ -1,6 +1,12 @@
 import { BEVY_CONFIG } from "@/config/bevy-config";
 
-import type { BevyChapterTeamMember, BevyMembersResponse, BevyUser, OrganizerValidationResult } from "./types";
+import type {
+  BevyChapterTeamMember,
+  BevyEventsResponse,
+  BevyMembersResponse,
+  BevyUser,
+  OrganizerValidationResult,
+} from "./types";
 
 /**
  * Server-only fetch wrapper for Bevy API
@@ -223,5 +229,17 @@ export async function getBevyChapterMembers(
   const result = await bevyFetch<BevyMembersResponse>(
     `/chapter/${chapterId}/member?page_size=${pageSize}&page=${page}`,
   );
+  return result;
+}
+
+/**
+ * Fetch events for a given chapter from Bevy
+ */
+export async function getBevyChapterEvents(
+  chapterId: string = BEVY_CONFIG.chapterId,
+  pageSize = 100,
+  page = 1,
+): Promise<BevyEventsResponse | null> {
+  const result = await bevyFetch<BevyEventsResponse>(`/chapter/${chapterId}/event?page_size=${pageSize}&page=${page}`);
   return result;
 }

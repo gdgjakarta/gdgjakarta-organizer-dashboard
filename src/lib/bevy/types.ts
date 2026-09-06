@@ -82,18 +82,45 @@ export interface BevyEvent {
   description_short?: string;
   description?: string;
   event_type_title?: string;
+  event_type_slug?: string;
+  audience_type?: "IN_PERSON" | "VIRTUAL" | "HYBRID" | string;
+  is_virtual_event?: boolean;
   start_date: string;
   end_date: string;
   status: "Draft" | "Published" | "Completed" | "Canceled" | string;
   picture?: {
-    url: string;
+    url?: string;
+    thumbnail_url?: string;
+  };
+  banner?: {
+    url?: string;
+    thumbnail_url?: string;
   };
   url?: string;
+  static_url?: string;
+  relative_url?: string;
+  total_attendees?: number;
+  checkin_count?: number;
+  total_tickets?: number;
+  total_rsvps_sold?: number;
+  completed?: boolean;
+  tags?: string[];
   chapter?: {
     id: number | string;
     title: string;
     slug: string;
   };
+}
+
+export interface BevyEventsResponse {
+  count?: number;
+  pagination?: {
+    previous_page?: number | null;
+    current_page?: number;
+    next_page?: number | null;
+    page_size?: number;
+  };
+  results?: BevyEvent[];
 }
 
 export interface BevyChapter {

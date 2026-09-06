@@ -1,14 +1,4 @@
-import {
-  Calendar,
-  CheckSquare,
-  Kanban,
-  LayoutDashboard,
-  Lock,
-  type LucideIcon,
-  Mail,
-  SquareArrowUpRight,
-  Users,
-} from "lucide-react";
+import { Calendar, LayoutDashboard, type LucideIcon, SquareArrowUpRight, Users } from "lucide-react";
 
 export type NavBadge = "new" | "soon";
 
@@ -65,29 +55,39 @@ export const sidebarItems: NavGroup[] = [
     id: 2,
     label: "Pages",
     items: [
+      // {
+      // TODO uncomment this part if you want to add email feature
+      //   id: "email",
+      //   title: "Email",
+      //   url: "/dashboard/mail",
+      //   icon: Mail,
+      // },
+      // {
+      // TODO uncomment this part if you want to add calendar feature
+      //   id: "calendar",
+      //   title: "Calendar",
+      //   url: "/dashboard/calendar",
+      //   icon: Calendar,
+      // },
+      // {
+      // TODO uncomment this part if you want to add kanban feature
+      //   id: "kanban",
+      //   title: "Kanban",
+      //   url: "/dashboard/kanban",
+      //   icon: Kanban,
+      // },
+      // {
+      // TODO uncomment this part if you want to add tasks feature
+      //   id: "tasks",
+      //   title: "Tasks",
+      //   url: "/dashboard/tasks",
+      //   icon: CheckSquare,
+      // },
       {
-        id: "email",
-        title: "Email",
-        url: "/dashboard/mail",
-        icon: Mail,
-      },
-      {
-        id: "calendar",
-        title: "Calendar",
-        url: "/dashboard/calendar",
+        id: "events",
+        title: "Events",
+        url: "/dashboard/events",
         icon: Calendar,
-      },
-      {
-        id: "kanban",
-        title: "Kanban",
-        url: "/dashboard/kanban",
-        icon: Kanban,
-      },
-      {
-        id: "tasks",
-        title: "Tasks",
-        url: "/dashboard/tasks",
-        icon: CheckSquare,
       },
       {
         id: "members",
@@ -96,12 +96,13 @@ export const sidebarItems: NavGroup[] = [
         icon: Users,
         badge: "new",
       },
-      {
-        id: "roles",
-        title: "Roles",
-        url: "/dashboard/roles",
-        icon: Lock,
-      },
+      // {
+      // TODO uncomment this part if you want to add roles feature
+      //   id: "roles",
+      //   title: "Roles",
+      //   url: "/dashboard/roles",
+      //   icon: Lock,
+      // },
     ],
   },
   {
