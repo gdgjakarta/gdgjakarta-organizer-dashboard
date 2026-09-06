@@ -2,7 +2,25 @@
 
 ## Project overview
 
-GDG Jakarta Dashboard is a responsive dashboard built with Next.js 16, React 19, TypeScript, Tailwind CSS v4, and shadcn/ui.
+GDG Jakarta Dashboard is a responsive admin community management or event organizer dashboard built with Next.js 16, React 19, TypeScript, Tailwind CSS v4, and shadcn/ui. 
+
+The dashboard will have two roles: admin/organizer and member/user. 
+
+Admin/organizer dashboard:
+- Create, edit, delete events
+- Create, edit, delete tickets
+- Create, edit, delete event merchandises
+- Manage users
+- Manage news
+- Manage community 
+
+Member/user dashboard:
+- View events
+- Register for events
+- View tickets
+- View event merchandises
+- View news
+- View community
 
 This repository uses the shadcn `radix-nova` style. The shadcn CLI reports `base: "radix"`, which refers to Radix UI. Always inspect the local components in `src/components/ui/` because individual wrappers may use different primitives.
 
@@ -15,6 +33,10 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+## Project Focuses
+
+Until today, the project will only be focusing on the admin/organizer dashboard. We will update the documentation below this paragraphs as soon as possible once we ready to build the members/users dashboard.
 
 ## shadcn skill
 
@@ -52,6 +74,12 @@ npm run generate:presets
 
 There is currently no automated test command. Run build, lint, check, or other validation commands only when the user explicitly requests that validation.
 
+
+## User authentication
+
+This project uses Firebase auth with Google Sign In provider.
+Login page is at `src/app/(main)/admin/auth/login/page.tsx`. 
+
 ## Co-location-based structure
 
 Keep feature code close to the route that owns it.
@@ -68,7 +96,7 @@ Keep a component inside its route until it is reused by another feature. Do not 
 
 ## Creating or extending a screen
 
-1. Inspect the closest current screen before writing code. Finance, Infrastructure, CRM, and Analytics are useful references. Do not use routes under `(legacy)` as references for new screens unless maintaining a legacy route.
+1. Inspect the closest current screen before writing code.
 2. When reproducing a UI from a screenshot or image, follow its visual direction closely, including layout, hierarchy, spacing, component structure, and important details. Implement it with the project's existing components and semantic theme tokens rather than copying raw color values. If the design needs a color that is not available through the existing theme tokens, or the user explicitly requests a non-theme color, use a named color from Tailwind's default palette. Do not use arbitrary hex, RGB, HSL, or OKLCH values.
 3. Reuse the existing dashboard shell, local components, layout controls, and theme tokens.
 4. Break each new page into focused components inside the route's `_components/` directory. Keep `page.tsx` small and focused on composing those pieces.
