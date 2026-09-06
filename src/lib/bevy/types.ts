@@ -43,10 +43,37 @@ export interface BevyUser {
 export interface BevyChapterTeamMember {
   id: number | string;
   user_id: number | string;
-  role: string;
+  role: string | { id?: number; name?: string; description?: string };
   user?: BevyUser;
   chapter_id?: number | string;
   title?: string;
+}
+
+export interface BevyChapterMember {
+  id: number | string;
+  user: {
+    id: number | string;
+    full_name: string;
+    email?: string;
+    profile_url?: string;
+    is_email_verified?: boolean;
+    avatar?: {
+      url?: string;
+    };
+  };
+  created_date?: string;
+  events_registered_count?: number;
+}
+
+export interface BevyMembersResponse {
+  count?: number;
+  pagination?: {
+    previous_page?: number | null;
+    current_page?: number;
+    next_page?: number | null;
+    page_size?: number;
+  };
+  results?: BevyChapterMember[];
 }
 
 export interface BevyEvent {

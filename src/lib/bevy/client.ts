@@ -1,6 +1,6 @@
 import { BEVY_CONFIG } from "@/config/bevy-config";
 
-import type { BevyChapterTeamMember, BevyUser, OrganizerValidationResult } from "./types";
+import type { BevyChapterTeamMember, BevyMembersResponse, BevyUser, OrganizerValidationResult } from "./types";
 
 /**
  * Server-only fetch wrapper for Bevy API
@@ -210,4 +210,18 @@ export async function validateBevyOrganizer(email: string): Promise<OrganizerVal
       chapterRole: null,
     };
   }
+}
+
+/**
+ * Fetch registered chapter community members from Bevy
+ */
+export async function getBevyChapterMembers(
+  chapterId: string = BEVY_CONFIG.chapterId,
+  pageSize = 200,
+  page = 1,
+): Promise<BevyMembersResponse | null> {
+  const result = await bevyFetch<BevyMembersResponse>(
+    `/chapter/${chapterId}/member?page_size=${pageSize}&page=${page}`,
+  );
+  return result;
 }

@@ -92,8 +92,7 @@ export const sidebarItems: NavGroup[] = [
       {
         id: "members",
         title: "Members",
-        // TODO supposed to be "/dashboard/users" but the UI is not showing properly, need to fix this
-        url: "/dashboard/users",
+        url: "/dashboard/members",
         icon: Users,
         badge: "new",
       },

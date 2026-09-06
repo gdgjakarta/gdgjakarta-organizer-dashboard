@@ -22,7 +22,7 @@ import { filters, type MemberRow } from "./data";
 import { membersColumns } from "./members-columns";
 import { MembersTable } from "./members-table";
 
-export function Members({ members }: { members: MemberRow[] }) {
+export function Members({ members, totalCount }: { members: MemberRow[]; totalCount?: number }) {
   const [rowSelection, setRowSelection] = React.useState({});
   const [sorting, setSorting] = React.useState<SortingState>([{ id: "joinedDate", desc: true }]);
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
@@ -46,7 +46,7 @@ export function Members({ members }: { members: MemberRow[] }) {
       columnVisibility,
       pagination,
     },
-    getRowId: (row) => row.email,
+    getRowId: (row) => (row.id ? String(row.id) : row.email),
     autoResetPageIndex: false,
     enableRowSelection: true,
     onRowSelectionChange: setRowSelection,
@@ -63,6 +63,7 @@ export function Members({ members }: { members: MemberRow[] }) {
   const workspaceFilter =
     (table.getColumn("workspace")?.getFilterValue() as string | undefined) ?? filters.workspace[0];
   const selectedCount = table.getFilteredSelectedRowModel().rows.length;
+  const countToDisplay = totalCount ?? members.length;
 
   function setColumnSelectFilter(columnId: string, value: string) {
     table.getColumn(columnId)?.setFilterValue(value === "All" ? undefined : value);
@@ -72,9 +73,12 @@ export function Members({ members }: { members: MemberRow[] }) {
   return (
     <Card>
       <CardHeader className="border-b has-data-[slot=card-action]:grid-cols-1 md:has-data-[slot=card-action]:grid-cols-[1fr_auto]">
-        <CardTitle className="text-xl leading-none">Members</CardTitle>
+        <CardTitle className="text-xl leading-none">
+          Community Members{" "}
+          <span className="font-normal text-muted-foreground">({countToDisplay.toLocaleString()})</span>
+        </CardTitle>
         <CardDescription className="max-w-sm leading-snug">
-          Manage your organization members and their access.
+          Manage GDG Jakarta community members, attendees, and organizers.
         </CardDescription>
         <CardAction className="col-start-1 row-start-auto flex w-full flex-wrap justify-start gap-2 justify-self-stretch md:col-start-2 md:row-span-2 md:row-start-1 md:w-auto md:flex-nowrap md:justify-end md:justify-self-end">
           <InputGroup className="h-7 w-full md:w-64">
@@ -104,7 +108,7 @@ export function Members({ members }: { members: MemberRow[] }) {
             <Download /> Export
           </Button>
           <Button size="sm">
-            <Plus /> Add User
+            <Plus /> Add Member
           </Button>
         </CardAction>
       </CardHeader>

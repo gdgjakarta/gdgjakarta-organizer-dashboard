@@ -4,7 +4,7 @@ import { Subscribe } from "@tanstack/react-table";
 import { parse } from "date-fns";
 import { Check, Clock, MoreHorizontal, X } from "lucide-react";
 
-import { Avatar, AvatarBadge, AvatarFallback, AvatarGroup, AvatarGroupCount } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarGroup, AvatarGroupCount, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -30,7 +30,7 @@ function RoleCell({ role, team }: { role: string; team: string }) {
 }
 
 function StatusBadge({ status }: { status: MemberRow["status"] }) {
-  const meta = statusMeta[status];
+  const meta = statusMeta[status] || statusMeta.Active;
 
   return (
     <Badge className={cn("gap-1.5 border px-2 py-1 font-medium", meta.badgeClass)} variant="outline">
@@ -85,14 +85,14 @@ function getLastActiveBadge(lastActive: number) {
   };
 }
 
-function AvatarCell({ lastActive, name }: { lastActive: number; name: string }) {
+function AvatarCell({ lastActive, name, avatarUrl }: { lastActive: number; name: string; avatarUrl?: string }) {
   const badge = getLastActiveBadge(lastActive);
   const BadgeIcon = badge.icon;
 
   return (
     <Avatar size="lg" className={cn("font-medium", getAvatarTone(name))}>
+      {avatarUrl ? <AvatarImage src={avatarUrl} alt={name} /> : null}
       <AvatarFallback>{getInitials(name)}</AvatarFallback>
-      <AvatarBadge className={badge.className}>{BadgeIcon ? <BadgeIcon /> : null}</AvatarBadge>
     </Avatar>
   );
 }
@@ -164,7 +164,7 @@ export const membersColumns: ColumnDef<DataTableFeatures, MemberRow>[] = [
     header: "Member",
     cell: ({ row }) => (
       <div className="flex items-center gap-3">
-        <AvatarCell name={row.original.name} lastActive={row.original.lastActive} />
+        <AvatarCell name={row.original.name} lastActive={row.original.lastActive} avatarUrl={row.original.avatarUrl} />
         <div className="min-w-0">
           <div className="truncate font-medium text-foreground text-sm">{row.original.name}</div>
           <div className="truncate text-muted-foreground text-sm">{row.original.email}</div>
