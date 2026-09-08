@@ -18,7 +18,8 @@ import {
   CommandSeparator,
 } from "@/components/ui/command";
 import type { NavMainItem } from "@/navigation/sidebar/sidebar-items";
-import { sidebarItems } from "@/navigation/sidebar/sidebar-items";
+import { memberSidebarItems, organizerSidebarItems } from "@/navigation/sidebar/sidebar-items";
+import { useAuthStore } from "@/stores/auth/auth-provider";
 
 type SearchItem = {
   id: string;
@@ -30,6 +31,7 @@ type SearchItem = {
   newTab?: boolean;
 };
 
+const sidebarItems = [...organizerSidebarItems, ...memberSidebarItems];
 const sidebarGroupLabels = new Set(sidebarItems.flatMap((group) => (group.label ? [group.label] : [])));
 
 function getSubItemGroup(groupLabel: string | undefined, itemTitle: string) {

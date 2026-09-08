@@ -45,7 +45,8 @@ export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
         const organizer = mapFirebaseUserToOrganizer(firebaseUser, validation);
         try {
           const token = await firebaseUser.getIdToken();
-          await setAuthSessionCookie(token, true);
+          const role = validation?.isValidOrganizer ? "organizer" : "member";
+          await setAuthSessionCookie(token, role, true);
         } catch {
           // Ignore token retrieval errors
         }
@@ -86,7 +87,8 @@ export async function signInWithGoogle(): Promise<{ organizer: AuthOrganizer; is
 
   // Set Auth Session Cookie
   const token = await user.getIdToken();
-  await setAuthSessionCookie(token, true);
+  const role = validation.isValidOrganizer ? "organizer" : "member";
+  await setAuthSessionCookie(token, role, true);
 
   return {
     organizer,

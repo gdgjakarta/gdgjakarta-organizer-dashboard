@@ -40,7 +40,7 @@ export function GoogleButton({
       } else {
         toast.info(`Signed in as ${organizer.name}. Note: Your account is listed as a Community Member.`);
         const callbackUrl = searchParams.get("callbackUrl");
-        const targetUrl = callbackUrl?.startsWith("/") ? callbackUrl : "/dashboard/organizer";
+        const targetUrl = callbackUrl?.startsWith("/") ? callbackUrl : "/dashboard/member";
         router.push(targetUrl);
       }
 

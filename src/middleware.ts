@@ -2,7 +2,9 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
 const AUTH_COOKIE = "auth_token";
+const ROLE_COOKIE = "auth_role";
 const LOGIN_PATH = "/auth/organizer/login";
+const MEMBER_LOGIN_PATH = "/auth/member/login";
 
 /**
  * Routes that require authentication.
@@ -27,26 +29,31 @@ function isAuthPage(pathname: string): boolean {
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get(AUTH_COOKIE)?.value;
+  const role = request.cookies.get(ROLE_COOKIE)?.value;
   const isAuthenticated = Boolean(token);
-
-  // Redirect bare root "/" based on auth state
-  if (pathname === "/") {
-    if (isAuthenticated) {
-      return NextResponse.redirect(new URL("/dashboard/organizer", request.url));
-    }
-    return NextResponse.redirect(new URL(LOGIN_PATH, request.url));
-  }
 
   // Protected route: not authenticated → redirect to login with callbackUrl
   if (isProtected(pathname) && !isAuthenticated) {
-    const loginUrl = new URL(LOGIN_PATH, request.url);
+    // If they tried to access organizer dashboard, redirect to organizer login, else member login
+    const targetLogin = pathname.startsWith("/dashboard/organizer") ? LOGIN_PATH : MEMBER_LOGIN_PATH;
+    const loginUrl = new URL(targetLogin, request.url);
     loginUrl.searchParams.set("callbackUrl", pathname);
     return NextResponse.redirect(loginUrl);
   }
 
+  // RBAC for protected routes
+  if (isProtected(pathname) && isAuthenticated) {
+    if (pathname.startsWith("/dashboard/organizer") && role !== "organizer") {
+      return NextResponse.redirect(new URL("/dashboard/member", request.url));
+    }
+  }
+
   // Auth page: already authenticated → redirect to dashboard
   if (isAuthPage(pathname) && isAuthenticated) {
-    return NextResponse.redirect(new URL("/dashboard/organizer", request.url));
+    if (role === "organizer") {
+      return NextResponse.redirect(new URL("/dashboard/organizer", request.url));
+    }
+    return NextResponse.redirect(new URL("/dashboard/member", request.url));
   }
 
   return NextResponse.next();

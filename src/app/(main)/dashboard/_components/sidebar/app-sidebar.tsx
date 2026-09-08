@@ -16,7 +16,8 @@ import {
 } from "@/components/ui/sidebar";
 import { APP_CONFIG } from "@/config/app-config";
 import { rootUser } from "@/data/users";
-import { sidebarItems } from "@/navigation/sidebar/sidebar-items";
+import { memberSidebarItems, organizerSidebarItems } from "@/navigation/sidebar/sidebar-items";
+import { useAuthStore } from "@/stores/auth/auth-provider";
 import { usePreferencesStore } from "@/stores/preferences/preferences-provider";
 
 import { NavMain } from "./nav-main";
@@ -32,6 +33,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     })),
   );
 
+  const user = useAuthStore((s) => s.user);
+  const isMember = user?.role === "Member";
+  const sidebarItems = isMember ? memberSidebarItems : organizerSidebarItems;
+
   const variant = isSynced ? sidebarVariant : props.variant;
   const collapsible = isSynced ? sidebarCollapsible : props.collapsible;
 
@@ -41,7 +46,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton asChild>
-              <Link prefetch={false} href="/dashboard/organizer">
+              <Link prefetch={false} href={isMember ? "/dashboard/member" : "/dashboard/organizer"}>
                 <Command />
                 <span className="font-semibold text-base">{APP_CONFIG.name}</span>
               </Link>

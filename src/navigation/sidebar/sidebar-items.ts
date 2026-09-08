@@ -38,7 +38,7 @@ export interface NavGroup {
   items: NavMainItem[];
 }
 
-export const sidebarItems: NavGroup[] = [
+export const organizerSidebarItems: NavGroup[] = [
   {
     id: 1,
     label: "Dashboards",
@@ -116,6 +116,39 @@ export const sidebarItems: NavGroup[] = [
         icon: SquareArrowUpRight,
         badge: "soon",
         disabled: true,
+      },
+    ],
+  },
+];
+
+export const memberSidebarItems: NavGroup[] = [
+  {
+    id: 1,
+    label: "Dashboards",
+    items: [
+      {
+        id: "default",
+        title: "Dashboard",
+        url: "/dashboard/member",
+        icon: LayoutDashboard,
+      },
+    ],
+  },
+  {
+    id: 2,
+    label: "Pages",
+    items: [
+      {
+        id: "events",
+        title: "Events",
+        url: "/dashboard/events",
+        icon: Calendar,
+      },
+      {
+        id: "community",
+        title: "Community",
+        url: "/dashboard/members",
+        icon: Users,
       },
     ],
   },

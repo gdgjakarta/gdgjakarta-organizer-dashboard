@@ -7,6 +7,7 @@ import { validateBevyOrganizer } from "@/lib/bevy/client";
 import type { OrganizerValidationResult } from "@/lib/bevy/types";
 
 const AUTH_COOKIE = "auth_token";
+const ROLE_COOKIE = "auth_role";
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
 
 export type LoginResult = { success: false; error: string } | { success: true };
@@ -21,15 +22,18 @@ export async function validateOrganizerAction(email: string): Promise<OrganizerV
 /**
  * Sets the auth_token cookie after successful authentication (e.g. Firebase Google Sign-In).
  */
-export async function setAuthSessionCookie(token: string, remember = true): Promise<void> {
+export async function setAuthSessionCookie(token: string, role: string, remember = true): Promise<void> {
   const cookieStore = await cookies();
-  cookieStore.set(AUTH_COOKIE, token, {
+  const options = {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    sameSite: "lax" as const,
     path: "/",
     maxAge: remember ? COOKIE_MAX_AGE : undefined,
-  });
+  };
+
+  cookieStore.set(AUTH_COOKIE, token, options);
+  cookieStore.set(ROLE_COOKIE, role, options);
 }
 
 /**
@@ -38,6 +42,7 @@ export async function setAuthSessionCookie(token: string, remember = true): Prom
 export async function clearAuthSessionCookie(): Promise<void> {
   const cookieStore = await cookies();
   cookieStore.delete(AUTH_COOKIE);
+  cookieStore.delete(ROLE_COOKIE);
 }
 
 /**
@@ -55,7 +60,7 @@ export async function loginAction(email: string, password: string, remember: boo
   const token = `demo-auth-token-${Date.now()}`;
   // ── End demo auth ──────────────────────────────────────────────────────────
 
-  await setAuthSessionCookie(token, remember);
+  await setAuthSessionCookie(token, "organizer", remember);
 
   return { success: true };
 }
