@@ -14,11 +14,11 @@ export function PublicHeader() {
             <Command className="size-5" />
             <span className="font-bold text-lg">{APP_CONFIG.name}</span>
           </Link>
-          <nav className="hidden md:flex items-center gap-6 ml-6 text-sm font-medium">
-            <Link href="/" className="transition-colors hover:text-foreground/80 text-foreground/60">
+          <nav className="ml-6 hidden items-center gap-6 font-medium text-sm md:flex">
+            <Link href="/" className="text-foreground/60 transition-colors hover:text-foreground/80">
               Home
             </Link>
-            <Link href="/events" className="transition-colors hover:text-foreground/80 text-foreground/60">
+            <Link href="/events" className="text-foreground/60 transition-colors hover:text-foreground/80">
               Events
             </Link>
           </nav>

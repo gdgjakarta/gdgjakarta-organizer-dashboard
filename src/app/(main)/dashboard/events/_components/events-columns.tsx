@@ -1,4 +1,6 @@
 "use client";
+import Link from "next/link";
+
 import type { ColumnDef } from "@tanstack/react-table";
 import { Subscribe } from "@tanstack/react-table";
 import { parse } from "date-fns";
@@ -12,7 +14,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { DataTableFeatures } from "@/lib/data-table-features";
@@ -117,9 +118,13 @@ export const eventsColumns: ColumnDef<DataTableFeatures, EventRow>[] = [
           </AvatarFallback>
         </Avatar>
         <div className="min-w-0 max-w-[340px]">
-          <div className="truncate font-medium text-foreground text-sm" title={row.original.title}>
+          <Link
+            href={`/dashboard/events/${row.original.id}`}
+            className="truncate font-medium text-foreground text-sm hover:underline"
+            title={row.original.title}
+          >
             {row.original.title}
-          </div>
+          </Link>
           <div className="flex items-center gap-2 text-muted-foreground text-xs">
             <span className="truncate">{row.original.eventType}</span>
             {row.original.tags.length > 0 && (
@@ -205,18 +210,16 @@ export const eventsColumns: ColumnDef<DataTableFeatures, EventRow>[] = [
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            {row.original.url && (
-              <DropdownMenuItem asChild>
-                <a href={row.original.url} target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="mr-2 size-3.5" />
-                  View on Bevy
-                </a>
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuItem>Manage attendees</DropdownMenuItem>
-            <DropdownMenuItem>Edit event</DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive">Cancel event</DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <a
+                href={row.original.url || "https://gdg.community.dev/gdg-jakarta/"}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <ExternalLink className="mr-2 size-3.5" />
+                Manage in Bevy
+              </a>
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

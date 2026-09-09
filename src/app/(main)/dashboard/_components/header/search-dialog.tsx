@@ -19,7 +19,6 @@ import {
 } from "@/components/ui/command";
 import type { NavMainItem } from "@/navigation/sidebar/sidebar-items";
 import { memberSidebarItems, organizerSidebarItems } from "@/navigation/sidebar/sidebar-items";
-import { useAuthStore } from "@/stores/auth/auth-provider";
 
 type SearchItem = {
   id: string;

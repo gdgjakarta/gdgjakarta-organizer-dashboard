@@ -25,8 +25,8 @@ export default async function Home() {
       {/* Hero Section */}
       <section className="bg-muted/30 py-20 lg:py-32">
         <div className="container mx-auto px-4 text-center sm:px-6 lg:px-8">
-          <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl lg:text-6xl">Welcome to GDG Jakarta</h1>
-          <p className="mx-auto mt-6 max-w-2xl text-xl text-muted-foreground">
+          <h1 className="font-extrabold text-4xl tracking-tight sm:text-5xl lg:text-6xl">Welcome to GDG Jakarta</h1>
+          <p className="mx-auto mt-6 max-w-2xl text-muted-foreground text-xl">
             Google Developer Groups (GDG) Jakarta is a community-run developer group for developers in Jakarta,
             Indonesia who are interested in Google's developer technology.
           </p>
@@ -43,10 +43,10 @@ export default async function Home() {
 
       {/* Latest Events Section */}
       <section className="container mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between mb-8">
+        <div className="mb-8 flex items-center justify-between">
           <div>
-            <h2 className="text-3xl font-bold tracking-tight">Upcoming Events</h2>
-            <p className="text-muted-foreground mt-1">Don't miss out on our latest activities.</p>
+            <h2 className="font-bold text-3xl tracking-tight">Upcoming Events</h2>
+            <p className="mt-1 text-muted-foreground">Don't miss out on our latest activities.</p>
           </div>
           <Button variant="ghost" asChild className="hidden sm:flex">
             <Link href="/events" className="gap-1">
@@ -59,7 +59,7 @@ export default async function Home() {
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {upcomingEvents.map((event) => (
               <Card key={event.id} className="flex flex-col overflow-hidden">
-                <div className="aspect-video w-full bg-muted relative">
+                <div className="relative aspect-video w-full bg-muted">
                   {event.picture?.url ? (
                     <Image src={event.picture.url} alt={event.title} fill className="object-cover" />
                   ) : (
@@ -80,7 +80,7 @@ export default async function Home() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="flex-1">
-                  <p className="line-clamp-3 text-sm text-muted-foreground">
+                  <p className="line-clamp-3 text-muted-foreground text-sm">
                     {event.description_short || "Join us for this exciting GDG Jakarta event!"}
                   </p>
                 </CardContent>
@@ -100,9 +100,9 @@ export default async function Home() {
           </div>
         ) : (
           <div className="rounded-xl border border-dashed p-12 text-center">
-            <Calendar className="mx-auto size-10 text-muted-foreground/50 mb-4" />
-            <h3 className="text-lg font-semibold">No upcoming events</h3>
-            <p className="text-sm text-muted-foreground mt-1">Check back later for new activities.</p>
+            <Calendar className="mx-auto mb-4 size-10 text-muted-foreground/50" />
+            <h3 className="font-semibold text-lg">No upcoming events</h3>
+            <p className="mt-1 text-muted-foreground text-sm">Check back later for new activities.</p>
           </div>
         )}
       </section>
@@ -110,20 +110,20 @@ export default async function Home() {
       {/* Organizers Section */}
       <section className="container mx-auto px-4 sm:px-6 lg:px-8">
         <div className="mb-8 text-center">
-          <h2 className="text-3xl font-bold tracking-tight">Meet the Organizers</h2>
-          <p className="text-muted-foreground mt-1">The passionate team behind GDG Jakarta.</p>
+          <h2 className="font-bold text-3xl tracking-tight">Meet the Organizers</h2>
+          <p className="mt-1 text-muted-foreground">The passionate team behind GDG Jakarta.</p>
         </div>
 
         {organizers.length > 0 ? (
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:gap-8">
-            {organizers.map((member, idx) => {
+            {organizers.map((member) => {
               const name = member.name;
               const avatar = member.avatar;
               const roleName = member.role;
 
               return (
-                <div key={idx} className="flex flex-col items-center justify-center p-4 text-center">
-                  <div className="mb-4 relative size-48 overflow-hidden rounded-full bg-muted shadow-sm">
+                <div key={member.id || name} className="flex flex-col items-center justify-center p-4 text-center">
+                  <div className="relative mb-4 size-48 overflow-hidden rounded-full bg-muted shadow-sm">
                     {avatar ? (
                       <Image src={avatar} alt={name} fill className="object-cover" />
                     ) : (
@@ -133,7 +133,7 @@ export default async function Home() {
                     )}
                   </div>
                   <h3 className="font-medium text-sm leading-tight">{name}</h3>
-                  <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{roleName}</p>
+                  <p className="mt-1 line-clamp-1 text-muted-foreground text-xs">{roleName}</p>
                 </div>
               );
             })}
@@ -146,10 +146,10 @@ export default async function Home() {
       {/* Sponsors Section */}
       <section className="bg-muted/30 py-16">
         <div className="container mx-auto px-4 text-center sm:px-6 lg:px-8">
-          <h2 className="text-2xl font-bold tracking-tight mb-8">Our Sponsors & Partners</h2>
-          <div className="flex flex-wrap items-center justify-center gap-8 md:gap-16 opacity-70 grayscale transition-all hover:grayscale-0">
-            {sponsors.map((sponsor, idx) => (
-              <div key={idx} className="relative h-12 w-32 md:h-16 md:w-40">
+          <h2 className="mb-8 font-bold text-2xl tracking-tight">Our Sponsors & Partners</h2>
+          <div className="flex flex-wrap items-center justify-center gap-8 opacity-70 grayscale transition-all hover:grayscale-0 md:gap-16">
+            {sponsors.map((sponsor) => (
+              <div key={sponsor.name} className="relative h-12 w-32 md:h-16 md:w-40">
                 <Image src={sponsor.logo} alt={sponsor.name} fill className="object-contain" />
               </div>
             ))}

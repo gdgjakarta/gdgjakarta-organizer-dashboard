@@ -1,55 +1,36 @@
-import { BookOpenCheck, Megaphone, Plus } from "lucide-react";
+import { getFirestoreEvents, getFirestoreMembers } from "@/lib/firestore/client";
 
-import { Button } from "@/components/ui/button";
+import { GDGKpiCards } from "./_components/gdg-kpi-cards";
+import { GDGUpcomingEvents } from "./_components/gdg-upcoming-events";
+import { OrganizerHeader } from "./_components/organizer-header";
+import { RecentMembersWidget } from "./_components/recent-members-widget";
 
-import { AssignmentStatus } from "./_components/assignment-status";
-import { ClassSchedule } from "./_components/class-schedule";
-import { KpiCards } from "./_components/kpi-cards";
-import { PerformanceHighlights } from "./_components/performance-highlights";
-import { UpcomingEvents } from "./_components/upcoming-events";
+export const dynamic = "force-dynamic";
 
-export default function Page() {
+export default async function Page() {
+  let events = [];
+  let members = [];
+
+  try {
+    const [fetchedEvents, fetchedMembers] = await Promise.all([getFirestoreEvents(50), getFirestoreMembers(50)]);
+    events = fetchedEvents;
+    members = fetchedMembers;
+  } catch (error) {
+    console.error("[Organizer Dashboard] Error fetching Firestore data:", error);
+  }
+
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div className="space-y-1">
-          <h1 className="text-3xl tracking-tight">Good morning, [name].</h1>
-          <p className="text-muted-foreground text-sm">Here's a quick overview of our community activity.</p>
-        </div>
+    <div className="flex flex-col gap-5">
+      <OrganizerHeader />
 
-        <div className="flex flex-wrap items-center gap-2 lg:w-fit">
-          <Button size="sm">
-            <Megaphone />
-            New Announcement
-          </Button>
-          <Button size="sm" variant="outline">
-            <BookOpenCheck />
-            Gradebook
-          </Button>
-          <Button size="sm" variant="outline">
-            <Plus />
-            Add Assignment
-          </Button>
-        </div>
-      </div>
+      <GDGKpiCards events={events} members={members} />
 
-      <KpiCards />
-
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-        <div className="xl:col-span-5">
-          <ClassSchedule />
-        </div>
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
         <div className="xl:col-span-7">
-          <AssignmentStatus />
+          <GDGUpcomingEvents events={events} />
         </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-        <div className="xl:col-span-8">
-          <PerformanceHighlights />
-        </div>
-        <div className="xl:col-span-4">
-          <UpcomingEvents />
+        <div className="xl:col-span-5">
+          <RecentMembersWidget members={members} />
         </div>
       </div>
     </div>

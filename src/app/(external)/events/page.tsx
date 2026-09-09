@@ -1,5 +1,4 @@
 import Image from "next/image";
-import Link from "next/link";
 
 import { Calendar } from "lucide-react";
 
@@ -15,8 +14,8 @@ export default async function EventsDirectoryPage() {
   return (
     <div className="container mx-auto px-4 py-12 sm:px-6 lg:px-8">
       <div className="mb-10 text-center">
-        <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl">Events Directory</h1>
-        <p className="mx-auto mt-4 max-w-2xl text-xl text-muted-foreground">
+        <h1 className="font-extrabold text-4xl tracking-tight sm:text-5xl">Events Directory</h1>
+        <p className="mx-auto mt-4 max-w-2xl text-muted-foreground text-xl">
           Discover all upcoming and past events hosted by GDG Jakarta.
         </p>
       </div>
@@ -25,7 +24,7 @@ export default async function EventsDirectoryPage() {
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {events.map((event) => (
             <Card key={event.id} className="flex flex-col overflow-hidden">
-              <div className="aspect-video w-full bg-muted relative">
+              <div className="relative aspect-video w-full bg-muted">
                 {event.picture?.url ? (
                   <Image src={event.picture.url} alt={event.title} fill className="object-cover" />
                 ) : (
@@ -46,7 +45,7 @@ export default async function EventsDirectoryPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex-1">
-                <p className="line-clamp-3 text-sm text-muted-foreground">
+                <p className="line-clamp-3 text-muted-foreground text-sm">
                   {event.description_short || "Join us for this exciting GDG Jakarta event!"}
                 </p>
               </CardContent>
@@ -66,9 +65,9 @@ export default async function EventsDirectoryPage() {
         </div>
       ) : (
         <div className="rounded-xl border border-dashed p-16 text-center">
-          <Calendar className="mx-auto size-12 text-muted-foreground/50 mb-4" />
-          <h3 className="text-xl font-semibold">No events found</h3>
-          <p className="text-muted-foreground mt-2">Check back later for new activities and meetups.</p>
+          <Calendar className="mx-auto mb-4 size-12 text-muted-foreground/50" />
+          <h3 className="font-semibold text-xl">No events found</h3>
+          <p className="mt-2 text-muted-foreground">Check back later for new activities and meetups.</p>
         </div>
       )}
     </div>

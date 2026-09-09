@@ -1,5 +1,8 @@
 "use client";
 import * as React from "react";
+import { useTransition } from "react";
+
+import { useRouter } from "next/navigation";
 
 import {
   type ColumnFiltersState,
@@ -8,7 +11,8 @@ import {
   type SortingState,
   useTable,
 } from "@tanstack/react-table";
-import { Cog, Download, Grid, Plus, Rows3, Search, SlidersHorizontal } from "lucide-react";
+import { Cog, Download, Grid, Plus, RefreshCw, Rows3, Search, SlidersHorizontal } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,6 +21,8 @@ import { Kbd } from "@/components/ui/kbd";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { dataTableFeatures } from "@/lib/data-table-features";
+import { cn } from "@/lib/utils";
+import { triggerMembersSyncAction } from "@/server/firestore-actions";
 
 import { filters, type MemberRow } from "./data";
 import { membersColumns } from "./members-columns";
@@ -62,6 +68,26 @@ export function Members({ members, totalCount }: { members: MemberRow[]; totalCo
   const statusFilter = (table.getColumn("status")?.getFilterValue() as string | undefined) ?? filters.status[0];
   const workspaceFilter =
     (table.getColumn("workspace")?.getFilterValue() as string | undefined) ?? filters.workspace[0];
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+
+  const handleSyncFromBevy = () => {
+    startTransition(async () => {
+      toast.loading("Syncing members from Bevy...", { id: "sync-members" });
+      try {
+        const result = await triggerMembersSyncAction();
+        if (result.success) {
+          toast.success(`Successfully synced ${result.totalSynced} members into Firestore!`, { id: "sync-members" });
+          router.refresh();
+        } else {
+          toast.error(result.error ?? "Failed to sync members.", { id: "sync-members" });
+        }
+      } catch (_err) {
+        toast.error("An unexpected error occurred during sync.", { id: "sync-members" });
+      }
+    });
+  };
+
   const selectedCount = table.getFilteredSelectedRowModel().rows.length;
   const countToDisplay = totalCount ?? members.length;
 
@@ -98,6 +124,10 @@ export function Members({ members, totalCount }: { members: MemberRow[]; totalCo
               <Kbd className="h-4 text-[10px]">⌘K</Kbd>
             </InputGroupAddon>
           </InputGroup>
+          <Button variant="outline" size="sm" onClick={handleSyncFromBevy} disabled={isPending} className="gap-1.5">
+            <RefreshCw className={cn("size-3.5", isPending && "animate-spin")} />
+            {isPending ? "Syncing..." : "Sync Bevy"}
+          </Button>
           <Button variant="outline" size="sm">
             <SlidersHorizontal /> Hide
           </Button>
