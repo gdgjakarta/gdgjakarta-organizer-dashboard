@@ -45,10 +45,20 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild>
-              <Link prefetch={false} href={isMember ? "/dashboard/member" : "/dashboard/organizer"}>
-                <GdgLogo className="size-5" />
-                <span className="font-semibold text-base">{APP_CONFIG.name}</span>
+            <SidebarMenuButton
+              size="lg"
+              asChild
+              className="h-12 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0!"
+            >
+              <Link
+                prefetch={false}
+                href={isMember ? "/dashboard/member" : "/dashboard/organizer"}
+                className="flex items-center gap-3"
+              >
+                <GdgLogo size={48} className="h-7 w-auto shrink-0 group-data-[collapsible=icon]:h-7" />
+                <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
+                  <span className="truncate font-semibold text-base">{APP_CONFIG.name}</span>
+                </div>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>

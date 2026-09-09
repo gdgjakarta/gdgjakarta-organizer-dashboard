@@ -9,8 +9,8 @@ export function PublicHeader() {
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto flex h-14 items-center justify-between px-4 sm:px-6 lg:px-8">
         <div className="flex items-center gap-4">
-          <Link href="/" className="flex items-center gap-2">
-            <GdgLogo className="size-5" />
+          <Link href="/" className="flex items-center gap-3">
+            <GdgLogo size={48} className="h-7 w-auto shrink-0" />
             <span className="font-bold text-lg">{APP_CONFIG.name}</span>
           </Link>
           <nav className="ml-6 hidden items-center gap-6 font-medium text-sm md:flex">

@@ -74,5 +74,5 @@ export function ThemeBootScript() {
   `;
 
   /* biome-ignore lint/security/noDangerouslySetInnerHtml: required for pre-hydration boot script */
-  return <script dangerouslySetInnerHTML={{ __html: code }} suppressHydrationWarning />;
+  return <script id="theme-boot" dangerouslySetInnerHTML={{ __html: code }} suppressHydrationWarning />;
 }
