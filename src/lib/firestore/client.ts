@@ -142,30 +142,32 @@ export async function getMemberRegistrations(
 
 export async function checkExistingRegistration(
   eventId: string,
-  memberId: string,
-  memberEmail: string,
+  memberId?: string,
+  memberEmail?: string,
 ): Promise<FirestoreRegistration | null> {
   try {
-    const normalizedEmail = memberEmail.trim().toLowerCase();
+    const normalizedEmail = (memberEmail ?? "").trim().toLowerCase();
+    const eventIdStr = String(eventId);
     const regRef = collection(db, "event_registrations");
 
-    // Check by event_id and email
-    const emailQuery = query(
-      regRef,
-      where("event_id", "==", String(eventId)),
-      where("member_email", "==", normalizedEmail),
-    );
-    const emailSnap = await getDocs(emailQuery);
-    if (!emailSnap.empty) {
-      const docSnap = emailSnap.docs[0];
-      return { id: docSnap.id, ...docSnap.data() } as FirestoreRegistration;
+    // 1. Check direct doc ID: `${eventIdStr}_${memberId}`
+    if (memberId) {
+      const docId = `${eventIdStr}_${memberId}`;
+      const directDoc = await getDoc(doc(db, "event_registrations", docId));
+      if (directDoc.exists()) {
+        return { id: directDoc.id, ...directDoc.data() } as FirestoreRegistration;
+      }
     }
 
-    // Also check direct document ID (${eventId}_${memberId})
-    const docId = `${eventId}_${memberId}`;
-    const directDoc = await getDoc(doc(db, "event_registrations", docId));
-    if (directDoc.exists()) {
-      return { id: directDoc.id, ...directDoc.data() } as FirestoreRegistration;
+    // 2. Fetch all registrations for this specific event and match email or member_id
+    const eventQuery = query(regRef, where("event_id", "==", eventIdStr));
+    const eventSnap = await getDocs(eventQuery);
+    for (const docSnap of eventSnap.docs) {
+      const data = docSnap.data() as FirestoreRegistration;
+      const docEmail = data.member_email.trim().toLowerCase();
+      if ((normalizedEmail && docEmail === normalizedEmail) || (memberId && data.member_id === memberId)) {
+        return { id: docSnap.id, ...data };
+      }
     }
 
     return null;

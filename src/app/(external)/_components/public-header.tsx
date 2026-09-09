@@ -1,7 +1,6 @@
 import Link from "next/link";
 
-import { Command } from "lucide-react";
-
+import { GdgLogo } from "@/components/gdg-logo";
 import { Button } from "@/components/ui/button";
 import { APP_CONFIG } from "@/config/app-config";
 
@@ -11,7 +10,7 @@ export function PublicHeader() {
       <div className="container mx-auto flex h-14 items-center justify-between px-4 sm:px-6 lg:px-8">
         <div className="flex items-center gap-4">
           <Link href="/" className="flex items-center gap-2">
-            <Command className="size-5" />
+            <GdgLogo className="size-5" />
             <span className="font-bold text-lg">{APP_CONFIG.name}</span>
           </Link>
           <nav className="ml-6 hidden items-center gap-6 font-medium text-sm md:flex">

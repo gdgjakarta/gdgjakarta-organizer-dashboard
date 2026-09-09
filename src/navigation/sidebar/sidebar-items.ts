@@ -1,4 +1,12 @@
-import { Calendar, LayoutDashboard, type LucideIcon, SquareArrowUpRight, Users } from "lucide-react";
+import {
+  Calendar,
+  CalendarCheck,
+  LayoutDashboard,
+  type LucideIcon,
+  ShoppingBag,
+  SquareArrowUpRight,
+  Users,
+} from "lucide-react";
 
 export type NavBadge = "new" | "soon";
 
@@ -55,34 +63,6 @@ export const organizerSidebarItems: NavGroup[] = [
     id: 2,
     label: "Pages",
     items: [
-      // {
-      // TODO uncomment this part if you want to add email feature
-      //   id: "email",
-      //   title: "Email",
-      //   url: "/dashboard/mail",
-      //   icon: Mail,
-      // },
-      // {
-      // TODO uncomment this part if you want to add calendar feature
-      //   id: "calendar",
-      //   title: "Calendar",
-      //   url: "/dashboard/calendar",
-      //   icon: Calendar,
-      // },
-      // {
-      // TODO uncomment this part if you want to add kanban feature
-      //   id: "kanban",
-      //   title: "Kanban",
-      //   url: "/dashboard/kanban",
-      //   icon: Kanban,
-      // },
-      // {
-      // TODO uncomment this part if you want to add tasks feature
-      //   id: "tasks",
-      //   title: "Tasks",
-      //   url: "/dashboard/tasks",
-      //   icon: CheckSquare,
-      // },
       {
         id: "events",
         title: "Events",
@@ -96,13 +76,6 @@ export const organizerSidebarItems: NavGroup[] = [
         icon: Users,
         badge: "new",
       },
-      // {
-      // TODO uncomment this part if you want to add roles feature
-      //   id: "roles",
-      //   title: "Roles",
-      //   url: "/dashboard/roles",
-      //   icon: Lock,
-      // },
     ],
   },
   {
@@ -139,16 +112,18 @@ export const memberSidebarItems: NavGroup[] = [
     label: "Pages",
     items: [
       {
-        id: "events",
-        title: "Events",
-        url: "/dashboard/events",
-        icon: Calendar,
+        id: "my-events",
+        title: "My Events",
+        url: "/dashboard/member/my-events",
+        icon: CalendarCheck,
       },
       {
-        id: "community",
-        title: "Community",
-        url: "/dashboard/members",
-        icon: Users,
+        id: "my-purchases",
+        title: "My Purchases",
+        url: "/dashboard/member/purchases",
+        icon: ShoppingBag,
+        badge: "soon",
+        disabled: true,
       },
     ],
   },

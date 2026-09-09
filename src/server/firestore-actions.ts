@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import {
+  checkExistingRegistration,
   getEventRegistrations,
   getMemberRegistrations,
   getSyncMetadata,
@@ -46,6 +47,13 @@ export async function triggerMembersSyncAction() {
  */
 export async function fetchEventRegistrationsAction(eventId: string) {
   return await getEventRegistrations(eventId);
+}
+
+/**
+ * Check if a specific member/email is registered for an event.
+ */
+export async function checkEventRegistrationAction(eventId: string, memberId?: string, email?: string) {
+  return await checkExistingRegistration(eventId, memberId, email);
 }
 
 /**

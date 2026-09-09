@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 
-import { Command } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 
+import { GdgLogo } from "@/components/gdg-logo";
 import {
   Sidebar,
   SidebarContent,
@@ -47,7 +47,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <SidebarMenuItem>
             <SidebarMenuButton asChild>
               <Link prefetch={false} href={isMember ? "/dashboard/member" : "/dashboard/organizer"}>
-                <Command />
+                <GdgLogo className="size-5" />
                 <span className="font-semibold text-base">{APP_CONFIG.name}</span>
               </Link>
             </SidebarMenuButton>

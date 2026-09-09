@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 
 import { useRouter } from "next/navigation";
 
@@ -23,7 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
-import { registerForEventAction } from "@/server/firestore-actions";
+import { checkEventRegistrationAction, registerForEventAction } from "@/server/firestore-actions";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
 interface EventRegistrationModalProps {
@@ -32,12 +32,46 @@ interface EventRegistrationModalProps {
   children?: React.ReactNode;
 }
 
+function isEventPast(event: FirestoreEvent): boolean {
+  if (event.status === "Completed") return true;
+  const targetDate = event.end_date || event.start_date;
+  if (!targetDate) return false;
+  try {
+    return new Date(targetDate).getTime() < Date.now();
+  } catch {
+    return false;
+  }
+}
+
 export function EventRegistrationModal({ event, existingRegistration, children }: EventRegistrationModalProps) {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const [open, setOpen] = useState(false);
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [localReg, setLocalReg] = useState<FirestoreRegistration | null>(existingRegistration ?? null);
   const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    if (existingRegistration) {
+      setLocalReg(existingRegistration);
+      return;
+    }
+    if (!user) return;
+    async function checkStatus() {
+      try {
+        const found = await checkEventRegistrationAction(String(event.id), user?.id, user?.email);
+        if (found) {
+          setLocalReg(found);
+        }
+      } catch (err) {
+        console.error("[EventRegistrationModal] failed to check registration status:", err);
+      }
+    }
+    void checkStatus();
+  }, [user, event.id, existingRegistration]);
+
+  const activeRegistration = existingRegistration ?? localReg;
+  const isPast = isEventPast(event);
 
   const questions =
     event.custom_questions && event.custom_questions.length > 0
@@ -76,6 +110,12 @@ export function EventRegistrationModal({ event, existingRegistration, children }
     if (!user) {
       toast.error("Please sign in to register for GDG Jakarta events.");
       router.push("/auth/member/login");
+      return;
+    }
+
+    if (isPast) {
+      toast.error("This event has already ended. Registration is closed.");
+      setOpen(false);
       return;
     }
 
@@ -124,9 +164,9 @@ export function EventRegistrationModal({ event, existingRegistration, children }
     });
   };
 
-  if (existingRegistration) {
-    const isApproved = existingRegistration.status === "approved" || existingRegistration.status === "attended";
-    const isPendingReview = existingRegistration.status === "pending";
+  if (activeRegistration) {
+    const isApproved = activeRegistration.status === "approved" || activeRegistration.status === "attended";
+    const isPendingReview = activeRegistration.status === "pending";
     let statusLabel = "Registered";
     if (isApproved) {
       statusLabel = "Registered (Approved)";
@@ -143,6 +183,14 @@ export function EventRegistrationModal({ event, existingRegistration, children }
       >
         <CheckCircle2 className={`size-3.5 ${isApproved ? "text-emerald-500" : "text-amber-500"}`} />
         {statusLabel}
+      </Button>
+    );
+  }
+
+  if (isPast) {
+    return (
+      <Button variant="secondary" size="sm" disabled className="cursor-default opacity-75">
+        Registration Closed
       </Button>
     );
   }

@@ -243,3 +243,12 @@ export async function getBevyChapterEvents(
   const result = await bevyFetch<BevyEventsResponse>(`/chapter/${chapterId}/event?page_size=${pageSize}&page=${page}`);
   return result;
 }
+
+/**
+ * Fetch full event details by ID directly from Bevy
+ */
+export async function getBevyEventById(eventId: string | number): Promise<BevyEvent | null> {
+  if (!eventId) return null;
+  const result = await bevyFetch<BevyEvent>(`/event/${eventId}`);
+  return result;
+}
