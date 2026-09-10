@@ -36,7 +36,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ## Project Focuses
 
-Until today, the project will only be focusing on the admin/organizer dashboard. We will update the documentation below this paragraphs as soon as possible once we ready to build the members/users dashboard.
+This project will be simultaneously building the members and organizer dashboard, all together with a same codebase according to the feature that the user requested.
 
 ## shadcn skill
 
@@ -78,7 +78,7 @@ There is currently no automated test command. Run build, lint, check, or other v
 ## User authentication
 
 This project uses Firebase auth with Google Sign In provider.
-Login page is at `src/app/(main)/organizer/auth/login/page.tsx`. 
+Login page is at `src/app/(main)/auth/login/page.tsx`. 
 
 ## Co-location-based structure
 

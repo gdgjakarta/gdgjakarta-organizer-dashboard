@@ -129,24 +129,12 @@ export async function getBevyChapterTeams(chapterId: string = BEVY_CONFIG.chapte
 }
 
 /**
- * Step 4: Validate Organizer with the exact 4-step logic:
- * 1. Takes user email from Google Auth
- * 2. Gets Bevy User ID from email (via GET /api/user/{email})
- * 3. Gets GDG Jakarta Chapter Team (via GET /api/chapter/642 which returns the chapter_team array of all organizers)
- * 4. Compares Bevy User ID:
- *    - Searches chapter_team for a member matching `bevyUserId`
- *    - Assigns the exact role directly from Bevy (`matchedMember.role.name` or `matchedMember.role` or `matchedMember.title`)
+ * Validates whether an email belongs to the GDG Jakarta Bevy chapter team (Organizers / Leads).
+ * Fetches the GDG Jakarta chapter team list (via GET /api/chapter/642) and matches by user email or username.
  */
 export async function validateBevyOrganizer(email: string): Promise<OrganizerValidationResult> {
   try {
-    console.log(`[Bevy Auth] Step 2: Fetching Bevy user for email: ${email}`);
-
-    // 1. Get Bevy User ID from Bevy
-    const bevyUser = await getBevyUserByEmail(email);
-    const bevyUserId = bevyUser?.id ? String(bevyUser.id) : null;
-
-    if (!bevyUser || !bevyUserId) {
-      console.warn(`[Bevy Auth] User with email ${email} not registered on Bevy platform.`);
+    if (!email) {
       return {
         isValidOrganizer: false,
         role: "Member",
@@ -156,23 +144,26 @@ export async function validateBevyOrganizer(email: string): Promise<OrganizerVal
       };
     }
 
-    console.log(`[Bevy Auth] Found Bevy User ID: ${bevyUserId} (${bevyUser.full_name ?? email})`);
+    const normalizedEmail = email.toLowerCase().trim();
+    console.log(`[Bevy Auth] Validating organizer status for: ${normalizedEmail}`);
 
-    // 2. Get GDG Jakarta Chapter Teams (list of all organizers)
-    console.log("[Bevy Auth] Step 3: Fetching GDG Jakarta chapter team list...");
+    // 1. Fetch GDG Jakarta chapter team list
     const chapterTeams = await getBevyChapterTeams();
 
-    // 3. Step 4: Compare bevyUserId with chapter_team members
+    // 2. Match against chapter team members
     if (chapterTeams.length > 0) {
       const matchedMember = chapterTeams.find((m) => {
-        const teamMemberUserId = m.user?.id || m.user_id;
-        return teamMemberUserId && String(teamMemberUserId) === String(bevyUserId);
+        const teamEmail = m.user?.email?.toLowerCase()?.trim();
+        const teamUsername = m.user?.username?.toLowerCase()?.trim();
+        return teamEmail === normalizedEmail || (teamUsername && teamUsername === normalizedEmail);
       });
 
       if (matchedMember) {
+        const teamMemberUserId = matchedMember.user?.id || matchedMember.user_id;
+        const bevyUserId = teamMemberUserId ? String(teamMemberUserId) : null;
+
         // Extract exact role from Bevy (role can be object { id, name } or string)
         const roleObj = matchedMember.role as unknown;
-        console.log("roleObj", roleObj);
         let roleName = "Organizer";
 
         if (typeof roleObj === "object" && roleObj !== null && "name" in roleObj) {
@@ -184,7 +175,7 @@ export async function validateBevyOrganizer(email: string): Promise<OrganizerVal
         }
 
         console.log(
-          `[Bevy Auth] MATCH FOUND! Bevy User ID ${bevyUserId} is in GDG Jakarta team with Role: "${roleName}"`,
+          `[Bevy Auth] Organizer found! ${normalizedEmail} (Bevy ID: ${bevyUserId}) is in GDG Jakarta team with Role: "${roleName}"`,
         );
 
         return {
@@ -193,19 +184,19 @@ export async function validateBevyOrganizer(email: string): Promise<OrganizerVal
           bevyUserId,
           chapterRole: roleName,
           chapterTeamMember: matchedMember,
-          bevyUser,
+          bevyUser: matchedMember.user ?? null,
         };
       }
     }
 
-    // If bevyUserId is not in chapter_team, they are a community Member
-    console.log(`[Bevy Auth] User ${email} (ID: ${bevyUserId}) is not in GDG Jakarta Chapter Team list.`);
+    // 3. User is a community member
+    console.log(`[Bevy Auth] User ${normalizedEmail} is a community Member.`);
     return {
       isValidOrganizer: false,
       role: "Member",
-      bevyUserId,
+      bevyUserId: null,
       chapterRole: "Member",
-      bevyUser,
+      bevyUser: null,
     };
   } catch (error) {
     console.error("[validateBevyOrganizer Error]", error);

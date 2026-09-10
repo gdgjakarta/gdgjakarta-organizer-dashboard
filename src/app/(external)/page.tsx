@@ -9,6 +9,8 @@ import { BEVY_CONFIG } from "@/config/bevy-config";
 import { organizers } from "@/data/organizers";
 import { getBevyChapterEvents } from "@/lib/bevy/client";
 
+import { HeroActions } from "./_components/hero-actions";
+
 export default async function Home() {
   const eventsData = await getBevyChapterEvents(BEVY_CONFIG.chapterId, 3, 1);
 
@@ -30,14 +32,7 @@ export default async function Home() {
             Google Developer Groups (GDG) Jakarta is a community-run developer group for developers in Jakarta,
             Indonesia who are interested in Google's developer technology.
           </p>
-          <div className="mt-10 flex items-center justify-center gap-4">
-            <Button size="lg" asChild>
-              <Link href="/events">Browse Events</Link>
-            </Button>
-            <Button size="lg" variant="outline" asChild>
-              <Link href="/auth/member/login">Join Community</Link>
-            </Button>
-          </div>
+          <HeroActions />
         </div>
       </section>
 

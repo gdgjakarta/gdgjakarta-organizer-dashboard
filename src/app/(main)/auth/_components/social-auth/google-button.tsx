@@ -38,7 +38,7 @@ export function GoogleButton({
         const targetUrl = callbackUrl?.startsWith("/") ? callbackUrl : "/dashboard/organizer";
         router.push(targetUrl);
       } else {
-        toast.info(`Signed in as ${organizer.name}. Note: Your account is listed as a Community Member.`);
+        toast.success(`Welcome, ${organizer.name}!`);
         const callbackUrl = searchParams.get("callbackUrl");
         const targetUrl = callbackUrl?.startsWith("/") ? callbackUrl : "/dashboard/member";
         router.push(targetUrl);
@@ -66,15 +66,13 @@ export function GoogleButton({
       {isLoading ? (
         <>
           <Loader2 className="mr-2 size-4 animate-spin" />
-          Signing in with Google…
+          Signing in…
         </>
       ) : (
-        children || (
-          <>
-            <SimpleIcon icon={siGoogle} className="size-4" />
-            Continue with Google
-          </>
-        )
+        <>
+          <SimpleIcon icon={siGoogle} className="mr-2 size-4" />
+          {children || "Sign in with Google"}
+        </>
       )}
     </Button>
   );

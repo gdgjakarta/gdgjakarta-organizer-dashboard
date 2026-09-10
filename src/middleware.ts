@@ -3,8 +3,7 @@ import { NextResponse } from "next/server";
 
 const AUTH_COOKIE = "auth_token";
 const ROLE_COOKIE = "auth_role";
-const LOGIN_PATH = "/auth/organizer/login";
-const MEMBER_LOGIN_PATH = "/auth/member/login";
+const LOGIN_PATH = "/auth/login";
 
 /**
  * Routes that require authentication.
@@ -32,11 +31,9 @@ export function middleware(request: NextRequest) {
   const role = request.cookies.get(ROLE_COOKIE)?.value;
   const isAuthenticated = Boolean(token);
 
-  // Protected route: not authenticated → redirect to login with callbackUrl
+  // Protected route: not authenticated → redirect to unified login with callbackUrl
   if (isProtected(pathname) && !isAuthenticated) {
-    // If they tried to access organizer dashboard, redirect to organizer login, else member login
-    const targetLogin = pathname.startsWith("/dashboard/organizer") ? LOGIN_PATH : MEMBER_LOGIN_PATH;
-    const loginUrl = new URL(targetLogin, request.url);
+    const loginUrl = new URL(LOGIN_PATH, request.url);
     loginUrl.searchParams.set("callbackUrl", pathname);
     return NextResponse.redirect(loginUrl);
   }

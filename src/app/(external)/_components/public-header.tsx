@@ -1,10 +1,16 @@
+"use client";
+
 import Link from "next/link";
 
+import { GoogleButton } from "@/app/(main)/auth/_components/social-auth/google-button";
 import { GdgLogo } from "@/components/gdg-logo";
 import { Button } from "@/components/ui/button";
 import { APP_CONFIG } from "@/config/app-config";
+import { useAuthStore } from "@/stores/auth/auth-provider";
 
 export function PublicHeader() {
+  const user = useAuthStore((s) => s.user);
+
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto flex h-14 items-center justify-between px-4 sm:px-6 lg:px-8">
@@ -23,12 +29,15 @@ export function PublicHeader() {
           </nav>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" asChild className="hidden sm:inline-flex">
-            <Link href="/auth/member/login">Sign In</Link>
-          </Button>
-          <Button asChild>
-            <Link href="/auth/organizer/login">Organizer Login</Link>
-          </Button>
+          {user ? (
+            <Button asChild size="sm">
+              <Link href={user.role === "organizer" ? "/dashboard/organizer" : "/dashboard/member"}>Dashboard</Link>
+            </Button>
+          ) : (
+            <GoogleButton size="sm" variant="default" className="w-auto font-medium">
+              Sign in with Google
+            </GoogleButton>
+          )}
         </div>
       </div>
     </header>

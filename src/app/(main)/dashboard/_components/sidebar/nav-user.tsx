@@ -41,7 +41,7 @@ export function NavUser({
 
   const handleLogout = async () => {
     await signOutOrganizer();
-    router.push("/auth/organizer/login");
+    router.push("/auth/login");
     router.refresh();
   };
 

@@ -6,7 +6,7 @@ import { onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
 import { type StoreApi, useStore } from "zustand";
 
 import { auth, googleProvider } from "@/config/firebase";
-import { clearAuthSessionCookie, setAuthSessionCookie, validateOrganizerAction } from "@/server/auth-actions";
+import { clearAuthSessionCookie, handleUserPostLoginAction } from "@/server/auth-actions";
 
 import { type AuthOrganizer, type AuthState, createAuthStore } from "./auth-store";
 
@@ -21,9 +21,9 @@ function mapFirebaseUserToOrganizer(
     name: user.displayName || user.email?.split("@")[0] || "Organizer",
     email: user.email || "",
     avatar: user.photoURL || "",
-    role: validation?.role || "organizer",
+    role: validation?.role || (validation?.isValidOrganizer ? "organizer" : "member"),
     bevyUserId: validation?.bevyUserId,
-    chapterRole: validation?.chapterRole || "Organizer",
+    chapterRole: validation?.chapterRole || (validation?.isValidOrganizer ? "Organizer" : "Member"),
   };
 }
 
@@ -36,20 +36,20 @@ export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
         let validation: import("@/lib/bevy/types").OrganizerValidationResult | undefined;
         if (firebaseUser.email) {
           try {
-            validation = await validateOrganizerAction(firebaseUser.email);
+            const token = await firebaseUser.getIdToken();
+            validation = await handleUserPostLoginAction({
+              uid: firebaseUser.uid,
+              email: firebaseUser.email,
+              name: firebaseUser.displayName || undefined,
+              avatar: firebaseUser.photoURL || undefined,
+              token,
+            });
           } catch {
             // Fallback gracefully
           }
         }
 
         const organizer = mapFirebaseUserToOrganizer(firebaseUser, validation);
-        try {
-          const token = await firebaseUser.getIdToken();
-          const role = validation?.isValidOrganizer ? "organizer" : "member";
-          await setAuthSessionCookie(token, role, true);
-        } catch {
-          // Ignore token retrieval errors
-        }
         store.getState().setUser(organizer, firebaseUser);
       } else {
         store.getState().setUser(null, null);
@@ -71,24 +71,26 @@ export function useAuthStore<T>(selector: (state: AuthState) => T): T {
 }
 
 /**
- * Step 1-4: Triggers Google Sign In popup with Firebase auth,
- * then validates against Bevy Chapter Teams and establishes the session.
+ * Triggers Google Sign In with Firebase auth, validates against Bevy Chapter Team,
+ * syncs member profile to Firestore, and establishes the role-based session.
  */
 export async function signInWithGoogle(): Promise<{ organizer: AuthOrganizer; isAllowed: boolean }> {
   // Step 1: Sign in with Google
   const result = await signInWithPopup(auth, googleProvider);
   const user = result.user;
 
-  // Step 2 & 3: Validate user against Bevy Chapter Team in single loading flow
+  // Step 2: Validate user against Bevy Chapter Team, sync Firestore, and set Session Cookie
   const email = user.email ?? "";
-  const validation = await validateOrganizerAction(email);
+  const token = await user.getIdToken();
+  const validation = await handleUserPostLoginAction({
+    uid: user.uid,
+    email,
+    name: user.displayName || undefined,
+    avatar: user.photoURL || undefined,
+    token,
+  });
 
   const organizer = mapFirebaseUserToOrganizer(user, validation);
-
-  // Set Auth Session Cookie
-  const token = await user.getIdToken();
-  const role = validation.isValidOrganizer ? "organizer" : "member";
-  await setAuthSessionCookie(token, role, true);
 
   return {
     organizer,

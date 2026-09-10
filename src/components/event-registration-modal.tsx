@@ -109,7 +109,7 @@ export function EventRegistrationModal({ event, existingRegistration, children }
 
     if (!user) {
       toast.error("Please sign in to register for GDG Jakarta events.");
-      router.push("/auth/member/login");
+      router.push("/auth/login");
       return;
     }
 
