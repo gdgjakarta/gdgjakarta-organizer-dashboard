@@ -16,14 +16,15 @@ function mapFirebaseUserToOrganizer(
   user: import("firebase/auth").User,
   validation?: import("@/lib/bevy/types").OrganizerValidationResult,
 ): AuthOrganizer {
+  const isOrg = validation?.isValidOrganizer ?? false;
   return {
     id: user.uid,
-    name: user.displayName || user.email?.split("@")[0] || "Organizer",
+    name: user.displayName || user.email?.split("@")[0] || "User",
     email: user.email || "",
     avatar: user.photoURL || "",
-    role: validation?.role || (validation?.isValidOrganizer ? "organizer" : "member"),
+    role: isOrg ? validation?.chapterRole || "Organizer" : "Member",
     bevyUserId: validation?.bevyUserId,
-    chapterRole: validation?.chapterRole || (validation?.isValidOrganizer ? "Organizer" : "Member"),
+    chapterRole: validation?.chapterRole || (isOrg ? "Organizer" : "Member"),
   };
 }
 

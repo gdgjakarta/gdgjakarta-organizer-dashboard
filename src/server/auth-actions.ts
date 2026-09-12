@@ -25,8 +25,8 @@ export interface UserAuthSyncParams {
 /**
  * Validates the authenticated Google user against the Bevy chapter team list.
  */
-export async function validateOrganizerAction(email: string): Promise<OrganizerValidationResult> {
-  return await validateBevyOrganizer(email);
+export async function validateOrganizerAction(email: string, name?: string): Promise<OrganizerValidationResult> {
+  return await validateBevyOrganizer(email, name);
 }
 
 /**
@@ -39,7 +39,7 @@ export async function handleUserPostLoginAction(params: UserAuthSyncParams): Pro
   const { uid, email, name, avatar, token } = params;
 
   // 1. Validate role against Bevy Chapter Team
-  const validation = await validateBevyOrganizer(email);
+  const validation = await validateBevyOrganizer(email, name);
   const role = validation.isValidOrganizer ? "organizer" : "member";
 
   // 2. Sync to Firestore members

@@ -34,7 +34,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   );
 
   const user = useAuthStore((s) => s.user);
-  const isMember = user?.role === "Member";
+  const isMember = user ? user.role.toLowerCase() === "member" : false;
   const sidebarItems = isMember ? memberSidebarItems : organizerSidebarItems;
 
   const variant = isSynced ? sidebarVariant : props.variant;

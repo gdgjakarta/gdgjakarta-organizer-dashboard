@@ -93,14 +93,69 @@ export async function getBevyUserByEmail(email: string): Promise<BevyUser | null
  * Endpoint: /api/chapter_team/?chapter_slug={chapterSlug} or /api/chapter_team/?chapter_id={chapterId}
  */
 /**
+ * Helper to match an unmasked incoming email against Bevy's privacy-masked email string.
+ * Example: 'rizkyfir@gmail.com' matches 'r*******@gmail.com'
+ */
+function matchesMaskedEmail(email: string, maskedEmail?: string): boolean {
+  if (!email || !maskedEmail) return false;
+  const [local, domain] = email.toLowerCase().trim().split("@");
+  const [mLocal, mDomain] = maskedEmail.toLowerCase().trim().split("@");
+  if (!local || !domain || !mLocal || !mDomain) return false;
+  if (domain !== mDomain) return false;
+
+  // Mask pattern: e.g. "r*******" where first char is preserved and rest are stars
+  if (mLocal.startsWith(local[0])) {
+    const starCount = (mLocal.match(/\*/g) || []).length;
+    // Length matching or prefix matching
+    if (mLocal.length === local.length && /^\*+$/.test(mLocal.slice(1))) {
+      return true;
+    }
+    if (/^\*+$/.test(mLocal.slice(1)) && local.length >= starCount && starCount > 3) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function normalizeClean(str?: string): string {
+  return (str || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function nameMatches(displayName?: string, firstName?: string, lastName?: string): boolean {
+  if (!displayName) return false;
+  const gNorm = normalizeClean(displayName);
+  const bFullNorm = normalizeClean(`${firstName || ""} ${lastName || ""}`);
+  const bFirstNorm = normalizeClean(firstName || "");
+
+  if (!gNorm || !bFullNorm) return false;
+  if (gNorm === bFullNorm) return true;
+  if (gNorm.startsWith(bFirstNorm) && bFirstNorm.length >= 3) return true;
+  if (bFullNorm.startsWith(gNorm) && gNorm.length >= 3) return true;
+  return false;
+}
+
+/**
  * Step 3: Get List of GDG Jakarta Chapter Teams from Bevy
- * In Bevy API: endpoint /api/chapter/642 (or /api/chapter/{chapterId}) returns
- * the full chapter details including the `chapter_team` array containing all organizers and roles.
+ * In Bevy API: endpoint /api/chapter/642/team returns the team members list
+ * with { count, results: [...] }.
  */
 export async function getBevyChapterTeams(chapterId: string = BEVY_CONFIG.chapterId): Promise<BevyChapterTeamMember[]> {
   console.log(`[Bevy Auth] Fetching GDG Jakarta chapter teams for chapterId: ${chapterId}`);
 
-  // Fetch chapter details which has the chapter_team array
+  // 1. Fetch team members from the dedicated chapter team endpoint: /chapter/{chapterId}/team
+  const teamData = await bevyFetch<{
+    count?: number;
+    results?: BevyChapterTeamMember[];
+  }>(`/chapter/${chapterId}/team`);
+
+  if (teamData?.results && Array.isArray(teamData.results)) {
+    console.log(
+      `[Bevy Auth] Retrieved ${teamData.results.length} organizers/team members from Bevy /chapter/${chapterId}/team`,
+    );
+    return teamData.results;
+  }
+
+  // 2. Fallback to chapter details endpoint: /chapter/{chapterId}
   const chapterData = await bevyFetch<{
     id?: number;
     title?: string;
@@ -108,31 +163,37 @@ export async function getBevyChapterTeams(chapterId: string = BEVY_CONFIG.chapte
   }>(`/chapter/${chapterId}`);
 
   if (chapterData?.chapter_team && Array.isArray(chapterData.chapter_team)) {
-    console.log(`[Bevy Auth] Retrieved ${chapterData.chapter_team.length} organizers/team members from Bevy`);
+    console.log(
+      `[Bevy Auth] Retrieved ${chapterData.chapter_team.length} organizers/team members from /chapter/${chapterId}`,
+    );
     return chapterData.chapter_team;
   }
 
-  // Fallback to chapter slug
+  // 3. Fallback to chapter slug
   if (BEVY_CONFIG.chapterSlug && BEVY_CONFIG.chapterSlug !== chapterId) {
     const slugData = await bevyFetch<{
+      count?: number;
+      results?: BevyChapterTeamMember[];
       chapter_team?: BevyChapterTeamMember[];
-    }>(`/chapter/${BEVY_CONFIG.chapterSlug}`);
+    }>(`/chapter/${BEVY_CONFIG.chapterSlug}/team`);
 
-    if (slugData?.chapter_team && Array.isArray(slugData.chapter_team)) {
-      console.log(`[Bevy Auth] Retrieved ${slugData.chapter_team.length} team members via slug`);
-      return slugData.chapter_team;
+    if (slugData?.results && Array.isArray(slugData.results)) {
+      return slugData.results;
     }
   }
 
-  console.warn("[Bevy Auth] No chapter_team array found in Bevy chapter response");
+  console.warn("[Bevy Auth] No chapter team found in Bevy response");
   return [];
 }
 
 /**
  * Validates whether an email belongs to the GDG Jakarta Bevy chapter team (Organizers / Leads).
- * Fetches the GDG Jakarta chapter team list (via GET /api/chapter/642) and matches by user email or username.
+ * Fetches the GDG Jakarta chapter team list (via GET /api/chapter/642/team) and matches by:
+ * 1. Exact email match or domain
+ * 2. Privacy-masked email match (e.g. 'r*******@gmail.com')
+ * 3. Display name and domain match with team members
  */
-export async function validateBevyOrganizer(email: string): Promise<OrganizerValidationResult> {
+export async function validateBevyOrganizer(email: string, displayName?: string): Promise<OrganizerValidationResult> {
   try {
     if (!email) {
       return {
@@ -145,7 +206,7 @@ export async function validateBevyOrganizer(email: string): Promise<OrganizerVal
     }
 
     const normalizedEmail = email.toLowerCase().trim();
-    console.log(`[Bevy Auth] Validating organizer status for: ${normalizedEmail}`);
+    console.log(`[Bevy Auth] Validating organizer status for: ${normalizedEmail} (Name: ${displayName ?? "N/A"})`);
 
     // 1. Fetch GDG Jakarta chapter team list
     const chapterTeams = await getBevyChapterTeams();
@@ -153,9 +214,28 @@ export async function validateBevyOrganizer(email: string): Promise<OrganizerVal
     // 2. Match against chapter team members
     if (chapterTeams.length > 0) {
       const matchedMember = chapterTeams.find((m) => {
-        const teamEmail = m.user?.email?.toLowerCase()?.trim();
-        const teamUsername = m.user?.username?.toLowerCase()?.trim();
-        return teamEmail === normalizedEmail || (teamUsername && teamUsername === normalizedEmail);
+        const teamEmail = m.user?.email?.toLowerCase()?.trim() || "";
+        const teamUsername = m.user?.username?.toLowerCase()?.trim() || "";
+
+        // Exact email or username match
+        if (teamEmail === normalizedEmail || (teamUsername && teamUsername === normalizedEmail)) {
+          return true;
+        }
+
+        // Masked email match
+        if (teamEmail && matchesMaskedEmail(normalizedEmail, teamEmail)) {
+          return true;
+        }
+
+        // Name match (if display name provided) + matching email domain
+        if (displayName && nameMatches(displayName, m.user?.first_name, m.user?.last_name)) {
+          const emailDomain = normalizedEmail.split("@")[1];
+          if (teamEmail && emailDomain && teamEmail.endsWith(`@${emailDomain}`)) {
+            return true;
+          }
+        }
+
+        return false;
       });
 
       if (matchedMember) {
@@ -175,14 +255,14 @@ export async function validateBevyOrganizer(email: string): Promise<OrganizerVal
         }
 
         console.log(
-          `[Bevy Auth] Organizer found! ${normalizedEmail} (Bevy ID: ${bevyUserId}) is in GDG Jakarta team with Role: "${roleName}"`,
+          `[Bevy Auth] Organizer found! ${normalizedEmail} (Bevy ID: ${bevyUserId}) is in GDG Jakarta team with Role: "${roleName}" (${matchedMember.title ?? ""})`,
         );
 
         return {
           isValidOrganizer: true,
           role: roleName,
           bevyUserId,
-          chapterRole: roleName,
+          chapterRole: matchedMember.title || roleName,
           chapterTeamMember: matchedMember,
           bevyUser: matchedMember.user ?? null,
         };
