@@ -2,7 +2,7 @@
 
 import { ChevronDown, Filter, PanelRightClose, PanelRightOpen, Pin } from "lucide-react";
 
-import { Avatar, AvatarBadge, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -11,6 +11,7 @@ import { useSidebar } from "@/components/ui/sidebar";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn, getInitials } from "@/lib/utils";
 
+import { AvatarBadge } from "./avatar-badge";
 import type { Conversation } from "./data";
 import { useChat } from "./use-chat";
 

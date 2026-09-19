@@ -166,7 +166,7 @@ export async function checkExistingRegistration(
       const data = docSnap.data() as FirestoreRegistration;
       const docEmail = data.member_email.trim().toLowerCase();
       if ((normalizedEmail && docEmail === normalizedEmail) || (memberId && data.member_id === memberId)) {
-        return { id: docSnap.id, ...data };
+        return { ...data, id: docSnap.id };
       }
     }
 

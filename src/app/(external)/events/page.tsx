@@ -7,6 +7,8 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { BEVY_CONFIG } from "@/config/bevy-config";
 import { getBevyChapterEvents } from "@/lib/bevy/client";
 
+export const dynamic = "force-dynamic";
+
 export default async function EventsDirectoryPage() {
   const eventsData = await getBevyChapterEvents(BEVY_CONFIG.chapterId, 100, 1);
   const events = eventsData?.results ?? [];

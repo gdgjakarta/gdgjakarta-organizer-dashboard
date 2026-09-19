@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+
 import { Globe } from "lucide-react";
 
 import { APP_CONFIG } from "@/config/app-config";
@@ -15,7 +17,9 @@ export default function LoginPage() {
           </p>
         </div>
         <div className="space-y-4">
-          <GoogleButton className="w-full" />
+          <Suspense>
+            <GoogleButton className="w-full" />
+          </Suspense>
         </div>
       </div>
 

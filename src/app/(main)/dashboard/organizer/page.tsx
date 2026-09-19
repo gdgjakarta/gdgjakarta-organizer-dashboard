@@ -1,4 +1,5 @@
 import { getFirestoreEvents, getFirestoreMembers } from "@/lib/firestore/client";
+import type { FirestoreEvent, FirestoreMember } from "@/lib/firestore/types";
 
 import { GDGKpiCards } from "./_components/gdg-kpi-cards";
 import { GDGUpcomingEvents } from "./_components/gdg-upcoming-events";
@@ -8,8 +9,8 @@ import { RecentMembersWidget } from "./_components/recent-members-widget";
 export const dynamic = "force-dynamic";
 
 export default async function Page() {
-  let events = [];
-  let members = [];
+  let events: FirestoreEvent[] = [];
+  let members: FirestoreMember[] = [];
 
   try {
     const [fetchedEvents, fetchedMembers] = await Promise.all([getFirestoreEvents(50), getFirestoreMembers(50)]);

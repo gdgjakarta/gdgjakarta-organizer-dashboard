@@ -2,6 +2,7 @@ import { BEVY_CONFIG } from "@/config/bevy-config";
 
 import type {
   BevyChapterTeamMember,
+  BevyEvent,
   BevyEventsResponse,
   BevyMembersResponse,
   BevyUser,

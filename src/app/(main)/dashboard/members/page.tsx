@@ -40,7 +40,7 @@ export default async function Page() {
           name: m.name || "Community Member",
           email: m.email,
           role: m.role || "Member",
-          status: m.status || "Active",
+          status: m.status === "Active" ? "Active" : "Deactivated",
           team: m.team || "Community",
           workspace: ["GDG Jakarta"],
           joinedDate: joinedDateFormatted,

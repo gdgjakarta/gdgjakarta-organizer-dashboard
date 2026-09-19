@@ -17,7 +17,7 @@ import {
   UserRound,
 } from "lucide-react";
 
-import { Avatar, AvatarBadge, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Bubble, BubbleContent, BubbleGroup, BubbleReactions } from "@/components/ui/bubble";
 import { Button } from "@/components/ui/button";
 import {
@@ -44,6 +44,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn, getInitials } from "@/lib/utils";
 
+import { AvatarBadge } from "./avatar-badge";
 import { type Message as ChatMessage, type Contact, currentUser } from "./data";
 
 interface ChatThreadProps {

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 
 import { Loader2 } from "lucide-react";
 import { siGoogle } from "simple-icons";
@@ -21,7 +21,6 @@ export function GoogleButton({
   ...props
 }: React.ComponentProps<typeof Button>) {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [isLoading, setIsLoading] = useState(false);
 
   const handleGoogleSignIn = async (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -31,15 +30,15 @@ export function GoogleButton({
     try {
       setIsLoading(true);
       const { organizer, isAllowed } = await signInWithGoogle();
+      const callbackUrl =
+        typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("callbackUrl") : null;
 
       if (isAllowed) {
         toast.success(`Welcome back, ${organizer.name}! (${organizer.chapterRole ?? "Organizer"})`);
-        const callbackUrl = searchParams.get("callbackUrl");
         const targetUrl = callbackUrl?.startsWith("/") ? callbackUrl : "/dashboard/organizer";
         router.push(targetUrl);
       } else {
         toast.success(`Welcome, ${organizer.name}!`);
-        const callbackUrl = searchParams.get("callbackUrl");
         const targetUrl = callbackUrl?.startsWith("/") ? callbackUrl : "/dashboard/member";
         router.push(targetUrl);
       }

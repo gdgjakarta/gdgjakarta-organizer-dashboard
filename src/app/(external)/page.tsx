@@ -11,6 +11,8 @@ import { getBevyChapterEvents } from "@/lib/bevy/client";
 
 import { HeroActions } from "./_components/hero-actions";
 
+export const dynamic = "force-dynamic";
+
 export default async function Home() {
   const eventsData = await getBevyChapterEvents(BEVY_CONFIG.chapterId, 3, 1);
 
@@ -117,7 +119,7 @@ export default async function Home() {
               const roleName = member.role;
 
               return (
-                <div key={member.id || name} className="flex flex-col items-center justify-center p-4 text-center">
+                <div key={name} className="flex flex-col items-center justify-center p-4 text-center">
                   <div className="relative mb-4 size-48 overflow-hidden rounded-full bg-muted shadow-sm">
                     {avatar ? (
                       <Image src={avatar} alt={name} fill className="object-cover" />
