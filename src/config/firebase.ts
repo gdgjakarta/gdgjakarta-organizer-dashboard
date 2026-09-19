@@ -1,6 +1,7 @@
 import { getApp, getApps, initializeApp } from "firebase/app";
 import { GoogleAuthProvider, getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
+import { getRemoteConfig } from "firebase/remote-config";
 
 // Your web app's Firebase configuration read from environment variables
 const firebaseConfig = {
@@ -22,3 +23,15 @@ export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({
   prompt: "select_account",
 });
+
+// Initialize Remote Config only on the client side
+export const remoteConfig = typeof window !== "undefined" ? getRemoteConfig(app) : null;
+
+if (remoteConfig) {
+  remoteConfig.settings.minimumFetchIntervalMillis = process.env.NODE_ENV === "development" ? 10000 : 3600000;
+
+  // Set default values if needed
+  // remoteConfig.defaultConfig = {
+  //   "example_key": "example_value",
+  // };
+}

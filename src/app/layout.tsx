@@ -1,5 +1,3 @@
-import type { ReactNode } from "react";
-
 import { Analytics } from "@vercel/analytics/next";
 import type { Metadata } from "next";
 
@@ -34,6 +32,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   const { theme_mode, theme_preset, content_layout, navbar_style, sidebar_variant, sidebar_collapsible, font } =
     PREFERENCE_DEFAULTS;
+
   return (
     <html
       lang="en"

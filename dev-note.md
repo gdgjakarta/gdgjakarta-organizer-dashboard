@@ -31,3 +31,7 @@ When investigating the Bevy authentication and organizer role verification flow,
 
 4. **Case-Insensitive Role Routing**:
    - Updated `src/app/(main)/dashboard/_components/sidebar/app-sidebar.tsx` and session cookies to ensure organizer roles (*Organizer*, *GDG Co-Organizer*, *Regional Leader*, etc.) are recognized and route directly to `/dashboard/organizer`.
+
+5. **Firestore Double-Check & Anti-Downgrade Protection**:
+   - Updated `handleUserPostLoginAction` to check Firestore's `members` collection **before** trusting Bevy API validation.
+   - If a user is already marked as an `organizer` (or `lead`) in Firestore, they bypass a failed Bevy API check (e.g. from expired session cookies, rate limits, or masking misses). This guarantees robust login uptime and prevents accidental downgrades to `member` status when the Bevy API fails.

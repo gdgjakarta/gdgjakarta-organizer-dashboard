@@ -31,32 +31,74 @@ export async function validateOrganizerAction(email: string, name?: string): Pro
 
 /**
  * Handles user post-login sync:
- * 1. Validates whether the user is an organizer on Bevy.
- * 2. Synchronizes their profile with the Firestore `members` collection.
- * 3. Sets the appropriate session cookie based on role.
+ * 1. Checks Firestore first to see if user is already an organizer (to prevent accidental downgrades).
+ * 2. Validates against Bevy Chapter Team (and auto-promotes if validated).
+ * 3. Synchronizes their profile with the Firestore `members` collection.
+ * 4. Sets the appropriate session cookie based on role.
  */
 export async function handleUserPostLoginAction(params: UserAuthSyncParams): Promise<OrganizerValidationResult> {
   const { uid, email, name, avatar, token } = params;
 
+  let existingMember: FirestoreMember | null = null;
+  try {
+    existingMember = await getFirestoreMemberById(uid);
+  } catch (err) {
+    console.error("[Firestore] Error fetching member before Bevy check:", err);
+  }
+
+  // Check if they are already an organizer in Firestore
+  const isAlreadyOrganizer =
+    existingMember?.role === "organizer" ||
+    existingMember?.role === "Organizer" ||
+    (existingMember?.chapter_role && existingMember.chapter_role.toLowerCase().includes("organizer")) ||
+    (existingMember?.chapter_role && existingMember.chapter_role.toLowerCase().includes("lead"));
+
   // 1. Validate role against Bevy Chapter Team
-  const validation = await validateBevyOrganizer(email, name);
+  let validation = await validateBevyOrganizer(email, name);
+
+  // 2. Prevent downgrade if Bevy fails or misses the mask, but Firestore knows they are an organizer
+  if (!validation.isValidOrganizer && isAlreadyOrganizer) {
+    console.log(`[Auth] Bevy validation failed, but ${email} is marked as organizer in Firestore. Preserving role.`);
+
+    // If they were manually upgraded to 'organizer' but chapter_role was stuck as 'Member', fix it.
+    let preservedChapterRole = existingMember?.chapter_role || "Organizer";
+    if (preservedChapterRole.toLowerCase() === "member") {
+      preservedChapterRole = "Organizer";
+    }
+
+    validation = {
+      isValidOrganizer: true,
+      role: existingMember?.role || "organizer",
+      bevyUserId: existingMember?.bevy_user_id || null,
+      chapterRole: preservedChapterRole,
+      bevyUser: null,
+    };
+  }
+
   const role = validation.isValidOrganizer ? "organizer" : "member";
 
-  // 2. Sync to Firestore members
+  // Ensure the chapter role matches the organizer status if Bevy API returned wonky data
+  let finalChapterRole = validation.chapterRole;
+  if (role === "organizer" && (!finalChapterRole || finalChapterRole.toLowerCase() === "member")) {
+    finalChapterRole = "Organizer";
+  } else if (role === "member") {
+    finalChapterRole = "Member";
+  }
+
+  // 3. Sync to Firestore members
   try {
-    const existingMember = await getFirestoreMemberById(uid);
     const now = new Date().toISOString();
 
     const memberData: FirestoreMember = {
       id: uid,
       uid,
-      bevy_user_id: validation.bevyUserId,
+      bevy_user_id: validation.bevyUserId || existingMember?.bevy_user_id || null,
       name: name || existingMember?.name || email.split("@")[0] || "Community Member",
       email: email,
       avatar_url: avatar || existingMember?.avatar_url,
-      role: validation.isValidOrganizer ? validation.chapterRole || "organizer" : "member",
-      chapter_role: validation.chapterRole || (validation.isValidOrganizer ? "Organizer" : "Member"),
-      team: validation.isValidOrganizer ? "Core Team" : "Community",
+      role: role,
+      chapter_role: finalChapterRole,
+      team: role === "organizer" ? "Core Team" : "Community",
       status: "Active",
       joined_date: existingMember?.joined_date || now,
       events_registered_count: existingMember?.events_registered_count || 0,
@@ -70,7 +112,7 @@ export async function handleUserPostLoginAction(params: UserAuthSyncParams): Pro
     console.error("[Firestore] Member sync on login error:", err);
   }
 
-  // 3. Set Session Cookie if token provided
+  // 4. Set Session Cookie if token provided
   if (token) {
     await setAuthSessionCookie(token, role, true);
   }
