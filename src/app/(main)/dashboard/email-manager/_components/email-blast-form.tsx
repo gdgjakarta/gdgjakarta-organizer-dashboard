@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw, Send } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as z from "zod";
@@ -32,9 +32,14 @@ const formSchema = z.object({
   body: z.string().min(1, { message: "Email body is required." }),
 });
 
-type FormValues = z.infer<typeof formSchema>;
+export type FormValues = z.infer<typeof formSchema>;
 
-export function EmailBlastForm() {
+interface EmailBlastFormProps {
+  onSuccess?: () => void;
+  showHeader?: boolean;
+}
+
+export function EmailBlastForm({ onSuccess, showHeader = true }: EmailBlastFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [availableSheets, setAvailableSheets] = useState<string[]>([]);
@@ -86,9 +91,9 @@ export function EmailBlastForm() {
     void loadEvents();
   }, []);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: auto-fetch on spreadsheetUrl change
+  // Auto-fetch sheets on spreadsheetUrl change
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional dependency on spreadsheetUrl
   useEffect(() => {
-    // Only auto-fetch if it looks like a valid spreadsheet url
     const match = spreadsheetUrl?.match(/\/d\/([a-zA-Z0-9-_]+)/);
     if (!match) return;
 
@@ -101,11 +106,11 @@ export function EmailBlastForm() {
     return () => clearTimeout(timer);
   }, [spreadsheetUrl]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: auto-fetch tags on sheetName/spreadsheetUrl change
+  // Auto-fetch tags on sheetName / spreadsheetUrl change
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional dependency on sheetName, spreadsheetUrl
   useEffect(() => {
     if (!sheetName || !spreadsheetUrl) return;
 
-    // Only fetch if combination changes
     const currentCombination = `${spreadsheetUrl}|${sheetName}`;
     if (currentCombination === lastFetchedSheetName.current) return;
 
@@ -192,9 +197,10 @@ export function EmailBlastForm() {
       }
 
       toast.success("Email Blast Sent", {
-        description: result.message || "Your email blast request was sent successfully.",
+        description: result.message || "Your email blast request was sent successfully to n8n.",
       });
       reset();
+      onSuccess?.();
     } catch (error: unknown) {
       console.error(error);
       const errorMessage = extractApiMessage(error, "Failed to send email blast request.");
@@ -209,15 +215,18 @@ export function EmailBlastForm() {
   return (
     <form onSubmit={handleSubmit(onSubmit)}>
       <Card>
-        <CardHeader>
-          <CardTitle>Compose Email</CardTitle>
-          <CardDescription>
-            Provide the spreadsheet containing the recipient details and compose your email subject and body.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
+        {showHeader && (
+          <CardHeader>
+            <CardTitle>Email Blast Campaign Composer</CardTitle>
+            <CardDescription>
+              Connect your Google Sheets recipient list, configure email details, and customize your HTML email
+              template.
+            </CardDescription>
+          </CardHeader>
+        )}
+        <CardContent className="space-y-6 pt-6">
           <Field>
-            <FieldLabel htmlFor="eventId">Event</FieldLabel>
+            <FieldLabel htmlFor="eventId">Event Target</FieldLabel>
             <FieldContent>
               <Select
                 value={eventId || ""}
@@ -225,7 +234,7 @@ export function EmailBlastForm() {
                 disabled={isSubmitting || isLoadingEvents}
               >
                 <SelectTrigger id="eventId" className="w-full" aria-invalid={!!errors.eventId}>
-                  <SelectValue placeholder={isLoadingEvents ? "Loading events..." : "Select an event"} />
+                  <SelectValue placeholder={isLoadingEvents ? "Loading events..." : "Select target event"} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
@@ -237,7 +246,7 @@ export function EmailBlastForm() {
                   </SelectGroup>
                 </SelectContent>
               </Select>
-              <FieldDescription>Select the event this email is directing to.</FieldDescription>
+              <FieldDescription>Select the event this email communication is associated with.</FieldDescription>
               {errors.eventId && <FieldError>{errors.eventId.message}</FieldError>}
             </FieldContent>
           </Field>
@@ -259,22 +268,22 @@ export function EmailBlastForm() {
                   variant="secondary"
                   onClick={handleLoadSheets}
                   disabled={isSubmitting || isLoadingSheets || !spreadsheetUrl}
+                  className="gap-1.5"
                 >
-                  {isLoadingSheets ? (
-                    <Loader2 className="mr-2 size-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="mr-2 size-4" />
-                  )}
+                  {isLoadingSheets ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
                   Fetch Sheets
                 </Button>
               </div>
-              <FieldDescription>Link to the Google Sheet containing recipients.</FieldDescription>
+              <FieldDescription>
+                Google Sheet link containing recipient columns (e.g. Email, Name, Custom Fields). Ensure link sharing is
+                enabled.
+              </FieldDescription>
               {errors.spreadsheetUrl && <FieldError>{errors.spreadsheetUrl.message}</FieldError>}
             </FieldContent>
           </Field>
 
           <Field>
-            <FieldLabel htmlFor="sheetName">Sheet Name</FieldLabel>
+            <FieldLabel htmlFor="sheetName">Sheet Tab Name</FieldLabel>
             <FieldContent>
               <Select
                 value={sheetName || ""}
@@ -282,7 +291,15 @@ export function EmailBlastForm() {
                 disabled={isSubmitting || isLoadingSheets || availableSheets.length === 0}
               >
                 <SelectTrigger id="sheetName" className="w-full" aria-invalid={!!errors.sheetName}>
-                  <SelectValue placeholder={availableSheets.length > 0 ? "Select a sheet" : "Fetch sheets first"} />
+                  <SelectValue
+                    placeholder={
+                      isLoadingSheets
+                        ? "Loading sheets..."
+                        : availableSheets.length > 0
+                          ? "Select a sheet tab"
+                          : "Enter spreadsheet URL to load sheets"
+                    }
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
@@ -294,21 +311,22 @@ export function EmailBlastForm() {
                   </SelectGroup>
                 </SelectContent>
               </Select>
-              <FieldDescription>Exact name of the sheet tab in the document.</FieldDescription>
+              <FieldDescription>Select the specific sheet tab within the spreadsheet.</FieldDescription>
               {errors.sheetName && <FieldError>{errors.sheetName.message}</FieldError>}
             </FieldContent>
           </Field>
 
           <Field>
-            <FieldLabel htmlFor="subject">Subject</FieldLabel>
+            <FieldLabel htmlFor="subject">Email Subject</FieldLabel>
             <FieldContent>
               <Input
                 id="subject"
-                placeholder="Email Subject"
+                placeholder="e.g. Important Update: Google I/O Extended Jakarta 2026"
                 {...register("subject")}
                 disabled={isSubmitting}
                 aria-invalid={!!errors.subject}
               />
+              <FieldDescription>The subject line of the email blast delivered to recipients.</FieldDescription>
               {errors.subject && <FieldError>{errors.subject.message}</FieldError>}
             </FieldContent>
           </Field>
@@ -321,47 +339,27 @@ export function EmailBlastForm() {
                 placeholder="https://assets.gdgjakarta.org/gdg-jakarta/gdg-jakarta-emailheaders-1244x388-blue.png"
                 {...register("headerUrl")}
                 disabled={isSubmitting}
-                aria-invalid={!!errors.headerUrl}
               />
-              <FieldDescription>If left blank, a default GDG Jakarta header image will be used.</FieldDescription>
-              {errors.headerUrl && <FieldError>{errors.headerUrl.message}</FieldError>}
+              <FieldDescription>Defaults to the official GDG Jakarta blue banner if left empty.</FieldDescription>
             </FieldContent>
           </Field>
 
           <Field>
-            <FieldLabel htmlFor="body">Email Body</FieldLabel>
+            <FieldLabel htmlFor="body">Email HTML Content & Live Preview</FieldLabel>
             <FieldContent>
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-muted-foreground text-xs">
-                  Available tags: {availableTags.length > 0 ? availableTags.join(", ") : "None loaded"}
-                </span>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleLoadTags}
-                  disabled={isPending || !spreadsheetUrl || !sheetName}
-                >
-                  {isPending && <RefreshCw className="mr-2 h-3 w-3 animate-spin" />}
-                  Load Tags
-                </Button>
-              </div>
               <HtmlEditorPreview
                 value={bodyValue}
-                onChange={(val) => setValue("body", val, { shouldValidate: true })}
+                onChange={(newVal) => setValue("body", newVal, { shouldValidate: true })}
                 availableTags={combinedTags}
               />
-              <FieldDescription>
-                The raw HTML of your email. Click the tags above to insert dynamic values.
-              </FieldDescription>
               {errors.body && <FieldError>{errors.body.message}</FieldError>}
             </FieldContent>
           </Field>
         </CardContent>
-        <CardFooter className="flex justify-end">
-          <Button type="submit" disabled={isSubmitting}>
-            {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Send Email Blast
+        <CardFooter className="flex justify-end gap-3 border-t bg-muted/20 px-6 py-4">
+          <Button type="submit" disabled={isSubmitting} size="lg" className="min-w-44 gap-2">
+            {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+            {isSubmitting ? "Sending Blast..." : "Send Email Blast"}
           </Button>
         </CardFooter>
       </Card>

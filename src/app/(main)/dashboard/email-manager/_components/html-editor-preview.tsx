@@ -1,12 +1,15 @@
-import { useRef } from "react";
+"use client";
+
+import { useRef, useState } from "react";
 
 import Editor, { type OnMount } from "@monaco-editor/react";
-import { Wand2 } from "lucide-react";
+import { Laptop, Smartphone, Wand2 } from "lucide-react";
 import { useTheme } from "next-themes";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 
 type EditorInstance = Parameters<OnMount>[0];
 
@@ -19,6 +22,7 @@ interface HtmlEditorPreviewProps {
 export function HtmlEditorPreview({ value, onChange, availableTags }: HtmlEditorPreviewProps) {
   const editorRef = useRef<EditorInstance | null>(null);
   const { theme } = useTheme();
+  const [previewDevice, setPreviewDevice] = useState<"desktop" | "mobile">("desktop");
 
   const handleEditorDidMount: OnMount = (editor) => {
     editorRef.current = editor;
@@ -48,15 +52,15 @@ export function HtmlEditorPreview({ value, onChange, availableTags }: HtmlEditor
     <div className="flex w-full flex-col space-y-4">
       {availableTags.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-muted-foreground text-sm">Insert Tag:</span>
+          <span className="text-muted-foreground text-sm font-medium">Insert Tag:</span>
           {availableTags.map((tag) => (
             <Badge
               key={tag}
               variant="secondary"
-              className="cursor-pointer transition-colors hover:bg-secondary/80"
+              className="cursor-pointer transition-colors hover:bg-secondary/80 hover:text-foreground active:scale-95"
               onClick={() => insertTag(tag)}
             >
-              {tag}
+              [[{tag}]]
             </Badge>
           ))}
         </div>
@@ -69,8 +73,14 @@ export function HtmlEditorPreview({ value, onChange, availableTags }: HtmlEditor
             <Label className="font-semibold text-muted-foreground text-xs uppercase tracking-wider">
               HTML Source Code
             </Label>
-            <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={formatDocument}>
-              <Wand2 className="mr-1 h-3 w-3" />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-xs gap-1.5"
+              onClick={formatDocument}
+            >
+              <Wand2 className="size-3.5" />
               Format Code
             </Button>
           </div>
@@ -99,12 +109,45 @@ export function HtmlEditorPreview({ value, onChange, availableTags }: HtmlEditor
         </div>
 
         {/* Live Preview */}
-        <div className="flex h-full flex-col overflow-hidden rounded-md border bg-muted/20 xl:flex">
+        <div className="flex h-full flex-col overflow-hidden rounded-md border bg-muted/20">
           <div className="flex items-center justify-between border-b bg-muted/50 px-3 py-2">
             <Label className="font-semibold text-muted-foreground text-xs uppercase tracking-wider">Live Preview</Label>
+            <div className="flex items-center gap-1 rounded-md border bg-background/50 p-0.5">
+              <Button
+                type="button"
+                variant={previewDevice === "desktop" ? "secondary" : "ghost"}
+                size="sm"
+                className="h-6 px-2 text-xs gap-1"
+                onClick={() => setPreviewDevice("desktop")}
+              >
+                <Laptop className="size-3" />
+                Desktop
+              </Button>
+              <Button
+                type="button"
+                variant={previewDevice === "mobile" ? "secondary" : "ghost"}
+                size="sm"
+                className="h-6 px-2 text-xs gap-1"
+                onClick={() => setPreviewDevice("mobile")}
+              >
+                <Smartphone className="size-3" />
+                Mobile
+              </Button>
+            </div>
           </div>
-          <div className="relative h-full flex-1 overflow-auto border bg-white shadow-sm">
-            <iframe srcDoc={value} className="absolute inset-0 h-full w-full border-0 bg-white" title="Email Preview" />
+          <div className="relative flex h-full flex-1 items-center justify-center overflow-auto bg-muted/10 p-4">
+            <div
+              className={cn(
+                "relative h-full min-h-150 w-full overflow-hidden rounded-md border bg-white shadow-sm transition-all duration-200",
+                previewDevice === "mobile" && "max-w-95 border-2 shadow-md rounded-2xl",
+              )}
+            >
+              <iframe
+                srcDoc={value}
+                className="absolute inset-0 h-full w-full border-0 bg-white"
+                title="Email Preview"
+              />
+            </div>
           </div>
         </div>
       </div>

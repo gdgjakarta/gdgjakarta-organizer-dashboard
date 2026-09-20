@@ -71,9 +71,9 @@ export const organizerSidebarItems: NavGroup[] = [
         icon: Calendar,
       },
       {
-        id: "email-blast",
-        title: "Email Blast",
-        url: "/dashboard/email-blast",
+        id: "email-manager",
+        title: "Email Manager",
+        url: "/dashboard/email-manager",
         icon: Mail,
       },
       {
