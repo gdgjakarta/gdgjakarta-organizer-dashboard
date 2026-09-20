@@ -68,7 +68,9 @@
   "migrations": [
     {
       "tag": "v1",
-      "new_sqlite_classes": ["DOQueueHandler"]
+      "new_sqlite_classes": [
+        "DOQueueHandler"
+      ]
     }
   ],
   "images": {
