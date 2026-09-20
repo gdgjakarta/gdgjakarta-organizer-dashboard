@@ -3,6 +3,7 @@ import {
   CalendarCheck,
   LayoutDashboard,
   type LucideIcon,
+  Mail,
   ShoppingBag,
   SquareArrowUpRight,
   Users,
@@ -68,6 +69,12 @@ export const organizerSidebarItems: NavGroup[] = [
         title: "Events",
         url: "/dashboard/events",
         icon: Calendar,
+      },
+      {
+        id: "email-blast",
+        title: "Email Blast",
+        url: "/dashboard/email-blast",
+        icon: Mail,
       },
       {
         id: "members",

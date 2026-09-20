@@ -9,7 +9,7 @@
     "nodejs_compat",
     // Allow to fetch URLs in your app
     // see https://developers.cloudflare.com/workers/configuration/compatibility-flags/#global-fetch-strictly-public
-    "global_fetch_strictly_public",
+    "global_fetch_strictly_public"
   ],
   "assets": {
     "directory": ".open-next/assets",
@@ -46,36 +46,34 @@
     {
       "binding": "WORKER_SELF_REFERENCE",
       // The service should match the "name" of your worker
-      "service": "gdgjakarta-organizer-dashboard",
-    },
+      "service": "gdgjakarta-organizer-dashboard"
+    }
   ],
   "r2_buckets": [
     // Create a R2 binding with the binding name "NEXT_INC_CACHE_R2_BUCKET"
     {
       "binding": "NEXT_INC_CACHE_R2_BUCKET",
-      "bucket_name": "community-dashboard",
-    },
+      "bucket_name": "community-dashboard"
+    }
   ],
   // DO Queue
   "durable_objects": {
     "bindings": [
       {
         "name": "NEXT_CACHE_DO_QUEUE",
-        "class_name": "DOQueueHandler",
-      },
-    ],
+        "class_name": "DOQueueHandler"
+      }
+    ]
   },
   "migrations": [
     {
       "tag": "v1",
-      "new_sqlite_classes": [
-        "DOQueueHandler"
-      ],
-    },
+      "new_sqlite_classes": ["DOQueueHandler"]
+    }
   ],
   "images": {
     // Enable image optimization
     // see https://opennext.js.org/cloudflare/howtos/image
-    "binding": "IMAGES",
-  },
+    "binding": "IMAGES"
+  }
 }
