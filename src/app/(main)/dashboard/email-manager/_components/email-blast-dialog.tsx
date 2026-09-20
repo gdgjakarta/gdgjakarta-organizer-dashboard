@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { Mail, Send } from "lucide-react";
+import { Mail, Maximize2, Minimize2, Send } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -13,6 +13,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 
 import { EmailBlastForm } from "./email-blast-form";
 
@@ -22,6 +23,7 @@ interface EmailBlastDialogProps {
 
 export function EmailBlastDialog({ trigger }: EmailBlastDialogProps) {
   const [open, setOpen] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -33,19 +35,39 @@ export function EmailBlastDialog({ trigger }: EmailBlastDialogProps) {
           </Button>
         )}
       </DialogTrigger>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto p-0 sm:max-w-5xl">
+      <DialogContent
+        className={cn(
+          "overflow-y-auto p-0 transition-all duration-200",
+          isExpanded
+            ? "max-w-[95vw] sm:max-w-[95vw] w-[95vw] max-h-[95vh] h-[95vh]"
+            : "max-w-5xl sm:max-w-5xl max-h-[90vh]",
+        )}
+      >
         <div className="p-6 border-b bg-muted/30">
-          <DialogHeader>
-            <div className="flex items-center gap-2">
-              <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <Mail className="size-5" />
+          <DialogHeader className="pr-8">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <Mail className="size-5" />
+                </div>
+                <div>
+                  <DialogTitle className="text-xl">Email Blast Campaign</DialogTitle>
+                  <DialogDescription className="text-xs">
+                    Compose and dispatch personalized bulk emails using Google Sheets and n8n workflow.
+                  </DialogDescription>
+                </div>
               </div>
-              <div>
-                <DialogTitle className="text-xl">Email Blast Campaign</DialogTitle>
-                <DialogDescription className="text-xs">
-                  Compose and dispatch personalized bulk emails using Google Sheets and n8n workflow.
-                </DialogDescription>
-              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="text-muted-foreground hover:text-foreground shrink-0 mr-2"
+                title={isExpanded ? "Collapse modal size" : "Expand modal size"}
+              >
+                {isExpanded ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+                <span className="sr-only">{isExpanded ? "Collapse modal size" : "Expand modal size"}</span>
+              </Button>
             </div>
           </DialogHeader>
         </div>
