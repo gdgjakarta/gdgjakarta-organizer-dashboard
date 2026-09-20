@@ -220,7 +220,7 @@ export function EmailBlastForm() {
             <FieldLabel htmlFor="eventId">Event</FieldLabel>
             <FieldContent>
               <Select
-                value={eventId || undefined}
+                value={eventId || ""}
                 onValueChange={(val) => setValue("eventId", val, { shouldValidate: true })}
                 disabled={isSubmitting || isLoadingEvents}
               >
@@ -277,7 +277,7 @@ export function EmailBlastForm() {
             <FieldLabel htmlFor="sheetName">Sheet Name</FieldLabel>
             <FieldContent>
               <Select
-                value={sheetName || undefined}
+                value={sheetName || ""}
                 onValueChange={(val) => setValue("sheetName", val, { shouldValidate: true })}
                 disabled={isSubmitting || isLoadingSheets || availableSheets.length === 0}
               >
