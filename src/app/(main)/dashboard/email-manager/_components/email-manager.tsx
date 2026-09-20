@@ -7,11 +7,9 @@ import {
   CheckCircle2,
   Code2,
   Copy,
-  ExternalLink,
   FileSpreadsheet,
   Info,
   Layers,
-  Mail,
   Send,
   ShieldCheck,
   Sparkles,
@@ -25,7 +23,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { EmailBlastDialog } from "./email-blast-dialog";
-import { EmailBlastForm } from "./email-blast-form";
 
 const standardTags = [
   { tag: "[[Name]]", description: "Recipient's full name from Google Sheets", example: "Budi Santoso" },
@@ -43,7 +40,7 @@ const standardTags = [
 ];
 
 export function EmailManager() {
-  const [activeTab, setActiveTab] = useState("blast");
+  const [activeTab, setActiveTab] = useState("placeholders");
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -85,7 +82,7 @@ export function EmailManager() {
         <Card className="border-border/60 bg-linear-to-br from-card to-muted/20 shadow-xs">
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
             <CardTitle className="font-medium text-sm text-muted-foreground">Blast Engine</CardTitle>
-            <div className="flex size-8 items-center justify-center rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
               <Zap className="size-4" />
             </div>
           </CardHeader>
@@ -148,10 +145,6 @@ export function EmailManager() {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <div className="flex items-center justify-between border-b pb-2">
           <TabsList className="h-9">
-            <TabsTrigger value="blast" className="gap-2 text-xs">
-              <Send className="size-3.5" />
-              Email Blast Composer
-            </TabsTrigger>
             <TabsTrigger value="placeholders" className="gap-2 text-xs">
               <Layers className="size-3.5" />
               Dynamic Placeholders
@@ -163,12 +156,7 @@ export function EmailManager() {
           </TabsList>
         </div>
 
-        {/* Tab 1: Email Blast Form */}
-        <TabsContent value="blast" className="space-y-4 pt-2">
-          <EmailBlastForm />
-        </TabsContent>
-
-        {/* Tab 2: Dynamic Placeholders Guide */}
+        {/* Tab 1: Dynamic Placeholders Guide */}
         <TabsContent value="placeholders" className="space-y-4 pt-2">
           <Card>
             <CardHeader>
@@ -227,7 +215,7 @@ export function EmailManager() {
           </Card>
         </TabsContent>
 
-        {/* Tab 3: Documentation & Integration Guide */}
+        {/* Tab 2: Documentation & Integration Guide */}
         <TabsContent value="documentation" className="space-y-4 pt-2">
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             <Card>
