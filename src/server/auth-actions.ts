@@ -50,8 +50,8 @@ export async function handleUserPostLoginAction(params: UserAuthSyncParams): Pro
   const isAlreadyOrganizer =
     existingMember?.role === "organizer" ||
     existingMember?.role === "Organizer" ||
-    (existingMember?.chapter_role && existingMember.chapter_role.toLowerCase().includes("organizer")) ||
-    (existingMember?.chapter_role && existingMember.chapter_role.toLowerCase().includes("lead"));
+    existingMember?.chapter_role?.toLowerCase().includes("organizer") ||
+    existingMember?.chapter_role?.toLowerCase().includes("lead");
 
   // 1. Validate role against Bevy Chapter Team
   let validation = await validateBevyOrganizer(email, name);
@@ -61,15 +61,15 @@ export async function handleUserPostLoginAction(params: UserAuthSyncParams): Pro
     console.log(`[Auth] Bevy validation failed, but ${email} is marked as organizer in Firestore. Preserving role.`);
 
     // If they were manually upgraded to 'organizer' but chapter_role was stuck as 'Member', fix it.
-    let preservedChapterRole = existingMember?.chapter_role || "Organizer";
+    let preservedChapterRole = existingMember?.chapter_role ?? "Organizer";
     if (preservedChapterRole.toLowerCase() === "member") {
       preservedChapterRole = "Organizer";
     }
 
     validation = {
       isValidOrganizer: true,
-      role: existingMember?.role || "organizer",
-      bevyUserId: existingMember?.bevy_user_id || null,
+      role: existingMember?.role ?? "organizer",
+      bevyUserId: existingMember?.bevy_user_id ?? null,
       chapterRole: preservedChapterRole,
       bevyUser: null,
     };
@@ -92,17 +92,17 @@ export async function handleUserPostLoginAction(params: UserAuthSyncParams): Pro
     const memberData: FirestoreMember = {
       id: uid,
       uid,
-      bevy_user_id: validation.bevyUserId || existingMember?.bevy_user_id || null,
-      name: name || existingMember?.name || email.split("@")[0] || "Community Member",
+      bevy_user_id: validation.bevyUserId ?? existingMember?.bevy_user_id ?? null,
+      name: name ?? existingMember?.name ?? email.split("@")[0] ?? "Community Member",
       email: email,
-      avatar_url: avatar || existingMember?.avatar_url,
+      avatar_url: avatar ?? existingMember?.avatar_url,
       role: role,
-      chapter_role: finalChapterRole,
+      chapter_role: finalChapterRole ?? undefined,
       team: role === "organizer" ? "Core Team" : "Community",
       status: "Active",
-      joined_date: existingMember?.joined_date || now,
-      events_registered_count: existingMember?.events_registered_count || 0,
-      events_attended_count: existingMember?.events_attended_count || 0,
+      joined_date: existingMember?.joined_date ?? now,
+      events_registered_count: existingMember?.events_registered_count ?? 0,
+      events_attended_count: existingMember?.events_attended_count ?? 0,
       last_active: now,
       updated_at: now,
     };
