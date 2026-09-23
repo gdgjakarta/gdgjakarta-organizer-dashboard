@@ -35,3 +35,44 @@ When investigating the Bevy authentication and organizer role verification flow,
 5. **Firestore Double-Check & Anti-Downgrade Protection**:
    - Updated `handleUserPostLoginAction` to check Firestore's `members` collection **before** trusting Bevy API validation.
    - If a user is already marked as an `organizer` (or `lead`) in Firestore, they bypass a failed Bevy API check (e.g. from expired session cookies, rate limits, or masking misses). This guarantees robust login uptime and prevents accidental downgrades to `member` status when the Bevy API fails.
+
+---
+
+## [September 23, 2026] - Fix Cloudflare Wrangler Preview Redirect Error
+
+### Error Summary
+
+When running `npm run preview` (`opennextjs-cloudflare build && opennextjs-cloudflare preview`), Wrangler failed with the following error:
+```text
+X [ERROR] There is a deploy configuration at ".wrangler\deploy\config.json".
+  But the redirected configuration path it points to, "dist\server\wrangler.json", does not exist.
+Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), file src\win\async.c, line 76
+```
+
+### Root Cause Analysis
+
+1. **Stale Wrangler Deploy State**:
+   - An earlier build or framework integration (e.g., Vinext or a prior build tool) created `.wrangler/deploy/config.json` containing:
+     ```json
+     {"configPath":"..\\..\\dist\\server\\wrangler.json","auxiliaryWorkers":[]}
+     ```
+   - Wrangler automatically inspects `.wrangler/deploy/config.json` on execution. If present, it redirects config loading to the specified path instead of the root `wrangler.jsonc`.
+   - Since `dist/server/wrangler.json` was no longer present in the `@opennextjs/cloudflare` setup, Wrangler threw a fatal path error and aborted.
+
+2. **Windows libuv Assertion Crash**:
+   - The `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)` error is a known Windows Node.js/libuv crash artifact that occurs when Wrangler terminates abruptly following the fatal configuration exception.
+
+### Solution & Fix
+
+1. **Delete Stale `.wrangler` Cache**:
+   - Remove the `.wrangler` state directory to purge the stale deploy redirection:
+     ```powershell
+     Remove-Item -Recurse -Force .wrangler
+     ```
+   - On Unix/macOS:
+     ```bash
+     rm -rf .wrangler
+     ```
+
+2. **Use Root `wrangler.jsonc`**:
+   - With `.wrangler` cleaned, running `npm run preview` properly uses the root `wrangler.jsonc` targeting `.open-next/worker.js` and `.open-next/assets`.
