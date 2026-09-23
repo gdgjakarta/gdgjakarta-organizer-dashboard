@@ -50,6 +50,7 @@ export function middleware(request: NextRequest) {
 
   // Protected route: not authenticated → redirect to unified login with callbackUrl
   if (isProtected(pathname) && !isAuthenticated) {
+    console.log(`[Middleware] Unauthenticated access to protected route "${pathname}". Redirecting to /auth/login`);
     const loginUrl = new URL(LOGIN_PATH, request.url);
     loginUrl.searchParams.set("callbackUrl", pathname);
     return NextResponse.redirect(loginUrl);
@@ -58,12 +59,16 @@ export function middleware(request: NextRequest) {
   // Handle root /dashboard redirect based on role
   if (pathname === "/dashboard" || pathname === "/dashboard/") {
     const target = isOrganizer ? "/dashboard/organizer" : "/dashboard/member";
+    console.log(`[Middleware] Root /dashboard accessed. Redirecting (role="${role}") to ${target}`);
     return NextResponse.redirect(new URL(target, request.url));
   }
 
   // RBAC for protected organizer-only routes
   if (isProtected(pathname) && isAuthenticated) {
     if (isOrganizerOnly(pathname) && !isOrganizer) {
+      console.warn(
+        `[Middleware] RBAC Guard: Member (role="${role}") attempted access to organizer-only route "${pathname}". Redirecting to /dashboard/member`,
+      );
       return NextResponse.redirect(new URL("/dashboard/member", request.url));
     }
   }
@@ -71,6 +76,7 @@ export function middleware(request: NextRequest) {
   // Auth page: already authenticated → redirect to appropriate dashboard
   if (isAuthPage(pathname) && isAuthenticated) {
     const target = isOrganizer ? "/dashboard/organizer" : "/dashboard/member";
+    console.log(`[Middleware] Authenticated user on auth page "${pathname}". Redirecting to ${target}`);
     return NextResponse.redirect(new URL(target, request.url));
   }
 
