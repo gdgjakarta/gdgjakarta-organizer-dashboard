@@ -36,5 +36,5 @@ export async function getPreference<K extends PreferenceKey>(key: K): Promise<Pr
   }
 
   const cookieStore = await cookies();
-  return parsePreference(key, cookieStore.get(key)?.value.trim());
+  return parsePreference(key, cookieStore.get(key)?.value?.trim());
 }
