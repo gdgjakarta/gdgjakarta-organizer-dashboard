@@ -125,3 +125,42 @@ Cross-Origin-Opener-Policy policy would block the window.postMessage call.
 
 2. **Firebase Console Authorized Domains**:
    - Ensure the deployed Cloudflare Worker domain (e.g., `gdgjakarta-organizer-dashboard.<subdomain>.workers.dev` or custom domain) is added to **Firebase Console -> Authentication -> Settings -> Authorized Domains**.
+
+---
+
+## [September 23, 2026] - Fix Server Components Render Crash on Missing Preference Cookies
+
+### Error Summary
+
+After successful Firebase authentication, redirecting to the dashboard caused a 500 error in Next.js production builds:
+```text
+An error occurred in the Server Components render. The specific message is omitted in production builds to avoid leaking sensitive details. A digest property is included on this error instance which may provide additional details about the nature of the error
+```
+
+### Root Cause Analysis
+
+1. **Unsafe `.trim()` on `undefined` Cookie Value**:
+   - In `src/app/(main)/dashboard/layout.tsx`, the root dashboard layout executes during SSR:
+     ```typescript
+     const [variant, collapsible] = await Promise.all([
+       getPreference("sidebar_variant"),
+       getPreference("sidebar_collapsible"),
+     ]);
+     ```
+   - In `src/server/server-actions.ts`, `getPreference` previously contained:
+     ```typescript
+     return parsePreference(key, cookieStore.get(key)?.value.trim());
+     ```
+   - When a newly authenticated user accesses the dashboard without preexisting `sidebar_variant` or `sidebar_collapsible` cookies, `cookieStore.get(key)` returns `undefined`.
+   - `cookieStore.get(key)?.value` evaluates to `undefined`, and calling `.trim()` on `undefined` threw an uncaught `TypeError: Cannot read properties of undefined (reading 'trim')` on the server during the Server Component render.
+
+### Solution & Fix
+
+1. **Safe Optional Chaining in [src/server/server-actions.ts](file:///g:/Code/Antigravity/gdgjakarta-organizer-dashboard/src/server/server-actions.ts#L36-L40)**:
+   - Added optional chaining to `.trim()`:
+     ```typescript
+     const cookieStore = await cookies();
+     return parsePreference(key, cookieStore.get(key)?.value?.trim());
+     ```
+   - If the cookie is absent or undefined, `parsePreference()` safely falls back to default registry values (`sidebar` and `icon`) without throwing runtime exceptions.
+
