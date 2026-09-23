@@ -39,7 +39,14 @@ export function GoogleButton({
         router.push(targetUrl);
       } else {
         toast.success(`Welcome, ${organizer.name}!`);
-        const targetUrl = callbackUrl?.startsWith("/") ? callbackUrl : "/dashboard/member";
+        // If callbackUrl points to organizer-specific paths, redirect to member dashboard instead
+        const isOrganizerOnlyCallback =
+          callbackUrl?.startsWith("/dashboard/organizer") ||
+          callbackUrl?.startsWith("/dashboard/events") ||
+          callbackUrl?.startsWith("/dashboard/email-manager") ||
+          callbackUrl?.startsWith("/dashboard/members");
+
+        const targetUrl = callbackUrl?.startsWith("/") && !isOrganizerOnlyCallback ? callbackUrl : "/dashboard/member";
         router.push(targetUrl);
       }
 

@@ -17,6 +17,18 @@ const PROTECTED_PREFIXES = ["/dashboard", "/chat", "/mail"];
  */
 const AUTH_PREFIXES = ["/auth"];
 
+/**
+ * Routes that strictly require the organizer role.
+ */
+const ORGANIZER_ONLY_PREFIXES = [
+  "/dashboard/organizer",
+  "/dashboard/events",
+  "/dashboard/email-manager",
+  "/dashboard/members",
+  "/dashboard/crm",
+  "/dashboard/roles",
+];
+
 function isProtected(pathname: string): boolean {
   return PROTECTED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 }
@@ -25,11 +37,16 @@ function isAuthPage(pathname: string): boolean {
   return AUTH_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 }
 
+function isOrganizerOnly(pathname: string): boolean {
+  return ORGANIZER_ONLY_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+}
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get(AUTH_COOKIE)?.value;
   const role = request.cookies.get(ROLE_COOKIE)?.value;
   const isAuthenticated = Boolean(token);
+  const isOrganizer = role === "organizer";
 
   // Protected route: not authenticated → redirect to unified login with callbackUrl
   if (isProtected(pathname) && !isAuthenticated) {
@@ -38,19 +55,23 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // RBAC for protected routes
+  // Handle root /dashboard redirect based on role
+  if (pathname === "/dashboard" || pathname === "/dashboard/") {
+    const target = isOrganizer ? "/dashboard/organizer" : "/dashboard/member";
+    return NextResponse.redirect(new URL(target, request.url));
+  }
+
+  // RBAC for protected organizer-only routes
   if (isProtected(pathname) && isAuthenticated) {
-    if (pathname.startsWith("/dashboard/organizer") && role !== "organizer") {
+    if (isOrganizerOnly(pathname) && !isOrganizer) {
       return NextResponse.redirect(new URL("/dashboard/member", request.url));
     }
   }
 
-  // Auth page: already authenticated → redirect to dashboard
+  // Auth page: already authenticated → redirect to appropriate dashboard
   if (isAuthPage(pathname) && isAuthenticated) {
-    if (role === "organizer") {
-      return NextResponse.redirect(new URL("/dashboard/organizer", request.url));
-    }
-    return NextResponse.redirect(new URL("/dashboard/member", request.url));
+    const target = isOrganizer ? "/dashboard/organizer" : "/dashboard/member";
+    return NextResponse.redirect(new URL(target, request.url));
   }
 
   return NextResponse.next();
