@@ -22,7 +22,7 @@ function mapFirebaseUserToOrganizer(
     name: user.displayName || user.email?.split("@")[0] || "User",
     email: user.email || "",
     avatar: user.photoURL || "",
-    role: isOrg ? validation?.chapterRole || "Organizer" : "Member",
+    role: isOrg ? "organizer" : "member",
     bevyUserId: validation?.bevyUserId,
     chapterRole: validation?.chapterRole || (isOrg ? "Organizer" : "Member"),
   };

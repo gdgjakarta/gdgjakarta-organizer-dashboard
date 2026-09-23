@@ -1,3 +1,4 @@
+import { isAuthorizedOrganizerEmail } from "@/config/auth-config";
 import { BEVY_CONFIG } from "@/config/bevy-config";
 
 import type {
@@ -94,48 +95,6 @@ export async function getBevyUserByEmail(email: string): Promise<BevyUser | null
  * Endpoint: /api/chapter_team/?chapter_slug={chapterSlug} or /api/chapter_team/?chapter_id={chapterId}
  */
 /**
- * Helper to match an unmasked incoming email against Bevy's privacy-masked email string.
- * Example: 'rizkyfir@gmail.com' matches 'r*******@gmail.com'
- */
-function matchesMaskedEmail(email: string, maskedEmail?: string): boolean {
-  if (!email || !maskedEmail) return false;
-  const [local, domain] = email.toLowerCase().trim().split("@");
-  const [mLocal, mDomain] = maskedEmail.toLowerCase().trim().split("@");
-  if (!local || !domain || !mLocal || !mDomain) return false;
-  if (domain !== mDomain) return false;
-
-  // Mask pattern: e.g. "r*******" where first char is preserved and rest are stars
-  if (mLocal.startsWith(local[0])) {
-    const starCount = (mLocal.match(/\*/g) || []).length;
-    // Length matching or prefix matching
-    if (mLocal.length === local.length && /^\*+$/.test(mLocal.slice(1))) {
-      return true;
-    }
-    if (/^\*+$/.test(mLocal.slice(1)) && local.length >= starCount && starCount > 3) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function normalizeClean(str?: string): string {
-  return (str || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-}
-
-function nameMatches(displayName?: string, firstName?: string, lastName?: string): boolean {
-  if (!displayName) return false;
-  const gNorm = normalizeClean(displayName);
-  const bFullNorm = normalizeClean(`${firstName || ""} ${lastName || ""}`);
-  const bFirstNorm = normalizeClean(firstName || "");
-
-  if (!gNorm || !bFullNorm) return false;
-  if (gNorm === bFullNorm) return true;
-  if (gNorm.startsWith(bFirstNorm) && bFirstNorm.length >= 3) return true;
-  if (bFullNorm.startsWith(gNorm) && gNorm.length >= 3) return true;
-  return false;
-}
-
-/**
  * Step 3: Get List of GDG Jakarta Chapter Teams from Bevy
  * In Bevy API: endpoint /api/chapter/642/team returns the team members list
  * with { count, results: [...] }.
@@ -188,11 +147,10 @@ export async function getBevyChapterTeams(chapterId: string = BEVY_CONFIG.chapte
 }
 
 /**
- * Validates whether an email belongs to the GDG Jakarta Bevy chapter team (Organizers / Leads).
- * Fetches the GDG Jakarta chapter team list (via GET /api/chapter/642/team) and matches by:
- * 1. Exact email match or domain
- * 2. Privacy-masked email match (e.g. 'r*******@gmail.com')
- * 3. Display name and domain match with team members
+ * Validates whether an email belongs to an authorized organizer.
+ * Verifies strictly through:
+ * 1. Explicit Authorized Organizer Emails whitelist (auth-config).
+ * 2. Exact unmasked email or username match from Bevy Chapter Team API.
  */
 export async function validateBevyOrganizer(email: string, displayName?: string): Promise<OrganizerValidationResult> {
   try {
@@ -209,69 +167,64 @@ export async function validateBevyOrganizer(email: string, displayName?: string)
     const normalizedEmail = email.toLowerCase().trim();
     console.log(`[Bevy Auth] Validating organizer status for: ${normalizedEmail} (Name: ${displayName ?? "N/A"})`);
 
-    // 1. Fetch GDG Jakarta chapter team list
+    // 1. Check explicit authorized organizer whitelist first
+    const isWhitelisted = isAuthorizedOrganizerEmail(normalizedEmail);
+
+    // 2. Fetch GDG Jakarta chapter team list
     const chapterTeams = await getBevyChapterTeams();
 
-    // 2. Match against chapter team members
+    // 3. Match against chapter team members (STRICT EXACT MATCH ONLY - NO MASKED WILDCARDS)
+    let matchedMember: BevyChapterTeamMember | undefined;
+
     if (chapterTeams.length > 0) {
-      const matchedMember = chapterTeams.find((m) => {
+      matchedMember = chapterTeams.find((m) => {
         const teamEmail = m.user?.email?.toLowerCase()?.trim() || "";
         const teamUsername = m.user?.username?.toLowerCase()?.trim() || "";
 
-        // Exact email or username match
-        if (teamEmail === normalizedEmail || (teamUsername && teamUsername === normalizedEmail)) {
+        // Unmasked exact email match only (ignore privacy-masked strings containing '*')
+        if (teamEmail && !teamEmail.includes("*") && teamEmail === normalizedEmail) {
           return true;
         }
 
-        // Masked email match
-        if (teamEmail && matchesMaskedEmail(normalizedEmail, teamEmail)) {
+        // Exact username match (if username is an exact email)
+        if (teamUsername && !teamUsername.includes("*") && teamUsername === normalizedEmail) {
           return true;
-        }
-
-        // Name match (if display name provided) + matching email domain
-        if (displayName && nameMatches(displayName, m.user?.first_name, m.user?.last_name)) {
-          const emailDomain = normalizedEmail.split("@")[1];
-          if (teamEmail && emailDomain && teamEmail.endsWith(`@${emailDomain}`)) {
-            return true;
-          }
         }
 
         return false;
       });
-
-      if (matchedMember) {
-        const teamMemberUserId = matchedMember.user?.id || matchedMember.user_id;
-        const bevyUserId = teamMemberUserId ? String(teamMemberUserId) : null;
-
-        // Extract exact role from Bevy (role can be object { id, name } or string)
-        const roleObj = matchedMember.role as unknown;
-        let roleName = "Organizer";
-
-        if (typeof roleObj === "object" && roleObj !== null && "name" in roleObj) {
-          roleName = String((roleObj as { name: string }).name);
-        } else if (typeof matchedMember.role === "string" && matchedMember.role) {
-          roleName = matchedMember.role;
-        } else if (matchedMember.title) {
-          roleName = matchedMember.title;
-        }
-
-        console.log(
-          `[Bevy Auth] Organizer found! ${normalizedEmail} (Bevy ID: ${bevyUserId}) is in GDG Jakarta team with Role: "${roleName}" (${matchedMember.title ?? ""})`,
-        );
-
-        return {
-          isValidOrganizer: true,
-          role: roleName,
-          bevyUserId,
-          chapterRole: matchedMember.title || roleName,
-          chapterTeamMember: matchedMember,
-          bevyUser: matchedMember.user ?? null,
-        };
-      }
     }
 
-    // 3. User is a community member
-    console.log(`[Bevy Auth] User ${normalizedEmail} is a community Member.`);
+    if (isWhitelisted || matchedMember) {
+      const teamMemberUserId = matchedMember?.user?.id || matchedMember?.user_id;
+      const bevyUserId = teamMemberUserId ? String(teamMemberUserId) : null;
+
+      // Extract role title from Bevy or default to Organizer
+      const roleObj = matchedMember?.role as unknown;
+      let roleName = "Organizer";
+
+      if (typeof roleObj === "object" && roleObj !== null && "name" in roleObj) {
+        roleName = String((roleObj as { name: string }).name);
+      } else if (typeof matchedMember?.role === "string" && matchedMember.role) {
+        roleName = matchedMember.role;
+      } else if (matchedMember?.title) {
+        roleName = matchedMember.title;
+      }
+
+      console.log(`[Bevy Auth] Organizer verified! ${normalizedEmail} with Role: "${roleName}"`);
+
+      return {
+        isValidOrganizer: true,
+        role: roleName,
+        bevyUserId,
+        chapterRole: matchedMember?.title || roleName,
+        chapterTeamMember: matchedMember,
+        bevyUser: matchedMember?.user ?? null,
+      };
+    }
+
+    // 4. Default: User is a regular community member
+    console.log(`[Bevy Auth] User ${normalizedEmail} is verified as community Member.`);
     return {
       isValidOrganizer: false,
       role: "Member",
@@ -285,7 +238,8 @@ export async function validateBevyOrganizer(email: string, displayName?: string)
       isValidOrganizer: false,
       role: "Member",
       bevyUserId: null,
-      chapterRole: null,
+      chapterRole: "Member",
+      bevyUser: null,
     };
   }
 }
