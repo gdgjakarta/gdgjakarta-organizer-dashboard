@@ -76,3 +76,52 @@ Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), file src\win\async.c, li
 
 2. **Use Root `wrangler.jsonc`**:
    - With `.wrangler` cleaned, running `npm run preview` properly uses the root `wrangler.jsonc` targeting `.open-next/worker.js` and `.open-next/assets`.
+
+---
+
+## [September 23, 2026] - Fix Firebase Auth Popup Failure with Cross-Origin-Opener-Policy (COOP)
+
+### Error Summary
+
+After deploying to Cloudflare Workers, Firebase Google Sign-In popup completed authentication in the popup window, but the main application window never redirected to the dashboard, accompanied by browser console warnings/errors:
+```text
+Cross-Origin-Opener-Policy policy would block the window.postMessage call.
+```
+
+### Root Cause Analysis
+
+1. **COOP Header Blocking Popup Communication**:
+   - In `next.config.mjs`, the application previously set:
+     ```javascript
+     {
+       key: "Cross-Origin-Opener-Policy",
+       value: "same-origin-allow-popups",
+     }
+     ```
+   - Firebase Auth's `signInWithPopup` opens a popup that navigates across origins (`your-worker.workers.dev` -> `accounts.google.com` -> `gdgjakarta-app.firebaseapp.com/__/auth/handler`).
+   - Because the destination iframe/popup origins do not have identical COOP settings matching the opener, the browser severs the opener relationship (`window.opener` becomes `null` or restricted).
+   - When the authentication flow completes, Firebase Auth's handler is unable to post messages back to the parent window, causing the login flow to hang and fail redirecting.
+
+### Solution & Fix
+
+1. **Update COOP Header to `unsafe-none`**:
+   - In `next.config.mjs`, configured `Cross-Origin-Opener-Policy` to `unsafe-none`:
+     ```javascript
+     async headers() {
+       return [
+         {
+           source: "/(.*)",
+           headers: [
+             {
+               key: "Cross-Origin-Opener-Policy",
+               value: "unsafe-none",
+             },
+           ],
+         },
+       ];
+     }
+     ```
+   - This explicitly enables cross-origin `postMessage` messaging between Firebase Auth popups and your Cloudflare Worker app.
+
+2. **Firebase Console Authorized Domains**:
+   - Ensure the deployed Cloudflare Worker domain (e.g., `gdgjakarta-organizer-dashboard.<subdomain>.workers.dev` or custom domain) is added to **Firebase Console -> Authentication -> Settings -> Authorized Domains**.
