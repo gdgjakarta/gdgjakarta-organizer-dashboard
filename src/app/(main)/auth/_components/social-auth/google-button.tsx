@@ -29,13 +29,22 @@ export function GoogleButton({
 
     try {
       setIsLoading(true);
+      console.log("[Google Button] User clicked Sign in with Google");
       const { organizer, isAllowed } = await signInWithGoogle();
       const callbackUrl =
         typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("callbackUrl") : null;
 
+      console.log(
+        "[Google Button] Processing redirection. Role allowed as organizer:",
+        isAllowed,
+        "callbackUrl:",
+        callbackUrl,
+      );
+
       if (isAllowed) {
         toast.success(`Welcome back, ${organizer.name}! (${organizer.chapterRole ?? "Organizer"})`);
         const targetUrl = callbackUrl?.startsWith("/") ? callbackUrl : "/dashboard/organizer";
+        console.log(`[Google Button] Navigating organizer (${organizer.email}) to: ${targetUrl}`);
         router.push(targetUrl);
       } else {
         toast.success(`Welcome, ${organizer.name}!`);
@@ -47,12 +56,14 @@ export function GoogleButton({
           callbackUrl?.startsWith("/dashboard/members");
 
         const targetUrl = callbackUrl?.startsWith("/") && !isOrganizerOnlyCallback ? callbackUrl : "/dashboard/member";
+        console.log(`[Google Button] Navigating member (${organizer.email}) to: ${targetUrl}`);
         router.push(targetUrl);
       }
 
       router.refresh();
     } catch (err: unknown) {
       const error = err as { code?: string; message?: string };
+      console.error("[Google Button] Error during Google Sign-In:", error);
       if (error.code !== "auth/popup-closed-by-user") {
         toast.error(error.message ?? "Failed to sign in with Google. Please try again.");
       }

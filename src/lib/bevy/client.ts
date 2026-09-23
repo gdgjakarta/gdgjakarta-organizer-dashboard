@@ -165,13 +165,19 @@ export async function validateBevyOrganizer(email: string, displayName?: string)
     }
 
     const normalizedEmail = email.toLowerCase().trim();
-    console.log(`[Bevy Auth] Validating organizer status for: ${normalizedEmail} (Name: ${displayName ?? "N/A"})`);
+    console.log(
+      `[Bevy Auth Step 1] Validating organizer status for: ${normalizedEmail} (Display Name: ${displayName ?? "N/A"})`,
+    );
 
     // 1. Check explicit authorized organizer whitelist first
     const isWhitelisted = isAuthorizedOrganizerEmail(normalizedEmail);
+    console.log(
+      `[Bevy Auth Step 2] Whitelist check for ${normalizedEmail}: ${isWhitelisted ? "MATCHED (Authorized Organizer)" : "NOT in whitelist"}`,
+    );
 
     // 2. Fetch GDG Jakarta chapter team list
     const chapterTeams = await getBevyChapterTeams();
+    console.log(`[Bevy Auth Step 3] Retrieved ${chapterTeams.length} team members from Bevy API`);
 
     // 3. Match against chapter team members (STRICT EXACT MATCH ONLY - NO MASKED WILDCARDS)
     let matchedMember: BevyChapterTeamMember | undefined;
@@ -183,11 +189,13 @@ export async function validateBevyOrganizer(email: string, displayName?: string)
 
         // Unmasked exact email match only (ignore privacy-masked strings containing '*')
         if (teamEmail && !teamEmail.includes("*") && teamEmail === normalizedEmail) {
+          console.log(`[Bevy Auth Step 3a] Exact unmasked email match found in Bevy team: ${teamEmail}`);
           return true;
         }
 
         // Exact username match (if username is an exact email)
         if (teamUsername && !teamUsername.includes("*") && teamUsername === normalizedEmail) {
+          console.log(`[Bevy Auth Step 3b] Exact username match found in Bevy team: ${teamUsername}`);
           return true;
         }
 
@@ -211,7 +219,9 @@ export async function validateBevyOrganizer(email: string, displayName?: string)
         roleName = matchedMember.title;
       }
 
-      console.log(`[Bevy Auth] Organizer verified! ${normalizedEmail} with Role: "${roleName}"`);
+      console.log(
+        `[Bevy Auth Step 4] VERDICT: Authorized Organizer! ${normalizedEmail} assigned Role: "${roleName}" (Bevy ID: ${bevyUserId ?? "N/A"})`,
+      );
 
       return {
         isValidOrganizer: true,
@@ -224,7 +234,7 @@ export async function validateBevyOrganizer(email: string, displayName?: string)
     }
 
     // 4. Default: User is a regular community member
-    console.log(`[Bevy Auth] User ${normalizedEmail} is verified as community Member.`);
+    console.log(`[Bevy Auth Step 4] VERDICT: Regular community Member. ${normalizedEmail} assigned Role: "Member"`);
     return {
       isValidOrganizer: false,
       role: "Member",
