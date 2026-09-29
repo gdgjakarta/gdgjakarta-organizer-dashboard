@@ -63,7 +63,7 @@ export default async function Page() {
     members = (membersResponse?.results ?? []).map((m) => {
       const email = m.user.email || `user_${m.user.id}@community.dev`;
       const userId = String(m.user.id);
-      const organizerRole = teamMap.get(email.toLowerCase()) || teamMap.get(`id:${userId}`) || null;
+      const organizerRole = teamMap.get(email.toLowerCase()) ?? teamMap.get(`id:${userId}`) ?? undefined;
 
       return {
         id: userId,
