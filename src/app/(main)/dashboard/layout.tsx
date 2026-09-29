@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { AppSidebar } from "@/app/(main)/dashboard/_components/sidebar/app-sidebar";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { PREFERENCE_DEFAULTS } from "@/lib/preferences/preferences-config";
 import { cn } from "@/lib/utils";
 import { getPreference } from "@/server/server-actions";
 
@@ -14,12 +15,19 @@ import { LayoutControls } from "./_components/header/layout-controls";
 import { ThemeSwitcher } from "./_components/header/theme-switcher";
 
 export default async function Layout({ children }: Readonly<{ children: ReactNode }>) {
-  const cookieStore = await cookies();
-  const defaultOpen = cookieStore.get("sidebar_state")?.value !== "false";
-  const [variant, collapsible] = await Promise.all([
-    getPreference("sidebar_variant"),
-    getPreference("sidebar_collapsible"),
-  ]);
+  let defaultOpen = true;
+  let variant = PREFERENCE_DEFAULTS.sidebar_variant;
+  let collapsible = PREFERENCE_DEFAULTS.sidebar_collapsible;
+
+  try {
+    const cookieStore = await cookies();
+    defaultOpen = cookieStore.get("sidebar_state")?.value !== "false";
+    const [v, c] = await Promise.all([getPreference("sidebar_variant"), getPreference("sidebar_collapsible")]);
+    variant = v;
+    collapsible = c;
+  } catch (error) {
+    console.warn("[Dashboard Layout] Error reading cookies or preferences, using defaults:", error);
+  }
 
   return (
     <SidebarProvider

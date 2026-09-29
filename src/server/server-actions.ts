@@ -11,8 +11,12 @@ import {
 } from "@/lib/preferences/preferences-config";
 
 export async function getValueFromCookie(key: string): Promise<string | undefined> {
-  const cookieStore = await cookies();
-  return cookieStore.get(key)?.value;
+  try {
+    const cookieStore = await cookies();
+    return cookieStore.get(key)?.value;
+  } catch {
+    return undefined;
+  }
 }
 
 export async function setValueToCookie(
@@ -20,11 +24,15 @@ export async function setValueToCookie(
   value: string,
   options: { path?: string; maxAge?: number } = {},
 ): Promise<void> {
-  const cookieStore = await cookies();
-  cookieStore.set(key, value, {
-    path: options.path ?? "/",
-    maxAge: options.maxAge ?? 60 * 60 * 24 * 7, // default: 7 days
-  });
+  try {
+    const cookieStore = await cookies();
+    cookieStore.set(key, value, {
+      path: options.path ?? "/",
+      maxAge: options.maxAge ?? 60 * 60 * 24 * 7, // default: 7 days
+    });
+  } catch (error) {
+    console.warn(`[Preference] Error setting cookie "${key}":`, error);
+  }
 }
 
 export async function getPreference<K extends PreferenceKey>(key: K): Promise<PreferenceValueMap[K]> {
@@ -35,6 +43,11 @@ export async function getPreference<K extends PreferenceKey>(key: K): Promise<Pr
     return definition.defaultValue as PreferenceValueMap[K];
   }
 
-  const cookieStore = await cookies();
-  return parsePreference(key, cookieStore.get(key)?.value?.trim());
+  try {
+    const cookieStore = await cookies();
+    return parsePreference(key, cookieStore.get(key)?.value?.trim());
+  } catch (error) {
+    console.warn(`[Preference] Error retrieving cookie for key "${key}":`, error);
+    return definition.defaultValue as PreferenceValueMap[K];
+  }
 }

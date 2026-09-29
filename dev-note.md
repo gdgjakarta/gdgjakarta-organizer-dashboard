@@ -204,3 +204,54 @@ Failed: error occurred while running deploy command
    - Changed `"build"` to `"opennextjs-cloudflare build"` so Cloudflare CI's `npm run build` builds the complete `.open-next` bundle.
    - Added `"build:next": "next build"` for standalone Next.js testing/builds if needed.
 
+---
+
+## [September 29, 2026] - Fix Minified React Error #441 after Google Sign-In Flow
+
+### Error Summary
+
+After completing Google Sign-In popup authentication, the app redirected towards the dashboard and crashed with:
+```text
+Minified React error #441; visit https://react.dev/errors/441 for the full message or use the non-minified dev environment for full errors and additional helpful warnings.
+```
+In Cloudflare Workers real-time logs, the following trace was captured:
+```json
+{
+  "trigger": "POST /auth/login",
+  "url": "https://gdgjakarta-organizer-dashboard.gdg-jakarta.workers.dev/auth/login?callbackUrl=%2Fdashboard%2Fmember",
+  "message": "    at i (worker.js:110476:40)\n    at Object.get (worker.js:110552:30)..."
+}
+```
+
+### Root Cause Analysis
+
+1. **Middleware Interception & 307 Redirect on Server Action `POST` Requests**:
+   - In Next.js App Router, invoking a Server Action (`handleUserPostLoginAction`) from `/auth/login` dispatches an HTTP `POST` request to the active page path (`POST /auth/login?callbackUrl=%2Fdashboard%2Fmember`).
+   - In `src/middleware.ts`, `if (isAuthPage(pathname) && isAuthenticated)` previously matched `/auth/login` once the user had an active session cookie and issued a `NextResponse.redirect(new URL(target, request.url))`.
+   - Because HTTP 307 redirects preserve the request method, the browser followed the redirect by sending `POST /dashboard/member`.
+   - `/dashboard/member` is a standard GET page without a corresponding action ID, causing Next.js to fail during Server Component rendering and throw React error `#441`.
+
+2. **Concurrent Duplicate Sync in Auth Store Provider**:
+   - In `src/stores/auth/auth-provider.tsx`, both `signInWithGoogle()` and Firebase's `onAuthStateChanged()` listener independently invoked `handleUserPostLoginAction()` upon popup completion, creating two simultaneous in-flight `POST /auth/login` requests that raced with each other.
+
+3. **Unprotected SSR Layout Cookie Access**:
+   - In `src/server/server-actions.ts` and `src/app/(main)/dashboard/layout.tsx`, reading cookies or layout preferences lacked fallback `try...catch` blocks to protect against worker environment quirks.
+
+### Solution & Fix
+
+1. **Bypass Middleware Redirects for Non-GET & Server Actions in [src/middleware.ts](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/src/middleware.ts)**:
+   - Added early guard:
+     ```typescript
+     if (request.method !== "GET" || request.headers.has("next-action")) {
+       return NextResponse.next();
+     }
+     ```
+   - Prevents middleware from ever sending 307 redirects for Server Action or form POST requests.
+
+2. **Deduplicate Post-Login Sync in [src/stores/auth/auth-provider.tsx](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/src/stores/auth/auth-provider.tsx)**:
+   - Added `isSigningInWithGoogle` flag to suppress the duplicate `onAuthStateChanged` sync invocation while `signInWithGoogle` is actively running.
+
+3. **Safe SSR Fallbacks in [src/server/server-actions.ts](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/src/server/server-actions.ts) and [src/app/(main)/dashboard/layout.tsx](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/src/app/(main)/dashboard/layout.tsx)**:
+   - Wrapped `cookies()` and `getPreference()` calls in `try...catch` blocks with safe defaults (`PREFERENCE_DEFAULTS`).
+
+

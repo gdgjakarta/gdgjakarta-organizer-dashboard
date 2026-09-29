@@ -28,6 +28,8 @@ function mapFirebaseUserToOrganizer(
   };
 }
 
+let isSigningInWithGoogle = false;
+
 export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
   const [store] = useState<StoreApi<AuthState>>(() => createAuthStore());
 
@@ -36,6 +38,15 @@ export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         console.log(`[Auth Provider] Firebase user detected: ${firebaseUser.email} (UID: ${firebaseUser.uid})`);
+
+        // Skip duplicate server sync if signInWithGoogle is already handling it
+        if (isSigningInWithGoogle) {
+          console.log(
+            "[Auth Provider] signInWithGoogle is actively syncing. Skipping duplicate onAuthStateChanged sync.",
+          );
+          return;
+        }
+
         let validation: import("@/lib/bevy/types").OrganizerValidationResult | undefined;
         if (firebaseUser.email) {
           try {
@@ -85,36 +96,41 @@ export function useAuthStore<T>(selector: (state: AuthState) => T): T {
  * syncs member profile to Firestore, and establishes the role-based session.
  */
 export async function signInWithGoogle(): Promise<{ organizer: AuthOrganizer; isAllowed: boolean }> {
-  console.log("[Auth Flow Step 1 - Client] Initiating Firebase signInWithPopup (Google Provider)...");
-  // Step 1: Sign in with Google
-  const result = await signInWithPopup(auth, googleProvider);
-  const user = result.user;
-  console.log(`[Auth Flow Step 2 - Client] Firebase Google Sign-In successful for: ${user.email} (UID: ${user.uid})`);
+  isSigningInWithGoogle = true;
+  try {
+    console.log("[Auth Flow Step 1 - Client] Initiating Firebase signInWithPopup (Google Provider)...");
+    // Step 1: Sign in with Google
+    const result = await signInWithPopup(auth, googleProvider);
+    const user = result.user;
+    console.log(`[Auth Flow Step 2 - Client] Firebase Google Sign-In successful for: ${user.email} (UID: ${user.uid})`);
 
-  // Step 2: Validate user against Bevy Chapter Team, sync Firestore, and set Session Cookie
-  const email = user.email ?? "";
-  const token = await user.getIdToken();
-  console.log(`[Auth Flow Step 3 - Client] Calling handleUserPostLoginAction on server for ${email}...`);
-  const validation = await handleUserPostLoginAction({
-    uid: user.uid,
-    email,
-    name: user.displayName || undefined,
-    avatar: user.photoURL || undefined,
-    token,
-  });
+    // Step 2: Validate user against Bevy Chapter Team, sync Firestore, and set Session Cookie
+    const email = user.email ?? "";
+    const token = await user.getIdToken();
+    console.log(`[Auth Flow Step 3 - Client] Calling handleUserPostLoginAction on server for ${email}...`);
+    const validation = await handleUserPostLoginAction({
+      uid: user.uid,
+      email,
+      name: user.displayName || undefined,
+      avatar: user.photoURL || undefined,
+      token,
+    });
 
-  const organizer = mapFirebaseUserToOrganizer(user, validation);
-  console.log(`[Auth Flow Step 4 - Client] Post-login sync response:`, {
-    email: organizer.email,
-    role: organizer.role,
-    chapterRole: organizer.chapterRole,
-    isAllowed: validation.isValidOrganizer,
-  });
+    const organizer = mapFirebaseUserToOrganizer(user, validation);
+    console.log(`[Auth Flow Step 4 - Client] Post-login sync response:`, {
+      email: organizer.email,
+      role: organizer.role,
+      chapterRole: organizer.chapterRole,
+      isAllowed: validation.isValidOrganizer,
+    });
 
-  return {
-    organizer,
-    isAllowed: validation.isValidOrganizer,
-  };
+    return {
+      organizer,
+      isAllowed: validation.isValidOrganizer,
+    };
+  } finally {
+    isSigningInWithGoogle = false;
+  }
 }
 
 /**

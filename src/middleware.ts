@@ -43,6 +43,12 @@ function isOrganizerOnly(pathname: string): boolean {
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // Never intercept or redirect Server Actions or non-GET requests away from handlers
+  if (request.method !== "GET" || request.headers.has("next-action")) {
+    return NextResponse.next();
+  }
+
   const token = request.cookies.get(AUTH_COOKIE)?.value;
   const role = request.cookies.get(ROLE_COOKIE)?.value;
   const isAuthenticated = Boolean(token);
