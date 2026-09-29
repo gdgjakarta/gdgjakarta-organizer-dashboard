@@ -265,5 +265,13 @@ In Cloudflare Workers real-time logs, the following trace was captured:
 6. **Graceful Error Toast Handling in [src/app/(main)/auth/_components/social-auth/google-button.tsx](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/src/app/(main)/auth/_components/social-auth/google-button.tsx)**:
    - Intercepted minified React error messages to show clear, user-friendly toast notifications instead of raw stack or error numbers.
 
+7. **Decouple Firestore Client SDK from Cloudflare Worker Runtime ([src/server/auth-actions.ts](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/src/server/auth-actions.ts), [src/stores/auth/auth-provider.tsx](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/src/stores/auth/auth-provider.tsx), [src/lib/firestore/client.ts](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/src/lib/firestore/client.ts))**:
+   - **Root Cause**: Cloudflare Workers' V8 isolates strictly prohibit dynamic code generation (`eval()` and `new Function()`). When `@firebase/firestore` initializes inside a Worker during a Server Action, its dependency `protobufjs` invokes `@protobufjs/codegen` (`Function(source)()`), throwing an uncatchable `EvalError` (`at Function (<anonymous>) ... at l.fromJSON`) and crashing the Worker with HTTP 500.
+   - **Fix**:
+     - Removed Firestore operations from `src/server/auth-actions.ts`. The Server Action now strictly performs Bevy API validation via native `fetch` and sets session cookies via HTTP headers.
+     - Delegated Firestore member profile persistence (`syncMemberToFirestore`) to the browser client in `src/stores/auth/auth-provider.tsx`, where Firebase Auth credentials and the full browser environment (WebChannel, IndexedDB, dynamic codegen) are natively supported.
+     - Added `if (typeof window === "undefined")` guards to all functions in `src/lib/firestore/client.ts` to ensure Firestore client methods safely return empty fallbacks instead of crashing if invoked in a server or worker context.
+
+
 
 

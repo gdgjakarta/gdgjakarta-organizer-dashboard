@@ -13,6 +13,7 @@ import type {
 // ── Events ──────────────────────────────────────────────────────────────────
 
 export async function getFirestoreEvents(maxResults = 100): Promise<FirestoreEvent[]> {
+  if (typeof window === "undefined") return [];
   try {
     const eventsRef = collection(db, "events");
     const q = query(eventsRef, orderBy("start_date", "desc"), limit(maxResults));
@@ -29,6 +30,7 @@ export async function getFirestoreEvents(maxResults = 100): Promise<FirestoreEve
 }
 
 export async function getFirestoreEventById(eventId: string): Promise<FirestoreEvent | null> {
+  if (typeof window === "undefined") return null;
   try {
     const docRef = doc(db, "events", eventId);
     const snap = await getDoc(docRef);
@@ -41,6 +43,7 @@ export async function getFirestoreEventById(eventId: string): Promise<FirestoreE
 }
 
 export async function saveFirestoreEvent(event: FirestoreEvent): Promise<void> {
+  if (typeof window === "undefined") return;
   const docRef = doc(db, "events", String(event.id));
   await setDoc(docRef, event, { merge: true });
 }
@@ -48,6 +51,7 @@ export async function saveFirestoreEvent(event: FirestoreEvent): Promise<void> {
 // ── Members ─────────────────────────────────────────────────────────────────
 
 export async function getFirestoreMembers(maxResults = 200): Promise<FirestoreMember[]> {
+  if (typeof window === "undefined") return [];
   try {
     const membersRef = collection(db, "members");
     const q = query(membersRef, orderBy("name", "asc"), limit(maxResults));
@@ -64,6 +68,7 @@ export async function getFirestoreMembers(maxResults = 200): Promise<FirestoreMe
 }
 
 export async function getFirestoreMemberById(memberId: string): Promise<FirestoreMember | null> {
+  if (typeof window === "undefined") return null;
   try {
     const docRef = doc(db, "members", memberId);
     const snap = await getDoc(docRef);
@@ -76,6 +81,7 @@ export async function getFirestoreMemberById(memberId: string): Promise<Firestor
 }
 
 export async function saveFirestoreMember(member: FirestoreMember): Promise<void> {
+  if (typeof window === "undefined") return;
   const docRef = doc(db, "members", String(member.id));
   await setDoc(docRef, member, { merge: true });
 }
@@ -83,6 +89,7 @@ export async function saveFirestoreMember(member: FirestoreMember): Promise<void
 // ── Registrations & Filtration ──────────────────────────────────────────────
 
 export async function getEventRegistrations(eventId: string): Promise<FirestoreRegistration[]> {
+  if (typeof window === "undefined") return [];
   try {
     const regRef = collection(db, "event_registrations");
     const q = query(regRef, where("event_id", "==", String(eventId)));
@@ -108,6 +115,7 @@ export async function getMemberRegistrations(
   memberId?: string,
   memberEmail?: string,
 ): Promise<FirestoreRegistration[]> {
+  if (typeof window === "undefined") return [];
   try {
     const regRef = collection(db, "event_registrations");
     let registrations: FirestoreRegistration[] = [];
@@ -145,6 +153,7 @@ export async function checkExistingRegistration(
   memberId?: string,
   memberEmail?: string,
 ): Promise<FirestoreRegistration | null> {
+  if (typeof window === "undefined") return null;
   try {
     const normalizedEmail = (memberEmail ?? "").trim().toLowerCase();
     const eventIdStr = String(eventId);
@@ -178,6 +187,7 @@ export async function checkExistingRegistration(
 }
 
 export async function registerMemberForEvent(registration: Omit<FirestoreRegistration, "id">): Promise<string> {
+  if (typeof window === "undefined") throw new Error("Registration must be performed from client");
   const normalizedEmail = registration.member_email.trim().toLowerCase();
   const eventIdStr = String(registration.event_id);
 
@@ -224,6 +234,7 @@ export async function updateRegistrationStatus(
   reviewer?: { id: string; name: string },
   notes?: string,
 ): Promise<void> {
+  if (typeof window === "undefined") return;
   const docRef = doc(db, "event_registrations", registrationId);
   const updatePayload: Partial<FirestoreRegistration> = {
     status,
@@ -251,6 +262,7 @@ export async function updateRegistrationStatus(
 // ── Sync Metadata ───────────────────────────────────────────────────────────
 
 export async function getSyncMetadata(): Promise<FirestoreSyncMetadata | null> {
+  if (typeof window === "undefined") return null;
   try {
     const docRef = doc(db, "sync_metadata", "bevy");
     const snap = await getDoc(docRef);
@@ -263,6 +275,7 @@ export async function getSyncMetadata(): Promise<FirestoreSyncMetadata | null> {
 }
 
 export async function updateSyncMetadata(metadata: Partial<FirestoreSyncMetadata>): Promise<void> {
+  if (typeof window === "undefined") return;
   const docRef = doc(db, "sync_metadata", "bevy");
   await setDoc(docRef, { ...metadata, id: "bevy" }, { merge: true });
 }

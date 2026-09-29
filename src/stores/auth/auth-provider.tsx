@@ -6,6 +6,8 @@ import { onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
 import { type StoreApi, useStore } from "zustand";
 
 import { auth, googleProvider } from "@/config/firebase";
+import { saveFirestoreMember } from "@/lib/firestore/client";
+import type { FirestoreMember } from "@/lib/firestore/types";
 import { clearAuthSessionCookie, handleUserPostLoginAction } from "@/server/auth-actions";
 
 import { type AuthOrganizer, type AuthState, createAuthStore } from "./auth-store";
@@ -26,6 +28,38 @@ function mapFirebaseUserToOrganizer(
     bevyUserId: validation?.bevyUserId,
     chapterRole: validation?.chapterRole || (isOrg ? "Organizer" : "Member"),
   };
+}
+
+async function syncMemberToFirestore(
+  user: import("firebase/auth").User,
+  validation?: import("@/lib/bevy/types").OrganizerValidationResult,
+) {
+  try {
+    const isOrg = validation?.isValidOrganizer ?? false;
+    const now = new Date().toISOString();
+    const email = user.email ?? "";
+    const memberData: FirestoreMember = {
+      id: user.uid,
+      uid: user.uid,
+      bevy_user_id: validation?.bevyUserId ? String(validation.bevyUserId) : null,
+      name: user.displayName ?? (email ? email.split("@")[0] : "Community Member"),
+      email,
+      avatar_url: user.photoURL ?? "",
+      role: isOrg ? "organizer" : "member",
+      chapter_role: validation?.chapterRole ?? (isOrg ? "Organizer" : "Member"),
+      team: isOrg ? "Core Team" : "Community",
+      status: "Active",
+      joined_date: now,
+      events_registered_count: 0,
+      events_attended_count: 0,
+      last_active: now,
+      updated_at: now,
+    };
+    await saveFirestoreMember(memberData);
+    console.log(`[Auth Flow - Client] Synced member profile to Firestore for ${email}`);
+  } catch (fsErr) {
+    console.warn("[Auth Flow - Client] Firestore sync error (non-fatal):", fsErr);
+  }
 }
 
 let isSigningInWithGoogle = false;
@@ -55,14 +89,15 @@ export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
             validation = await handleUserPostLoginAction({
               uid: firebaseUser.uid,
               email: firebaseUser.email,
-              name: firebaseUser.displayName || undefined,
-              avatar: firebaseUser.photoURL || undefined,
+              name: firebaseUser.displayName ?? undefined,
+              avatar: firebaseUser.photoURL ?? undefined,
               token,
             });
             console.log(
               `[Auth Provider] Server sync completed for ${firebaseUser.email}. isOrganizer:`,
               validation.isValidOrganizer,
             );
+            await syncMemberToFirestore(firebaseUser, validation);
           } catch (syncErr) {
             console.error("[Auth Provider] Error during post-login sync:", syncErr);
           }
@@ -104,15 +139,15 @@ export async function signInWithGoogle(): Promise<{ organizer: AuthOrganizer; is
     const user = result.user;
     console.log(`[Auth Flow Step 2 - Client] Firebase Google Sign-In successful for: ${user.email} (UID: ${user.uid})`);
 
-    // Step 2: Validate user against Bevy Chapter Team, sync Firestore, and set Session Cookie
+    // Step 2: Validate user against Bevy Chapter Team and set Session Cookie on server
     const email = user.email ?? "";
     const token = await user.getIdToken();
     console.log(`[Auth Flow Step 3 - Client] Calling handleUserPostLoginAction on server for ${email}...`);
     const validation = await handleUserPostLoginAction({
       uid: user.uid,
       email,
-      name: user.displayName || undefined,
-      avatar: user.photoURL || undefined,
+      name: user.displayName ?? undefined,
+      avatar: user.photoURL ?? undefined,
       token,
     });
 
@@ -123,6 +158,9 @@ export async function signInWithGoogle(): Promise<{ organizer: AuthOrganizer; is
       chapterRole: organizer.chapterRole,
       isAllowed: validation.isValidOrganizer,
     });
+
+    // Step 5: Sync member profile in Firestore on the client
+    await syncMemberToFirestore(user, validation);
 
     return {
       organizer,

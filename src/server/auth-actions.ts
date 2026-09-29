@@ -5,8 +5,6 @@ import { redirect } from "next/navigation";
 
 import { validateBevyOrganizer } from "@/lib/bevy/client";
 import type { OrganizerValidationResult } from "@/lib/bevy/types";
-import { getFirestoreMemberById, saveFirestoreMember } from "@/lib/firestore/client";
-import type { FirestoreMember } from "@/lib/firestore/types";
 
 const AUTH_COOKIE = "auth_token";
 const ROLE_COOKIE = "auth_role";
@@ -32,26 +30,16 @@ export async function validateOrganizerAction(email: string, name?: string): Pro
 /**
  * Handles user post-login sync:
  * 1. Validates strictly against Authorized Organizer list & exact Bevy Chapter Team.
- * 2. Synchronizes profile with Firestore `members` collection (remediating any legacy false-organizer flags).
- * 3. Sets the session cookies (auth_token & auth_role).
+ * 2. Sets the session cookies (auth_token & auth_role).
+ * Note: Firestore member profile persistence is handled on the authenticated browser client
+ * to prevent Protobuf/V8 EvalError in Cloudflare Workers.
  */
 export async function handleUserPostLoginAction(params: UserAuthSyncParams): Promise<OrganizerValidationResult> {
   try {
-    const { uid, email, name, avatar, token } = params;
+    const { uid, email, name, token } = params;
     console.log(
       `[Auth Step 1 - Server] Received handleUserPostLoginAction for UID: ${uid}, Email: ${email}, Name: ${name ?? "N/A"}`,
     );
-
-    let existingMember: FirestoreMember | null = null;
-    try {
-      existingMember = await getFirestoreMemberById(uid);
-      console.log(
-        `[Auth Step 2 - Server] Existing Firestore record for ${email}:`,
-        existingMember ? { role: existingMember.role, team: existingMember.team } : "None (New User)",
-      );
-    } catch (err) {
-      console.error("[Auth Step 2 - Server] Error fetching member before validation:", err);
-    }
 
     // 1. Validate role against authorized whitelist and exact Bevy Chapter Team
     let validation: OrganizerValidationResult = {
@@ -63,7 +51,7 @@ export async function handleUserPostLoginAction(params: UserAuthSyncParams): Pro
     try {
       validation = await validateBevyOrganizer(email, name);
     } catch (valErr) {
-      console.error("[Auth Step 3 - Server] Validation error:", valErr);
+      console.error("[Auth Step 2 - Server] Validation error:", valErr);
     }
 
     const isOrganizer = validation.isValidOrganizer;
@@ -71,45 +59,17 @@ export async function handleUserPostLoginAction(params: UserAuthSyncParams): Pro
     const chapterRole = isOrganizer ? (validation.chapterRole ?? "Organizer") : "Member";
     const team = isOrganizer ? "Core Team" : "Community";
     console.log(
-      `[Auth Step 3 - Server] Role resolved for ${email} -> role: "${role}", chapterRole: "${chapterRole}", team: "${team}"`,
+      `[Auth Step 2 - Server] Role resolved for ${email} -> role: "${role}", chapterRole: "${chapterRole}", team: "${team}"`,
     );
 
-    // 2. Sync to Firestore members
-    try {
-      const now = new Date().toISOString();
-
-      const memberData: FirestoreMember = {
-        id: uid,
-        uid,
-        bevy_user_id: validation.bevyUserId ? String(validation.bevyUserId) : (existingMember?.bevy_user_id ?? null),
-        name: name ?? existingMember?.name ?? (email ? email.split("@")[0] : "Community Member"),
-        email,
-        avatar_url: avatar ?? existingMember?.avatar_url ?? "",
-        role: role,
-        chapter_role: chapterRole,
-        team: team,
-        status: "Active",
-        joined_date: existingMember?.joined_date ?? now,
-        events_registered_count: existingMember?.events_registered_count ?? 0,
-        events_attended_count: existingMember?.events_attended_count ?? 0,
-        last_active: now,
-        updated_at: now,
-      };
-
-      await saveFirestoreMember(memberData);
-      console.log(`[Auth Step 4 - Server] Successfully synchronized member data in Firestore for ${email}`);
-    } catch (err) {
-      console.error("[Auth Step 4 - Server] Member sync on login error:", err);
-    }
-
-    // 3. Set Session Cookie if token provided
+    // 2. Set Session Cookie if token provided
     if (token) {
-      console.log(`[Auth Step 5 - Server] Setting session cookies (auth_token & auth_role="${role}") for ${email}`);
+      console.log(`[Auth Step 3 - Server] Setting session cookies (auth_token & auth_role="${role}") for ${email}`);
       await setAuthSessionCookie(token, role, true);
     }
 
-    console.log(`[Auth Step 6 - Server] Completed post-login sync for ${email}`);
-    // 4. Return ONLY a plain, cleanly serializable object to prevent RSC flight serialization failures
+    console.log(`[Auth Step 4 - Server] Completed post-login sync for ${email}`);
+    // 3. Return ONLY a plain, cleanly serializable object to prevent RSC flight serialization failures
     return {
       isValidOrganizer: isOrganizer,
       role: role,
