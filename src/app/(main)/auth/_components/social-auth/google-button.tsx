@@ -2,8 +2,6 @@
 
 import { useState } from "react";
 
-import { useRouter } from "next/navigation";
-
 import { Loader2 } from "lucide-react";
 import { siGoogle } from "simple-icons";
 import { toast } from "sonner";
@@ -20,8 +18,13 @@ export function GoogleButton({
   children,
   ...props
 }: React.ComponentProps<typeof Button>) {
-  const router = useRouter();
-  const [isLoading, setIsLoading] = useState(false);
+  // If returning from Google redirect, show loading state while AuthProvider resolves getRedirectResult
+  const [isLoading, setIsLoading] = useState(() => {
+    if (typeof window !== "undefined" && sessionStorage.getItem("auth_redirect_in_progress") === "true") {
+      return true;
+    }
+    return false;
+  });
 
   const handleGoogleSignIn = async (e: React.MouseEvent<HTMLButtonElement>) => {
     onClick?.(e);
@@ -29,50 +32,20 @@ export function GoogleButton({
 
     try {
       setIsLoading(true);
-      console.log("[Google Button] User clicked Sign in with Google");
-      const { organizer, isAllowed } = await signInWithGoogle();
+      console.log("[Google Button] User clicked Sign in with Google (initiating redirect)");
       const callbackUrl =
         typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("callbackUrl") : null;
 
-      console.log(
-        "[Google Button] Processing redirection. Role allowed as organizer:",
-        isAllowed,
-        "callbackUrl:",
-        callbackUrl,
-      );
-
-      if (isAllowed) {
-        toast.success(`Welcome back, ${organizer.name}! (${organizer.chapterRole ?? "Organizer"})`);
-        const targetUrl = callbackUrl?.startsWith("/") ? callbackUrl : "/dashboard/organizer";
-        console.log(`[Google Button] Navigating organizer (${organizer.email}) to: ${targetUrl}`);
-        router.push(targetUrl);
-      } else {
-        toast.success(`Welcome, ${organizer.name}!`);
-        // If callbackUrl points to organizer-specific paths, redirect to member dashboard instead
-        const isOrganizerOnlyCallback =
-          callbackUrl?.startsWith("/dashboard/organizer") ||
-          callbackUrl?.startsWith("/dashboard/events") ||
-          callbackUrl?.startsWith("/dashboard/email-manager") ||
-          callbackUrl?.startsWith("/dashboard/members");
-
-        const targetUrl = callbackUrl?.startsWith("/") && !isOrganizerOnlyCallback ? callbackUrl : "/dashboard/member";
-        console.log(`[Google Button] Navigating member (${organizer.email}) to: ${targetUrl}`);
-        router.push(targetUrl);
-      }
-
-      router.refresh();
+      await signInWithGoogle(callbackUrl);
     } catch (err: unknown) {
-      const error = err as { code?: string; message?: string };
-      console.error("[Google Button] Error during Google Sign-In:", error);
-      if (error.code !== "auth/popup-closed-by-user") {
-        let message = error.message ?? "Failed to sign in with Google. Please try again.";
-        if (message.includes("Minified React error") || message.includes("Server Components render")) {
-          message = "An error occurred while communicating with the server. Please try again.";
-        }
-        toast.error(message);
+      console.error("[Google Button] Error during Google Sign-In redirect:", err);
+      if (typeof window !== "undefined") {
+        sessionStorage.removeItem("auth_redirect_in_progress");
+        sessionStorage.removeItem("auth_redirect_callback_url");
       }
-    } finally {
       setIsLoading(false);
+      const error = err as { code?: string; message?: string };
+      toast.error(error.message ?? "Failed to initiate Google Sign-In. Please try again.");
     }
   };
 

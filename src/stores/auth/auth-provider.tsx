@@ -2,7 +2,10 @@
 
 import { createContext, use, useEffect, useState } from "react";
 
-import { onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
+import { useRouter } from "next/navigation";
+
+import { getRedirectResult, onAuthStateChanged, signInWithRedirect, signOut } from "firebase/auth";
+import { toast } from "sonner";
 import { type StoreApi, useStore } from "zustand";
 
 import { auth, googleProvider } from "@/config/firebase";
@@ -62,10 +65,116 @@ async function syncMemberToFirestore(
   }
 }
 
-let isSigningInWithGoogle = false;
+const REDIRECT_PENDING_KEY = "auth_redirect_in_progress";
+const REDIRECT_CALLBACK_KEY = "auth_redirect_callback_url";
+
+let isProcessingRedirect = false;
 
 export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
   const [store] = useState<StoreApi<AuthState>>(() => createAuthStore());
+  const router = useRouter();
+
+  // Handle Firebase redirect result when returning from Google authentication
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function handleRedirect() {
+      const isRedirectPending =
+        typeof window !== "undefined" && sessionStorage.getItem(REDIRECT_PENDING_KEY) === "true";
+
+      if (!isRedirectPending) {
+        return;
+      }
+
+      isProcessingRedirect = true;
+      try {
+        console.log("[Auth Provider] Checking Firebase getRedirectResult...");
+        const result = await getRedirectResult(auth);
+
+        if (result?.user && !isCancelled) {
+          const user = result.user;
+          console.log(
+            `[Auth Flow - Redirect] Google Sign-In redirect successful for: ${user.email} (UID: ${user.uid})`,
+          );
+
+          const email = user.email ?? "";
+          const token = await user.getIdToken();
+          console.log(`[Auth Flow - Redirect] Calling handleUserPostLoginAction on server for ${email}...`);
+
+          const validation = await handleUserPostLoginAction({
+            uid: user.uid,
+            email,
+            name: user.displayName ?? undefined,
+            avatar: user.photoURL ?? undefined,
+            token,
+          });
+
+          const organizer = mapFirebaseUserToOrganizer(user, validation);
+          console.log("[Auth Flow - Redirect] Post-login sync response:", {
+            email: organizer.email,
+            role: organizer.role,
+            chapterRole: organizer.chapterRole,
+            isAllowed: validation.isValidOrganizer,
+          });
+
+          // Sync member profile in Firestore on the client
+          await syncMemberToFirestore(user, validation);
+
+          // Update client AuthState
+          store.getState().setUser(organizer, user);
+
+          // Retrieve destination from sessionStorage
+          const savedCallbackUrl = sessionStorage.getItem(REDIRECT_CALLBACK_KEY);
+          sessionStorage.removeItem(REDIRECT_PENDING_KEY);
+          sessionStorage.removeItem(REDIRECT_CALLBACK_KEY);
+
+          if (validation.isValidOrganizer) {
+            toast.success(`Welcome back, ${organizer.name}! (${organizer.chapterRole ?? "Organizer"})`);
+            const targetUrl = savedCallbackUrl?.startsWith("/") ? savedCallbackUrl : "/dashboard/organizer";
+            console.log(`[Auth Flow - Redirect] Navigating organizer (${organizer.email}) to: ${targetUrl}`);
+            router.push(targetUrl);
+          } else {
+            toast.success(`Welcome, ${organizer.name}!`);
+            const isOrganizerOnlyCallback =
+              savedCallbackUrl?.startsWith("/dashboard/organizer") ||
+              savedCallbackUrl?.startsWith("/dashboard/events") ||
+              savedCallbackUrl?.startsWith("/dashboard/email-manager") ||
+              savedCallbackUrl?.startsWith("/dashboard/members");
+
+            const targetUrl =
+              savedCallbackUrl?.startsWith("/") && !isOrganizerOnlyCallback ? savedCallbackUrl : "/dashboard/member";
+            console.log(`[Auth Flow - Redirect] Navigating member (${organizer.email}) to: ${targetUrl}`);
+            router.push(targetUrl);
+          }
+
+          router.refresh();
+        } else {
+          sessionStorage.removeItem(REDIRECT_PENDING_KEY);
+          sessionStorage.removeItem(REDIRECT_CALLBACK_KEY);
+        }
+      } catch (err: unknown) {
+        sessionStorage.removeItem(REDIRECT_PENDING_KEY);
+        sessionStorage.removeItem(REDIRECT_CALLBACK_KEY);
+        console.error("[Auth Provider] Error during getRedirectResult:", err);
+        const error = err as { code?: string; message?: string };
+        if (error.code !== "auth/redirect-cancelled-by-user") {
+          let message = error.message ?? "Failed to sign in with Google. Please try again.";
+          if (message.includes("Minified React error") || message.includes("Server Components render")) {
+            message = "An error occurred while communicating with the server. Please try again.";
+          }
+          toast.error(message);
+        }
+      } finally {
+        isProcessingRedirect = false;
+      }
+    }
+
+    void handleRedirect();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [store, router]);
 
   useEffect(() => {
     console.log("[Auth Provider] Subscribing to onAuthStateChanged");
@@ -73,10 +182,12 @@ export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
       if (firebaseUser) {
         console.log(`[Auth Provider] Firebase user detected: ${firebaseUser.email} (UID: ${firebaseUser.uid})`);
 
-        // Skip duplicate server sync if signInWithGoogle is already handling it
-        if (isSigningInWithGoogle) {
+        // Skip duplicate server sync if redirect resolution is actively handling it
+        const isRedirectPending =
+          typeof window !== "undefined" && sessionStorage.getItem(REDIRECT_PENDING_KEY) === "true";
+        if (isProcessingRedirect || isRedirectPending) {
           console.log(
-            "[Auth Provider] signInWithGoogle is actively syncing. Skipping duplicate onAuthStateChanged sync.",
+            "[Auth Provider] Redirect sign-in is actively syncing. Skipping duplicate onAuthStateChanged sync.",
           );
           return;
         }
@@ -127,48 +238,19 @@ export function useAuthStore<T>(selector: (state: AuthState) => T): T {
 }
 
 /**
- * Triggers Google Sign In with Firebase auth, validates against Bevy Chapter Team,
+ * Triggers Google Sign In with Firebase auth using full-page redirect,
+ * records return destination in sessionStorage, validates against Bevy Chapter Team,
  * syncs member profile to Firestore, and establishes the role-based session.
  */
-export async function signInWithGoogle(): Promise<{ organizer: AuthOrganizer; isAllowed: boolean }> {
-  isSigningInWithGoogle = true;
-  try {
-    console.log("[Auth Flow Step 1 - Client] Initiating Firebase signInWithPopup (Google Provider)...");
-    // Step 1: Sign in with Google
-    const result = await signInWithPopup(auth, googleProvider);
-    const user = result.user;
-    console.log(`[Auth Flow Step 2 - Client] Firebase Google Sign-In successful for: ${user.email} (UID: ${user.uid})`);
-
-    // Step 2: Validate user against Bevy Chapter Team and set Session Cookie on server
-    const email = user.email ?? "";
-    const token = await user.getIdToken();
-    console.log(`[Auth Flow Step 3 - Client] Calling handleUserPostLoginAction on server for ${email}...`);
-    const validation = await handleUserPostLoginAction({
-      uid: user.uid,
-      email,
-      name: user.displayName ?? undefined,
-      avatar: user.photoURL ?? undefined,
-      token,
-    });
-
-    const organizer = mapFirebaseUserToOrganizer(user, validation);
-    console.log(`[Auth Flow Step 4 - Client] Post-login sync response:`, {
-      email: organizer.email,
-      role: organizer.role,
-      chapterRole: organizer.chapterRole,
-      isAllowed: validation.isValidOrganizer,
-    });
-
-    // Step 5: Sync member profile in Firestore on the client
-    await syncMemberToFirestore(user, validation);
-
-    return {
-      organizer,
-      isAllowed: validation.isValidOrganizer,
-    };
-  } finally {
-    isSigningInWithGoogle = false;
+export async function signInWithGoogle(callbackUrl?: string | null): Promise<void> {
+  console.log("[Auth Flow Step 1 - Client] Initiating Firebase signInWithRedirect (Google Provider)...");
+  if (typeof window !== "undefined") {
+    sessionStorage.setItem(REDIRECT_PENDING_KEY, "true");
+    if (callbackUrl) {
+      sessionStorage.setItem(REDIRECT_CALLBACK_KEY, callbackUrl);
+    }
   }
+  await signInWithRedirect(auth, googleProvider);
 }
 
 /**
