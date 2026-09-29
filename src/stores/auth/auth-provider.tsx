@@ -9,7 +9,6 @@ import { toast } from "sonner";
 import { type StoreApi, useStore } from "zustand";
 
 import { auth, googleProvider } from "@/config/firebase";
-import { saveFirestoreMember } from "@/lib/firestore/client";
 import type { FirestoreMember } from "@/lib/firestore/types";
 import { clearAuthSessionCookie, handleUserPostLoginAction } from "@/server/auth-actions";
 
@@ -37,7 +36,9 @@ async function syncMemberToFirestore(
   user: import("firebase/auth").User,
   validation?: import("@/lib/bevy/types").OrganizerValidationResult,
 ) {
+  if (typeof window === "undefined") return;
   try {
+    const { saveFirestoreMember } = await import("@/lib/firestore/client");
     const isOrg = validation?.isValidOrganizer ?? false;
     const now = new Date().toISOString();
     const email = user.email ?? "";

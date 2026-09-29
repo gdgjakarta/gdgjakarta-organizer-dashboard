@@ -2,21 +2,13 @@
 
 import { revalidateDashboardPath } from "@/server/server-actions";
 
-import {
-  checkExistingRegistration,
-  getEventRegistrations,
-  getMemberRegistrations,
-  getSyncMetadata,
-  registerMemberForEvent,
-  updateRegistrationStatus,
-} from "./client";
-import { syncAllBevyData, syncBevyEventsToFirestore, syncBevyMembersToFirestore } from "./sync-service";
 import type { FirestoreRegistration, RegistrationStatus } from "./types";
 
 /**
  * Triggers a full sync from Bevy into Firestore on the client.
  */
 export async function triggerSyncAction() {
+  const { syncAllBevyData } = await import("./sync-service");
   const result = await syncAllBevyData();
   await revalidateDashboardPath("/dashboard/organizer");
   await revalidateDashboardPath("/dashboard/events");
@@ -28,6 +20,7 @@ export async function triggerSyncAction() {
  * Triggers events-only sync on the client.
  */
 export async function triggerEventsSyncAction() {
+  const { syncBevyEventsToFirestore } = await import("./sync-service");
   const result = await syncBevyEventsToFirestore();
   await revalidateDashboardPath("/dashboard/events");
   return result;
@@ -37,6 +30,7 @@ export async function triggerEventsSyncAction() {
  * Triggers members-only sync on the client.
  */
 export async function triggerMembersSyncAction() {
+  const { syncBevyMembersToFirestore } = await import("./sync-service");
   const result = await syncBevyMembersToFirestore();
   await revalidateDashboardPath("/dashboard/members");
   return result;
@@ -46,6 +40,7 @@ export async function triggerMembersSyncAction() {
  * Fetch registrations for an event.
  */
 export async function fetchEventRegistrationsAction(eventId: string) {
+  const { getEventRegistrations } = await import("./client");
   return await getEventRegistrations(eventId);
 }
 
@@ -53,6 +48,7 @@ export async function fetchEventRegistrationsAction(eventId: string) {
  * Check if a specific member/email is registered for an event.
  */
 export async function checkEventRegistrationAction(eventId: string, memberId?: string, email?: string) {
+  const { checkExistingRegistration } = await import("./client");
   return await checkExistingRegistration(eventId, memberId, email);
 }
 
@@ -60,6 +56,7 @@ export async function checkEventRegistrationAction(eventId: string, memberId?: s
  * Fetch registrations for a specific member by ID or email.
  */
 export async function fetchMemberRegistrationsAction(memberId?: string, email?: string) {
+  const { getMemberRegistrations } = await import("./client");
   return await getMemberRegistrations(memberId, email);
 }
 
@@ -73,6 +70,7 @@ export async function updateRegistrationStatusAction(
   reviewer?: { id: string; name: string },
   notes?: string,
 ) {
+  const { updateRegistrationStatus } = await import("./client");
   await updateRegistrationStatus(registrationId, eventId, status, reviewer, notes);
   await revalidateDashboardPath("/dashboard/events");
   await revalidateDashboardPath(`/dashboard/events/${eventId}`);
@@ -84,6 +82,7 @@ export async function updateRegistrationStatusAction(
  */
 export async function registerForEventAction(registration: Omit<FirestoreRegistration, "id">) {
   try {
+    const { registerMemberForEvent } = await import("./client");
     const regId = await registerMemberForEvent(registration);
     await revalidateDashboardPath("/dashboard/events");
     await revalidateDashboardPath(`/dashboard/events/${registration.event_id}`);
@@ -101,5 +100,6 @@ export async function registerForEventAction(registration: Omit<FirestoreRegistr
  * Get sync metadata status.
  */
 export async function fetchSyncMetadataAction() {
+  const { getSyncMetadata } = await import("./client");
   return await getSyncMetadata();
 }

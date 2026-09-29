@@ -21,8 +21,7 @@ import {
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { updateRegistrationStatusAction } from "@/lib/firestore/actions";
-import { getEventRegistrations } from "@/lib/firestore/client";
+import { fetchEventRegistrationsAction, updateRegistrationStatusAction } from "@/lib/firestore/actions";
 import type { FirestoreRegistration, RegistrationStatus } from "@/lib/firestore/types";
 import { cn, getInitials } from "@/lib/utils";
 
@@ -72,7 +71,7 @@ export function RegistrantsTab({ eventId, registrations }: RegistrantsTabProps) 
   }, [registrations]);
 
   useEffect(() => {
-    void getEventRegistrations(eventId).then((list) => {
+    void fetchEventRegistrationsAction(eventId).then((list) => {
       if (list && list.length > 0) {
         setRegistrationsList(list);
       }

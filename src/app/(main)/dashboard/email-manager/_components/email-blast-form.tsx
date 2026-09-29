@@ -13,7 +13,6 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { getFirestoreEvents } from "@/lib/firestore/client";
 import type { FirestoreEvent } from "@/lib/firestore/types";
 import { extractApiMessage } from "@/lib/utils";
 
@@ -46,7 +45,7 @@ export function EmailBlastForm({ onSuccess, showHeader = true }: EmailBlastFormP
   const [isLoadingSheets, setIsLoadingSheets] = useState(false);
   const [events, setEvents] = useState<FirestoreEvent[]>([]);
   const [isLoadingEvents, setIsLoadingEvents] = useState(true);
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
 
   const {
     register,
@@ -80,6 +79,7 @@ export function EmailBlastForm({ onSuccess, showHeader = true }: EmailBlastFormP
   useEffect(() => {
     async function loadEvents() {
       try {
+        const { getFirestoreEvents } = await import("@/lib/firestore/client");
         const data = await getFirestoreEvents(100);
         setEvents(data);
       } catch (error) {

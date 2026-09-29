@@ -13,7 +13,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { saveFirestoreEvent } from "@/lib/firestore/client";
 import type { CustomQuestion, FirestoreEvent } from "@/lib/firestore/types";
 
 interface CustomFormTabProps {
@@ -84,6 +83,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
           updated_at: new Date().toISOString(),
         };
 
+        const { saveFirestoreEvent } = await import("@/lib/firestore/client");
         await saveFirestoreEvent(updatedEvent);
         toast.success("Registration form settings saved successfully!");
         router.refresh();
