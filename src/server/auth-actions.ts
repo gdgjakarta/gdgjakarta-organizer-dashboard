@@ -36,99 +36,139 @@ export async function validateOrganizerAction(email: string, name?: string): Pro
  * 3. Sets the session cookies (auth_token & auth_role).
  */
 export async function handleUserPostLoginAction(params: UserAuthSyncParams): Promise<OrganizerValidationResult> {
-  const { uid, email, name, avatar, token } = params;
-  console.log(
-    `[Auth Step 1 - Server] Received handleUserPostLoginAction for UID: ${uid}, Email: ${email}, Name: ${name ?? "N/A"}`,
-  );
-
-  let existingMember: FirestoreMember | null = null;
   try {
-    existingMember = await getFirestoreMemberById(uid);
+    const { uid, email, name, avatar, token } = params;
     console.log(
-      `[Auth Step 2 - Server] Existing Firestore record for ${email}:`,
-      existingMember ? { role: existingMember.role, team: existingMember.team } : "None (New User)",
+      `[Auth Step 1 - Server] Received handleUserPostLoginAction for UID: ${uid}, Email: ${email}, Name: ${name ?? "N/A"}`,
     );
-  } catch (err) {
-    console.error("[Auth Step 2 - Server] Error fetching member before validation:", err);
-  }
 
-  // 1. Validate role against authorized whitelist and exact Bevy Chapter Team
-  const validation = await validateBevyOrganizer(email, name);
-  const isOrganizer = validation.isValidOrganizer;
-  const role = isOrganizer ? "organizer" : "member";
-  const chapterRole = isOrganizer ? validation.chapterRole || "Organizer" : "Member";
-  const team = isOrganizer ? "Core Team" : "Community";
-  console.log(
-    `[Auth Step 3 - Server] Role resolved for ${email} -> role: "${role}", chapterRole: "${chapterRole}", team: "${team}"`,
-  );
+    let existingMember: FirestoreMember | null = null;
+    try {
+      existingMember = await getFirestoreMemberById(uid);
+      console.log(
+        `[Auth Step 2 - Server] Existing Firestore record for ${email}:`,
+        existingMember ? { role: existingMember.role, team: existingMember.team } : "None (New User)",
+      );
+    } catch (err) {
+      console.error("[Auth Step 2 - Server] Error fetching member before validation:", err);
+    }
 
-  // 2. Sync to Firestore members
-  try {
-    const now = new Date().toISOString();
-
-    const memberData: FirestoreMember = {
-      id: uid,
-      uid,
-      bevy_user_id: validation.bevyUserId ?? existingMember?.bevy_user_id ?? null,
-      name: name ?? existingMember?.name ?? email.split("@")[0] ?? "Community Member",
-      email: email,
-      avatar_url: avatar ?? existingMember?.avatar_url,
-      role: role,
-      chapter_role: chapterRole,
-      team: team,
-      status: "Active",
-      joined_date: existingMember?.joined_date ?? now,
-      events_registered_count: existingMember?.events_registered_count ?? 0,
-      events_attended_count: existingMember?.events_attended_count ?? 0,
-      last_active: now,
-      updated_at: now,
+    // 1. Validate role against authorized whitelist and exact Bevy Chapter Team
+    let validation: OrganizerValidationResult = {
+      isValidOrganizer: false,
+      role: "Member",
+      bevyUserId: null,
+      chapterRole: "Member",
     };
+    try {
+      validation = await validateBevyOrganizer(email, name);
+    } catch (valErr) {
+      console.error("[Auth Step 3 - Server] Validation error:", valErr);
+    }
 
-    await saveFirestoreMember(memberData);
-    console.log(`[Auth Step 4 - Server] Successfully synchronized member data in Firestore for ${email}`);
-  } catch (err) {
-    console.error("[Auth Step 4 - Server] Member sync on login error:", err);
+    const isOrganizer = validation.isValidOrganizer;
+    const role = isOrganizer ? "organizer" : "member";
+    const chapterRole = isOrganizer ? (validation.chapterRole ?? "Organizer") : "Member";
+    const team = isOrganizer ? "Core Team" : "Community";
+    console.log(
+      `[Auth Step 3 - Server] Role resolved for ${email} -> role: "${role}", chapterRole: "${chapterRole}", team: "${team}"`,
+    );
+
+    // 2. Sync to Firestore members
+    try {
+      const now = new Date().toISOString();
+
+      const memberData: FirestoreMember = {
+        id: uid,
+        uid,
+        bevy_user_id: validation.bevyUserId ? String(validation.bevyUserId) : (existingMember?.bevy_user_id ?? null),
+        name: name ?? existingMember?.name ?? (email ? email.split("@")[0] : "Community Member"),
+        email,
+        avatar_url: avatar ?? existingMember?.avatar_url ?? "",
+        role: role,
+        chapter_role: chapterRole,
+        team: team,
+        status: "Active",
+        joined_date: existingMember?.joined_date ?? now,
+        events_registered_count: existingMember?.events_registered_count ?? 0,
+        events_attended_count: existingMember?.events_attended_count ?? 0,
+        last_active: now,
+        updated_at: now,
+      };
+
+      await saveFirestoreMember(memberData);
+      console.log(`[Auth Step 4 - Server] Successfully synchronized member data in Firestore for ${email}`);
+    } catch (err) {
+      console.error("[Auth Step 4 - Server] Member sync on login error:", err);
+    }
+
+    // 3. Set Session Cookie if token provided
+    if (token) {
+      console.log(`[Auth Step 5 - Server] Setting session cookies (auth_token & auth_role="${role}") for ${email}`);
+      await setAuthSessionCookie(token, role, true);
+    }
+
+    console.log(`[Auth Step 6 - Server] Completed post-login sync for ${email}`);
+    // 4. Return ONLY a plain, cleanly serializable object to prevent RSC flight serialization failures
+    return {
+      isValidOrganizer: isOrganizer,
+      role: role,
+      bevyUserId: validation.bevyUserId ? String(validation.bevyUserId) : null,
+      chapterRole: chapterRole,
+    };
+  } catch (fatalError) {
+    console.error("[handleUserPostLoginAction] Unexpected server error during post-login sync:", fatalError);
+    return {
+      isValidOrganizer: false,
+      role: "member",
+      bevyUserId: null,
+      chapterRole: "Member",
+    };
   }
-
-  // 3. Set Session Cookie if token provided
-  if (token) {
-    console.log(`[Auth Step 5 - Server] Setting session cookies (auth_token & auth_role="${role}") for ${email}`);
-    await setAuthSessionCookie(token, role, true);
-  }
-
-  console.log(`[Auth Step 6 - Server] Completed post-login sync for ${email}. Returning validation:`, {
-    isValidOrganizer: validation.isValidOrganizer,
-    role: validation.role,
-  });
-  return validation;
 }
 
 /**
  * Sets the auth_token cookie after successful authentication (e.g. Firebase Google Sign-In).
  */
 export async function setAuthSessionCookie(token: string, role: string, remember = true): Promise<void> {
-  const cookieStore = await cookies();
-  const options = {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax" as const,
-    path: "/",
-    maxAge: remember ? COOKIE_MAX_AGE : undefined,
-  };
+  try {
+    const cookieStore = await cookies();
+    const options: {
+      httpOnly: boolean;
+      secure: boolean;
+      sameSite: "lax";
+      path: string;
+      maxAge?: number;
+    } = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+    };
+    if (remember) {
+      options.maxAge = COOKIE_MAX_AGE;
+    }
 
-  console.log(`[Auth Cookie] Setting cookies: auth_token (len=${token.length}), auth_role=${role}`);
-  cookieStore.set(AUTH_COOKIE, token, options);
-  cookieStore.set(ROLE_COOKIE, role, options);
+    console.log(`[Auth Cookie] Setting cookies: auth_token (len=${token.length}), auth_role=${role}`);
+    cookieStore.set(AUTH_COOKIE, token, options);
+    cookieStore.set(ROLE_COOKIE, role, options);
+  } catch (err) {
+    console.error("[Auth Cookie] Error setting session cookies:", err);
+  }
 }
 
 /**
  * Clears the auth_token cookie without redirecting.
  */
 export async function clearAuthSessionCookie(): Promise<void> {
-  console.log("[Auth Cookie] Clearing auth_token and auth_role cookies");
-  const cookieStore = await cookies();
-  cookieStore.delete(AUTH_COOKIE);
-  cookieStore.delete(ROLE_COOKIE);
+  try {
+    console.log("[Auth Cookie] Clearing auth_token and auth_role cookies");
+    const cookieStore = await cookies();
+    cookieStore.delete(AUTH_COOKIE);
+    cookieStore.delete(ROLE_COOKIE);
+  } catch (err) {
+    console.error("[Auth Cookie] Error clearing auth cookies:", err);
+  }
 }
 
 /**

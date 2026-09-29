@@ -254,4 +254,16 @@ In Cloudflare Workers real-time logs, the following trace was captured:
 3. **Safe SSR Fallbacks in [src/server/server-actions.ts](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/src/server/server-actions.ts) and [src/app/(main)/dashboard/layout.tsx](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/src/app/(main)/dashboard/layout.tsx)**:
    - Wrapped `cookies()` and `getPreference()` calls in `try...catch` blocks with safe defaults (`PREFERENCE_DEFAULTS`).
 
+4. **Flight Protocol Sanitization & Top-Level Server Action Guard in [src/server/auth-actions.ts](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/src/server/auth-actions.ts)**:
+   - Sanitized `handleUserPostLoginAction` return value to strictly return plain, serializable primitives (`{ isValidOrganizer, role, bevyUserId, chapterRole }`) instead of raw Bevy objects (`chapterTeamMember`, `bevyUser`) which can trigger React Flight serialization failures.
+   - Sanitized Firestore `setDoc` payload in `memberData` with fallback values (`|| ""`, `|| 0`) to prevent `undefined` properties from throwing in the Firestore SDK.
+   - Wrapped the entire action in a top-level `try...catch` returning a safe fallback response so the server action promise never rejects with an uncaught 500 / error #441.
+
+5. **Preserved Console Logging for Cloudflare Workers in [next.config.mjs](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/next.config.mjs)**:
+   - Set `removeConsole: false` so that server execution logs (`[Auth Step ...]`, error traces) are visible in Cloudflare Observability and `wrangler tail`.
+
+6. **Graceful Error Toast Handling in [src/app/(main)/auth/_components/social-auth/google-button.tsx](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/src/app/(main)/auth/_components/social-auth/google-button.tsx)**:
+   - Intercepted minified React error messages to show clear, user-friendly toast notifications instead of raw stack or error numbers.
+
+
 

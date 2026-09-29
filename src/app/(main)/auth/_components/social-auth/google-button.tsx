@@ -65,7 +65,11 @@ export function GoogleButton({
       const error = err as { code?: string; message?: string };
       console.error("[Google Button] Error during Google Sign-In:", error);
       if (error.code !== "auth/popup-closed-by-user") {
-        toast.error(error.message ?? "Failed to sign in with Google. Please try again.");
+        let message = error.message ?? "Failed to sign in with Google. Please try again.";
+        if (message.includes("Minified React error") || message.includes("Server Components render")) {
+          message = "An error occurred while communicating with the server. Please try again.";
+        }
+        toast.error(message);
       }
     } finally {
       setIsLoading(false);
@@ -88,7 +92,7 @@ export function GoogleButton({
       ) : (
         <>
           <SimpleIcon icon={siGoogle} className="mr-2 size-4" />
-          {children || "Sign in with Google"}
+          {children ?? "Sign in with Google"}
         </>
       )}
     </Button>
