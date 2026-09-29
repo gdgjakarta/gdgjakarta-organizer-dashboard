@@ -95,7 +95,7 @@ Cross-Origin-Opener-Policy policy would block the window.postMessage call.
      ```javascript
      {
        key: "Cross-Origin-Opener-Policy",
-       value: "same-origin-allow-popups",
+       value; "same-origin-allow-popups"
      }
      ```
    - Firebase Auth's `signInWithPopup` opens a popup that navigates across origins (`your-worker.workers.dev` -> `accounts.google.com` -> `gdgjakarta-app.firebaseapp.com/__/auth/handler`).
@@ -106,8 +106,10 @@ Cross-Origin-Opener-Policy policy would block the window.postMessage call.
 
 1. **Update COOP Header to `unsafe-none`**:
    - In `next.config.mjs`, configured `Cross-Origin-Opener-Policy` to `unsafe-none`:
-     ```javascript
-     async headers() {
+     ```js
+     async
+     headers()
+     {
        return [
          {
            source: "/(.*)",
@@ -163,4 +165,42 @@ An error occurred in the Server Components render. The specific message is omitt
      return parsePreference(key, cookieStore.get(key)?.value?.trim());
      ```
    - If the cookie is absent or undefined, `parsePreference()` safely falls back to default registry values (`sidebar` and `icon`) without throwing runtime exceptions.
+
+---
+
+## [September 29, 2026] - Fix Cloudflare Deployment Error: Missing Compiled Open Next Config
+
+### Error Summary
+
+When deploying to Cloudflare Workers Builds CI/CD, the build succeeded during Next.js compilation, but the deploy step immediately failed with:
+```text
+OpenNext project detected, calling `opennextjs-cloudflare deploy`
+ERROR Could not find compiled Open Next config, did you run the build command?
+Failed: error occurred while running deploy command
+```
+
+### Root Cause Analysis
+
+1. **Decoupled Build and Deploy in Cloudflare CI/CD**:
+   - Cloudflare Workers Builds runs two consecutive lifecycle steps:
+     1. User Build Command: `npm run build`
+     2. User Deploy Command: `npx wrangler deploy`
+   - In `package.json`, `"build"` was previously mapped to `"next build"`.
+   - `next build` compiles standard Next.js output into `.next/`, but does NOT generate the `.open-next/` bundle (`worker.js`, `assets/`, and compiled OpenNext configuration).
+   - In Step 2, `npx wrangler deploy` detected OpenNext and invoked `opennextjs-cloudflare deploy`, which requires the compiled `.open-next` directory to exist.
+   - Because `opennextjs-cloudflare build` had never been executed, the deploy step failed with `Could not find compiled Open Next config, did you run the build command?`.
+
+2. **Recursive Infinite Build Loop Risk**:
+   - By default, if `@opennextjs/cloudflare build` runs without an explicit `buildCommand` configured in `open-next.config.ts`, OpenNext falls back to executing `package.json`'s `build` script.
+   - If `package.json`'s `"build"` script is set to `"opennextjs-cloudflare build"`, this creates a recursive loop (`npm run build` -> `opennextjs-cloudflare build` -> `npm run build` -> ...).
+
+### Solution & Fix
+
+1. **Set `buildCommand` in [open-next.config.ts](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/open-next.config.ts)**:
+   - Configured `config.buildCommand = "next build"` on the exported config.
+   - This explicitly instructs OpenNext to compile Next.js directly via `next build`, preventing recursion loops.
+
+2. **Update `build` Script in [package.json](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/package.json)**:
+   - Changed `"build"` to `"opennextjs-cloudflare build"` so Cloudflare CI's `npm run build` builds the complete `.open-next` bundle.
+   - Added `"build:next": "next build"` for standalone Next.js testing/builds if needed.
 
