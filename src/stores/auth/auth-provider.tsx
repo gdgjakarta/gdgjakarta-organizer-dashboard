@@ -68,13 +68,101 @@ async function syncMemberToFirestore(
 const REDIRECT_PENDING_KEY = "auth_redirect_in_progress";
 const REDIRECT_CALLBACK_KEY = "auth_redirect_callback_url";
 
-let isProcessingRedirect = false;
+let activeSyncUid: string | null = null;
+let hasNavigated = false;
+
+async function syncAndNavigate(
+  user: import("firebase/auth").User,
+  source: "redirect" | "auth_state_change",
+  store: StoreApi<AuthState>,
+  router: ReturnType<typeof useRouter>,
+) {
+  if (activeSyncUid === user.uid) {
+    console.log(`[Auth Provider - ${source}] Sync already active for ${user.email}. Skipping duplicate call.`);
+    return;
+  }
+
+  activeSyncUid = user.uid;
+  try {
+    console.log(`[Auth Provider - ${source}] Completing authentication for: ${user.email} (UID: ${user.uid})`);
+
+    const email = user.email ?? "";
+    const token = await user.getIdToken();
+    console.log(`[Auth Provider - ${source}] Calling handleUserPostLoginAction on server for ${email}...`);
+
+    const validation = await handleUserPostLoginAction({
+      uid: user.uid,
+      email,
+      name: user.displayName ?? undefined,
+      avatar: user.photoURL ?? undefined,
+      token,
+    });
+
+    const organizer = mapFirebaseUserToOrganizer(user, validation);
+    console.log(`[Auth Provider - ${source}] Post-login sync response:`, {
+      email: organizer.email,
+      role: organizer.role,
+      chapterRole: organizer.chapterRole,
+      isAllowed: validation.isValidOrganizer,
+    });
+
+    // Sync member profile in Firestore on client
+    await syncMemberToFirestore(user, validation);
+
+    // Update client AuthState
+    store.getState().setUser(organizer, user);
+
+    // Read redirect parameters and cleanup
+    const isRedirectPending = typeof window !== "undefined" && sessionStorage.getItem(REDIRECT_PENDING_KEY) === "true";
+    const savedCallbackUrl = typeof window !== "undefined" ? sessionStorage.getItem(REDIRECT_CALLBACK_KEY) : null;
+
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem(REDIRECT_PENDING_KEY);
+      sessionStorage.removeItem(REDIRECT_CALLBACK_KEY);
+    }
+
+    const isAuthPage = typeof window !== "undefined" && window.location.pathname.startsWith("/auth");
+
+    if ((isRedirectPending || isAuthPage) && !hasNavigated) {
+      hasNavigated = true;
+      if (validation.isValidOrganizer) {
+        toast.success(`Welcome back, ${organizer.name}! (${organizer.chapterRole ?? "Organizer"})`);
+        const targetUrl = savedCallbackUrl?.startsWith("/") ? savedCallbackUrl : "/dashboard/organizer";
+        console.log(`[Auth Provider - ${source}] Navigating organizer (${organizer.email}) to: ${targetUrl}`);
+        router.push(targetUrl);
+      } else {
+        toast.success(`Welcome, ${organizer.name}!`);
+        const isOrganizerOnlyCallback =
+          savedCallbackUrl?.startsWith("/dashboard/organizer") ||
+          savedCallbackUrl?.startsWith("/dashboard/events") ||
+          savedCallbackUrl?.startsWith("/dashboard/email-manager") ||
+          savedCallbackUrl?.startsWith("/dashboard/members");
+
+        const targetUrl =
+          savedCallbackUrl?.startsWith("/") && !isOrganizerOnlyCallback ? savedCallbackUrl : "/dashboard/member";
+        console.log(`[Auth Provider - ${source}] Navigating member (${organizer.email}) to: ${targetUrl}`);
+        router.push(targetUrl);
+      }
+      router.refresh();
+    }
+  } catch (err: unknown) {
+    console.error(`[Auth Provider - ${source}] Error during sync and navigate:`, err);
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem(REDIRECT_PENDING_KEY);
+      sessionStorage.removeItem(REDIRECT_CALLBACK_KEY);
+    }
+    const error = err as { code?: string; message?: string };
+    toast.error(error.message ?? "An error occurred while finishing sign-in.");
+  } finally {
+    activeSyncUid = null;
+  }
+}
 
 export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
   const [store] = useState<StoreApi<AuthState>>(() => createAuthStore());
   const router = useRouter();
 
-  // Handle Firebase redirect result when returning from Google authentication
+  // 1. Process getRedirectResult on mount
   useEffect(() => {
     let isCancelled = false;
 
@@ -86,75 +174,33 @@ export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      isProcessingRedirect = true;
       try {
         console.log("[Auth Provider] Checking Firebase getRedirectResult...");
         const result = await getRedirectResult(auth);
 
         if (result?.user && !isCancelled) {
-          const user = result.user;
-          console.log(
-            `[Auth Flow - Redirect] Google Sign-In redirect successful for: ${user.email} (UID: ${user.uid})`,
-          );
-
-          const email = user.email ?? "";
-          const token = await user.getIdToken();
-          console.log(`[Auth Flow - Redirect] Calling handleUserPostLoginAction on server for ${email}...`);
-
-          const validation = await handleUserPostLoginAction({
-            uid: user.uid,
-            email,
-            name: user.displayName ?? undefined,
-            avatar: user.photoURL ?? undefined,
-            token,
-          });
-
-          const organizer = mapFirebaseUserToOrganizer(user, validation);
-          console.log("[Auth Flow - Redirect] Post-login sync response:", {
-            email: organizer.email,
-            role: organizer.role,
-            chapterRole: organizer.chapterRole,
-            isAllowed: validation.isValidOrganizer,
-          });
-
-          // Sync member profile in Firestore on the client
-          await syncMemberToFirestore(user, validation);
-
-          // Update client AuthState
-          store.getState().setUser(organizer, user);
-
-          // Retrieve destination from sessionStorage
-          const savedCallbackUrl = sessionStorage.getItem(REDIRECT_CALLBACK_KEY);
-          sessionStorage.removeItem(REDIRECT_PENDING_KEY);
-          sessionStorage.removeItem(REDIRECT_CALLBACK_KEY);
-
-          if (validation.isValidOrganizer) {
-            toast.success(`Welcome back, ${organizer.name}! (${organizer.chapterRole ?? "Organizer"})`);
-            const targetUrl = savedCallbackUrl?.startsWith("/") ? savedCallbackUrl : "/dashboard/organizer";
-            console.log(`[Auth Flow - Redirect] Navigating organizer (${organizer.email}) to: ${targetUrl}`);
-            router.push(targetUrl);
-          } else {
-            toast.success(`Welcome, ${organizer.name}!`);
-            const isOrganizerOnlyCallback =
-              savedCallbackUrl?.startsWith("/dashboard/organizer") ||
-              savedCallbackUrl?.startsWith("/dashboard/events") ||
-              savedCallbackUrl?.startsWith("/dashboard/email-manager") ||
-              savedCallbackUrl?.startsWith("/dashboard/members");
-
-            const targetUrl =
-              savedCallbackUrl?.startsWith("/") && !isOrganizerOnlyCallback ? savedCallbackUrl : "/dashboard/member";
-            console.log(`[Auth Flow - Redirect] Navigating member (${organizer.email}) to: ${targetUrl}`);
-            router.push(targetUrl);
-          }
-
-          router.refresh();
+          console.log("[Auth Provider] getRedirectResult resolved with user. Triggering syncAndNavigate...");
+          await syncAndNavigate(result.user, "redirect", store, router);
         } else {
+          console.log(
+            "[Auth Provider] getRedirectResult resolved with null. Waiting for onAuthStateChanged fallback...",
+          );
+          // If onAuthStateChanged does not fire with a user in 3s, clear pending state
+          setTimeout(() => {
+            if (typeof window !== "undefined" && !auth.currentUser) {
+              console.log("[Auth Provider] Timeout reached without Firebase user. Clearing redirect state.");
+              sessionStorage.removeItem(REDIRECT_PENDING_KEY);
+              sessionStorage.removeItem(REDIRECT_CALLBACK_KEY);
+              store.getState().setLoading(false);
+            }
+          }, 3000);
+        }
+      } catch (err: unknown) {
+        if (typeof window !== "undefined") {
           sessionStorage.removeItem(REDIRECT_PENDING_KEY);
           sessionStorage.removeItem(REDIRECT_CALLBACK_KEY);
         }
-      } catch (err: unknown) {
-        sessionStorage.removeItem(REDIRECT_PENDING_KEY);
-        sessionStorage.removeItem(REDIRECT_CALLBACK_KEY);
+        store.getState().setLoading(false);
         console.error("[Auth Provider] Error during getRedirectResult:", err);
         const error = err as { code?: string; message?: string };
         if (error.code !== "auth/redirect-cancelled-by-user") {
@@ -164,8 +210,6 @@ export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
           }
           toast.error(message);
         }
-      } finally {
-        isProcessingRedirect = false;
       }
     }
 
@@ -176,47 +220,15 @@ export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
     };
   }, [store, router]);
 
+  // 2. Subscribe to onAuthStateChanged (handles normal sessions and acts as redirect fallback)
   useEffect(() => {
     console.log("[Auth Provider] Subscribing to onAuthStateChanged");
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        console.log(`[Auth Provider] Firebase user detected: ${firebaseUser.email} (UID: ${firebaseUser.uid})`);
-
-        // Skip duplicate server sync if redirect resolution is actively handling it
-        const isRedirectPending =
-          typeof window !== "undefined" && sessionStorage.getItem(REDIRECT_PENDING_KEY) === "true";
-        if (isProcessingRedirect || isRedirectPending) {
-          console.log(
-            "[Auth Provider] Redirect sign-in is actively syncing. Skipping duplicate onAuthStateChanged sync.",
-          );
-          return;
-        }
-
-        let validation: import("@/lib/bevy/types").OrganizerValidationResult | undefined;
-        if (firebaseUser.email) {
-          try {
-            const token = await firebaseUser.getIdToken();
-            console.log(`[Auth Provider] Syncing Firebase user ${firebaseUser.email} with server...`);
-            validation = await handleUserPostLoginAction({
-              uid: firebaseUser.uid,
-              email: firebaseUser.email,
-              name: firebaseUser.displayName ?? undefined,
-              avatar: firebaseUser.photoURL ?? undefined,
-              token,
-            });
-            console.log(
-              `[Auth Provider] Server sync completed for ${firebaseUser.email}. isOrganizer:`,
-              validation.isValidOrganizer,
-            );
-            await syncMemberToFirestore(firebaseUser, validation);
-          } catch (syncErr) {
-            console.error("[Auth Provider] Error during post-login sync:", syncErr);
-          }
-        }
-
-        const organizer = mapFirebaseUserToOrganizer(firebaseUser, validation);
-        console.log(`[Auth Provider] Updating client AuthState with user role: "${organizer.role}"`);
-        store.getState().setUser(organizer, firebaseUser);
+        console.log(
+          `[Auth Provider] onAuthStateChanged user detected: ${firebaseUser.email} (UID: ${firebaseUser.uid})`,
+        );
+        await syncAndNavigate(firebaseUser, "auth_state_change", store, router);
       } else {
         console.log("[Auth Provider] No Firebase user session active. Resetting auth state.");
         store.getState().setUser(null, null);
@@ -224,7 +236,7 @@ export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
     });
 
     return () => unsubscribe();
-  }, [store]);
+  }, [store, router]);
 
   return <AuthStoreContext.Provider value={store}>{children}</AuthStoreContext.Provider>;
 }
@@ -258,6 +270,8 @@ export async function signInWithGoogle(callbackUrl?: string | null): Promise<voi
  */
 export async function signOutOrganizer(): Promise<void> {
   console.log("[Auth Flow - Client] Signing out from Firebase and clearing session cookie...");
+  hasNavigated = false;
+  activeSyncUid = null;
   await signOut(auth);
   await clearAuthSessionCookie();
   console.log("[Auth Flow - Client] Sign out completed.");
