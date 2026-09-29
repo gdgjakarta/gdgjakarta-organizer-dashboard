@@ -26,8 +26,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { checkEventRegistrationAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
-import { checkEventRegistrationAction } from "@/server/firestore-actions";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
 interface MemberEventDetailProps {

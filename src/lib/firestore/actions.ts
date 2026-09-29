@@ -1,6 +1,6 @@
-"use server";
+"use client";
 
-import { revalidatePath } from "next/cache";
+import { revalidateDashboardPath } from "@/server/server-actions";
 
 import {
   checkExistingRegistration,
@@ -9,36 +9,36 @@ import {
   getSyncMetadata,
   registerMemberForEvent,
   updateRegistrationStatus,
-} from "@/lib/firestore/client";
-import { syncAllBevyData, syncBevyEventsToFirestore, syncBevyMembersToFirestore } from "@/lib/firestore/sync-service";
-import type { FirestoreRegistration, RegistrationStatus } from "@/lib/firestore/types";
+} from "./client";
+import { syncAllBevyData, syncBevyEventsToFirestore, syncBevyMembersToFirestore } from "./sync-service";
+import type { FirestoreRegistration, RegistrationStatus } from "./types";
 
 /**
- * Triggers a full sync from Bevy into Firestore.
+ * Triggers a full sync from Bevy into Firestore on the client.
  */
 export async function triggerSyncAction() {
   const result = await syncAllBevyData();
-  revalidatePath("/dashboard/organizer");
-  revalidatePath("/dashboard/events");
-  revalidatePath("/dashboard/members");
+  await revalidateDashboardPath("/dashboard/organizer");
+  await revalidateDashboardPath("/dashboard/events");
+  await revalidateDashboardPath("/dashboard/members");
   return result;
 }
 
 /**
- * Triggers events-only sync.
+ * Triggers events-only sync on the client.
  */
 export async function triggerEventsSyncAction() {
   const result = await syncBevyEventsToFirestore();
-  revalidatePath("/dashboard/events");
+  await revalidateDashboardPath("/dashboard/events");
   return result;
 }
 
 /**
- * Triggers members-only sync.
+ * Triggers members-only sync on the client.
  */
 export async function triggerMembersSyncAction() {
   const result = await syncBevyMembersToFirestore();
-  revalidatePath("/dashboard/members");
+  await revalidateDashboardPath("/dashboard/members");
   return result;
 }
 
@@ -74,8 +74,8 @@ export async function updateRegistrationStatusAction(
   notes?: string,
 ) {
   await updateRegistrationStatus(registrationId, eventId, status, reviewer, notes);
-  revalidatePath("/dashboard/events");
-  revalidatePath(`/dashboard/events/${eventId}`);
+  await revalidateDashboardPath("/dashboard/events");
+  await revalidateDashboardPath(`/dashboard/events/${eventId}`);
   return { success: true };
 }
 
@@ -85,10 +85,10 @@ export async function updateRegistrationStatusAction(
 export async function registerForEventAction(registration: Omit<FirestoreRegistration, "id">) {
   try {
     const regId = await registerMemberForEvent(registration);
-    revalidatePath("/dashboard/events");
-    revalidatePath(`/dashboard/events/${registration.event_id}`);
-    revalidatePath("/dashboard/member");
-    revalidatePath("/dashboard/organizer");
+    await revalidateDashboardPath("/dashboard/events");
+    await revalidateDashboardPath(`/dashboard/events/${registration.event_id}`);
+    await revalidateDashboardPath("/dashboard/member");
+    await revalidateDashboardPath("/dashboard/organizer");
     return { success: true, registrationId: regId };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to register for event.";

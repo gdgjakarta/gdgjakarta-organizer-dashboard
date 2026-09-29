@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 
 import {
@@ -49,5 +50,13 @@ export async function getPreference<K extends PreferenceKey>(key: K): Promise<Pr
   } catch (error) {
     console.warn(`[Preference] Error retrieving cookie for key "${key}":`, error);
     return definition.defaultValue as PreferenceValueMap[K];
+  }
+}
+
+export async function revalidateDashboardPath(path: string): Promise<void> {
+  try {
+    revalidatePath(path);
+  } catch (error) {
+    console.warn(`[revalidateDashboardPath] Error revalidating "${path}":`, error);
   }
 }

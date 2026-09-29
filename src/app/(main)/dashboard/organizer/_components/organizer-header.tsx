@@ -9,8 +9,8 @@ import { Calendar, RefreshCw, Users } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { triggerSyncAction } from "@/lib/firestore/actions";
 import { cn } from "@/lib/utils";
-import { triggerSyncAction } from "@/server/firestore-actions";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
 export function OrganizerHeader() {

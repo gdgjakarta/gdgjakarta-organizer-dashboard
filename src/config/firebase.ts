@@ -1,6 +1,5 @@
 import { getApp, getApps, initializeApp } from "firebase/app";
 import { GoogleAuthProvider, getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
 import { getRemoteConfig } from "firebase/remote-config";
 
 // Your web app's Firebase configuration read from environment variables
@@ -15,10 +14,9 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase (safely handling hot reloads in Next.js)
-const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
+export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
-export const db = getFirestore(app);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({
   prompt: "select_account",

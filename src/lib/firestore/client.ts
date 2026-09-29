@@ -1,6 +1,23 @@
-import { collection, doc, getDoc, getDocs, limit, orderBy, query, setDoc, updateDoc, where } from "firebase/firestore";
+"use client";
 
-import { db } from "@/config/firebase";
+import {
+  collection,
+  doc,
+  type Firestore,
+  getDoc,
+  getDocs,
+  getFirestore,
+  limit,
+  orderBy,
+  query,
+  setDoc,
+  updateDoc,
+  where,
+} from "firebase/firestore";
+
+import { app } from "@/config/firebase";
+
+export const db: Firestore = typeof window !== "undefined" ? getFirestore(app) : (null as unknown as Firestore);
 
 import type {
   FirestoreEvent,

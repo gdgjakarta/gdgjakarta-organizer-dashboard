@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 
 import { format, parseISO } from "date-fns";
 import { Check, CheckCircle, Download, MoreHorizontal, Search, UserCheck, UserX, X, XCircle } from "lucide-react";
@@ -21,9 +21,10 @@ import {
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { updateRegistrationStatusAction } from "@/lib/firestore/actions";
+import { getEventRegistrations } from "@/lib/firestore/client";
 import type { FirestoreRegistration, RegistrationStatus } from "@/lib/firestore/types";
 import { cn, getInitials } from "@/lib/utils";
-import { updateRegistrationStatusAction } from "@/server/firestore-actions";
 
 interface RegistrantsTabProps {
   eventId: string;
@@ -59,15 +60,28 @@ const STATUS_VARIANTS: Record<RegistrationStatus, { label: string; badgeClass: s
 };
 
 export function RegistrantsTab({ eventId, registrations }: RegistrantsTabProps) {
+  const [registrationsList, setRegistrationsList] = useState<FirestoreRegistration[]>(registrations);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [inspectRegistration, setInspectRegistration] = useState<FirestoreRegistration | null>(null);
   const [isPending, startTransition] = useTransition();
 
+  useEffect(() => {
+    setRegistrationsList(registrations);
+  }, [registrations]);
+
+  useEffect(() => {
+    void getEventRegistrations(eventId).then((list) => {
+      if (list && list.length > 0) {
+        setRegistrationsList(list);
+      }
+    });
+  }, [eventId]);
+
   // Compute email occurrences to detect duplicate registrant attempts
   const emailCounts = new Map<string, number>();
-  for (const r of registrations) {
+  for (const r of registrationsList) {
     const email = (r.member_email || "").toLowerCase();
     if (email) {
       emailCounts.set(email, (emailCounts.get(email) || 0) + 1);
@@ -75,7 +89,7 @@ export function RegistrantsTab({ eventId, registrations }: RegistrantsTabProps) 
   }
 
   // Filter logic
-  const filtered = registrations.filter((reg) => {
+  const filtered = registrationsList.filter((reg) => {
     const matchesSearch =
       reg.member_name.toLowerCase().includes(search.toLowerCase()) ||
       reg.member_email.toLowerCase().includes(search.toLowerCase()) ||
@@ -90,6 +104,7 @@ export function RegistrantsTab({ eventId, registrations }: RegistrantsTabProps) 
     startTransition(async () => {
       try {
         await updateRegistrationStatusAction(registrationId, eventId, newStatus);
+        setRegistrationsList((prev) => prev.map((r) => (r.id === registrationId ? { ...r, status: newStatus } : r)));
         toast.success(`Applicant marked as ${STATUS_VARIANTS[newStatus].label}`);
       } catch {
         toast.error("Failed to update status.");
@@ -103,6 +118,7 @@ export function RegistrantsTab({ eventId, registrations }: RegistrantsTabProps) 
       try {
         const promises = Array.from(selectedIds).map((id) => updateRegistrationStatusAction(id, eventId, newStatus));
         await Promise.all(promises);
+        setRegistrationsList((prev) => prev.map((r) => (selectedIds.has(r.id) ? { ...r, status: newStatus } : r)));
         toast.success(`Updated ${selectedIds.size} registrants to ${STATUS_VARIANTS[newStatus].label}`);
         setSelectedIds(new Set());
       } catch {

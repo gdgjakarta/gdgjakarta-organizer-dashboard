@@ -21,8 +21,8 @@ import { Kbd } from "@/components/ui/kbd";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { dataTableFeatures } from "@/lib/data-table-features";
+import { triggerEventsSyncAction } from "@/lib/firestore/actions";
 import { cn } from "@/lib/utils";
-import { triggerEventsSyncAction } from "@/server/firestore-actions";
 
 import { type EventRow, eventFilters } from "./data";
 import { eventsColumns } from "./events-columns";

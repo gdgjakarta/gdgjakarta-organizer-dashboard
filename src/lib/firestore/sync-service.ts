@@ -1,9 +1,14 @@
+"use client";
+
 import { doc, writeBatch } from "firebase/firestore";
 
-import { db } from "@/config/firebase";
-import { getBevyChapterEvents, getBevyChapterMembers, getBevyChapterTeams } from "@/lib/bevy/client";
+import {
+  fetchBevyChapterEventsAction,
+  fetchBevyChapterMembersAction,
+  fetchBevyChapterTeamsAction,
+} from "@/server/bevy-actions";
 
-import { updateSyncMetadata } from "./client";
+import { db, updateSyncMetadata } from "./client";
 import type { FirestoreEvent } from "./types";
 
 function cleanPayload<T extends Record<string, unknown>>(obj: T): Partial<T> {
@@ -26,7 +31,7 @@ export async function syncBevyEventsToFirestore(): Promise<{
   error?: string;
 }> {
   try {
-    const eventsResponse = await getBevyChapterEvents(undefined, 100, 1);
+    const eventsResponse = await fetchBevyChapterEventsAction(100, 1);
     const bevyEvents = eventsResponse?.results ?? [];
 
     if (bevyEvents.length === 0) {
@@ -104,8 +109,8 @@ export async function syncBevyMembersToFirestore(): Promise<{
 }> {
   try {
     const [teamMembers, membersResponse] = await Promise.all([
-      getBevyChapterTeams(),
-      getBevyChapterMembers(undefined, 200, 1),
+      fetchBevyChapterTeamsAction(),
+      fetchBevyChapterMembersAction(200, 1),
     ]);
 
     const teamMap = new Map<string, string>();

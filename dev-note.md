@@ -272,6 +272,64 @@ In Cloudflare Workers real-time logs, the following trace was captured:
      - Delegated Firestore member profile persistence (`syncMemberToFirestore`) to the browser client in `src/stores/auth/auth-provider.tsx`, where Firebase Auth credentials and the full browser environment (WebChannel, IndexedDB, dynamic codegen) are natively supported.
      - Added `if (typeof window === "undefined")` guards to all functions in `src/lib/firestore/client.ts` to ensure Firestore client methods safely return empty fallbacks instead of crashing if invoked in a server or worker context.
 
+---
 
+## [September 29, 2026] - Fix Cloudflare Worker 500 Crash (Protobuf / Codegen `Function (<anonymous>)` in `worker.js`)
 
+### Error Summary
 
+Navigating to dashboard routes (e.g. `/dashboard/member`, `/events`) resulted in HTTP 500 errors on Cloudflare Workers (`gdgjakarta-organizer-dashboard.gdg-jakarta.workers.dev`):
+```text
+⨯ at Function (<anonymous>)
+  at f (worker.js:400302:22)
+  at s.get (worker.js:401210:72)
+  at j.resolve (worker.js:401548:195)
+  at s.resolveAll (worker.js:401242:78)
+  at l.resolveAll (worker.js:400474:81)
+  at l.resolveAll (worker.js:400474:81)
+  at l.resolveAll (worker.js:400474:81)
+  at l.resolveAll (worker.js:401398:41)
+  at l.fromJSON (worker.js:401323:130)
+```
+
+### Root Cause Analysis
+
+1. **`@protobufjs/codegen` and Cloudflare Workers V8 Sandbox**:
+   - The `@firebase/firestore` Node build (`common-*.node.cjs.js`) loads `@grpc/proto-loader`, which invokes `protobufjs/ext/descriptor/index.js` synchronously on module import.
+   - `protobufjs` calls `fromJSON()`, which triggers `@protobufjs/codegen`'s `Codegen` compiler:
+     ```javascript
+     return Function(source)(); // eslint-disable-line no-new-func
+     ```
+   - Cloudflare Workers V8 isolates strictly disallow dynamic string-to-code compilation (`eval()` and `new Function()`).
+   - Any module that statically imports `firebase/firestore` inside a Server Component or Server Action bundles the `@firebase/firestore` Node build into `worker.js`, throwing `EvalError: Code generation from strings disallowed for this context` during Worker startup or route dispatch.
+
+2. **Top-Level `getFirestore` and Server Component Imports**:
+   - `src/config/firebase.ts` exported `export const db = getFirestore(app);` at module evaluation time.
+   - Server Component pages (`dashboard/member/page.tsx`, `events/page.tsx`, `members/page.tsx`, etc.) and `src/server/firestore-actions.ts` directly imported `getFirestore...` from `@/lib/firestore/client`.
+   - Even with runtime `typeof window === "undefined"` checks inside function bodies, the static module-level import of `firebase/firestore` was already executed at bundle evaluation time, crashing the isolate before any request handler could complete.
+
+### Solution & Architectural Fix
+
+1. **Purged `firebase/firestore` from Server Configuration ([src/config/firebase.ts](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/src/config/firebase.ts))**:
+   - Removed `getFirestore` import and top-level `db` initialization.
+   - Exported `app` so client-side modules can initialize Firestore exclusively in browser environments (`typeof window !== "undefined"`).
+
+2. **Client-Only Firestore Client ([src/lib/firestore/client.ts](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/src/lib/firestore/client.ts))**:
+   - Added `"use client";` directive at line 1, explicitly declaring the file as a client module boundary.
+   - Guarded `db` initialization: `export const db = typeof window !== "undefined" ? getFirestore(app) : null!;`.
+   - Prevented any server-side bundling of Firestore client SDK.
+
+3. **Replaced Server Actions with Client-Side Action Helpers ([src/lib/firestore/actions.ts](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/src/lib/firestore/actions.ts))**:
+   - Deleted `src/server/firestore-actions.ts` (which had `"use server"` and brought Firestore into the server bundle).
+   - Created `src/lib/firestore/actions.ts` with `"use client";`. All UI components (registration modal, sync buttons, applicant review) now invoke Firestore directly from the browser using the user's authenticated session.
+   - Added `revalidateDashboardPath(path)` in `src/server/server-actions.ts` so client actions can safely trigger cache revalidation via a lightweight server action that has zero Firestore dependencies.
+
+4. **Isolated Bevy Fetch to Server Actions ([src/server/bevy-actions.ts](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/src/server/bevy-actions.ts))**:
+   - Created `fetchBevyChapterEventsAction`, `fetchBevyChapterMembersAction`, and `fetchBevyChapterTeamsAction` to handle Bevy data fetching with server-side tokens/cookies via native `fetch`.
+   - `src/lib/firestore/sync-service.ts` calls these server actions from the client to receive JSON payloads and writes them directly to Firestore using `writeBatch(db)`.
+
+5. **Direct Server Rendering via Bevy API in Dashboard Server Components**:
+   - Updated `src/app/(main)/dashboard/member/page.tsx`, `my-events/page.tsx`, `events/[eventId]/page.tsx`, `events/page.tsx`, `members/page.tsx`, and `organizer/page.tsx`.
+   - Removed all imports from `@/lib/firestore/client`.
+   - Server Components now render official GDG Jakarta events, community members, and organizer stats directly from Bevy API via native `fetch` (which is fast, fresh, and 100% compatible with Cloudflare Workers).
+   - Event registrations are loaded client-side via `RegistrantsTab` without blocking SSR.
