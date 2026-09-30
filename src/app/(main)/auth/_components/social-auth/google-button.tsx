@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { Loader2 } from "lucide-react";
 import { siGoogle } from "simple-icons";
@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { SimpleIcon } from "@/components/simple-icon";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { signInWithGoogle, useAuthStore } from "@/stores/auth/auth-provider";
+import { signInWithGoogle } from "@/stores/auth/auth-provider";
 
 export function GoogleButton({
   className,
@@ -18,48 +18,61 @@ export function GoogleButton({
   children,
   ...props
 }: React.ComponentProps<typeof Button>) {
-  const isAuthLoading = useAuthStore((s) => s.isLoading);
-  const user = useAuthStore((s) => s.user);
-  const [isRedirecting, setIsRedirecting] = useState(false);
-
-  // If returning from Google redirect, show loading state while AuthProvider resolves redirect
-  const [isPendingRedirect, setIsPendingRedirect] = useState(() => {
-    if (typeof window !== "undefined" && sessionStorage.getItem("auth_redirect_in_progress") === "true") {
-      return true;
-    }
-    return false;
-  });
-
-  // If auth has resolved (user authenticated or store done loading without user), clear pending redirect state
-  useEffect(() => {
-    if (!isAuthLoading || user) {
-      setIsPendingRedirect(false);
-    }
-  }, [isAuthLoading, user]);
-
-  const isLoading = isRedirecting || (isPendingRedirect && !user);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadingText, setLoadingText] = useState("Signing in…");
 
   const handleGoogleSignIn = async (e: React.MouseEvent<HTMLButtonElement>) => {
     onClick?.(e);
     if (e.defaultPrevented) return;
 
     try {
-      setIsRedirecting(true);
-      console.log("[Google Button] User clicked Sign in with Google (initiating redirect)");
+      setIsLoading(true);
+      setLoadingText("Signing in…");
+      console.log("[Google Button] User clicked Sign in with Google (using Popup)");
+
+      const { organizer, isAllowed } = await signInWithGoogle();
+
+      setLoadingText("Navigating to dashboard…");
       const callbackUrl =
         typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("callbackUrl") : null;
 
-      await signInWithGoogle(callbackUrl);
-    } catch (err: unknown) {
-      console.error("[Google Button] Error during Google Sign-In redirect:", err);
-      if (typeof window !== "undefined") {
-        sessionStorage.removeItem("auth_redirect_in_progress");
-        sessionStorage.removeItem("auth_redirect_callback_url");
+      console.log(
+        "[Google Button] Processing redirection. Role allowed as organizer:",
+        isAllowed,
+        "callbackUrl:",
+        callbackUrl,
+      );
+
+      if (isAllowed) {
+        toast.success(`Welcome back, ${organizer.name}! (${organizer.chapterRole ?? "Organizer"})`);
+        const targetUrl = callbackUrl?.startsWith("/") ? callbackUrl : "/dashboard/organizer";
+        console.log(`[Google Button] Navigating organizer (${organizer.email}) to: ${targetUrl}`);
+        window.location.assign(targetUrl);
+      } else {
+        toast.success(`Welcome, ${organizer.name}!`);
+        const isOrganizerOnlyCallback =
+          callbackUrl?.startsWith("/dashboard/organizer") ||
+          callbackUrl?.startsWith("/dashboard/events") ||
+          callbackUrl?.startsWith("/dashboard/email-manager") ||
+          callbackUrl?.startsWith("/dashboard/members");
+
+        const targetUrl = callbackUrl?.startsWith("/") && !isOrganizerOnlyCallback ? callbackUrl : "/dashboard/member";
+        console.log(`[Google Button] Navigating member (${organizer.email}) to: ${targetUrl}`);
+        window.location.assign(targetUrl);
       }
-      setIsRedirecting(false);
-      setIsPendingRedirect(false);
+      // Note: We deliberately do not call setIsLoading(false) on success so the button
+      // stays in a clean loading state until the new page load completes.
+    } catch (err: unknown) {
+      setIsLoading(false);
       const error = err as { code?: string; message?: string };
-      toast.error(error.message ?? "Failed to initiate Google Sign-In. Please try again.");
+      console.error("[Google Button] Error during Google Sign-In:", error);
+      if (error.code !== "auth/popup-closed-by-user") {
+        let message = error.message ?? "Failed to sign in with Google. Please try again.";
+        if (message.includes("Minified React error") || message.includes("Server Components render")) {
+          message = "An error occurred while communicating with the server. Please try again.";
+        }
+        toast.error(message);
+      }
     }
   };
 
@@ -74,7 +87,7 @@ export function GoogleButton({
       {isLoading ? (
         <>
           <Loader2 className="mr-2 size-4 animate-spin" />
-          Signing in…
+          {loadingText}
         </>
       ) : (
         <>

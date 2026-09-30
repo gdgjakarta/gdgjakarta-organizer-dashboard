@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 import { useShallow } from "zustand/react/shallow";
 
@@ -15,7 +16,6 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { APP_CONFIG } from "@/config/app-config";
-import { rootUser } from "@/data/users";
 import { memberSidebarItems, organizerSidebarItems } from "@/navigation/sidebar/sidebar-items";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 import { usePreferencesStore } from "@/stores/preferences/preferences-provider";
@@ -25,6 +25,7 @@ import { NavUser } from "./nav-user";
 import { SupportCard } from "./support-card";
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const pathname = usePathname();
   const { sidebarVariant, sidebarCollapsible, isSynced } = usePreferencesStore(
     useShallow((s) => ({
       sidebarVariant: s.values.sidebar_variant,
@@ -34,7 +35,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   );
 
   const user = useAuthStore((s) => s.user);
-  const isMember = user ? user.role.toLowerCase() === "member" : false;
+  const isMember = user ? user.role.toLowerCase() === "member" : pathname.startsWith("/dashboard/member");
   const sidebarItems = isMember ? memberSidebarItems : organizerSidebarItems;
 
   const variant = isSynced ? sidebarVariant : props.variant;
@@ -69,7 +70,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarContent>
       <SidebarFooter>
         <SupportCard />
-        <NavUser user={rootUser} />
+        <NavUser />
       </SidebarFooter>
     </Sidebar>
   );

@@ -1,7 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-
 import { CircleUser, CreditCard, EllipsisVertical, LogOut, MessageSquareDot } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -15,21 +13,43 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from "@/components/ui/sidebar";
+import { Skeleton } from "@/components/ui/skeleton";
 import { getInitials } from "@/lib/utils";
 import { signOutOrganizer, useAuthStore } from "@/stores/auth/auth-provider";
 
 export function NavUser({
   user: fallbackUser,
 }: {
-  readonly user: {
+  readonly user?: {
     readonly name: string;
     readonly email: string;
     readonly avatar: string;
   };
-}) {
-  const router = useRouter();
+} = {}) {
   const { isMobile } = useSidebar();
   const authUser = useAuthStore((s) => s.user);
+  const isLoading = useAuthStore((s) => s.isLoading);
+
+  const handleLogout = async () => {
+    await signOutOrganizer();
+    window.location.assign("/auth/login");
+  };
+
+  if (isLoading || (!authUser && !fallbackUser)) {
+    return (
+      <SidebarMenu>
+        <SidebarMenuItem>
+          <div className="flex h-12 items-center gap-2 px-2 py-1.5">
+            <Skeleton className="h-8 w-8 shrink-0 rounded-lg" />
+            <div className="grid flex-1 gap-1.5">
+              <Skeleton className="h-3.5 w-24" />
+              <Skeleton className="h-2.5 w-32" />
+            </div>
+          </div>
+        </SidebarMenuItem>
+      </SidebarMenu>
+    );
+  }
 
   const currentUser = authUser
     ? {
@@ -37,13 +57,11 @@ export function NavUser({
         email: authUser.email,
         avatar: authUser.avatar,
       }
-    : fallbackUser;
-
-  const handleLogout = async () => {
-    await signOutOrganizer();
-    router.push("/auth/login");
-    router.refresh();
-  };
+    : (fallbackUser ?? {
+        name: "User",
+        email: "",
+        avatar: "",
+      });
 
   return (
     <SidebarMenu>
