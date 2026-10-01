@@ -1,5 +1,20 @@
 # AGENTS.md
 
+Welcome to the **GDG Jakarta Organizer Dashboard** repository. Follow these guidelines when reading, writing, and refactoring code across the application.
+
+For in-depth architectural patterns, Bevy API session spoofing specifications, repository architecture, and feature guides, refer to the [AI Guidelines Index](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/ai-guidelines/INDEX.md):
+- [1. Architectural Patterns & Data Models](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/ai-guidelines/1-architectural-patterns.md)
+- [2. Design Tokens & Theming](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/ai-guidelines/2-design-tokens-theming.md)
+- [3. Component Composition & UI Rules](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/ai-guidelines/3-component-composition-ui.md)
+- [4. Code Style & Preferences](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/ai-guidelines/4-code-style-preferences.md)
+- [5. Networking & Bevy API Session Spoofing](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/ai-guidelines/5-networking-and-bevy-api.md)
+- [6. Repository & Data Layer Architecture](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/ai-guidelines/6-repository-and-data-layer.md)
+
+Feature Guidelines:
+- [Authentication](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/ai-guidelines/feature/authentication.md) | [Events](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/ai-guidelines/feature/events.md) | [Attendees](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/ai-guidelines/feature/attendees.md) | [QR Scanner](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/ai-guidelines/feature/scanner.md) | [Members](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/ai-guidelines/feature/members.md) | [Profile](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/ai-guidelines/feature/profile.md) | [Tickets](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/ai-guidelines/feature/tickets.md)
+
+---
+
 ## Project overview
 
 GDG Jakarta Dashboard is a responsive admin community management or event organizer dashboard built with Next.js 16, React 19, TypeScript, Tailwind CSS v4, and shadcn/ui. 
