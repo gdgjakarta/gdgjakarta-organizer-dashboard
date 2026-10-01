@@ -2,12 +2,9 @@
  * Authentication and Authorization Configuration
  */
 
-// Known organizer email addresses (default list)
-const DEFAULT_ORGANIZER_EMAILS: string[] = ["rizfirsy@gmail.com", "admin@gdgjakarta.com", "rizkyfirman.work@gmail.com"];
-
 /**
  * Returns the list of all authorized organizer email addresses in lowercase.
- * Supports comma-separated emails from process.env.ORGANIZER_EMAILS.
+ * Derived solely from comma-separated emails in process.env.ORGANIZER_EMAILS.
  */
 export function getAuthorizedOrganizerEmails(): string[] {
   const envEmails = (process.env.ORGANIZER_EMAILS || "")
@@ -15,8 +12,7 @@ export function getAuthorizedOrganizerEmails(): string[] {
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean);
 
-  const set = new Set([...DEFAULT_ORGANIZER_EMAILS.map((e) => e.toLowerCase()), ...envEmails]);
-  return Array.from(set);
+  return Array.from(new Set(envEmails));
 }
 
 /**
