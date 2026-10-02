@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import { CookieConsent } from "@/components/cookie-consent";
+
 import { PublicFooter } from "./_components/public-footer";
 import { PublicHeader } from "./_components/public-header";
 
@@ -9,6 +11,7 @@ export default function ExternalLayout({ children }: Readonly<{ children: ReactN
       <PublicHeader />
       <main className="flex-1">{children}</main>
       <PublicFooter />
+      <CookieConsent />
     </div>
   );
 }
