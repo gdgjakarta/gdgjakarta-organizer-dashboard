@@ -33,13 +33,15 @@ export function SponsorsSection({ sponsors }: SponsorsSectionProps) {
     return (
       <section className="bg-muted/30 py-16">
         <div className="container mx-auto px-4 text-center sm:px-6 lg:px-8">
-          <h2 className="mb-2 font-bold text-3xl tracking-tight">Our Sponsors & Partners</h2>
-          <p className="mx-auto mb-8 max-w-xl text-muted-foreground text-sm">
+          <h2 className="mb-2 font-medium text-[32px] leading-[1.1] tracking-tight sm:text-[44px] lg:text-[59.33px]">
+            Our Sponsors & Partners
+          </h2>
+          <p className="mx-auto mb-8 max-w-xl text-muted-foreground text-[14px] leading-relaxed">
             Interested in supporting GDG Jakarta? Reach out to collaborate with our vibrant developer community.
           </p>
           <div className="mx-auto max-w-md rounded-xl border border-border/80 border-dashed bg-background/50 p-8 text-center">
             <Handshake className="mx-auto mb-3 size-10 text-muted-foreground/50" />
-            <p className="text-muted-foreground text-sm">Sponsor list is currently updating. Check back soon!</p>
+            <p className="text-muted-foreground text-[14px]">Sponsor list is currently updating. Check back soon!</p>
           </div>
         </div>
       </section>
@@ -50,8 +52,10 @@ export function SponsorsSection({ sponsors }: SponsorsSectionProps) {
     <section className="bg-muted/30 py-16 lg:py-24">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
         <div className="mb-12 text-center">
-          <h2 className="font-bold text-3xl tracking-tight sm:text-4xl">Our Sponsors & Partners</h2>
-          <p className="mx-auto mt-3 max-w-2xl text-muted-foreground text-sm sm:text-base">
+          <h2 className="font-medium text-[32px] leading-[1.1] tracking-tight sm:text-[44px] lg:text-[59.33px]">
+            Our Sponsors & Partners
+          </h2>
+          <p className="mx-auto mt-3 max-w-2xl text-muted-foreground text-[14px] leading-relaxed">
             Proudly supported by organizations and tech companies driving innovation and developer empowerment in
             Jakarta.
           </p>

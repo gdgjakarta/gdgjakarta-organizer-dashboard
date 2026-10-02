@@ -87,11 +87,19 @@ These serve as the fallback; there is no separate default.css file. */
   --sidebar-ring: oklch(0.708 0 0);
 
   /* fonts */
-  --font-sans: var(--font-google-sans);
+  --font-sans: var(--font-google-sans-flex);
   --font-heading: var(--font-google-sans-flex);
   --font-mono: var(--font-google-sans-flex);
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
+
+  /* Golden Ratio (1.618) Typography Scale */
+  --font-size-h1: 96px;
+  --font-size-h2: 59.33px;
+  --font-size-h3: 36.67px;
+  --font-size-h4: 22.66px;
+  --font-size-body: 14px;
+  --font-size-button: 14px;
 }
 
 .dark {
@@ -133,12 +141,74 @@ These serve as the fallback; there is no separate default.css file. */
     @apply border-border outline-ring/50;
   }
 
-  body {
-    @apply bg-background text-foreground;
-    font-family: var(--font-sans), system-ui, sans-serif;
-  }
   html {
     @apply font-sans;
+    font-family: var(--font-google-sans-flex), system-ui, sans-serif;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-google-sans-flex), system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.618;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-google-sans-flex), system-ui, sans-serif;
+    font-weight: 500;
+  }
+
+  h1 {
+    font-size: clamp(48px, 6.5vw, 96px);
+    font-weight: 500;
+    line-height: 1.05;
+    letter-spacing: -0.025em;
+  }
+  @media (min-width: 1024px) {
+    h1 {
+      font-size: 96px;
+    }
+  }
+
+  h2 {
+    font-size: clamp(32px, 4.5vw, 59.33px);
+    font-weight: 500;
+    line-height: 1.1;
+    letter-spacing: -0.015em;
+  }
+  @media (min-width: 1024px) {
+    h2 {
+      font-size: 59.33px;
+    }
+  }
+
+  h3 {
+    font-size: clamp(24px, 3vw, 36.67px);
+    font-weight: 500;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+  }
+  @media (min-width: 1024px) {
+    h3 {
+      font-size: 36.67px;
+    }
+  }
+
+  h4 {
+    font-size: 22.66px;
+    font-weight: 500;
+    line-height: 1.35;
+  }
+
+  button,
+  [data-slot="button"] {
+    font-family: var(--font-google-sans-flex), system-ui, sans-serif;
+    font-size: 14px;
   }
 }
 
@@ -176,12 +246,70 @@ These serve as the fallback; there is no separate default.css file. */
   }
 
   html[data-font="google_sans"] body {
-    --font-sans: var(--font-google-sans);
+    --font-sans: var(--font-google-sans-flex);
     --font-heading: var(--font-google-sans-flex);
   }
   html[data-font="google_sans_flex"] body {
     --font-sans: var(--font-google-sans-flex);
     --font-heading: var(--font-google-sans-flex);
+  }
+
+  /* Golden Ratio (1.618) Typography Utilities */
+  .text-golden-h1 {
+    font-family: var(--font-google-sans-flex), system-ui, sans-serif;
+    font-size: clamp(48px, 6.5vw, 96px);
+    font-weight: 500;
+    line-height: 1.05;
+    letter-spacing: -0.025em;
+  }
+  @media (min-width: 1024px) {
+    .text-golden-h1 {
+      font-size: 96px;
+    }
+  }
+
+  .text-golden-h2 {
+    font-family: var(--font-google-sans-flex), system-ui, sans-serif;
+    font-size: clamp(32px, 4.5vw, 59.33px);
+    font-weight: 500;
+    line-height: 1.1;
+    letter-spacing: -0.015em;
+  }
+  @media (min-width: 1024px) {
+    .text-golden-h2 {
+      font-size: 59.33px;
+    }
+  }
+
+  .text-golden-h3 {
+    font-family: var(--font-google-sans-flex), system-ui, sans-serif;
+    font-size: clamp(24px, 3vw, 36.67px);
+    font-weight: 500;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+  }
+  @media (min-width: 1024px) {
+    .text-golden-h3 {
+      font-size: 36.67px;
+    }
+  }
+
+  .text-golden-h4 {
+    font-family: var(--font-google-sans-flex), system-ui, sans-serif;
+    font-size: 22.66px;
+    font-weight: 500;
+    line-height: 1.35;
+  }
+
+  .text-golden-body {
+    font-family: var(--font-google-sans-flex), system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.618;
+  }
+
+  .text-golden-btn {
+    font-family: var(--font-google-sans-flex), system-ui, sans-serif;
+    font-size: 14px !important;
   }
 }
 

@@ -12,30 +12,56 @@ export function PublicHeader() {
   const user = useAuthStore((s) => s.user);
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container mx-auto flex h-14 items-center justify-between px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center gap-4">
+    <header className="sticky top-0 z-50 w-full border-b bg-background/85 backdrop-blur-md transition-colors supports-[backdrop-filter]:bg-background/70">
+      <div className="container mx-auto flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
+        {/* Brand */}
+        <div className="flex items-center gap-6">
           <Link href="/" className="flex items-center gap-3">
-            <GdgLogo size={48} className="h-7 w-auto shrink-0" />
-            <span className="font-bold text-lg">{APP_CONFIG.name}</span>
+            <GdgLogo size={48} className="h-8 w-auto shrink-0" />
+            <span className="font-medium text-lg tracking-tight">{APP_CONFIG.name}</span>
           </Link>
-          <nav className="ml-6 hidden items-center gap-6 font-medium text-sm md:flex">
-            <Link href="/" className="text-foreground/60 transition-colors hover:text-foreground/80">
+
+          {/* Pill Navigation */}
+          <nav className="hidden items-center gap-1 font-medium text-[14px] md:flex">
+            <Link
+              href="/"
+              className="rounded-full px-4 py-1.5 text-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
+            >
               Home
             </Link>
-            <Link href="/events" className="text-foreground/60 transition-colors hover:text-foreground/80">
+            <Link
+              href="/events"
+              className="rounded-full px-4 py-1.5 text-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
+            >
               Events
             </Link>
           </nav>
         </div>
-        <div className="flex items-center gap-2">
+
+        {/* Right Actions */}
+        <div className="flex items-center gap-3">
           {user ? (
-            <Button asChild size="sm">
+            <Button
+              asChild
+              className="rounded-full px-5 font-medium text-[14px] shadow-xs transition-all hover:scale-[1.02]"
+              style={{
+                backgroundColor: "var(--theme-primary)",
+                color: "var(--theme-primary-foreground)",
+              }}
+            >
               <Link href={user.role === "organizer" ? "/dashboard/organizer" : "/dashboard/member"}>Dashboard</Link>
             </Button>
           ) : (
-            <GoogleButton size="sm" variant="default" className="w-auto font-medium">
-              Sign in with Google
+            <GoogleButton
+              size="sm"
+              variant="default"
+              className="h-10 w-auto rounded-full px-5 font-medium text-[14px] shadow-xs transition-all hover:scale-[1.02]"
+              style={{
+                backgroundColor: "var(--theme-primary)",
+                color: "var(--theme-primary-foreground)",
+              }}
+            >
+              Join Community
             </GoogleButton>
           )}
         </div>
