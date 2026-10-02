@@ -138,6 +138,15 @@ export interface BevyChapter {
   };
 }
 
+export interface BevySponsor {
+  company: string;
+  description?: string | null;
+  url?: string | null;
+  logo?: string | null;
+  sponsor_type?: string;
+  description_translated?: string | null;
+}
+
 export const ChapterRole = {
   GOOGLER: "GOOGLER",
   ORGANIZER: "ORGANIZER",

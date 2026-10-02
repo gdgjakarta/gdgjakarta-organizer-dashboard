@@ -1,6 +1,85 @@
 # GDG Organizer Dashboard - Dev Changelog
 This is a changelog for the development of the GDG Organizer Dashboard. Me Rizky, make this developer note as the main source of truth for development information. Copy-paste directly from the Antigravity agent response (like the block below) or notes from other sources.
 
+## [October 2, 2026] - Modern Editorial Homepage Redesign & Layouts
+
+### Overview
+Rebuilt the public homepage design, composition, and visual hierarchy with an editorial modern layout while fully retaining the dynamic Google core color rotation system (`#EA4335` Red, `#F9AB00` Yellow, `#34A853` Green, `#4285F4` Blue).
+
+### What Was Done
+1. **Asymmetric Hero Section (`CommunityHero`)**:
+   - Oversized editorial typography (`Where developer communities thrive`) with tight line rhythm.
+   - Dual pill CTA buttons (`rounded-full px-8 py-4 font-semibold text-base`) with scale hover micro-interactions.
+   - Social proof metrics pill (`10,000+ Members`, `120+ Events Hosted`, `100% Free & Community Run`).
+   - Interactive right-side showcase glass card with `rounded-[2.5rem]`, DevFest visual banner, and technology pillar badges.
+
+2. **Pill Category Filter Navigation (`CategoryPillFilter`)**:
+   - Horizontal pill selector for programs (AI & Cloud, Android & Mobile, Web & Frameworks, Study Jams, Hackathons).
+
+3. **Featured Gatherings & Workshops Grid (`FeaturedEventsSection`)**:
+   - Modern card styling with generous `rounded-[2rem]` geometry, hover lift (`hover:-translate-y-1.5`), full-bleed aspect-ratio cover media, floating date pills, location tags, and full-width pill action buttons.
+
+4. **Editorial Pull Quote Block (`CommunityQuoteSection`)**:
+   - Signature editorial quote layout with massive quotation typography, community leaders avatar, and subtle canvas background wash.
+
+5. **Developer Empowerment Pillars (`CommunityPillarsSection`)**:
+   - 3-pillar feature grid (`rounded-[2rem]`) highlighting Hands-on Code Labs, Flagship Summits, and Direct Mentorship.
+
+6. **Direct Community Access Spotlight (`CommunityAccessSpotlight`)**:
+   - Asymmetric split section ("Developers. Mentors. Nothing in between.") with a floating GDG Digital Member Pass mockup featuring QR fast check-in code and verified credentials.
+
+7. **Leadership & Organizers Grid (`OrganizersSpotlightSection`)**:
+   - Curated community leaders showcase with circular avatars, role pills, and smooth hover glow.
+
+8. **Closing Call-to-Action Banner (`CommunityCtaBanner`)**:
+   - Full-bleed `rounded-[2.5rem]` banner ("Your community to grow") with Google Auth trigger and event exploration.
+
+9. **Navigation Header (`PublicHeader`)**:
+   - Pill-shaped navigation items and responsive layout with Google Sign In / Dashboard pill button.
+
+---
+
+## [October 2, 2026] - Dynamic Google Core Color Schemes on Homepage
+
+### Overview
+Configured the homepage to randomly rotate between Google's 4 core colors on every load (`#EA4335` Red, `#F9AB00` Yellow, `#34A853` Green, `#4285F4` Blue), automatically theming the typography, buttons, borders, shadows, and subtle grayish background tints in both light and dark mode.
+
+### What Was Done
+1. **Defined Google Core Themes (`src/config/homepage-themes.ts`)**:
+   - Mapped all 4 Google core colors with exact primary buttons, text contrast shades (WCAG AA compliant for light and dark modes), subtle grayish background washes, colored borders, focus rings, and glow shadows.
+   - Added randomizer `getRandomGoogleTheme()` and query parameter resolver `getGoogleThemeByKey()`.
+
+2. **Created Homepage Theme Container (`src/app/(external)/_components/homepage-theme-container.tsx`)**:
+   - Injects scoped CSS variables (`--theme-primary`, `--theme-text`, `--theme-bg-subtle`, `--theme-border`, `--theme-shadow`, `--primary`, `--primary-foreground`, `--ring`) for both light and dark modes.
+   - Includes a floating interactive palette indicator with color dots and shuffle button to preview any of the 4 colors on the fly.
+
+3. **Adapted Components & Homepage Layout (`src/app/(external)/page.tsx`)**:
+   - The hero section takes on the subtle tinted grayish background and the heading text inherits the active color.
+   - Primary action buttons in `HeroActions` and event cards use the theme color and matching shadows.
+   - Cards, organizers avatars, and sponsors sections inherit the border accents and hover glow states.
+
+---
+
+## [October 2, 2026] - Fetch Sponsor & Partner Logos from Bevy API on Home Page
+
+### Overview
+Replaced static mock sponsors on the public home page with live sponsors and partners fetched directly from Bevy's API.
+
+### What Was Done
+1. **Added Bevy Sponsor Types**:
+   - Defined `BevySponsor` interface in `src/lib/bevy/types.ts` representing company name, logo URL, external URL, description, and sponsor type.
+
+2. **Implemented Bevy Sponsor Client**:
+   - Added `getBevyChapterSponsors(chapterSlugOrId)` in `src/lib/bevy/client.ts` querying `/chapter_slim/{slug}/sponsors/` with automatic fallback to chapter ID `642`.
+
+3. **Created SponsorsSection Component**:
+   - Created `src/app/(external)/_components/sponsors-section.tsx` with logo validation, duplicate company filtering, responsive cards with hover micro-animations, clickable external website links, and graceful empty state handling.
+
+4. **Integrated with Home Page**:
+   - Updated `src/app/(external)/page.tsx` to fetch sponsors in parallel with upcoming events via `Promise.all` and display `<SponsorsSection sponsors={sponsors} />`.
+
+---
+
 ## [September 13, 2026] - Fix Bevy Organizer Authentication & Role Detection
 
 ### Root Cause Analysis

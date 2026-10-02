@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 
+import Image from "next/image";
+
 import { Loader2 } from "lucide-react";
-import { siGoogle } from "simple-icons";
 import { toast } from "sonner";
 
-import { SimpleIcon } from "@/components/simple-icon";
+import googleFavicon from "@/app/Google_Favicon.webp";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { signInWithGoogle } from "@/stores/auth/auth-provider";
@@ -78,8 +79,7 @@ export function GoogleButton({
 
   return (
     <Button
-      variant="secondary"
-      className={cn("w-full", className)}
+      className={cn("h-11 w-full bg-blue-700 hover:bg-blue-600", className)}
       onClick={handleGoogleSignIn}
       disabled={disabled || isLoading}
       {...props}
@@ -91,7 +91,7 @@ export function GoogleButton({
         </>
       ) : (
         <>
-          <SimpleIcon icon={siGoogle} className="mr-2 size-4" />
+          <Image src={googleFavicon} alt="Google" width={24} height={24} className="mr-2 size-5 object-contain" />
           {children ?? "Sign in with Google"}
         </>
       )}
