@@ -1,6 +1,26 @@
 # GDG Organizer Dashboard - Dev Changelog
 This is a changelog for the development of the GDG Organizer Dashboard. Me Rizky, make this developer note as the main source of truth for development information. Copy-paste directly from the Antigravity agent response (like the block below) or notes from other sources.
 
+## [October 2, 2026] - Fetch Sponsor & Partner Logos from Bevy API on Home Page
+
+### Overview
+Replaced static mock sponsors on the public home page with live sponsors and partners fetched directly from Bevy's API.
+
+### What Was Done
+1. **Added Bevy Sponsor Types**:
+   - Defined `BevySponsor` interface in `src/lib/bevy/types.ts` representing company name, logo URL, external URL, description, and sponsor type.
+
+2. **Implemented Bevy Sponsor Client**:
+   - Added `getBevyChapterSponsors(chapterSlugOrId)` in `src/lib/bevy/client.ts` querying `/chapter_slim/{slug}/sponsors/` with automatic fallback to chapter ID `642`.
+
+3. **Created SponsorsSection Component**:
+   - Created `src/app/(external)/_components/sponsors-section.tsx` with logo validation, duplicate company filtering, responsive cards with hover micro-animations, clickable external website links, and graceful empty state handling.
+
+4. **Integrated with Home Page**:
+   - Updated `src/app/(external)/page.tsx` to fetch sponsors in parallel with upcoming events via `Promise.all` and display `<SponsorsSection sponsors={sponsors} />`.
+
+---
+
 ## [September 13, 2026] - Fix Bevy Organizer Authentication & Role Detection
 
 ### Root Cause Analysis

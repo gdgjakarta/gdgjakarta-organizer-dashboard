@@ -6,6 +6,7 @@ import {
   type BevyEvent,
   type BevyEventsResponse,
   type BevyMembersResponse,
+  type BevySponsor,
   type BevyUser,
   ChapterRole,
   getChapterRoleById,
@@ -362,4 +363,26 @@ export async function getBevyEventById(eventId: string | number): Promise<BevyEv
   if (!eventId) return null;
   const result = await bevyFetch<BevyEvent>(`/event/${eventId}`);
   return result;
+}
+
+/**
+ * Fetch chapter sponsors & partners from Bevy
+ */
+export async function getBevyChapterSponsors(
+  chapterSlugOrId: string = BEVY_CONFIG.chapterSlug || BEVY_CONFIG.chapterId,
+): Promise<BevySponsor[]> {
+  const result = await bevyFetch<BevySponsor[]>(`/chapter_slim/${chapterSlugOrId}/sponsors/`);
+  if (Array.isArray(result) && result.length > 0) {
+    return result;
+  }
+
+  // Fallback to chapter ID if chapterSlug was used, or vice-versa
+  if (chapterSlugOrId !== BEVY_CONFIG.chapterId) {
+    const fallbackResult = await bevyFetch<BevySponsor[]>(`/chapter_slim/${BEVY_CONFIG.chapterId}/sponsors/`);
+    if (Array.isArray(fallbackResult)) {
+      return fallbackResult;
+    }
+  }
+
+  return [];
 }

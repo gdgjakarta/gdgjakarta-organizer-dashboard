@@ -7,22 +7,20 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { BEVY_CONFIG } from "@/config/bevy-config";
 import { organizers } from "@/data/organizers";
-import { getBevyChapterEvents } from "@/lib/bevy/client";
+import { getBevyChapterEvents, getBevyChapterSponsors } from "@/lib/bevy/client";
 
 import { HeroActions } from "./_components/hero-actions";
+import { SponsorsSection } from "./_components/sponsors-section";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const eventsData = await getBevyChapterEvents(BEVY_CONFIG.chapterId, 3, 1);
+  const [eventsData, sponsors] = await Promise.all([
+    getBevyChapterEvents(BEVY_CONFIG.chapterId, 3, 1),
+    getBevyChapterSponsors(BEVY_CONFIG.chapterSlug || BEVY_CONFIG.chapterId),
+  ]);
 
   const upcomingEvents = eventsData?.results ?? [];
-
-  // Mock sponsors for now
-  const sponsors = [
-    { name: "Google", logo: "https://upload.wikimedia.org/wikipedia/commons/2/2f/Google_2015_logo.svg" },
-    { name: "Tech Corp", logo: "https://upload.wikimedia.org/wikipedia/commons/a/a9/Amazon_logo.svg" },
-  ];
 
   return (
     <div className="flex flex-col gap-16 pb-16">
@@ -141,18 +139,7 @@ export default async function Home() {
       </section>
 
       {/* Sponsors Section */}
-      <section className="bg-muted/30 py-16">
-        <div className="container mx-auto px-4 text-center sm:px-6 lg:px-8">
-          <h2 className="mb-8 font-bold text-2xl tracking-tight">Our Sponsors & Partners</h2>
-          <div className="flex flex-wrap items-center justify-center gap-8 opacity-70 grayscale transition-all hover:grayscale-0 md:gap-16">
-            {sponsors.map((sponsor) => (
-              <div key={sponsor.name} className="relative h-12 w-32 md:h-16 md:w-40">
-                <Image src={sponsor.logo} alt={sponsor.name} fill className="object-contain" />
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      <SponsorsSection sponsors={sponsors} />
     </div>
   );
 }
