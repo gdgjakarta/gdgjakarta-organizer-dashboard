@@ -1,13 +1,16 @@
 import { isAuthorizedOrganizerEmail } from "@/config/auth-config";
 import { BEVY_CONFIG } from "@/config/bevy-config";
 
-import type {
-  BevyChapterTeamMember,
-  BevyEvent,
-  BevyEventsResponse,
-  BevyMembersResponse,
-  BevyUser,
-  OrganizerValidationResult,
+import {
+  type BevyChapterTeamMember,
+  type BevyEvent,
+  type BevyEventsResponse,
+  type BevyMembersResponse,
+  type BevyUser,
+  ChapterRole,
+  getChapterRoleById,
+  isChapterTeamRole,
+  type OrganizerValidationResult,
 } from "./types";
 
 /**
@@ -46,76 +49,94 @@ export async function bevyFetch<T>(endpoint: string, options: RequestInit = {}):
 }
 
 /**
- * Step 2: Get Bevy User ID by Email
- * In Bevy API: endpoint /api/user/{email} accepts email directly as the identifier parameter
+ * Retrieve user details by ID or email from Bevy.
+ * Matches KawalEvent AuthRemoteDataSourceImpl.getUserById
+ *
+ * @param userId The ID or email of the user to retrieve.
+ * @param fields Allows specifying what fields to return for each user separated by commas.
  */
-export async function getBevyUserByEmail(email: string): Promise<BevyUser | null> {
-  if (!email) return null;
+export async function getUserById(userId: string, fields?: string): Promise<BevyUser | null> {
+  if (!userId) return null;
 
-  console.log(`[Bevy Auth] Fetching Bevy user with param email: ${email}`);
+  const cleanUserId = userId.trim().replace(/\/+$/, "");
+  const isAllDigits = /^\d+$/.test(cleanUserId);
+  const formattedUserId = isAllDigits ? `${cleanUserId}/` : encodeURIComponent(cleanUserId);
+  const endpoint = fields
+    ? `/user/${formattedUserId}?fields=${encodeURIComponent(fields)}`
+    : `/user/${formattedUserId}`;
 
-  // 1. Direct param: /api/user/{email}
-  const directResult = await bevyFetch<BevyUser | { user?: BevyUser; results?: BevyUser[] }>(
-    `/user/${encodeURIComponent(email)}`,
-  );
+  console.log(`[Bevy Auth] Calling getUserById: ${cleanUserId} -> ${endpoint}`);
+
+  const directResult = await bevyFetch<BevyUser | { user?: BevyUser; results?: BevyUser[] }>(endpoint);
 
   if (directResult) {
-    console.log("[Bevy Auth] Response from /api/user/{email}:", directResult);
     if ("id" in directResult && directResult.id) {
       return directResult as BevyUser;
     }
     if ("user" in directResult && directResult.user) {
       return directResult.user;
     }
-    if ("results" in directResult && directResult.results && directResult.results.length > 0) {
+    if ("results" in directResult && Array.isArray(directResult.results) && directResult.results.length > 0) {
       return directResult.results[0];
     }
   }
 
-  // 2. Query param fallback: /api/user/?search={email}
+  // Fallback to query param search if direct identifier returned nothing
   const searchResult = await bevyFetch<{ results?: BevyUser[]; user?: BevyUser }>(
-    `/user/?search=${encodeURIComponent(email)}`,
+    `/user/?search=${encodeURIComponent(cleanUserId)}`,
   );
 
   if (searchResult?.results && searchResult.results.length > 0) {
-    console.log("[Bevy Auth] Found user via search param:", searchResult.results[0]);
     return searchResult.results[0];
   }
-
   if (searchResult?.user) {
     return searchResult.user;
   }
 
-  console.warn(`[Bevy Auth] No Bevy user found for email: ${email}`);
+  console.warn(`[Bevy Auth] No Bevy user found for identifier: ${userId}`);
   return null;
 }
 
 /**
- * Step 3: Get List of Chapter Teams from Bevy
- * Endpoint: /api/chapter_team/?chapter_slug={chapterSlug} or /api/chapter_team/?chapter_id={chapterId}
+ * Backward-compatible alias for getUserById(email)
  */
-/**
- * Step 3: Get List of GDG Jakarta Chapter Teams from Bevy
- * In Bevy API: endpoint /api/chapter/642/team returns the team members list
- * with { count, results: [...] }.
- */
-export async function getBevyChapterTeams(chapterId: string = BEVY_CONFIG.chapterId): Promise<BevyChapterTeamMember[]> {
-  console.log(`[Bevy Auth] Fetching GDG Jakarta chapter teams for chapterId: ${chapterId}`);
+export async function getBevyUserByEmail(email: string): Promise<BevyUser | null> {
+  return await getUserById(email);
+}
 
-  // 1. Fetch team members from the dedicated chapter team endpoint: /chapter/{chapterId}/team
+/**
+ * Retrieve team members for a given chapter from Bevy.
+ * Matches KawalEvent AuthApiClient.getChapterTeam
+ *
+ * Endpoint: /chapter/{chapterId}/team/
+ */
+export async function getChapterTeam(
+  chapterId: string | number = BEVY_CONFIG.chapterId,
+): Promise<BevyChapterTeamMember[]> {
+  console.log(`[Bevy Auth] Fetching chapter team for chapterId: ${chapterId}`);
+
+  // 1. Dedicated chapter team endpoint: /chapter/{chapterId}/team/
   const teamData = await bevyFetch<{
+    count?: number;
+    results?: BevyChapterTeamMember[];
+  }>(`/chapter/${chapterId}/team/`);
+
+  if (teamData?.results && Array.isArray(teamData.results)) {
+    console.log(`[Bevy Auth] Retrieved ${teamData.results.length} team members from /chapter/${chapterId}/team/`);
+    return teamData.results;
+  }
+
+  // 2. Fallback without trailing slash
+  const altData = await bevyFetch<{
     count?: number;
     results?: BevyChapterTeamMember[];
   }>(`/chapter/${chapterId}/team`);
 
-  if (teamData?.results && Array.isArray(teamData.results)) {
-    console.log(
-      `[Bevy Auth] Retrieved ${teamData.results.length} organizers/team members from Bevy /chapter/${chapterId}/team`,
-    );
-    return teamData.results;
+  if (altData?.results && Array.isArray(altData.results)) {
+    return altData.results;
   }
 
-  // 2. Fallback to chapter details endpoint: /chapter/{chapterId}
+  // 3. Fallback to chapter details endpoint: /chapter/{chapterId}
   const chapterData = await bevyFetch<{
     id?: number;
     title?: string;
@@ -123,132 +144,186 @@ export async function getBevyChapterTeams(chapterId: string = BEVY_CONFIG.chapte
   }>(`/chapter/${chapterId}`);
 
   if (chapterData?.chapter_team && Array.isArray(chapterData.chapter_team)) {
-    console.log(
-      `[Bevy Auth] Retrieved ${chapterData.chapter_team.length} organizers/team members from /chapter/${chapterId}`,
-    );
     return chapterData.chapter_team;
   }
 
-  // 3. Fallback to chapter slug
-  if (BEVY_CONFIG.chapterSlug && BEVY_CONFIG.chapterSlug !== chapterId) {
-    const slugData = await bevyFetch<{
-      count?: number;
-      results?: BevyChapterTeamMember[];
-      chapter_team?: BevyChapterTeamMember[];
-    }>(`/chapter/${BEVY_CONFIG.chapterSlug}/team`);
-
-    if (slugData?.results && Array.isArray(slugData.results)) {
-      return slugData.results;
-    }
-  }
-
-  console.warn("[Bevy Auth] No chapter team found in Bevy response");
+  console.warn(`[Bevy Auth] No chapter team found for chapterId: ${chapterId}`);
   return [];
 }
 
 /**
- * Validates whether an email belongs to an authorized organizer.
- * Verifies strictly through:
- * 1. Explicit Authorized Organizer Emails whitelist (auth-config).
- * 2. Exact unmasked email or username match from Bevy Chapter Team API.
+ * Backward-compatible alias for getChapterTeam
+ */
+export async function getBevyChapterTeams(chapterId: string = BEVY_CONFIG.chapterId): Promise<BevyChapterTeamMember[]> {
+  return await getChapterTeam(chapterId);
+}
+
+export interface UserChapterRoleResult {
+  chapterRole: ChapterRole;
+  roleId: number | null;
+  roleTitle: string;
+  isValidOrganizer: boolean;
+  teamMember?: BevyChapterTeamMember;
+}
+
+/**
+ * Determine a user's chapter role based on their numerical Bevy User ID.
+ * Matches KawalEvent AuthRepositoryImpl.getUserChapterRole:
+ *  - Role ID 1 -> ORGANIZER
+ *  - Role ID 2, 3 -> CORE_TEAM
+ *  - Role ID 4 -> GOOGLER
+ *  - else -> MEMBER
+ */
+export async function getUserChapterRole(
+  bevyUserId: number | string,
+  chapterId: string | number = BEVY_CONFIG.chapterId,
+): Promise<UserChapterRoleResult> {
+  const chapterTeams = await getChapterTeam(chapterId);
+  const normalizedId = String(bevyUserId);
+
+  const matchedMember = chapterTeams.find((m) => {
+    const id = m.user?.id ?? m.user_id;
+    return id !== undefined && id !== null && String(id) === normalizedId;
+  });
+
+  if (!matchedMember) {
+    return {
+      chapterRole: ChapterRole.MEMBER,
+      roleId: null,
+      roleTitle: "Member",
+      isValidOrganizer: false,
+    };
+  }
+
+  const roleObj = matchedMember.role;
+  const roleId = typeof roleObj === "object" && roleObj !== null && typeof roleObj.id === "number" ? roleObj.id : null;
+
+  const chapterRole = getChapterRoleById(roleId);
+  const isOrganizer = isChapterTeamRole(chapterRole);
+
+  // Determine user title / designation
+  let roleTitle = "Member";
+  if (isOrganizer) {
+    if (matchedMember.title?.trim()) {
+      roleTitle = matchedMember.title.trim();
+    } else if (typeof roleObj === "object" && roleObj !== null && roleObj.name) {
+      roleTitle = roleObj.name.trim();
+    } else {
+      switch (chapterRole) {
+        case ChapterRole.ORGANIZER:
+          roleTitle = "Organizer";
+          break;
+        case ChapterRole.CORE_TEAM:
+          roleTitle = "Core Team";
+          break;
+        case ChapterRole.GOOGLER:
+          roleTitle = "Googler";
+          break;
+        default:
+          roleTitle = "Member";
+      }
+    }
+  }
+
+  return {
+    chapterRole,
+    roleId,
+    roleTitle,
+    isValidOrganizer: isOrganizer,
+    teamMember: matchedMember,
+  };
+}
+
+/**
+ * Refactored authentication & role resolution matching KawalEvent:
+ * 1. Calls Bevy API getUserById(email) to resolve the user and their numerical Bevy ID.
+ * 2. Uses getUserChapterRole(bevyUserId) to compare against getChapterTeam results.
+ * 3. Inspects role ID: 1 -> ORGANIZER, 2/3 -> CORE_TEAM, 4 -> GOOGLER, else -> MEMBER.
+ * 4. Checks whitelist isAuthorizedOrganizerEmail as a fallback safeguard.
  */
 export async function validateBevyOrganizer(email: string, displayName?: string): Promise<OrganizerValidationResult> {
   try {
     if (!email) {
       return {
         isValidOrganizer: false,
-        role: "Member",
-        bevyUserId: null,
+        role: "member",
         chapterRole: "Member",
+        chapterRoleType: ChapterRole.MEMBER,
+        roleId: null,
+        roleTitle: "Member",
+        bevyUserId: null,
         bevyUser: null,
       };
     }
 
     const normalizedEmail = email.toLowerCase().trim();
-    console.log(
-      `[Bevy Auth Step 1] Validating organizer status for: ${normalizedEmail} (Display Name: ${displayName ?? "N/A"})`,
-    );
+    console.log(`[Bevy Auth Flow] Validating role for: ${normalizedEmail} (Display Name: ${displayName ?? "N/A"})`);
 
-    // 1. Check explicit authorized organizer whitelist first
-    const isWhitelisted = isAuthorizedOrganizerEmail(normalizedEmail);
-    console.log(
-      `[Bevy Auth Step 2] Whitelist check for ${normalizedEmail}: ${isWhitelisted ? "MATCHED (Authorized Organizer)" : "NOT in whitelist"}`,
-    );
+    // Step 1: Call Bevy API getUserById with email as the identifier (like KawalEvent)
+    const bevyUser = await getUserById(normalizedEmail);
+    const bevyUserId = bevyUser?.id !== undefined && bevyUser?.id !== null ? String(bevyUser.id) : null;
+    console.log(`[Bevy Auth Flow] Bevy user lookup result: ID = ${bevyUserId ?? "NOT FOUND"}`);
 
-    // 2. Fetch GDG Jakarta chapter team list
-    const chapterTeams = await getBevyChapterTeams();
-    console.log(`[Bevy Auth Step 3] Retrieved ${chapterTeams.length} team members from Bevy API`);
-
-    // 3. Match against chapter team members (STRICT EXACT MATCH ONLY - NO MASKED WILDCARDS)
-    let matchedMember: BevyChapterTeamMember | undefined;
-
-    if (chapterTeams.length > 0) {
-      matchedMember = chapterTeams.find((m) => {
-        const teamEmail = m.user?.email?.toLowerCase()?.trim() || "";
-        const teamUsername = m.user?.username?.toLowerCase()?.trim() || "";
-
-        // Unmasked exact email match only (ignore privacy-masked strings containing '*')
-        if (teamEmail && !teamEmail.includes("*") && teamEmail === normalizedEmail) {
-          console.log(`[Bevy Auth Step 3a] Exact unmasked email match found in Bevy team: ${teamEmail}`);
-          return true;
-        }
-
-        // Exact username match (if username is an exact email)
-        if (teamUsername && !teamUsername.includes("*") && teamUsername === normalizedEmail) {
-          console.log(`[Bevy Auth Step 3b] Exact username match found in Bevy team: ${teamUsername}`);
-          return true;
-        }
-
-        return false;
-      });
-    }
-
-    if (isWhitelisted || matchedMember) {
-      const teamMemberUserId = matchedMember?.user?.id || matchedMember?.user_id;
-      const bevyUserId = teamMemberUserId ? String(teamMemberUserId) : null;
-
-      // Extract role title from Bevy or default to Organizer
-      const roleObj = matchedMember?.role as unknown;
-      let roleName = "Organizer";
-
-      if (typeof roleObj === "object" && roleObj !== null && "name" in roleObj) {
-        roleName = String((roleObj as { name: string }).name);
-      } else if (typeof matchedMember?.role === "string" && matchedMember.role) {
-        roleName = matchedMember.role;
-      } else if (matchedMember?.title) {
-        roleName = matchedMember.title;
-      }
-
+    // Step 2: If Bevy user found, query chapter team role using Bevy User ID (like KawalEvent getUserChapterRole)
+    if (bevyUserId) {
+      const chapterRoleResult = await getUserChapterRole(bevyUserId);
       console.log(
-        `[Bevy Auth Step 4] VERDICT: Authorized Organizer! ${normalizedEmail} assigned Role: "${roleName}" (Bevy ID: ${bevyUserId ?? "N/A"})`,
+        `[Bevy Auth Flow] Chapter role resolution: ${chapterRoleResult.chapterRole} (RoleId: ${chapterRoleResult.roleId}, Title: "${chapterRoleResult.roleTitle}")`,
       );
 
+      if (chapterRoleResult.isValidOrganizer) {
+        return {
+          isValidOrganizer: true,
+          role: "organizer",
+          chapterRole: chapterRoleResult.roleTitle,
+          chapterRoleType: chapterRoleResult.chapterRole,
+          roleId: chapterRoleResult.roleId,
+          roleTitle: chapterRoleResult.roleTitle,
+          bevyUserId,
+          chapterTeamMember: chapterRoleResult.teamMember,
+          bevyUser,
+        };
+      }
+    }
+
+    // Step 3: Whitelist fallback check (for accounts specified in ORGANIZER_EMAILS)
+    const isWhitelisted = isAuthorizedOrganizerEmail(normalizedEmail);
+    if (isWhitelisted) {
+      console.log(`[Bevy Auth Flow] Whitelist fallback MATCHED for: ${normalizedEmail}`);
       return {
         isValidOrganizer: true,
-        role: roleName,
+        role: "organizer",
+        chapterRole: "Organizer",
+        chapterRoleType: ChapterRole.ORGANIZER,
+        roleId: 1,
+        roleTitle: "Organizer",
         bevyUserId,
-        chapterRole: matchedMember?.title || roleName,
-        chapterTeamMember: matchedMember,
-        bevyUser: matchedMember?.user ?? null,
+        bevyUser: bevyUser ?? null,
       };
     }
 
-    // 4. Default: User is a regular community member
-    console.log(`[Bevy Auth Step 4] VERDICT: Regular community Member. ${normalizedEmail} assigned Role: "Member"`);
+    // Step 4: Default regular Community Member
+    console.log(`[Bevy Auth Flow] Regular community Member: ${normalizedEmail}`);
     return {
       isValidOrganizer: false,
-      role: "Member",
-      bevyUserId: null,
+      role: "member",
       chapterRole: "Member",
-      bevyUser: null,
+      chapterRoleType: ChapterRole.MEMBER,
+      roleId: null,
+      roleTitle: "Member",
+      bevyUserId,
+      bevyUser: bevyUser ?? null,
     };
   } catch (error) {
     console.error("[validateBevyOrganizer Error]", error);
     return {
       isValidOrganizer: false,
-      role: "Member",
-      bevyUserId: null,
+      role: "member",
       chapterRole: "Member",
+      chapterRoleType: ChapterRole.MEMBER,
+      roleId: null,
+      roleTitle: "Member",
+      bevyUserId: null,
       bevyUser: null,
     };
   }

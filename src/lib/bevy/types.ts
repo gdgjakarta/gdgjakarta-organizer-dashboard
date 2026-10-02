@@ -138,11 +138,53 @@ export interface BevyChapter {
   };
 }
 
+export const ChapterRole = {
+  GOOGLER: "GOOGLER",
+  ORGANIZER: "ORGANIZER",
+  CORE_TEAM: "CORE_TEAM",
+  MEMBER: "MEMBER",
+} as const;
+
+export type ChapterRole = (typeof ChapterRole)[keyof typeof ChapterRole];
+
+export function getChapterRoleById(id?: number | null): ChapterRole {
+  switch (id) {
+    case 1:
+      return ChapterRole.ORGANIZER;
+    case 2:
+    case 3:
+      return ChapterRole.CORE_TEAM;
+    case 4:
+      return ChapterRole.GOOGLER;
+    default:
+      return ChapterRole.MEMBER;
+  }
+}
+
+export function isOrganizerRole(role: ChapterRole): boolean {
+  return role === ChapterRole.ORGANIZER;
+}
+
+export function isCoreTeamRole(role: ChapterRole): boolean {
+  return role === ChapterRole.CORE_TEAM;
+}
+
+export function isGooglerRole(role: ChapterRole): boolean {
+  return role === ChapterRole.GOOGLER;
+}
+
+export function isChapterTeamRole(role: ChapterRole): boolean {
+  return role === ChapterRole.ORGANIZER || role === ChapterRole.CORE_TEAM || role === ChapterRole.GOOGLER;
+}
+
 export type OrganizerValidationResult = {
   isValidOrganizer: boolean;
   role: string;
   bevyUserId: string | number | null;
   chapterRole: string | null;
+  chapterRoleType?: ChapterRole;
+  roleId?: number | null;
+  roleTitle?: string | null;
   chapterTeamMember?: BevyChapterTeamMember;
   bevyUser?: BevyUser | null;
 };

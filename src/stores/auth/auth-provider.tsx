@@ -29,6 +29,8 @@ function mapFirebaseUserToOrganizer(
     role: isOrg ? "organizer" : "member",
     bevyUserId: validation?.bevyUserId,
     chapterRole: validation?.chapterRole || (isOrg ? "Organizer" : "Member"),
+    chapterRoleType: validation?.chapterRoleType,
+    roleId: validation?.roleId,
   };
 }
 

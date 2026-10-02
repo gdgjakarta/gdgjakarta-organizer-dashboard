@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { validateBevyOrganizer } from "@/lib/bevy/client";
-import type { OrganizerValidationResult } from "@/lib/bevy/types";
+import { ChapterRole, type OrganizerValidationResult } from "@/lib/bevy/types";
 
 const AUTH_COOKIE = "auth_token";
 const ROLE_COOKIE = "auth_role";
@@ -75,6 +75,9 @@ export async function handleUserPostLoginAction(params: UserAuthSyncParams): Pro
       role: role,
       bevyUserId: validation.bevyUserId ? String(validation.bevyUserId) : null,
       chapterRole: chapterRole,
+      chapterRoleType: validation.chapterRoleType ?? (isOrganizer ? ChapterRole.ORGANIZER : ChapterRole.MEMBER),
+      roleId: validation.roleId ?? null,
+      roleTitle: validation.roleTitle ?? chapterRole,
     };
   } catch (fatalError) {
     console.error("[handleUserPostLoginAction] Unexpected server error during post-login sync:", fatalError);
@@ -83,6 +86,9 @@ export async function handleUserPostLoginAction(params: UserAuthSyncParams): Pro
       role: "member",
       bevyUserId: null,
       chapterRole: "Member",
+      chapterRoleType: ChapterRole.MEMBER,
+      roleId: null,
+      roleTitle: "Member",
     };
   }
 }

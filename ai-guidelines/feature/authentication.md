@@ -1,12 +1,12 @@
 # Authentication & Membership Verification Feature
 
-This guide outlines the authentication architecture, organizer permission verification, and session state management in the **GDG Jakarta Organizer Dashboard**.
+This guide outlines the authentication architecture, organizer permission verification, and session state management in the **GDG Jakarta Organizer Dashboard**, aligned with the **KawalEvent** project architecture.
 
 ---
 
 ## 1. Overview & Authentication Flow
 
-The authentication system combines **Firebase Authentication (Google Sign-In)** with **Bevy Chapter Team verification** to ensure appropriate access for Community Members and Core Team Organizers:
+The authentication system combines **Firebase Authentication (Google Sign-In)** with **Bevy API verification** (`getUserById` & `getUserChapterRole`) to ensure appropriate access for Community Members and Core Team Organizers:
 
 ```
                   ┌────────────────────────┐
@@ -22,13 +22,27 @@ The authentication system combines **Firebase Authentication (Google Sign-In)** 
                               │
                               ▼
                   ┌────────────────────────┐
-                  │ Check Whitelist & Bevy │
-                  │ GET /chapter/{id}/team │
+                  │ Bevy: getUserById(email)
+                  │ Returns bevyUserId     │
+                  └───────────┬────────────┘
+                              │
+                              ▼
+                  ┌────────────────────────┐
+                  │ getUserChapterRole     │
+                  │ GET /chapter/{id}/team/│
                   └───────────┬────────────┘
                               │
                ┌──────────────┴──────────────┐
+               │  Compare role.id in Team    │
+               │  1     -> ORGANIZER         │
+               │  2, 3  -> CORE_TEAM         │
+               │  4     -> GOOGLER           │
+               │  else  -> MEMBER            │
+               └──────────────┬──────────────┘
+                              │
+               ┌──────────────┴──────────────┐
                │                             │
-        [Is Team Member]             [Not Team Member]
+    [Is Team Member: 1, 2, 3, 4]      [Member / Not in Team]
                │                             │
                ▼                             ▼
    ┌───────────────────────┐     ┌───────────────────────┐
@@ -48,16 +62,22 @@ The authentication system combines **Firebase Authentication (Google Sign-In)** 
 - After receiving Firebase ID token, calls `handleUserPostLoginAction({ uid, email, name, token })`.
 
 ### 2.2 Server Action Verification (`src/server/auth-actions.ts`)
-- Calls `validateOrganizerAction(email, name)`.
-- Checks email against `isAuthorizedOrganizerEmail(email)` whitelist in `src/config/auth-config.ts`.
-- Calls Bevy API `getBevyChapterTeams()` to match against unmasked official chapter team members.
-- If verified: sets `auth_role="organizer"` cookie.
-- If not on team: sets `auth_role="member"` cookie.
+- Calls `validateBevyOrganizer(email, name)`.
+- Invokes Bevy API `getUserById(email)` to retrieve the user's Bevy ID.
+- Invokes `getUserChapterRole(bevyUserId)` to look up the user in `getChapterTeam(chapterId)`.
+- Resolves role:
+  - `1`: `ChapterRole.ORGANIZER`
+  - `2, 3`: `ChapterRole.CORE_TEAM`
+  - `4`: `ChapterRole.GOOGLER`
+  - `else`: `ChapterRole.MEMBER`
+- Fallback to whitelist `isAuthorizedOrganizerEmail(email)` if user is not in team list.
+- If verified team member: sets `auth_role="organizer"` cookie.
+- If member: sets `auth_role="member"` cookie.
 
 ### 2.3 Middleware Guard (`src/middleware.ts`)
 - Inspects `auth_token` and `auth_role` cookies.
 - Redirects unauthenticated requests from `/dashboard/*` to `/auth/login`.
-- Restricts organizer paths (`/dashboard/organizer`, `/dashboard/events/create`, etc.) to users with `auth_role === "organizer"`.
+- Restricts organizer paths (`/dashboard/organizer`, `/dashboard/events/create`, etc.) to users with team permissions (`auth_role === "organizer"`).
 
 ### 2.4 Client State (`src/stores/auth/auth-store.ts`)
 - Zustand store exposing:

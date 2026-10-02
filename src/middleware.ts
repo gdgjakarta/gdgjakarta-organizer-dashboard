@@ -52,7 +52,7 @@ export function middleware(request: NextRequest) {
   const token = request.cookies.get(AUTH_COOKIE)?.value;
   const role = request.cookies.get(ROLE_COOKIE)?.value;
   const isAuthenticated = Boolean(token);
-  const isOrganizer = role === "organizer";
+  const isOrganizer = role === "organizer" || role === "core_team" || role === "googler";
 
   // Protected route: not authenticated → redirect to unified login with callbackUrl
   if (isProtected(pathname) && !isAuthenticated) {

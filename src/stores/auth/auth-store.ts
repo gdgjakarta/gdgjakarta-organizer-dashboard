@@ -1,6 +1,8 @@
 import type { User } from "firebase/auth";
 import { createStore } from "zustand/vanilla";
 
+import type { ChapterRole } from "@/lib/bevy/types";
+
 export type OrganizerRole = string;
 
 export interface AuthOrganizer {
@@ -11,6 +13,8 @@ export interface AuthOrganizer {
   role: string;
   bevyUserId?: string | number | null;
   chapterRole?: string | null;
+  chapterRoleType?: ChapterRole;
+  roleId?: number | null;
 }
 
 export interface AuthState {
