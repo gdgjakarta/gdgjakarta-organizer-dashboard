@@ -9,7 +9,7 @@
 
 ## Getting Started
 
-You can run this project locally, or deploy it instantly with Vercel.
+Follow the steps below to run this project locally.
 
 ### Run locally
 

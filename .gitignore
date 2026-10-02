@@ -32,8 +32,6 @@ yarn-error.log*
 .env.local
 .env
 
-# vercel
-.vercel
 
 # typescript
 *.tsbuildinfo
@@ -44,3 +42,10 @@ next-env.d.ts
 .wrangler/
 .dev.vars
 
+.hotswan/
+
+# service accounts & credentials
+service-account/
+/service-account/
+*.service-account.json
+service-account.json
