@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from "react";
 
-import Image from "next/image";
 import Link from "next/link";
 
 import { format, parseISO } from "date-fns";
-import { Calendar, CalendarCheck, Clock, ExternalLink, MapPin, Radio, Sparkles } from "lucide-react";
+import { CalendarCheck, Clock, ExternalLink, MapPin, Radio, Sparkles } from "lucide-react";
 
+import { EventCardImage } from "@/components/event-card-image";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -138,21 +138,12 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
               <div>
                 {/* Event Picture / Banner */}
                 <Link href={`/dashboard/member/events/${reg.event_id}`} className="block">
-                  <div className="relative aspect-video w-full overflow-hidden bg-muted/60">
-                    {ev?.picture_url ? (
-                      <Image
-                        src={ev.picture_url}
-                        alt={reg.event_title}
-                        fill
-                        unoptimized
-                        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                      />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center">
-                        <Calendar className="size-10 text-muted-foreground/30" />
-                      </div>
-                    )}
-                    <div className="absolute top-3 left-3 flex gap-1.5">
+                  <EventCardImage
+                    src={ev?.picture_url}
+                    alt={reg.event_title}
+                    className="transition-transform duration-300 group-hover:scale-105"
+                  >
+                    <div className="absolute top-3 left-3 z-20 flex gap-1.5">
                       <Badge variant="secondary" className="bg-background/85 text-[10px] backdrop-blur-xs">
                         {ev?.is_virtual ? (
                           <span className="flex items-center gap-1 text-blue-500">
@@ -170,7 +161,7 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
                         </Badge>
                       )}
                     </div>
-                  </div>
+                  </EventCardImage>
                 </Link>
 
                 <CardHeader className="space-y-2 p-4 pb-2">

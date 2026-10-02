@@ -50,6 +50,16 @@
   --color-sidebar-ring: var(--sidebar-ring);
   --font-heading: var(--font-heading);
   --font-sans: var(--font-sans);
+  --animate-shimmer: shimmer 2s infinite ease-in-out;
+
+  @keyframes shimmer {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(100%);
+    }
+  }
 }
 
 /* Default theme styles (used when no data-theme-preset is set or when 'default' is selected).
@@ -310,6 +320,29 @@ These serve as the fallback; there is no separate default.css file. */
   .text-golden-btn {
     font-family: var(--font-google-sans-flex), system-ui, sans-serif;
     font-size: 14px !important;
+  }
+
+  .shimmer-wave {
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    animation: shimmer 2s infinite ease-in-out;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.45) 50%,
+      transparent 100%
+    );
+    pointer-events: none;
+  }
+
+  .dark .shimmer-wave {
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.08) 50%,
+      transparent 100%
+    );
   }
 }
 

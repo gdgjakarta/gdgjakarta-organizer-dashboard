@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from "react";
 
-import Image from "next/image";
 import Link from "next/link";
 
 import { format, parseISO } from "date-fns";
 import { Calendar, Clock, MapPin, Radio } from "lucide-react";
 
+import { EventCardImage } from "@/components/event-card-image";
 import { EventRegistrationModal } from "@/components/event-registration-modal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -95,21 +95,12 @@ export function MemberEventsList({ events, myRegistrations = [] }: MemberEventsL
               <div>
                 {/* Event Thumbnail with Dynamic Link */}
                 <Link href={`/dashboard/member/events/${event.id}`} className="block">
-                  <div className="relative aspect-video w-full overflow-hidden bg-muted/60">
-                    {event.picture_url || event.banner_url ? (
-                      <Image
-                        src={event.picture_url ?? event.banner_url ?? ""}
-                        alt={event.title}
-                        fill
-                        unoptimized
-                        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                      />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center">
-                        <Calendar className="size-10 text-muted-foreground/30" />
-                      </div>
-                    )}
-                    <div className="absolute top-3 left-3 flex gap-1.5">
+                  <EventCardImage
+                    src={event.picture_url ?? event.banner_url}
+                    alt={event.title}
+                    className="transition-transform duration-300 group-hover:scale-105"
+                  >
+                    <div className="absolute top-3 left-3 z-20 flex gap-1.5">
                       <Badge variant="secondary" className="bg-background/85 text-[10px] backdrop-blur-xs">
                         {event.is_virtual ? (
                           <span className="flex items-center gap-1 text-blue-500">
@@ -125,7 +116,7 @@ export function MemberEventsList({ events, myRegistrations = [] }: MemberEventsL
                         {isPast ? "Concluded" : "Upcoming"}
                       </Badge>
                     </div>
-                  </div>
+                  </EventCardImage>
                 </Link>
 
                 <CardHeader className="space-y-2 p-4 pb-2">

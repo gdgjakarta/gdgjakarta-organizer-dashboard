@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 
-import Image from "next/image";
 import Link from "next/link";
 
 import { format, parseISO } from "date-fns";
@@ -21,6 +20,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { EventCardImage } from "@/components/event-card-image";
 import { EventRegistrationModal } from "@/components/event-registration-modal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -192,23 +192,14 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
         {/* Left 2 Cols: Hero Banner & Full Content */}
         <div className="space-y-6 lg:col-span-2">
           {/* Banner / Poster */}
-          <div className="relative aspect-[21/9] w-full overflow-hidden rounded-xl border bg-muted/40 shadow-xs">
-            {event.banner_url || event.picture_url ? (
-              <Image
-                src={event.banner_url ?? event.picture_url ?? ""}
-                alt={event.title}
-                fill
-                unoptimized
-                className="h-full w-full object-cover"
-                priority
-              />
-            ) : (
-              <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-muted-foreground">
-                <Calendar className="size-12 text-muted-foreground/30" />
-                <span className="font-medium text-sm">GDG Jakarta Community Event</span>
-              </div>
-            )}
-            <div className="absolute top-4 left-4 flex gap-2">
+          <EventCardImage
+            src={event.banner_url ?? event.picture_url}
+            alt={event.title}
+            aspectRatio="aspect-[21/9]"
+            containerClassName="rounded-xl border shadow-xs"
+            priority
+          >
+            <div className="absolute top-4 left-4 z-20 flex gap-2">
               <Badge variant="secondary" className="bg-background/90 text-xs backdrop-blur-md">
                 {event.is_virtual ? (
                   <span className="flex items-center gap-1.5 text-blue-500">
@@ -226,7 +217,7 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
                 </Badge>
               )}
             </div>
-          </div>
+          </EventCardImage>
 
           {/* Title & Short Summary */}
           <div className="space-y-3">
