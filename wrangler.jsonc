@@ -34,7 +34,7 @@
             "binding": "WORKER_SELF_REFERENCE",
             // The service should match the "name" of your worker
             "service": "gdgjakarta-organizer-dashboard",
-        },
+        }
     ],
     "observability": {
         "logs": {
@@ -49,6 +49,10 @@
         {
             "binding": "NEXT_INC_CACHE_R2_BUCKET",
             "bucket_name": "community-dashboard",
+        }, 
+        {
+            "binding": "MEDIA_BUCKET",
+            "bucket_name": "gdgjakarta-assets",
         },
     ],
     "images": {
