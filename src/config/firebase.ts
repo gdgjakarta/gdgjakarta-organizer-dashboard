@@ -2,8 +2,10 @@ import { getApp, getApps, initializeApp } from "firebase/app";
 import { GoogleAuthProvider, getAuth } from "firebase/auth";
 import { getRemoteConfig } from "firebase/remote-config";
 
+import { REMOTE_CONFIG_KEYS } from "./remote-config-keys";
+
 // Your web app's Firebase configuration read from environment variables
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyCVk8ECyA8Lqd7KNqdnItxYUu9jdFzoohU",
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "gdgjakarta-app.firebaseapp.com",
   projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "gdgjakarta-app",
@@ -26,10 +28,10 @@ googleProvider.setCustomParameters({
 export const remoteConfig = typeof window !== "undefined" ? getRemoteConfig(app) : null;
 
 if (remoteConfig) {
-  remoteConfig.settings.minimumFetchIntervalMillis = process.env.NODE_ENV === "development" ? 10000 : 3600000;
+  remoteConfig.settings.minimumFetchIntervalMillis = process.env.NODE_ENV === "development" ? 10000 : 60000;
 
-  // Set default values if needed
-  // remoteConfig.defaultConfig = {
-  //   "example_key": "example_value",
-  // };
+  remoteConfig.defaultConfig = {
+    [REMOTE_CONFIG_KEYS.BEVY_COOKIE]: process.env.BEVY_COOKIE || "",
+    [REMOTE_CONFIG_KEYS.BEVY_X_CSRFTOKEN]: process.env.BEVY_CSRF_TOKEN || "",
+  };
 }

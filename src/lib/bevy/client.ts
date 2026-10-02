@@ -1,5 +1,5 @@
 import { isAuthorizedOrganizerEmail } from "@/config/auth-config";
-import { BEVY_CONFIG } from "@/config/bevy-config";
+import { BEVY_CONFIG, getBevyAuthCredentials } from "@/config/bevy-config";
 
 import {
   type BevyChapterTeamMember,
@@ -15,17 +15,26 @@ import {
 } from "./types";
 
 /**
- * Server-only fetch wrapper for Bevy API
+ * Server-only fetch wrapper for Bevy API.
+ * Dynamically resolves session cookies and CSRF tokens from Firebase Remote Config
+ * (keys: cfg_bevy_cookie, cfg_bevy_x_csrftoken) aligned with KawalEvent.
  */
-export async function bevyFetch<T>(endpoint: string, options: RequestInit = {}): Promise<T | null> {
+export async function bevyFetch<T>(
+  endpoint: string,
+  options: RequestInit = {},
+  chapterId: string | number = BEVY_CONFIG.chapterId,
+): Promise<T | null> {
   const url = `${BEVY_CONFIG.baseUrl}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
+
+  // Dynamically resolve Bevy session cookies and CSRF tokens from Remote Config (like KawalEvent)
+  const { cookie, csrfToken } = await getBevyAuthCredentials(chapterId);
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     Accept: "application/json; version=bevy.1.0",
     "User-Agent": "GDGJakarta-Dashboard/1.0.0",
-    ...(BEVY_CONFIG.csrfToken ? { "X-Csrftoken": BEVY_CONFIG.csrfToken } : {}),
-    ...(BEVY_CONFIG.cookie ? { Cookie: BEVY_CONFIG.cookie } : {}),
+    ...(csrfToken ? { "X-Csrftoken": csrfToken } : {}),
+    ...(cookie ? { Cookie: cookie } : {}),
     ...(BEVY_CONFIG.apiToken ? { Authorization: `Token ${BEVY_CONFIG.apiToken}` } : {}),
     ...(options.headers as Record<string, string>),
   };
@@ -56,7 +65,11 @@ export async function bevyFetch<T>(endpoint: string, options: RequestInit = {}):
  * @param userId The ID or email of the user to retrieve.
  * @param fields Allows specifying what fields to return for each user separated by commas.
  */
-export async function getUserById(userId: string, fields?: string): Promise<BevyUser | null> {
+export async function getUserById(
+  userId: string,
+  fields?: string,
+  chapterId: string | number = BEVY_CONFIG.chapterId,
+): Promise<BevyUser | null> {
   if (!userId) return null;
 
   const cleanUserId = userId.trim().replace(/\/+$/, "");
@@ -68,7 +81,7 @@ export async function getUserById(userId: string, fields?: string): Promise<Bevy
 
   console.log(`[Bevy Auth] Calling getUserById: ${cleanUserId} -> ${endpoint}`);
 
-  const directResult = await bevyFetch<BevyUser | { user?: BevyUser; results?: BevyUser[] }>(endpoint);
+  const directResult = await bevyFetch<BevyUser | { user?: BevyUser; results?: BevyUser[] }>(endpoint, {}, chapterId);
 
   if (directResult) {
     if ("id" in directResult && directResult.id) {
@@ -85,6 +98,8 @@ export async function getUserById(userId: string, fields?: string): Promise<Bevy
   // Fallback to query param search if direct identifier returned nothing
   const searchResult = await bevyFetch<{ results?: BevyUser[]; user?: BevyUser }>(
     `/user/?search=${encodeURIComponent(cleanUserId)}`,
+    {},
+    chapterId,
   );
 
   if (searchResult?.results && searchResult.results.length > 0) {
@@ -101,8 +116,11 @@ export async function getUserById(userId: string, fields?: string): Promise<Bevy
 /**
  * Backward-compatible alias for getUserById(email)
  */
-export async function getBevyUserByEmail(email: string): Promise<BevyUser | null> {
-  return await getUserById(email);
+export async function getBevyUserByEmail(
+  email: string,
+  chapterId: string | number = BEVY_CONFIG.chapterId,
+): Promise<BevyUser | null> {
+  return await getUserById(email, undefined, chapterId);
 }
 
 /**
@@ -120,7 +138,7 @@ export async function getChapterTeam(
   const teamData = await bevyFetch<{
     count?: number;
     results?: BevyChapterTeamMember[];
-  }>(`/chapter/${chapterId}/team/`);
+  }>(`/chapter/${chapterId}/team/`, {}, chapterId);
 
   if (teamData?.results && Array.isArray(teamData.results)) {
     console.log(`[Bevy Auth] Retrieved ${teamData.results.length} team members from /chapter/${chapterId}/team/`);
@@ -131,7 +149,7 @@ export async function getChapterTeam(
   const altData = await bevyFetch<{
     count?: number;
     results?: BevyChapterTeamMember[];
-  }>(`/chapter/${chapterId}/team`);
+  }>(`/chapter/${chapterId}/team`, {}, chapterId);
 
   if (altData?.results && Array.isArray(altData.results)) {
     return altData.results;
@@ -142,7 +160,7 @@ export async function getChapterTeam(
     id?: number;
     title?: string;
     chapter_team?: BevyChapterTeamMember[];
-  }>(`/chapter/${chapterId}`);
+  }>(`/chapter/${chapterId}`, {}, chapterId);
 
   if (chapterData?.chapter_team && Array.isArray(chapterData.chapter_team)) {
     return chapterData.chapter_team;
@@ -340,6 +358,8 @@ export async function getBevyChapterMembers(
 ): Promise<BevyMembersResponse | null> {
   const result = await bevyFetch<BevyMembersResponse>(
     `/chapter/${chapterId}/member?page_size=${pageSize}&page=${page}`,
+    {},
+    chapterId,
   );
   return result;
 }
@@ -352,16 +372,23 @@ export async function getBevyChapterEvents(
   pageSize = 100,
   page = 1,
 ): Promise<BevyEventsResponse | null> {
-  const result = await bevyFetch<BevyEventsResponse>(`/chapter/${chapterId}/event?page_size=${pageSize}&page=${page}`);
+  const result = await bevyFetch<BevyEventsResponse>(
+    `/chapter/${chapterId}/event?page_size=${pageSize}&page=${page}`,
+    {},
+    chapterId,
+  );
   return result;
 }
 
 /**
  * Fetch full event details by ID directly from Bevy
  */
-export async function getBevyEventById(eventId: string | number): Promise<BevyEvent | null> {
+export async function getBevyEventById(
+  eventId: string | number,
+  chapterId: string | number = BEVY_CONFIG.chapterId,
+): Promise<BevyEvent | null> {
   if (!eventId) return null;
-  const result = await bevyFetch<BevyEvent>(`/event/${eventId}`);
+  const result = await bevyFetch<BevyEvent>(`/event/${eventId}`, {}, chapterId);
   return result;
 }
 

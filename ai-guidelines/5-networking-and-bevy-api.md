@@ -58,19 +58,40 @@ Bevy's route guards validate the HTTP `Referer` header against the caller's cont
 
 ---
 
-## 4. Environment Configuration
+## 4. Remote Config & Dynamic Credential Resolution
 
-All Bevy integration settings are configured via environment variables and initialized in `src/config/bevy-config.ts`:
+Session cookies and CSRF tokens are migrated to **Firebase Remote Config** (aligned with the **KawalEvent** project architecture), avoiding hardcoded values in environment variables while maintaining `.env` variables as fallbacks.
 
+### 4.1 Remote Config Keys (`REMOTE_CONFIG_KEYS`)
+- `cfg_bevy_cookie`: Session cookie string or JSON array of chapter mappings.
+- `cfg_bevy_x_csrftoken`: X-CSRFToken validation token string or JSON array of chapter mappings.
+- `cfg_bevy_referer_url`: Optional dynamic referer template URL with `{eventId}` placeholder.
+
+### 4.2 Mapped Chapter Resolution Format (`ConfigMap`)
+Values in Remote Config can be either a plain string or a JSON array keyed per `chapterId`:
+
+```json
+[
+  {
+    "key": "642",
+    "value": "csrftoken=...; sessionid=..."
+  }
+]
+```
+
+### 4.3 Resolution Flow
+1. **Remote Config Fetch**: In the browser, resolved via Firebase Client SDK `remoteConfig`. On the server/worker, fetched via Firebase Remote Config REST API with in-memory caching.
+2. **Mapped Extraction**: `parseMappedConfigValue(rawString, chapterId)` checks if the value is a JSON array. If so, it looks up the entry matching `chapterId`; otherwise, it uses the raw string.
+3. **Graceful Fallback**: If Remote Config is offline, missing the template, or the key is not defined, it seamlessly falls back to `process.env.BEVY_COOKIE` and `process.env.BEVY_CSRF_TOKEN`.
+
+### 4.4 Usage in Bevy Client
 ```typescript
-export const BEVY_CONFIG = {
-  baseUrl: process.env.BEVY_API_BASE_URL || "https://gdg.community.dev/api",
-  chapterSlug: process.env.BEVY_CHAPTER_SLUG || "gdg-jakarta",
-  chapterId: process.env.BEVY_CHAPTER_ID || "642",
-  apiToken: process.env.BEVY_API_TOKEN,
-  csrfToken: process.env.BEVY_CSRF_TOKEN,
-  cookie: process.env.BEVY_COOKIE,
-};
+import { getBevyAuthCredentials } from "@/config/bevy-config";
+
+// In bevyFetch:
+const { cookie, csrfToken } = await getBevyAuthCredentials(chapterId);
+if (csrfToken) headers["X-Csrftoken"] = csrfToken;
+if (cookie) headers["Cookie"] = cookie;
 ```
 
 ---

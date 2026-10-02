@@ -97,6 +97,7 @@ export interface BevyEvent {
     thumbnail_url?: string;
   };
   cropped_banner_url?: string;
+  cropped_picture_url?: string;
   cohost_registration_url?: string;
   url?: string;
   static_url?: string;
