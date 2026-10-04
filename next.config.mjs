@@ -36,6 +36,26 @@ const nextConfig = {
         destination: "/dashboard/admin",
         permanent: false,
       },
+      {
+        source: "/sponsor",
+        destination: "/partnership",
+        permanent: true,
+      },
+      {
+        source: "/sponsorship",
+        destination: "/partnership",
+        permanent: true,
+      },
+      {
+        source: "/collaboration",
+        destination: "/partnership",
+        permanent: true,
+      },
+      {
+        source: "/collaborate",
+        destination: "/partnership",
+        permanent: true,
+      },
     ];
   },
 };

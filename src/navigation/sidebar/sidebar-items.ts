@@ -1,6 +1,7 @@
 import {
   Calendar,
   CalendarCheck,
+  Handshake,
   HelpCircle,
   LayoutDashboard,
   type LucideIcon,
@@ -91,6 +92,12 @@ export const organizerSidebarItems: NavGroup[] = [
     label: "Misc",
     items: [
       {
+        id: "partnership",
+        title: "Partnership & Sponsorship",
+        url: "/partnership",
+        icon: Handshake,
+      },
+      {
         id: "faq",
         title: "FAQ & Policy",
         url: "/faq",
@@ -145,6 +152,12 @@ export const memberSidebarItems: NavGroup[] = [
     id: 3,
     label: "Support",
     items: [
+      {
+        id: "partnership",
+        title: "Partnership & Sponsorship",
+        url: "/partnership",
+        icon: Handshake,
+      },
       {
         id: "faq",
         title: "FAQ & Policy",

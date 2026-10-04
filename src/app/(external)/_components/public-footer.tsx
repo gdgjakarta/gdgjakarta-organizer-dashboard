@@ -13,6 +13,9 @@ export function PublicFooter() {
           <p className="text-muted-foreground text-xs">{APP_CONFIG.copyright}</p>
         </div>
         <div className="flex flex-wrap items-center gap-6 text-[14px] text-muted-foreground">
+          <Link href="/partnership" className="transition-colors hover:text-foreground">
+            Partnership
+          </Link>
           <Link href="/faq" className="transition-colors hover:text-foreground">
             FAQ
           </Link>
