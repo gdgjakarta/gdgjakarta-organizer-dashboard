@@ -1,34 +1,74 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
 import Link from "next/link";
 
-import { siX } from "simple-icons";
+import { X } from "lucide-react";
 
-import { SimpleIcon } from "@/components/simple-icon";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Card, CardAction, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+
+const SUPPORT_CARD_DISMISSED_KEY = "gdg_support_card_dismissed";
 
 export function SupportCard() {
+  const [mounted, setMounted] = useState(false);
+  const [isDismissed, setIsDismissed] = useState(false);
+
+  useEffect(() => {
+    try {
+      const dismissed = window.localStorage.getItem(SUPPORT_CARD_DISMISSED_KEY);
+      if (dismissed === "true") {
+        setIsDismissed(true);
+      }
+    } catch {
+      // Ignore localStorage errors (e.g. private mode)
+    } finally {
+      setMounted(true);
+    }
+  }, []);
+
+  const handleDismiss = () => {
+    setIsDismissed(true);
+    try {
+      window.localStorage.setItem(SUPPORT_CARD_DISMISSED_KEY, "true");
+    } catch {
+      // Ignore localStorage errors
+    }
+  };
+
+  if (!mounted || isDismissed) {
+    return null;
+  }
+
   return (
-    <Card size="sm" className="overflow-hidden shadow-none group-data-[collapsible=icon]:hidden">
+    <Card
+      size="sm"
+      className="fade-in slide-in-from-bottom-2 animate-in overflow-hidden shadow-none duration-300 group-data-[collapsible=icon]:hidden"
+    >
       <CardHeader className="min-w-0 px-4">
         <CardTitle className="truncate text-sm">Have something in mind?</CardTitle>
+        <CardAction>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            onClick={handleDismiss}
+            aria-label="Dismiss feedback card"
+            className="-mt-1 -mr-1.5 size-5 rounded-md text-muted-foreground hover:text-foreground"
+          >
+            <X className="size-3.5" />
+          </Button>
+        </CardAction>
         <CardDescription className="line-clamp-3">
-          Suggest a feature or discuss custom work with me on&nbsp;
+          Send your feedback and suggestion{" "}
           <Link
-            href="https://instagram.com/rizfirsy"
+            href="https://forms.gle/yNxbRvtyQYBs6ZFU7"
             target="_blank"
             rel="noreferrer"
-            aria-label="Reach out on X"
-            className="inline-flex items-center text-foreground"
+            className="inline-flex items-center font-medium text-foreground underline underline-offset-2 transition-colors hover:text-primary"
           >
-            <SimpleIcon icon={siX} aria-hidden className="size-3 fill-foreground" />
-          </Link>
-          &nbsp;or by{" "}
-          <Link
-            href="https://wa.me/designchirps"
-            target="_blank"
-            rel="noreferrer"
-            className="text-foreground hover:underline"
-          >
-            email
+            here
           </Link>
           .
         </CardDescription>

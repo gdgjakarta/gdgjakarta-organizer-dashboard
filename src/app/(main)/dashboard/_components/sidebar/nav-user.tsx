@@ -1,8 +1,26 @@
 "use client";
 
-import { CircleUser, EllipsisVertical, LogOut } from "lucide-react";
+import { useState } from "react";
+
+import {
+  CircleUser,
+  EllipsisVertical,
+  ExternalLink,
+  LogOut,
+  MessageSquareHeart,
+  MessageSquarePlus,
+} from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,6 +45,7 @@ export function NavUser({
   };
 } = {}) {
   const { isMobile } = useSidebar();
+  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const authUser = useAuthStore((s) => s.user);
   const isLoading = useAuthStore((s) => s.isLoading);
 
@@ -112,6 +131,10 @@ export function NavUser({
                 <CircleUser />
                 Account
               </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setIsFeedbackOpen(true)} className="cursor-pointer">
+                <MessageSquarePlus className="size-4" />
+                Feedback & Suggestions
+              </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-destructive focus:text-destructive">
@@ -120,6 +143,45 @@ export function NavUser({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+
+        <Dialog open={isFeedbackOpen} onOpenChange={setIsFeedbackOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <div className="mb-1 flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <MessageSquareHeart className="size-5" />
+              </div>
+              <DialogTitle>Have something in mind?</DialogTitle>
+              <DialogDescription>
+                We'd love to hear your feedback, suggestions, or ideas to help us improve the GDG Jakarta platform.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="py-1 text-muted-foreground text-sm">
+              <p>
+                Your feedback directly influences our community initiatives and developer experiences. Submit your
+                thoughts via our quick form.
+              </p>
+            </div>
+
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button type="button" variant="outline" onClick={() => setIsFeedbackOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="button" asChild>
+                <a
+                  href="https://forms.gle/yNxbRvtyQYBs6ZFU7"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5"
+                  onClick={() => setIsFeedbackOpen(false)}
+                >
+                  <span>Give Feedback</span>
+                  <ExternalLink className="size-3.5" />
+                </a>
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </SidebarMenuItem>
     </SidebarMenu>
   );
