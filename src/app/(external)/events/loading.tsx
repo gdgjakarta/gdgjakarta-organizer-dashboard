@@ -12,7 +12,7 @@ export default function EventsDirectoryLoading() {
       </div>
 
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {Array.from({ length: 8 }).map((_, index) => (
+        {Array.from({ length: 12 }).map((_, index) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: Static skeleton array
           <Card key={`event-skeleton-${index}`} className="flex flex-col overflow-hidden">
             <div className="relative aspect-video w-full overflow-hidden bg-muted">
