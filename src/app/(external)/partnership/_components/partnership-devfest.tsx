@@ -27,7 +27,7 @@ export function PartnershipDevfest() {
         />
 
         <div className="relative grid grid-cols-1 gap-12 lg:grid-cols-12 lg:items-center">
-          {/* Left Column: DevFest Narrative */}
+          {/* Left Column: Featured Event Narrative */}
           <div className="lg:col-span-7 space-y-6">
             <div
               className="inline-flex items-center gap-2 rounded-full border px-3.5 py-1 font-medium text-xs shadow-xs"
@@ -38,16 +38,16 @@ export function PartnershipDevfest() {
               }}
             >
               <Sparkles className="size-3.5" style={{ color: "var(--theme-primary)" }} />
-              <span>{devfest.badge || "Flagship Community Event"}</span>
+              <span>{devfest.badge || "Featured Event"}</span>
             </div>
 
             <h2 className="font-extrabold text-3xl tracking-tight sm:text-4xl lg:text-5xl leading-tight">
-              {devfest.title || "DevFest Jakarta 2026"}
+              {devfest.title || "Featured Event"}
             </h2>
 
             <p className="text-foreground/80 text-sm sm:text-base leading-relaxed">
               {devfest.description ||
-                "DevFest is our marquee annual developer conference organized globally by Google Developer Groups."}
+                "Our marquee annual developer conference organized by Google Developer Groups Jakarta."}
             </p>
 
             {/* Dynamic Highlights */}
@@ -66,7 +66,7 @@ export function PartnershipDevfest() {
             {/* Focus Tracks Pill Grid */}
             <div className="pt-2">
               <span className="font-semibold text-foreground text-xs uppercase tracking-wider block mb-3">
-                DevFest 2026 Core Technology Tracks:
+                {devfest.title ? `${devfest.title} Technology Tracks:` : "Core Technology Tracks:"}
               </span>
               <div className="flex flex-wrap gap-2">
                 {devfest.tracks?.map((track, idx) => (
@@ -90,7 +90,7 @@ export function PartnershipDevfest() {
                   <Users className="size-5 text-[var(--theme-primary)]" />
                   <h3 className="font-bold text-foreground text-base">Attendee Demographics</h3>
                 </div>
-                <span className="text-muted-foreground text-xs">Based on Past DevFest</span>
+                <span className="text-muted-foreground text-xs">Based on Past Events</span>
               </div>
 
               {/* Progress bars for demographics */}
@@ -149,3 +149,5 @@ export function PartnershipDevfest() {
     </section>
   );
 }
+
+export const PartnershipFeaturedEvent = PartnershipDevfest;

@@ -144,7 +144,7 @@ export function PartnershipDashboard() {
             </Badge>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            Configure sponsorship tiers, DevFest spotlight, collaboration formats, and inquiry contact settings.
+            Configure sponsorship tiers, featured event spotlight, collaboration formats, and inquiry contact settings.
           </p>
         </div>
 
@@ -188,7 +188,7 @@ export function PartnershipDashboard() {
             Sponsorship Tiers ({content.tiers.length})
           </TabsTrigger>
           <TabsTrigger value="formats" className="text-xs sm:text-sm">
-            DevFest & Formats
+            Featured Event & Formats
           </TabsTrigger>
           <TabsTrigger value="whyus" className="text-xs sm:text-sm">
             Brand Benefits & Why Us
@@ -440,14 +440,14 @@ export function PartnershipDashboard() {
           </Card>
         </TabsContent>
 
-        {/* ── 3. DevFest & Formats Tab ── */}
+        {/* ── 3. Featured Event & Formats Tab ── */}
         <TabsContent value="formats" className="space-y-6">
-          {/* DevFest Flagship Spotlight Editor */}
+          {/* Featured Event Spotlight Editor */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">DevFest Flagship Spotlight</CardTitle>
+              <CardTitle className="text-base">Featured Event Spotlight</CardTitle>
               <CardDescription className="text-xs">
-                The high-impact section highlighting DevFest Jakarta metrics and technology focus tracks.
+                The high-impact section highlighting featured event metrics and technology focus tracks.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -460,7 +460,7 @@ export function PartnershipDashboard() {
                     id="df-name"
                     value={content.devfest.title}
                     onChange={(e) => setContent({ ...content, devfest: { ...content.devfest, title: e.target.value } })}
-                    placeholder="DevFest Jakarta 2026"
+                    placeholder="e.g. DevFest Jakarta 2026, Google I/O Extended, AI Summit"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -471,7 +471,7 @@ export function PartnershipDashboard() {
                     id="df-badge"
                     value={content.devfest.badge}
                     onChange={(e) => setContent({ ...content, devfest: { ...content.devfest, badge: e.target.value } })}
-                    placeholder="Flagship Community Event"
+                    placeholder="e.g. Flagship Community Event, Annual Tech Summit"
                   />
                 </div>
               </div>
@@ -487,13 +487,13 @@ export function PartnershipDashboard() {
                   onChange={(e) =>
                     setContent({ ...content, devfest: { ...content.devfest, description: e.target.value } })
                   }
-                  placeholder="DevFest is our marquee annual developer conference..."
+                  placeholder="Describe the featured event, marquee sessions, hands-on labs, and exhibition floors..."
                 />
               </div>
 
               <div className="space-y-1.5">
                 <Label htmlFor="df-tracks" className="text-xs">
-                  Conference Technology Tracks (comma separated)
+                  Event Technology Focus & Tracks (comma separated)
                 </Label>
                 <Input
                   id="df-tracks"
@@ -509,9 +509,9 @@ export function PartnershipDashboard() {
                 />
               </div>
 
-              {/* DevFest 4 Highlight Stats */}
+              {/* Event Highlight Stats */}
               <div className="border-t pt-3">
-                <Label className="text-xs font-semibold">DevFest Highlight Cards</Label>
+                <Label className="text-xs font-semibold">Featured Event Highlight Cards</Label>
                 <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   {content.devfest.highlights.map((h, idx) => (
                     <div key={h.id || idx} className="rounded-lg border p-2.5 space-y-1">
@@ -895,7 +895,7 @@ export function PartnershipDashboard() {
                         .filter(Boolean);
                       setContent({ ...content, contact: { ...content.contact, interestOptions: opts } });
                     }}
-                    placeholder="DevFest Jakarta 2026 - Gold Tier, Technical Workshop..."
+                    placeholder="e.g. Featured Event - Gold Tier, Technical Workshop..."
                   />
                 </div>
               </CardContent>
@@ -1041,7 +1041,7 @@ export function PartnershipDashboard() {
           <AlertDialogHeader>
             <AlertDialogTitle>Reset Partnership packages to defaults?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will overwrite all customized tiers, formats, and FAQs with the default GDG Jakarta DevFest packages.
+              This will overwrite all customized tiers, formats, and FAQs with the default packages.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

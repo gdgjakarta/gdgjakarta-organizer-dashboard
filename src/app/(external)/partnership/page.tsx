@@ -17,13 +17,13 @@ import { PartnershipWhyUs } from "./_components/partnership-why-us";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Brand Collaboration & Sponsorship - DevFest Jakarta 2026 | GDG Jakarta",
+  title: "Brand Collaboration & Sponsorship | GDG Jakarta",
   description:
-    "DevFest Jakarta 2026 is coming! Elevate the community together with GDG Jakarta. Position your brand at the center of the developer ecosystem and showcase your technology to developers, tech leads, and innovators.",
+    "Partner with GDG Jakarta to elevate the developer community. Position your brand at the center of the developer ecosystem and showcase your technology to developers, tech leads, and innovators.",
   openGraph: {
-    title: "Brand Collaboration & Sponsorship - DevFest Jakarta 2026 | GDG Jakarta",
+    title: "Brand Collaboration & Sponsorship | GDG Jakarta",
     description:
-      "DevFest Jakarta 2026 is coming! Partner with GDG Jakarta to elevate the developer community. Reach out to hello@gdgjakarta.org for sponsorship proposals.",
+      "Partner with GDG Jakarta to elevate the developer community. Reach out to hello@gdgjakarta.org for sponsorship proposals.",
   },
 };
 
@@ -49,7 +49,7 @@ export default async function PartnershipPage(props: PartnershipPageProps) {
       {/* 2. How Collaboration Looks Like / Why Us */}
       <PartnershipWhyUs />
 
-      {/* 3. DevFest Jakarta 2026 Spotlight */}
+      {/* 3. Featured Event Spotlight */}
       <PartnershipDevfest />
 
       {/* 4. What Can We Do Together (Formats) */}

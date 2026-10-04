@@ -36,11 +36,14 @@ export function PartnershipCta() {
   const contact = content.contact;
   const officialEmail = contact.contactEmail || "hello@gdgjakarta.org";
   const instagramUrl = contact.instagramUrl || "https://instagram.com/gdgjakarta";
+  const featuredEventTitle = content.devfest.title || "Featured Event";
 
   const [copied, setCopied] = useState(false);
   const [companyName, setCompanyName] = useState("");
   const [contactName, setContactName] = useState("");
-  const [selectedInterest, setSelectedInterest] = useState("DevFest Jakarta 2026");
+  const [selectedInterest, setSelectedInterest] = useState(
+    contact.interestOptions?.[0] || `${featuredEventTitle} - Sponsorship Tier`,
+  );
   const [message, setMessage] = useState("");
 
   const handleCopyEmail = async () => {
@@ -71,7 +74,7 @@ export function PartnershipCta() {
       `Interest Area: ${selectedInterest}`,
       "",
       `Message / Details:`,
-      message || "Please share your DevFest 2026 sponsorship deck and packages.",
+      message || `Please share your ${featuredEventTitle} sponsorship deck and packages.`,
       "",
       "Best regards,",
       contactName || "Prospective Partner",
@@ -91,10 +94,10 @@ export function PartnershipCta() {
     contact.interestOptions && contact.interestOptions.length > 0
       ? contact.interestOptions
       : [
-          "DevFest Jakarta 2026 - Platinum / Title Tier",
-          "DevFest Jakarta 2026 - Gold Tier",
-          "DevFest Jakarta 2026 - Silver Tier",
-          "DevFest Jakarta 2026 - Community / In-Kind",
+          `${featuredEventTitle} - Platinum / Title Tier`,
+          `${featuredEventTitle} - Gold Tier`,
+          `${featuredEventTitle} - Silver Tier`,
+          `${featuredEventTitle} - Community / In-Kind`,
           "Technical Workshop or Hands-on Codelab",
           "Hackathon or Developer Challenge Track",
           "Custom Bespoke Activation",

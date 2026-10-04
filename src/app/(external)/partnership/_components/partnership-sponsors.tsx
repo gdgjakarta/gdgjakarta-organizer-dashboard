@@ -105,7 +105,7 @@ export function PartnershipSponsors({ sponsors }: PartnershipSponsorsProps) {
           <div className="mt-8 mx-auto max-w-md rounded-xl border border-dashed bg-card/60 p-6 text-center">
             <Handshake className="mx-auto mb-2 size-8 text-muted-foreground/40" />
             <p className="text-muted-foreground text-xs">
-              Be the first partner to secure category exclusivity for DevFest Jakarta 2026.
+              Be the first partner to secure category exclusivity for upcoming GDG Jakarta flagship events.
             </p>
           </div>
         )}

@@ -23,7 +23,7 @@ export function PartnershipTiers() {
             }}
           >
             <Sparkles className="size-3.5" style={{ color: "var(--theme-primary)" }} />
-            <span>DevFest Jakarta 2026 Packages</span>
+            <span>{content.devfest.title ? `${content.devfest.title} Packages` : "Sponsorship Packages"}</span>
           </div>
 
           <h2 className="mt-4 font-bold text-2xl tracking-tight sm:text-4xl text-foreground">

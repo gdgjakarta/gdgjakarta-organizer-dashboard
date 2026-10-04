@@ -86,6 +86,9 @@ export interface PartnershipDevfestConfig {
   tracks: string[];
 }
 
+export type PartnershipFeaturedEventHighlight = PartnershipDevfestHighlight;
+export type PartnershipFeaturedEventConfig = PartnershipDevfestConfig;
+
 export interface PartnershipFormat {
   id: string;
   title: string;

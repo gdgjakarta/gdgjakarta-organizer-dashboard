@@ -15,6 +15,7 @@ export function PartnershipHero() {
   const [copied, setCopied] = useState(false);
 
   const officialEmail = content.hero.contactEmail || "hello@gdgjakarta.org";
+  const featuredEventTitle = content.devfest.title || "Featured Event";
 
   const handleCopyEmail = async () => {
     try {
@@ -84,7 +85,9 @@ export function PartnershipHero() {
               }}
             >
               <a
-                href={`mailto:${officialEmail}?subject=%5BPartnership%20Inquiry%5D%20Collaboration%20with%20GDG%20Jakarta&body=Hi%20GDG%20Jakarta%20Team%2C%0A%0AWe%20are%20interested%20in%20partnering%20with%20GDG%20Jakarta%20for%20DevFest%202026%20%2F%20community%20initiatives.%0A%0ACompany%20Name%3A%0AContact%20Person%3A%0ACollaboration%20Interest%3A%0A%0ALooking%20forward%20to%20hearing%20from%20you!`}
+                href={`mailto:${officialEmail}?subject=%5BPartnership%20Inquiry%5D%20Collaboration%20with%20GDG%20Jakarta&body=Hi%20GDG%20Jakarta%20Team%2C%0A%0AWe%20are%20interested%20in%20partnering%20with%20GDG%20Jakarta%20for%20${encodeURIComponent(
+                  featuredEventTitle,
+                )}%20%2F%20community%20initiatives.%0A%0ACompany%20Name%3A%0AContact%20Person%3A%0ACollaboration%20Interest%3A%0A%0ALooking%20forward%20to%20hearing%20from%20you!`}
                 className="inline-flex items-center gap-2"
               >
                 <Mail className="size-4" />
