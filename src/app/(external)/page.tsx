@@ -12,6 +12,7 @@ import { FeaturedEventsSection } from "./_components/featured-events-section";
 import { HomepageThemeContainer } from "./_components/homepage-theme-container";
 import { OrganizersSpotlightSection } from "./_components/organizers-spotlight-section";
 import { SponsorsSection } from "./_components/sponsors-section";
+import { PartnershipCta } from "./partnership/_components/partnership-cta";
 
 export const dynamic = "force-dynamic";
 
@@ -60,11 +61,12 @@ export default async function Home(props: HomeProps) {
       {/* 7. Leadership & Community Organizers Spotlight */}
       <OrganizersSpotlightSection />
 
-      {/* 8. Official Sponsors & Partners */}
-      <SponsorsSection sponsors={sponsors} />
-
-      {/* 9. Closing Call-to-Action Banner */}
+      {/* 8. Call to Action, Quick Email Launcher, & FAQ */}
       <CommunityCtaBanner />
+
+      {/* 9. Official Sponsors & Partners */}
+      <SponsorsSection sponsors={sponsors} />
+      <PartnershipCta />
     </HomepageThemeContainer>
   );
 }
