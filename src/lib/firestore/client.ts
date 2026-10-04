@@ -17,6 +17,7 @@ import {
 } from "firebase/firestore";
 
 import { app } from "@/config/firebase";
+import type { FaqContent, PartnershipContent } from "@/lib/content/types";
 
 export const db: Firestore = typeof window !== "undefined" ? getFirestore(app) : (null as unknown as Firestore);
 
@@ -301,8 +302,6 @@ export async function updateSyncMetadata(metadata: Partial<FirestoreSyncMetadata
 }
 
 // ── Content Settings (FAQ & Partnership) ────────────────────────────────────
-
-import type { FaqContent, PartnershipContent } from "@/lib/content/types";
 
 export async function getFaqContentDoc(): Promise<FaqContent | null> {
   if (typeof window === "undefined") return null;
