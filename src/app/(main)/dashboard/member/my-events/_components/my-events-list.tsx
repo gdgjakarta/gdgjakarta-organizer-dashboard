@@ -166,6 +166,14 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
                           Concluded
                         </Badge>
                       )}
+                      {ev?.is_test ? (
+                        <Badge
+                          variant="outline"
+                          className="border-purple-500/30 bg-purple-500/20 text-[10px] text-purple-700 backdrop-blur-xs dark:text-purple-300"
+                        >
+                          Test
+                        </Badge>
+                      ) : null}
                     </div>
                   </EventCardImage>
                 </Link>

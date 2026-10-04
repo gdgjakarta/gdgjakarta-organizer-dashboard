@@ -43,6 +43,7 @@ export default async function MemberEventDetailPage({ params }: MemberEventDetai
         total_approved: direct.total_attendees ?? 0,
         total_checked_in: direct.checkin_count ?? 0,
         is_hidden: false,
+        is_test: Boolean(direct.is_test),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -76,6 +77,7 @@ export default async function MemberEventDetailPage({ params }: MemberEventDetai
           total_registrations: matched.total_attendees ?? 0,
           total_approved: matched.total_attendees ?? 0,
           total_checked_in: matched.checkin_count ?? 0,
+          is_test: Boolean(matched.is_test),
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         };

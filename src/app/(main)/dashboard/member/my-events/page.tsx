@@ -38,6 +38,7 @@ export default async function MyEventsPage() {
         total_approved: e.total_attendees ?? 0,
         total_checked_in: e.checkin_count ?? 0,
         is_hidden: Boolean(e.is_hidden || (e as { hidden?: boolean }).hidden),
+        is_test: Boolean(e.is_test),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }));

@@ -84,8 +84,15 @@ export function FeaturedEventsSection({ events }: FeaturedEventsSectionProps) {
                   className="transition-all duration-500 group-hover:scale-105"
                 >
                   {/* Date badge */}
-                  <div className="absolute top-4 left-4 z-20 rounded-full bg-background/90 px-3.5 py-1 font-medium text-xs shadow-md backdrop-blur-md">
-                    {dateStr}
+                  <div className="absolute top-4 left-4 z-20 flex items-center gap-1.5">
+                    <div className="rounded-full bg-background/90 px-3.5 py-1 font-medium text-xs shadow-md backdrop-blur-md">
+                      {dateStr}
+                    </div>
+                    {event.is_test ? (
+                      <div className="rounded-full border border-purple-500/30 bg-purple-500/90 px-3 py-1 font-medium text-white text-xs shadow-md backdrop-blur-md">
+                        Test
+                      </div>
+                    ) : null}
                   </div>
                 </EventCardImage>
 

@@ -216,6 +216,14 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
                   Curated RSVP
                 </Badge>
               )}
+              {event.is_test && (
+                <Badge
+                  variant="outline"
+                  className="border-purple-500/30 bg-purple-500/20 text-xs text-purple-700 backdrop-blur-md dark:text-purple-300"
+                >
+                  Test Event
+                </Badge>
+              )}
             </div>
           </EventCardImage>
 
@@ -225,6 +233,14 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
               <Badge variant="outline" className="text-xs">
                 {event.event_type_title ?? "Technical Session"}
               </Badge>
+              {event.is_test && (
+                <Badge
+                  variant="outline"
+                  className="border-purple-500/20 bg-purple-500/10 text-xs text-purple-600 dark:text-purple-400"
+                >
+                  Test
+                </Badge>
+              )}
               <span>•</span>
               <span className="flex items-center gap-1">
                 <Clock className="size-3.5" />

@@ -71,5 +71,6 @@ export const fallbackEvents: EventRow[] = [
     url: "https://gdg.community.dev/events/details/google-gdg-jakarta-presents-devsync-x-aiml-devlab-accelerate-your-ai-journey/",
     tags: ["AI", "Machine Learning"],
     isUpcoming: false,
+    isTest: false,
   },
 ];
