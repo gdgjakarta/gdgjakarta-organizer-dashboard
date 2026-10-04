@@ -103,3 +103,47 @@ export async function fetchSyncMetadataAction() {
   const { getSyncMetadata } = await import("./client");
   return await getSyncMetadata();
 }
+
+/**
+ * Fetch and save FAQ content
+ */
+export async function fetchFaqContentAction() {
+  const { getFaqContentDoc } = await import("./client");
+  return await getFaqContentDoc();
+}
+
+export async function saveFaqContentAction(content: import("@/lib/content/types").FaqContent) {
+  try {
+    const { saveFaqContentDoc } = await import("./client");
+    await saveFaqContentDoc(content);
+    await revalidateDashboardPath("/faq");
+    await revalidateDashboardPath("/dashboard/faq");
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to save FAQ content";
+    console.error("[saveFaqContentAction] error:", message);
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * Fetch and save Partnership content
+ */
+export async function fetchPartnershipContentAction() {
+  const { getPartnershipContentDoc } = await import("./client");
+  return await getPartnershipContentDoc();
+}
+
+export async function savePartnershipContentAction(content: import("@/lib/content/types").PartnershipContent) {
+  try {
+    const { savePartnershipContentDoc } = await import("./client");
+    await savePartnershipContentDoc(content);
+    await revalidateDashboardPath("/partnership");
+    await revalidateDashboardPath("/dashboard/partnership");
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to save Partnership content";
+    console.error("[savePartnershipContentAction] error:", message);
+    return { success: false, error: message };
+  }
+}

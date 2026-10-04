@@ -2,8 +2,6 @@
 
 import { useState } from "react";
 
-import Link from "next/link";
-
 import { Check, Copy, ExternalLink, HelpCircle, Mail, Send, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
@@ -12,9 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-
-const OFFICIAL_EMAIL = "hello@gdgjakarta.org";
-const INSTAGRAM_URL = "https://instagram.com/gdgjakarta";
+import { usePartnershipContent } from "@/lib/content/hooks";
 
 function InstagramIcon({ className = "size-4" }: { className?: string }) {
   return (
@@ -35,30 +31,12 @@ function InstagramIcon({ className = "size-4" }: { className?: string }) {
   );
 }
 
-const SPONSOR_FAQS = [
-  {
-    q: "How early should we confirm our sponsorship for DevFest Jakarta 2026?",
-    a: "We recommend confirming as early as possible. Premium tiers (Platinum & Gold) have strictly capped speaking slots and premier booth locations that are allocated on a first-come, first-served basis. Early confirmation also guarantees maximum duration of pre-event digital branding.",
-  },
-  {
-    q: "How do we receive the full DevFest 2026 sponsorship proposal deck and rate card?",
-    a: "Simply send an email to hello@gdgjakarta.org or submit the quick contact inquiry on this page. Our partnership team will respond within 24–48 hours with our official slide deck, floor plan, and pricing sheet.",
-  },
-  {
-    q: "Can our engineering team deliver a workshop or hands-on session?",
-    a: "Yes! We strongly encourage practical, hands-on technical sessions over sales pitches. As part of Gold and Platinum packages (or standalone workshop sponsorships), our content committee will collaborate with your engineering leads to ensure the session provides high technical value to attendees.",
-  },
-  {
-    q: "Can we provide cloud credits, software licenses, or developer gear instead of cash?",
-    a: "Yes, our Community & In-Kind Partnership tier accommodates product credits, developer tooling subscriptions, venue support, merchandise, and hackathon prizes. Get in touch with us to explore mutual value fits.",
-  },
-  {
-    q: "Can you provide official invoices and receipts for corporate compliance?",
-    a: "Yes, GDG Jakarta provides complete corporate paperwork, partnership agreements, itemized receipts, and tax documentation necessary for your finance and legal departments.",
-  },
-];
-
 export function PartnershipCta() {
+  const { content } = usePartnershipContent();
+  const contact = content.contact;
+  const officialEmail = contact.contactEmail || "hello@gdgjakarta.org";
+  const instagramUrl = contact.instagramUrl || "https://instagram.com/gdgjakarta";
+
   const [copied, setCopied] = useState(false);
   const [companyName, setCompanyName] = useState("");
   const [contactName, setContactName] = useState("");
@@ -67,15 +45,15 @@ export function PartnershipCta() {
 
   const handleCopyEmail = async () => {
     try {
-      await navigator.clipboard.writeText(OFFICIAL_EMAIL);
+      await navigator.clipboard.writeText(officialEmail);
       setCopied(true);
       toast.success("Email copied to clipboard!", {
-        description: `${OFFICIAL_EMAIL} is ready to paste into your mail app.`,
+        description: `${officialEmail} is ready to paste into your mail app.`,
       });
       setTimeout(() => setCopied(false), 2500);
     } catch {
       toast.error("Could not copy automatically", {
-        description: `Please email us directly at ${OFFICIAL_EMAIL}`,
+        description: `Please email us directly at ${officialEmail}`,
       });
     }
   };
@@ -99,15 +77,28 @@ export function PartnershipCta() {
       contactName || "Prospective Partner",
     ];
 
-    const mailtoUrl = `mailto:${OFFICIAL_EMAIL}?subject=${encodeURIComponent(
+    const mailtoUrl = `mailto:${officialEmail}?subject=${encodeURIComponent(
       subject,
     )}&body=${encodeURIComponent(bodyLines.join("\n"))}`;
 
     window.location.href = mailtoUrl;
     toast.success("Opening your mail application...", {
-      description: `Drafting proposal inquiry to ${OFFICIAL_EMAIL}`,
+      description: `Drafting proposal inquiry to ${officialEmail}`,
     });
   };
+
+  const interestOptions =
+    contact.interestOptions && contact.interestOptions.length > 0
+      ? contact.interestOptions
+      : [
+          "DevFest Jakarta 2026 - Platinum / Title Tier",
+          "DevFest Jakarta 2026 - Gold Tier",
+          "DevFest Jakarta 2026 - Silver Tier",
+          "DevFest Jakarta 2026 - Community / In-Kind",
+          "Technical Workshop or Hands-on Codelab",
+          "Hackathon or Developer Challenge Track",
+          "Custom Bespoke Activation",
+        ];
 
   return (
     <section id="contact" className="container mx-auto px-4 py-16 sm:px-6 lg:px-8 lg:py-24">
@@ -141,12 +132,12 @@ export function PartnershipCta() {
           </div>
 
           <h2 className="mt-6 font-extrabold text-3xl tracking-tight sm:text-4xl lg:text-5xl text-foreground">
-            Let’s Build Something Impactful Together!
+            {contact.heading || "Let’s Build Something Impactful Together!"}
           </h2>
 
           <p className="mx-auto mt-4 max-w-2xl text-foreground/80 text-sm sm:text-base leading-relaxed">
-            Ready to align your brand with Jakarta’s premier developer community? Drop us an email or send us a DM to
-            receive our complete sponsorship proposal deck.
+            {contact.subheading ||
+              "Ready to align your brand with Jakarta’s premier developer community? Drop us an email or send us a DM to receive our complete sponsorship proposal deck."}
           </p>
 
           <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
@@ -159,9 +150,9 @@ export function PartnershipCta() {
                 color: "var(--theme-primary-foreground)",
               }}
             >
-              <a href={`mailto:${OFFICIAL_EMAIL}`} className="gap-2">
+              <a href={`mailto:${officialEmail}`} className="gap-2">
                 <Mail className="size-4" />
-                <span>Email {OFFICIAL_EMAIL}</span>
+                <span>Email {officialEmail}</span>
               </a>
             </Button>
 
@@ -191,7 +182,7 @@ export function PartnershipCta() {
               size="lg"
               className="rounded-full border-[var(--theme-border)] bg-background/80 px-5"
             >
-              <a href={INSTAGRAM_URL} target="_blank" rel="noopener noreferrer" className="gap-2">
+              <a href={instagramUrl} target="_blank" rel="noopener noreferrer" className="gap-2">
                 <InstagramIcon className="size-4" />
                 <span>DM @gdgjakarta</span>
                 <ExternalLink className="size-3" />
@@ -248,17 +239,11 @@ export function PartnershipCta() {
                 onChange={(e) => setSelectedInterest(e.target.value)}
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-xs shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               >
-                <option value="DevFest Jakarta 2026 - Platinum / Title Tier">
-                  DevFest Jakarta 2026 (Platinum / Title)
-                </option>
-                <option value="DevFest Jakarta 2026 - Gold Tier">DevFest Jakarta 2026 (Gold Tier)</option>
-                <option value="DevFest Jakarta 2026 - Silver Tier">DevFest Jakarta 2026 (Silver Tier)</option>
-                <option value="DevFest Jakarta 2026 - Community / In-Kind">
-                  DevFest Jakarta 2026 (Community / In-Kind)
-                </option>
-                <option value="Technical Workshop or Hands-on Codelab">Technical Workshop or Hands-on Codelab</option>
-                <option value="Hackathon or Developer Challenge Track">Hackathon or Developer Challenge Track</option>
-                <option value="Custom Bespoke Activation">Custom Bespoke Activation</option>
+                {interestOptions.map((opt) => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -291,23 +276,27 @@ export function PartnershipCta() {
         </div>
 
         {/* Sponsor FAQ Accordion */}
-        <div className="mt-16 mx-auto max-w-3xl">
-          <div className="mb-6 flex items-center justify-center gap-2 text-center">
-            <HelpCircle className="size-4 text-[var(--theme-primary)]" />
-            <h3 className="font-bold text-foreground text-lg sm:text-xl">Partnership Frequently Asked Questions</h3>
-          </div>
+        {content.faqs && content.faqs.length > 0 && (
+          <div className="mt-16 mx-auto max-w-3xl">
+            <div className="mb-6 flex items-center justify-center gap-2 text-center">
+              <HelpCircle className="size-4 text-[var(--theme-primary)]" />
+              <h3 className="font-bold text-foreground text-lg sm:text-xl">Partnership Frequently Asked Questions</h3>
+            </div>
 
-          <Accordion type="single" collapsible className="w-full rounded-2xl border bg-background/80 p-2 shadow-xs">
-            {SPONSOR_FAQS.map((faq, i) => (
-              <AccordionItem key={faq.q} value={`faq-${i}`} className="border-b last:border-b-0 px-4">
-                <AccordionTrigger className="text-left font-semibold text-xs sm:text-sm hover:no-underline">
-                  {faq.q}
-                </AccordionTrigger>
-                <AccordionContent className="text-muted-foreground text-xs leading-relaxed">{faq.a}</AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
-        </div>
+            <Accordion type="single" collapsible className="w-full rounded-2xl border bg-background/80 p-2 shadow-xs">
+              {content.faqs.map((faq, i) => (
+                <AccordionItem key={faq.id || i} value={`faq-${faq.id || i}`} className="border-b last:border-b-0 px-4">
+                  <AccordionTrigger className="text-left font-semibold text-xs sm:text-sm hover:no-underline">
+                    {faq.question}
+                  </AccordionTrigger>
+                  <AccordionContent className="text-muted-foreground text-xs leading-relaxed">
+                    {faq.answer}
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          </div>
+        )}
       </div>
     </section>
   );

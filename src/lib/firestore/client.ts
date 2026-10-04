@@ -8,6 +8,7 @@ import {
   getDocs,
   getFirestore,
   limit,
+  onSnapshot,
   orderBy,
   query,
   setDoc,
@@ -297,4 +298,108 @@ export async function updateSyncMetadata(metadata: Partial<FirestoreSyncMetadata
   if (typeof window === "undefined") return;
   const docRef = doc(db, "sync_metadata", "bevy");
   await setDoc(docRef, { ...metadata, id: "bevy" }, { merge: true });
+}
+
+// ── Content Settings (FAQ & Partnership) ────────────────────────────────────
+
+import type { FaqContent, PartnershipContent } from "@/lib/content/types";
+
+export async function getFaqContentDoc(): Promise<FaqContent | null> {
+  if (typeof window === "undefined") return null;
+  try {
+    const docRef = doc(db, "content_settings", "faq");
+    const snap = await getDoc(docRef);
+    if (!snap.exists()) return null;
+    return snap.data() as FaqContent;
+  } catch (error) {
+    console.error("[Firestore] getFaqContentDoc error:", error);
+    return null;
+  }
+}
+
+export async function saveFaqContentDoc(content: FaqContent): Promise<void> {
+  if (typeof window === "undefined") return;
+  const docRef = doc(db, "content_settings", "faq");
+  await setDoc(
+    docRef,
+    {
+      ...content,
+      updatedAt: new Date().toISOString(),
+    },
+    { merge: true },
+  );
+}
+
+export function subscribeFaqContentDoc(
+  onUpdate: (content: FaqContent) => void,
+  onError?: (error: Error) => void,
+): () => void {
+  if (typeof window === "undefined") {
+    return () => {
+      // noop in server or non-window environment
+    };
+  }
+  const docRef = doc(db, "content_settings", "faq");
+  return onSnapshot(
+    docRef,
+    (snap) => {
+      if (snap.exists()) {
+        onUpdate(snap.data() as FaqContent);
+      }
+    },
+    (err) => {
+      console.warn("[Firestore] subscribeFaqContentDoc error:", err);
+      onError?.(err);
+    },
+  );
+}
+
+export async function getPartnershipContentDoc(): Promise<PartnershipContent | null> {
+  if (typeof window === "undefined") return null;
+  try {
+    const docRef = doc(db, "content_settings", "partnership");
+    const snap = await getDoc(docRef);
+    if (!snap.exists()) return null;
+    return snap.data() as PartnershipContent;
+  } catch (error) {
+    console.error("[Firestore] getPartnershipContentDoc error:", error);
+    return null;
+  }
+}
+
+export async function savePartnershipContentDoc(content: PartnershipContent): Promise<void> {
+  if (typeof window === "undefined") return;
+  const docRef = doc(db, "content_settings", "partnership");
+  await setDoc(
+    docRef,
+    {
+      ...content,
+      updatedAt: new Date().toISOString(),
+    },
+    { merge: true },
+  );
+}
+
+export function subscribePartnershipContentDoc(
+  onUpdate: (content: PartnershipContent) => void,
+  onError?: (error: Error) => void,
+): () => void {
+  if (typeof window === "undefined") {
+    return () => {
+      // noop in server or non-window environment
+    };
+  }
+  const docRef = doc(db, "content_settings", "partnership");
+  return onSnapshot(
+    docRef,
+    (snap) => {
+      if (snap.exists()) {
+        onUpdate(snap.data() as PartnershipContent);
+      }
+    },
+    (err) => {
+      console.warn("[Firestore] subscribePartnershipContentDoc error:", err);
+      onError?.(err);
+    },
+  );
 }

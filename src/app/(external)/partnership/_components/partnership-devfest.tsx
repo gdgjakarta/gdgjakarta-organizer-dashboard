@@ -1,6 +1,13 @@
+"use client";
+
 import { Bot, Cloud, Cpu, Globe2, Smartphone, Sparkles, Users } from "lucide-react";
 
+import { usePartnershipContent } from "@/lib/content/hooks";
+
 export function PartnershipDevfest() {
+  const { content } = usePartnershipContent();
+  const { devfest } = content;
+
   return (
     <section className="container mx-auto px-4 py-16 sm:px-6 lg:px-8 lg:py-24">
       <div
@@ -31,39 +38,29 @@ export function PartnershipDevfest() {
               }}
             >
               <Sparkles className="size-3.5" style={{ color: "var(--theme-primary)" }} />
-              <span>Flagship Community Event</span>
+              <span>{devfest.badge || "Flagship Community Event"}</span>
             </div>
 
             <h2 className="font-extrabold text-3xl tracking-tight sm:text-4xl lg:text-5xl leading-tight">
-              DevFest Jakarta 2026
+              {devfest.title || "DevFest Jakarta 2026"}
             </h2>
 
             <p className="text-foreground/80 text-sm sm:text-base leading-relaxed">
-              DevFest is our marquee annual developer conference organized globally by Google Developer Groups. In
-              Jakarta, DevFest represents the largest gathering of Google developers, open-source contributors, tech
-              executives, and engineers in the country.
+              {devfest.description ||
+                "DevFest is our marquee annual developer conference organized globally by Google Developer Groups."}
             </p>
 
+            {/* Dynamic Highlights */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-              <div className="rounded-xl border bg-background/80 p-4 backdrop-blur-xs">
-                <div className="flex items-center gap-2.5 font-bold text-foreground text-sm">
-                  <Cpu className="size-4 text-[var(--theme-primary)]" />
-                  <span>1,000+ Participants</span>
+              {devfest.highlights?.map((h, i) => (
+                <div key={h.id || i} className="rounded-xl border bg-background/80 p-4 backdrop-blur-xs">
+                  <div className="flex items-center gap-2.5 font-bold text-foreground text-sm">
+                    <Cpu className="size-4 text-[var(--theme-primary)]" />
+                    <span>{h.value}</span>
+                  </div>
+                  <p className="mt-1 text-muted-foreground text-xs leading-relaxed">{h.label}</p>
                 </div>
-                <p className="mt-1 text-muted-foreground text-xs leading-relaxed">
-                  Developers, tech leads, system architects, founders, and engineering managers under one roof.
-                </p>
-              </div>
-
-              <div className="rounded-xl border bg-background/80 p-4 backdrop-blur-xs">
-                <div className="flex items-center gap-2.5 font-bold text-foreground text-sm">
-                  <Globe2 className="size-4 text-[var(--theme-primary)]" />
-                  <span>Multi-Track Program</span>
-                </div>
-                <p className="mt-1 text-muted-foreground text-xs leading-relaxed">
-                  Concurrent tracks covering AI, Cloud, Mobile, Web, and Developer Productivity.
-                </p>
-              </div>
+              ))}
             </div>
 
             {/* Focus Tracks Pill Grid */}
@@ -72,26 +69,15 @@ export function PartnershipDevfest() {
                 DevFest 2026 Core Technology Tracks:
               </span>
               <div className="flex flex-wrap gap-2">
-                <span className="inline-flex items-center gap-1.5 rounded-full border bg-card px-3 py-1 text-xs font-medium">
-                  <Bot className="size-3.5 text-blue-600 dark:text-blue-400" />
-                  Generative AI & Gemini
-                </span>
-                <span className="inline-flex items-center gap-1.5 rounded-full border bg-card px-3 py-1 text-xs font-medium">
-                  <Cloud className="size-3.5 text-red-600 dark:text-red-400" />
-                  Google Cloud & Kubernetes
-                </span>
-                <span className="inline-flex items-center gap-1.5 rounded-full border bg-card px-3 py-1 text-xs font-medium">
-                  <Smartphone className="size-3.5 text-emerald-600 dark:text-emerald-400" />
-                  Android & Modern Kotlin
-                </span>
-                <span className="inline-flex items-center gap-1.5 rounded-full border bg-card px-3 py-1 text-xs font-medium">
-                  <Globe2 className="size-3.5 text-amber-500" />
-                  Modern Web & Chrome
-                </span>
-                <span className="inline-flex items-center gap-1.5 rounded-full border bg-card px-3 py-1 text-xs font-medium">
-                  <Cpu className="size-3.5 text-purple-600 dark:text-purple-400" />
-                  Flutter & Multiplatform
-                </span>
+                {devfest.tracks?.map((track, idx) => (
+                  <span
+                    key={idx}
+                    className="inline-flex items-center gap-1.5 rounded-full border bg-card px-3 py-1 text-xs font-medium"
+                  >
+                    <Bot className="size-3.5 text-blue-600 dark:text-blue-400" />
+                    {track}
+                  </span>
+                ))}
               </div>
             </div>
           </div>
@@ -141,19 +127,20 @@ export function PartnershipDevfest() {
 
                 <div>
                   <div className="flex justify-between text-xs font-medium mb-1">
-                    <span className="text-foreground">Product Managers & Startup Founders</span>
-                    <span className="font-bold text-blue-600 dark:text-blue-400">5%</span>
+                    <span className="text-foreground">Product Managers & Tech Designers</span>
+                    <span className="font-bold text-purple-600 dark:text-purple-400">5%</span>
                   </div>
                   <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
-                    <div className="h-full rounded-full bg-blue-600 dark:bg-blue-400" style={{ width: "5%" }} />
+                    <div className="h-full rounded-full bg-purple-600 dark:bg-purple-400" style={{ width: "5%" }} />
                   </div>
                 </div>
               </div>
 
-              <div className="rounded-xl bg-muted/60 p-4 text-xs text-muted-foreground leading-relaxed">
-                💡 <strong className="text-foreground font-semibold">High Purchasing & Technical Influence:</strong>{" "}
-                Over 70% of attendees report having direct influence or input on tools, cloud services, and developer
-                platforms adopted by their companies.
+              <div className="rounded-xl border border-dashed p-4 text-center">
+                <span className="font-semibold text-xs text-foreground block">100% Focused on Quality Engagement</span>
+                <span className="text-muted-foreground text-[11px] mt-0.5 block">
+                  Capped venue capacity ensures meaningful developer conversations with sponsors.
+                </span>
               </div>
             </div>
           </div>

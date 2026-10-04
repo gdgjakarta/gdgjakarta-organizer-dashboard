@@ -89,18 +89,18 @@ export const organizerSidebarItems: NavGroup[] = [
   },
   {
     id: 3,
-    label: "Misc",
+    label: "Content Management",
     items: [
       {
         id: "partnership",
         title: "Partnership & Sponsorship",
-        url: "/partnership",
+        url: "/dashboard/partnership",
         icon: Handshake,
       },
       {
         id: "faq",
         title: "FAQ & Policy",
-        url: "/faq",
+        url: "/dashboard/faq",
         icon: HelpCircle,
       },
       {

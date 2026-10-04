@@ -1,80 +1,14 @@
+"use client";
+
 import { Check, Mail, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-
-interface Tier {
-  name: string;
-  badge?: string;
-  popular?: boolean;
-  description: string;
-  highlights: string[];
-  slots: string;
-}
-
-const TIERS: Tier[] = [
-  {
-    name: "Silver Partner",
-    description: "Great for tech companies seeking high-value developer visibility and booth exhibition presence.",
-    slots: "Limited Slots Available",
-    highlights: [
-      "Standard Expo Booth (3x2m) with power & Wi-Fi",
-      "Logo on official website, event banners & screens",
-      "1x Social media announcement post",
-      "Company swag insert inside attendee welcome tote",
-      "4x All-Access Conference Passes",
-      "Post-event attendee analytics overview",
-    ],
-  },
-  {
-    name: "Gold Partner",
-    badge: "Most Popular",
-    popular: true,
-    description:
-      "Ideal for brands wanting dedicated breakout stage presence, recruitment visibility, and premier booth placement.",
-    slots: "5 Slots Only",
-    highlights: [
-      "Prime Expo Booth location with double developer frontage",
-      "25-min Breakout Session speaking slot for your tech lead",
-      "Dedicated Recruitment & Job Board promotion package",
-      "Large logo placement on mainstage backdrop & live streams",
-      "Dedicated sponsor shoutouts on Instagram & LinkedIn",
-      "Swag & promotional flyer distribution in all bags",
-      "8x All-Access Conference Passes + 2 VIP Lounge Passes",
-    ],
-  },
-  {
-    name: "Platinum / Title Partner",
-    badge: "Flagship Lead",
-    description:
-      "Maximum category exclusivity, opening keynote address, headline branding across all channels, and VIP hospitality.",
-    slots: "2 Slots Exclusive",
-    highlights: [
-      "Premier Double Island Expo Booth at prime hall entrance",
-      "20-min Mainstage Opening Keynote address to all attendees",
-      "Headline co-branding on event name, website & lanyards",
-      "Exclusive press release & multi-part social campaign",
-      "Priority talent matching and resume drop database",
-      "VIP Dinner & Speakers Lounge access for executives",
-      "15x All-Access Conference Passes + 6 VIP Passes",
-    ],
-  },
-  {
-    name: "Community & In-Kind",
-    description:
-      "For cloud credits, venue hosting, hackathon prizes, student scholarships, or food & beverage sponsorships.",
-    slots: "Open Opportunities",
-    highlights: [
-      "Custom brand attribution aligned with your contribution",
-      "Logo on official website partner section",
-      "Social media thank-you shoutout to our community",
-      "Swag / trial credits distributed directly to participants",
-      "2x All-Access Conference Passes",
-      "Certificate of Community Appreciation",
-    ],
-  },
-];
+import { usePartnershipContent } from "@/lib/content/hooks";
 
 export function PartnershipTiers() {
+  const { content } = usePartnershipContent();
+  const contactEmail = content.hero.contactEmail || "hello@gdgjakarta.org";
+
   return (
     <section id="tiers" className="bg-muted/30 py-16 lg:py-24">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
@@ -101,9 +35,9 @@ export function PartnershipTiers() {
         </div>
 
         <div className="mt-12 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {TIERS.map((tier) => (
+          {content.tiers.map((tier) => (
             <div
-              key={tier.name}
+              key={tier.id || tier.name}
               className={`relative flex flex-col justify-between rounded-2xl border bg-background p-6 shadow-xs transition-all duration-300 hover:shadow-lg ${
                 tier.popular ? "ring-2 ring-[var(--theme-primary)]" : ""
               }`}
@@ -119,7 +53,7 @@ export function PartnershipTiers() {
                     color: "var(--theme-primary-foreground)",
                   }}
                 >
-                  {tier.badge}
+                  {tier.badge || "Most Popular"}
                 </div>
               )}
 
@@ -146,8 +80,8 @@ export function PartnershipTiers() {
                     What&apos;s Included:
                   </span>
                   <ul className="space-y-2 text-xs">
-                    {tier.highlights.map((highlight) => (
-                      <li key={highlight} className="flex items-start gap-2 text-foreground/80">
+                    {tier.highlights?.map((highlight, hIdx) => (
+                      <li key={hIdx} className="flex items-start gap-2 text-foreground/80">
                         <Check className="mt-0.5 size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
                         <span className="leading-tight">{highlight}</span>
                       </li>
@@ -171,7 +105,7 @@ export function PartnershipTiers() {
                   }
                 >
                   <a
-                    href={`mailto:hello@gdgjakarta.org?subject=%5BSponsorship%20Proposal%5D%20Request%20for%20${encodeURIComponent(
+                    href={`mailto:${contactEmail}?subject=%5BSponsorship%20Proposal%5D%20Request%20for%20${encodeURIComponent(
                       tier.name,
                     )}%20Tier&body=Hi%20GDG%20Jakarta%20Team%2C%0A%0AWe%20would%20like%20to%20receive%20the%20detailed%20proposal%20deck%20and%20pricing%20for%20the%20${encodeURIComponent(
                       tier.name,
@@ -196,7 +130,7 @@ export function PartnershipTiers() {
             </p>
           </div>
           <Button asChild variant="outline" className="rounded-xl shrink-0 font-medium">
-            <a href="mailto:hello@gdgjakarta.org?subject=%5BCustom%20Partnership%5D%20Special%20Activation%20Idea">
+            <a href={`mailto:${contactEmail}?subject=%5BCustom%20Partnership%5D%20Special%20Activation%20Idea`}>
               Discuss Custom Idea &rarr;
             </a>
           </Button>

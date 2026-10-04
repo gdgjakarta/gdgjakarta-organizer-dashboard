@@ -1,95 +1,21 @@
+"use client";
+
 import { Code, Flame, Gift, Laptop, Presentation, Rocket, Terminal } from "lucide-react";
 
-interface CollaborationFormat {
-  icon: typeof Rocket;
-  title: string;
-  tag: string;
-  description: string;
-  deliverables: string[];
-}
+import { usePartnershipContent } from "@/lib/content/hooks";
 
-const COLLABORATION_FORMATS: CollaborationFormat[] = [
-  {
-    icon: Rocket,
-    title: "DevFest Jakarta 2026 (Flagship)",
-    tag: "Annual Mega Conference",
-    description:
-      "Our premier annual conference gathering 1,000+ developers, tech leads, and innovators for a full day of multi-track keynotes, deep dive sessions, hands-on labs, and expansive expo floors.",
-    deliverables: [
-      "Mainstage keynote & lightning talk sessions",
-      "Prime exhibition demo booth with live interactive kiosks",
-      "Branded conference lanyards, badging & tote bags",
-      "Executive networking & speaker lounge access",
-    ],
-  },
-  {
-    icon: Laptop,
-    title: "Hands-on Technical Codelabs & Workshops",
-    tag: "High Adoption",
-    description:
-      "Empower developers to build directly with your SDK, cloud infrastructure, AI models, or APIs under the guided supervision of your developer advocates and our facilitators.",
-    deliverables: [
-      "Dedicated 2–3 hour hands-on classroom format",
-      "Pre-event tutorial guides & code repository assets",
-      "Direct trial accounts and credits distribution",
-      "Live developer Q&A and technical feedback collection",
-    ],
-  },
-  {
-    icon: Terminal,
-    title: "Hackathons & Innovation Challenges",
-    tag: "Project Showcase",
-    description:
-      "Host a dedicated challenge track or full hackathon where engineering teams solve real-world industry problems using your platform and product ecosystem.",
-    deliverables: [
-      "Custom sponsor challenge track & judging panel seat",
-      "Showcase of winning projects & community presentations",
-      "Developer trial usage spike during sprint period",
-      "Co-branded awards, digital certificates & prizes",
-    ],
-  },
-  {
-    icon: Presentation,
-    title: "Monthly Meetups & Tech Talks",
-    tag: "Continuous Engagement",
-    description:
-      "Stay top-of-mind throughout the year. Sponsor or co-host focused evening tech sessions on specific technologies like Android, Flutter, Google Cloud, AI/ML, and Modern Web.",
-    deliverables: [
-      "Targeted audience of 80–200 specialized engineers per event",
-      "Speaker slot for your technical leads or DevRel champions",
-      "Venue co-hosting or catering branding recognition",
-      "Prominent mention in meetup recaps & social announcements",
-    ],
-  },
-  {
-    icon: Flame,
-    title: "Gamified Booth & Developer Activations",
-    tag: "Expo Standout",
-    description:
-      "Make your brand the most talked-about spot at the event with engaging mini-games, algorithmic puzzles, claw machines, speed-coding faceoffs, or live coding battles.",
-    deliverables: [
-      "Turnkey interactive activation area with electricity & high-speed Wi-Fi",
-      "High attendee foot-traffic & dwell time at your booth",
-      "Leaderboards and live community challenge tracking",
-      "Direct lead capture and dev community onboarding",
-    ],
-  },
-  {
-    icon: Gift,
-    title: "Community Merch & Swag Sponsorship",
-    tag: "Lasting Impression",
-    description:
-      "Developers love high-quality, practical gear. Put your brand on premium community swag worn by engineers for months and years across tech offices.",
-    deliverables: [
-      "Co-branded premium hoodies, t-shirts, caps, or developer jackets",
-      "Die-cut tech sticker packs, laptop sleeves, or lanyard badges",
-      "Direct inclusion in attendees' registration welcome kits",
-      "Unboxing moments & social media tag exposure",
-    ],
-  },
-];
+const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
+  Rocket,
+  Laptop,
+  Terminal,
+  Presentation,
+  Flame,
+  Gift,
+};
 
 export function PartnershipFormats() {
+  const { content } = usePartnershipContent();
+
   return (
     <section className="bg-muted/30 py-16 lg:py-24">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
@@ -116,11 +42,11 @@ export function PartnershipFormats() {
         </div>
 
         <div className="mt-12 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {COLLABORATION_FORMATS.map((format) => {
-            const Icon = format.icon;
+          {content.formats.map((format, idx) => {
+            const Icon = ICON_MAP[format.iconName] || Rocket;
             return (
               <div
-                key={format.title}
+                key={format.id || format.title || idx}
                 className="flex flex-col justify-between rounded-2xl border bg-background p-6 shadow-xs transition-all duration-300 hover:border-[var(--theme-primary)] hover:shadow-md"
               >
                 <div>
@@ -147,8 +73,8 @@ export function PartnershipFormats() {
                       Included touchpoints:
                     </span>
                     <ul className="space-y-1.5 text-muted-foreground text-xs">
-                      {format.deliverables.map((item) => (
-                        <li key={item} className="flex items-start gap-2">
+                      {format.deliverables?.map((item, dIdx) => (
+                        <li key={dIdx} className="flex items-start gap-2">
                           <span className="mt-1 size-1.5 shrink-0 rounded-full bg-[var(--theme-primary)]" />
                           <span>{item}</span>
                         </li>
