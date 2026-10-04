@@ -97,6 +97,7 @@ export function NavigationProgressProvider({ children }: { children: ReactNode }
     trickler?: ReturnType<typeof setInterval>;
     safetyTimeout?: ReturnType<typeof setTimeout>;
     completionTimer?: ReturnType<typeof setTimeout>;
+    isNavigating?: boolean;
   }>({});
 
   const finishNavigation = useCallback(() => {
@@ -108,6 +109,11 @@ export function NavigationProgressProvider({ children }: { children: ReactNode }
       clearTimeout(timersRef.current.safetyTimeout);
       timersRef.current.safetyTimeout = undefined;
     }
+
+    if (!timersRef.current.isNavigating) {
+      return;
+    }
+    timersRef.current.isNavigating = false;
 
     setProgress(100);
     setStatus("completing");
@@ -137,6 +143,7 @@ export function NavigationProgressProvider({ children }: { children: ReactNode }
         clearTimeout(timersRef.current.safetyTimeout);
       }
 
+      timersRef.current.isNavigating = true;
       setIsNavigating(true);
       if (url) {
         setPendingUrl(url);
@@ -227,54 +234,20 @@ export function NavigationProgressProvider({ children }: { children: ReactNode }
     window.addEventListener("app:navigation-start", handleCustomStart);
     window.addEventListener("app:navigation-end", handleCustomEnd);
 
-    const originalPushState = window.history.pushState;
-    const originalReplaceState = window.history.replaceState;
-
-    window.history.pushState = function (...args) {
-      const url = args[2];
-      if (url) {
-        try {
-          const targetUrl = new URL(url.toString(), window.location.href);
-          const currentUrl = new URL(window.location.href);
-          if (
-            targetUrl.origin === currentUrl.origin &&
-            (targetUrl.pathname !== currentUrl.pathname || targetUrl.search !== currentUrl.search)
-          ) {
-            startNavigation(targetUrl.pathname);
-          }
-        } catch {
-          // Ignore URL constructor errors
-        }
-      }
-      return originalPushState.apply(this, args);
-    };
-
-    window.history.replaceState = function (...args) {
-      const url = args[2];
-      if (url) {
-        try {
-          const targetUrl = new URL(url.toString(), window.location.href);
-          const currentUrl = new URL(window.location.href);
-          if (
-            targetUrl.origin === currentUrl.origin &&
-            (targetUrl.pathname !== currentUrl.pathname || targetUrl.search !== currentUrl.search)
-          ) {
-            startNavigation(targetUrl.pathname);
-          }
-        } catch {
-          // Ignore URL constructor errors
-        }
-      }
-      return originalReplaceState.apply(this, args);
-    };
-
     return () => {
       document.removeEventListener("click", handleClick, { capture: true });
       window.removeEventListener("popstate", handlePopState);
       window.removeEventListener("app:navigation-start", handleCustomStart);
       window.removeEventListener("app:navigation-end", handleCustomEnd);
-      window.history.pushState = originalPushState;
-      window.history.replaceState = originalReplaceState;
+      if (timersRef.current.trickler !== undefined) {
+        clearInterval(timersRef.current.trickler);
+      }
+      if (timersRef.current.safetyTimeout !== undefined) {
+        clearTimeout(timersRef.current.safetyTimeout);
+      }
+      if (timersRef.current.completionTimer !== undefined) {
+        clearTimeout(timersRef.current.completionTimer);
+      }
     };
   }, [startNavigation, finishNavigation]);
 
