@@ -78,6 +78,7 @@ export async function syncBevyEventsToFirestore(): Promise<{
         static_url: event.static_url || null,
         tags: event.tags || [],
         is_hidden: Boolean(event.is_hidden || (event as { hidden?: boolean }).hidden),
+        is_test: Boolean(event.is_test),
         requires_approval: false, // Default to open RSVP unless modified by organizer
         total_registrations: event.total_attendees ?? 0,
         total_approved: event.total_attendees ?? 0,
