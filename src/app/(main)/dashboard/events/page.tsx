@@ -12,9 +12,11 @@ export default async function Page() {
   let totalCount: number | undefined;
 
   try {
-    const eventsResponse = await getBevyChapterEvents(undefined, 100, 1);
-    totalCount = eventsResponse?.count;
-    const fetchedEvents = eventsResponse?.results ?? [];
+    const eventsResponse = await getBevyChapterEvents(undefined, 100, 1, false);
+    const fetchedEvents = (eventsResponse?.results ?? []).filter(
+      (event) => !event.is_hidden && !(event as { hidden?: boolean }).hidden,
+    );
+    totalCount = eventsResponse?.count ?? fetchedEvents.length;
 
     if (fetchedEvents.length > 0) {
       eventRows = fetchedEvents.map((event) => {
@@ -69,6 +71,7 @@ export default async function Page() {
           bannerUrl: event.banner?.url || event.cropped_banner_url,
           tags: event.tags || [],
           isUpcoming: isUpcomingEvent,
+          isHidden: Boolean(event.is_hidden || (event as { hidden?: boolean }).hidden),
         };
       });
     }

@@ -13,8 +13,8 @@ export default async function EventsDirectoryPage() {
   let totalCount = 0;
 
   try {
-    const eventsData = await getBevyChapterEvents(BEVY_CONFIG.chapterId, EVENTS_PER_PAGE, 1);
-    initialEvents = eventsData?.results ?? [];
+    const eventsData = await getBevyChapterEvents(BEVY_CONFIG.chapterId, EVENTS_PER_PAGE, 1, false);
+    initialEvents = (eventsData?.results ?? []).filter((e) => !e.is_hidden && !e.hidden);
     totalCount = eventsData?.count ?? initialEvents.length;
   } catch (error) {
     console.error("[Events Directory] Failed to load events:", error);

@@ -1,6 +1,7 @@
 import {
   Calendar,
   CalendarCheck,
+  HelpCircle,
   LayoutDashboard,
   type LucideIcon,
   Mail,
@@ -90,6 +91,12 @@ export const organizerSidebarItems: NavGroup[] = [
     label: "Misc",
     items: [
       {
+        id: "faq",
+        title: "FAQ & Policy",
+        url: "/faq",
+        icon: HelpCircle,
+      },
+      {
         id: "others",
         title: "Others",
         url: "/dashboard/coming-soon",
@@ -131,6 +138,18 @@ export const memberSidebarItems: NavGroup[] = [
         icon: ShoppingBag,
         badge: "soon",
         disabled: true,
+      },
+    ],
+  },
+  {
+    id: 3,
+    label: "Support",
+    items: [
+      {
+        id: "faq",
+        title: "FAQ & Policy",
+        url: "/faq",
+        icon: HelpCircle,
       },
     ],
   },

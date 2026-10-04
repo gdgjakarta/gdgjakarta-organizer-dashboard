@@ -371,14 +371,21 @@ export async function getBevyChapterEvents(
   chapterId: string = BEVY_CONFIG.chapterId,
   pageSize = 100,
   page = 1,
+  includeHidden = false,
 ): Promise<BevyEventsResponse | null> {
   const fields =
-    "id,title,description_short,description,event_type_title,audience_type,is_virtual_event,start_date,end_date,status,picture,banner,cropped_banner_url,cropped_picture_url,url,static_url,total_attendees,checkin_count,total_tickets,total_rsvps_sold,completed,tags,chapter";
+    "id,title,description_short,description,event_type_title,audience_type,is_virtual_event,start_date,end_date,status,picture,banner,cropped_banner_url,cropped_picture_url,url,static_url,total_attendees,checkin_count,total_tickets,total_rsvps_sold,completed,tags,chapter,is_hidden";
+  const hiddenParam = includeHidden ? "" : "&is_hidden=false";
   const result = await bevyFetch<BevyEventsResponse>(
-    `/chapter/${chapterId}/event?page_size=${pageSize}&page=${page}&fields=${fields}`,
+    `/chapter/${chapterId}/event?page_size=${pageSize}&page=${page}&fields=${fields}${hiddenParam}`,
     {},
     chapterId,
   );
+
+  if (result && !includeHidden && Array.isArray(result.results)) {
+    result.results = result.results.filter((e) => !e.is_hidden && !(e as { hidden?: boolean }).hidden);
+  }
+
   return result;
 }
 

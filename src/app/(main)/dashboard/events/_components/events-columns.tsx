@@ -161,6 +161,14 @@ export const eventsColumns: ColumnDef<DataTableFeatures, EventRow>[] = [
             Upcoming
           </Badge>
         ) : null}
+        {row.original.isHidden ? (
+          <Badge
+            variant="outline"
+            className="border-amber-500/20 bg-amber-500/10 px-1.5 py-0 text-[10px] text-amber-600 dark:text-amber-400"
+          >
+            Hidden
+          </Badge>
+        ) : null}
       </div>
     ),
   },

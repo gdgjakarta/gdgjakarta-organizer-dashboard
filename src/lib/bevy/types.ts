@@ -108,6 +108,8 @@ export interface BevyEvent {
   total_rsvps_sold?: number;
   completed?: boolean;
   tags?: string[];
+  is_hidden?: boolean;
+  hidden?: boolean;
   chapter?: {
     id: number | string;
     title: string;

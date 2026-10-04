@@ -82,7 +82,9 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
 
   const eventMap = new Map<string, FirestoreEvent>();
   for (const ev of allEvents) {
-    eventMap.set(String(ev.id), ev);
+    if (!ev.is_hidden && !(ev as { hidden?: boolean }).hidden) {
+      eventMap.set(String(ev.id), ev);
+    }
   }
 
   // Segment registrations

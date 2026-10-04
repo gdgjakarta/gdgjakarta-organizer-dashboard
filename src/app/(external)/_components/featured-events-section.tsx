@@ -11,6 +11,8 @@ interface FeaturedEventsSectionProps {
 }
 
 export function FeaturedEventsSection({ events }: FeaturedEventsSectionProps) {
+  const visibleEvents = events.filter((e) => !e.is_hidden && !(e as { hidden?: boolean }).hidden);
+
   return (
     <section className="container mx-auto px-4 py-16 sm:px-6 lg:px-8 lg:py-24">
       {/* Section Header */}
@@ -44,9 +46,9 @@ export function FeaturedEventsSection({ events }: FeaturedEventsSectionProps) {
       </div>
 
       {/* Events Grid */}
-      {events.length > 0 ? (
+      {visibleEvents.length > 0 ? (
         <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-          {events.map((event) => {
+          {visibleEvents.map((event) => {
             const dateStr = new Date(event.start_date).toLocaleDateString("en-US", {
               weekday: "short",
               month: "short",

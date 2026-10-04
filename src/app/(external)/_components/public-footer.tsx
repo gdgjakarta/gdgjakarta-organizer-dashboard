@@ -12,7 +12,13 @@ export function PublicFooter() {
           <p className="font-medium text-[14px]">{APP_CONFIG.name}</p>
           <p className="text-muted-foreground text-xs">{APP_CONFIG.copyright}</p>
         </div>
-        <div className="flex flex-wrap items-center gap-6 text-muted-foreground text-[14px]">
+        <div className="flex flex-wrap items-center gap-6 text-[14px] text-muted-foreground">
+          <Link href="/faq" className="transition-colors hover:text-foreground">
+            FAQ
+          </Link>
+          <Link href="/payment-policy" className="transition-colors hover:text-foreground">
+            Payment Policy
+          </Link>
           <Link href="/privacy" className="transition-colors hover:text-foreground">
             Privacy Policy
           </Link>

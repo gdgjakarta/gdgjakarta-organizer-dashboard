@@ -19,6 +19,9 @@ export default async function MemberEventDetailPage({ params }: MemberEventDetai
   try {
     const direct = await getBevyEventById(eventId);
     if (direct) {
+      if (direct.is_hidden || (direct as { hidden?: boolean }).hidden) {
+        notFound();
+      }
       event = {
         id: String(direct.id),
         title: direct.title,
@@ -39,13 +42,14 @@ export default async function MemberEventDetailPage({ params }: MemberEventDetai
         total_registrations: direct.total_attendees ?? 0,
         total_approved: direct.total_attendees ?? 0,
         total_checked_in: direct.checkin_count ?? 0,
+        is_hidden: false,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
     } else {
-      const chapterEvents = await getBevyChapterEvents();
+      const chapterEvents = await getBevyChapterEvents(undefined, 100, 1, false);
       const matched = chapterEvents?.results?.find((e) => String(e.id) === eventId);
-      if (matched) {
+      if (matched && !matched.is_hidden && !(matched as { hidden?: boolean }).hidden) {
         event = {
           id: String(matched.id),
           title: matched.title,

@@ -36,10 +36,12 @@ export async function getFirestoreEvents(maxResults = 100): Promise<FirestoreEve
     const q = query(eventsRef, orderBy("start_date", "desc"), limit(maxResults));
     const snapshot = await getDocs(q);
 
-    return snapshot.docs.map((docSnap) => ({
-      id: docSnap.id,
-      ...docSnap.data(),
-    })) as FirestoreEvent[];
+    return (
+      snapshot.docs.map((docSnap) => ({
+        id: docSnap.id,
+        ...docSnap.data(),
+      })) as FirestoreEvent[]
+    ).filter((e) => !e.is_hidden && !(e as { hidden?: boolean }).hidden);
   } catch (error) {
     console.error("[Firestore] getFirestoreEvents error:", error);
     return [];

@@ -19,6 +19,7 @@ export type EventRow = {
   bannerUrl?: string;
   tags: string[];
   isUpcoming: boolean;
+  isHidden?: boolean;
 };
 
 export const eventFilters = {

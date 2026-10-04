@@ -14,34 +14,37 @@ export default async function Page() {
 
   try {
     const [eventsResponse, teamMembers, membersResponse] = await Promise.all([
-      getBevyChapterEvents(undefined, 50, 1),
+      getBevyChapterEvents(undefined, 50, 1, false),
       getBevyChapterTeams(),
       getBevyChapterMembers(undefined, 50, 1),
     ]);
 
-    events = (eventsResponse?.results ?? []).map((e) => ({
-      id: String(e.id),
-      title: e.title || "Untitled Event",
-      description: e.description,
-      description_short: e.description_short,
-      status: (e.status as FirestoreEvent["status"]) || "Published",
-      start_date: e.start_date || new Date().toISOString(),
-      end_date: e.end_date || e.start_date || new Date().toISOString(),
-      picture_url: e.picture?.thumbnail_url || e.picture?.url,
-      banner_url: e.banner?.url,
-      event_type_title: e.event_type_title || "Standard Event",
-      audience_type: e.audience_type || (e.is_virtual_event ? "VIRTUAL" : "IN_PERSON"),
-      is_virtual: Boolean(e.is_virtual_event || e.audience_type === "VIRTUAL"),
-      url: e.url,
-      static_url: e.static_url,
-      tags: e.tags || [],
-      requires_approval: false,
-      total_registrations: e.total_attendees ?? 0,
-      total_approved: e.total_attendees ?? 0,
-      total_checked_in: e.checkin_count ?? 0,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }));
+    events = (eventsResponse?.results ?? [])
+      .filter((e) => !e.is_hidden && !(e as { hidden?: boolean }).hidden)
+      .map((e) => ({
+        id: String(e.id),
+        title: e.title || "Untitled Event",
+        description: e.description,
+        description_short: e.description_short,
+        status: (e.status as FirestoreEvent["status"]) || "Published",
+        start_date: e.start_date || new Date().toISOString(),
+        end_date: e.end_date || e.start_date || new Date().toISOString(),
+        picture_url: e.picture?.thumbnail_url || e.picture?.url,
+        banner_url: e.banner?.url,
+        event_type_title: e.event_type_title || "Standard Event",
+        audience_type: e.audience_type || (e.is_virtual_event ? "VIRTUAL" : "IN_PERSON"),
+        is_virtual: Boolean(e.is_virtual_event || e.audience_type === "VIRTUAL"),
+        url: e.url,
+        static_url: e.static_url,
+        tags: e.tags || [],
+        requires_approval: false,
+        total_registrations: e.total_attendees ?? 0,
+        total_approved: e.total_attendees ?? 0,
+        total_checked_in: e.checkin_count ?? 0,
+        is_hidden: Boolean(e.is_hidden || (e as { hidden?: boolean }).hidden),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }));
 
     const teamMap = new Map<string, string>();
     for (const tm of teamMembers) {

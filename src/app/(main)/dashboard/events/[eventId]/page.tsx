@@ -46,11 +46,12 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
         total_registrations: direct.total_attendees ?? 0,
         total_approved: direct.total_attendees ?? 0,
         total_checked_in: direct.checkin_count ?? 0,
+        is_hidden: Boolean(direct.is_hidden ?? (direct as { hidden?: boolean }).hidden),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
     } else {
-      const chapterEvents = await getBevyChapterEvents();
+      const chapterEvents = await getBevyChapterEvents(undefined, 100, 1, false);
       const matched = chapterEvents?.results?.find((e) => String(e.id) === eventId);
       if (matched) {
         event = {
@@ -73,6 +74,7 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
           total_registrations: matched.total_attendees ?? 0,
           total_approved: matched.total_attendees ?? 0,
           total_checked_in: matched.checkin_count ?? 0,
+          is_hidden: Boolean(matched.is_hidden || (matched as { hidden?: boolean }).hidden),
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         };

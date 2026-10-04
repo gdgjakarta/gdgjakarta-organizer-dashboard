@@ -29,7 +29,9 @@ function getAudienceLabel(event: BevyEvent): string {
 }
 
 export function EventsDirectory({ initialEvents, totalCount, pageSize = 15 }: EventsDirectoryProps) {
-  const [events, setEvents] = useState<BevyEvent[]>(initialEvents);
+  const [events, setEvents] = useState<BevyEvent[]>(() =>
+    initialEvents.filter((e) => !e.is_hidden && !(e as { hidden?: boolean }).hidden),
+  );
   const [page, setPage] = useState<number>(1);
   const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,14 +46,14 @@ export function EventsDirectory({ initialEvents, totalCount, pageSize = 15 }: Ev
 
     try {
       const nextPage = page + 1;
-      const response = await fetchBevyChapterEventsAction(pageSize, nextPage);
+      const response = await fetchBevyChapterEventsAction(pageSize, nextPage, false);
 
       if (!response?.results) {
         setError("Failed to load more events. Please try again.");
         return;
       }
 
-      const newResults = response.results;
+      const newResults = response.results.filter((e) => !e.is_hidden && !(e as { hidden?: boolean }).hidden);
       if (newResults.length === 0) {
         return;
       }

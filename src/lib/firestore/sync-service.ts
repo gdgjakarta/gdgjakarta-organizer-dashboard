@@ -31,8 +31,10 @@ export async function syncBevyEventsToFirestore(): Promise<{
   error?: string;
 }> {
   try {
-    const eventsResponse = await fetchBevyChapterEventsAction(100, 1);
-    const bevyEvents = eventsResponse?.results ?? [];
+    const eventsResponse = await fetchBevyChapterEventsAction(100, 1, false);
+    const bevyEvents = (eventsResponse?.results ?? []).filter(
+      (e) => !e.is_hidden && !(e as { hidden?: boolean }).hidden,
+    );
 
     if (bevyEvents.length === 0) {
       return { success: true, totalSynced: 0 };
@@ -71,6 +73,7 @@ export async function syncBevyEventsToFirestore(): Promise<{
         url: event.url || event.cohost_registration_url || null,
         static_url: event.static_url || null,
         tags: event.tags || [],
+        is_hidden: Boolean(event.is_hidden || (event as { hidden?: boolean }).hidden),
         requires_approval: false, // Default to open RSVP unless modified by organizer
         total_registrations: event.total_attendees ?? 0,
         total_approved: event.total_attendees ?? 0,
