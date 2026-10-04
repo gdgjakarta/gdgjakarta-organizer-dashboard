@@ -33,5 +33,6 @@ if (remoteConfig) {
   remoteConfig.defaultConfig = {
     [REMOTE_CONFIG_KEYS.BEVY_COOKIE]: process.env.BEVY_COOKIE || "",
     [REMOTE_CONFIG_KEYS.BEVY_X_CSRFTOKEN]: process.env.BEVY_CSRF_TOKEN || "",
+    [REMOTE_CONFIG_KEYS.ORGANIZER_EMAILS]: process.env.ORGANIZER_EMAILS || "[]",
   };
 }

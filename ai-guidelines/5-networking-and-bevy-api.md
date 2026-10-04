@@ -66,18 +66,29 @@ Session cookies and CSRF tokens are migrated to **Firebase Remote Config** (alig
 - `cfg_bevy_cookie`: Session cookie string or JSON array of chapter mappings.
 - `cfg_bevy_x_csrftoken`: X-CSRFToken validation token string or JSON array of chapter mappings.
 - `cfg_bevy_referer_url`: Optional dynamic referer template URL with `{eventId}` placeholder.
+- `cfg_organizer_emails`: JSON array of authorized organizer email addresses for whitelist fallback.
 
-### 4.2 Mapped Chapter Resolution Format (`ConfigMap`)
-Values in Remote Config can be either a plain string or a JSON array keyed per `chapterId`:
+### 4.2 Mapped Chapter & Whitelist Resolution Format
+1. **Bevy Credentials (`ConfigMap`)**:
+   Values in Remote Config can be either a plain string or a JSON array keyed per `chapterId`:
+   ```json
+   [
+     {
+       "key": "642",
+       "value": "csrftoken=...; sessionid=..."
+     }
+   ]
+   ```
 
-```json
-[
-  {
-    "key": "642",
-    "value": "csrftoken=...; sessionid=..."
-  }
-]
-```
+2. **Organizer Emails Whitelist (`cfg_organizer_emails`)**:
+   JSON array of authorized organizer email strings:
+   ```json
+   [
+     "rizfirsy@gmail.com",
+     "info@gdgjakarta.org",
+     "fachridantm@gmail.com"
+   ]
+   ```
 
 ### 4.3 Resolution Flow
 1. **Remote Config Fetch**: In the browser, resolved via Firebase Client SDK `remoteConfig`. On the server/worker, fetched via Firebase Remote Config REST API with in-memory caching.

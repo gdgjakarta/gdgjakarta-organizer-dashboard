@@ -305,8 +305,8 @@ export async function validateBevyOrganizer(email: string, displayName?: string)
       }
     }
 
-    // Step 3: Whitelist fallback check (for accounts specified in ORGANIZER_EMAILS)
-    const isWhitelisted = isAuthorizedOrganizerEmail(normalizedEmail);
+    // Step 3: Whitelist fallback check (for accounts specified in cfg_organizer_emails or ORGANIZER_EMAILS)
+    const isWhitelisted = await isAuthorizedOrganizerEmail(normalizedEmail);
     if (isWhitelisted) {
       console.log(`[Bevy Auth Flow] Whitelist fallback MATCHED for: ${normalizedEmail}`);
       return {
