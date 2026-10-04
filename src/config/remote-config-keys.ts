@@ -6,6 +6,7 @@ export const REMOTE_CONFIG_KEYS = {
   BEVY_X_CSRFTOKEN: "cfg_bevy_x_csrftoken",
   BEVY_REFERER_URL: "cfg_bevy_referer_url",
   ORGANIZER_EMAILS: "cfg_organizer_emails",
+  FEATURE_FLAGS: "cfg_feature_flags",
 } as const;
 
 export type RemoteConfigKey = (typeof REMOTE_CONFIG_KEYS)[keyof typeof REMOTE_CONFIG_KEYS];

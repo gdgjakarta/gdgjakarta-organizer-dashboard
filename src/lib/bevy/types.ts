@@ -7,6 +7,7 @@ export interface BevyUser {
   email?: string;
   avatar?: {
     url?: string;
+    thumbnail_url?: string;
   };
   cropped_avatar_url?: string;
   title?: string;
@@ -59,6 +60,7 @@ export interface BevyChapterMember {
     is_email_verified?: boolean;
     avatar?: {
       url?: string;
+      thumbnail_url?: string;
     };
   };
   created_date?: string;

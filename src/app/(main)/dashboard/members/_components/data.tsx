@@ -1,31 +1,35 @@
-export type MemberStatus = "Active" | "Pending invite" | "Deactivated" | "Locked" | "Suspended";
+export type MemberStatus = "Active" | "Inactive" | "Pending invite" | "Deactivated" | "Locked" | "Suspended";
 
 export type MemberRow = {
   id?: string | number;
+  bevyUserId?: string | number;
   email: string;
   joinedDate: string;
-  lastActive: number;
+  rawCreatedDate?: string;
+  lastActive?: number | string;
   name: string;
+  firstName?: string;
+  lastName?: string;
+  company?: string;
+  title?: string;
   role: string;
   status: MemberStatus;
   team: string;
-  workspace: string[];
   avatarUrl?: string;
   eventsCount?: number;
   profileUrl?: string;
-};
-
-export const filters = {
-  role: ["All", "Organizer", "Regional Leader", "Co-Organizer", "Event Host", "Member"],
-  team: ["All", "Core Team", "Community", "Volunteers", "Speakers"],
-  status: ["All", "Active", "Pending invite", "Deactivated"],
-  workspace: ["All", "GDG Jakarta", "WTM Jakarta", "Google Developers"],
+  isEmailVerified?: boolean;
+  workspace?: string[];
 };
 
 export const statusMeta: Record<MemberStatus, { badgeClass: string; dotClass: string }> = {
   Active: {
     badgeClass: "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
     dotClass: "bg-emerald-500",
+  },
+  Inactive: {
+    badgeClass: "border-border bg-muted/50 text-muted-foreground",
+    dotClass: "bg-muted-foreground",
   },
   "Pending invite": {
     badgeClass: "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400",

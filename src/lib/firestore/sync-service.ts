@@ -2,6 +2,7 @@
 
 import { doc, writeBatch } from "firebase/firestore";
 
+import { splitFullName } from "@/lib/utils";
 import {
   fetchBevyChapterEventsAction,
   fetchBevyChapterMembersAction,
@@ -116,10 +117,15 @@ export async function syncBevyMembersToFirestore(): Promise<{
   try {
     const [teamMembers, membersResponse] = await Promise.all([
       fetchBevyChapterTeamsAction(),
-      fetchBevyChapterMembersAction(200, 1),
+      fetchBevyChapterMembersAction(200, 1, "-created_date"),
     ]);
 
-    const teamMap = new Map<string, string>();
+    interface TeamInfo {
+      roleTitle: string;
+      avatarUrl?: string | null;
+      company?: string | null;
+    }
+    const teamMap = new Map<string, TeamInfo>();
     for (const tm of teamMembers) {
       const email = tm.user?.email?.toLowerCase();
       const userId = tm.user?.id ? String(tm.user.id) : String(tm.user_id || "");
@@ -133,8 +139,14 @@ export async function syncBevyMembersToFirestore(): Promise<{
         roleTitle = tm.title;
       }
 
-      if (email) teamMap.set(email, roleTitle);
-      if (userId) teamMap.set(`id:${userId}`, roleTitle);
+      const teamInfo: TeamInfo = {
+        roleTitle,
+        avatarUrl: tm.user?.avatar?.url || tm.user?.avatar?.thumbnail_url || null,
+        company: tm.user?.company || null,
+      };
+
+      if (email) teamMap.set(email, teamInfo);
+      if (userId) teamMap.set(`id:${userId}`, teamInfo);
     }
 
     const fetchedMembers = membersResponse?.results || [];
@@ -149,20 +161,30 @@ export async function syncBevyMembersToFirestore(): Promise<{
     for (const m of fetchedMembers) {
       const email = m.user.email || `user_${m.user.id}@community.dev`;
       const userId = String(m.user.id);
-      const organizerRole = teamMap.get(email.toLowerCase()) || teamMap.get(`id:${userId}`) || null;
+      const teamInfo = teamMap.get(email.toLowerCase()) || teamMap.get(`id:${userId}`) || null;
+      const organizerRole = teamInfo?.roleTitle || null;
+      const displayName = m.user.full_name?.trim() || email.split("@")[0] || "Community Member";
+      const { firstName, lastName } = splitFullName(m.user.full_name?.trim() || displayName);
 
       const memberDocRef = doc(db, "members", userId);
       const rawMemberPayload: Record<string, unknown> = {
         id: userId,
         bevy_user_id: m.user.id,
-        name: m.user.full_name || "Community Member",
+        bevy_member_id: m.id || null,
+        name: displayName,
+        first_name: firstName || null,
+        last_name: lastName || null,
         email,
         role: organizerRole || "Member",
         chapter_role: organizerRole || null,
         team: organizerRole ? "Core Team" : "Community",
         status: "Active",
         joined_date: m.created_date || now,
-        avatar_url: m.user.avatar?.url || null,
+        raw_created_date: m.created_date || now,
+        avatar_url: teamInfo?.avatarUrl || m.user.avatar?.url || null,
+        profile_url: m.user.profile_url || null,
+        is_email_verified: Boolean(m.user.is_email_verified),
+        company: teamInfo?.company || null,
         events_registered_count: m.events_registered_count ?? 0,
         synced_from_bevy_at: now,
         updated_at: now,

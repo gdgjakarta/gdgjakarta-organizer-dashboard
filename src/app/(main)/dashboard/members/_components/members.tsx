@@ -11,20 +11,19 @@ import {
   type SortingState,
   useTable,
 } from "@tanstack/react-table";
-import { Cog, Download, Grid, Plus, RefreshCw, Rows3, Search, SlidersHorizontal } from "lucide-react";
+import { Download, Grid, Plus, RefreshCw, Rows3, Search } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Kbd } from "@/components/ui/kbd";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { dataTableFeatures } from "@/lib/data-table-features";
 import { triggerMembersSyncAction } from "@/lib/firestore/actions";
-import { cn } from "@/lib/utils";
+import { cn, splitFullName } from "@/lib/utils";
 
-import { filters, type MemberRow } from "./data";
+import type { MemberRow } from "./data";
 import { membersColumns } from "./members-columns";
 import { MembersTable } from "./members-table";
 
@@ -34,7 +33,6 @@ export function Members({ members, totalCount }: { members: MemberRow[]; totalCo
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
   const [columnVisibility, setColumnVisibility] = React.useState<ColumnVisibilityState>({
     search: false,
-    team: false,
   });
   const [pagination, setPagination] = React.useState<PaginationState>({
     pageIndex: 0,
@@ -63,11 +61,6 @@ export function Members({ members, totalCount }: { members: MemberRow[]; totalCo
   });
 
   const searchQuery = (table.getColumn("search")?.getFilterValue() as string | undefined) ?? "";
-  const roleFilter = (table.getColumn("role")?.getFilterValue() as string | undefined) ?? filters.role[0];
-  const teamFilter = (table.getColumn("team")?.getFilterValue() as string | undefined) ?? filters.team[0];
-  const statusFilter = (table.getColumn("status")?.getFilterValue() as string | undefined) ?? filters.status[0];
-  const workspaceFilter =
-    (table.getColumn("workspace")?.getFilterValue() as string | undefined) ?? filters.workspace[0];
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -88,13 +81,56 @@ export function Members({ members, totalCount }: { members: MemberRow[]; totalCo
     });
   };
 
+  const handleExportCsv = () => {
+    const headers = ["first_name", "last_name", "email", "company", "title", "created_date", "events_registered_count"];
+
+    const targetRows = table.getFilteredRowModel().rows;
+    if (targetRows.length === 0) {
+      toast.error("No members to export");
+      return;
+    }
+
+    const escapeCsv = (val: string | number | undefined | null) => {
+      if (val === undefined || val === null) return "";
+      const str = String(val);
+      if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    const csvRows = targetRows.map(({ original: m }) => {
+      const { firstName, lastName } =
+        m.firstName !== undefined && m.lastName !== undefined
+          ? { firstName: m.firstName, lastName: m.lastName }
+          : splitFullName(m.name);
+
+      return [
+        escapeCsv(firstName),
+        escapeCsv(lastName),
+        escapeCsv(m.email),
+        escapeCsv(m.company || ""),
+        escapeCsv(m.title || ""),
+        escapeCsv(m.rawCreatedDate || m.joinedDate),
+        escapeCsv(m.eventsCount ?? 0),
+      ].join(",");
+    });
+
+    const csvContent = [headers.join(","), ...csvRows].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", "gdg-jakarta_members.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${targetRows.length} members to gdg-jakarta_members.csv`);
+  };
+
   const selectedCount = table.getFilteredSelectedRowModel().rows.length;
   const countToDisplay = totalCount ?? members.length;
-
-  function setColumnSelectFilter(columnId: string, value: string) {
-    table.getColumn(columnId)?.setFilterValue(value === "All" ? undefined : value);
-    table.setPageIndex(0);
-  }
 
   return (
     <Card>
@@ -128,14 +164,8 @@ export function Members({ members, totalCount }: { members: MemberRow[]; totalCo
             <RefreshCw className={cn("size-3.5", isPending && "animate-spin")} />
             {isPending ? "Syncing..." : "Sync Bevy"}
           </Button>
-          <Button variant="outline" size="sm">
-            <SlidersHorizontal /> Hide
-          </Button>
-          <Button variant="outline" size="sm">
-            <Cog /> Customize
-          </Button>
-          <Button variant="outline" size="sm">
-            <Download /> Export
+          <Button variant="outline" size="sm" onClick={handleExportCsv} className="gap-1.5">
+            <Download className="size-3.5" /> Export
           </Button>
           <Button size="sm">
             <Plus /> Add Member
@@ -143,74 +173,6 @@ export function Members({ members, totalCount }: { members: MemberRow[]; totalCo
         </CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-4 px-0">
-        <div className="flex flex-wrap items-center justify-between gap-3 px-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <Select value={roleFilter} onValueChange={(value) => setColumnSelectFilter("role", value)}>
-              <SelectTrigger size="sm">
-                <span className="text-muted-foreground">Role:</span>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent position="popper" align="start">
-                <SelectGroup>
-                  {filters.role.map((option) => (
-                    <SelectItem key={option} value={option}>
-                      {option}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-
-            <Select value={teamFilter} onValueChange={(value) => setColumnSelectFilter("team", value)}>
-              <SelectTrigger size="sm">
-                <span className="text-muted-foreground">Team:</span>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent position="popper" align="start">
-                <SelectGroup>
-                  {filters.team.map((option) => (
-                    <SelectItem key={option} value={option}>
-                      {option}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-
-            <Select value={statusFilter} onValueChange={(value) => setColumnSelectFilter("status", value)}>
-              <SelectTrigger size="sm">
-                <span className="text-muted-foreground">Status:</span>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent position="popper" align="start">
-                <SelectGroup>
-                  {filters.status.map((option) => (
-                    <SelectItem key={option} value={option}>
-                      {option}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <Select value={workspaceFilter} onValueChange={(value) => setColumnSelectFilter("workspace", value)}>
-            <SelectTrigger size="sm">
-              <span className="text-muted-foreground">Workspace:</span>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent position="popper" align="end">
-              <SelectGroup>
-                {filters.workspace.map((option) => (
-                  <SelectItem key={option} value={option}>
-                    {option}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </div>
-
         <div className="flex items-center justify-between gap-3 px-4">
           <div className="text-muted-foreground text-sm tabular-nums">{selectedCount} selected</div>
 

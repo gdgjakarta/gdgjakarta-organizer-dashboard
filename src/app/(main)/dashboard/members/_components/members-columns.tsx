@@ -2,10 +2,10 @@
 import type { ColumnDef } from "@tanstack/react-table";
 import { Subscribe } from "@tanstack/react-table";
 import { parse } from "date-fns";
-import { MoreHorizontal } from "lucide-react";
+import { Copy, ExternalLink, MoreHorizontal } from "lucide-react";
+import { toast } from "sonner";
 
-import { Avatar, AvatarFallback, AvatarGroup, AvatarGroupCount, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -18,27 +18,7 @@ import {
 import type { DataTableFeatures } from "@/lib/data-table-features";
 import { cn, getInitials } from "@/lib/utils";
 
-import { type MemberRow, statusMeta } from "./data";
-
-function RoleCell({ role, team }: { role: string; team: string }) {
-  return (
-    <div className="grid gap-0.5">
-      <span className="whitespace-nowrap">{role}</span>
-      <span className="text-muted-foreground text-xs">{team}</span>
-    </div>
-  );
-}
-
-function StatusBadge({ status }: { status: MemberRow["status"] }) {
-  const meta = statusMeta[status] || statusMeta.Active;
-
-  return (
-    <Badge className={cn("gap-1.5 border px-2 py-1 font-medium", meta.badgeClass)} variant="outline">
-      <span className={cn("size-1.5 rounded-full", meta.dotClass)} />
-      {status}
-    </Badge>
-  );
-}
+import type { MemberRow } from "./data";
 
 function getAvatarTone(name: string) {
   const tones = [
@@ -63,24 +43,6 @@ function AvatarCell({ name, avatarUrl }: { name: string; avatarUrl?: string }) {
       {avatarUrl ? <AvatarImage src={avatarUrl} alt={name} /> : null}
       <AvatarFallback>{getInitials(name)}</AvatarFallback>
     </Avatar>
-  );
-}
-
-function WorkspaceCell({ workspaces }: { workspaces: string[] }) {
-  const [firstWorkspace, ...remainingWorkspaces] = workspaces;
-  const remainingCount = remainingWorkspaces.length;
-
-  return (
-    <AvatarGroup className="*:data-[slot=avatar]:ring-0">
-      {firstWorkspace ? (
-        <Avatar className="after:rounded-sm">
-          <AvatarFallback className="rounded-sm ring-0">{getInitials(firstWorkspace)}</AvatarFallback>
-        </Avatar>
-      ) : null}
-      {remainingCount > 0 ? (
-        <AvatarGroupCount className="rounded-sm border ring-card">+{remainingCount}</AvatarGroupCount>
-      ) : null}
-    </AvatarGroup>
   );
 }
 
@@ -131,39 +93,24 @@ export const membersColumns: ColumnDef<DataTableFeatures, MemberRow>[] = [
   {
     accessorKey: "name",
     header: "Member",
-    cell: ({ row }) => (
-      <div className="flex items-center gap-3">
-        <AvatarCell name={row.original.name} avatarUrl={row.original.avatarUrl} />
-        <div className="min-w-0">
-          <div className="truncate font-medium text-foreground text-sm">{row.original.name}</div>
-          <div className="truncate text-muted-foreground text-sm">{row.original.email}</div>
+    cell: ({ row }) => {
+      const subtitle = [row.original.title, row.original.company].filter(Boolean).join(" • ");
+      return (
+        <div className="flex items-center gap-3">
+          <AvatarCell name={row.original.name} avatarUrl={row.original.avatarUrl} />
+          <div className="min-w-0">
+            <div className="truncate font-medium text-foreground text-sm">{row.original.name}</div>
+            {subtitle ? <div className="truncate text-muted-foreground text-xs">{subtitle}</div> : null}
+            <div className="truncate text-muted-foreground text-xs">{row.original.email}</div>
+          </div>
         </div>
-      </div>
-    ),
+      );
+    },
   },
   {
-    accessorKey: "role",
-    header: "Role / Team",
-    filterFn: "equalsString",
-    cell: ({ row }) => <RoleCell role={row.original.role} team={row.original.team} />,
-  },
-  {
-    accessorKey: "team",
-    header: "Team",
-    filterFn: "equalsString",
-    cell: ({ row }) => <div className="text-sm">{row.original.team}</div>,
-  },
-  {
-    accessorKey: "workspace",
-    header: "Workspace",
-    filterFn: "arrIncludes",
-    cell: ({ row }) => <WorkspaceCell workspaces={row.original.workspace} />,
-  },
-  {
-    accessorKey: "status",
-    header: "Status",
-    filterFn: "equalsString",
-    cell: ({ row }) => <StatusBadge status={row.original.status} />,
+    accessorKey: "eventsCount",
+    header: "Events registered",
+    cell: ({ row }) => <div className="text-foreground text-sm tabular-nums">{row.original.eventsCount ?? 0}</div>,
   },
   {
     id: "joinedDate",
@@ -188,10 +135,30 @@ export const membersColumns: ColumnDef<DataTableFeatures, MemberRow>[] = [
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem>View profile</DropdownMenuItem>
-            <DropdownMenuItem>Edit member</DropdownMenuItem>
+            {row.original.profileUrl ? (
+              <DropdownMenuItem asChild>
+                <a
+                  href={`https://gdg.community.dev${row.original.profileUrl}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2"
+                >
+                  <ExternalLink className="size-3.5" />
+                  View on Bevy
+                </a>
+              </DropdownMenuItem>
+            ) : null}
+            <DropdownMenuItem
+              className="flex items-center gap-2"
+              onClick={() => {
+                navigator.clipboard.writeText(row.original.email);
+                toast.success("Email copied to clipboard");
+              }}
+            >
+              <Copy className="size-3.5" />
+              Copy email
+            </DropdownMenuItem>
             <DropdownMenuItem>Manage team</DropdownMenuItem>
-            <DropdownMenuItem>Resend invite</DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem variant="destructive">Deactivate member</DropdownMenuItem>
           </DropdownMenuContent>

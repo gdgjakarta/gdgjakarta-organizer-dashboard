@@ -11,7 +11,7 @@ import {
   Users,
 } from "lucide-react";
 
-export type NavBadge = "new" | "soon";
+export type NavBadge = "new" | "soon" | "preview" | (string & {});
 
 export interface NavSubItem {
   id: string;

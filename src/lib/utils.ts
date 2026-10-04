@@ -19,6 +19,22 @@ export const getInitials = (str: string): string => {
   );
 };
 
+/**
+ * Splits a full name string into first_name and last_name matching Bevy CSV export logic:
+ * e.g. "Muhammad Dimas Saputra" -> { firstName: "Muhammad Dimas", lastName: "Saputra" }
+ * e.g. "Rika ." -> { firstName: "Rika", lastName: "." }
+ */
+export function splitFullName(fullName?: string | null): { firstName: string; lastName: string } {
+  if (!fullName?.trim()) return { firstName: "", lastName: "" };
+  const parts = fullName.trim().split(/\s+/);
+  if (parts.length === 1) {
+    return { firstName: parts[0], lastName: "" };
+  }
+  const lastName = parts.pop() || "";
+  const firstName = parts.join(" ");
+  return { firstName, lastName };
+}
+
 export function formatCurrency(
   amount: number,
   opts?: {

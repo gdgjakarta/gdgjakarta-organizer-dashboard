@@ -47,22 +47,35 @@ export interface FirestoreEvent {
 }
 
 export interface FirestoreMember {
-  id: string; // UID or Bevy User ID
+  id: string; // Bevy User ID or Firebase UID
   uid?: string;
   bevy_user_id?: string | number | null;
-  name: string;
+  bevy_member_id?: string | number | null;
+  name: string; // Full name (first_name + last_name)
+  first_name?: string | null;
+  last_name?: string | null;
   email: string;
-  avatar_url?: string;
-  role: string; // e.g. "organizer", "co-organizer", "member"
-  chapter_role?: string;
+  company?: string | null; // e.g. "PT. Lumio Inovasi Technology"
+  title?: string | null; // Job Title, e.g. "Software Engineer"
+  role: string; // Chapter role: "Organizer" | "Core Team" | "Check-in Staff" | "Member"
+  chapter_role?: string | null;
   team?: "Core Team" | "Community";
   status: "Active" | "Inactive";
   joined_date: string;
+  raw_created_date?: string; // Exact ISO timestamp from Bevy (created_date)
+  events_registered_count?: number;
+
+  // Custom Dashboard Extensions (not in Bevy CSV)
+  avatar_url?: string | null;
+  profile_url?: string | null;
+  is_email_verified?: boolean;
   company_or_institution?: string;
   phone?: string;
-  events_registered_count?: number;
-  events_attended_count?: number;
-  last_active?: string;
+  events_attended_count?: number; // Tracked through on-site scanner/check-ins
+  last_active?: string | null;
+  notes?: string;
+
+  // Sync Metadata
   synced_from_bevy_at?: string;
   updated_at: string;
 }

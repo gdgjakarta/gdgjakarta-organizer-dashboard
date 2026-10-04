@@ -355,10 +355,17 @@ export async function getBevyChapterMembers(
   chapterId: string = BEVY_CONFIG.chapterId,
   pageSize = 200,
   page = 1,
+  orderBy = "-created_date",
 ): Promise<BevyMembersResponse | null> {
+  const chapterSlug = BEVY_CONFIG.chapterSlug || "gdg-jakarta";
   const result = await bevyFetch<BevyMembersResponse>(
-    `/chapter/${chapterId}/member?page_size=${pageSize}&page=${page}`,
-    {},
+    `/chapter/${chapterId}/member/?order_by=${encodeURIComponent(orderBy)}&page_size=${pageSize}&page=${page}`,
+    {
+      headers: {
+        Referer: `https://gdg.community.dev/dashboard/${chapterSlug}/members/`,
+        "X-Requested-With": "XMLHttpRequest",
+      },
+    },
     chapterId,
   );
   return result;

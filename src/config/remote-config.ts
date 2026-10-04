@@ -1,59 +1,23 @@
+import { DEFAULT_FEATURE_FLAGS, type FeatureFlagsConfig, parseFeatureFlags } from "./feature-flags";
 import { REMOTE_CONFIG_KEYS, type RemoteConfigKey } from "./remote-config-keys";
+import {
+  type ConfigMapItem,
+  DEFAULT_CHAPTER_ID,
+  DEFAULT_CHAPTER_SLUG,
+  parseMappedConfigValue,
+} from "./remote-config-utils";
 
-export { REMOTE_CONFIG_KEYS, type RemoteConfigKey };
+export {
+  type ConfigMapItem,
+  DEFAULT_CHAPTER_ID,
+  DEFAULT_CHAPTER_SLUG,
+  parseMappedConfigValue,
+  REMOTE_CONFIG_KEYS,
+  type RemoteConfigKey,
+};
 
-const DEFAULT_CHAPTER_ID = process.env.BEVY_CHAPTER_ID || "642";
-const DEFAULT_CHAPTER_SLUG = process.env.BEVY_CHAPTER_SLUG || "gdg-jakarta";
-
-const DEFAULT_CSRF_TOKEN = "6iP8zuVoLQCPMG5ge0yFc6ljZdL7zL6v";
-const DEFAULT_COOKIE =
-  "csrftoken=UmVqaRjdKY6A8GZfyVC9wOAyC7LOFDSu;sessionid=hhx6kcyci4agi2ekiu5unm5ta873yzzh;csrftoken=6iP8zuVoLQCPMG5ge0yFc6ljZdL7zL6v;sessionid=ojunfzar221d84qchaf7dh2c6fjxau0d";
-
-/**
- * Mapped configuration entry matching KawalEvent ConfigMap model:
- * [ { "key": "<chapterId>", "value": "..." } ]
- */
-export interface ConfigMapItem {
-  key: string;
-  value: string;
-}
-
-/**
- * Parses a Remote Config value that may be either:
- * 1. A JSON array of ConfigMap items mapped per chapterId: [ { "key": "642", "value": "..." } ]
- * 2. A plain string value fallback.
- *
- * Matches KawalEvent ConfigMap.Companion.getMappedConfigValue behavior.
- *
- * @param configValue The raw string fetched from Remote Config.
- * @param chapterId Chapter numerical ID (e.g. 642 or "642").
- * @returns The resolved string value for the given chapter, or fallback to raw string / empty.
- */
-export function parseMappedConfigValue(
-  configValue: string | undefined | null,
-  chapterId: string | number = DEFAULT_CHAPTER_ID,
-): string {
-  if (!configValue) return "";
-  const trimmed = configValue.trim();
-  if (!trimmed) return "";
-
-  // Check if value is a JSON array string
-  if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
-    try {
-      const items = JSON.parse(trimmed) as ConfigMapItem[];
-      if (Array.isArray(items)) {
-        const targetId = String(chapterId);
-        const match = items.find((item) => String(item.key) === targetId);
-        return match?.value ?? "";
-      }
-    } catch {
-      // If parsing fails, fall back to returning trimmed string
-    }
-  }
-
-  // Fallback: return raw string
-  return trimmed;
-}
+const DEFAULT_CSRF_TOKEN = "";
+const DEFAULT_COOKIE = "";
 
 // ── In-Memory Caching for Server-Side REST Fetcher ────────────────────────────
 
@@ -316,4 +280,28 @@ export async function getOrganizerEmailsFromRemoteConfig(): Promise<string[]> {
     .filter(Boolean);
 
   return Array.from(new Set(envEmails));
+}
+
+/**
+ * Resolves feature flags configuration from Remote Config (`cfg_feature_flags`).
+ * Supports JSON map format, chapter-mapped array format, and environment variable fallbacks.
+ */
+export async function getFeatureFlagsFromRemoteConfig(
+  chapterId: string | number = DEFAULT_CHAPTER_ID,
+): Promise<FeatureFlagsConfig> {
+  try {
+    const raw =
+      (await getRemoteConfigValue(REMOTE_CONFIG_KEYS.FEATURE_FLAGS)) ||
+      process.env.FEATURE_FLAGS ||
+      process.env.NEXT_PUBLIC_FEATURE_FLAGS ||
+      "";
+
+    if (raw?.trim()) {
+      return parseFeatureFlags(raw, chapterId);
+    }
+  } catch (err) {
+    console.warn("[Remote Config] Failed to fetch feature flags:", err);
+  }
+
+  return DEFAULT_FEATURE_FLAGS;
 }

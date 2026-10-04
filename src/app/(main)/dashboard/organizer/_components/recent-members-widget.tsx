@@ -41,7 +41,7 @@ export function RecentMembersWidget({ members }: RecentMembersProps) {
               <div key={member.id} className="flex items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-2.5">
                   <Avatar className="size-8 rounded-full border">
-                    <AvatarImage src={member.avatar_url} alt={member.name} />
+                    <AvatarImage src={member.avatar_url || undefined} alt={member.name} />
                     <AvatarFallback className="font-medium text-[11px]">{getInitials(member.name)}</AvatarFallback>
                   </Avatar>
 

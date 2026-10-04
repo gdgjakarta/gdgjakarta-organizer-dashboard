@@ -17,8 +17,8 @@ export async function fetchBevyChapterEventsAction(
 /**
  * Server action to fetch Bevy chapter members safely on the server
  */
-export async function fetchBevyChapterMembersAction(pageSize = 200, page = 1) {
-  return await getBevyChapterMembers(undefined, pageSize, page);
+export async function fetchBevyChapterMembersAction(pageSize = 200, page = 1, orderBy = "-created_date") {
+  return await getBevyChapterMembers(undefined, pageSize, page, orderBy);
 }
 
 /**

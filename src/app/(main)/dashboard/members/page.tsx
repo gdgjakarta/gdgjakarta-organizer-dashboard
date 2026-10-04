@@ -1,6 +1,7 @@
 import { format, parseISO } from "date-fns";
 
 import { getBevyChapterMembers, getBevyChapterTeams } from "@/lib/bevy/client";
+import { splitFullName } from "@/lib/utils";
 
 import { members as fallbackMembers, type MemberRow } from "./_components/data";
 import { Members } from "./_components/members";
@@ -14,12 +15,17 @@ export default async function Page() {
   try {
     const [teamMembers, membersResponse] = await Promise.all([
       getBevyChapterTeams(),
-      getBevyChapterMembers(undefined, 200, 1),
+      getBevyChapterMembers(undefined, 200, 1, "-created_date"),
     ]);
 
     totalCount = membersResponse?.count;
 
-    const teamMap = new Map<string, string>();
+    interface TeamInfo {
+      roleTitle: string;
+      avatarUrl?: string;
+      company?: string;
+    }
+    const teamMap = new Map<string, TeamInfo>();
     for (const tm of teamMembers) {
       const email = tm.user?.email?.toLowerCase();
       const userId = tm.user?.id ? String(tm.user.id) : String(tm.user_id || "");
@@ -33,17 +39,26 @@ export default async function Page() {
         roleTitle = tm.title;
       }
 
-      if (email) teamMap.set(email, roleTitle);
-      if (userId) teamMap.set(`id:${userId}`, roleTitle);
+      const teamInfo: TeamInfo = {
+        roleTitle,
+        avatarUrl: tm.user?.avatar?.url || tm.user?.avatar?.thumbnail_url,
+        company: tm.user?.company,
+      };
+
+      if (email) teamMap.set(email, teamInfo);
+      if (userId) teamMap.set(`id:${userId}`, teamInfo);
     }
 
     const fetchedMembers = membersResponse?.results || [];
 
     if (fetchedMembers.length > 0) {
-      memberRows = fetchedMembers.map((m, index) => {
+      memberRows = fetchedMembers.map((m) => {
         const email = m.user.email || `user_${m.user.id}@community.dev`;
         const userId = String(m.user.id);
-        const organizerRole = teamMap.get(email.toLowerCase()) || teamMap.get(`id:${userId}`) || null;
+        const teamInfo = teamMap.get(email.toLowerCase()) || teamMap.get(`id:${userId}`) || null;
+        const organizerRole = teamInfo?.roleTitle || null;
+        const displayName = m.user.full_name?.trim() || email.split("@")[0] || "Community Member";
+        const { firstName, lastName } = splitFullName(m.user.full_name?.trim() || displayName);
 
         let joinedDateFormatted = "Recent";
         if (m.created_date) {
@@ -57,26 +72,23 @@ export default async function Page() {
         const role = organizerRole ? organizerRole : "Member";
         const team = organizerRole ? "Core Team" : "Community";
 
-        let lastActive = 3000;
-        if (index < 5) {
-          lastActive = 0;
-        } else if (index < 15) {
-          lastActive = 120;
-        }
-
         return {
           id: m.id || m.user.id,
-          name: m.user.full_name || "Community Member",
+          bevyUserId: m.user.id,
+          name: displayName,
+          firstName: firstName || undefined,
+          lastName: lastName || undefined,
           email: email,
           role: role,
-          status: "Active",
+          status: "Active" as const,
           team: team,
-          workspace: ["GDG Jakarta"],
           joinedDate: joinedDateFormatted,
-          lastActive,
-          avatarUrl: m.user.avatar?.url,
+          rawCreatedDate: m.created_date,
+          avatarUrl: teamInfo?.avatarUrl || m.user.avatar?.url,
           eventsCount: m.events_registered_count ?? 0,
           profileUrl: m.user.profile_url,
+          isEmailVerified: Boolean(m.user.is_email_verified),
+          company: teamInfo?.company,
         };
       });
     }

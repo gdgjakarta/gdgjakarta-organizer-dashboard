@@ -1,0 +1,12 @@
+{
+  "$comment": "Firebase Remote Config parameter 'cfg_feature_flags' (Type: JSON). Only list menus you want to modify (match by menu ID or menu title). Badges: 'new', 'soon', 'preview' (under development), or null to remove.",
+  "Members": {
+    "badge": null
+  },
+  "Email Manager": {
+    "badge": "preview"
+  },
+  "Others": {
+    "visible": false
+  }
+}

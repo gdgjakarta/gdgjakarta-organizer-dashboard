@@ -1,5 +1,7 @@
 "use client";
 
+import { useMemo } from "react";
+
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -16,6 +18,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { APP_CONFIG } from "@/config/app-config";
+import { useFeatureFlags } from "@/hooks/use-feature-flags";
 import { memberSidebarItems, organizerSidebarItems } from "@/navigation/sidebar/sidebar-items";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 import { usePreferencesStore } from "@/stores/preferences/preferences-provider";
@@ -34,9 +37,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     })),
   );
 
+  const { filterNavItems } = useFeatureFlags();
   const user = useAuthStore((s) => s.user);
   const isMember = user ? user.role.toLowerCase() === "member" : pathname.startsWith("/dashboard/member");
-  const sidebarItems = isMember ? memberSidebarItems : organizerSidebarItems;
+  const rawSidebarItems = isMember ? memberSidebarItems : organizerSidebarItems;
+  const sidebarItems = useMemo(() => filterNavItems(rawSidebarItems), [filterNavItems, rawSidebarItems]);
 
   const variant = isSynced ? sidebarVariant : props.variant;
   const collapsible = isSynced ? sidebarCollapsible : props.collapsible;

@@ -297,13 +297,20 @@ function NavItemBadge({ badge }: { badge?: NavBadge }) {
     return null;
   }
 
+  const badgeLower = badge.toLowerCase();
+  const isPreview = badgeLower === "preview" || badgeLower === "under development" || badgeLower === "wip";
+
   return (
     <SidebarMenuBadge
+      title={isPreview ? "Under development" : undefined}
       className={cn(
         "rounded-sm border capitalize",
-        badge === "new" &&
+        badgeLower === "new" &&
           "border-green-600 text-green-600 peer-hover/menu-button:text-green-600 peer-data-active/menu-button:text-green-600",
-        badge === "soon" && "border-muted-foreground text-muted-foreground",
+        badgeLower === "soon" && "border-muted-foreground text-muted-foreground",
+        isPreview &&
+          "border-amber-600 text-amber-600 peer-hover/menu-button:text-amber-600 peer-data-active/menu-button:text-amber-600 dark:border-amber-500 dark:text-amber-400",
+        badgeLower !== "new" && badgeLower !== "soon" && !isPreview && "border-primary text-primary",
       )}
     >
       {badge}
