@@ -7,7 +7,7 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { FirestoreMember } from "@/lib/firestore/types";
 import { getInitials } from "@/lib/utils";
 
@@ -49,26 +49,6 @@ export function CommunityOrganizersWidget({ organizers, members }: RecentMembers
     <Card>
       <CardHeader>
         <CardTitle className="text-sm">Community Organizers</CardTitle>
-        {hasMore && (
-          <CardAction>
-            <Button
-              variant="ghost"
-              size="xs"
-              onClick={() => setIsExpanded((prev) => !prev)}
-              className="flex items-center gap-1 text-muted-foreground text-xs hover:text-foreground"
-            >
-              {isExpanded ? (
-                <>
-                  Show Less <ChevronUp className="size-3.5" />
-                </>
-              ) : (
-                <>
-                  View More <ChevronDown className="size-3.5" />
-                </>
-              )}
-            </Button>
-          </CardAction>
-        )}
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         {displayedOrganizers.length === 0 ? (
