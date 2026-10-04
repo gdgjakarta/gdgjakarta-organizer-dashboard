@@ -35,6 +35,29 @@ export function HomepageThemeContainer({ initialTheme, children }: HomepageTheme
     }
   }, []);
 
+  // Auto-collapse when user scrolls the page
+  useEffect(() => {
+    if (!isExpanded) return;
+
+    const initialScrollY = window.scrollY;
+
+    const handleScroll = () => {
+      if (Math.abs(window.scrollY - initialScrollY) > 20) {
+        setIsExpanded(false);
+        try {
+          window.localStorage.setItem(SWITCHER_EXPANDED_STORAGE_KEY, "false");
+        } catch {
+          // Ignore storage access errors
+        }
+      }
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+    };
+  }, [isExpanded]);
+
   const toggleExpanded = () => {
     const next = !isExpanded;
     setIsExpanded(next);
