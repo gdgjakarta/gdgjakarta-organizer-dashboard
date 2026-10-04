@@ -21,10 +21,11 @@ export type EventRow = {
   tags: string[];
   isUpcoming: boolean;
   isHidden?: boolean;
+  isTest?: boolean;
 };
 
 export const eventFilters = {
-  status: ["All", "Published", "Upcoming", "Past", "Draft", "Canceled"],
+  status: ["All", "Published", "Upcoming", "Past", "Draft", "Canceled", "Test"],
   eventType: [
     "All",
     "External registration",

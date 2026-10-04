@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { format, isFuture, parseISO } from "date-fns";
-import { ArrowRight, Users } from "lucide-react";
+import { ArrowRight, Globe, MapPin, Radio, Users } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +10,41 @@ import { cn } from "@/lib/utils";
 
 interface GDGUpcomingEventsProps {
   events: FirestoreEvent[];
+}
+
+function AudienceBadge({ audienceType }: { audienceType?: string }) {
+  const type = (audienceType ?? "").toUpperCase();
+
+  if (type === "VIRTUAL") {
+    return (
+      <Badge
+        variant="outline"
+        className="shrink-0 gap-1 border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400"
+      >
+        <Radio className="size-3" /> Virtual
+      </Badge>
+    );
+  }
+
+  if (type === "HYBRID") {
+    return (
+      <Badge
+        variant="outline"
+        className="shrink-0 gap-1 border-purple-500/20 bg-purple-500/10 text-purple-600 dark:text-purple-400"
+      >
+        <Globe className="size-3" /> Hybrid
+      </Badge>
+    );
+  }
+
+  return (
+    <Badge
+      variant="outline"
+      className="shrink-0 gap-1 border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+    >
+      <MapPin className="size-3" /> In-Person
+    </Badge>
+  );
 }
 
 function DropRateBadge({
@@ -115,8 +150,16 @@ export function GDGUpcomingEvents({ events }: GDGUpcomingEventsProps) {
                     >
                       {event.title}
                     </Link>
-                    <div className="flex items-center gap-2 text-muted-foreground text-xs leading-none">
-                      <span>{event.is_virtual ? "Virtual" : "In-Person"}</span>
+                    <div className="flex items-center gap-2">
+                      <AudienceBadge audienceType={event.audience_type} />
+                      {event.is_test ? (
+                        <Badge
+                          variant="outline"
+                          className="shrink-0 border-purple-500/20 bg-purple-500/10 px-1.5 py-0 text-[10px] text-purple-600 dark:text-purple-400"
+                        >
+                          Test
+                        </Badge>
+                      ) : null}
                     </div>
                   </div>
                 </div>

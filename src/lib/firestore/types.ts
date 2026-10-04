@@ -31,6 +31,7 @@ export interface FirestoreEvent {
   static_url?: string;
   tags?: string[];
   is_hidden?: boolean;
+  is_test?: boolean;
 
   // Dashboard & Registration Extensions
   requires_approval: boolean;

@@ -155,7 +155,7 @@ export const eventsColumns: ColumnDef<DataTableFeatures, EventRow>[] = [
   },
   {
     id: "search",
-    accessorFn: (row) => `${row.title} ${row.eventType} ${row.tags.join(" ")}`,
+    accessorFn: (row) => `${row.title} ${row.eventType} ${row.tags.join(" ")} ${row.isTest ? "test" : ""}`,
     filterFn: "includesString",
     enableHiding: true,
   },
@@ -199,6 +199,7 @@ export const eventsColumns: ColumnDef<DataTableFeatures, EventRow>[] = [
       if (!filterValue || filterValue === "All") return true;
       if (filterValue === "Upcoming") return row.original.isUpcoming;
       if (filterValue === "Past") return !row.original.isUpcoming;
+      if (filterValue === "Test") return Boolean(row.original.isTest);
       if (filterValue === "Published")
         return row.original.status === "Published" || row.original.status === "Completed";
       return row.getValue(columnId) === filterValue;
@@ -209,6 +210,14 @@ export const eventsColumns: ColumnDef<DataTableFeatures, EventRow>[] = [
         {row.original.isUpcoming ? (
           <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
             Upcoming
+          </Badge>
+        ) : null}
+        {row.original.isTest ? (
+          <Badge
+            variant="outline"
+            className="border-purple-500/20 bg-purple-500/10 px-1.5 py-0 text-[10px] text-purple-600 dark:text-purple-400"
+          >
+            Test
           </Badge>
         ) : null}
         {row.original.isHidden ? (

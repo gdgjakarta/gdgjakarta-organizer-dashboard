@@ -112,6 +112,7 @@ export interface BevyEvent {
   tags?: string[];
   is_hidden?: boolean;
   hidden?: boolean;
+  is_test?: boolean;
   chapter?: {
     id: number | string;
     title: string;

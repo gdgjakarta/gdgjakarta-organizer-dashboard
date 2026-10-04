@@ -61,6 +61,7 @@ export default async function Page() {
         const checkinCount = event.checkin_count ?? 0;
         const dropped = Math.max(0, totalAttendees - checkinCount);
         const dropRate = totalAttendees > 0 ? (dropped / totalAttendees) * 100 : undefined;
+        const audienceType = event.audience_type ?? (event.is_virtual_event ? "VIRTUAL" : "IN_PERSON");
 
         return {
           id: event.id,
@@ -69,8 +70,8 @@ export default async function Page() {
           endDate: endDateFormatted,
           status,
           eventType: event.event_type_title || "Standard Event",
-          audienceType: event.audience_type || (event.is_virtual_event ? "VIRTUAL" : "IN_PERSON"),
-          isVirtual: Boolean(event.is_virtual_event || event.audience_type === "VIRTUAL"),
+          audienceType,
+          isVirtual: audienceType === "VIRTUAL",
           totalAttendees,
           checkinCount,
           dropRate,
@@ -87,6 +88,7 @@ export default async function Page() {
           tags: event.tags || [],
           isUpcoming: isUpcomingEvent,
           isHidden: Boolean(event.is_hidden || (event as { hidden?: boolean }).hidden),
+          isTest: Boolean(event.is_test),
         };
       });
     }

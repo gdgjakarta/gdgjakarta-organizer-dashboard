@@ -47,6 +47,7 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
         total_approved: direct.total_attendees ?? 0,
         total_checked_in: direct.checkin_count ?? 0,
         is_hidden: Boolean(direct.is_hidden ?? (direct as { hidden?: boolean }).hidden),
+        is_test: Boolean(direct.is_test),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -75,6 +76,7 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
           total_approved: matched.total_attendees ?? 0,
           total_checked_in: matched.checkin_count ?? 0,
           is_hidden: Boolean(matched.is_hidden || (matched as { hidden?: boolean }).hidden),
+          is_test: Boolean(matched.is_test),
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         };

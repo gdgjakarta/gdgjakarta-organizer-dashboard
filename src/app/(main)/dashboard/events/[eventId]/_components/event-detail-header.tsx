@@ -79,6 +79,15 @@ export function EventDetailHeader({ event, totalRegistrations, totalApproved }: 
               {event.status}
             </Badge>
 
+            {event.is_test ? (
+              <Badge
+                variant="outline"
+                className="border-purple-500/20 bg-purple-500/10 px-2 py-0.5 font-medium text-xs text-purple-600 dark:text-purple-400"
+              >
+                Test
+              </Badge>
+            ) : null}
+
             <Badge variant="outline" className="gap-1">
               {event.is_virtual ? (
                 <Radio className="size-3 text-blue-500" />
