@@ -22,9 +22,29 @@ The authentication system combines **Firebase Authentication (Google Sign-In)** 
                               │
                               ▼
                   ┌────────────────────────┐
-                  │ Bevy: getUserById(email)
-                  │ Returns bevyUserId     │
+                  │ Bevy: getMemberById    │
+                  │ (email / identifier)   │
                   └───────────┬────────────┘
+                              │
+               ┌──────────────┴──────────────┐
+               │                             │
+        [200 OK / Success]           [Not 200 / Not Found]
+               │                             │ (New Member)
+               │                             ▼
+               │                 ┌────────────────────────┐
+               │                 │ GDG Jakarta Webhook    │
+               │                 │ import-member (n8n)    │
+               │                 │ {first_name, last_name,│
+               │                 │  email} via X-API-Key  │
+               │                 └───────────┬────────────┘
+               │                             │
+               │                             ▼
+               │                 ┌────────────────────────┐
+               │                 │ Retry getMemberById /  │
+               │                 │ Assign Community Member│
+               │                 └───────────┬────────────┘
+               │                             │
+               └──────────────┬──────────────┘
                               │
                               ▼
                   ┌────────────────────────┐
@@ -59,11 +79,14 @@ The authentication system combines **Firebase Authentication (Google Sign-In)** 
 ### 2.1 Login Presentation (`src/app/(main)/auth/login/page.tsx`)
 - Provides Google Sign-In button invoking Firebase `signInWithPopup(auth, googleProvider)`.
 - Fallback form for administrative demo credentials.
-- After receiving Firebase ID token, calls `handleUserPostLoginAction({ uid, email, name, token })`.
+- After receiving Firebase ID token, extracts `firstName` and `lastName` from Google profile and calls `handleUserPostLoginAction({ uid, email, name, token, firstName, lastName })`.
 
 ### 2.2 Server Action Verification (`src/server/auth-actions.ts`)
-- Calls `validateBevyOrganizer(email, name)`.
-- Invokes Bevy API `getUserById(email)` to retrieve the user's Bevy ID.
+- Calls `validateBevyOrganizer(email, name, firstName, lastName)`.
+- Invokes Bevy API `getMemberById(email)` to retrieve the user's Bevy ID and membership status.
+- If response is not success or 200 (user is new/not registered on Bevy):
+  - Calls GDG Jakarta API webhook `https://n8n.gdgjakarta.com/webhook/api/import-member` with `first_name`, `last_name`, and `email` using `X-API-Key: N8N_WEBHOOK_API_KEY`.
+  - Re-queries Bevy to associate the newly generated Bevy User ID.
 - Invokes `getUserChapterRole(bevyUserId)` to look up the user in `getChapterTeam(chapterId)`.
 - Resolves role:
   - `1`: `ChapterRole.ORGANIZER`

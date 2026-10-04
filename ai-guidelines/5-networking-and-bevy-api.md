@@ -203,6 +203,20 @@ if (cookie) headers["Cookie"] = cookie;
 - **Query Parameters**: `fields` (Comma-separated field list).
 - **Response**: `BevyUser` details object.
 
+#### 3. `POST /webhook/api/import-member` (GDG Jakarta n8n Webhook)
+- **Auth**: `X-API-Key: N8N_WEBHOOK_API_KEY` (Same authentication pattern as Send Bulk Email).
+- **Endpoint**: `https://n8n.gdgjakarta.com/webhook/api/import-member`
+- **Description**: Automatically imports/registers a new member to Bevy if `getMemberById` returns a non-200/non-success response after Google Sign-In.
+- **Request Body**:
+  ```json
+  {
+    "first_name": "Fachridan",
+    "last_name": "T.M",
+    "email": "fachridan@example.com"
+  }
+  ```
+- **Response**: JSON status object.
+
 ---
 
 ### 5.4 Events

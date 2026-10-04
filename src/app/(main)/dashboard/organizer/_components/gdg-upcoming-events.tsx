@@ -39,9 +39,7 @@ export function GDGUpcomingEvents({ events }: GDGUpcomingEventsProps) {
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {displayedEvents.length === 0 ? (
-          <div className="py-6 text-center text-muted-foreground text-sm">
-            No events found. Click "Sync Bevy Data" to import events.
-          </div>
+          <div className="py-6 text-center text-muted-foreground text-sm">No upcoming events found.</div>
         ) : (
           displayedEvents.map((event) => {
             const _eventDate = new Date();

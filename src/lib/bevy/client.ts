@@ -1,5 +1,6 @@
 import { isAuthorizedOrganizerEmail } from "@/config/auth-config";
 import { BEVY_CONFIG, getBevyAuthCredentials } from "@/config/bevy-config";
+import { extractApiMessage, splitFullName } from "@/lib/utils";
 
 import {
   type BevyChapterSlim,
@@ -15,16 +16,22 @@ import {
   type OrganizerValidationResult,
 } from "./types";
 
+export interface BevyFetchResponse<T> {
+  status: number;
+  ok: boolean;
+  data: T | null;
+}
+
 /**
- * Server-only fetch wrapper for Bevy API.
+ * Server-only fetch wrapper for Bevy API returning status code, ok flag, and parsed data.
  * Dynamically resolves session cookies and CSRF tokens from Firebase Remote Config
  * (keys: cfg_bevy_cookie, cfg_bevy_x_csrftoken) aligned with KawalEvent.
  */
-export async function bevyFetch<T>(
+export async function bevyFetchWithResponse<T>(
   endpoint: string,
   options: RequestInit = {},
   chapterId: string | number = BEVY_CONFIG.chapterId,
-): Promise<T | null> {
+): Promise<BevyFetchResponse<T>> {
   const url = `${BEVY_CONFIG.baseUrl}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
 
   // Dynamically resolve Bevy session cookies and CSRF tokens from Remote Config (like KawalEvent)
@@ -49,14 +56,98 @@ export async function bevyFetch<T>(
 
     if (!response.ok) {
       console.warn(`[Bevy API] Request to ${url} returned status ${response.status}`);
-      return null;
+      return { status: response.status, ok: false, data: null };
     }
 
-    return (await response.json()) as T;
+    const data = (await response.json()) as T;
+    return { status: response.status, ok: true, data };
   } catch (error) {
     console.error(`[Bevy API Error] Failed to fetch ${url}:`, error);
-    return null;
+    return { status: 500, ok: false, data: null };
   }
+}
+
+/**
+ * Server-only fetch wrapper for Bevy API.
+ * Dynamically resolves session cookies and CSRF tokens from Firebase Remote Config
+ * (keys: cfg_bevy_cookie, cfg_bevy_x_csrftoken) aligned with KawalEvent.
+ */
+export async function bevyFetch<T>(
+  endpoint: string,
+  options: RequestInit = {},
+  chapterId: string | number = BEVY_CONFIG.chapterId,
+): Promise<T | null> {
+  const result = await bevyFetchWithResponse<T>(endpoint, options, chapterId);
+  return result.data;
+}
+
+/**
+ * Retrieve user/member details by ID or email from Bevy with HTTP status context.
+ * Used during authentication flow to verify whether the member exists in Bevy.
+ * If status is not 200/success, indicates the member is new and hasn't registered on Bevy.
+ *
+ * @param userId The ID or email of the user to retrieve.
+ * @param fields Allows specifying what fields to return for each user separated by commas.
+ */
+export async function getMemberById(
+  userId: string,
+  fields?: string,
+  chapterId: string | number = BEVY_CONFIG.chapterId,
+): Promise<BevyFetchResponse<BevyUser>> {
+  if (!userId) return { status: 400, ok: false, data: null };
+
+  const cleanUserId = userId.trim().replace(/\/+$/, "");
+  const isAllDigits = /^\d+$/.test(cleanUserId);
+  const formattedUserId = isAllDigits ? `${cleanUserId}/` : encodeURIComponent(cleanUserId);
+  const endpoint = fields
+    ? `/user/${formattedUserId}?fields=${encodeURIComponent(fields)}`
+    : `/user/${formattedUserId}`;
+
+  console.log(`[Bevy Auth] Calling getMemberById: ${cleanUserId} -> ${endpoint}`);
+
+  const directResult = await bevyFetchWithResponse<BevyUser | { user?: BevyUser; results?: BevyUser[] }>(
+    endpoint,
+    {},
+    chapterId,
+  );
+
+  if (directResult.ok && directResult.data) {
+    let resolvedUser: BevyUser | null = null;
+    if ("id" in directResult.data && directResult.data.id) {
+      resolvedUser = directResult.data as BevyUser;
+    } else if ("user" in directResult.data && directResult.data.user) {
+      resolvedUser = directResult.data.user;
+    } else if (
+      "results" in directResult.data &&
+      Array.isArray(directResult.data.results) &&
+      directResult.data.results.length > 0
+    ) {
+      resolvedUser = directResult.data.results[0];
+    }
+
+    if (resolvedUser) {
+      return { status: directResult.status, ok: true, data: resolvedUser };
+    }
+  }
+
+  // Fallback to query param search if direct identifier returned nothing
+  const searchResult = await bevyFetchWithResponse<{ results?: BevyUser[]; user?: BevyUser }>(
+    `/user/?search=${encodeURIComponent(cleanUserId)}`,
+    {},
+    chapterId,
+  );
+
+  if (searchResult.ok && searchResult.data) {
+    if (searchResult.data.results && searchResult.data.results.length > 0) {
+      return { status: 200, ok: true, data: searchResult.data.results[0] };
+    }
+    if (searchResult.data.user) {
+      return { status: 200, ok: true, data: searchResult.data.user };
+    }
+  }
+
+  console.warn(`[Bevy Auth] No Bevy member found for identifier: ${userId} (status: ${directResult.status})`);
+  return { status: directResult.status || 404, ok: false, data: null };
 }
 
 /**
@@ -71,47 +162,75 @@ export async function getUserById(
   fields?: string,
   chapterId: string | number = BEVY_CONFIG.chapterId,
 ): Promise<BevyUser | null> {
-  if (!userId) return null;
+  const result = await getMemberById(userId, fields, chapterId);
+  return result.data;
+}
 
-  const cleanUserId = userId.trim().replace(/\/+$/, "");
-  const isAllDigits = /^\d+$/.test(cleanUserId);
-  const formattedUserId = isAllDigits ? `${cleanUserId}/` : encodeURIComponent(cleanUserId);
-  const endpoint = fields
-    ? `/user/${formattedUserId}?fields=${encodeURIComponent(fields)}`
-    : `/user/${formattedUserId}`;
+export interface ImportMemberParams {
+  firstName: string;
+  lastName: string;
+  email: string;
+}
 
-  console.log(`[Bevy Auth] Calling getUserById: ${cleanUserId} -> ${endpoint}`);
+export interface ImportMemberResult {
+  success: boolean;
+  message?: string;
+  error?: string;
+}
 
-  const directResult = await bevyFetch<BevyUser | { user?: BevyUser; results?: BevyUser[] }>(endpoint, {}, chapterId);
+/**
+ * Adds a new member to Bevy using the GDG Jakarta n8n API webhook.
+ * Matches the authentication pattern used in Send Bulk Email (X-API-Key: N8N_WEBHOOK_API_KEY).
+ *
+ * URL: https://n8n.gdgjakarta.com/webhook/api/import-member
+ * Required payload: first_name, last_name, email
+ */
+export async function importMemberToBevy(params: ImportMemberParams): Promise<ImportMemberResult> {
+  const webhookUrl = "https://n8n.gdgjakarta.com/webhook/api/import-member";
+  const apiKey = process.env.N8N_WEBHOOK_API_KEY || "";
 
-  if (directResult) {
-    if ("id" in directResult && directResult.id) {
-      return directResult as BevyUser;
+  const payload = {
+    first_name: params.firstName,
+    last_name: params.lastName,
+    email: params.email,
+  };
+
+  try {
+    console.log(`[Import Member] Dispatching import-member webhook for ${params.email}...`, payload);
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": apiKey,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const responseText = await response.text();
+    let responseJson: unknown = null;
+    try {
+      responseJson = JSON.parse(responseText);
+    } catch {
+      // not JSON format
     }
-    if ("user" in directResult && directResult.user) {
-      return directResult.user;
+
+    if (!response.ok) {
+      console.error(`[Import Member] Error (${response.status} ${response.statusText}):`, responseText);
+      const cleanError = extractApiMessage(
+        responseJson || responseText,
+        `Member import service returned status ${response.status}.`,
+      );
+      return { success: false, error: cleanError };
     }
-    if ("results" in directResult && Array.isArray(directResult.results) && directResult.results.length > 0) {
-      return directResult.results[0];
-    }
-  }
 
-  // Fallback to query param search if direct identifier returned nothing
-  const searchResult = await bevyFetch<{ results?: BevyUser[]; user?: BevyUser }>(
-    `/user/?search=${encodeURIComponent(cleanUserId)}`,
-    {},
-    chapterId,
-  );
-
-  if (searchResult?.results && searchResult.results.length > 0) {
-    return searchResult.results[0];
+    console.log(`[Import Member] Successfully imported member to Bevy for ${params.email}:`, responseText);
+    const cleanSuccessMessage = extractApiMessage(responseJson || responseText, "Member imported successfully.");
+    return { success: true, message: cleanSuccessMessage };
+  } catch (error) {
+    console.error("[Import Member] Exception:", error);
+    const cleanError = extractApiMessage(error, "Failed to connect to member import service.");
+    return { success: false, error: cleanError };
   }
-  if (searchResult?.user) {
-    return searchResult.user;
-  }
-
-  console.warn(`[Bevy Auth] No Bevy user found for identifier: ${userId}`);
-  return null;
 }
 
 /**
@@ -256,12 +375,19 @@ export async function getUserChapterRole(
 
 /**
  * Refactored authentication & role resolution matching KawalEvent:
- * 1. Calls Bevy API getUserById(email) to resolve the user and their numerical Bevy ID.
+ * 1. Calls Bevy API getMemberById(email) to resolve the user and their numerical Bevy ID.
+ *    If the response from Bevy is not success or 200, member is new and hasn't registered on Bevy;
+ *    dispatches GDG Jakarta API import-member webhook (same auth as Send Bulk Email).
  * 2. Uses getUserChapterRole(bevyUserId) to compare against getChapterTeam results.
  * 3. Inspects role ID: 1 -> ORGANIZER, 2/3 -> CORE_TEAM, 4 -> GOOGLER, else -> MEMBER.
  * 4. Checks whitelist isAuthorizedOrganizerEmail as a fallback safeguard.
  */
-export async function validateBevyOrganizer(email: string, displayName?: string): Promise<OrganizerValidationResult> {
+export async function validateBevyOrganizer(
+  email: string,
+  displayName?: string,
+  firstName?: string,
+  lastName?: string,
+): Promise<OrganizerValidationResult> {
   try {
     if (!email) {
       return {
@@ -273,16 +399,52 @@ export async function validateBevyOrganizer(email: string, displayName?: string)
         roleTitle: "Member",
         bevyUserId: null,
         bevyUser: null,
+        wasImported: false,
       };
     }
 
     const normalizedEmail = email.toLowerCase().trim();
     console.log(`[Bevy Auth Flow] Validating role for: ${normalizedEmail} (Display Name: ${displayName ?? "N/A"})`);
 
-    // Step 1: Call Bevy API getUserById with email as the identifier (like KawalEvent)
-    const bevyUser = await getUserById(normalizedEmail);
-    const bevyUserId = bevyUser?.id !== undefined && bevyUser?.id !== null ? String(bevyUser.id) : null;
-    console.log(`[Bevy Auth Flow] Bevy user lookup result: ID = ${bevyUserId ?? "NOT FOUND"}`);
+    let wasImported = false;
+
+    // Step 1: Call Bevy API getMemberById with email as the identifier
+    const memberResponse = await getMemberById(normalizedEmail);
+    let bevyUser = memberResponse.data;
+    let bevyUserId = bevyUser?.id !== undefined && bevyUser?.id !== null ? String(bevyUser.id) : null;
+    console.log(
+      `[Bevy Auth Flow] Bevy member lookup result for ${normalizedEmail}: Status = ${memberResponse.status}, ID = ${bevyUserId ?? "NOT FOUND"}`,
+    );
+
+    // If Bevy response is not success or 200, member is new and hasn't registered on Bevy
+    if (!memberResponse.ok || memberResponse.status !== 200 || !bevyUser) {
+      console.log(
+        `[Bevy Auth Flow] Member ${normalizedEmail} is not registered on Bevy (status: ${memberResponse.status}). Registering new member via GDG Jakarta API...`,
+      );
+
+      const { firstName: splitFirst, lastName: splitLast } = splitFullName(displayName);
+      let safeFirstName = firstName?.trim() || splitFirst.trim();
+      if (!safeFirstName) {
+        safeFirstName = displayName?.trim() || normalizedEmail.split("@")[0] || "Member";
+      }
+      const safeLastName = (lastName?.trim() ?? splitLast ?? "").trim();
+
+      const importResult = await importMemberToBevy({
+        firstName: safeFirstName,
+        lastName: safeLastName,
+        email: normalizedEmail,
+      });
+
+      if (importResult.success) {
+        wasImported = true;
+        console.log(`[Bevy Auth Flow] Successfully triggered import-member for ${normalizedEmail}.`);
+        // Leave bevyUserId and bevyUser null so initial Firestore sync writes bevy_user_id: null
+        bevyUser = null;
+        bevyUserId = null;
+      } else {
+        console.warn(`[Bevy Auth Flow] Failed to import member to Bevy: ${importResult.error}`);
+      }
+    }
 
     // Step 2: If Bevy user found, query chapter team role using Bevy User ID (like KawalEvent getUserChapterRole)
     if (bevyUserId) {
@@ -302,6 +464,7 @@ export async function validateBevyOrganizer(email: string, displayName?: string)
           bevyUserId,
           chapterTeamMember: chapterRoleResult.teamMember,
           bevyUser,
+          wasImported,
         };
       }
     }
@@ -319,6 +482,7 @@ export async function validateBevyOrganizer(email: string, displayName?: string)
         roleTitle: "Organizer",
         bevyUserId,
         bevyUser: bevyUser ?? null,
+        wasImported,
       };
     }
 
@@ -333,6 +497,7 @@ export async function validateBevyOrganizer(email: string, displayName?: string)
       roleTitle: "Member",
       bevyUserId,
       bevyUser: bevyUser ?? null,
+      wasImported,
     };
   } catch (error) {
     console.error("[validateBevyOrganizer Error]", error);
@@ -345,6 +510,7 @@ export async function validateBevyOrganizer(email: string, displayName?: string)
       roleTitle: "Member",
       bevyUserId: null,
       bevyUser: null,
+      wasImported: false,
     };
   }
 }

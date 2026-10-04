@@ -2,7 +2,7 @@
 import type { ColumnDef } from "@tanstack/react-table";
 import { Subscribe } from "@tanstack/react-table";
 import { parse } from "date-fns";
-import { Copy, ExternalLink, MoreHorizontal } from "lucide-react";
+import { Copy, ExternalLink, MoreHorizontal, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -12,7 +12,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { DataTableFeatures } from "@/lib/data-table-features";
@@ -46,126 +45,164 @@ function AvatarCell({ name, avatarUrl }: { name: string; avatarUrl?: string }) {
   );
 }
 
-export const membersColumns: ColumnDef<DataTableFeatures, MemberRow>[] = [
-  {
-    id: "select",
-    header: ({ table }) => (
-      <div className="flex items-center justify-center">
-        <Subscribe
-          source={table.atoms.rowSelection}
-          selector={() =>
-            table.getIsAllPageRowsSelected() ||
-            (table.getIsSomePageRowsSelected() && !table.getIsAllPageRowsSelected() && "indeterminate")
-          }
-        >
-          {(checked) => (
-            <Checkbox
-              aria-label="Select all members"
-              checked={checked}
-              onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-            />
-          )}
-        </Subscribe>
-      </div>
-    ),
-    cell: ({ row }) => (
-      <div className="flex items-center justify-center">
-        <Subscribe source={row.table.atoms.rowSelection} selector={(selection) => Boolean(selection?.[row.id])}>
-          {(checked) => (
-            <Checkbox
-              aria-label={`Select ${row.original.name}`}
-              checked={checked}
-              onCheckedChange={(value) => row.toggleSelected(!!value)}
-            />
-          )}
-        </Subscribe>
-      </div>
-    ),
-    enableHiding: false,
-    enableSorting: false,
-  },
-  {
-    id: "search",
-    accessorFn: (row) => `${row.name} ${row.email}`,
-    filterFn: "includesString",
-    enableHiding: true,
-  },
-  {
-    accessorKey: "name",
-    header: "Member",
-    cell: ({ row }) => {
-      const subtitle = [row.original.title, row.original.company].filter(Boolean).join(" • ");
-      return (
-        <div className="flex items-center gap-3">
-          <AvatarCell name={row.original.name} avatarUrl={row.original.avatarUrl} />
-          <div className="min-w-0">
-            <div className="truncate font-medium text-foreground text-sm">{row.original.name}</div>
-            {subtitle ? <div className="truncate text-muted-foreground text-xs">{subtitle}</div> : null}
-            <div className="truncate text-muted-foreground text-xs">{row.original.email}</div>
-          </div>
+export function getMembersColumns(
+  onSyncMember?: (member: MemberRow) => Promise<void>,
+): ColumnDef<DataTableFeatures, MemberRow>[] {
+  return [
+    {
+      id: "select",
+      header: ({ table }) => (
+        <div className="flex items-center justify-center">
+          <Subscribe
+            source={table.atoms.rowSelection}
+            selector={() =>
+              table.getIsAllPageRowsSelected() ||
+              (table.getIsSomePageRowsSelected() && !table.getIsAllPageRowsSelected() && "indeterminate")
+            }
+          >
+            {(checked) => (
+              <Checkbox
+                aria-label="Select all members"
+                checked={checked}
+                onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+              />
+            )}
+          </Subscribe>
         </div>
-      );
+      ),
+      cell: ({ row }) => (
+        <div className="flex items-center justify-center">
+          <Subscribe source={row.table.atoms.rowSelection} selector={(selection) => Boolean(selection?.[row.id])}>
+            {(checked) => (
+              <Checkbox
+                aria-label={`Select ${row.original.name}`}
+                checked={checked}
+                onCheckedChange={(value) => row.toggleSelected(!!value)}
+              />
+            )}
+          </Subscribe>
+        </div>
+      ),
+      enableHiding: false,
+      enableSorting: false,
     },
-  },
-  {
-    accessorKey: "eventsCount",
-    header: "Events registered",
-    cell: ({ row }) => <div className="text-foreground text-sm tabular-nums">{row.original.eventsCount ?? 0}</div>,
-  },
-  {
-    id: "joinedDate",
-    accessorFn: (row) => parse(row.joinedDate, "dd MMM yyyy, h:mm a", new Date()).getTime(),
-    header: "Joined date",
-    cell: ({ row }) => <div className="text-foreground text-sm">{row.original.joinedDate}</div>,
-  },
-  {
-    id: "actions",
-    header: () => <div className="text-right">Actions</div>,
-    cell: ({ row }) => (
-      <div className="text-right">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              aria-label={`Open actions for ${row.original.name}`}
-              className="size-8 rounded-md text-muted-foreground hover:bg-muted/50"
-              size="icon-sm"
-              variant="ghost"
-            >
-              <MoreHorizontal className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {row.original.profileUrl ? (
-              <DropdownMenuItem asChild>
-                <a
-                  href={`https://gdg.community.dev${row.original.profileUrl}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
+    {
+      id: "search",
+      accessorFn: (row) => `${row.name} ${row.email}`,
+      filterFn: "includesString",
+      enableHiding: true,
+    },
+    {
+      accessorKey: "name",
+      header: "Member",
+      cell: ({ row }) => {
+        const subtitle = [row.original.title, row.original.company].filter(Boolean).join(" • ");
+        return (
+          <div className="flex items-center gap-3">
+            <AvatarCell name={row.original.name} avatarUrl={row.original.avatarUrl} />
+            <div className="min-w-0">
+              <div className="truncate font-medium text-foreground text-sm">{row.original.name}</div>
+              {subtitle ? <div className="truncate text-muted-foreground text-xs">{subtitle}</div> : null}
+              <div className="truncate text-muted-foreground text-xs">{row.original.email}</div>
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      id: "syncStatus",
+      accessorKey: "syncStatus",
+      header: "Sync status",
+      cell: ({ row }) => {
+        const isSynced = row.original.syncStatus === "synced" || Boolean(row.original.bevyUserId);
+        if (isSynced) {
+          return (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-0.5 font-medium text-emerald-600 text-xs dark:text-emerald-400">
+              <span className="size-1.5 rounded-full bg-emerald-500" />
+              Synced
+            </span>
+          );
+        }
+        return (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-0.5 font-medium text-amber-600 text-xs dark:text-amber-400">
+            <span className="size-1.5 rounded-full bg-amber-500" />
+            Not sync
+          </span>
+        );
+      },
+    },
+    {
+      accessorKey: "eventsCount",
+      header: "Events registered",
+      cell: ({ row }) => <div className="text-foreground text-sm tabular-nums">{row.original.eventsCount ?? 0}</div>,
+    },
+    {
+      id: "joinedDate",
+      accessorFn: (row) => parse(row.joinedDate, "dd MMM yyyy, h:mm a", new Date()).getTime(),
+      header: "Joined date",
+      cell: ({ row }) => <div className="text-foreground text-sm">{row.original.joinedDate}</div>,
+    },
+    {
+      id: "actions",
+      header: () => <div className="text-right">Actions</div>,
+      cell: ({ row }) => (
+        <div className="text-right">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                aria-label={`Open actions for ${row.original.name}`}
+                className="size-8 rounded-md text-muted-foreground hover:bg-muted/50"
+                size="icon-sm"
+                variant="ghost"
+              >
+                <MoreHorizontal className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {onSyncMember ? (
+                <DropdownMenuItem
                   className="flex items-center gap-2"
+                  onClick={() => {
+                    void onSyncMember(row.original);
+                  }}
                 >
-                  <ExternalLink className="size-3.5" />
-                  View on Bevy
-                </a>
+                  <RefreshCw className="size-3.5" />
+                  {row.original.syncStatus === "synced" || row.original.bevyUserId != null
+                    ? "Check Bevy sync"
+                    : "Sync to Bevy"}
+                </DropdownMenuItem>
+              ) : null}
+              {row.original.profileUrl ? (
+                <DropdownMenuItem asChild>
+                  <a
+                    href={`https://gdg.community.dev${row.original.profileUrl}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2"
+                  >
+                    <ExternalLink className="size-3.5" />
+                    View on Bevy
+                  </a>
+                </DropdownMenuItem>
+              ) : null}
+              <DropdownMenuItem
+                className="flex items-center gap-2"
+                onClick={() => {
+                  navigator.clipboard.writeText(row.original.email);
+                  toast.success("Email copied to clipboard");
+                }}
+              >
+                <Copy className="size-3.5" />
+                Copy email
               </DropdownMenuItem>
-            ) : null}
-            <DropdownMenuItem
-              className="flex items-center gap-2"
-              onClick={() => {
-                navigator.clipboard.writeText(row.original.email);
-                toast.success("Email copied to clipboard");
-              }}
-            >
-              <Copy className="size-3.5" />
-              Copy email
-            </DropdownMenuItem>
-            <DropdownMenuItem>Manage team</DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive">Deactivate member</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    ),
-    enableHiding: false,
-    enableSorting: false,
-  },
-];
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      ),
+      enableHiding: false,
+      enableSorting: false,
+    },
+  ];
+}
+
+export const membersColumns: ColumnDef<DataTableFeatures, MemberRow>[] = getMembersColumns();

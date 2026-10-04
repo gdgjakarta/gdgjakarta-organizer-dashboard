@@ -30,9 +30,7 @@ export function RecentMembersWidget({ members }: RecentMembersProps) {
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         {displayedMembers.length === 0 ? (
-          <div className="py-6 text-center text-muted-foreground text-sm">
-            No members loaded. Click "Sync Bevy Data" to import.
-          </div>
+          <div className="py-6 text-center text-muted-foreground text-sm">No members loaded yet.</div>
         ) : (
           displayedMembers.map((member) => {
             const isOrganizer = member.team === "Core Team" || member.role !== "Member";

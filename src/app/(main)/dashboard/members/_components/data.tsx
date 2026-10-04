@@ -20,6 +20,7 @@ export type MemberRow = {
   profileUrl?: string;
   isEmailVerified?: boolean;
   workspace?: string[];
+  syncStatus?: "synced" | "not_synced" | "syncing";
 };
 
 export const statusMeta: Record<MemberStatus, { badgeClass: string; dotClass: string }> = {

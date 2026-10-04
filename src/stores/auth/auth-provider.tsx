@@ -2,11 +2,12 @@
 
 import { createContext, use, useEffect, useState } from "react";
 
-import { onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
+import { getAdditionalUserInfo, onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
 import { type StoreApi, useStore } from "zustand";
 
 import { auth, googleProvider } from "@/config/firebase";
 import type { FirestoreMember } from "@/lib/firestore/types";
+import { splitFullName } from "@/lib/utils";
 import { clearAuthSessionCookie, handleUserPostLoginAction } from "@/server/auth-actions";
 
 import { type AuthOrganizer, type AuthState, createAuthStore } from "./auth-store";
@@ -68,6 +69,41 @@ async function syncMemberToFirestore(
   }
 }
 
+async function syncBevyUserToFirestore(uid: string, email: string) {
+  if (typeof window === "undefined" || !email) return;
+  try {
+    console.log(`[Auth Flow - Client] Starting post-import Bevy sync for ${email}...`);
+    const { syncMemberBevyUserAction } = await import("@/server/auth-actions");
+    const { updateFirestoreMemberBevyId } = await import("@/lib/firestore/client");
+
+    const syncResult = await syncMemberBevyUserAction(email);
+    if (syncResult.success && syncResult.bevyUserId) {
+      console.log(
+        `[Auth Flow - Client] Post-import Bevy sync succeeded. Updating Firestore member ${uid} with bevy_user_id: ${syncResult.bevyUserId}`,
+      );
+      await updateFirestoreMemberBevyId(uid, syncResult.bevyUserId);
+
+      // Update local auth store so the client state reflects the new bevyUserId
+      if (globalStore) {
+        const currentUser = globalStore.getState().user;
+        if (currentUser && currentUser.id === uid) {
+          globalStore.getState().setUser(
+            {
+              ...currentUser,
+              bevyUserId: syncResult.bevyUserId,
+            },
+            auth.currentUser,
+          );
+        }
+      }
+    } else {
+      console.warn("[Auth Flow - Client] Post-import Bevy sync did not find Bevy ID yet:", syncResult.error);
+    }
+  } catch (err) {
+    console.warn("[Auth Flow - Client] Error during post-import Bevy sync:", err);
+  }
+}
+
 export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
   const [store] = useState<StoreApi<AuthState>>(() => createAuthStore());
   globalStore = store;
@@ -90,6 +126,7 @@ export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
         try {
           const email = firebaseUser.email ?? "";
           const token = await firebaseUser.getIdToken();
+          const { firstName, lastName } = splitFullName(firebaseUser.displayName);
           console.log(`[Auth Provider] Restoring session via handleUserPostLoginAction for ${email}...`);
 
           const validation = await handleUserPostLoginAction({
@@ -98,6 +135,8 @@ export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
             name: firebaseUser.displayName ?? undefined,
             avatar: firebaseUser.photoURL ?? undefined,
             token,
+            firstName: firstName.trim() ? firstName : undefined,
+            lastName: lastName.trim() ? lastName : undefined,
           });
 
           const organizer = mapFirebaseUserToOrganizer(firebaseUser, validation);
@@ -109,6 +148,10 @@ export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
 
           await syncMemberToFirestore(firebaseUser, validation);
           store.getState().setUser(organizer, firebaseUser);
+
+          if (validation.wasImported || !validation.bevyUserId) {
+            await syncBevyUserToFirestore(firebaseUser.uid, email);
+          }
         } catch (err) {
           console.error("[Auth Provider] Error during session restoration:", err);
           store.getState().setLoading(false);
@@ -145,6 +188,24 @@ export async function signInWithGoogle(): Promise<{ organizer: AuthOrganizer; is
     const user = result.user;
     console.log(`[Auth Flow Step 2 - Client] Firebase Google Sign-In successful for: ${user.email} (UID: ${user.uid})`);
 
+    // Extract first_name and last_name from Google profile or fallback to user displayName
+    let firstName: string | undefined;
+    let lastName: string | undefined;
+    try {
+      const additionalInfo = getAdditionalUserInfo(result);
+      const profile = additionalInfo?.profile as { given_name?: string; family_name?: string } | undefined;
+      firstName = profile?.given_name;
+      lastName = profile?.family_name;
+    } catch {
+      // additionalUserInfo not available
+    }
+
+    if (!firstName && user.displayName) {
+      const split = splitFullName(user.displayName);
+      firstName = split.firstName;
+      lastName = split.lastName;
+    }
+
     // Step 2: Validate user against Bevy Chapter Team and set Session Cookie on server
     const email = user.email ?? "";
     const token = await user.getIdToken();
@@ -155,6 +216,8 @@ export async function signInWithGoogle(): Promise<{ organizer: AuthOrganizer; is
       name: user.displayName ?? undefined,
       avatar: user.photoURL ?? undefined,
       token,
+      firstName: firstName?.trim() ? firstName : undefined,
+      lastName: lastName?.trim() ? lastName : undefined,
     });
 
     const organizer = mapFirebaseUserToOrganizer(user, validation);
@@ -171,6 +234,10 @@ export async function signInWithGoogle(): Promise<{ organizer: AuthOrganizer; is
     // Update client AuthState immediately
     if (globalStore) {
       globalStore.getState().setUser(organizer, user);
+    }
+
+    if (validation.wasImported || !validation.bevyUserId) {
+      await syncBevyUserToFirestore(user.uid, email);
     }
 
     return {

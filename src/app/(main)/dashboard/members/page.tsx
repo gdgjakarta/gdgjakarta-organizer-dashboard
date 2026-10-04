@@ -89,6 +89,7 @@ export default async function Page() {
           profileUrl: m.user.profile_url,
           isEmailVerified: Boolean(m.user.is_email_verified),
           company: teamInfo?.company,
+          syncStatus: "synced" as const,
         };
       });
     }

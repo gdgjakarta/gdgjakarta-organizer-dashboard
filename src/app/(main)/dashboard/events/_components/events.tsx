@@ -1,8 +1,5 @@
 "use client";
 import * as React from "react";
-import { useTransition } from "react";
-
-import { useRouter } from "next/navigation";
 
 import {
   type ColumnFiltersState,
@@ -11,8 +8,7 @@ import {
   type SortingState,
   useTable,
 } from "@tanstack/react-table";
-import { Download, ExternalLink, Grid, RefreshCw, Rows3, Search, SlidersHorizontal } from "lucide-react";
-import { toast } from "sonner";
+import { Download, ExternalLink, Grid, Rows3, Search, SlidersHorizontal } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,8 +17,6 @@ import { Kbd } from "@/components/ui/kbd";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { dataTableFeatures } from "@/lib/data-table-features";
-import { triggerEventsSyncAction } from "@/lib/firestore/actions";
-import { cn } from "@/lib/utils";
 
 import { type EventRow, eventFilters } from "./data";
 import { eventsColumns } from "./events-columns";
@@ -75,26 +69,6 @@ export function Events({ events, totalCount }: { events: EventRow[]; totalCount?
   const audienceFilter =
     (table.getColumn("audienceType")?.getFilterValue() as string | undefined) ?? eventFilters.audienceType[0];
 
-  const router = useRouter();
-  const [isPending, startTransition] = useTransition();
-
-  const handleSyncFromBevy = () => {
-    startTransition(async () => {
-      toast.loading("Syncing events from Bevy...", { id: "sync-bevy" });
-      try {
-        const result = await triggerEventsSyncAction();
-        if (result.success) {
-          toast.success(`Successfully synced ${result.totalSynced} events into Firestore!`, { id: "sync-bevy" });
-          router.refresh();
-        } else {
-          toast.error(result.error ?? "Failed to sync events.", { id: "sync-bevy" });
-        }
-      } catch (_err) {
-        toast.error("An unexpected error occurred during sync.", { id: "sync-bevy" });
-      }
-    });
-  };
-
   const selectedCount = table.getFilteredSelectedRowModel().rows.length;
   const countToDisplay = totalCount ?? events.length;
 
@@ -130,10 +104,6 @@ export function Events({ events, totalCount }: { events: EventRow[]; totalCount?
               <Kbd className="h-4 text-[10px]">⌘K</Kbd>
             </InputGroupAddon>
           </InputGroup>
-          <Button variant="outline" size="sm" onClick={handleSyncFromBevy} disabled={isPending} className="gap-1.5">
-            <RefreshCw className={cn("size-3.5", isPending && "animate-spin")} />
-            {isPending ? "Syncing..." : "Sync Bevy"}
-          </Button>
           <Button variant="outline" size="sm">
             <SlidersHorizontal /> Filters
           </Button>

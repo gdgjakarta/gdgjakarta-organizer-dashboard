@@ -75,7 +75,7 @@ export async function getFirestoreMembers(maxResults = 200): Promise<FirestoreMe
   if (typeof window === "undefined") return [];
   try {
     const membersRef = collection(db, "members");
-    const q = query(membersRef, orderBy("name", "asc"), limit(maxResults));
+    const q = query(membersRef, limit(maxResults));
     const snapshot = await getDocs(q);
 
     return snapshot.docs.map((docSnap) => ({
@@ -105,6 +105,24 @@ export async function saveFirestoreMember(member: FirestoreMember): Promise<void
   if (typeof window === "undefined") return;
   const docRef = doc(db, "members", String(member.id));
   await setDoc(docRef, member, { merge: true });
+}
+
+export async function updateFirestoreMemberBevyId(uid: string, bevyUserId: string): Promise<void> {
+  if (typeof window === "undefined" || !uid || !bevyUserId) return;
+  try {
+    const memberRef = doc(db, "members", uid);
+    await setDoc(
+      memberRef,
+      {
+        bevy_user_id: String(bevyUserId),
+        updated_at: new Date().toISOString(),
+      },
+      { merge: true },
+    );
+    console.log(`[Firestore] Updated member ${uid} with bevy_user_id: ${bevyUserId}`);
+  } catch (error) {
+    console.error(`[Firestore] Failed to update bevy_user_id for member ${uid}:`, error);
+  }
 }
 
 // ── Registrations & Filtration ──────────────────────────────────────────────

@@ -201,6 +201,7 @@ export type OrganizerValidationResult = {
   roleTitle?: string | null;
   chapterTeamMember?: BevyChapterTeamMember;
   bevyUser?: BevyUser | null;
+  wasImported?: boolean;
 };
 
 export interface BevyChapterSlim {

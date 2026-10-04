@@ -3,8 +3,9 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { validateBevyOrganizer } from "@/lib/bevy/client";
-import { ChapterRole, type OrganizerValidationResult } from "@/lib/bevy/types";
+import { getUserById, importMemberToBevy, validateBevyOrganizer } from "@/lib/bevy/client";
+import { type BevyUser, ChapterRole, type OrganizerValidationResult } from "@/lib/bevy/types";
+import { splitFullName } from "@/lib/utils";
 
 const AUTH_COOKIE = "auth_token";
 const ROLE_COOKIE = "auth_role";
@@ -18,13 +19,149 @@ export interface UserAuthSyncParams {
   name?: string;
   avatar?: string;
   token?: string;
+  firstName?: string;
+  lastName?: string;
 }
 
 /**
  * Validates the authenticated Google user against the Bevy chapter team list.
  */
-export async function validateOrganizerAction(email: string, name?: string): Promise<OrganizerValidationResult> {
-  return await validateBevyOrganizer(email, name);
+export async function validateOrganizerAction(
+  email: string,
+  name?: string,
+  firstName?: string,
+  lastName?: string,
+): Promise<OrganizerValidationResult> {
+  return await validateBevyOrganizer(email, name, firstName, lastName);
+}
+
+/**
+ * Server action to import a new member into Bevy via the GDG Jakarta n8n API webhook.
+ */
+export async function importMemberAction(params: { firstName: string; lastName: string; email: string }) {
+  return await importMemberToBevy(params);
+}
+
+/**
+ * Syncs a member from Bevy using their email:
+ * Attempts getUserById(email) (with retries to handle any Bevy indexing latency).
+ * If found, returns the resolved Bevy User ID.
+ */
+export async function syncMemberBevyUserAction(
+  email: string,
+  maxAttempts = 4,
+  delayMs = 1500,
+): Promise<{ success: boolean; bevyUserId?: string; error?: string }> {
+  if (!email) {
+    return { success: false, error: "Email is required." };
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
+  console.log(`[Sync Member to Bevy] Attempting to resolve Bevy user by email: ${normalizedEmail}`);
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const user = await getUserById(normalizedEmail);
+      if (user?.id !== undefined && user?.id !== null) {
+        const bevyUserId = String(user.id);
+        console.log(`[Sync Member to Bevy] Successfully resolved Bevy User ID: ${bevyUserId} on attempt ${attempt}`);
+        return { success: true, bevyUserId };
+      }
+    } catch (err) {
+      console.warn(`[Sync Member to Bevy] Attempt ${attempt} failed for ${normalizedEmail}:`, err);
+    }
+
+    if (attempt < maxAttempts) {
+      console.log(`[Sync Member to Bevy] Waiting ${delayMs}ms before attempt ${attempt + 1}...`);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+
+  console.warn(
+    `[Sync Member to Bevy] Could not resolve Bevy User ID for ${normalizedEmail} after ${maxAttempts} attempts.`,
+  );
+  return { success: false, error: `Member not found on Bevy after ${maxAttempts} attempts.` };
+}
+
+/**
+ * Checks whether an individual user is already a Bevy member inside the chapter.
+ */
+export async function checkBevyMemberStatusAction(
+  email: string,
+): Promise<{ isBevyMember: boolean; bevyUserId?: string; bevyUser?: BevyUser | null }> {
+  if (!email) {
+    return { isBevyMember: false };
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
+  try {
+    const user = await getUserById(normalizedEmail);
+    if (user?.id !== undefined && user?.id !== null) {
+      return { isBevyMember: true, bevyUserId: String(user.id), bevyUser: user };
+    }
+  } catch (err) {
+    console.warn(`[Check Bevy Member] Error checking status for ${normalizedEmail}:`, err);
+  }
+
+  return { isBevyMember: false };
+}
+
+/**
+ * Checks and syncs an individual member with Bevy:
+ * If the user isn't in Bevy, imports them via webhook and retrieves their Bevy ID.
+ */
+export async function syncSingleMemberToBevyAction(params: {
+  email: string;
+  name?: string;
+  firstName?: string;
+  lastName?: string;
+}): Promise<{ success: boolean; bevyUserId?: string; isAlreadyMember?: boolean; error?: string }> {
+  const { email, name, firstName, lastName } = params;
+  if (!email) {
+    return { success: false, error: "Email is required." };
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
+  console.log(`[Sync Single Member] Checking Bevy status for: ${normalizedEmail}`);
+
+  // 1. Check if user already exists in Bevy
+  try {
+    const existingUser = await getUserById(normalizedEmail);
+    if (existingUser?.id !== undefined && existingUser?.id !== null) {
+      const bevyUserId = String(existingUser.id);
+      console.log(`[Sync Single Member] User ${normalizedEmail} is already a Bevy member (ID: ${bevyUserId})`);
+      return { success: true, bevyUserId, isAlreadyMember: true };
+    }
+  } catch (err) {
+    console.warn(`[Sync Single Member] Error checking user ${normalizedEmail}:`, err);
+  }
+
+  // 2. If not registered on Bevy, import member using GDG Jakarta webhook
+  console.log(`[Sync Single Member] Member ${normalizedEmail} not in Bevy. Importing via webhook...`);
+  const { firstName: splitFirst, lastName: splitLast } = splitFullName(name);
+  const safeFirstName = firstName?.trim() || splitFirst.trim() || normalizedEmail.split("@")[0] || "Member";
+  const safeLastName = (lastName?.trim() ?? splitLast ?? "").trim();
+
+  const importResult = await importMemberToBevy({
+    firstName: safeFirstName,
+    lastName: safeLastName,
+    email: normalizedEmail,
+  });
+
+  if (!importResult.success) {
+    return { success: false, error: importResult.error ?? "Failed to import member to Bevy." };
+  }
+
+  // 3. Resolve Bevy User ID with retries
+  const syncResult = await syncMemberBevyUserAction(normalizedEmail, 4, 1500);
+  if (syncResult.success && syncResult.bevyUserId) {
+    return { success: true, bevyUserId: syncResult.bevyUserId, isAlreadyMember: false };
+  }
+
+  return {
+    success: false,
+    error: syncResult.error ?? "Member imported, but Bevy User ID could not be retrieved yet.",
+  };
 }
 
 /**
@@ -36,7 +173,7 @@ export async function validateOrganizerAction(email: string, name?: string): Pro
  */
 export async function handleUserPostLoginAction(params: UserAuthSyncParams): Promise<OrganizerValidationResult> {
   try {
-    const { uid, email, name, token } = params;
+    const { uid, email, name, token, firstName, lastName } = params;
     console.log(
       `[Auth Step 1 - Server] Received handleUserPostLoginAction for UID: ${uid}, Email: ${email}, Name: ${name ?? "N/A"}`,
     );
@@ -49,7 +186,7 @@ export async function handleUserPostLoginAction(params: UserAuthSyncParams): Pro
       chapterRole: "Member",
     };
     try {
-      validation = await validateBevyOrganizer(email, name);
+      validation = await validateBevyOrganizer(email, name, firstName, lastName);
     } catch (valErr) {
       console.error("[Auth Step 2 - Server] Validation error:", valErr);
     }
@@ -78,6 +215,7 @@ export async function handleUserPostLoginAction(params: UserAuthSyncParams): Pro
       chapterRoleType: validation.chapterRoleType ?? (isOrganizer ? ChapterRole.ORGANIZER : ChapterRole.MEMBER),
       roleId: validation.roleId ?? null,
       roleTitle: validation.roleTitle ?? chapterRole,
+      wasImported: Boolean(validation.wasImported),
     };
   } catch (fatalError) {
     console.error("[handleUserPostLoginAction] Unexpected server error during post-login sync:", fatalError);
@@ -89,6 +227,7 @@ export async function handleUserPostLoginAction(params: UserAuthSyncParams): Pro
       chapterRoleType: ChapterRole.MEMBER,
       roleId: null,
       roleTitle: "Member",
+      wasImported: false,
     };
   }
 }
