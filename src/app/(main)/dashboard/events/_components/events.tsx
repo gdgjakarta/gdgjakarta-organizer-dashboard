@@ -8,14 +8,13 @@ import {
   type SortingState,
   useTable,
 } from "@tanstack/react-table";
-import { Download, ExternalLink, Grid, Rows3, Search, SlidersHorizontal } from "lucide-react";
+import { Download, ExternalLink, Search, SlidersHorizontal } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Kbd } from "@/components/ui/kbd";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { dataTableFeatures } from "@/lib/data-table-features";
 
 import { type EventRow, eventFilters } from "./data";
@@ -176,19 +175,8 @@ export function Events({ events, totalCount }: { events: EventRow[]; totalCount?
           </div>
         </div>
 
-        <div className="flex items-center justify-between gap-3 px-4">
+        <div className="flex items-center gap-3 px-4">
           <div className="text-muted-foreground text-sm tabular-nums">{selectedCount} selected</div>
-
-          <Tabs defaultValue="list">
-            <TabsList>
-              <TabsTrigger value="list" aria-label="List view">
-                <Rows3 />
-              </TabsTrigger>
-              <TabsTrigger value="grid" aria-label="Grid view">
-                <Grid />
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
         </div>
 
         <EventsTable table={table} />

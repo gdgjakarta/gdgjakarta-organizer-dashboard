@@ -25,7 +25,7 @@ function StatusBadge({ status }: { status: EventRow["status"] }) {
   const meta = eventStatusMeta[status] || eventStatusMeta.Published;
 
   return (
-    <Badge className={cn("gap-1.5 border px-2 py-0.5 font-medium text-xs", meta.badgeClass)} variant="outline">
+    <Badge className={cn("shrink-0 gap-1.5 border px-2 py-0.5 font-medium text-xs", meta.badgeClass)} variant="outline">
       <span className={cn("size-1.5 rounded-full", meta.dotClass)} />
       {status}
     </Badge>
@@ -35,7 +35,10 @@ function StatusBadge({ status }: { status: EventRow["status"] }) {
 function AudienceBadge({ audienceType }: { audienceType: string }) {
   if (audienceType === "VIRTUAL") {
     return (
-      <Badge variant="outline" className="gap-1 border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400">
+      <Badge
+        variant="outline"
+        className="shrink-0 gap-1 border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400"
+      >
         <Radio className="size-3" /> Virtual
       </Badge>
     );
@@ -44,7 +47,7 @@ function AudienceBadge({ audienceType }: { audienceType: string }) {
     return (
       <Badge
         variant="outline"
-        className="gap-1 border-purple-500/20 bg-purple-500/10 text-purple-600 dark:text-purple-400"
+        className="shrink-0 gap-1 border-purple-500/20 bg-purple-500/10 text-purple-600 dark:text-purple-400"
       >
         <Globe className="size-3" /> Hybrid
       </Badge>
@@ -53,7 +56,7 @@ function AudienceBadge({ audienceType }: { audienceType: string }) {
   return (
     <Badge
       variant="outline"
-      className="gap-1 border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+      className="shrink-0 gap-1 border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
     >
       <MapPin className="size-3" /> In-Person
     </Badge>
@@ -109,7 +112,7 @@ export const eventsColumns: ColumnDef<DataTableFeatures, EventRow>[] = [
     header: "Event",
     cell: ({ row }) => (
       <div className="flex items-center gap-3">
-        <Avatar size="lg" className="rounded-md after:rounded-md">
+        <Avatar size="lg" className="shrink-0 rounded-md after:rounded-md">
           {row.original.pictureUrl ? (
             <AvatarImage src={row.original.pictureUrl} alt={row.original.title} className="rounded-md" />
           ) : null}
@@ -117,20 +120,20 @@ export const eventsColumns: ColumnDef<DataTableFeatures, EventRow>[] = [
             {getInitials(row.original.title)}
           </AvatarFallback>
         </Avatar>
-        <div className="min-w-0 max-w-[340px]">
+        <div className="min-w-0 max-w-md overflow-hidden lg:max-w-xl">
           <Link
             href={`/dashboard/events/${row.original.id}`}
-            className="truncate font-medium text-foreground text-sm hover:underline"
+            className="block truncate font-medium text-foreground text-sm hover:underline"
             title={row.original.title}
           >
             {row.original.title}
           </Link>
           <div className="flex items-center gap-2 text-muted-foreground text-xs">
-            <span className="truncate">{row.original.eventType}</span>
+            <span className="min-w-0 truncate">{row.original.eventType}</span>
             {row.original.tags.length > 0 && (
               <>
-                <span>•</span>
-                <span className="truncate">{row.original.tags.slice(0, 2).join(", ")}</span>
+                <span className="shrink-0">•</span>
+                <span className="min-w-0 truncate">{row.original.tags.slice(0, 2).join(", ")}</span>
               </>
             )}
           </div>
