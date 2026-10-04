@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import type { Metadata } from "next";
 
+import { NavigationProgressProvider } from "@/components/navigation-progress-bar";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { APP_CONFIG } from "@/config/app-config";
@@ -54,8 +55,10 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
         <TooltipProvider>
           <AuthStoreProvider>
             <PreferencesStoreProvider initialValues={PREFERENCE_DEFAULTS}>
-              {children}
-              <Toaster />
+              <NavigationProgressProvider>
+                {children}
+                <Toaster />
+              </NavigationProgressProvider>
             </PreferencesStoreProvider>
           </AuthStoreProvider>
         </TooltipProvider>

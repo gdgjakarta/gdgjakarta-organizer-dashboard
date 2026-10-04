@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 
 import { ChevronRight } from "lucide-react";
 
+import { useNavigationProgress } from "@/components/navigation-progress-bar";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   DropdownMenu,
@@ -26,6 +27,7 @@ import {
   SidebarMenuSubItem,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import type {
   NavBadge,
@@ -151,6 +153,9 @@ function NavItem({ item, isItemActive, isSubItemActive, isSubmenuOpen }: NavItem
 }
 
 function NavLinkItem({ item, isActive, showIconFallback }: NavLinkItemProps) {
+  const { isNavigating, pendingUrl } = useNavigationProgress();
+  const isPending = isNavigating && pendingUrl === item.url;
+
   return (
     <SidebarMenuItem>
       <SidebarMenuButton asChild aria-disabled={item.disabled} tooltip={item.title} isActive={isActive}>
@@ -160,7 +165,7 @@ function NavLinkItem({ item, isActive, showIconFallback }: NavLinkItemProps) {
           target={item.newTab ? "_blank" : undefined}
           rel={item.newTab ? "noreferrer" : undefined}
         >
-          <NavLinkIcon item={item} showFallback={showIconFallback} />
+          <NavLinkIcon item={item} showFallback={showIconFallback} isPending={isPending} />
           <span>{item.title}</span>
         </Link>
       </SidebarMenuButton>
@@ -169,7 +174,11 @@ function NavLinkItem({ item, isActive, showIconFallback }: NavLinkItemProps) {
   );
 }
 
-function NavLinkIcon({ item, showFallback }: NavLinkIconProps) {
+function NavLinkIcon({ item, showFallback, isPending }: NavLinkIconProps & { isPending?: boolean }) {
+  if (isPending) {
+    return <Spinner className="size-4 animate-spin text-primary" />;
+  }
+
   const Icon = item.icon;
 
   if (Icon) {
@@ -184,14 +193,23 @@ function NavLinkIcon({ item, showFallback }: NavLinkIconProps) {
 }
 
 function NavDropdownItem({ item, isActive, isSubItemActive }: NavDropdownItemProps) {
+  const { isNavigating, pendingUrl } = useNavigationProgress();
+  const isParentPending = isNavigating && hasSubItems(item) && item.subItems.some((s) => s.url === pendingUrl);
   const Icon = item.icon;
+
+  let iconNode = <CollapsedIconFallback title={item.title} />;
+  if (isParentPending) {
+    iconNode = <Spinner className="size-4 animate-spin text-primary" />;
+  } else if (Icon) {
+    iconNode = <Icon />;
+  }
 
   return (
     <SidebarMenuItem>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <SidebarMenuButton tooltip={item.title} isActive={isActive} disabled={item.disabled}>
-            {Icon ? <Icon /> : <CollapsedIconFallback title={item.title} />}
+            {iconNode}
             <span>{item.title}</span>
           </SidebarMenuButton>
         </DropdownMenuTrigger>
@@ -200,6 +218,7 @@ function NavDropdownItem({ item, isActive, isSubItemActive }: NavDropdownItemPro
           <DropdownMenuGroup>
             {item.subItems.map((subItem) => {
               const SubIcon = subItem.icon;
+              const isSubPending = isNavigating && pendingUrl === subItem.url;
 
               return (
                 <DropdownMenuItem key={subItem.id} asChild disabled={subItem.disabled}>
@@ -211,7 +230,7 @@ function NavDropdownItem({ item, isActive, isSubItemActive }: NavDropdownItemPro
                     aria-current={isSubItemActive(subItem.url) ? "page" : undefined}
                     className="flex items-center gap-2"
                   >
-                    {SubIcon && <SubIcon />}
+                    {isSubPending ? <Spinner className="size-4 animate-spin text-primary" /> : SubIcon && <SubIcon />}
                     <span>{subItem.title}</span>
                   </Link>
                 </DropdownMenuItem>
@@ -225,6 +244,7 @@ function NavDropdownItem({ item, isActive, isSubItemActive }: NavDropdownItemPro
 }
 
 function NavCollapsibleItem({ item, isActive, defaultOpen, isSubItemActive }: NavCollapsibleItemProps) {
+  const { isNavigating, pendingUrl } = useNavigationProgress();
   const Icon = item.icon;
 
   return (
@@ -243,6 +263,7 @@ function NavCollapsibleItem({ item, isActive, defaultOpen, isSubItemActive }: Na
           <SidebarMenuSub>
             {item.subItems.map((subItem) => {
               const SubIcon = subItem.icon;
+              const isSubPending = isNavigating && pendingUrl === subItem.url;
 
               return (
                 <SidebarMenuSubItem key={subItem.id}>
@@ -257,7 +278,7 @@ function NavCollapsibleItem({ item, isActive, defaultOpen, isSubItemActive }: Na
                       target={subItem.newTab ? "_blank" : undefined}
                       rel={subItem.newTab ? "noreferrer" : undefined}
                     >
-                      {SubIcon && <SubIcon />}
+                      {isSubPending ? <Spinner className="size-4 animate-spin text-primary" /> : SubIcon && <SubIcon />}
                       <span>{subItem.title}</span>
                     </Link>
                   </SidebarMenuSubButton>

@@ -1,12 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
-
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 
 import { GoogleButton } from "@/app/(main)/auth/_components/social-auth/google-button";
 import { GdgLogo } from "@/components/gdg-logo";
+import { useNavigationProgress } from "@/components/navigation-progress-bar";
 import { Button } from "@/components/ui/button";
 import { APP_CONFIG } from "@/config/app-config";
 import { useAuthStore } from "@/stores/auth/auth-provider";
@@ -14,14 +12,7 @@ import { useAuthStore } from "@/stores/auth/auth-provider";
 export function PublicHeader() {
   const user = useAuthStore((s) => s.user);
   const isLoading = useAuthStore((s) => s.isLoading);
-  const [isNavigating, setIsNavigating] = useState(false);
-  const pathname = usePathname();
-
-  useEffect(() => {
-    if (pathname) {
-      setIsNavigating(false);
-    }
-  }, [pathname]);
+  const { isNavigating } = useNavigationProgress();
 
   const renderAuthAction = () => {
     if (isLoading) {
@@ -42,10 +33,7 @@ export function PublicHeader() {
             color: "var(--theme-primary-foreground)",
           }}
         >
-          <Link
-            href={user.role === "organizer" ? "/dashboard/organizer" : "/dashboard/member"}
-            onClick={() => setIsNavigating(true)}
-          >
+          <Link href={user.role === "organizer" ? "/dashboard/organizer" : "/dashboard/member"}>
             <span>Dashboard</span>
             {isNavigating && <div className="shimmer-wave" aria-hidden="true" />}
           </Link>
