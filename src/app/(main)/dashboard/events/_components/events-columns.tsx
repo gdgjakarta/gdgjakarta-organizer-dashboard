@@ -18,6 +18,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { getBevyManageEventUrl } from "@/config/remote-config-utils";
 import type { DataTableFeatures } from "@/lib/data-table-features";
 import { cn } from "@/lib/utils";
 
@@ -285,7 +286,11 @@ export const eventsColumns: ColumnDef<DataTableFeatures, EventRow>[] = [
           <DropdownMenuContent align="end">
             <DropdownMenuItem asChild>
               <a
-                href={row.original.url || "https://gdg.community.dev/gdg-jakarta/"}
+                href={
+                  row.original.id
+                    ? getBevyManageEventUrl(row.original.id)
+                    : row.original.url || "https://gdg.community.dev/gdg-jakarta/"
+                }
                 target="_blank"
                 rel="noopener noreferrer"
               >

@@ -2,6 +2,21 @@ export const DEFAULT_CHAPTER_ID = process.env.BEVY_CHAPTER_ID || "642";
 export const DEFAULT_CHAPTER_SLUG = process.env.BEVY_CHAPTER_SLUG || "gdg-jakarta";
 
 /**
+ * Resolves the Bevy organizer management overview URL for a specific event.
+ * Format: https://gdg.community.dev/dashboard/{chapterSlug}/events/{eventId}/overview
+ */
+export function getBevyManageEventUrl(
+  eventId?: string | number | null,
+  chapterSlug: string = DEFAULT_CHAPTER_SLUG,
+): string {
+  const slug = chapterSlug || "gdg-jakarta";
+  if (!eventId) {
+    return `https://gdg.community.dev/dashboard/${slug}/events/`;
+  }
+  return `https://gdg.community.dev/dashboard/${slug}/events/${eventId}/overview`;
+}
+
+/**
  * Mapped configuration entry matching KawalEvent ConfigMap model:
  * [ { "key": "<chapterId>", "value": "..." } ]
  */

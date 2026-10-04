@@ -11,6 +11,7 @@ import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { getBevyManageEventUrl } from "@/config/remote-config-utils";
 import { triggerEventsSyncAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
@@ -121,9 +122,15 @@ export function EventDetailHeader({ event, totalRegistrations, totalApproved }: 
             Sync
           </Button>
 
-          {event.url && (
+          {(event.id || event.url) && (
             <Button size="sm" asChild className="gap-1.5">
-              <a href={event.url} target="_blank" rel="noopener noreferrer">
+              <a
+                href={
+                  event.id ? getBevyManageEventUrl(event.id) : event.url || "https://gdg.community.dev/gdg-jakarta/"
+                }
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 <ExternalLink className="size-3.5" />
                 Manage in Bevy
               </a>
