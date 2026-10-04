@@ -220,6 +220,11 @@ These serve as the fallback; there is no separate default.css file. */
     font-family: var(--font-google-sans-flex), system-ui, sans-serif;
     font-size: 14px;
   }
+
+  button:not(:disabled),
+  [data-slot="button"]:not(:disabled) {
+    cursor: pointer;
+  }
 }
 
 @layer utilities {
@@ -533,4 +538,158 @@ html {
 [data-sonner-toaster] [data-sonner-toast] [data-close-button]:hover {
   color: var(--foreground) !important;
   background: var(--accent) !important;
+}
+
+/* ==========================================================================
+   Clickable Components - Pointing Cursor on Hover
+   Ensure all clickable and interactive elements show a pointer cursor on hover
+   across light/dark modes and all theme presets, while respecting disabled
+   states, drag handles, text fields, and resize controls.
+   ========================================================================== */
+
+:where(
+  button,
+  [role="button"],
+  [data-slot="button"],
+  input[type="button"],
+  input[type="submit"],
+  input[type="reset"],
+  input[type="checkbox"],
+  input[type="radio"],
+  select,
+  summary,
+  a[href],
+  tr[role="button"],
+  [role="row"][role="button"],
+  [role="link"],
+  [role="checkbox"],
+  [role="radio"],
+  [role="switch"],
+  [role="tab"],
+  [role="menuitem"],
+  [role="menuitemcheckbox"],
+  [role="menuitemradio"],
+  [role="option"],
+  [role="combobox"],
+  [role="slider"],
+  [data-slot="dropdown-menu-item"],
+  [data-slot="dropdown-menu-checkbox-item"],
+  [data-slot="dropdown-menu-radio-item"],
+  [data-slot="dropdown-menu-trigger"],
+  [data-slot="dropdown-menu-sub-trigger"],
+  [data-slot="menubar-item"],
+  [data-slot="menubar-trigger"],
+  [data-slot="menubar-checkbox-item"],
+  [data-slot="menubar-radio-item"],
+  [data-slot="menubar-sub-trigger"],
+  [data-slot="context-menu-item"],
+  [data-slot="context-menu-trigger"],
+  [data-slot="context-menu-checkbox-item"],
+  [data-slot="context-menu-radio-item"],
+  [data-slot="context-menu-sub-trigger"],
+  [data-slot="select-trigger"],
+  [data-slot="select-item"],
+  [data-slot="command-item"],
+  [data-slot="combobox-item"],
+  [data-slot="tabs-trigger"],
+  [data-slot="switch"],
+  [data-slot="checkbox"],
+  [data-slot="radio-group-item"],
+  [data-slot="accordion-trigger"],
+  [data-slot="collapsible-trigger"],
+  [data-slot="dialog-close"],
+  [data-slot="sheet-close"],
+  [data-slot="popover-trigger"],
+  [data-slot="tooltip-trigger"],
+  [data-slot="breadcrumb-link"],
+  [data-slot="pagination-link"],
+  [data-slot="sidebar-menu-button"],
+  [data-slot="sidebar-menu-action"],
+  [data-slot="sidebar-menu-sub-button"],
+  [data-slot="sidebar-trigger"],
+  [data-slot="carousel-previous"],
+  [data-slot="carousel-next"],
+  [data-slot="slider-thumb"],
+  [data-sidebar="trigger"],
+  [data-sidebar="menu-button"],
+  [data-sidebar="menu-action"],
+  [data-sidebar="menu-sub-button"],
+  [data-close-button],
+  .rdp-button,
+  .rdp-day_button,
+  .fc-button,
+  .fc-event,
+  label[for],
+  label:has(input:not([type="hidden"]):not(:disabled)),
+  label:has(button:not(:disabled)),
+  label:has([role="checkbox"]:not([data-disabled])),
+  label:has([role="switch"]:not([data-disabled])),
+  label:has([role="radio"]:not([data-disabled]))
+):not(:disabled):not([aria-disabled="true"]):not([data-disabled]):not([data-sidebar="rail"]):not(
+  [data-slot="resizable-handle"]
+):not([class*="cursor-grab"]):not([class*="cursor-grabbing"]):not([class*="cursor-move"]):not(
+  [class*="cursor-text"]
+):not([class*="cursor-not-allowed"]) {
+  cursor: pointer;
+}
+
+/* Explicit high-specificity overrides for shadcn components that declare cursor-default */
+[data-slot="dropdown-menu-item"]:not([data-disabled]):not([class*="cursor-grab"]):not([class*="cursor-text"]),
+[data-slot="dropdown-menu-checkbox-item"]:not([data-disabled]),
+[data-slot="dropdown-menu-radio-item"]:not([data-disabled]),
+[data-slot="dropdown-menu-sub-trigger"]:not([data-disabled]),
+[data-slot="menubar-item"]:not([data-disabled]),
+[data-slot="menubar-checkbox-item"]:not([data-disabled]),
+[data-slot="menubar-radio-item"]:not([data-disabled]),
+[data-slot="menubar-sub-trigger"]:not([data-disabled]),
+[data-slot="context-menu-item"]:not([data-disabled]),
+[data-slot="context-menu-checkbox-item"]:not([data-disabled]),
+[data-slot="context-menu-radio-item"]:not([data-disabled]),
+[data-slot="context-menu-sub-trigger"]:not([data-disabled]),
+[data-slot="select-item"]:not([data-disabled]),
+[data-slot="combobox-item"]:not([data-disabled]),
+[data-slot="command-item"]:not([data-disabled]) {
+  cursor: pointer;
+}
+
+/* Native file upload button cursor */
+input[type="file"]:not(:disabled)::-webkit-file-upload-button,
+input[type="file"]:not(:disabled)::file-selector-button {
+  cursor: pointer;
+}
+
+/* Explicit cursor utility enforcement */
+.cursor-pointer {
+  cursor: pointer !important;
+}
+
+.cursor-grab {
+  cursor: grab !important;
+}
+
+.cursor-grabbing,
+.active\:cursor-grabbing:active {
+  cursor: grabbing !important;
+}
+
+/* Disabled elements display not-allowed cursor */
+button:disabled,
+button[aria-disabled="true"],
+button[data-disabled],
+[role="button"]:disabled,
+[role="button"][aria-disabled="true"],
+[role="button"][data-disabled],
+[data-slot="button"]:disabled,
+[data-slot="button"][aria-disabled="true"],
+[data-slot="button"][data-disabled],
+input:disabled,
+select:disabled,
+textarea:disabled,
+[data-slot="dropdown-menu-item"][data-disabled],
+[data-slot="select-item"][data-disabled],
+[data-slot="command-item"][data-disabled],
+[data-slot="combobox-item"][data-disabled],
+[data-slot="context-menu-item"][data-disabled],
+[data-slot="menubar-item"][data-disabled] {
+  cursor: not-allowed;
 }
