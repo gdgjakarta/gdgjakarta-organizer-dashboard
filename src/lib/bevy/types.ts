@@ -202,3 +202,20 @@ export type OrganizerValidationResult = {
   chapterTeamMember?: BevyChapterTeamMember;
   bevyUser?: BevyUser | null;
 };
+
+export interface BevyChapterSlim {
+  id?: number | string;
+  title?: string;
+  city?: string;
+  country?: string;
+  country_name?: string;
+  members_count?: number;
+  logo?: string;
+  cropped_banner_url?: string;
+  cropped_logo_url?: string;
+  url?: string;
+  website?: string;
+  instagram_handle?: string;
+  twitter_handle?: string;
+  linkedin_page?: string;
+}

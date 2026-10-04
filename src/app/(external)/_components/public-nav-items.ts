@@ -4,7 +4,6 @@ export interface PublicNavItem {
 }
 
 export const PUBLIC_NAV_ITEMS: PublicNavItem[] = [
-  { title: "Home", href: "/" },
   { title: "Events", href: "/events" },
   { title: "Partnership", href: "/partnership" },
   { title: "FAQ", href: "/faq" },

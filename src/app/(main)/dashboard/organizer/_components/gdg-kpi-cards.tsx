@@ -1,4 +1,4 @@
-import { CalendarCheck, CheckCircle2, Globe, TrendingUp, Users } from "lucide-react";
+import { CalendarCheck, Globe, TrendingUp, Users } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,18 +7,19 @@ import type { FirestoreEvent, FirestoreMember } from "@/lib/firestore/types";
 interface GDGKpiProps {
   events: FirestoreEvent[];
   members: FirestoreMember[];
+  totalEventsCount?: number;
+  totalMembersCount?: number;
 }
 
-export function GDGKpiCards({ events, members }: GDGKpiProps) {
-  const totalEvents = events.length;
+export function GDGKpiCards({ events, members, totalEventsCount, totalMembersCount }: GDGKpiProps) {
+  const totalEvents = totalEventsCount && totalEventsCount > 0 ? totalEventsCount : events.length;
   const publishedEvents = events.filter((e) => e.status === "Published").length;
-  const totalRegistrations = events.reduce((acc, e) => acc + (e.total_registrations || e.total_approved || 0), 0);
-  const totalMembers = members.length;
+  const totalMembers = totalMembersCount && totalMembersCount > 0 ? totalMembersCount : members.length;
   const coreTeamCount = members.filter((m) => m.team === "Core Team" || m.role !== "Member").length;
 
   return (
     <section className="space-y-5">
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         {/* Total Members */}
         <Card>
           <CardHeader>
@@ -37,7 +38,9 @@ export function GDGKpiCards({ events, members }: GDGKpiProps) {
                 Active
               </Badge>
             </div>
-            <div className="mt-2 text-right text-muted-foreground text-xs">{coreTeamCount} Core Organizers</div>
+            <div className="mt-2 text-right text-muted-foreground text-xs">
+              {coreTeamCount > 0 ? `${coreTeamCount} Core Organizers` : "Core Organizers & Members"}
+            </div>
           </CardContent>
         </Card>
 
@@ -51,33 +54,14 @@ export function GDGKpiCards({ events, members }: GDGKpiProps) {
           </CardHeader>
           <CardContent className="flex flex-col">
             <div className="flex items-center gap-2">
-              <span className="font-bold text-3xl text-foreground leading-none tracking-tight">{totalEvents}</span>
+              <span className="font-bold text-3xl text-foreground leading-none tracking-tight">
+                {totalEvents.toLocaleString()}
+              </span>
               <Badge className="rounded-sm border-blue-600/50 bg-blue-500/10 px-1.5 font-normal text-blue-700 text-xs dark:border-blue-800/50 dark:bg-blue-500/15 dark:text-blue-300">
-                {publishedEvents} Active
+                {publishedEvents > 0 ? `${publishedEvents} Active` : "Published"}
               </Badge>
             </div>
             <div className="mt-2 text-right text-muted-foreground text-xs">Meetups & DevLabs</div>
-          </CardContent>
-        </Card>
-
-        {/* Total Registrations */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Total Registrations</CardTitle>
-            <CardAction>
-              <CheckCircle2 className="size-4 text-muted-foreground" />
-            </CardAction>
-          </CardHeader>
-          <CardContent className="flex flex-col">
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-3xl text-foreground leading-none tracking-tight">
-                {totalRegistrations.toLocaleString()}
-              </span>
-              <Badge className="rounded-sm border-purple-600/50 bg-purple-500/10 px-1.5 font-normal text-purple-700 text-xs dark:border-purple-800/50 dark:bg-purple-500/15 dark:text-purple-300">
-                RSVP
-              </Badge>
-            </div>
-            <div className="mt-2 text-right text-muted-foreground text-xs">Across all GDG events</div>
           </CardContent>
         </Card>
 

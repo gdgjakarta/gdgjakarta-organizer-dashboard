@@ -2,6 +2,7 @@ import { isAuthorizedOrganizerEmail } from "@/config/auth-config";
 import { BEVY_CONFIG, getBevyAuthCredentials } from "@/config/bevy-config";
 
 import {
+  type BevyChapterSlim,
   type BevyChapterTeamMember,
   type BevyEvent,
   type BevyEventsResponse,
@@ -440,4 +441,25 @@ export async function getBevyChapterSponsors(
   }
 
   return [];
+}
+
+/**
+ * Fetch chapter summary including real-time members_count from Bevy
+ */
+export async function getBevyChapterSlim(
+  chapterSlugOrId: string = BEVY_CONFIG.chapterSlug || BEVY_CONFIG.chapterId,
+): Promise<BevyChapterSlim | null> {
+  const result = await bevyFetch<BevyChapterSlim>(`/chapter_slim/${chapterSlugOrId}`);
+  if (result && typeof result.members_count === "number") {
+    return result;
+  }
+
+  if (chapterSlugOrId !== BEVY_CONFIG.chapterId) {
+    const fallbackResult = await bevyFetch<BevyChapterSlim>(`/chapter_slim/${BEVY_CONFIG.chapterId}`);
+    if (fallbackResult && typeof fallbackResult.members_count === "number") {
+      return fallbackResult;
+    }
+  }
+
+  return null;
 }

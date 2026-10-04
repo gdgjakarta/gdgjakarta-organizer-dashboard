@@ -1,4 +1,9 @@
-import { getBevyChapterEvents, getBevyChapterMembers, getBevyChapterTeams } from "@/lib/bevy/client";
+import {
+  getBevyChapterEvents,
+  getBevyChapterMembers,
+  getBevyChapterSlim,
+  getBevyChapterTeams,
+} from "@/lib/bevy/client";
 import type { FirestoreEvent, FirestoreMember } from "@/lib/firestore/types";
 
 import { GDGKpiCards } from "./_components/gdg-kpi-cards";
@@ -11,13 +16,19 @@ export const dynamic = "force-dynamic";
 export default async function Page() {
   let events: FirestoreEvent[] = [];
   let members: FirestoreMember[] = [];
+  let totalEventsCount: number | undefined;
+  let totalMembersCount: number | undefined;
 
   try {
-    const [eventsResponse, teamMembers, membersResponse] = await Promise.all([
+    const [eventsResponse, teamMembers, membersResponse, chapterSlim] = await Promise.all([
       getBevyChapterEvents(undefined, 50, 1, false, "Published"),
       getBevyChapterTeams(),
       getBevyChapterMembers(undefined, 50, 1),
+      getBevyChapterSlim(),
     ]);
+
+    totalEventsCount = eventsResponse?.count;
+    totalMembersCount = chapterSlim?.members_count ?? membersResponse?.count;
 
     events = (eventsResponse?.results ?? [])
       .filter(
@@ -97,7 +108,12 @@ export default async function Page() {
     <div className="flex flex-col gap-5">
       <OrganizerHeader />
 
-      <GDGKpiCards events={events} members={members} />
+      <GDGKpiCards
+        events={events}
+        members={members}
+        totalEventsCount={totalEventsCount}
+        totalMembersCount={totalMembersCount}
+      />
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
         <div className="xl:col-span-7">
