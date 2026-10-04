@@ -84,7 +84,12 @@ export default async function Page() {
 
     organizersList = teamMembers.map((tm, idx) => {
       const email = tm.user?.email || "";
-      const userId = tm.user?.id ? String(tm.user.id) : String(tm.user_id || tm.id || idx);
+      let userId = String(tm.user_id || idx);
+      if (tm.id) {
+        userId = String(tm.id);
+      } else if (tm.user?.id) {
+        userId = `${tm.user.id}-${idx}`;
+      }
 
       let roleTitle = "Organizer";
       if (tm.title?.trim()) {

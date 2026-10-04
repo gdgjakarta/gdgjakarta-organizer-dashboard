@@ -9,6 +9,7 @@ import {
   useTable,
 } from "@tanstack/react-table";
 import { ExternalLink, Search } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,6 +19,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { dataTableFeatures } from "@/lib/data-table-features";
 
 import { type EventRow, eventFilters } from "./data";
+import { EventsBulkActions } from "./events-bulk-actions";
 import { eventsColumns } from "./events-columns";
 import { EventsTable } from "./events-table";
 
@@ -68,8 +70,141 @@ export function Events({ events, totalCount }: { events: EventRow[]; totalCount?
   const audienceFilter =
     (table.getColumn("audienceType")?.getFilterValue() as string | undefined) ?? eventFilters.audienceType[0];
 
-  const selectedCount = table.getFilteredSelectedRowModel().rows.length;
+  const selectedRows = table.getFilteredSelectedRowModel().rows;
+  const selectedCount = selectedRows.length;
+  const filteredRows = table.getFilteredRowModel().rows;
+  const totalFilteredCount = filteredRows.length;
+  const selectedEvents = React.useMemo(() => selectedRows.map((r) => r.original), [selectedRows]);
   const countToDisplay = totalCount ?? events.length;
+
+  const handleClearSelection = React.useCallback(() => {
+    setRowSelection({});
+  }, []);
+
+  const handleSelectAll = React.useCallback(() => {
+    const newSelection: Record<string, boolean> = {};
+    for (const row of filteredRows) {
+      newSelection[row.id] = true;
+    }
+    setRowSelection(newSelection);
+  }, [filteredRows]);
+
+  const handleCopyLinks = React.useCallback(() => {
+    if (selectedEvents.length === 0) return;
+    const links = selectedEvents
+      .map((e) => e.url || (e.staticUrl ? `https://gdg.community.dev${e.staticUrl}` : null))
+      .filter(Boolean) as string[];
+
+    if (links.length === 0) {
+      toast.error("No valid event URLs found in selected events.");
+      return;
+    }
+
+    navigator.clipboard.writeText(links.join("\n"));
+    toast.success(`Copied ${links.length} event link${links.length > 1 ? "s" : ""} to clipboard`);
+  }, [selectedEvents]);
+
+  const handleExportCsv = React.useCallback(() => {
+    if (selectedEvents.length === 0) {
+      toast.error("No events selected to export");
+      return;
+    }
+
+    const headers = [
+      "Event ID",
+      "Title",
+      "Start Date",
+      "End Date",
+      "Status",
+      "Format",
+      "Event Type",
+      "Registered Attendees",
+      "Checked In",
+      "Drop Rate",
+      "URL",
+    ];
+
+    const escapeCsv = (val: string | number | undefined | null) => {
+      if (val === undefined || val === null) return '""';
+      return `"${String(val).replace(/"/g, '""')}"`;
+    };
+
+    const csvRows = selectedEvents.map((e) => {
+      const dropRateStr =
+        e.totalAttendees > 0
+          ? `${((Math.max(0, e.totalAttendees - e.checkinCount) / e.totalAttendees) * 100).toFixed(1)}%`
+          : "—";
+
+      return [
+        escapeCsv(e.id),
+        escapeCsv(e.title),
+        escapeCsv(e.startDate),
+        escapeCsv(e.endDate),
+        escapeCsv(e.status),
+        escapeCsv(e.audienceType),
+        escapeCsv(e.eventType),
+        escapeCsv(e.totalAttendees),
+        escapeCsv(e.checkinCount),
+        escapeCsv(dropRateStr),
+        escapeCsv(e.url || ""),
+      ].join(",");
+    });
+
+    const csvContent = [headers.join(","), ...csvRows].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    const filename = `gdg-jakarta_events_selected_${selectedEvents.length}.csv`;
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${selectedEvents.length} event${selectedEvents.length > 1 ? "s" : ""} to ${filename}`);
+  }, [selectedEvents]);
+
+  const handleExportJson = React.useCallback(() => {
+    if (selectedEvents.length === 0) {
+      toast.error("No events selected to export");
+      return;
+    }
+
+    const exportData = selectedEvents.map((e) => {
+      const dropRate =
+        e.totalAttendees > 0
+          ? Number(((Math.max(0, e.totalAttendees - e.checkinCount) / e.totalAttendees) * 100).toFixed(1))
+          : null;
+
+      return {
+        id: e.id,
+        title: e.title,
+        startDate: e.startDate,
+        endDate: e.endDate,
+        status: e.status,
+        audienceType: e.audienceType,
+        eventType: e.eventType,
+        totalAttendees: e.totalAttendees,
+        checkinCount: e.checkinCount,
+        dropRate,
+        url: e.url || null,
+        tags: e.tags,
+      };
+    });
+
+    const jsonContent = JSON.stringify(exportData, null, 2);
+    const blob = new Blob([jsonContent], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    const filename = `gdg-jakarta_events_selected_${selectedEvents.length}.json`;
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${selectedEvents.length} event${selectedEvents.length > 1 ? "s" : ""} to ${filename}`);
+  }, [selectedEvents]);
 
   function setColumnSelectFilter(columnId: string, value: string) {
     table.getColumn(columnId)?.setFilterValue(value === "All" ? undefined : value);
@@ -119,10 +254,14 @@ export function Events({ events, totalCount }: { events: EventRow[]; totalCount?
       <CardContent className="flex flex-col gap-4 px-0">
         <div className="flex flex-wrap items-center justify-between gap-3 px-4">
           <div className="flex flex-wrap items-center gap-3">
-            <Select value={statusFilter} onValueChange={(value) => setColumnSelectFilter("status", value)}>
+            <Select
+              value={statusFilter}
+              defaultValue="All"
+              onValueChange={(value) => setColumnSelectFilter("status", value)}
+            >
               <SelectTrigger size="sm">
                 <span className="text-muted-foreground">Status:</span>
-                <SelectValue />
+                <SelectValue placeholder="All">{statusFilter}</SelectValue>
               </SelectTrigger>
               <SelectContent position="popper" align="start">
                 <SelectGroup>
@@ -135,10 +274,14 @@ export function Events({ events, totalCount }: { events: EventRow[]; totalCount?
               </SelectContent>
             </Select>
 
-            <Select value={audienceFilter} onValueChange={(value) => setColumnSelectFilter("audienceType", value)}>
+            <Select
+              value={audienceFilter}
+              defaultValue="All"
+              onValueChange={(value) => setColumnSelectFilter("audienceType", value)}
+            >
               <SelectTrigger size="sm">
                 <span className="text-muted-foreground">Format:</span>
-                <SelectValue />
+                <SelectValue placeholder="All">{getAudienceLabel(audienceFilter)}</SelectValue>
               </SelectTrigger>
               <SelectContent position="popper" align="start">
                 <SelectGroup>
@@ -151,10 +294,14 @@ export function Events({ events, totalCount }: { events: EventRow[]; totalCount?
               </SelectContent>
             </Select>
 
-            <Select value={eventTypeFilter} onValueChange={(value) => setColumnSelectFilter("eventType", value)}>
+            <Select
+              value={eventTypeFilter}
+              defaultValue="All"
+              onValueChange={(value) => setColumnSelectFilter("eventType", value)}
+            >
               <SelectTrigger size="sm">
                 <span className="text-muted-foreground">Type:</span>
-                <SelectValue />
+                <SelectValue placeholder="All">{eventTypeFilter}</SelectValue>
               </SelectTrigger>
               <SelectContent position="popper" align="start">
                 <SelectGroup>
@@ -169,9 +316,16 @@ export function Events({ events, totalCount }: { events: EventRow[]; totalCount?
           </div>
         </div>
 
-        <div className="flex items-center gap-3 px-4">
-          <div className="text-muted-foreground text-sm tabular-nums">{selectedCount} selected</div>
-        </div>
+        <EventsBulkActions
+          selectedCount={selectedCount}
+          totalFilteredCount={totalFilteredCount}
+          selectedEvents={selectedEvents}
+          onClearSelection={handleClearSelection}
+          onSelectAll={handleSelectAll}
+          onExportCsv={handleExportCsv}
+          onExportJson={handleExportJson}
+          onCopyLinks={handleCopyLinks}
+        />
 
         <EventsTable table={table} />
       </CardContent>

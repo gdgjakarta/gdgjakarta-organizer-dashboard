@@ -1,9 +1,12 @@
-import Link from "next/link";
+"use client";
 
-import { ArrowRight } from "lucide-react";
+import { useState } from "react";
+
+import { ChevronDown, ChevronUp } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { FirestoreMember } from "@/lib/firestore/types";
 import { getInitials } from "@/lib/utils";
@@ -22,7 +25,11 @@ export interface RecentMembersProps {
   members?: FirestoreMember[];
 }
 
+const INITIAL_VISIBLE_COUNT = 6;
+
 export function CommunityOrganizersWidget({ organizers, members }: RecentMembersProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
   const items: CommunityOrganizerItem[] =
     organizers && organizers.length > 0
       ? organizers
@@ -34,20 +41,34 @@ export function CommunityOrganizersWidget({ organizers, members }: RecentMembers
           avatar_url: m.avatar_url ?? undefined,
         }));
 
-  const displayedOrganizers = items.slice(0, 6);
+  const hasMore = items.length > INITIAL_VISIBLE_COUNT;
+  const displayedOrganizers = isExpanded ? items : items.slice(0, INITIAL_VISIBLE_COUNT);
+  const remainingCount = items.length - INITIAL_VISIBLE_COUNT;
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-sm">Community Organizers</CardTitle>
-        <CardAction>
-          <Link
-            href="/dashboard/members"
-            className="flex items-center gap-1 text-muted-foreground text-xs transition-colors hover:text-foreground"
-          >
-            View All <ArrowRight className="size-3.5" />
-          </Link>
-        </CardAction>
+        {hasMore && (
+          <CardAction>
+            <Button
+              variant="ghost"
+              size="xs"
+              onClick={() => setIsExpanded((prev) => !prev)}
+              className="flex items-center gap-1 text-muted-foreground text-xs hover:text-foreground"
+            >
+              {isExpanded ? (
+                <>
+                  Show Less <ChevronUp className="size-3.5" />
+                </>
+              ) : (
+                <>
+                  View More <ChevronDown className="size-3.5" />
+                </>
+              )}
+            </Button>
+          </CardAction>
+        )}
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         {displayedOrganizers.length === 0 ? (
@@ -76,6 +97,25 @@ export function CommunityOrganizersWidget({ organizers, members }: RecentMembers
               </div>
             );
           })
+        )}
+
+        {hasMore && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsExpanded((prev) => !prev)}
+            className="mt-1 w-full gap-1.5 text-muted-foreground text-xs hover:text-foreground"
+          >
+            {isExpanded ? (
+              <>
+                Show Less <ChevronUp className="size-3.5" />
+              </>
+            ) : (
+              <>
+                Load More ({remainingCount} more) <ChevronDown className="size-3.5" />
+              </>
+            )}
+          </Button>
         )}
       </CardContent>
     </Card>
