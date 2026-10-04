@@ -1,5 +1,6 @@
 "use server";
 import {
+  getAllBevyChapterEvents,
   getBevyChapterEvents,
   getBevyChapterMembers,
   getBevyChapterTeams,
@@ -18,6 +19,15 @@ export async function fetchBevyChapterEventsAction(
 ) {
   return await getBevyChapterEvents(undefined, pageSize, page, includeHidden, status);
 }
+
+/**
+ * Server action to fetch all Bevy chapter events across all pages safely on the server
+ */
+export async function fetchAllBevyChapterEventsAction(includeHidden = false, status = "All") {
+  return await getAllBevyChapterEvents(undefined, includeHidden, status);
+}
+
+export const getAllEventsAction = fetchAllBevyChapterEventsAction;
 
 /**
  * Server action to fetch Bevy chapter members safely on the server

@@ -1,6 +1,6 @@
 import { format, isFuture, parseISO } from "date-fns";
 
-import { getBevyChapterEvents } from "@/lib/bevy/client";
+import { getAllBevyChapterEvents } from "@/lib/bevy/client";
 
 import { type EventRow, type EventStatus, fallbackEvents } from "./_components/data";
 import { Events } from "./_components/events";
@@ -12,14 +12,8 @@ export default async function Page() {
   let totalCount: number | undefined;
 
   try {
-    const eventsResponse = await getBevyChapterEvents(undefined, 100, 1, false, "Published");
-    const fetchedEvents = (eventsResponse?.results ?? []).filter(
-      (event) =>
-        !event.is_hidden &&
-        !(event as { hidden?: boolean }).hidden &&
-        (event.status ? event.status.toLowerCase() === "published" : true),
-    );
-    totalCount = eventsResponse?.count ?? fetchedEvents.length;
+    const { results: fetchedEvents, count } = await getAllBevyChapterEvents(undefined, true, "All");
+    totalCount = count;
 
     if (fetchedEvents.length > 0) {
       eventRows = fetchedEvents.map((event) => {
@@ -57,6 +51,11 @@ export default async function Page() {
           status = "Published";
         }
 
+        const totalAttendees = event.total_attendees ?? 0;
+        const checkinCount = event.checkin_count ?? 0;
+        const dropped = Math.max(0, totalAttendees - checkinCount);
+        const dropRate = totalAttendees > 0 ? (dropped / totalAttendees) * 100 : undefined;
+
         return {
           id: event.id,
           title: event.title || "Untitled Event",
@@ -66,11 +65,18 @@ export default async function Page() {
           eventType: event.event_type_title || "Standard Event",
           audienceType: event.audience_type || (event.is_virtual_event ? "VIRTUAL" : "IN_PERSON"),
           isVirtual: Boolean(event.is_virtual_event || event.audience_type === "VIRTUAL"),
-          totalAttendees: event.total_attendees ?? 0,
-          checkinCount: event.checkin_count ?? 0,
+          totalAttendees,
+          checkinCount,
+          dropRate,
           url: event.url || event.cohost_registration_url,
           staticUrl: event.static_url,
-          pictureUrl: event.picture?.thumbnail_url || event.picture?.url || event.banner?.thumbnail_url,
+          pictureUrl:
+            event.picture?.thumbnail_url ||
+            event.picture?.url ||
+            event.cropped_picture_url ||
+            event.banner?.thumbnail_url ||
+            event.banner?.url ||
+            event.cropped_banner_url,
           bannerUrl: event.banner?.url || event.cropped_banner_url,
           tags: event.tags || [],
           isUpcoming: isUpcomingEvent,

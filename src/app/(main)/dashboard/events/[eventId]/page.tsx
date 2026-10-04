@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { FileSpreadsheet, Package, Users } from "lucide-react";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { getBevyChapterEvents, getBevyEventById } from "@/lib/bevy/client";
+import { getAllBevyChapterEvents, getBevyEventById } from "@/lib/bevy/client";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
 
 import { CustomFormTab } from "./_components/custom-form-tab";
@@ -51,14 +51,8 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
         updated_at: new Date().toISOString(),
       };
     } else {
-      const chapterEvents = await getBevyChapterEvents(undefined, 100, 1, false, "Published");
-      const matched = chapterEvents?.results?.find(
-        (e) =>
-          String(e.id) === eventId &&
-          !e.is_hidden &&
-          !(e as { hidden?: boolean }).hidden &&
-          (e.status ? e.status.toLowerCase() === "published" : true),
-      );
+      const { results: chapterEvents } = await getAllBevyChapterEvents(undefined, true, "All");
+      const matched = chapterEvents.find((e) => String(e.id) === eventId);
       if (matched) {
         event = {
           id: String(matched.id),

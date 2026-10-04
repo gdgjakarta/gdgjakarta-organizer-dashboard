@@ -260,22 +260,31 @@ export async function getChapterTeam(
     results?: BevyChapterTeamMember[];
   }>(`/chapter/${chapterId}/team/`, {}, chapterId);
 
-  if (teamData?.results && Array.isArray(teamData.results)) {
+  if (teamData?.results && Array.isArray(teamData.results) && teamData.results.length > 0) {
     console.log(`[Bevy Auth] Retrieved ${teamData.results.length} team members from /chapter/${chapterId}/team/`);
     return teamData.results;
   }
 
-  // 2. Fallback without trailing slash
+  // 2. Fallback to public chapter_slim team endpoint: /chapter_slim/${chapterSlug}/team/
+  const chapterSlug = BEVY_CONFIG.chapterSlug || "gdg-jakarta";
+  const slimTeamData = await bevyFetch<BevyChapterTeamMember[]>(`/chapter_slim/${chapterSlug}/team/`, {}, chapterId);
+
+  if (Array.isArray(slimTeamData) && slimTeamData.length > 0) {
+    console.log(`[Bevy Auth] Retrieved ${slimTeamData.length} team members from /chapter_slim/${chapterSlug}/team/`);
+    return slimTeamData;
+  }
+
+  // 3. Fallback without trailing slash
   const altData = await bevyFetch<{
     count?: number;
     results?: BevyChapterTeamMember[];
   }>(`/chapter/${chapterId}/team`, {}, chapterId);
 
-  if (altData?.results && Array.isArray(altData.results)) {
+  if (altData?.results && Array.isArray(altData.results) && altData.results.length > 0) {
     return altData.results;
   }
 
-  // 3. Fallback to chapter details endpoint: /chapter/{chapterId}
+  // 4. Fallback to chapter details endpoint: /chapter/${chapterId}
   const chapterData = await bevyFetch<{
     id?: number;
     title?: string;
@@ -548,12 +557,13 @@ export async function getBevyChapterEvents(
   includeHidden = false,
   status = "Published",
 ): Promise<BevyEventsResponse | null> {
+  const isAllStatus = !status || status.toLowerCase() === "all";
   const fields =
     "id,title,description_short,description,event_type_title,audience_type,is_virtual_event,start_date,end_date,status,picture,banner,cropped_banner_url,cropped_picture_url,url,static_url,total_attendees,checkin_count,total_tickets,total_rsvps_sold,completed,tags,chapter,is_hidden";
   const hiddenParam = includeHidden ? "" : "&is_hidden=false";
-  const statusParam = status && status !== "All" ? `&status=${encodeURIComponent(status)}` : "";
+  const statusParam = !isAllStatus ? `&status=${encodeURIComponent(status)}` : "";
   const result = await bevyFetch<BevyEventsResponse>(
-    `/chapter/${chapterId}/event?page_size=${pageSize}&page=${page}&fields=${fields}${hiddenParam}${statusParam}`,
+    `/chapter/${chapterId}/event/?page_size=${pageSize}&page=${page}&fields=${fields}${hiddenParam}${statusParam}`,
     {},
     chapterId,
   );
@@ -562,7 +572,7 @@ export async function getBevyChapterEvents(
     result.results = result.results.filter((e) => {
       const isHidden = !includeHidden && (e.is_hidden || (e as { hidden?: boolean }).hidden);
       if (isHidden) return false;
-      if (status && status !== "All") {
+      if (!isAllStatus) {
         const eventStatus = e.status?.toLowerCase();
         if (eventStatus && eventStatus !== status.toLowerCase()) {
           return false;
@@ -573,6 +583,78 @@ export async function getBevyChapterEvents(
   }
 
   return result;
+}
+
+/**
+ * Fetch all events for a given chapter from Bevy across all pages.
+ */
+export async function getAllBevyChapterEvents(
+  chapterId: string = BEVY_CONFIG.chapterId,
+  includeHidden = false,
+  status = "All",
+): Promise<{ results: BevyEvent[]; count: number }> {
+  const pageSize = 100;
+  const firstPage = await getBevyChapterEvents(chapterId, pageSize, 1, includeHidden, status);
+  const results: BevyEvent[] = [...(firstPage?.results ?? [])];
+  const count = firstPage?.count ?? results.length;
+
+  if (count > results.length) {
+    const totalPages = Math.ceil(count / pageSize);
+    const pagePromises = [];
+    for (let p = 2; p <= totalPages; p++) {
+      pagePromises.push(getBevyChapterEvents(chapterId, pageSize, p, includeHidden, status));
+    }
+    const subsequentPages = await Promise.all(pagePromises);
+    for (const pageRes of subsequentPages) {
+      if (pageRes?.results) {
+        results.push(...pageRes.results);
+      }
+    }
+  }
+
+  return { results, count };
+}
+
+/**
+ * Backward-compatible alias for getAllBevyChapterEvents
+ */
+export async function getAllEvents(
+  chapterId: string = BEVY_CONFIG.chapterId,
+  includeHidden = false,
+  status = "All",
+): Promise<{ results: BevyEvent[]; count: number }> {
+  return await getAllBevyChapterEvents(chapterId, includeHidden, status);
+}
+
+/**
+ * Determines whether an event is active.
+ * Active means:
+ * 1. Status is "Published"
+ * 2. End date is not overdue / past from today (today or future)
+ */
+export function isEventActive(event?: { status?: string; end_date?: string; start_date?: string }): boolean {
+  if (!event) return false;
+  const isPublished = (event.status ?? "").toLowerCase() === "published";
+  if (!isPublished) return false;
+
+  const targetDate = event.end_date ?? event.start_date;
+  if (!targetDate) return false;
+
+  try {
+    const end = new Date(targetDate);
+    if (Number.isNaN(end.getTime())) return false;
+
+    const now = new Date();
+    // If end date/time is in the future relative to current time
+    if (end.getTime() >= now.getTime()) return true;
+
+    // Check if on today's calendar day
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const eventDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+    return eventDay.getTime() >= startOfToday.getTime();
+  } catch {
+    return false;
+  }
 }
 
 /**

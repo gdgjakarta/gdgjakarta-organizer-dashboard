@@ -1,10 +1,12 @@
 "use client";
+import * as React from "react";
+
 import Link from "next/link";
 
 import type { ColumnDef } from "@tanstack/react-table";
 import { Subscribe } from "@tanstack/react-table";
 import { parse } from "date-fns";
-import { ExternalLink, Globe, MapPin, MoreHorizontal, Radio, Users } from "lucide-react";
+import { Calendar, ExternalLink, Globe, MapPin, MoreHorizontal, Radio, Users } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -17,7 +19,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { DataTableFeatures } from "@/lib/data-table-features";
-import { cn, getInitials } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 import { type EventRow, eventStatusMeta } from "./data";
 
@@ -60,6 +62,55 @@ function AudienceBadge({ audienceType }: { audienceType: string }) {
     >
       <MapPin className="size-3" /> In-Person
     </Badge>
+  );
+}
+
+function EventThumbnail({ src, title }: { src?: string; title: string }) {
+  const [hasError, setHasError] = React.useState(false);
+
+  return (
+    <Avatar key={src} size="lg" className="shrink-0 rounded-md border border-border/40 bg-muted/40 after:rounded-md">
+      {src && !hasError ? (
+        <AvatarImage src={src} alt={title} className="rounded-md object-cover" onError={() => setHasError(true)} />
+      ) : null}
+      <AvatarFallback className="rounded-md bg-muted/60 text-muted-foreground">
+        <Calendar className="size-4.5 text-muted-foreground/60" />
+      </AvatarFallback>
+    </Avatar>
+  );
+}
+
+function DropRateBadge({
+  totalAttendees,
+  checkinCount,
+  isUpcoming,
+}: {
+  totalAttendees: number;
+  checkinCount: number;
+  isUpcoming: boolean;
+}) {
+  if (totalAttendees <= 0 || (isUpcoming && checkinCount === 0)) {
+    return <span className="text-muted-foreground text-xs">—</span>;
+  }
+
+  const dropped = Math.max(0, totalAttendees - checkinCount);
+  const dropRate = (dropped / totalAttendees) * 100;
+  const formattedRate = `${dropRate % 1 === 0 ? dropRate.toFixed(0) : dropRate.toFixed(1)}%`;
+
+  let badgeStyle = "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
+  if (dropRate > 60) {
+    badgeStyle = "border-rose-500/20 bg-rose-500/10 text-rose-600 dark:text-rose-400";
+  } else if (dropRate > 35) {
+    badgeStyle = "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400";
+  }
+
+  return (
+    <div className="flex items-center gap-1.5 text-sm">
+      <Badge variant="outline" className={cn("shrink-0 px-1.5 py-0 font-medium text-xs tabular-nums", badgeStyle)}>
+        {formattedRate}
+      </Badge>
+      <span className="text-muted-foreground text-xs tabular-nums">({dropped} no-show)</span>
+    </div>
   );
 }
 
@@ -112,14 +163,7 @@ export const eventsColumns: ColumnDef<DataTableFeatures, EventRow>[] = [
     header: "Event",
     cell: ({ row }) => (
       <div className="flex items-center gap-3">
-        <Avatar size="lg" className="shrink-0 rounded-md after:rounded-md">
-          {row.original.pictureUrl ? (
-            <AvatarImage src={row.original.pictureUrl} alt={row.original.title} className="rounded-md" />
-          ) : null}
-          <AvatarFallback className="rounded-md bg-primary/10 text-primary">
-            {getInitials(row.original.title)}
-          </AvatarFallback>
-        </Avatar>
+        <EventThumbnail src={row.original.pictureUrl} title={row.original.title} />
         <div className="min-w-0 max-w-md overflow-hidden lg:max-w-xl">
           <Link
             href={`/dashboard/events/${row.original.id}`}
@@ -188,6 +232,22 @@ export const eventsColumns: ColumnDef<DataTableFeatures, EventRow>[] = [
           <span className="text-muted-foreground text-xs">({row.original.checkinCount} checked in)</span>
         )}
       </div>
+    ),
+  },
+  {
+    id: "dropRate",
+    accessorFn: (row) => {
+      if (row.totalAttendees <= 0 || (row.isUpcoming && row.checkinCount === 0)) return -1;
+      const dropped = Math.max(0, row.totalAttendees - row.checkinCount);
+      return (dropped / row.totalAttendees) * 100;
+    },
+    header: "Drop Rate",
+    cell: ({ row }) => (
+      <DropRateBadge
+        totalAttendees={row.original.totalAttendees}
+        checkinCount={row.original.checkinCount}
+        isUpcoming={row.original.isUpcoming}
+      />
     ),
   },
   {

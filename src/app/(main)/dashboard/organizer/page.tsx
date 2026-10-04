@@ -1,42 +1,43 @@
+import { BEVY_CONFIG } from "@/config/bevy-config";
+import { organizers as fallbackOrganizers } from "@/data/organizers";
 import {
-  getBevyChapterEvents,
+  getAllEvents,
   getBevyChapterMembers,
   getBevyChapterSlim,
-  getBevyChapterTeams,
+  getChapterTeam,
+  isEventActive,
 } from "@/lib/bevy/client";
 import type { FirestoreEvent, FirestoreMember } from "@/lib/firestore/types";
 
 import { GDGKpiCards } from "./_components/gdg-kpi-cards";
 import { GDGUpcomingEvents } from "./_components/gdg-upcoming-events";
 import { OrganizerHeader } from "./_components/organizer-header";
-import { RecentMembersWidget } from "./_components/recent-members-widget";
+import { type CommunityOrganizerItem, RecentMembersWidget } from "./_components/recent-members-widget";
 
 export const dynamic = "force-dynamic";
 
 export default async function Page() {
   let events: FirestoreEvent[] = [];
   let members: FirestoreMember[] = [];
+  let organizersList: CommunityOrganizerItem[] = [];
   let totalEventsCount: number | undefined;
   let totalMembersCount: number | undefined;
+  let activeEventsCount = 0;
 
   try {
     const [eventsResponse, teamMembers, membersResponse, chapterSlim] = await Promise.all([
-      getBevyChapterEvents(undefined, 50, 1, false, "Published"),
-      getBevyChapterTeams(),
+      getAllEvents(BEVY_CONFIG.chapterId, false, "All"),
+      getChapterTeam(BEVY_CONFIG.chapterId),
       getBevyChapterMembers(undefined, 50, 1),
       getBevyChapterSlim(),
     ]);
 
-    totalEventsCount = eventsResponse?.count;
+    const rawEvents = eventsResponse?.results ?? [];
+    totalEventsCount = eventsResponse?.count ?? rawEvents.length;
     totalMembersCount = chapterSlim?.members_count ?? membersResponse?.count;
 
-    events = (eventsResponse?.results ?? [])
-      .filter(
-        (e) =>
-          !e.is_hidden &&
-          !(e as { hidden?: boolean }).hidden &&
-          (e.status ? e.status.toLowerCase() === "published" : true),
-      )
+    events = rawEvents
+      .filter((e) => !e.is_hidden && !(e as { hidden?: boolean }).hidden)
       .map((e) => ({
         id: String(e.id),
         title: e.title || "Untitled Event",
@@ -62,20 +63,64 @@ export default async function Page() {
         updated_at: new Date().toISOString(),
       }));
 
+    activeEventsCount = events.filter(isEventActive).length;
+
+    // Map Chapter Team from Bevy
     const teamMap = new Map<string, string>();
     for (const tm of teamMembers) {
       const email = tm.user?.email?.toLowerCase();
       const userId = tm.user?.id ? String(tm.user.id) : String(tm.user_id || "");
       let roleTitle = "Organizer";
-      if (typeof tm.role === "object" && tm.role !== null && "name" in tm.role && tm.role.name) {
+      if (tm.title?.trim()) {
+        roleTitle = tm.title.trim();
+      } else if (typeof tm.role === "object" && tm.role !== null && "name" in tm.role && tm.role.name) {
         roleTitle = tm.role.name;
       } else if (typeof tm.role === "string" && tm.role) {
         roleTitle = tm.role;
-      } else if (tm.title) {
-        roleTitle = tm.title;
       }
       if (email) teamMap.set(email, roleTitle);
       if (userId) teamMap.set(`id:${userId}`, roleTitle);
+    }
+
+    organizersList = teamMembers.map((tm, idx) => {
+      const email = tm.user?.email || "";
+      const userId = tm.user?.id ? String(tm.user.id) : String(tm.user_id || tm.id || idx);
+
+      let roleTitle = "Organizer";
+      if (tm.title?.trim()) {
+        roleTitle = tm.title.trim();
+      } else if (typeof tm.role === "object" && tm.role !== null && "name" in tm.role && tm.role.name) {
+        roleTitle = tm.role.name;
+      } else if (typeof tm.role === "string" && tm.role) {
+        roleTitle = tm.role;
+      }
+
+      const name =
+        tm.user?.full_name?.trim() ||
+        [tm.user?.first_name, tm.user?.last_name].filter(Boolean).join(" ").trim() ||
+        "Community Organizer";
+
+      const avatarUrl = tm.user?.cropped_avatar_url || tm.user?.avatar?.url || tm.user?.avatar?.thumbnail_url;
+
+      return {
+        id: userId,
+        name,
+        email,
+        company: tm.user?.company || tm.user?.title,
+        role: roleTitle,
+        avatar_url: avatarUrl,
+      };
+    });
+
+    // Fallback if teamMembers is empty
+    if (organizersList.length === 0 && fallbackOrganizers.length > 0) {
+      organizersList = fallbackOrganizers.map((o, idx) => ({
+        id: `fallback-org-${idx}`,
+        name: o.name,
+        email: `${o.name.toLowerCase().replace(/[^a-z0-9]/g, ".")}@gdgjakarta.org`,
+        role: o.role,
+        avatar_url: o.avatar,
+      }));
     }
 
     const now = new Date().toISOString();
@@ -113,6 +158,7 @@ export default async function Page() {
         members={members}
         totalEventsCount={totalEventsCount}
         totalMembersCount={totalMembersCount}
+        activeEventsCount={activeEventsCount}
       />
 
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
@@ -120,7 +166,7 @@ export default async function Page() {
           <GDGUpcomingEvents events={events} />
         </div>
         <div className="xl:col-span-5">
-          <RecentMembersWidget members={members} />
+          <RecentMembersWidget organizers={organizersList} members={members} />
         </div>
       </div>
     </div>

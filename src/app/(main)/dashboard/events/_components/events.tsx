@@ -8,7 +8,7 @@ import {
   type SortingState,
   useTable,
 } from "@tanstack/react-table";
-import { Download, ExternalLink, Search, SlidersHorizontal } from "lucide-react";
+import { ExternalLink, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,7 +31,7 @@ function getAudienceLabel(option: string) {
 export function Events({ events, totalCount }: { events: EventRow[]; totalCount?: number }) {
   const [rowSelection, setRowSelection] = React.useState({});
   const [sorting, setSorting] = React.useState<SortingState>([{ id: "startDate", desc: true }]);
-  const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([{ id: "status", value: "Published" }]);
+  const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
   const [columnVisibility, setColumnVisibility] = React.useState<ColumnVisibilityState>({
     search: false,
   });
@@ -103,12 +103,6 @@ export function Events({ events, totalCount }: { events: EventRow[]; totalCount?
               <Kbd className="h-4 text-[10px]">⌘K</Kbd>
             </InputGroupAddon>
           </InputGroup>
-          <Button variant="outline" size="sm">
-            <SlidersHorizontal /> Filters
-          </Button>
-          <Button variant="outline" size="sm">
-            <Download /> Export
-          </Button>
           <Button size="sm" asChild>
             <a
               href="https://gdg.community.dev/gdg-jakarta/"

@@ -13,6 +13,7 @@ export type EventRow = {
   isVirtual: boolean;
   totalAttendees: number;
   checkinCount: number;
+  dropRate?: number;
   url?: string;
   staticUrl?: string;
   pictureUrl?: string;
@@ -23,7 +24,7 @@ export type EventRow = {
 };
 
 export const eventFilters = {
-  status: ["Published", "All", "Upcoming", "Past", "Draft", "Canceled"],
+  status: ["All", "Published", "Upcoming", "Past", "Draft", "Canceled"],
   eventType: [
     "All",
     "External registration",
@@ -65,6 +66,7 @@ export const fallbackEvents: EventRow[] = [
     isVirtual: false,
     totalAttendees: 112,
     checkinCount: 97,
+    dropRate: 13.4,
     url: "https://gdg.community.dev/events/details/google-gdg-jakarta-presents-devsync-x-aiml-devlab-accelerate-your-ai-journey/",
     tags: ["AI", "Machine Learning"],
     isUpcoming: false,

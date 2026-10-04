@@ -2,6 +2,7 @@ import { CalendarCheck, Globe, TrendingUp, Users } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { isEventActive } from "@/lib/bevy/client";
 import type { FirestoreEvent, FirestoreMember } from "@/lib/firestore/types";
 
 interface GDGKpiProps {
@@ -9,13 +10,19 @@ interface GDGKpiProps {
   members: FirestoreMember[];
   totalEventsCount?: number;
   totalMembersCount?: number;
+  activeEventsCount?: number;
 }
 
-export function GDGKpiCards({ events, members, totalEventsCount, totalMembersCount }: GDGKpiProps) {
+export function GDGKpiCards({
+  events,
+  members,
+  totalEventsCount,
+  totalMembersCount,
+  activeEventsCount: customActiveEventsCount,
+}: GDGKpiProps) {
   const totalEvents = totalEventsCount && totalEventsCount > 0 ? totalEventsCount : events.length;
-  const publishedEvents = events.filter((e) => e.status === "Published").length;
+  const activeEvents = customActiveEventsCount ?? events.filter(isEventActive).length;
   const totalMembers = totalMembersCount && totalMembersCount > 0 ? totalMembersCount : members.length;
-  const coreTeamCount = members.filter((m) => m.team === "Core Team" || m.role !== "Member").length;
 
   return (
     <section className="space-y-5">
@@ -38,9 +45,7 @@ export function GDGKpiCards({ events, members, totalEventsCount, totalMembersCou
                 Active
               </Badge>
             </div>
-            <div className="mt-2 text-right text-muted-foreground text-xs">
-              {coreTeamCount > 0 ? `${coreTeamCount} Core Organizers` : "Core Organizers & Members"}
-            </div>
+            <div className="mt-2 text-right text-muted-foreground text-xs">Members on Bevy</div>
           </CardContent>
         </Card>
 
@@ -58,10 +63,10 @@ export function GDGKpiCards({ events, members, totalEventsCount, totalMembersCou
                 {totalEvents.toLocaleString()}
               </span>
               <Badge className="rounded-sm border-blue-600/50 bg-blue-500/10 px-1.5 font-normal text-blue-700 text-xs dark:border-blue-800/50 dark:bg-blue-500/15 dark:text-blue-300">
-                {publishedEvents > 0 ? `${publishedEvents} Active` : "Published"}
+                {`${activeEvents} Active`}
               </Badge>
             </div>
-            <div className="mt-2 text-right text-muted-foreground text-xs">Meetups & DevLabs</div>
+            <div className="mt-2 text-right text-muted-foreground text-xs">Tech Talks & Workshops</div>
           </CardContent>
         </Card>
 
