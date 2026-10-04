@@ -1,6 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 import { ArrowRight, Calendar, Code, Heart, Sparkles, Users } from "lucide-react";
 
@@ -10,6 +13,54 @@ import { useAuthStore } from "@/stores/auth/auth-provider";
 
 export function CommunityHero() {
   const user = useAuthStore((s) => s.user);
+  const isLoading = useAuthStore((s) => s.isLoading);
+  const [isNavigating, setIsNavigating] = useState(false);
+  const pathname = usePathname();
+
+  useEffect(() => {
+    if (pathname) {
+      setIsNavigating(false);
+    }
+  }, [pathname]);
+
+  const renderDashboardAction = () => {
+    if (isLoading) {
+      return (
+        <div className="relative h-12 w-44 overflow-hidden rounded-full border border-[var(--theme-border)] bg-muted/60">
+          <div className="shimmer-wave" aria-hidden="true" />
+        </div>
+      );
+    }
+
+    if (user) {
+      return (
+        <Button
+          asChild
+          variant="outline"
+          size="lg"
+          className="relative h-12 overflow-hidden rounded-full border-[var(--theme-border)] bg-background/80 px-8 font-medium text-[14px] backdrop-blur-xs transition-all duration-300 hover:border-[var(--theme-primary)] hover:bg-background hover:text-[var(--theme-text)]"
+        >
+          <Link
+            href={user.role === "organizer" ? "/dashboard/organizer" : "/dashboard/member"}
+            onClick={() => setIsNavigating(true)}
+          >
+            <span>Go to Dashboard</span>
+            {isNavigating && <div className="shimmer-wave" aria-hidden="true" />}
+          </Link>
+        </Button>
+      );
+    }
+
+    return (
+      <GoogleButton
+        size="lg"
+        variant="outline"
+        className="h-12 w-auto rounded-full border-[var(--theme-border)] bg-background/80 px-8 font-medium text-[14px] backdrop-blur-xs transition-all duration-300 hover:border-[var(--theme-primary)] hover:bg-background hover:text-[var(--theme-text)]"
+      >
+        Join Community
+      </GoogleButton>
+    );
+  };
 
   return (
     <section
@@ -82,26 +133,7 @@ export function CommunityHero() {
                 </Link>
               </Button>
 
-              {user ? (
-                <Button
-                  asChild
-                  variant="outline"
-                  size="lg"
-                  className="h-12 rounded-full border-[var(--theme-border)] bg-background/80 px-8 font-medium text-[14px] backdrop-blur-xs transition-all duration-300 hover:border-[var(--theme-primary)] hover:bg-background hover:text-[var(--theme-text)]"
-                >
-                  <Link href={user.role === "organizer" ? "/dashboard/organizer" : "/dashboard/member"}>
-                    Go to Dashboard
-                  </Link>
-                </Button>
-              ) : (
-                <GoogleButton
-                  size="lg"
-                  variant="outline"
-                  className="h-12 w-auto rounded-full border-[var(--theme-border)] bg-background/80 px-8 font-medium text-[14px] backdrop-blur-xs transition-all duration-300 hover:border-[var(--theme-primary)] hover:bg-background hover:text-[var(--theme-text)]"
-                >
-                  Join Community
-                </GoogleButton>
-              )}
+              {renderDashboardAction()}
             </div>
 
             {/* Social Proof Stats Pill */}

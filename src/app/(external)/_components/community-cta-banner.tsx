@@ -1,6 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 import { ArrowRight, Sparkles } from "lucide-react";
 
@@ -10,6 +13,62 @@ import { useAuthStore } from "@/stores/auth/auth-provider";
 
 export function CommunityCtaBanner() {
   const user = useAuthStore((s) => s.user);
+  const isLoading = useAuthStore((s) => s.isLoading);
+  const [isNavigating, setIsNavigating] = useState(false);
+  const pathname = usePathname();
+
+  useEffect(() => {
+    if (pathname) {
+      setIsNavigating(false);
+    }
+  }, [pathname]);
+
+  const renderDashboardAction = () => {
+    if (isLoading) {
+      return (
+        <div className="relative h-12 w-52 overflow-hidden rounded-full bg-muted/40">
+          <div className="shimmer-wave" aria-hidden="true" />
+        </div>
+      );
+    }
+
+    if (user) {
+      return (
+        <Button
+          asChild
+          size="lg"
+          className="relative h-12 overflow-hidden rounded-full px-8 font-medium text-[14px] shadow-[var(--theme-shadow)] transition-all hover:scale-[1.02]"
+          style={{
+            backgroundColor: "var(--theme-primary)",
+            color: "var(--theme-primary-foreground)",
+          }}
+        >
+          <Link
+            href={user.role === "organizer" ? "/dashboard/organizer" : "/dashboard/member"}
+            onClick={() => setIsNavigating(true)}
+          >
+            <span>Open Your Dashboard</span>
+            <ArrowRight className="ml-2 size-4" />
+            {isNavigating && <div className="shimmer-wave" aria-hidden="true" />}
+          </Link>
+        </Button>
+      );
+    }
+
+    return (
+      <GoogleButton
+        size="lg"
+        variant="default"
+        className="h-12 w-auto rounded-full px-8 font-medium text-[14px] shadow-[var(--theme-shadow)] transition-all hover:scale-[1.02]"
+        style={{
+          backgroundColor: "var(--theme-primary)",
+          color: "var(--theme-primary-foreground)",
+        }}
+      >
+        Join with Google
+      </GoogleButton>
+    );
+  };
 
   return (
     <section className="container mx-auto px-4 py-16 sm:px-6 lg:px-8 lg:py-24">
@@ -52,34 +111,7 @@ export function CommunityCtaBanner() {
           </p>
 
           <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
-            {user ? (
-              <Button
-                asChild
-                size="lg"
-                className="h-12 rounded-full px-8 font-medium text-[14px] shadow-[var(--theme-shadow)] transition-all hover:scale-[1.02]"
-                style={{
-                  backgroundColor: "var(--theme-primary)",
-                  color: "var(--theme-primary-foreground)",
-                }}
-              >
-                <Link href={user.role === "organizer" ? "/dashboard/organizer" : "/dashboard/member"}>
-                  <span>Open Your Dashboard</span>
-                  <ArrowRight className="ml-2 size-4" />
-                </Link>
-              </Button>
-            ) : (
-              <GoogleButton
-                size="lg"
-                variant="default"
-                className="h-12 w-auto rounded-full px-8 font-medium text-[14px] shadow-[var(--theme-shadow)] transition-all hover:scale-[1.02]"
-                style={{
-                  backgroundColor: "var(--theme-primary)",
-                  color: "var(--theme-primary-foreground)",
-                }}
-              >
-                Join with Google
-              </GoogleButton>
-            )}
+            {renderDashboardAction()}
 
             <Button
               asChild

@@ -1,8 +1,8 @@
-import Image from "next/image";
 import Link from "next/link";
 
 import { ArrowUpRight, Calendar, ChevronRight, MapPin } from "lucide-react";
 
+import { EventCardImage } from "@/components/event-card-image";
 import { Button } from "@/components/ui/button";
 import type { BevyEvent } from "@/lib/bevy/types";
 
@@ -54,6 +54,15 @@ export function FeaturedEventsSection({ events }: FeaturedEventsSectionProps) {
               year: "numeric",
             });
 
+            const imageUrl =
+              event.picture?.url ||
+              event.picture?.thumbnail_url ||
+              event.banner?.url ||
+              event.banner?.thumbnail_url ||
+              event.cropped_banner_url ||
+              event.cropped_picture_url ||
+              null;
+
             return (
               <div
                 key={event.id}
@@ -63,25 +72,17 @@ export function FeaturedEventsSection({ events }: FeaturedEventsSectionProps) {
                 }}
               >
                 {/* Event Picture */}
-                <div className="relative aspect-video w-full overflow-hidden bg-muted">
-                  {event.picture?.url ? (
-                    <Image
-                      src={event.picture.url}
-                      alt={event.title}
-                      fill
-                      className="object-cover transition-transform duration-500 group-hover:scale-105"
-                    />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center bg-muted/60">
-                      <Calendar className="size-12 text-muted-foreground/30" />
-                    </div>
-                  )}
-
+                <EventCardImage
+                  src={imageUrl}
+                  alt={event.title}
+                  aspectRatio="aspect-video"
+                  className="transition-all duration-500 group-hover:scale-105"
+                >
                   {/* Date badge */}
-                  <div className="absolute top-4 left-4 rounded-full bg-background/90 px-3.5 py-1 font-medium text-xs shadow-md backdrop-blur-md">
+                  <div className="absolute top-4 left-4 z-20 rounded-full bg-background/90 px-3.5 py-1 font-medium text-xs shadow-md backdrop-blur-md">
                     {dateStr}
                   </div>
-                </div>
+                </EventCardImage>
 
                 {/* Content */}
                 <div className="flex flex-1 flex-col p-6 sm:p-7">

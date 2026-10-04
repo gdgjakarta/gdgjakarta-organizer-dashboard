@@ -326,21 +326,22 @@ These serve as the fallback; there is no separate default.css file. */
     position: absolute;
     inset: 0;
     transform: translateX(-100%);
-    animation: shimmer 2s infinite ease-in-out;
+    animation: shimmer 1.8s infinite ease-in-out;
     background: linear-gradient(
       90deg,
       transparent 0%,
-      rgba(255, 255, 255, 0.45) 50%,
+      rgba(255, 255, 255, 0.65) 50%,
       transparent 100%
     );
     pointer-events: none;
   }
 
-  .dark .shimmer-wave {
+  .dark .shimmer-wave,
+  [data-theme-mode="dark"] .shimmer-wave {
     background: linear-gradient(
       90deg,
       transparent 0%,
-      rgba(255, 255, 255, 0.08) 50%,
+      rgba(255, 255, 255, 0.15) 50%,
       transparent 100%
     );
   }
