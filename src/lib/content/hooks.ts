@@ -4,216 +4,139 @@ import { useCallback, useEffect, useState } from "react";
 
 import { toast } from "sonner";
 
-import {
-  getFaqContentDoc,
-  getPartnershipContentDoc,
-  saveFaqContentDoc,
-  savePartnershipContentDoc,
-  subscribeFaqContentDoc,
-  subscribePartnershipContentDoc,
-} from "@/lib/firestore/client";
 import { revalidateDashboardPath } from "@/server/server-actions";
 
 import { DEFAULT_FAQ_CONTENT, DEFAULT_PARTNERSHIP_CONTENT } from "./defaults";
 import type { FaqContent, PartnershipContent } from "./types";
 
-const LOCAL_STORAGE_FAQ_KEY = "gdg_faq_content_cache";
-const LOCAL_STORAGE_PARTNERSHIP_KEY = "gdg_partnership_content_cache";
+// NOTE: `@/lib/firestore/client` is always loaded via dynamic `import()` so that
+// `firebase/firestore` never ends up in the server / Cloudflare Worker bundle (see dev-note.md).
 
-export function useFaqContent() {
-  const [content, setContent] = useState<FaqContent>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const cached = localStorage.getItem(LOCAL_STORAGE_FAQ_KEY);
-        if (cached) {
-          return { ...DEFAULT_FAQ_CONTENT, ...JSON.parse(cached) };
-        }
-      } catch {
-        // ignore cache parse error
-      }
-    }
-    return DEFAULT_FAQ_CONTENT;
-  });
+type ContentKind = "faq" | "partnership";
 
+interface ContentConfig<T> {
+  cacheKey: string;
+  defaults: T;
+  revalidatePaths: string[];
+  label: string;
+  load: () => Promise<T | null>;
+  save: (content: T) => Promise<void>;
+  subscribe: (onUpdate: (content: T) => void) => Promise<() => void>;
+}
+
+const CONFIGS: { faq: ContentConfig<FaqContent>; partnership: ContentConfig<PartnershipContent> } = {
+  faq: {
+    cacheKey: "gdg_faq_content_cache",
+    defaults: DEFAULT_FAQ_CONTENT,
+    revalidatePaths: ["/faq", "/dashboard/faq"],
+    label: "FAQ",
+    load: async () => (await import("@/lib/firestore/client")).getFaqContentDoc(),
+    save: async (content) => (await import("@/lib/firestore/client")).saveFaqContentDoc(content),
+    subscribe: async (onUpdate) => (await import("@/lib/firestore/client")).subscribeFaqContentDoc(onUpdate),
+  },
+  partnership: {
+    cacheKey: "gdg_partnership_content_cache",
+    defaults: DEFAULT_PARTNERSHIP_CONTENT,
+    revalidatePaths: ["/partnership", "/dashboard/partnership"],
+    label: "Partnership",
+    load: async () => (await import("@/lib/firestore/client")).getPartnershipContentDoc(),
+    save: async (content) => (await import("@/lib/firestore/client")).savePartnershipContentDoc(content),
+    subscribe: async (onUpdate) => (await import("@/lib/firestore/client")).subscribePartnershipContentDoc(onUpdate),
+  },
+};
+
+function writeCache<T>(key: string, value: T) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Ignore quota / privacy-mode errors; cache is best-effort only.
+  }
+}
+
+function useContent<T extends object>(config: ContentConfig<T>) {
+  // Always start from defaults so server and client render the same markup (no hydration mismatch).
+  const [content, setContent] = useState<T>(config.defaults);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
+    let unsubscribe: (() => void) | undefined;
 
-    // First fetch doc
-    getFaqContentDoc()
+    try {
+      const cached = localStorage.getItem(config.cacheKey);
+      if (cached) setContent({ ...config.defaults, ...(JSON.parse(cached) as Partial<T>) });
+    } catch {
+      // Ignore malformed cache.
+    }
+
+    const apply = (data: T) => {
+      if (!isMounted) return;
+      const merged = { ...config.defaults, ...data };
+      setContent(merged);
+      writeCache(config.cacheKey, merged);
+    };
+
+    config
+      .load()
       .then((data) => {
-        if (isMounted && data) {
-          setContent(data);
-          try {
-            localStorage.setItem(LOCAL_STORAGE_FAQ_KEY, JSON.stringify(data));
-          } catch {
-            // ignore storage quota
-          }
-        }
+        if (data) apply(data);
       })
-      .catch((err) => {
-        console.warn("[useFaqContent] getFaqContentDoc error:", err);
-      })
+      .catch((err: unknown) => console.warn(`[use${config.label}Content] load error:`, err))
       .finally(() => {
         if (isMounted) setLoading(false);
       });
 
-    // Subscribe to real-time changes
-    const unsubscribe = subscribeFaqContentDoc((updated) => {
-      if (isMounted && updated) {
-        setContent(updated);
-        try {
-          localStorage.setItem(LOCAL_STORAGE_FAQ_KEY, JSON.stringify(updated));
-        } catch {
-          // ignore
-        }
-      }
-    });
+    config
+      .subscribe(apply)
+      .then((unsub) => {
+        if (isMounted) unsubscribe = unsub;
+        else unsub();
+      })
+      .catch((err: unknown) => console.warn(`[use${config.label}Content] subscribe error:`, err));
 
     return () => {
       isMounted = false;
-      unsubscribe();
+      unsubscribe?.();
     };
-  }, []);
+  }, [config]);
 
-  const saveContent = useCallback(async (newContent: FaqContent) => {
-    setSaving(true);
-    try {
-      await saveFaqContentDoc(newContent);
-      setContent(newContent);
+  const saveContent = useCallback(
+    async (newContent: T) => {
+      setSaving(true);
       try {
-        localStorage.setItem(LOCAL_STORAGE_FAQ_KEY, JSON.stringify(newContent));
-      } catch {
-        // ignore
+        await config.save(newContent);
+        setContent(newContent);
+        writeCache(config.cacheKey, newContent);
+        await Promise.all(config.revalidatePaths.map((p) => revalidateDashboardPath(p)));
+        toast.success(`${config.label} content saved`, {
+          description: "Your changes are now live on the public page.",
+        });
+        return true;
+      } catch (err) {
+        console.error(`[use${config.label}Content] save error:`, err);
+        toast.error(`Failed to save ${config.label} content`, {
+          description: err instanceof Error ? err.message : "Please check your connection and permissions.",
+        });
+        return false;
+      } finally {
+        setSaving(false);
       }
-      await revalidateDashboardPath("/faq");
-      await revalidateDashboardPath("/dashboard/faq");
-      toast.success("FAQ content saved successfully!", {
-        description: "Your changes are now live across GDG Jakarta.",
-      });
-      return true;
-    } catch (err) {
-      console.error("[useFaqContent] save error:", err);
-      toast.error("Failed to save FAQ content", {
-        description: err instanceof Error ? err.message : "Please check your network connection.",
-      });
-      return false;
-    } finally {
-      setSaving(false);
-    }
-  }, []);
+    },
+    [config],
+  );
 
-  const resetToDefaults = useCallback(async () => {
-    return saveContent(DEFAULT_FAQ_CONTENT);
-  }, [saveContent]);
+  const resetToDefaults = useCallback(() => saveContent(config.defaults), [saveContent, config]);
 
-  return {
-    content,
-    setContent,
-    loading,
-    saving,
-    saveContent,
-    resetToDefaults,
-  };
+  return { content, setContent, loading, saving, saveContent, resetToDefaults };
+}
+
+export function useFaqContent() {
+  return useContent(CONFIGS.faq);
 }
 
 export function usePartnershipContent() {
-  const [content, setContent] = useState<PartnershipContent>(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const cached = localStorage.getItem(LOCAL_STORAGE_PARTNERSHIP_KEY);
-        if (cached) {
-          return { ...DEFAULT_PARTNERSHIP_CONTENT, ...JSON.parse(cached) };
-        }
-      } catch {
-        // ignore cache parse error
-      }
-    }
-    return DEFAULT_PARTNERSHIP_CONTENT;
-  });
-
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    // Fetch initial doc
-    getPartnershipContentDoc()
-      .then((data) => {
-        if (isMounted && data) {
-          setContent(data);
-          try {
-            localStorage.setItem(LOCAL_STORAGE_PARTNERSHIP_KEY, JSON.stringify(data));
-          } catch {
-            // ignore
-          }
-        }
-      })
-      .catch((err) => {
-        console.warn("[usePartnershipContent] getPartnershipContentDoc error:", err);
-      })
-      .finally(() => {
-        if (isMounted) setLoading(false);
-      });
-
-    // Subscribe to real-time changes
-    const unsubscribe = subscribePartnershipContentDoc((updated) => {
-      if (isMounted && updated) {
-        setContent(updated);
-        try {
-          localStorage.setItem(LOCAL_STORAGE_PARTNERSHIP_KEY, JSON.stringify(updated));
-        } catch {
-          // ignore
-        }
-      }
-    });
-
-    return () => {
-      isMounted = false;
-      unsubscribe();
-    };
-  }, []);
-
-  const saveContent = useCallback(async (newContent: PartnershipContent) => {
-    setSaving(true);
-    try {
-      await savePartnershipContentDoc(newContent);
-      setContent(newContent);
-      try {
-        localStorage.setItem(LOCAL_STORAGE_PARTNERSHIP_KEY, JSON.stringify(newContent));
-      } catch {
-        // ignore
-      }
-      await revalidateDashboardPath("/partnership");
-      await revalidateDashboardPath("/dashboard/partnership");
-      toast.success("Partnership content saved successfully!", {
-        description: "Your changes are now live across GDG Jakarta.",
-      });
-      return true;
-    } catch (err) {
-      console.error("[usePartnershipContent] save error:", err);
-      toast.error("Failed to save Partnership content", {
-        description: err instanceof Error ? err.message : "Please check your network connection.",
-      });
-      return false;
-    } finally {
-      setSaving(false);
-    }
-  }, []);
-
-  const resetToDefaults = useCallback(async () => {
-    return saveContent(DEFAULT_PARTNERSHIP_CONTENT);
-  }, [saveContent]);
-
-  return {
-    content,
-    setContent,
-    loading,
-    saving,
-    saveContent,
-    resetToDefaults,
-  };
+  return useContent(CONFIGS.partnership);
 }
+
+export type { ContentKind };
