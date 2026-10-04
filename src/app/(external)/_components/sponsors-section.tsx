@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 
 import { ExternalLink, Handshake } from "lucide-react";
 
@@ -42,6 +43,14 @@ export function SponsorsSection({ sponsors }: SponsorsSectionProps) {
           <div className="mx-auto max-w-md rounded-xl border border-border/80 border-dashed bg-background/50 p-8 text-center">
             <Handshake className="mx-auto mb-3 size-10 text-muted-foreground/50" />
             <p className="text-muted-foreground text-[14px]">Sponsor list is currently updating. Check back soon!</p>
+            <div className="mt-4">
+              <Link
+                href="/partnership"
+                className="inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-4 py-1.5 font-medium text-xs text-foreground transition-all hover:border-foreground"
+              >
+                Learn About Partnership Opportunities &rarr;
+              </Link>
+            </div>
           </div>
         </div>
       </section>
@@ -59,6 +68,14 @@ export function SponsorsSection({ sponsors }: SponsorsSectionProps) {
             Proudly supported by organizations and tech companies driving innovation and developer empowerment in
             Jakarta.
           </p>
+          <div className="mt-4">
+            <Link
+              href="/partnership"
+              className="inline-flex items-center gap-1.5 rounded-full border border-[var(--theme-border)] bg-[var(--theme-bg-subtle)] px-4 py-1.5 font-medium text-xs text-[var(--theme-text)] transition-all hover:scale-105"
+            >
+              <span>Explore DevFest 2026 Collaboration & Sponsorship &rarr;</span>
+            </Link>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 sm:gap-6 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">

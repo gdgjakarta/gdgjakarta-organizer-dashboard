@@ -81,6 +81,12 @@ export function PublicHeader() {
               Events
             </Link>
             <Link
+              href="/partnership"
+              className="rounded-full px-4 py-1.5 text-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
+            >
+              Partnership
+            </Link>
+            <Link
               href="/faq"
               className="rounded-full px-4 py-1.5 text-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
             >
