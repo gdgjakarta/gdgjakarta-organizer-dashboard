@@ -88,7 +88,7 @@ export function getMembersColumns(
     },
     {
       id: "search",
-      accessorFn: (row) => `${row.name} ${row.email}`,
+      accessorFn: (row) => `${row.name} ${row.email} ${row.bevyUserId ?? ""}`,
       filterFn: "includesString",
       enableHiding: true,
     },
@@ -101,7 +101,24 @@ export function getMembersColumns(
           <div className="flex items-center gap-3">
             <AvatarCell name={row.original.name} avatarUrl={row.original.avatarUrl} />
             <div className="min-w-0">
-              <div className="truncate font-medium text-foreground text-sm">{row.original.name}</div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="truncate font-medium text-foreground text-sm">{row.original.name}</span>
+                {row.original.bevyUserId ? (
+                  <span
+                    className="inline-flex shrink-0 items-center rounded border border-border bg-muted/60 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+                    title={`Bevy User ID: ${row.original.bevyUserId}`}
+                  >
+                    ID: {row.original.bevyUserId}
+                  </span>
+                ) : (
+                  <span
+                    className="inline-flex shrink-0 items-center rounded border border-border border-dashed bg-muted/30 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground/60"
+                    title="No Bevy User ID assigned"
+                  >
+                    No Bevy ID
+                  </span>
+                )}
+              </div>
               {subtitle ? <div className="truncate text-muted-foreground text-xs">{subtitle}</div> : null}
               <div className="truncate text-muted-foreground text-xs">{row.original.email}</div>
             </div>
@@ -195,6 +212,18 @@ export function getMembersColumns(
                 <Copy className="size-3.5" />
                 Copy email
               </DropdownMenuItem>
+              {row.original.bevyUserId ? (
+                <DropdownMenuItem
+                  className="flex items-center gap-2"
+                  onClick={() => {
+                    navigator.clipboard.writeText(String(row.original.bevyUserId));
+                    toast.success(`Bevy ID ${row.original.bevyUserId} copied to clipboard`);
+                  }}
+                >
+                  <Copy className="size-3.5" />
+                  Copy Bevy ID
+                </DropdownMenuItem>
+              ) : null}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
