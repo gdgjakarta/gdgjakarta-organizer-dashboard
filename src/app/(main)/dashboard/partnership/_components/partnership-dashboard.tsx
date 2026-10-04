@@ -8,6 +8,8 @@ import {
   Award,
   Compass,
   ExternalLink,
+  Eye,
+  EyeOff,
   Flame,
   Gift,
   HelpCircle,
@@ -48,6 +50,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { usePartnershipContent } from "@/lib/content/hooks";
 import type { PartnershipFaq, PartnershipFormat, PartnershipTier } from "@/lib/content/types";
+import { cn } from "@/lib/utils";
 
 import { FormatDialog } from "./format-dialog";
 import { TierDialog } from "./tier-dialog";
@@ -348,15 +351,23 @@ export function PartnershipDashboard() {
                     <TableHead className="text-xs">Badge</TableHead>
                     <TableHead className="text-xs">Slots Available</TableHead>
                     <TableHead className="text-xs">Highlights</TableHead>
+                    <TableHead className="text-center text-xs">Visible</TableHead>
                     <TableHead className="text-center text-xs">Featured</TableHead>
                     <TableHead className="text-right text-xs">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {content.tiers.map((tier) => (
-                    <TableRow key={tier.id}>
+                    <TableRow key={tier.id} className={cn(tier.isActive === false && "opacity-60")}>
                       <TableCell className="font-semibold text-xs sm:text-sm">
-                        {tier.name}
+                        <div className="flex items-center gap-1.5">
+                          <span>{tier.name}</span>
+                          {tier.isActive === false && (
+                            <Badge variant="outline" className="text-[10px] text-muted-foreground border-dashed">
+                              Hidden
+                            </Badge>
+                          )}
+                        </div>
                         {tier.description && (
                           <p className="text-[11px] font-normal text-muted-foreground line-clamp-1">
                             {tier.description}
@@ -375,6 +386,17 @@ export function PartnershipDashboard() {
                       <TableCell className="text-xs font-mono">{tier.slots}</TableCell>
                       <TableCell className="text-xs text-muted-foreground">
                         {tier.highlights?.length || 0} items
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Switch
+                          checked={tier.isActive !== false}
+                          onCheckedChange={(checked) => {
+                            const updated = content.tiers.map((t) =>
+                              t.id === tier.id ? { ...t, isActive: checked } : t,
+                            );
+                            setContent({ ...content, tiers: updated });
+                          }}
+                        />
                       </TableCell>
                       <TableCell className="text-center">
                         <Switch
@@ -544,13 +566,49 @@ export function PartnershipDashboard() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {content.formats.map((fmt) => (
-                <Card key={fmt.id} className="relative flex flex-col justify-between">
+                <Card
+                  key={fmt.id}
+                  className={cn(
+                    "relative flex flex-col justify-between transition-all",
+                    fmt.isActive === false && "opacity-60 border-dashed bg-muted/20",
+                  )}
+                >
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between">
-                      <Badge variant="secondary" className="text-[10px]">
-                        {fmt.tag}
-                      </Badge>
+                      <div className="flex items-center gap-1.5">
+                        <Badge variant="secondary" className="text-[10px]">
+                          {fmt.tag}
+                        </Badge>
+                        {fmt.isActive === false && (
+                          <Badge variant="outline" className="text-[10px] text-muted-foreground border-dashed">
+                            Hidden
+                          </Badge>
+                        )}
+                      </div>
                       <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className={cn(
+                            "size-7",
+                            fmt.isActive === false
+                              ? "text-muted-foreground hover:text-foreground"
+                              : "text-primary hover:text-primary",
+                          )}
+                          title={
+                            fmt.isActive === false
+                              ? "Hidden from public page (Click to show)"
+                              : "Visible on public page (Click to hide)"
+                          }
+                          onClick={() => {
+                            const updated = content.formats.map((f) =>
+                              f.id === fmt.id ? { ...f, isActive: f.isActive === false } : f,
+                            );
+                            setContent({ ...content, formats: updated });
+                          }}
+                        >
+                          {fmt.isActive === false ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                        </Button>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -601,18 +659,48 @@ export function PartnershipDashboard() {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {content.whyUs.map((item, idx) => (
-                  <div key={item.id || idx} className="rounded-xl border p-4 space-y-2 bg-muted/20">
+                  <div
+                    key={item.id || idx}
+                    className={cn(
+                      "rounded-xl border p-4 space-y-2 bg-muted/20 transition-all",
+                      item.isActive === false && "opacity-60 border-dashed",
+                    )}
+                  >
                     <div className="flex items-center justify-between">
-                      <Input
-                        value={item.badge}
-                        onChange={(e) => {
-                          const updated = [...content.whyUs];
-                          updated[idx] = { ...item, badge: e.target.value };
-                          setContent({ ...content, whyUs: updated });
-                        }}
-                        className="text-[10px] h-6 w-28 bg-background"
-                        placeholder="Direct Reach"
-                      />
+                      <div className="flex items-center gap-1.5">
+                        <Input
+                          value={item.badge}
+                          onChange={(e) => {
+                            const updated = [...content.whyUs];
+                            updated[idx] = { ...item, badge: e.target.value };
+                            setContent({ ...content, whyUs: updated });
+                          }}
+                          className="text-[10px] h-6 w-28 bg-background"
+                          placeholder="Direct Reach"
+                        />
+                        {item.isActive === false && (
+                          <Badge variant="outline" className="text-[10px] text-muted-foreground border-dashed">
+                            Hidden
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <Label
+                          htmlFor={`whyus-active-${item.id || idx}`}
+                          className="text-[11px] text-muted-foreground cursor-pointer"
+                        >
+                          Visible
+                        </Label>
+                        <Switch
+                          id={`whyus-active-${item.id || idx}`}
+                          checked={item.isActive !== false}
+                          onCheckedChange={(checked) => {
+                            const updated = [...content.whyUs];
+                            updated[idx] = { ...item, isActive: checked };
+                            setContent({ ...content, whyUs: updated });
+                          }}
+                        />
+                      </div>
                     </div>
                     <Input
                       value={item.title}
@@ -652,11 +740,41 @@ export function PartnershipDashboard() {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {content.benefits.map((b, idx) => (
-                  <div key={b.id || idx} className="rounded-xl border p-4 space-y-3 bg-muted/20">
+                  <div
+                    key={b.id || idx}
+                    className={cn(
+                      "rounded-xl border p-4 space-y-3 bg-muted/20 transition-all",
+                      b.isActive === false && "opacity-60 border-dashed",
+                    )}
+                  >
                     <div className="flex items-center justify-between">
-                      <Badge variant="outline" className="text-[10px]">
-                        {b.category}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-[10px]">
+                          {b.category}
+                        </Badge>
+                        {b.isActive === false && (
+                          <Badge variant="outline" className="text-[10px] text-muted-foreground border-dashed">
+                            Hidden
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <Label
+                          htmlFor={`benefit-active-${b.id || idx}`}
+                          className="text-[11px] text-muted-foreground cursor-pointer"
+                        >
+                          Visible
+                        </Label>
+                        <Switch
+                          id={`benefit-active-${b.id || idx}`}
+                          checked={b.isActive !== false}
+                          onCheckedChange={(checked) => {
+                            const updated = [...content.benefits];
+                            updated[idx] = { ...b, isActive: checked };
+                            setContent({ ...content, benefits: updated });
+                          }}
+                        />
+                      </div>
                     </div>
                     <Input
                       value={b.title}

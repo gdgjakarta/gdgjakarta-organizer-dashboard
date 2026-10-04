@@ -8,6 +8,7 @@ import { usePartnershipContent } from "@/lib/content/hooks";
 export function PartnershipTiers() {
   const { content } = usePartnershipContent();
   const contactEmail = content.hero.contactEmail || "hello@gdgjakarta.org";
+  const visibleTiers = content.tiers.filter((tier) => tier.isActive !== false);
 
   return (
     <section id="tiers" className="bg-muted/30 py-16 lg:py-24">
@@ -35,7 +36,7 @@ export function PartnershipTiers() {
         </div>
 
         <div className="mt-12 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {content.tiers.map((tier) => (
+          {visibleTiers.map((tier) => (
             <div
               key={tier.id || tier.name}
               className={`relative flex flex-col justify-between rounded-2xl border bg-background p-6 shadow-xs transition-all duration-300 hover:shadow-lg ${

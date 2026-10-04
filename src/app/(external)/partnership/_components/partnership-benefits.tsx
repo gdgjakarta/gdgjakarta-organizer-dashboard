@@ -15,6 +15,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
 
 export function PartnershipBenefits() {
   const { content } = usePartnershipContent();
+  const visibleBenefits = content.benefits.filter((benefit) => benefit.isActive !== false);
 
   return (
     <section className="container mx-auto px-4 py-16 sm:px-6 lg:px-8 lg:py-24">
@@ -41,7 +42,7 @@ export function PartnershipBenefits() {
       </div>
 
       <div className="mt-12 grid grid-cols-1 gap-6 sm:grid-cols-2">
-        {content.benefits.map((benefit, idx) => {
+        {visibleBenefits.map((benefit, idx) => {
           const Icon = ICON_MAP[benefit.iconName] || MonitorCheck;
           return (
             <div

@@ -32,6 +32,7 @@ export function TierDialog({ open, onOpenChange, tier, onSave }: TierDialogProps
   const [name, setName] = useState("");
   const [badge, setBadge] = useState("");
   const [popular, setPopular] = useState(false);
+  const [isActive, setIsActive] = useState(true);
   const [description, setDescription] = useState("");
   const [slots, setSlots] = useState("");
   const [highlights, setHighlights] = useState<string[]>([]);
@@ -43,6 +44,7 @@ export function TierDialog({ open, onOpenChange, tier, onSave }: TierDialogProps
       setName(tier.name);
       setBadge(tier.badge ?? "");
       setPopular(Boolean(tier.popular));
+      setIsActive(tier.isActive !== false);
       setDescription(tier.description);
       setSlots(tier.slots);
       setHighlights(tier.highlights ? [...tier.highlights] : []);
@@ -50,6 +52,7 @@ export function TierDialog({ open, onOpenChange, tier, onSave }: TierDialogProps
       setName("");
       setBadge("");
       setPopular(false);
+      setIsActive(true);
       setDescription("");
       setSlots("Limited Slots");
       setHighlights([
@@ -81,6 +84,7 @@ export function TierDialog({ open, onOpenChange, tier, onSave }: TierDialogProps
       name: name.trim(),
       badge: badge.trim() || undefined,
       popular,
+      isActive,
       description: description.trim(),
       slots: slots.trim() || "Available",
       highlights: highlights.filter(Boolean),
@@ -125,23 +129,33 @@ export function TierDialog({ open, onOpenChange, tier, onSave }: TierDialogProps
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="space-y-1.5 sm:col-span-1">
                 <Label htmlFor="tier-badge">Badge Label (Optional)</Label>
                 <Input
                   id="tier-badge"
-                  placeholder="e.g. Most Popular, Flagship Lead"
+                  placeholder="e.g. Most Popular"
                   value={badge}
                   onChange={(e) => setBadge(e.target.value)}
                 />
               </div>
 
-              <div className="flex items-center justify-between rounded-lg border p-3 mt-auto">
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <div className="space-y-0.5">
+                  <Label htmlFor="tier-status" className="text-xs font-medium cursor-pointer">
+                    Visible on Public Page
+                  </Label>
+                  <p className="text-[11px] text-muted-foreground">Show in package grid</p>
+                </div>
+                <Switch id="tier-status" checked={isActive} onCheckedChange={setIsActive} />
+              </div>
+
+              <div className="flex items-center justify-between rounded-lg border p-3">
                 <div className="space-y-0.5">
                   <Label htmlFor="tier-popular" className="text-xs font-medium cursor-pointer">
-                    Featured / Most Popular
+                    Featured / Popular
                   </Label>
-                  <p className="text-[11px] text-muted-foreground">Applies highlight ring and accent styling</p>
+                  <p className="text-[11px] text-muted-foreground">Accent ring styling</p>
                 </div>
                 <Switch id="tier-popular" checked={popular} onCheckedChange={setPopular} />
               </div>

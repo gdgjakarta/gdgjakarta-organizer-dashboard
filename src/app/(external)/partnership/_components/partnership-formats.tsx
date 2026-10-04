@@ -15,6 +15,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
 
 export function PartnershipFormats() {
   const { content } = usePartnershipContent();
+  const visibleFormats = content.formats.filter((format) => format.isActive !== false);
 
   return (
     <section className="bg-muted/30 py-16 lg:py-24">
@@ -42,7 +43,7 @@ export function PartnershipFormats() {
         </div>
 
         <div className="mt-12 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {content.formats.map((format, idx) => {
+          {visibleFormats.map((format, idx) => {
             const Icon = ICON_MAP[format.iconName] || Rocket;
             return (
               <div

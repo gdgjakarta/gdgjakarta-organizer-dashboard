@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import type { PartnershipFormat } from "@/lib/content/types";
 
@@ -32,6 +33,7 @@ export function FormatDialog({ open, onOpenChange, format, onSave }: FormatDialo
   const [tag, setTag] = useState("");
   const [iconName, setIconName] = useState("Rocket");
   const [description, setDescription] = useState("");
+  const [isActive, setIsActive] = useState(true);
   const [deliverables, setDeliverables] = useState<string[]>([]);
   const [newDeliverable, setNewDeliverable] = useState("");
 
@@ -42,12 +44,14 @@ export function FormatDialog({ open, onOpenChange, format, onSave }: FormatDialo
       setTag(format.tag);
       setIconName(format.iconName || "Rocket");
       setDescription(format.description);
+      setIsActive(format.isActive !== false);
       setDeliverables(format.deliverables ? [...format.deliverables] : []);
     } else {
       setTitle("");
       setTag("Special Activation");
       setIconName("Rocket");
       setDescription("");
+      setIsActive(true);
       setDeliverables([
         "Dedicated speaking or presentation session",
         "Branded digital assets & banners",
@@ -76,6 +80,7 @@ export function FormatDialog({ open, onOpenChange, format, onSave }: FormatDialo
       title: title.trim(),
       tag: tag.trim() || "Collaboration",
       iconName,
+      isActive,
       description: description.trim(),
       deliverables: deliverables.filter(Boolean),
     };
@@ -121,21 +126,33 @@ export function FormatDialog({ open, onOpenChange, format, onSave }: FormatDialo
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="fmt-icon">Icon Graphic</Label>
-              <select
-                id="fmt-icon"
-                value={iconName}
-                onChange={(e) => setIconName(e.target.value)}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              >
-                <option value="Rocket">Rocket (Conference / Launch)</option>
-                <option value="Laptop">Laptop (Hands-on Codelab)</option>
-                <option value="Terminal">Terminal (Hackathon / Code)</option>
-                <option value="Presentation">Presentation (Tech Talks / Meetups)</option>
-                <option value="Flame">Flame (Gamified Booth)</option>
-                <option value="Gift">Gift (Merch & Swag)</option>
-              </select>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="fmt-icon">Icon Graphic</Label>
+                <select
+                  id="fmt-icon"
+                  value={iconName}
+                  onChange={(e) => setIconName(e.target.value)}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  <option value="Rocket">Rocket (Conference / Launch)</option>
+                  <option value="Laptop">Laptop (Hands-on Codelab)</option>
+                  <option value="Terminal">Terminal (Hackathon / Code)</option>
+                  <option value="Presentation">Presentation (Tech Talks / Meetups)</option>
+                  <option value="Flame">Flame (Gamified Booth)</option>
+                  <option value="Gift">Gift (Merch & Swag)</option>
+                </select>
+              </div>
+
+              <div className="flex items-center justify-between rounded-lg border p-2.5">
+                <div className="space-y-0.5">
+                  <Label htmlFor="fmt-status" className="text-xs font-medium cursor-pointer">
+                    Visible on Public Page
+                  </Label>
+                  <p className="text-[11px] text-muted-foreground">Show in collaboration formats</p>
+                </div>
+                <Switch id="fmt-status" checked={isActive} onCheckedChange={setIsActive} />
+              </div>
             </div>
 
             <div className="space-y-1.5">

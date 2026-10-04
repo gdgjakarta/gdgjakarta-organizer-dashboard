@@ -69,6 +69,7 @@ export interface PartnershipWhyUsItem {
   description: string;
   badge: string;
   iconName: string;
+  isActive?: boolean;
 }
 
 export interface PartnershipDevfestHighlight {
@@ -92,6 +93,7 @@ export interface PartnershipFormat {
   description: string;
   iconName: string;
   deliverables: string[];
+  isActive?: boolean;
 }
 
 export interface PartnershipBenefit {
@@ -100,6 +102,7 @@ export interface PartnershipBenefit {
   title: string;
   iconName: string;
   points: string[];
+  isActive?: boolean;
 }
 
 export interface PartnershipTier {
@@ -111,6 +114,7 @@ export interface PartnershipTier {
   slots: string;
   price?: string;
   highlights: string[];
+  isActive?: boolean;
 }
 
 export interface PartnershipFaq {
