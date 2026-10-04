@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 import { GoogleButton } from "@/app/(main)/auth/_components/social-auth/google-button";
 import { GdgLogo } from "@/components/gdg-logo";
@@ -9,7 +10,11 @@ import { Button } from "@/components/ui/button";
 import { APP_CONFIG } from "@/config/app-config";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
+import { PublicMobileNav } from "./public-mobile-nav";
+import { isPublicNavItemActive, PUBLIC_NAV_ITEMS } from "./public-nav-items";
+
 export function PublicHeader() {
+  const pathname = usePathname();
   const user = useAuthStore((s) => s.user);
   const isLoading = useAuthStore((s) => s.isLoading);
   const { isNavigating } = useNavigationProgress();
@@ -67,36 +72,25 @@ export function PublicHeader() {
           </Link>
 
           {/* Pill Navigation */}
-          <nav className="hidden items-center gap-1 font-medium text-[14px] md:flex">
-            <Link
-              href="/"
-              className="rounded-full px-4 py-1.5 text-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
-            >
-              Home
-            </Link>
-            <Link
-              href="/events"
-              className="rounded-full px-4 py-1.5 text-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
-            >
-              Events
-            </Link>
-            <Link
-              href="/partnership"
-              className="rounded-full px-4 py-1.5 text-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
-            >
-              Partnership
-            </Link>
-            <Link
-              href="/faq"
-              className="rounded-full px-4 py-1.5 text-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
-            >
-              FAQ
-            </Link>
+          <nav aria-label="Main navigation" className="hidden items-center gap-1 font-medium text-[14px] md:flex">
+            {PUBLIC_NAV_ITEMS.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                aria-current={isPublicNavItemActive(pathname, item.href) ? "page" : undefined}
+                className="rounded-full px-4 py-1.5 text-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
+              >
+                {item.title}
+              </Link>
+            ))}
           </nav>
         </div>
 
         {/* Right Actions */}
-        <div className="flex items-center gap-3">{renderAuthAction()}</div>
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div className="hidden items-center sm:flex">{renderAuthAction()}</div>
+          <PublicMobileNav authAction={renderAuthAction()} />
+        </div>
       </div>
     </header>
   );
