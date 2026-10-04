@@ -14,13 +14,18 @@ export default async function Page() {
 
   try {
     const [eventsResponse, teamMembers, membersResponse] = await Promise.all([
-      getBevyChapterEvents(undefined, 50, 1, false),
+      getBevyChapterEvents(undefined, 50, 1, false, "Published"),
       getBevyChapterTeams(),
       getBevyChapterMembers(undefined, 50, 1),
     ]);
 
     events = (eventsResponse?.results ?? [])
-      .filter((e) => !e.is_hidden && !(e as { hidden?: boolean }).hidden)
+      .filter(
+        (e) =>
+          !e.is_hidden &&
+          !(e as { hidden?: boolean }).hidden &&
+          (e.status ? e.status.toLowerCase() === "published" : true),
+      )
       .map((e) => ({
         id: String(e.id),
         title: e.title || "Untitled Event",

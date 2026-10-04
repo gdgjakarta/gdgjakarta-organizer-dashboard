@@ -14,8 +14,15 @@ interface GDGUpcomingEventsProps {
 export function GDGUpcomingEvents({ events }: GDGUpcomingEventsProps) {
   const _now = new Date();
 
-  // Pick up to 5 upcoming or recent non-hidden events
-  const displayedEvents = events.filter((e) => !e.is_hidden && !(e as { hidden?: boolean }).hidden).slice(0, 5);
+  // Pick up to 5 upcoming or recent published, non-hidden events
+  const displayedEvents = events
+    .filter(
+      (e) =>
+        !e.is_hidden &&
+        !(e as { hidden?: boolean }).hidden &&
+        (e.status ? e.status.toLowerCase() === "published" || e.status === "Completed" : true),
+    )
+    .slice(0, 5);
 
   return (
     <Card>

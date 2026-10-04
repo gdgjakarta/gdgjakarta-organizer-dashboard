@@ -38,7 +38,7 @@ function getAudienceLabel(option: string) {
 export function Events({ events, totalCount }: { events: EventRow[]; totalCount?: number }) {
   const [rowSelection, setRowSelection] = React.useState({});
   const [sorting, setSorting] = React.useState<SortingState>([{ id: "startDate", desc: true }]);
-  const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
+  const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([{ id: "status", value: "Published" }]);
   const [columnVisibility, setColumnVisibility] = React.useState<ColumnVisibilityState>({
     search: false,
   });
@@ -69,7 +69,7 @@ export function Events({ events, totalCount }: { events: EventRow[]; totalCount?
   });
 
   const searchQuery = (table.getColumn("search")?.getFilterValue() as string | undefined) ?? "";
-  const statusFilter = (table.getColumn("status")?.getFilterValue() as string | undefined) ?? eventFilters.status[0];
+  const statusFilter = (table.getColumn("status")?.getFilterValue() as string | undefined) ?? "All";
   const eventTypeFilter =
     (table.getColumn("eventType")?.getFilterValue() as string | undefined) ?? eventFilters.eventType[0];
   const audienceFilter =

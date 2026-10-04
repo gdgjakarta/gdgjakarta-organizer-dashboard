@@ -13,8 +13,10 @@ export default async function EventsDirectoryPage() {
   let totalCount = 0;
 
   try {
-    const eventsData = await getBevyChapterEvents(BEVY_CONFIG.chapterId, EVENTS_PER_PAGE, 1, false);
-    initialEvents = (eventsData?.results ?? []).filter((e) => !e.is_hidden && !e.hidden);
+    const eventsData = await getBevyChapterEvents(BEVY_CONFIG.chapterId, EVENTS_PER_PAGE, 1, false, "Published");
+    initialEvents = (eventsData?.results ?? []).filter(
+      (e) => !e.is_hidden && !e.hidden && (e.status ? e.status.toLowerCase() === "published" : true),
+    );
     totalCount = eventsData?.count ?? initialEvents.length;
   } catch (error) {
     console.error("[Events Directory] Failed to load events:", error);

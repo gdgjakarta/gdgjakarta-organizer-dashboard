@@ -51,8 +51,14 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
         updated_at: new Date().toISOString(),
       };
     } else {
-      const chapterEvents = await getBevyChapterEvents(undefined, 100, 1, false);
-      const matched = chapterEvents?.results?.find((e) => String(e.id) === eventId);
+      const chapterEvents = await getBevyChapterEvents(undefined, 100, 1, false, "Published");
+      const matched = chapterEvents?.results?.find(
+        (e) =>
+          String(e.id) === eventId &&
+          !e.is_hidden &&
+          !(e as { hidden?: boolean }).hidden &&
+          (e.status ? e.status.toLowerCase() === "published" : true),
+      );
       if (matched) {
         event = {
           id: String(matched.id),

@@ -12,9 +12,12 @@ export default async function Page() {
   let totalCount: number | undefined;
 
   try {
-    const eventsResponse = await getBevyChapterEvents(undefined, 100, 1, false);
+    const eventsResponse = await getBevyChapterEvents(undefined, 100, 1, false, "Published");
     const fetchedEvents = (eventsResponse?.results ?? []).filter(
-      (event) => !event.is_hidden && !(event as { hidden?: boolean }).hidden,
+      (event) =>
+        !event.is_hidden &&
+        !(event as { hidden?: boolean }).hidden &&
+        (event.status ? event.status.toLowerCase() === "published" : true),
     );
     totalCount = eventsResponse?.count ?? fetchedEvents.length;
 

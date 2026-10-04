@@ -31,9 +31,12 @@ export async function syncBevyEventsToFirestore(): Promise<{
   error?: string;
 }> {
   try {
-    const eventsResponse = await fetchBevyChapterEventsAction(100, 1, false);
+    const eventsResponse = await fetchBevyChapterEventsAction(100, 1, false, "Published");
     const bevyEvents = (eventsResponse?.results ?? []).filter(
-      (e) => !e.is_hidden && !(e as { hidden?: boolean }).hidden,
+      (e) =>
+        !e.is_hidden &&
+        !(e as { hidden?: boolean }).hidden &&
+        (e.status ? e.status.toLowerCase() === "published" : true),
     );
 
     if (bevyEvents.length === 0) {

@@ -82,7 +82,11 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
 
   const eventMap = new Map<string, FirestoreEvent>();
   for (const ev of allEvents) {
-    if (!ev.is_hidden && !(ev as { hidden?: boolean }).hidden) {
+    if (
+      !ev.is_hidden &&
+      !(ev as { hidden?: boolean }).hidden &&
+      (ev.status ? ev.status.toLowerCase() === "published" || ev.status === "Completed" : true)
+    ) {
       eventMap.set(String(ev.id), ev);
     }
   }

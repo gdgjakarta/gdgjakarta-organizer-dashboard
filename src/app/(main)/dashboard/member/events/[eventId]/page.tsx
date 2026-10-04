@@ -47,9 +47,15 @@ export default async function MemberEventDetailPage({ params }: MemberEventDetai
         updated_at: new Date().toISOString(),
       };
     } else {
-      const chapterEvents = await getBevyChapterEvents(undefined, 100, 1, false);
-      const matched = chapterEvents?.results?.find((e) => String(e.id) === eventId);
-      if (matched && !matched.is_hidden && !(matched as { hidden?: boolean }).hidden) {
+      const chapterEvents = await getBevyChapterEvents(undefined, 100, 1, false, "Published");
+      const matched = chapterEvents?.results?.find(
+        (e) =>
+          String(e.id) === eventId &&
+          !e.is_hidden &&
+          !(e as { hidden?: boolean }).hidden &&
+          (e.status ? e.status.toLowerCase() === "published" : true),
+      );
+      if (matched) {
         event = {
           id: String(matched.id),
           title: matched.title,

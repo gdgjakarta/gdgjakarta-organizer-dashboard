@@ -5,8 +5,13 @@ import { getBevyChapterEvents, getBevyChapterMembers, getBevyChapterTeams } from
 /**
  * Server action to fetch Bevy chapter events safely on the server
  */
-export async function fetchBevyChapterEventsAction(pageSize = 100, page = 1, includeHidden = false) {
-  return await getBevyChapterEvents(undefined, pageSize, page, includeHidden);
+export async function fetchBevyChapterEventsAction(
+  pageSize = 100,
+  page = 1,
+  includeHidden = false,
+  status = "Published",
+) {
+  return await getBevyChapterEvents(undefined, pageSize, page, includeHidden, status);
 }
 
 /**

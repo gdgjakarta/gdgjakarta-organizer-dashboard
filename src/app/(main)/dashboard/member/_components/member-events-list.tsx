@@ -59,7 +59,12 @@ export function MemberEventsList({ events, myRegistrations = [] }: MemberEventsL
     registrationMap.set(String(reg.event_id), reg);
   }
 
-  const visibleEvents = events.filter((e) => !e.is_hidden && !(e as { hidden?: boolean }).hidden);
+  const visibleEvents = events.filter(
+    (e) =>
+      !e.is_hidden &&
+      !(e as { hidden?: boolean }).hidden &&
+      (e.status ? e.status.toLowerCase() === "published" || e.status === "Completed" : true),
+  );
   const publishedEvents = visibleEvents.filter((e) => e.status === "Published" || e.status === "Completed");
   const upcomingEvents = publishedEvents.filter((e) => !isEventPast(e));
   const pastEvents = publishedEvents.filter((e) => isEventPast(e));
