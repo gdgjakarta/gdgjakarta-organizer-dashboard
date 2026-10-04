@@ -17,6 +17,27 @@ export function getBevyManageEventUrl(
 }
 
 /**
+ * Resolves standard Bevy organizer dashboard URLs.
+ * Format: https://gdg.community.dev/dashboard/{chapterSlug}/{page}
+ * Pages: home, events, emails, members, settings/team.
+ */
+export function getBevyDashboardUrl(
+  page: "home" | "events" | "emails" | "members" | "settings/team" | (string & {}),
+  chapterSlug: string = DEFAULT_CHAPTER_SLUG,
+): string {
+  const slug = chapterSlug || "gdg-jakarta";
+  return `https://gdg.community.dev/dashboard/${slug}/${page}`;
+}
+
+/**
+ * Resolves Bevy team management URL.
+ * Format: https://gdg.community.dev/dashboard/{chapterSlug}/settings/team
+ */
+export function getBevyTeamSettingsUrl(chapterSlug: string = DEFAULT_CHAPTER_SLUG): string {
+  return getBevyDashboardUrl("settings/team", chapterSlug);
+}
+
+/**
  * Mapped configuration entry matching KawalEvent ConfigMap model:
  * [ { "key": "<chapterId>", "value": "..." } ]
  */

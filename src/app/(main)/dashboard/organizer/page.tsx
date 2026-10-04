@@ -1,3 +1,5 @@
+import type { Metadata } from "next";
+
 import { BEVY_CONFIG } from "@/config/bevy-config";
 import { organizers as fallbackOrganizers } from "@/data/organizers";
 import {
@@ -15,6 +17,11 @@ import { OrganizerHeader } from "./_components/organizer-header";
 import { type CommunityOrganizerItem, RecentMembersWidget } from "./_components/recent-members-widget";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Home",
+  description: "GDG Jakarta organizer dashboard overview and quick actions.",
+};
 
 export default async function Page() {
   let events: FirestoreEvent[] = [];

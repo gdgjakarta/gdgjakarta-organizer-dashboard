@@ -16,6 +16,7 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Kbd } from "@/components/ui/kbd";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { getBevyDashboardUrl } from "@/config/remote-config-utils";
 import { dataTableFeatures } from "@/lib/data-table-features";
 
 import { type EventRow, eventFilters } from "./data";
@@ -238,15 +239,10 @@ export function Events({ events, totalCount }: { events: EventRow[]; totalCount?
               <Kbd className="h-4 text-[10px]">⌘K</Kbd>
             </InputGroupAddon>
           </InputGroup>
-          <Button size="sm" asChild>
-            <a
-              href="https://gdg.community.dev/gdg-jakarta/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="gap-1.5"
-            >
+          <Button size="sm" variant="outline" asChild>
+            <a href={getBevyDashboardUrl("events")} target="_blank" rel="noopener noreferrer" className="gap-1.5">
               <ExternalLink className="size-3.5" />
-              Create in Bevy
+              Open in Bevy
             </a>
           </Button>
         </CardAction>

@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 
-import { Calendar, Users } from "lucide-react";
+import { Calendar, ExternalLink, Users } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { getBevyDashboardUrl } from "@/config/remote-config-utils";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
 export function OrganizerHeader() {
@@ -22,6 +23,12 @@ export function OrganizerHeader() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2 lg:w-fit">
+        <Button size="sm" variant="outline" asChild>
+          <a href={getBevyDashboardUrl("home")} target="_blank" rel="noopener noreferrer" className="gap-1.5">
+            <ExternalLink className="size-3.5" />
+            Open in Bevy
+          </a>
+        </Button>
         <Button size="sm" variant="outline" asChild>
           <Link href="/dashboard/members">
             <Users className="size-3.5" />

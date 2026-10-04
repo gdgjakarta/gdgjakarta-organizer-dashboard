@@ -1,9 +1,16 @@
+import type { Metadata } from "next";
+
 import { getBevyChapterEvents } from "@/lib/bevy/client";
 import type { FirestoreEvent } from "@/lib/firestore/types";
 
 import { MemberEventsList } from "./_components/member-events-list";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Home",
+  description: "Browse GDG Jakarta upcoming community events and registrations.",
+};
 
 export default async function MemberDashboardPage() {
   let events: FirestoreEvent[] = [];

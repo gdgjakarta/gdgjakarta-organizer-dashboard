@@ -1,4 +1,5 @@
 import { format, isFuture, parseISO } from "date-fns";
+import type { Metadata } from "next";
 
 import { getAllBevyChapterEvents } from "@/lib/bevy/client";
 
@@ -6,6 +7,11 @@ import { type EventRow, type EventStatus, fallbackEvents } from "./_components/d
 import { Events } from "./_components/events";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Events",
+  description: "Manage and monitor GDG Jakarta meetups, devlabs, and conferences.",
+};
 
 export default async function Page() {
   let eventRows: EventRow[] = [];

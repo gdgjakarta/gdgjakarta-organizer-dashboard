@@ -3,7 +3,7 @@ import {
   CalendarCheck,
   Handshake,
   HelpCircle,
-  LayoutDashboard,
+  House,
   type LucideIcon,
   Mail,
   ShoppingBag,
@@ -56,9 +56,9 @@ export const organizerSidebarItems: NavGroup[] = [
     items: [
       {
         id: "default",
-        title: "Dashboard",
+        title: "Home",
         url: "/dashboard/organizer",
-        icon: LayoutDashboard,
+        icon: House,
       },
     ],
   },
@@ -74,7 +74,7 @@ export const organizerSidebarItems: NavGroup[] = [
       },
       {
         id: "email-manager",
-        title: "Email Manager",
+        title: "Emails",
         url: "/dashboard/email-manager",
         icon: Mail,
       },
@@ -122,9 +122,9 @@ export const memberSidebarItems: NavGroup[] = [
     items: [
       {
         id: "default",
-        title: "Dashboard",
+        title: "Home",
         url: "/dashboard/member",
-        icon: LayoutDashboard,
+        icon: House,
       },
     ],
   },

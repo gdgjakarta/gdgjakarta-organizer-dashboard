@@ -126,7 +126,7 @@ export function EventDetailHeader({ event, totalRegistrations, totalApproved }: 
             <Button size="sm" asChild className="gap-1.5">
               <a
                 href={
-                  event.id ? getBevyManageEventUrl(event.id) : event.url || "https://gdg.community.dev/gdg-jakarta/"
+                  event.id ? getBevyManageEventUrl(event.id) : (event.url ?? "https://gdg.community.dev/gdg-jakarta/")
                 }
                 target="_blank"
                 rel="noopener noreferrer"

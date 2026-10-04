@@ -1,4 +1,5 @@
 import { format, parseISO } from "date-fns";
+import type { Metadata } from "next";
 
 import { getBevyChapterMembers, getBevyChapterTeams } from "@/lib/bevy/client";
 import { splitFullName } from "@/lib/utils";
@@ -7,6 +8,11 @@ import { members as fallbackMembers, type MemberRow } from "./_components/data";
 import { Members } from "./_components/members";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Members",
+  description: "Manage GDG Jakarta community members, attendees, and organizers.",
+};
 
 export default async function Page() {
   let memberRows: MemberRow[] = [];

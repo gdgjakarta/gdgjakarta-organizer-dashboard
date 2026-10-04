@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   Code2,
   Copy,
+  ExternalLink,
   FileSpreadsheet,
   Info,
   Layers,
@@ -21,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { getBevyDashboardUrl } from "@/config/remote-config-utils";
 
 import { EmailBlastDialog } from "./email-blast-dialog";
 
@@ -55,7 +57,7 @@ export function EmailManager() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
-            <h1 className="font-bold text-3xl tracking-tight">Email Manager</h1>
+            <h1 className="font-bold text-3xl tracking-tight">Emails</h1>
             <Badge variant="secondary" className="gap-1 px-2 py-0.5 text-xs font-semibold">
               <Sparkles className="size-3 text-amber-500" />
               Campaign Hub
@@ -66,6 +68,12 @@ export function EmailManager() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Button size="default" variant="outline" asChild className="gap-1.5 shadow-xs">
+            <a href={getBevyDashboardUrl("emails")} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="size-4" />
+              Open in Bevy
+            </a>
+          </Button>
           <EmailBlastDialog
             trigger={
               <Button size="default" className="gap-2 shadow-xs">

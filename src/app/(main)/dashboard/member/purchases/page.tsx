@@ -13,7 +13,7 @@ export default function MemberPurchasesPage() {
         <Button variant="ghost" size="sm" asChild className="gap-2 text-muted-foreground hover:text-foreground">
           <Link href="/dashboard/member">
             <ArrowLeft className="size-4" />
-            Back to Dashboard
+            Back to Home
           </Link>
         </Button>
       </div>

@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { getBevyTeamSettingsUrl } from "@/config/remote-config-utils";
 import type { FirestoreMember } from "@/lib/firestore/types";
 import { getInitials } from "@/lib/utils";
 
@@ -49,6 +50,16 @@ export function CommunityOrganizersWidget({ organizers, members }: RecentMembers
     <Card>
       <CardHeader>
         <CardTitle className="text-sm">Community Organizers</CardTitle>
+        <CardAction>
+          <a
+            href={getBevyTeamSettingsUrl()}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-muted-foreground text-xs transition-colors hover:text-foreground"
+          >
+            Manage Team on Bevy <ExternalLink className="size-3.5" />
+          </a>
+        </CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         {displayedOrganizers.length === 0 ? (

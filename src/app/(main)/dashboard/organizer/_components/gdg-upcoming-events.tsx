@@ -1,19 +1,52 @@
 import Link from "next/link";
 
-import { format, parseISO } from "date-fns";
+import { format, isFuture, parseISO } from "date-fns";
 import { ArrowRight, Users } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { FirestoreEvent } from "@/lib/firestore/types";
+import { cn } from "@/lib/utils";
 
 interface GDGUpcomingEventsProps {
   events: FirestoreEvent[];
 }
 
-export function GDGUpcomingEvents({ events }: GDGUpcomingEventsProps) {
-  const _now = new Date();
+function DropRateBadge({
+  totalAttendees,
+  checkinCount,
+  isUpcoming,
+}: {
+  totalAttendees: number;
+  checkinCount: number;
+  isUpcoming: boolean;
+}) {
+  if (totalAttendees <= 0 || (isUpcoming && checkinCount === 0)) {
+    return <span className="text-muted-foreground text-xs">—</span>;
+  }
 
+  const dropped = Math.max(0, totalAttendees - checkinCount);
+  const dropRate = (dropped / totalAttendees) * 100;
+  const formattedRate = `${dropRate % 1 === 0 ? dropRate.toFixed(0) : dropRate.toFixed(1)}%`;
+
+  let badgeStyle = "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
+  if (dropRate > 60) {
+    badgeStyle = "border-rose-500/20 bg-rose-500/10 text-rose-600 dark:text-rose-400";
+  } else if (dropRate > 35) {
+    badgeStyle = "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400";
+  }
+
+  return (
+    <div className="flex items-center gap-1.5 text-sm">
+      <Badge variant="outline" className={cn("shrink-0 px-1.5 py-0 font-medium text-xs tabular-nums", badgeStyle)}>
+        {formattedRate}
+      </Badge>
+      <span className="text-muted-foreground text-xs tabular-nums">({dropped} no-show)</span>
+    </div>
+  );
+}
+
+export function GDGUpcomingEvents({ events }: GDGUpcomingEventsProps) {
   // Pick up to 5 upcoming or recent published, non-hidden events
   const displayedEvents = events
     .filter(
@@ -42,22 +75,30 @@ export function GDGUpcomingEvents({ events }: GDGUpcomingEventsProps) {
           <div className="py-6 text-center text-muted-foreground text-sm">No upcoming events found.</div>
         ) : (
           displayedEvents.map((event) => {
-            const _eventDate = new Date();
             let monthStr = "EVENT";
             let dayStr = "—";
+            let isUpcoming = false;
 
             if (event.start_date) {
               try {
                 const parsed = parseISO(event.start_date);
                 monthStr = format(parsed, "MMM");
                 dayStr = format(parsed, "d");
+                isUpcoming = event.status !== "Completed" && isFuture(parsed);
               } catch {
                 // Ignore parse errors
               }
             }
 
+            const totalAttendees =
+              event.total_registrations ||
+              event.total_approved ||
+              (event as { total_attendees?: number }).total_attendees ||
+              0;
+            const checkinCount = event.total_checked_in ?? (event as { checkin_count?: number }).checkin_count ?? 0;
+
             return (
-              <div key={event.id} className="flex items-center justify-between gap-4">
+              <div key={event.id} className="flex items-center justify-between gap-3 sm:gap-4">
                 <div className="flex min-w-0 items-center gap-3">
                   <div className="size-11 shrink-0 overflow-hidden rounded-md border bg-muted/30">
                     <div className="grid h-1/3 place-items-center border-b bg-muted/60 font-semibold text-[9px] text-muted-foreground uppercase leading-none">
@@ -68,25 +109,29 @@ export function GDGUpcomingEvents({ events }: GDGUpcomingEventsProps) {
 
                   <div className="flex min-w-0 flex-col gap-1">
                     <Link
-                      href={`/dashboard/events`}
+                      href={event.id ? `/dashboard/events/${event.id}` : "/dashboard/events"}
                       className="truncate font-medium text-sm leading-tight hover:underline"
+                      title={event.title}
                     >
                       {event.title}
                     </Link>
                     <div className="flex items-center gap-2 text-muted-foreground text-xs leading-none">
-                      <span className="flex items-center gap-1">
-                        <Users className="size-3" />
-                        {event.total_registrations || event.total_approved || 0} RSVPs
-                      </span>
-                      <span>•</span>
                       <span>{event.is_virtual ? "Virtual" : "In-Person"}</span>
                     </div>
                   </div>
                 </div>
 
-                <Badge variant="outline" className="shrink-0 rounded-md px-2 py-0.5 font-medium text-[10px]">
-                  {event.status}
-                </Badge>
+                <div className="flex shrink-0 flex-col items-end gap-1 sm:flex-row sm:items-center sm:gap-4">
+                  <div className="flex items-center gap-1.5 text-sm">
+                    <Users className="size-3.5 text-muted-foreground" />
+                    <span className="font-medium text-foreground">{totalAttendees}</span>
+                    {checkinCount > 0 ? (
+                      <span className="text-muted-foreground text-xs">({checkinCount} checked in)</span>
+                    ) : null}
+                  </div>
+
+                  <DropRateBadge totalAttendees={totalAttendees} checkinCount={checkinCount} isUpcoming={isUpcoming} />
+                </div>
               </div>
             );
           })

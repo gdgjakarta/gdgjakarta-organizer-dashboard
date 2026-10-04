@@ -9,7 +9,7 @@ import {
   useTable,
 } from "@tanstack/react-table";
 import { format, parseISO } from "date-fns";
-import { ChevronDown, Download, FileJson, FileSpreadsheet, Search } from "lucide-react";
+import { ChevronDown, Download, ExternalLink, FileJson, FileSpreadsheet, Search } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Kbd } from "@/components/ui/kbd";
+import { getBevyDashboardUrl } from "@/config/remote-config-utils";
 import { dataTableFeatures } from "@/lib/data-table-features";
 import { splitFullName } from "@/lib/utils";
 
@@ -417,8 +418,7 @@ export function Members({ members, totalCount }: { members: MemberRow[]; totalCo
     <Card>
       <CardHeader className="border-b has-data-[slot=card-action]:grid-cols-1 md:has-data-[slot=card-action]:grid-cols-[1fr_auto]">
         <CardTitle className="text-xl leading-none">
-          Community Members{" "}
-          <span className="font-normal text-muted-foreground">({countToDisplay.toLocaleString()})</span>
+          Members <span className="font-normal text-muted-foreground">({countToDisplay.toLocaleString()})</span>
         </CardTitle>
         <CardDescription className="max-w-sm leading-snug">
           Manage GDG Jakarta community members, attendees, and organizers.
@@ -487,6 +487,13 @@ export function Members({ members, totalCount }: { members: MemberRow[]; totalCo
               )}
             </DropdownMenuContent>
           </DropdownMenu>
+
+          <Button variant="outline" size="sm" asChild>
+            <a href={getBevyDashboardUrl("members")} target="_blank" rel="noopener noreferrer" className="gap-1.5">
+              <ExternalLink className="size-3.5" />
+              Open in Bevy
+            </a>
+          </Button>
         </CardAction>
       </CardHeader>
       <CardContent className="flex flex-col gap-4 px-0">
