@@ -5,13 +5,9 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 
 import {
-  AlertTriangle,
   ArrowDown,
   ArrowUp,
-  CreditCard,
   ExternalLink,
-  HelpCircle,
-  Mail,
   Pencil,
   Plus,
   RefreshCw,
@@ -143,23 +139,23 @@ export function FaqDashboard() {
   return (
     <div className="space-y-6">
       {/* Top Header & Actions Bar */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b pb-5">
+      <div className="flex flex-col gap-4 border-b pb-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+            <h1 className="font-bold text-foreground text-xl tracking-tight sm:text-2xl lg:text-3xl">
               FAQ & Policy Configuration
             </h1>
-            <Badge variant="outline" className="hidden sm:inline-flex text-xs">
+            <Badge variant="outline" className="hidden text-xs sm:inline-flex">
               Live Editor
             </Badge>
           </div>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <p className="mt-1 text-muted-foreground text-xs sm:text-sm">
             Adjust FAQ questions, payment policies, verified anti-fraud emails, and contact options for public display.
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" asChild className="gap-1.5 text-xs">
+        <div className="grid w-full grid-cols-2 items-center gap-2 sm:flex sm:w-auto sm:flex-wrap">
+          <Button variant="outline" size="sm" asChild className="justify-center gap-1.5 text-xs">
             <Link href="/faq" target="_blank" rel="noopener noreferrer">
               <ExternalLink className="size-3.5" />
               <span>Preview Live FAQ</span>
@@ -170,7 +166,7 @@ export function FaqDashboard() {
             variant="outline"
             size="sm"
             onClick={() => setConfirmResetOpen(true)}
-            className="gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+            className="justify-center gap-1.5 text-muted-foreground text-xs hover:text-foreground"
           >
             <RefreshCw className="size-3.5" />
             <span>Reset Defaults</span>
@@ -180,7 +176,7 @@ export function FaqDashboard() {
             size="sm"
             onClick={() => saveContent(content)}
             disabled={saving || loading}
-            className="gap-1.5 text-xs font-semibold"
+            className="col-span-2 justify-center gap-1.5 font-semibold text-xs sm:col-span-1"
           >
             <Save className="size-3.5" />
             <span>{saving ? "Saving..." : "Save Changes"}</span>
@@ -190,40 +186,42 @@ export function FaqDashboard() {
 
       {/* Main Tabs Navigation */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2 md:w-auto md:inline-flex md:grid-cols-4">
-          <TabsTrigger value="questions" className="text-xs sm:text-sm">
-            Questions ({content.items.length})
-          </TabsTrigger>
-          <TabsTrigger value="notice" className="text-xs sm:text-sm">
-            Critical Payment Notice
-          </TabsTrigger>
-          <TabsTrigger value="categories" className="text-xs sm:text-sm">
-            Categories ({content.categories.length - 1})
-          </TabsTrigger>
-          <TabsTrigger value="header" className="text-xs sm:text-sm">
-            Header & Support
-          </TabsTrigger>
-        </TabsList>
+        <div className="scrollbar-none -mx-1 w-full overflow-x-auto px-1 pb-1">
+          <TabsList className="inline-flex h-9 w-auto min-w-full justify-start gap-1 p-1 sm:min-w-0 sm:justify-center">
+            <TabsTrigger value="questions" className="shrink-0 whitespace-nowrap px-3 py-1.5 text-xs sm:text-sm">
+              Questions ({content.items.length})
+            </TabsTrigger>
+            <TabsTrigger value="notice" className="shrink-0 whitespace-nowrap px-3 py-1.5 text-xs sm:text-sm">
+              Critical Payment Notice
+            </TabsTrigger>
+            <TabsTrigger value="categories" className="shrink-0 whitespace-nowrap px-3 py-1.5 text-xs sm:text-sm">
+              Categories ({content.categories.length - 1})
+            </TabsTrigger>
+            <TabsTrigger value="header" className="shrink-0 whitespace-nowrap px-3 py-1.5 text-xs sm:text-sm">
+              Header & Support
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         {/* ── 1. Questions Tab ── */}
         <TabsContent value="questions" className="space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-1 flex-wrap items-center gap-2">
-              <div className="relative w-full max-w-xs">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
+            <div className="flex flex-1 flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+              <div className="relative w-full sm:max-w-xs">
+                <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   type="text"
                   placeholder="Search questions or keywords..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-8 text-xs h-9"
+                  className="h-9 w-full pl-8 text-xs"
                 />
               </div>
 
               <select
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
-                className="h-9 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring sm:w-auto"
               >
                 {content.categories.map((c) => (
                   <option key={c.key} value={c.key}>
@@ -239,14 +237,110 @@ export function FaqDashboard() {
                 setEditingItem(null);
                 setDialogOpen(true);
               }}
-              className="gap-1.5 text-xs font-semibold"
+              className="w-full justify-center gap-1.5 font-semibold text-xs sm:w-auto"
             >
               <Plus className="size-3.5" />
               <span>Add FAQ Question</span>
             </Button>
           </div>
 
-          <Card>
+          {/* Mobile Card List View (visible on small screens) */}
+          <div className="space-y-3 md:hidden">
+            {filteredItems.length > 0 ? (
+              filteredItems.map((item, index) => (
+                <Card key={item.id} className="space-y-3 p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded bg-muted px-2 py-0.5 font-mono font-semibold text-muted-foreground text-xs">
+                        #{item.order ?? index + 1}
+                      </span>
+                      <Badge variant="secondary" className="font-normal text-[11px]">
+                        {item.categoryLabel}
+                      </Badge>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span className="text-[11px] text-muted-foreground">
+                        {(item.isActive ?? true) ? "Active" : "Hidden"}
+                      </span>
+                      <Switch
+                        checked={item.isActive ?? true}
+                        onCheckedChange={(checked) => {
+                          const updated = content.items.map((i) =>
+                            i.id === item.id ? { ...i, isActive: checked } : i,
+                          );
+                          setContent({ ...content, items: updated });
+                        }}
+                        aria-label={`Toggle active state for ${item.question}`}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <h3 className="font-semibold text-foreground text-sm leading-snug">{item.question}</h3>
+                    <p className="line-clamp-3 text-muted-foreground text-xs leading-relaxed">{item.answer}</p>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 border-t pt-3">
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-1 px-2.5 text-xs"
+                        disabled={index === 0}
+                        onClick={() => handleMoveItem(index, "up")}
+                        title="Move up"
+                      >
+                        <ArrowUp className="size-3.5" />
+                        <span className="text-[11px]">Up</span>
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-1 px-2.5 text-xs"
+                        disabled={index === filteredItems.length - 1}
+                        onClick={() => handleMoveItem(index, "down")}
+                        title="Move down"
+                      >
+                        <ArrowDown className="size-3.5" />
+                        <span className="text-[11px]">Down</span>
+                      </Button>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-1.5 px-3 text-primary text-xs hover:text-primary"
+                        onClick={() => {
+                          setEditingItem(item);
+                          setDialogOpen(true);
+                        }}
+                      >
+                        <Pencil className="size-3.5" />
+                        <span>Edit</span>
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-1.5 px-3 text-destructive text-xs hover:bg-destructive/10 hover:text-destructive"
+                        onClick={() => setItemToDelete(item)}
+                      >
+                        <Trash2 className="size-3.5" />
+                        <span>Delete</span>
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+              ))
+            ) : (
+              <Card className="p-8 text-center text-muted-foreground text-xs">
+                No FAQ questions found matching the filter.
+              </Card>
+            )}
+          </div>
+
+          {/* Desktop Table View (visible on md and up) */}
+          <Card className="hidden md:block">
             <CardContent className="p-0">
               <Table>
                 <TableHeader>
@@ -262,19 +356,19 @@ export function FaqDashboard() {
                   {filteredItems.length > 0 ? (
                     filteredItems.map((item, index) => (
                       <TableRow key={item.id} className="hover:bg-muted/40">
-                        <TableCell className="text-center font-mono text-xs text-muted-foreground">
+                        <TableCell className="text-center font-mono text-muted-foreground text-xs">
                           {item.order ?? index + 1}
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="whitespace-normal">
                           <div className="space-y-1">
-                            <span className="font-semibold text-foreground text-xs sm:text-sm line-clamp-1">
+                            <span className="line-clamp-1 font-semibold text-foreground text-xs sm:text-sm">
                               {item.question}
                             </span>
-                            <p className="text-muted-foreground text-xs line-clamp-2 leading-relaxed">{item.answer}</p>
+                            <p className="line-clamp-2 text-muted-foreground text-xs leading-relaxed">{item.answer}</p>
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge variant="secondary" className="text-[11px] font-normal">
+                          <Badge variant="secondary" className="font-normal text-[11px]">
                             {item.categoryLabel}
                           </Badge>
                         </TableCell>
@@ -352,16 +446,16 @@ export function FaqDashboard() {
         {/* ── 2. Critical Notice Tab ── */}
         <TabsContent value="notice" className="space-y-6">
           <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
+            <CardHeader className="p-4 sm:p-6">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="space-y-1">
                   <CardTitle className="text-base sm:text-lg">Crucial Payment & Anti-Fraud Notice</CardTitle>
                   <CardDescription className="text-xs">
                     This prominent notice protects community members against payment fraud and unverified scam emails.
                   </CardDescription>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="notice-switch" className="text-xs font-medium cursor-pointer">
+                <div className="flex shrink-0 items-center justify-between gap-2 rounded-lg border bg-muted/40 p-2 sm:justify-end sm:border-0 sm:bg-transparent sm:p-0">
+                  <Label htmlFor="notice-switch" className="cursor-pointer font-medium text-xs">
                     Enable Notice
                   </Label>
                   <Switch
@@ -372,7 +466,7 @@ export function FaqDashboard() {
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-4 p-4 pt-0 sm:p-6 sm:pt-0">
               <div className="space-y-1.5">
                 <Label htmlFor="notice-title" className="text-xs">
                   Alert Title
@@ -400,7 +494,7 @@ export function FaqDashboard() {
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="verified-emails" className="text-xs">
                     Verified Email Addresses (comma separated)
@@ -438,25 +532,27 @@ export function FaqDashboard() {
               </div>
 
               {/* Live Preview */}
-              <div className="pt-4 border-t space-y-2">
-                <span className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">
+              <div className="space-y-2 border-t pt-4">
+                <span className="font-semibold text-muted-foreground text-xs uppercase tracking-wider">
                   Live Banner Preview:
                 </span>
                 <Alert className="border-amber-500/30 bg-amber-500/10 text-amber-950 dark:text-amber-200">
-                  <ShieldAlert className="size-5 text-amber-600 dark:text-amber-400" />
+                  <ShieldAlert className="size-5 shrink-0 text-amber-600 dark:text-amber-400" />
                   <AlertTitle className="font-semibold text-amber-900 dark:text-amber-100">
                     {content.notice.title || "Crucial Payment Notice"}
                   </AlertTitle>
-                  <AlertDescription className="mt-1 text-amber-800 text-xs sm:text-sm leading-relaxed dark:text-amber-300">
+                  <AlertDescription className="mt-1 break-words text-amber-800 text-xs leading-relaxed sm:text-sm dark:text-amber-300">
                     {content.notice.description}{" "}
-                    {content.notice.verifiedEmails.map((email) => (
-                      <code
-                        key={email}
-                        className="mr-1 rounded bg-amber-200/50 px-1 py-0.5 font-mono text-xs dark:bg-amber-950/70"
-                      >
-                        {email}
-                      </code>
-                    ))}
+                    <span className="mt-1 inline-flex flex-wrap gap-1 sm:mt-0">
+                      {content.notice.verifiedEmails.map((email) => (
+                        <code
+                          key={email}
+                          className="break-all rounded bg-amber-200/50 px-1 py-0.5 font-mono text-xs dark:bg-amber-950/70"
+                        >
+                          {email}
+                        </code>
+                      ))}
+                    </span>
                   </AlertDescription>
                 </Alert>
               </div>
@@ -466,14 +562,14 @@ export function FaqDashboard() {
 
         {/* ── 3. Categories Tab ── */}
         <TabsContent value="categories" className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
             {/* Add Category */}
             <Card className="md:col-span-1">
-              <CardHeader>
+              <CardHeader className="p-4 sm:p-6">
                 <CardTitle className="text-base">Add New Category</CardTitle>
                 <CardDescription className="text-xs">Create a category to group related questions.</CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="p-4 pt-0 sm:p-6 sm:pt-0">
                 <form onSubmit={handleAddCategory} className="space-y-3">
                   <div className="space-y-1.5">
                     <Label htmlFor="cat-label" className="text-xs">
@@ -506,7 +602,7 @@ export function FaqDashboard() {
                     />
                   </div>
 
-                  <Button type="submit" size="sm" className="w-full gap-1.5 text-xs font-semibold">
+                  <Button type="submit" size="sm" className="w-full justify-center gap-1.5 font-semibold text-xs">
                     <Plus className="size-3.5" />
                     <span>Create Category</span>
                   </Button>
@@ -516,58 +612,100 @@ export function FaqDashboard() {
 
             {/* Existing Categories */}
             <Card className="md:col-span-2">
-              <CardHeader>
+              <CardHeader className="p-4 sm:p-6">
                 <CardTitle className="text-base">Active Categories</CardTitle>
                 <CardDescription className="text-xs">
                   Filter pills displayed on top of the FAQ accordion.
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="text-xs">Label</TableHead>
-                      <TableHead className="text-xs">Key</TableHead>
-                      <TableHead className="text-center text-xs">Questions Count</TableHead>
-                      <TableHead className="text-right text-xs">Action</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {content.categories.map((cat) => {
-                      const count =
-                        cat.key === "all"
-                          ? content.items.length
-                          : content.items.filter((i) => i.category === cat.key).length;
-                      const isProtected = cat.key === "all" || cat.key === "general";
+                {/* Mobile View for Categories */}
+                <div className="divide-y border-t sm:hidden">
+                  {content.categories.map((cat) => {
+                    const count =
+                      cat.key === "all"
+                        ? content.items.length
+                        : content.items.filter((i) => i.category === cat.key).length;
+                    const isProtected = cat.key === "all" || cat.key === "general";
 
-                      return (
-                        <TableRow key={cat.key}>
-                          <TableCell className="font-semibold text-xs sm:text-sm">{cat.label}</TableCell>
-                          <TableCell className="font-mono text-xs text-muted-foreground">{cat.key}</TableCell>
-                          <TableCell className="text-center">
-                            <Badge variant="secondary" className="text-xs">
-                              {count}
+                    return (
+                      <div key={cat.key} className="flex items-center justify-between gap-3 p-3.5">
+                        <div className="min-w-0 space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate font-semibold text-foreground text-xs">{cat.label}</span>
+                            <Badge variant="secondary" className="px-1.5 py-0 font-normal text-[10px]">
+                              {count} {count === 1 ? "question" : "questions"}
                             </Badge>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {isProtected ? (
-                              <span className="text-[11px] text-muted-foreground italic">Protected</span>
-                            ) : (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleDeleteCategory(cat.key)}
-                                className="h-7 text-xs text-destructive hover:text-destructive"
-                              >
-                                Delete
-                              </Button>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
+                          </div>
+                          <p className="truncate font-mono text-[11px] text-muted-foreground">key: {cat.key}</p>
+                        </div>
+                        <div className="shrink-0">
+                          {isProtected ? (
+                            <span className="text-[11px] text-muted-foreground italic">Protected</span>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDeleteCategory(cat.key)}
+                              className="h-8 px-2.5 text-destructive text-xs hover:bg-destructive/10 hover:text-destructive"
+                            >
+                              Delete
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Desktop View Table for Categories */}
+                <div className="hidden sm:block">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-xs">Label</TableHead>
+                        <TableHead className="text-xs">Key</TableHead>
+                        <TableHead className="text-center text-xs">Questions Count</TableHead>
+                        <TableHead className="text-right text-xs">Action</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {content.categories.map((cat) => {
+                        const count =
+                          cat.key === "all"
+                            ? content.items.length
+                            : content.items.filter((i) => i.category === cat.key).length;
+                        const isProtected = cat.key === "all" || cat.key === "general";
+
+                        return (
+                          <TableRow key={cat.key}>
+                            <TableCell className="font-semibold text-xs sm:text-sm">{cat.label}</TableCell>
+                            <TableCell className="font-mono text-muted-foreground text-xs">{cat.key}</TableCell>
+                            <TableCell className="text-center">
+                              <Badge variant="secondary" className="text-xs">
+                                {count}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {isProtected ? (
+                                <span className="text-[11px] text-muted-foreground italic">Protected</span>
+                              ) : (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleDeleteCategory(cat.key)}
+                                  className="h-7 text-destructive text-xs hover:text-destructive"
+                                >
+                                  Delete
+                                </Button>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -575,16 +713,16 @@ export function FaqDashboard() {
 
         {/* ── 4. Header & Support Tab ── */}
         <TabsContent value="header" className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             {/* Header Settings */}
             <Card>
-              <CardHeader>
+              <CardHeader className="p-4 sm:p-6">
                 <CardTitle className="text-base">FAQ Page Header</CardTitle>
                 <CardDescription className="text-xs">
                   Main headline and introduction at the top of the FAQ page.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-4 p-4 pt-0 sm:p-6 sm:pt-0">
                 <div className="space-y-1.5">
                   <Label htmlFor="header-badge" className="text-xs">
                     Badge Text
@@ -628,11 +766,11 @@ export function FaqDashboard() {
 
             {/* Contact & Support Settings */}
             <Card>
-              <CardHeader>
+              <CardHeader className="p-4 sm:p-6">
                 <CardTitle className="text-base">Bottom Help Card</CardTitle>
                 <CardDescription className="text-xs">Support contact card shown beneath the questions.</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-4 p-4 pt-0 sm:p-6 sm:pt-0">
                 <div className="space-y-1.5">
                   <Label htmlFor="contact-title" className="text-xs">
                     Contact Headline
@@ -660,7 +798,7 @@ export function FaqDashboard() {
                   />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-1.5">
                     <Label htmlFor="contact-email" className="text-xs">
                       Official Contact Email
@@ -714,11 +852,11 @@ export function FaqDashboard() {
               undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogFooter className="flex-col-reverse gap-2 sm:flex-row">
+            <AlertDialogCancel className="w-full sm:w-auto">Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => itemToDelete && handleDeleteItem(itemToDelete.id)}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="w-full bg-destructive text-destructive-foreground hover:bg-destructive/90 sm:w-auto"
             >
               Delete Question
             </AlertDialogAction>
@@ -736,9 +874,10 @@ export function FaqDashboard() {
               default FAQ content.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogFooter className="flex-col-reverse gap-2 sm:flex-row">
+            <AlertDialogCancel className="w-full sm:w-auto">Cancel</AlertDialogCancel>
             <AlertDialogAction
+              className="w-full sm:w-auto"
               onClick={() => {
                 void resetToDefaults();
                 setConfirmResetOpen(false);

@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from "react";
 
-import { Plus } from "lucide-react";
-
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -73,20 +71,20 @@ export function FaqItemDialog({ open, onOpenChange, faqItem, categories, onSave 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl sm:max-w-2xl">
-        <form onSubmit={handleSubmit}>
+      <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto p-4 sm:max-w-2xl sm:p-6">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <DialogHeader>
             <DialogTitle>{isEditing ? "Edit FAQ Item" : "Add New FAQ Item"}</DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-xs sm:text-sm">
               {isEditing
                 ? "Update this question, answer, or category."
                 : "Create a new question and answer to be published on the FAQ page."}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-2">
             <div className="space-y-1.5">
-              <Label htmlFor="faq-question">
+              <Label htmlFor="faq-question" className="font-medium text-xs sm:text-sm">
                 Question <span className="text-destructive">*</span>
               </Label>
               <Input
@@ -98,9 +96,11 @@ export function FaqItemDialog({ open, onOpenChange, faqItem, categories, onSave 
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label htmlFor="faq-category">Category</Label>
+                <Label htmlFor="faq-category" className="font-medium text-xs sm:text-sm">
+                  Category
+                </Label>
                 <select
                   id="faq-category"
                   value={category}
@@ -117,10 +117,10 @@ export function FaqItemDialog({ open, onOpenChange, faqItem, categories, onSave 
                 </select>
               </div>
 
-              <div className="flex flex-col justify-end space-y-1.5 pb-2">
+              <div className="flex flex-col justify-end space-y-1.5">
                 <div className="flex items-center justify-between rounded-lg border p-2.5">
                   <div className="space-y-0.5">
-                    <Label htmlFor="faq-status" className="text-xs font-medium cursor-pointer">
+                    <Label htmlFor="faq-status" className="cursor-pointer font-medium text-xs">
                       Published & Active
                     </Label>
                     <p className="text-[11px] text-muted-foreground">Visible on public FAQ</p>
@@ -131,7 +131,7 @@ export function FaqItemDialog({ open, onOpenChange, faqItem, categories, onSave 
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="faq-answer">
+              <Label htmlFor="faq-answer" className="font-medium text-xs sm:text-sm">
                 Answer <span className="text-destructive">*</span>
               </Label>
               <Textarea
@@ -139,8 +139,9 @@ export function FaqItemDialog({ open, onOpenChange, faqItem, categories, onSave 
                 placeholder="Write the clear, concise explanation. Paragraphs and bullet points are preserved..."
                 value={answer}
                 onChange={(e) => setAnswer(e.target.value)}
-                rows={6}
+                rows={5}
                 required
+                className="resize-y"
               />
               <p className="text-[11px] text-muted-foreground">
                 Tip: You can use double line breaks for paragraphs, or &quot;• &quot; for bullet lists.
@@ -148,11 +149,11 @@ export function FaqItemDialog({ open, onOpenChange, faqItem, categories, onSave 
             </div>
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          <DialogFooter className="flex-col-reverse gap-2 pt-2 sm:flex-row">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="w-full sm:w-auto">
               Cancel
             </Button>
-            <Button type="submit" disabled={!question.trim() || !answer.trim()}>
+            <Button type="submit" disabled={!question.trim() || !answer.trim()} className="w-full sm:w-auto">
               {isEditing ? "Save Changes" : "Add FAQ Item"}
             </Button>
           </DialogFooter>
