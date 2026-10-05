@@ -141,14 +141,14 @@ export function CommunityHero() {
               <div className="flex items-center gap-2">
                 <Users className="size-4" style={{ color: "var(--theme-primary)" }} />
                 <span>
-                  <strong className="text-foreground">10,000+</strong> Members
+                  <strong className="text-foreground">15.6K+</strong> Members
                 </span>
               </div>
               <div className="h-4 w-px bg-border" />
               <div className="flex items-center gap-2">
                 <Calendar className="size-4" style={{ color: "var(--theme-primary)" }} />
                 <span>
-                  <strong className="text-foreground">120+</strong> Events Hosted
+                  <strong className="text-foreground">133+</strong> Activities Hosted
                 </span>
               </div>
               <div className="h-4 w-px bg-border" />

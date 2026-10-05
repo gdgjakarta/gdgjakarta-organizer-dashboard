@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, Cloud, Cpu, Globe2, Smartphone, Sparkles, Users } from "lucide-react";
+import { Bot, Cpu, Sparkles, Users } from "lucide-react";
 
 import { usePartnershipContent } from "@/lib/content/hooks";
 
@@ -88,58 +88,62 @@ export function PartnershipDevfest() {
               <div className="flex items-center justify-between border-b pb-4">
                 <div className="flex items-center gap-2">
                   <Users className="size-5 text-[var(--theme-primary)]" />
-                  <h3 className="font-bold text-foreground text-base">Attendee Demographics</h3>
+                  <h3 className="font-bold text-foreground text-base">Participant Demographics</h3>
                 </div>
-                <span className="text-muted-foreground text-xs">Based on Past Events</span>
+                <span className="text-muted-foreground text-xs">Official Breakdown</span>
               </div>
 
               {/* Progress bars for demographics */}
               <div className="space-y-4">
                 <div>
                   <div className="flex justify-between text-xs font-medium mb-1">
-                    <span className="text-foreground">Mid, Senior & Lead Software Engineers</span>
-                    <span className="font-bold text-[var(--theme-primary)]">65%</span>
+                    <span className="text-foreground">Engineering Density (&gt;2 YOE Focus)</span>
+                    <span className="font-bold text-[var(--theme-primary)]">53.6%</span>
                   </div>
                   <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
-                    <div className="h-full rounded-full bg-[var(--theme-primary)]" style={{ width: "65%" }} />
+                    <div className="h-full rounded-full bg-[var(--theme-primary)]" style={{ width: "53.6%" }} />
                   </div>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Web (10.8%), Fullstack (7.5%), SE (7.4%), AI & Data (6.7%), Mobile (6.7%), Backend (6.3%), Frontend
+                    (5%)
+                  </p>
                 </div>
 
                 <div>
                   <div className="flex justify-between text-xs font-medium mb-1">
-                    <span className="text-foreground">CTOs, Tech Leads & Engineering Managers</span>
-                    <span className="font-bold text-emerald-600 dark:text-emerald-400">18%</span>
+                    <span className="text-foreground">Cross-Disciplinary Blend</span>
+                    <span className="font-bold text-emerald-600 dark:text-emerald-400">33.1%</span>
                   </div>
                   <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
-                    <div className="h-full rounded-full bg-emerald-600 dark:bg-emerald-400" style={{ width: "18%" }} />
+                    <div
+                      className="h-full rounded-full bg-emerald-600 dark:bg-emerald-400"
+                      style={{ width: "33.1%" }}
+                    />
                   </div>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Product Managers, Founders, QA Engineers, and UI/UX Designers (3.2%)
+                  </p>
                 </div>
 
                 <div>
                   <div className="flex justify-between text-xs font-medium mb-1">
-                    <span className="text-foreground">Junior Engineers & Open-Source Builders</span>
-                    <span className="font-bold text-amber-500">12%</span>
+                    <span className="text-foreground">Student Potential & Mentorship</span>
+                    <span className="font-bold text-amber-500">13.3%</span>
                   </div>
                   <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
-                    <div className="h-full rounded-full bg-amber-500" style={{ width: "12%" }} />
+                    <div className="h-full rounded-full bg-amber-500" style={{ width: "13.3%" }} />
                   </div>
-                </div>
-
-                <div>
-                  <div className="flex justify-between text-xs font-medium mb-1">
-                    <span className="text-foreground">Product Managers & Tech Designers</span>
-                    <span className="font-bold text-purple-600 dark:text-purple-400">5%</span>
-                  </div>
-                  <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
-                    <div className="h-full rounded-full bg-purple-600 dark:bg-purple-400" style={{ width: "5%" }} />
-                  </div>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Aspiring builders paired with experienced mentors to fast-track production skills
+                  </p>
                 </div>
               </div>
 
               <div className="rounded-xl border border-dashed p-4 text-center">
-                <span className="font-semibold text-xs text-foreground block">100% Focused on Quality Engagement</span>
+                <span className="font-semibold text-xs text-foreground block">&gt;2 YOE Practitioner Core Focus</span>
                 <span className="text-muted-foreground text-[11px] mt-0.5 block">
-                  Capped venue capacity ensures meaningful developer conversations with sponsors.
+                  Skipping rudimentary tutorial syntax to solve production, security, and scalability challenges in the
+                  AI era.
                 </span>
               </div>
             </div>

@@ -35,7 +35,11 @@ export function PartnershipTiers() {
           </p>
         </div>
 
-        <div className="mt-12 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        <div
+          className={`mt-12 grid grid-cols-1 gap-6 sm:grid-cols-2 ${
+            visibleTiers.length >= 5 ? "lg:grid-cols-3 xl:grid-cols-5" : "lg:grid-cols-4"
+          }`}
+        >
           {visibleTiers.map((tier) => (
             <div
               key={tier.id || tier.name}

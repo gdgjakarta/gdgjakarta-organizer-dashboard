@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { Check, Copy, ExternalLink, HelpCircle, Mail, Send, Sparkles } from "lucide-react";
+import { Check, Copy, ExternalLink, HelpCircle, Mail, Phone, Send, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
@@ -94,13 +94,14 @@ export function PartnershipCta() {
     contact.interestOptions && contact.interestOptions.length > 0
       ? contact.interestOptions
       : [
-          `${featuredEventTitle} - Platinum / Title Tier`,
-          `${featuredEventTitle} - Gold Tier`,
-          `${featuredEventTitle} - Silver Tier`,
-          `${featuredEventTitle} - Community / In-Kind`,
-          "Technical Workshop or Hands-on Codelab",
-          "Hackathon or Developer Challenge Track",
-          "Custom Bespoke Activation",
+          `${featuredEventTitle} - Diamond Partner`,
+          `${featuredEventTitle} - Platinum Partner`,
+          `${featuredEventTitle} - Gold Partner`,
+          `${featuredEventTitle} - Silver Partner`,
+          `${featuredEventTitle} - Community & In-Kind`,
+          "Road to DevFest Workshop Series Co-Host",
+          "Brand-Led Interactive Activation or Booth",
+          "Custom Bespoke Collaboration",
         ];
 
   return (
@@ -191,6 +192,30 @@ export function PartnershipCta() {
                 <ExternalLink className="size-3" />
               </a>
             </Button>
+
+            {contact.phoneOrWhatsapp && (
+              <Button
+                asChild
+                variant="outline"
+                size="lg"
+                className="rounded-full border-[var(--theme-border)] bg-background/80 px-5"
+              >
+                <a
+                  href={`https://wa.me/${contact.phoneOrWhatsapp.replace(/[^0-9]/g, "")}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="gap-2"
+                >
+                  <Phone className="size-4 text-emerald-600 dark:text-emerald-400" />
+                  <span>
+                    {contact.contactPerson
+                      ? `Chat with ${contact.contactPerson}`
+                      : `WhatsApp: ${contact.phoneOrWhatsapp}`}
+                  </span>
+                  <ExternalLink className="size-3" />
+                </a>
+              </Button>
+            )}
           </div>
         </div>
 

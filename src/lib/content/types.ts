@@ -132,6 +132,8 @@ export interface PartnershipContactConfig {
   contactEmail: string;
   instagramUrl: string;
   interestOptions: string[];
+  contactPerson?: string;
+  phoneOrWhatsapp?: string;
 }
 
 export interface PartnershipContent {

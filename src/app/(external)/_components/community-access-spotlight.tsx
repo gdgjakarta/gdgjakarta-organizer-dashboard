@@ -120,8 +120,8 @@ export function CommunityAccessSpotlight() {
                   style={{ borderColor: "var(--theme-border)", backgroundColor: "var(--theme-bg-subtle)" }}
                 >
                   <p className="text-muted-foreground text-xs uppercase tracking-wider">Next Confirmed Event</p>
-                  <p className="mt-1 font-bold text-base">DevFest Jakarta 2026: AI & Cloud Horizon</p>
-                  <p className="mt-1 text-muted-foreground text-xs">Saturday • Jakarta Convention Center</p>
+                  <p className="mt-1 font-bold text-base">DevFest Jakarta 2026: Where AI Builders Come Together</p>
+                  <p className="mt-1 text-muted-foreground text-xs">Sunday, 1 November 2026 • TMII, Jakarta</p>
                 </div>
 
                 {/* QR Code Demo Section */}

@@ -880,6 +880,36 @@ export function PartnershipDashboard() {
                   </div>
                 </div>
 
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="cta-person" className="text-xs">
+                      Contact Person Lead (Optional)
+                    </Label>
+                    <Input
+                      id="cta-person"
+                      value={content.contact.contactPerson || ""}
+                      onChange={(e) =>
+                        setContent({ ...content, contact: { ...content.contact, contactPerson: e.target.value } })
+                      }
+                      placeholder="e.g. Anggi Maisa H."
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="cta-phone" className="text-xs">
+                      Phone / WhatsApp Number (Optional)
+                    </Label>
+                    <Input
+                      id="cta-phone"
+                      value={content.contact.phoneOrWhatsapp || ""}
+                      onChange={(e) =>
+                        setContent({ ...content, contact: { ...content.contact, phoneOrWhatsapp: e.target.value } })
+                      }
+                      placeholder="e.g. (+62) 821-2488-5424"
+                    />
+                  </div>
+                </div>
+
                 <div className="space-y-1.5">
                   <Label htmlFor="cta-options" className="text-xs">
                     Interest Dropdown Options (comma separated)
