@@ -23,7 +23,7 @@ export default function OrganizerDashboardLoading() {
       {/* KPI Cards Skeleton */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {KPI_KEYS.map((key) => (
-          <div key={key} className="rounded-xl border bg-card p-5 shadow-xs">
+          <div key={key} className="rounded-xl bg-card p-5 shadow-xs">
             <div className="flex items-center justify-between">
               <Skeleton className="h-4 w-24" />
               <Skeleton className="h-8 w-8 rounded-lg" />
@@ -39,7 +39,7 @@ export default function OrganizerDashboardLoading() {
       {/* Main Content Grid Skeleton */}
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
         {/* Left Column: Events Table Skeleton */}
-        <div className="rounded-xl border bg-card p-6 shadow-xs xl:col-span-7">
+        <div className="rounded-xl bg-card p-6 shadow-xs xl:col-span-7">
           <div className="mb-4 flex items-center justify-between">
             <div className="space-y-1">
               <Skeleton className="h-5 w-36" />
@@ -62,7 +62,7 @@ export default function OrganizerDashboardLoading() {
         </div>
 
         {/* Right Column: Members Widget Skeleton */}
-        <div className="rounded-xl border bg-card p-6 shadow-xs xl:col-span-5">
+        <div className="rounded-xl bg-card p-6 shadow-xs xl:col-span-5">
           <div className="mb-4 flex items-center justify-between">
             <div className="space-y-1">
               <Skeleton className="h-5 w-32" />

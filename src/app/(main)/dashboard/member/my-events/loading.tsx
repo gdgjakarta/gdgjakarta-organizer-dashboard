@@ -14,7 +14,7 @@ export default function MyEventsLoading() {
 
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {EVENT_CARD_KEYS.map((key) => (
-          <div key={key} className="flex flex-col overflow-hidden rounded-xl border bg-card shadow-xs">
+          <div key={key} className="flex flex-col overflow-hidden rounded-xl bg-card shadow-xs">
             <Skeleton className="aspect-video w-full" />
             <div className="flex flex-1 flex-col p-5">
               <Skeleton className="h-5 w-3/4" />
@@ -23,7 +23,7 @@ export default function MyEventsLoading() {
                 <Skeleton className="h-3 w-full" />
                 <Skeleton className="h-3 w-5/6" />
               </div>
-              <div className="mt-6 border-t pt-4">
+              <div className="mt-6 pt-4">
                 <Skeleton className="h-9 w-full rounded-md" />
               </div>
             </div>

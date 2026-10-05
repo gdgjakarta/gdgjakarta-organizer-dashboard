@@ -27,7 +27,7 @@ export function InvoicePreview({ invoice }: { invoice: InvoiceFormValues }) {
   return (
     <>
       <PrintInvoice invoice={invoice} />
-      <div className="flex flex-col rounded-xl border bg-card">
+      <div className="flex flex-col rounded-xl bg-card shadow-xs">
         <div className="flex items-center justify-between px-4 py-4">
           <h2 className="font-medium text-lg">Preview</h2>
           <ButtonGroup>

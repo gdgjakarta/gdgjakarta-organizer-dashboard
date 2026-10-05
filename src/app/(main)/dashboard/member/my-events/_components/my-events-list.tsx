@@ -139,7 +139,7 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
           return (
             <Card
               key={reg.id}
-              className="group flex flex-col justify-between overflow-hidden border transition-all hover:border-primary/40 hover:shadow-sm"
+              className="group flex flex-col justify-between overflow-hidden shadow-xs transition-all hover:shadow-md"
             >
               <div>
                 {/* Event Picture / Banner */}
@@ -215,7 +215,7 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
                 </CardContent>
               </div>
 
-              <CardFooter className="flex items-center justify-between border-t bg-muted/10 p-4 pt-3">
+              <CardFooter className="flex items-center justify-between bg-muted/10 p-4 pt-3">
                 <Button variant="ghost" size="sm" asChild className="h-8 gap-1.5 text-xs">
                   <Link href={`/dashboard/member/events/${reg.event_id}`}>View Event Page →</Link>
                 </Button>

@@ -683,3 +683,39 @@ textarea:disabled,
 [data-slot="menubar-item"][data-disabled] {
   cursor: not-allowed;
 }
+
+/* ==========================================================================
+   Dashboard Cards: Remove any borders, rings, and dividers from all UI cards
+   ========================================================================== */
+[data-slot="sidebar-wrapper"] [data-slot="card"],
+[data-slot="sidebar-inset"] [data-slot="card"],
+[data-slot="sidebar"] [data-slot="card"],
+[data-slot="dialog-content"] [data-slot="card"],
+[data-slot="sheet-content"] [data-slot="card"],
+[data-slot="sidebar-inset"] .bg-card,
+[data-slot="sidebar-inset"] [class*="bg-card"],
+[data-slot="sidebar-wrapper"] .bg-card,
+[data-slot="sidebar-wrapper"] [class*="bg-card"],
+.dashboard-card {
+  border: 0 !important;
+  border-width: 0 !important;
+  border-color: transparent !important;
+  --tw-ring-width: 0px !important;
+  --tw-ring-color: transparent !important;
+  --tw-ring-shadow: 0 0 #0000 !important;
+  --tw-ring-offset-shadow: 0 0 #0000 !important;
+  outline: none !important;
+  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow, 0 1px 2px 0 rgb(0 0 0 / 0.05)) !important;
+}
+
+[data-slot="sidebar-wrapper"] [data-slot="card-header"],
+[data-slot="sidebar-inset"] [data-slot="card-header"],
+[data-slot="sidebar-wrapper"] [data-slot="card-footer"],
+[data-slot="sidebar-inset"] [data-slot="card-footer"] {
+  border-top: 0 !important;
+  border-bottom: 0 !important;
+  border-top-width: 0 !important;
+  border-bottom-width: 0 !important;
+  border-color: transparent !important;
+}
+

@@ -7,7 +7,7 @@ export default function CrmLoading() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: Static skeleton array
-          <div key={`crm-kpi-${i}`} className="rounded-xl border bg-card p-5 shadow-xs">
+          <div key={`crm-kpi-${i}`} className="rounded-xl bg-card p-5 shadow-xs">
             <Skeleton className="h-4 w-24" />
             <Skeleton className="mt-4 h-8 w-20" />
             <Skeleton className="mt-2 h-3.5 w-32" />
@@ -16,13 +16,13 @@ export default function CrmLoading() {
       </div>
 
       {/* Pipeline Activity Skeleton */}
-      <div className="rounded-xl border bg-card p-6 shadow-xs">
+      <div className="rounded-xl bg-card p-6 shadow-xs">
         <Skeleton className="mb-4 h-6 w-44" />
         <Skeleton className="h-48 w-full rounded-lg" />
       </div>
 
       {/* Task Reminders Skeleton */}
-      <div className="rounded-xl border bg-card p-6 shadow-xs">
+      <div className="rounded-xl bg-card p-6 shadow-xs">
         <Skeleton className="mb-4 h-6 w-36" />
         <div className="space-y-3">
           <Skeleton className="h-12 w-full rounded-lg" />

@@ -20,14 +20,14 @@ export default function EventDetailLoading() {
       </div>
 
       {/* Hero Banner Skeleton */}
-      <div className="overflow-hidden rounded-xl border bg-card shadow-xs">
+      <div className="overflow-hidden rounded-xl bg-card shadow-xs">
         <Skeleton className="aspect-21/9 w-full" />
       </div>
 
       {/* Tabs Skeleton */}
       <div className="space-y-4">
         <Skeleton className="h-10 w-80" />
-        <div className="rounded-xl border bg-card p-6 shadow-xs">
+        <div className="rounded-xl bg-card p-6 shadow-xs">
           <Skeleton className="mb-4 h-6 w-48" />
           <div className="space-y-3">
             <Skeleton className="h-12 w-full rounded-lg" />

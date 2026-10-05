@@ -147,7 +147,7 @@ export function RegistrantsTab({ eventId, registrations }: RegistrantsTabProps) 
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader className="flex flex-col gap-4 border-b sm:flex-row sm:items-center sm:justify-between">
+        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <CardTitle className="text-lg">Registrants & Attendance Filtration ({filtered.length})</CardTitle>
             <CardDescription>

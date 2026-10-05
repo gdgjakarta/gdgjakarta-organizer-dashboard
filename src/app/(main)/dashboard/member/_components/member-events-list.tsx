@@ -96,7 +96,7 @@ export function MemberEventsList({ events, myRegistrations = [] }: MemberEventsL
           return (
             <Card
               key={event.id}
-              className="group flex flex-col justify-between overflow-hidden border transition-all hover:border-primary/40 hover:shadow-sm"
+              className="group flex flex-col justify-between overflow-hidden shadow-xs transition-all hover:shadow-md"
             >
               <div>
                 {/* Event Thumbnail with Dynamic Link */}
@@ -157,7 +157,7 @@ export function MemberEventsList({ events, myRegistrations = [] }: MemberEventsL
                 </CardContent>
               </div>
 
-              <CardFooter className="mt-2 flex items-center justify-between border-t bg-muted/10 p-4 pt-3">
+              <CardFooter className="mt-2 flex items-center justify-between bg-muted/10 p-4 pt-3">
                 <Button
                   variant="ghost"
                   size="sm"

@@ -16,7 +16,7 @@ export default function TasksLoading() {
         </div>
       </div>
 
-      <div className="rounded-xl border bg-card">
+      <div className="rounded-xl bg-card shadow-xs">
         <div className="flex h-11 items-center border-b bg-muted/40 px-4">
           <Skeleton className="h-4 w-4" />
           <Skeleton className="ml-4 h-4 w-20" />

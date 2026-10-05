@@ -10,7 +10,7 @@ export default function ChatLoading() {
         </div>
         <Skeleton className="size-8 rounded-md" />
       </div>
-      <div className="flex-1 rounded-xl border bg-card p-4 space-y-4">
+      <div className="flex-1 rounded-xl bg-card p-4 shadow-xs space-y-4">
         <div className="flex items-center gap-3">
           <Skeleton className="size-10 rounded-full" />
           <Skeleton className="h-10 w-64 rounded-xl" />

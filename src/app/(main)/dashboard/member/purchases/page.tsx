@@ -19,7 +19,7 @@ export default function MemberPurchasesPage() {
       </div>
 
       <div className="flex flex-1 items-center justify-center">
-        <Card className="max-w-md border-dashed text-center shadow-none">
+        <Card className="max-w-md text-center shadow-xs">
           <CardHeader className="space-y-3 pb-4">
             <div className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
               <ShoppingBag className="size-7" />
