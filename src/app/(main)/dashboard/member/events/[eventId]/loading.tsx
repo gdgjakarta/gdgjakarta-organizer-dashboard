@@ -7,7 +7,7 @@ export default function MemberEventDetailLoading() {
       <Skeleton className="h-4 w-28" />
 
       {/* Banner */}
-      <div className="overflow-hidden rounded-xl border bg-card shadow-xs">
+      <div className="overflow-hidden rounded-xl bg-card shadow-xs">
         <Skeleton className="aspect-21/9 w-full" />
       </div>
 
@@ -26,7 +26,7 @@ export default function MemberEventDetailLoading() {
         </div>
 
         <div className="lg:col-span-4">
-          <div className="rounded-xl border bg-card p-6 shadow-xs space-y-4">
+          <div className="rounded-xl bg-card p-6 shadow-xs space-y-4">
             <Skeleton className="h-6 w-32" />
             <Skeleton className="h-4 w-full" />
             <Skeleton className="h-10 w-full rounded-md" />

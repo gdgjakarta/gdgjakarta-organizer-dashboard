@@ -13,7 +13,7 @@ export default function ProductivityLoading() {
           <Skeleton className="h-24 rounded-xl" />
           <Skeleton className="h-24 rounded-xl" />
         </div>
-        <div className="rounded-xl border bg-card p-6 shadow-xs space-y-4">
+        <div className="rounded-xl bg-card p-6 shadow-xs space-y-4">
           <Skeleton className="h-6 w-36" />
           <div className="space-y-2">
             <Skeleton className="h-10 w-full rounded-md" />

@@ -278,7 +278,7 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
         {/* Right 1 Col: Quick RSVP & Event Details Card */}
         <div className="space-y-6">
           {/* Registration Card */}
-          <Card className="border-primary/20 bg-muted/20 shadow-sm">
+          <Card className="bg-card shadow-xs">
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center justify-between text-base">
                 <span>Registration Status</span>
@@ -296,7 +296,7 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
             </CardHeader>
 
             <CardContent className="space-y-4">
-              <div className="space-y-2 rounded-lg border bg-background p-3.5 text-xs">
+              <div className="space-y-2 rounded-lg bg-muted/30 p-3.5 text-xs">
                 <div className="flex items-center justify-between text-muted-foreground">
                   <span>Capacity / RSVPs</span>
                   <strong className="text-foreground">{event.total_registrations || 0} registered</strong>

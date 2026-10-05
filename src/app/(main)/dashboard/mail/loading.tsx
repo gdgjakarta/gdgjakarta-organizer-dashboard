@@ -10,7 +10,7 @@ export default function MailLoading() {
         </div>
         <Skeleton className="size-8 rounded-md" />
       </div>
-      <div className="flex flex-1 rounded-xl border bg-card overflow-hidden">
+      <div className="flex flex-1 rounded-xl bg-card shadow-xs overflow-hidden">
         <div className="w-64 border-r p-4 space-y-3">
           <Skeleton className="h-9 w-full rounded-md" />
           <div className="space-y-2 pt-2">

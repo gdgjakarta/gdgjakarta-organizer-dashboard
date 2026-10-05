@@ -38,12 +38,12 @@ export default function ProfileLoading() {
       {/* Content grid */}
       <div className="grid gap-6 px-4 md:grid-cols-3">
         <div className="md:col-span-2 space-y-4">
-          <div className="rounded-xl border bg-card p-6 space-y-3">
+          <div className="rounded-xl bg-card p-6 shadow-xs space-y-3">
             <Skeleton className="h-5 w-32" />
             <Skeleton className="h-4 w-full" />
             <Skeleton className="h-4 w-5/6" />
           </div>
-          <div className="rounded-xl border bg-card p-6 space-y-3">
+          <div className="rounded-xl bg-card p-6 shadow-xs space-y-3">
             <Skeleton className="h-5 w-40" />
             <div className="grid grid-cols-2 gap-4">
               <Skeleton className="h-12 w-full rounded-md" />
@@ -52,7 +52,7 @@ export default function ProfileLoading() {
           </div>
         </div>
         <div className="space-y-4">
-          <div className="rounded-xl border bg-card p-6 space-y-3">
+          <div className="rounded-xl bg-card p-6 shadow-xs space-y-3">
             <Skeleton className="h-5 w-28" />
             <Skeleton className="h-4 w-full" />
             <Skeleton className="h-4 w-2/3" />

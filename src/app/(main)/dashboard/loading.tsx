@@ -13,14 +13,14 @@ export default function DashboardRootLoading() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {SKELETON_CARDS.map((key) => (
-          <div key={key} className="rounded-xl border bg-card p-5 shadow-xs">
+          <div key={key} className="rounded-xl bg-card p-5 shadow-xs">
             <Skeleton className="h-4 w-24" />
             <Skeleton className="mt-4 h-8 w-16" />
           </div>
         ))}
       </div>
 
-      <div className="rounded-xl border bg-card p-6 shadow-xs">
+      <div className="rounded-xl bg-card p-6 shadow-xs">
         <Skeleton className="mb-4 h-6 w-48" />
         <div className="space-y-3">
           {SKELETON_ROWS.map((key) => (

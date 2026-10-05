@@ -65,7 +65,7 @@ export function TaskCard({
   return (
     <article
       className={cn(
-        "flex flex-col gap-3 rounded-xl border bg-card p-4 text-card-foreground shadow-xs",
+        "flex flex-col gap-3 rounded-xl bg-card p-4 text-card-foreground shadow-xs",
         isOverlay && "w-68 rotate-1 shadow-lg",
       )}
     >

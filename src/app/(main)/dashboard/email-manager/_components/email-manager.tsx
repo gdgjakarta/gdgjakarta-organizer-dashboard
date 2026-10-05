@@ -79,7 +79,7 @@ export function EmailManager() {
 
       {/* Overview Stat Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="border-border/60 bg-linear-to-br from-card to-muted/20 shadow-xs">
+        <Card className="bg-linear-to-br from-card to-muted/20 shadow-xs">
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
             <CardTitle className="font-medium text-sm text-muted-foreground">Blast Engine</CardTitle>
             <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -101,7 +101,7 @@ export function EmailManager() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/60 bg-gradient-to-br from-card to-muted/20 shadow-xs">
+        <Card className="bg-gradient-to-br from-card to-muted/20 shadow-xs">
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
             <CardTitle className="font-medium text-sm text-muted-foreground">Recipient Sync</CardTitle>
             <div className="flex size-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
@@ -114,7 +114,7 @@ export function EmailManager() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/60 bg-gradient-to-br from-card to-muted/20 shadow-xs">
+        <Card className="bg-gradient-to-br from-card to-muted/20 shadow-xs">
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
             <CardTitle className="font-medium text-sm text-muted-foreground">Template Engine</CardTitle>
             <div className="flex size-8 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
@@ -127,7 +127,7 @@ export function EmailManager() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/60 bg-gradient-to-br from-card to-muted/20 shadow-xs">
+        <Card className="bg-gradient-to-br from-card to-muted/20 shadow-xs">
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
             <CardTitle className="font-medium text-sm text-muted-foreground">Security & Limits</CardTitle>
             <div className="flex size-8 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">

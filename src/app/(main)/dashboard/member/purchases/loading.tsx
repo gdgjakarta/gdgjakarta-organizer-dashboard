@@ -8,7 +8,7 @@ export default function PurchasesLoading() {
         <Skeleton className="h-4 w-72" />
       </div>
 
-      <div className="rounded-xl border bg-card p-6 shadow-xs space-y-4">
+      <div className="rounded-xl bg-card p-6 shadow-xs space-y-4">
         <Skeleton className="h-6 w-36" />
         <div className="space-y-3">
           {Array.from({ length: 4 }).map((_, i) => (

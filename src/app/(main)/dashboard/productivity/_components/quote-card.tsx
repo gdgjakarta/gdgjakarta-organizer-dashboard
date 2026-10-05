@@ -2,7 +2,7 @@ import { Quote } from "lucide-react";
 
 export function QuoteCard() {
   return (
-    <section className="rounded-2xl border bg-card p-6 shadow-xs">
+    <section className="rounded-2xl bg-card p-6 shadow-xs">
       <div className="flex items-start gap-4">
         <div className="grid size-8 shrink-0 place-items-center text-muted-foreground">
           <Quote className="size-6" />

@@ -105,7 +105,7 @@ export function Events({ events, totalCount }: { events: EventRow[]; totalCount?
 
   return (
     <Card>
-      <CardHeader className="border-b has-data-[slot=card-action]:grid-cols-1 md:has-data-[slot=card-action]:grid-cols-[1fr_auto]">
+      <CardHeader className="has-data-[slot=card-action]:grid-cols-1 md:has-data-[slot=card-action]:grid-cols-[1fr_auto]">
         <CardTitle className="text-xl leading-none">
           Events <span className="font-normal text-muted-foreground">({countToDisplay.toLocaleString()})</span>
         </CardTitle>

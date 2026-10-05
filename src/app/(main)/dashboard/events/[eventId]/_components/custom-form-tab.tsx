@@ -158,7 +158,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
             </div>
           ) : (
             questions.map((q, idx) => (
-              <div key={q.id} className="flex flex-col gap-3 rounded-lg border bg-card p-4">
+              <div key={q.id} className="flex flex-col gap-3 rounded-lg bg-card p-4 shadow-xs">
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-semibold text-muted-foreground text-xs uppercase">Question #{idx + 1}</span>
                   <Button

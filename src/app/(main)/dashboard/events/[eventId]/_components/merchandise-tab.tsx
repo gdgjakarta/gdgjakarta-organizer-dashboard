@@ -80,8 +80,8 @@ export function MerchandiseTab({ event: _event }: MerchandiseTabProps) {
                   type="button"
                   key={item.id}
                   onClick={() => toggleMerch(item.id)}
-                  className={`flex cursor-pointer flex-col justify-between rounded-xl border p-4 text-left transition-all ${
-                    isSelected ? "border-primary bg-primary/5 shadow-xs" : "border-border bg-card hover:bg-muted/40"
+                  className={`flex cursor-pointer flex-col justify-between rounded-xl p-4 text-left transition-all ${
+                    isSelected ? "bg-primary/5 shadow-xs ring-2 ring-primary" : "bg-card shadow-xs hover:bg-muted/40"
                   }`}
                 >
                   <div className="flex w-full items-start justify-between gap-3">

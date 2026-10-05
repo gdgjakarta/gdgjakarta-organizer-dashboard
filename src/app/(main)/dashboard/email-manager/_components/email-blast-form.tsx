@@ -356,7 +356,7 @@ export function EmailBlastForm({ onSuccess, showHeader = true }: EmailBlastFormP
             </FieldContent>
           </Field>
         </CardContent>
-        <CardFooter className="flex justify-end gap-3 border-t bg-muted/20 px-6 py-4">
+        <CardFooter className="flex justify-end gap-3 bg-muted/20 px-6 py-4">
           <Button type="submit" disabled={isSubmitting} size="lg" className="min-w-44 gap-2">
             {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
             {isSubmitting ? "Sending Blast..." : "Send Email Blast"}
