@@ -35,11 +35,7 @@ export function PartnershipTiers() {
           </p>
         </div>
 
-        <div
-          className={`mt-12 grid grid-cols-1 gap-6 sm:grid-cols-2 ${
-            visibleTiers.length >= 5 ? "lg:grid-cols-3 xl:grid-cols-5" : "lg:grid-cols-4"
-          }`}
-        >
+        <div className="mt-12 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
           {visibleTiers.map((tier) => (
             <div
               key={tier.id || tier.name}
@@ -123,6 +119,12 @@ export function PartnershipTiers() {
               </div>
             </div>
           ))}
+        </div>
+
+        {/* Footnote notes from proposal deck */}
+        <div className="mt-8 text-center text-xs text-muted-foreground space-y-1">
+          <p>* Speaking opportunities title have to meet our criteria.</p>
+          <p>Brand visibility will be served in our social media post, web-page event, merchandise and printings.</p>
         </div>
 
         {/* Bespoke Activations Notice */}

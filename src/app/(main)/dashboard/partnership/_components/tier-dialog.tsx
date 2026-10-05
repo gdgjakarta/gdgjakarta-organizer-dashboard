@@ -56,10 +56,11 @@ export function TierDialog({ open, onOpenChange, tier, onSave }: TierDialogProps
       setDescription("");
       setSlots("Limited Slots");
       setHighlights([
-        "Standard Expo Booth with power & Wi-Fi",
-        "Logo on official website and screen banners",
-        "Social media announcement post",
-        "All-Access Conference Passes",
+        "Brand’s Merchandise Placement",
+        "Small Brand Visibility",
+        "Ad-Libs in every idle (min 2 times)",
+        "Dedicated Social Media Content (in our Instagram’s post & stories)",
+        "GDG Jakarta’s Newsletter (min 2 times)",
       ]);
     }
     setNewHighlight("");
@@ -201,7 +202,7 @@ export function TierDialog({ open, onOpenChange, tier, onSave }: TierDialogProps
 
                 <div className="flex items-center gap-2 pt-1">
                   <Input
-                    placeholder="Add new highlight point (e.g. 8x All-Access Passes)..."
+                    placeholder="Add new highlight point (e.g. Brand Booth Space)..."
                     value={newHighlight}
                     onChange={(e) => setNewHighlight(e.target.value)}
                     onKeyDown={(e) => {

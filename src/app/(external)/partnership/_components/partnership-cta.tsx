@@ -98,7 +98,6 @@ export function PartnershipCta() {
           `${featuredEventTitle} - Platinum Partner`,
           `${featuredEventTitle} - Gold Partner`,
           `${featuredEventTitle} - Silver Partner`,
-          `${featuredEventTitle} - Community & In-Kind`,
           "Road to DevFest Workshop Series Co-Host",
           "Brand-Led Interactive Activation or Booth",
           "Custom Bespoke Collaboration",
