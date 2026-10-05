@@ -8,8 +8,23 @@ import { Card, CardContent } from "@/components/ui/card";
 import { APP_CONFIG } from "@/config/app-config";
 
 export const metadata: Metadata = {
-  title: `Privacy Policy - ${APP_CONFIG.name}`,
+  title: "Privacy Policy",
   description: "Learn how GDG Jakarta collects, uses, and protects your personal data and cookie preferences.",
+  alternates: {
+    canonical: "/privacy",
+  },
+  openGraph: {
+    title: "Privacy Policy | GDG Jakarta",
+    description: "Learn how GDG Jakarta collects, uses, and protects your personal data and cookie preferences.",
+    url: "/privacy",
+    siteName: APP_CONFIG.name,
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Privacy Policy | GDG Jakarta",
+    description: "Learn how GDG Jakarta collects, uses, and protects your personal data and cookie preferences.",
+  },
 };
 
 export default function PrivacyPolicyPage() {

@@ -1,3 +1,6 @@
+import type { Metadata } from "next";
+
+import { APP_CONFIG } from "@/config/app-config";
 import { BEVY_CONFIG } from "@/config/bevy-config";
 import { getGoogleThemeByKey, getRandomGoogleTheme } from "@/config/homepage-themes";
 import { getBevyChapterEvents, getBevyChapterSponsors } from "@/lib/bevy/client";
@@ -15,6 +18,29 @@ import { SponsorsSection } from "./_components/sponsors-section";
 import { PartnershipCta } from "./partnership/_components/partnership-cta";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "GDG Jakarta | Google Developer Groups Community Chapter",
+  description:
+    "Connect, learn, and grow with the Google Developer Groups Jakarta community. Discover meetups, tech workshops, hackathons, and speaker sessions in Jakarta.",
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    title: "GDG Jakarta | Google Developer Groups Community Chapter",
+    description:
+      "Connect, learn, and grow with the Google Developer Groups Jakarta community. Discover meetups, tech workshops, hackathons, and speaker sessions in Jakarta.",
+    url: "/",
+    siteName: APP_CONFIG.name,
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "GDG Jakarta | Google Developer Groups Community Chapter",
+    description:
+      "Connect, learn, and grow with the Google Developer Groups Jakarta community. Discover meetups, tech workshops, hackathons, and speaker sessions in Jakarta.",
+  },
+};
 
 interface HomeProps {
   searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;

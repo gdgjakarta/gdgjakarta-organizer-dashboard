@@ -2,9 +2,25 @@ import type { ReactNode } from "react";
 
 import Link from "next/link";
 
+import type { Metadata } from "next";
+
 import { GdgLogo } from "@/components/gdg-logo";
 import { Separator } from "@/components/ui/separator";
 import { APP_CONFIG } from "@/config/app-config";
+
+export const metadata: Metadata = {
+  title: "Authentication",
+  description: "Sign in to GDG Jakarta community dashboard.",
+  openGraph: {
+    title: "Authentication | GDG Jakarta",
+    description: "Sign in to GDG Jakarta community dashboard.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Authentication | GDG Jakarta",
+    description: "Sign in to GDG Jakarta community dashboard.",
+  },
+};
 
 export default function AuthLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (

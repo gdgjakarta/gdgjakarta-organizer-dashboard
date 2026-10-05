@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { APP_CONFIG } from "@/config/app-config";
 import { BEVY_CONFIG } from "@/config/bevy-config";
 import { getGoogleThemeByKey, getRandomGoogleTheme } from "@/config/homepage-themes";
 import { getBevyChapterSponsors } from "@/lib/bevy/client";
@@ -20,7 +21,19 @@ export const metadata: Metadata = {
   title: "Brand Collaboration & Sponsorship | GDG Jakarta",
   description:
     "Partner with GDG Jakarta to elevate the developer community. Position your brand at the center of the developer ecosystem and showcase your technology to developers, tech leads, and innovators.",
+  alternates: {
+    canonical: "/partnership",
+  },
   openGraph: {
+    title: "Brand Collaboration & Sponsorship | GDG Jakarta",
+    description:
+      "Partner with GDG Jakarta to elevate the developer community. Reach out to hello@gdgjakarta.org for sponsorship proposals.",
+    url: "/partnership",
+    siteName: APP_CONFIG.name,
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
     title: "Brand Collaboration & Sponsorship | GDG Jakarta",
     description:
       "Partner with GDG Jakarta to elevate the developer community. Reach out to hello@gdgjakarta.org for sponsorship proposals.",

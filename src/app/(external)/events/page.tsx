@@ -1,3 +1,6 @@
+import type { Metadata } from "next";
+
+import { APP_CONFIG } from "@/config/app-config";
 import { BEVY_CONFIG } from "@/config/bevy-config";
 import { getBevyChapterEvents } from "@/lib/bevy/client";
 import type { BevyEvent } from "@/lib/bevy/types";
@@ -5,6 +8,29 @@ import type { BevyEvent } from "@/lib/bevy/types";
 import { EventsDirectory } from "./_components/events-directory";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Events Directory",
+  description:
+    "Discover upcoming and past Google Developer Groups Jakarta meetups, hackathons, DevFests, hands-on codelabs, and community gatherings.",
+  alternates: {
+    canonical: "/events",
+  },
+  openGraph: {
+    title: "Events Directory | GDG Jakarta",
+    description:
+      "Discover upcoming and past Google Developer Groups Jakarta meetups, hackathons, DevFests, hands-on codelabs, and community gatherings.",
+    url: "/events",
+    siteName: APP_CONFIG.name,
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Events Directory | GDG Jakarta",
+    description:
+      "Discover upcoming and past Google Developer Groups Jakarta meetups, hackathons, DevFests, hands-on codelabs, and community gatherings.",
+  },
+};
 
 const EVENTS_PER_PAGE = 15;
 

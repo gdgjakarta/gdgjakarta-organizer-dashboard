@@ -39,9 +39,26 @@ function InstagramIcon({ className = "size-4" }: { className?: string }) {
 }
 
 export const metadata: Metadata = {
-  title: `Payment Policy - ${APP_CONFIG.name}`,
+  title: "Payment Policy",
   description:
     "Official GDG Jakarta Payment Policy, Commitment Fee guidelines, merchandise sales rules, and anti-fraud verification channels.",
+  alternates: {
+    canonical: "/payment-policy",
+  },
+  openGraph: {
+    title: "Payment Policy | GDG Jakarta",
+    description:
+      "Official GDG Jakarta Payment Policy, Commitment Fee guidelines, merchandise sales rules, and anti-fraud verification channels.",
+    url: "/payment-policy",
+    siteName: APP_CONFIG.name,
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Payment Policy | GDG Jakarta",
+    description:
+      "Official GDG Jakarta Payment Policy, Commitment Fee guidelines, merchandise sales rules, and anti-fraud verification channels.",
+  },
 };
 
 export default function PaymentPolicyPage() {

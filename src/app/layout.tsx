@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 
 import { NavigationProgressProvider } from "@/components/navigation-progress-bar";
 import { Toaster } from "@/components/ui/sonner";
@@ -14,9 +14,80 @@ import { PreferencesStoreProvider } from "@/stores/preferences/preferences-provi
 
 import "./globals.css";
 
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#1e1e1e" },
+  ],
+  width: "device-width",
+  initialScale: 1,
+};
+
 export const metadata: Metadata = {
-  title: APP_CONFIG.meta.title,
+  metadataBase: new URL(APP_CONFIG.url),
+  title: {
+    default: APP_CONFIG.meta.title,
+    template: `%s | ${APP_CONFIG.name}`,
+  },
   description: APP_CONFIG.meta.description,
+  applicationName: APP_CONFIG.name,
+  authors: [{ name: APP_CONFIG.name, url: APP_CONFIG.url }],
+  creator: APP_CONFIG.name,
+  publisher: APP_CONFIG.name,
+  keywords: APP_CONFIG.meta.keywords,
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    type: "website",
+    locale: APP_CONFIG.meta.locale,
+    alternateLocale: [APP_CONFIG.meta.alternateLocale],
+    url: APP_CONFIG.url,
+    siteName: APP_CONFIG.meta.siteName,
+    title: {
+      default: APP_CONFIG.meta.title,
+      template: `%s | ${APP_CONFIG.name}`,
+    },
+    description: APP_CONFIG.meta.description,
+    images: [
+      {
+        url: APP_CONFIG.meta.ogImage,
+        width: 1200,
+        height: 630,
+        alt: APP_CONFIG.meta.ogImageAlt,
+        type: "image/png",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    site: APP_CONFIG.meta.twitterHandle,
+    creator: APP_CONFIG.meta.twitterHandle,
+    title: {
+      default: APP_CONFIG.meta.title,
+      template: `%s | ${APP_CONFIG.name}`,
+    },
+    description: APP_CONFIG.meta.description,
+    images: [
+      {
+        url: APP_CONFIG.meta.ogImage,
+        width: 1200,
+        height: 630,
+        alt: APP_CONFIG.meta.ogImageAlt,
+      },
+    ],
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-video-preview": -1,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+    },
+  },
   icons: {
     icon: [
       { url: "/favicon.ico" },
@@ -29,6 +100,16 @@ export const metadata: Metadata = {
     shortcut: ["/favicon.ico"],
   },
   manifest: "/favicon/site.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: APP_CONFIG.name,
+  },
+  formatDetection: {
+    email: false,
+    address: false,
+    telephone: false,
+  },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {

@@ -2,6 +2,8 @@ import type { ReactNode } from "react";
 
 import { cookies } from "next/headers";
 
+import type { Metadata } from "next";
+
 import { AppSidebar } from "@/app/(main)/dashboard/_components/sidebar/app-sidebar";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -11,6 +13,15 @@ import { getPreference } from "@/server/server-actions";
 
 // import { SearchDialog } from "./_components/header/search-dialog";
 import { ThemeSwitcher } from "./_components/header/theme-switcher";
+
+export const metadata: Metadata = {
+  title: "Dashboard",
+  description: "GDG Jakarta Organizer and Member Community Dashboard.",
+  robots: {
+    index: false,
+    follow: false,
+  },
+};
 
 export default async function Layout({ children }: Readonly<{ children: ReactNode }>) {
   let defaultOpen = true;
