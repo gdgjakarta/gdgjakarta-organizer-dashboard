@@ -94,10 +94,10 @@ export function PartnershipCta() {
     contact.interestOptions && contact.interestOptions.length > 0
       ? contact.interestOptions
       : [
-          `${featuredEventTitle} - Diamond Partner`,
-          `${featuredEventTitle} - Platinum Partner`,
-          `${featuredEventTitle} - Gold Partner`,
-          `${featuredEventTitle} - Silver Partner`,
+          `${featuredEventTitle} - Diamond`,
+          `${featuredEventTitle} - Platinum`,
+          `${featuredEventTitle} - Gold`,
+          `${featuredEventTitle} - Silver`,
           "Road to DevFest Workshop Series Co-Host",
           "Brand-Led Interactive Activation or Booth",
           "Custom Bespoke Collaboration",
@@ -107,7 +107,7 @@ export function PartnershipCta() {
     <section id="contact" className="container mx-auto px-4 py-16 sm:px-6 lg:px-8 lg:py-24">
       {/* Main CTA Container */}
       <div
-        className="relative overflow-hidden rounded-[2.5rem] border p-8 sm:p-12 lg:p-16 shadow-xl"
+        className="relative overflow-hidden rounded-[2.5rem] border p-8 shadow-xl sm:p-12 lg:p-16"
         style={{
           backgroundColor: "var(--theme-bg-subtle)",
           borderColor: "var(--theme-border)",
@@ -134,11 +134,11 @@ export function PartnershipCta() {
             <span>Connect with Our Partnership Team</span>
           </div>
 
-          <h2 className="mt-6 font-extrabold text-3xl tracking-tight sm:text-4xl lg:text-5xl text-foreground">
+          <h2 className="mt-6 font-extrabold text-3xl text-foreground tracking-tight sm:text-4xl lg:text-5xl">
             {contact.heading || "Let’s Build Something Impactful Together!"}
           </h2>
 
-          <p className="mx-auto mt-4 max-w-2xl text-foreground/80 text-sm sm:text-base leading-relaxed">
+          <p className="mx-auto mt-4 max-w-2xl text-foreground/80 text-sm leading-relaxed sm:text-base">
             {contact.subheading ||
               "Ready to align your brand with Jakarta’s premier developer community? Drop us an email or send us a DM to receive our complete sponsorship proposal deck."}
           </p>
@@ -219,18 +219,18 @@ export function PartnershipCta() {
         </div>
 
         {/* Quick Inquiry Form Box */}
-        <div className="relative mt-12 mx-auto max-w-2xl rounded-2xl border bg-background p-6 sm:p-8 shadow-md">
+        <div className="relative mx-auto mt-12 max-w-2xl rounded-2xl border bg-background p-6 shadow-md sm:p-8">
           <div className="mb-6">
             <h3 className="font-bold text-foreground text-lg sm:text-xl">Request Sponsorship Proposal Deck</h3>
-            <p className="text-muted-foreground text-xs sm:text-sm mt-1">
+            <p className="mt-1 text-muted-foreground text-xs sm:text-sm">
               Fill in your details to quickly prepare and draft your partnership inquiry email.
             </p>
           </div>
 
           <form onSubmit={handleLaunchEmail} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-1.5 text-left">
-                <Label htmlFor="companyName" className="text-xs font-semibold">
+                <Label htmlFor="companyName" className="font-semibold text-xs">
                   Company / Organization <span className="text-red-500">*</span>
                 </Label>
                 <Input
@@ -243,7 +243,7 @@ export function PartnershipCta() {
               </div>
 
               <div className="space-y-1.5 text-left">
-                <Label htmlFor="contactName" className="text-xs font-semibold">
+                <Label htmlFor="contactName" className="font-semibold text-xs">
                   Your Name / Role <span className="text-red-500">*</span>
                 </Label>
                 <Input
@@ -257,7 +257,7 @@ export function PartnershipCta() {
             </div>
 
             <div className="space-y-1.5 text-left">
-              <Label htmlFor="interest" className="text-xs font-semibold">
+              <Label htmlFor="interest" className="font-semibold text-xs">
                 Area of Collaboration
               </Label>
               <select
@@ -275,7 +275,7 @@ export function PartnershipCta() {
             </div>
 
             <div className="space-y-1.5 text-left">
-              <Label htmlFor="message" className="text-xs font-semibold">
+              <Label htmlFor="message" className="font-semibold text-xs">
                 Message or Specific Questions (Optional)
               </Label>
               <Textarea
@@ -290,7 +290,7 @@ export function PartnershipCta() {
 
             <Button
               type="submit"
-              className="w-full rounded-xl font-semibold gap-2"
+              className="w-full gap-2 rounded-xl font-semibold"
               style={{
                 backgroundColor: "var(--theme-primary)",
                 color: "var(--theme-primary-foreground)",
@@ -304,7 +304,7 @@ export function PartnershipCta() {
 
         {/* Sponsor FAQ Accordion */}
         {content.faqs && content.faqs.length > 0 && (
-          <div className="mt-16 mx-auto max-w-3xl">
+          <div className="mx-auto mt-16 max-w-3xl">
             <div className="mb-6 flex items-center justify-center gap-2 text-center">
               <HelpCircle className="size-4 text-[var(--theme-primary)]" />
               <h3 className="font-bold text-foreground text-lg sm:text-xl">Partnership Frequently Asked Questions</h3>
@@ -312,8 +312,8 @@ export function PartnershipCta() {
 
             <Accordion type="single" collapsible className="w-full rounded-2xl border bg-background/80 p-2 shadow-xs">
               {content.faqs.map((faq, i) => (
-                <AccordionItem key={faq.id || i} value={`faq-${faq.id || i}`} className="border-b last:border-b-0 px-4">
-                  <AccordionTrigger className="text-left font-semibold text-xs sm:text-sm hover:no-underline">
+                <AccordionItem key={faq.id || i} value={`faq-${faq.id || i}`} className="border-b px-4 last:border-b-0">
+                  <AccordionTrigger className="text-left font-semibold text-xs hover:no-underline sm:text-sm">
                     {faq.question}
                   </AccordionTrigger>
                   <AccordionContent className="text-muted-foreground text-xs leading-relaxed">
