@@ -4,30 +4,7 @@ import { useState } from "react";
 
 import Link from "next/link";
 
-import {
-  Award,
-  Compass,
-  ExternalLink,
-  Eye,
-  EyeOff,
-  Flame,
-  Gift,
-  HelpCircle,
-  Laptop,
-  Lightbulb,
-  Mail,
-  Pencil,
-  Plus,
-  Presentation,
-  RefreshCw,
-  Rocket,
-  Save,
-  Sparkles,
-  Terminal,
-  Trash2,
-  Users,
-  Zap,
-} from "lucide-react";
+import { ExternalLink, Eye, EyeOff, Pencil, Plus, RefreshCw, Save, Trash2 } from "lucide-react";
 
 import {
   AlertDialog,
@@ -133,44 +110,46 @@ export function PartnershipDashboard() {
   return (
     <div className="space-y-6">
       {/* Top Header & Actions Bar */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b pb-5">
+      <div className="flex flex-col gap-4 border-b pb-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+            <h1 className="font-bold text-foreground text-xl tracking-tight sm:text-2xl lg:text-3xl">
               Partnership & Sponsorship Configuration
             </h1>
-            <Badge variant="outline" className="hidden sm:inline-flex text-xs">
+            <Badge variant="outline" className="hidden text-xs sm:inline-flex">
               Live Editor
             </Badge>
           </div>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <p className="mt-1 text-muted-foreground text-xs sm:text-sm">
             Configure sponsorship tiers, featured event spotlight, collaboration formats, and inquiry contact settings.
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" asChild className="gap-1.5 text-xs">
-            <Link href="/partnership" target="_blank" rel="noopener noreferrer">
-              <ExternalLink className="size-3.5" />
-              <span>Preview Live Page</span>
-            </Link>
-          </Button>
+        <div className="flex w-full flex-col items-stretch gap-2 sm:w-auto sm:flex-row sm:items-center">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+            <Button variant="outline" size="sm" asChild className="justify-center gap-1.5 text-xs">
+              <Link href="/partnership" target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="size-3.5" />
+                <span>Preview Live</span>
+              </Link>
+            </Button>
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setConfirmResetOpen(true)}
-            className="gap-1.5 text-xs text-muted-foreground hover:text-foreground"
-          >
-            <RefreshCw className="size-3.5" />
-            <span>Reset Defaults</span>
-          </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setConfirmResetOpen(true)}
+              className="justify-center gap-1.5 text-muted-foreground text-xs hover:text-foreground"
+            >
+              <RefreshCw className="size-3.5" />
+              <span>Reset Defaults</span>
+            </Button>
+          </div>
 
           <Button
             size="sm"
             onClick={() => saveContent(content)}
             disabled={saving || loading}
-            className="gap-1.5 text-xs font-semibold"
+            className="w-full justify-center gap-1.5 font-semibold text-xs sm:w-auto"
           >
             <Save className="size-3.5" />
             <span>{saving ? "Saving..." : "Save Changes"}</span>
@@ -178,29 +157,31 @@ export function PartnershipDashboard() {
         </div>
       </div>
 
-      {/* Main Tabs Navigation */}
+      {/* Main Tabs Navigation - Horizontally scrollable on mobile */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2 md:w-auto md:inline-flex md:grid-cols-5">
-          <TabsTrigger value="hero" className="text-xs sm:text-sm">
-            Hero & Metrics
-          </TabsTrigger>
-          <TabsTrigger value="tiers" className="text-xs sm:text-sm">
-            Sponsorship Tiers ({content.tiers.length})
-          </TabsTrigger>
-          <TabsTrigger value="formats" className="text-xs sm:text-sm">
-            Featured Event & Formats
-          </TabsTrigger>
-          <TabsTrigger value="whyus" className="text-xs sm:text-sm">
-            Brand Benefits & Why Us
-          </TabsTrigger>
-          <TabsTrigger value="contact" className="text-xs sm:text-sm">
-            Sponsor FAQ & Contact
-          </TabsTrigger>
-        </TabsList>
+        <div className="-mx-1 w-full overflow-x-auto px-1 pb-1 sm:mx-0 sm:px-0">
+          <TabsList className="inline-flex h-9 w-max items-center justify-start rounded-lg bg-muted p-1 text-muted-foreground">
+            <TabsTrigger value="hero" className="whitespace-nowrap px-3 py-1.5 text-xs sm:text-sm">
+              Hero & Metrics
+            </TabsTrigger>
+            <TabsTrigger value="tiers" className="whitespace-nowrap px-3 py-1.5 text-xs sm:text-sm">
+              Sponsorship Tiers ({content.tiers.length})
+            </TabsTrigger>
+            <TabsTrigger value="formats" className="whitespace-nowrap px-3 py-1.5 text-xs sm:text-sm">
+              Featured Event & Formats
+            </TabsTrigger>
+            <TabsTrigger value="whyus" className="whitespace-nowrap px-3 py-1.5 text-xs sm:text-sm">
+              Brand Benefits & Why Us
+            </TabsTrigger>
+            <TabsTrigger value="contact" className="whitespace-nowrap px-3 py-1.5 text-xs sm:text-sm">
+              Sponsor FAQ & Contact
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         {/* ── 1. Hero & Metrics Tab ── */}
         <TabsContent value="hero" className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Partnership Hero Header</CardTitle>
@@ -246,7 +227,7 @@ export function PartnershipDashboard() {
                   />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-1.5">
                     <Label htmlFor="hero-email" className="text-xs">
                       Official Contact Email
@@ -288,7 +269,7 @@ export function PartnershipDashboard() {
               </CardHeader>
               <CardContent className="space-y-4">
                 {content.hero.stats.map((stat, idx) => (
-                  <div key={stat.id || idx} className="grid grid-cols-2 gap-3 items-center rounded-lg border p-3">
+                  <div key={stat.id || idx} className="grid grid-cols-2 items-center gap-3 rounded-lg border p-3">
                     <div className="space-y-1">
                       <Label className="text-[11px] text-muted-foreground">Stat Value</Label>
                       <Input
@@ -298,7 +279,7 @@ export function PartnershipDashboard() {
                           updated[idx] = { ...stat, value: e.target.value };
                           setContent({ ...content, hero: { ...content.hero, stats: updated } });
                         }}
-                        className="text-xs h-8 font-semibold"
+                        className="h-8 font-semibold text-xs"
                       />
                     </div>
                     <div className="space-y-1">
@@ -310,7 +291,7 @@ export function PartnershipDashboard() {
                           updated[idx] = { ...stat, label: e.target.value };
                           setContent({ ...content, hero: { ...content.hero, stats: updated } });
                         }}
-                        className="text-xs h-8"
+                        className="h-8 text-xs"
                       />
                     </div>
                   </div>
@@ -322,10 +303,10 @@ export function PartnershipDashboard() {
 
         {/* ── 2. Sponsorship Tiers Tab ── */}
         <TabsContent value="tiers" className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
             <div>
-              <h2 className="text-base font-semibold">Available Sponsorship Packages</h2>
-              <p className="text-xs text-muted-foreground">
+              <h2 className="font-semibold text-base">Available Sponsorship Packages</h2>
+              <p className="text-muted-foreground text-xs">
                 Packages displayed in the interactive grid with deliverables and inquiry links.
               </p>
             </div>
@@ -335,107 +316,204 @@ export function PartnershipDashboard() {
                 setEditingTier(null);
                 setTierDialogOpen(true);
               }}
-              className="gap-1.5 text-xs font-semibold"
+              className="w-full justify-center gap-1.5 font-semibold text-xs sm:w-auto"
             >
               <Plus className="size-3.5" />
               <span>Add New Tier</span>
             </Button>
           </div>
 
-          <Card>
+          {/* Mobile Card List View (< sm) */}
+          <div className="space-y-3 sm:hidden">
+            {content.tiers.map((tier) => (
+              <Card
+                key={tier.id}
+                className={cn(
+                  "space-y-3 p-4 transition-all",
+                  tier.isActive === false && "border-dashed bg-muted/20 opacity-60",
+                )}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="font-semibold text-sm">{tier.name}</span>
+                      {tier.badge && (
+                        <Badge variant={tier.popular ? "default" : "secondary"} className="text-[10px]">
+                          {tier.badge}
+                        </Badge>
+                      )}
+                      {tier.isActive === false && (
+                        <Badge variant="outline" className="border-dashed text-[10px] text-muted-foreground">
+                          Hidden
+                        </Badge>
+                      )}
+                    </div>
+                    {tier.description && (
+                      <p className="line-clamp-2 text-muted-foreground text-xs leading-relaxed">{tier.description}</p>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-8 text-primary hover:text-primary"
+                      onClick={() => {
+                        setEditingTier(tier);
+                        setTierDialogOpen(true);
+                      }}
+                    >
+                      <Pencil className="size-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-8 text-destructive hover:text-destructive"
+                      onClick={() => setItemTierToDelete(tier)}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 text-muted-foreground text-xs">
+                  {tier.slots && (
+                    <span className="rounded bg-muted px-2 py-0.5 font-mono text-[11px] text-foreground">
+                      {tier.slots}
+                    </span>
+                  )}
+                  <span>•</span>
+                  <span>{tier.highlights?.length || 0} deliverables</span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 border-t pt-2.5">
+                  <div className="flex items-center justify-between rounded-lg bg-muted/40 p-2">
+                    <Label htmlFor={`m-visible-${tier.id}`} className="cursor-pointer font-medium text-xs">
+                      Visible
+                    </Label>
+                    <Switch
+                      id={`m-visible-${tier.id}`}
+                      checked={tier.isActive !== false}
+                      onCheckedChange={(checked) => {
+                        const updated = content.tiers.map((t) => (t.id === tier.id ? { ...t, isActive: checked } : t));
+                        setContent({ ...content, tiers: updated });
+                      }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between rounded-lg bg-muted/40 p-2">
+                    <Label htmlFor={`m-featured-${tier.id}`} className="cursor-pointer font-medium text-xs">
+                      Featured
+                    </Label>
+                    <Switch
+                      id={`m-featured-${tier.id}`}
+                      checked={Boolean(tier.popular)}
+                      onCheckedChange={(checked) => {
+                        const updated = content.tiers.map((t) => (t.id === tier.id ? { ...t, popular: checked } : t));
+                        setContent({ ...content, tiers: updated });
+                      }}
+                    />
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+
+          {/* Desktop / Tablet Table View (>= sm) */}
+          <Card className="hidden sm:block">
             <CardContent className="p-0">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-xs">Tier Name</TableHead>
-                    <TableHead className="text-xs">Badge</TableHead>
-                    <TableHead className="text-xs">Slots Available</TableHead>
-                    <TableHead className="text-xs">Highlights</TableHead>
-                    <TableHead className="text-center text-xs">Visible</TableHead>
-                    <TableHead className="text-center text-xs">Featured</TableHead>
-                    <TableHead className="text-right text-xs">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {content.tiers.map((tier) => (
-                    <TableRow key={tier.id} className={cn(tier.isActive === false && "opacity-60")}>
-                      <TableCell className="font-semibold text-xs sm:text-sm">
-                        <div className="flex items-center gap-1.5">
-                          <span>{tier.name}</span>
-                          {tier.isActive === false && (
-                            <Badge variant="outline" className="text-[10px] text-muted-foreground border-dashed">
-                              Hidden
-                            </Badge>
-                          )}
-                        </div>
-                        {tier.description && (
-                          <p className="text-[11px] font-normal text-muted-foreground line-clamp-1">
-                            {tier.description}
-                          </p>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {tier.badge ? (
-                          <Badge variant={tier.popular ? "default" : "secondary"} className="text-[10px]">
-                            {tier.badge}
-                          </Badge>
-                        ) : (
-                          <span className="text-muted-foreground text-xs">-</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-xs font-mono">{tier.slots}</TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {tier.highlights?.length || 0} items
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <Switch
-                          checked={tier.isActive !== false}
-                          onCheckedChange={(checked) => {
-                            const updated = content.tiers.map((t) =>
-                              t.id === tier.id ? { ...t, isActive: checked } : t,
-                            );
-                            setContent({ ...content, tiers: updated });
-                          }}
-                        />
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <Switch
-                          checked={Boolean(tier.popular)}
-                          onCheckedChange={(checked) => {
-                            const updated = content.tiers.map((t) =>
-                              t.id === tier.id ? { ...t, popular: checked } : t,
-                            );
-                            setContent({ ...content, tiers: updated });
-                          }}
-                        />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-7 text-primary hover:text-primary"
-                            onClick={() => {
-                              setEditingTier(tier);
-                              setTierDialogOpen(true);
-                            }}
-                          >
-                            <Pencil className="size-3.5" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-7 text-destructive hover:text-destructive"
-                            onClick={() => setItemTierToDelete(tier)}
-                          >
-                            <Trash2 className="size-3.5" />
-                          </Button>
-                        </div>
-                      </TableCell>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-xs">Tier Name</TableHead>
+                      <TableHead className="text-xs">Badge</TableHead>
+                      <TableHead className="text-xs">Slots Available</TableHead>
+                      <TableHead className="text-xs">Highlights</TableHead>
+                      <TableHead className="text-center text-xs">Visible</TableHead>
+                      <TableHead className="text-center text-xs">Featured</TableHead>
+                      <TableHead className="text-right text-xs">Actions</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {content.tiers.map((tier) => (
+                      <TableRow key={tier.id} className={cn(tier.isActive === false && "opacity-60")}>
+                        <TableCell className="font-semibold text-xs sm:text-sm">
+                          <div className="flex items-center gap-1.5">
+                            <span>{tier.name}</span>
+                            {tier.isActive === false && (
+                              <Badge variant="outline" className="border-dashed text-[10px] text-muted-foreground">
+                                Hidden
+                              </Badge>
+                            )}
+                          </div>
+                          {tier.description && (
+                            <p className="line-clamp-1 font-normal text-[11px] text-muted-foreground">
+                              {tier.description}
+                            </p>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {tier.badge ? (
+                            <Badge variant={tier.popular ? "default" : "secondary"} className="text-[10px]">
+                              {tier.badge}
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground text-xs">-</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">{tier.slots}</TableCell>
+                        <TableCell className="text-muted-foreground text-xs">
+                          {tier.highlights?.length || 0} items
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Switch
+                            checked={tier.isActive !== false}
+                            onCheckedChange={(checked) => {
+                              const updated = content.tiers.map((t) =>
+                                t.id === tier.id ? { ...t, isActive: checked } : t,
+                              );
+                              setContent({ ...content, tiers: updated });
+                            }}
+                          />
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Switch
+                            checked={Boolean(tier.popular)}
+                            onCheckedChange={(checked) => {
+                              const updated = content.tiers.map((t) =>
+                                t.id === tier.id ? { ...t, popular: checked } : t,
+                              );
+                              setContent({ ...content, tiers: updated });
+                            }}
+                          />
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-7 text-primary hover:text-primary"
+                              onClick={() => {
+                                setEditingTier(tier);
+                                setTierDialogOpen(true);
+                              }}
+                            >
+                              <Pencil className="size-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-7 text-destructive hover:text-destructive"
+                              onClick={() => setItemTierToDelete(tier)}
+                            >
+                              <Trash2 className="size-3.5" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -451,7 +529,7 @@ export function PartnershipDashboard() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="df-name" className="text-xs">
                     Event Title
@@ -511,10 +589,10 @@ export function PartnershipDashboard() {
 
               {/* Event Highlight Stats */}
               <div className="border-t pt-3">
-                <Label className="text-xs font-semibold">Featured Event Highlight Cards</Label>
-                <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <Label className="font-semibold text-xs">Featured Event Highlight Cards</Label>
+                <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   {content.devfest.highlights.map((h, idx) => (
-                    <div key={h.id || idx} className="rounded-lg border p-2.5 space-y-1">
+                    <div key={h.id || idx} className="space-y-1 rounded-lg border p-2.5">
                       <Input
                         value={h.value}
                         onChange={(e) => {
@@ -522,7 +600,7 @@ export function PartnershipDashboard() {
                           updated[idx] = { ...h, value: e.target.value };
                           setContent({ ...content, devfest: { ...content.devfest, highlights: updated } });
                         }}
-                        className="text-xs h-7 font-bold"
+                        className="h-7 font-bold text-xs"
                         placeholder="1,000+ In-Person"
                       />
                       <Input
@@ -532,7 +610,7 @@ export function PartnershipDashboard() {
                           updated[idx] = { ...h, label: e.target.value };
                           setContent({ ...content, devfest: { ...content.devfest, highlights: updated } });
                         }}
-                        className="text-[11px] h-6 text-muted-foreground"
+                        className="h-6 text-[11px] text-muted-foreground"
                         placeholder="Target Attendees"
                       />
                     </div>
@@ -544,10 +622,10 @@ export function PartnershipDashboard() {
 
           {/* Formats Section */}
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
               <div>
-                <h3 className="text-base font-semibold">Collaboration Formats</h3>
-                <p className="text-xs text-muted-foreground">
+                <h3 className="font-semibold text-base">Collaboration Formats</h3>
+                <p className="text-muted-foreground text-xs">
                   Cards detailing the various collaboration mechanisms (Codelabs, Hackathons, Meetups, Merch).
                 </p>
               </div>
@@ -557,20 +635,20 @@ export function PartnershipDashboard() {
                   setEditingFormat(null);
                   setFormatDialogOpen(true);
                 }}
-                className="gap-1.5 text-xs font-semibold"
+                className="w-full justify-center gap-1.5 font-semibold text-xs sm:w-auto"
               >
                 <Plus className="size-3.5" />
                 <span>Add Format</span>
               </Button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {content.formats.map((fmt) => (
                 <Card
                   key={fmt.id}
                   className={cn(
                     "relative flex flex-col justify-between transition-all",
-                    fmt.isActive === false && "opacity-60 border-dashed bg-muted/20",
+                    fmt.isActive === false && "border-dashed bg-muted/20 opacity-60",
                   )}
                 >
                   <CardHeader className="pb-3">
@@ -580,7 +658,7 @@ export function PartnershipDashboard() {
                           {fmt.tag}
                         </Badge>
                         {fmt.isActive === false && (
-                          <Badge variant="outline" className="text-[10px] text-muted-foreground border-dashed">
+                          <Badge variant="outline" className="border-dashed text-[10px] text-muted-foreground">
                             Hidden
                           </Badge>
                         )}
@@ -630,13 +708,13 @@ export function PartnershipDashboard() {
                         </Button>
                       </div>
                     </div>
-                    <CardTitle className="text-sm font-bold mt-2">{fmt.title}</CardTitle>
-                    <CardDescription className="text-xs line-clamp-3 leading-relaxed">
+                    <CardTitle className="mt-2 font-bold text-sm">{fmt.title}</CardTitle>
+                    <CardDescription className="line-clamp-3 text-xs leading-relaxed">
                       {fmt.description}
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="pt-0">
-                    <span className="text-[11px] font-semibold text-muted-foreground">
+                    <span className="font-semibold text-[11px] text-muted-foreground">
                       {fmt.deliverables.length} Touchpoints Included
                     </span>
                   </CardContent>
@@ -657,17 +735,17 @@ export function PartnershipDashboard() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {content.whyUs.map((item, idx) => (
                   <div
                     key={item.id || idx}
                     className={cn(
-                      "rounded-xl border p-4 space-y-2 bg-muted/20 transition-all",
-                      item.isActive === false && "opacity-60 border-dashed",
+                      "space-y-2 rounded-xl border bg-muted/20 p-4 transition-all",
+                      item.isActive === false && "border-dashed opacity-60",
                     )}
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-1.5">
                         <Input
                           value={item.badge}
                           onChange={(e) => {
@@ -675,11 +753,11 @@ export function PartnershipDashboard() {
                             updated[idx] = { ...item, badge: e.target.value };
                             setContent({ ...content, whyUs: updated });
                           }}
-                          className="text-[10px] h-6 w-28 bg-background"
+                          className="h-6 w-28 bg-background text-[10px]"
                           placeholder="Direct Reach"
                         />
                         {item.isActive === false && (
-                          <Badge variant="outline" className="text-[10px] text-muted-foreground border-dashed">
+                          <Badge variant="outline" className="border-dashed text-[10px] text-muted-foreground">
                             Hidden
                           </Badge>
                         )}
@@ -687,7 +765,7 @@ export function PartnershipDashboard() {
                       <div className="flex items-center gap-1.5">
                         <Label
                           htmlFor={`whyus-active-${item.id || idx}`}
-                          className="text-[11px] text-muted-foreground cursor-pointer"
+                          className="cursor-pointer text-[11px] text-muted-foreground"
                         >
                           Visible
                         </Label>
@@ -709,7 +787,7 @@ export function PartnershipDashboard() {
                         updated[idx] = { ...item, title: e.target.value };
                         setContent({ ...content, whyUs: updated });
                       }}
-                      className="text-xs font-semibold h-8 bg-background"
+                      className="h-8 bg-background font-semibold text-xs"
                       placeholder="Title"
                     />
                     <Textarea
@@ -720,7 +798,7 @@ export function PartnershipDashboard() {
                         setContent({ ...content, whyUs: updated });
                       }}
                       rows={3}
-                      className="text-xs bg-background leading-relaxed"
+                      className="bg-background text-xs leading-relaxed"
                       placeholder="Description"
                     />
                   </div>
@@ -738,22 +816,22 @@ export function PartnershipDashboard() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 {content.benefits.map((b, idx) => (
                   <div
                     key={b.id || idx}
                     className={cn(
-                      "rounded-xl border p-4 space-y-3 bg-muted/20 transition-all",
-                      b.isActive === false && "opacity-60 border-dashed",
+                      "space-y-3 rounded-xl border bg-muted/20 p-4 transition-all",
+                      b.isActive === false && "border-dashed opacity-60",
                     )}
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <Badge variant="outline" className="text-[10px]">
                           {b.category}
                         </Badge>
                         {b.isActive === false && (
-                          <Badge variant="outline" className="text-[10px] text-muted-foreground border-dashed">
+                          <Badge variant="outline" className="border-dashed text-[10px] text-muted-foreground">
                             Hidden
                           </Badge>
                         )}
@@ -761,7 +839,7 @@ export function PartnershipDashboard() {
                       <div className="flex items-center gap-1.5">
                         <Label
                           htmlFor={`benefit-active-${b.id || idx}`}
-                          className="text-[11px] text-muted-foreground cursor-pointer"
+                          className="cursor-pointer text-[11px] text-muted-foreground"
                         >
                           Visible
                         </Label>
@@ -783,13 +861,13 @@ export function PartnershipDashboard() {
                         updated[idx] = { ...b, title: e.target.value };
                         setContent({ ...content, benefits: updated });
                       }}
-                      className="text-xs font-bold bg-background h-8"
+                      className="h-8 bg-background font-bold text-xs"
                     />
                     <div className="space-y-1.5">
                       <Label className="text-[11px] text-muted-foreground">Deliverable Bullet Points</Label>
                       {b.points.map((pt, pIdx) => (
                         <Input
-                          key={pIdx}
+                          key={`${b.id || "b"}-${pt.slice(0, 20)}`}
                           value={pt}
                           onChange={(e) => {
                             const updated = [...content.benefits];
@@ -798,7 +876,7 @@ export function PartnershipDashboard() {
                             updated[idx] = { ...b, points: updatedPts };
                             setContent({ ...content, benefits: updated });
                           }}
-                          className="text-xs h-7 bg-background"
+                          className="h-7 bg-background text-xs"
                         />
                       ))}
                     </div>
@@ -811,7 +889,7 @@ export function PartnershipDashboard() {
 
         {/* ── 5. Sponsor FAQ & Contact Tab ── */}
         <TabsContent value="contact" className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             {/* Quick Inquiry Form & Contact Settings */}
             <Card>
               <CardHeader>
@@ -850,7 +928,7 @@ export function PartnershipDashboard() {
                   />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-1.5">
                     <Label htmlFor="cta-email" className="text-xs">
                       Target Mailto Address
@@ -880,7 +958,7 @@ export function PartnershipDashboard() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-1.5">
                     <Label htmlFor="cta-person" className="text-xs">
                       Contact Person Lead (Optional)
@@ -941,9 +1019,9 @@ export function PartnershipDashboard() {
               </CardHeader>
               <CardContent className="space-y-4">
                 {/* List of Sponsor FAQs */}
-                <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                <div className="max-h-72 space-y-3 overflow-y-auto pr-1">
                   {content.faqs.map((f, idx) => (
-                    <div key={f.id || idx} className="rounded-lg border p-3 space-y-1.5 bg-muted/20">
+                    <div key={f.id || idx} className="space-y-1.5 rounded-lg border bg-muted/20 p-3">
                       <div className="flex items-start justify-between gap-2">
                         <Input
                           value={f.question}
@@ -952,13 +1030,13 @@ export function PartnershipDashboard() {
                             updated[idx] = { ...f, question: e.target.value };
                             setContent({ ...content, faqs: updated });
                           }}
-                          className="text-xs font-semibold h-7 bg-background"
+                          className="h-7 bg-background font-semibold text-xs"
                           placeholder="Question..."
                         />
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="size-7 text-destructive shrink-0"
+                          className="size-7 shrink-0 text-destructive"
                           onClick={() => handleDeleteSponsorFaq(f.id)}
                         >
                           <Trash2 className="size-3.5" />
@@ -972,7 +1050,7 @@ export function PartnershipDashboard() {
                           setContent({ ...content, faqs: updated });
                         }}
                         rows={2}
-                        className="text-xs bg-background leading-relaxed"
+                        className="bg-background text-xs leading-relaxed"
                         placeholder="Answer..."
                       />
                     </div>
@@ -980,13 +1058,13 @@ export function PartnershipDashboard() {
                 </div>
 
                 {/* Add new FAQ item */}
-                <div className="border-t pt-3 space-y-2">
-                  <Label className="text-xs font-semibold">Add Sponsor Question</Label>
+                <div className="space-y-2 border-t pt-3">
+                  <Label className="font-semibold text-xs">Add Sponsor Question</Label>
                   <Input
                     placeholder="Question (e.g. Can you provide official invoices?)..."
                     value={newFaqQuestion}
                     onChange={(e) => setNewFaqQuestion(e.target.value)}
-                    className="text-xs h-8"
+                    className="h-8 text-xs"
                   />
                   <Textarea
                     placeholder="Clear answer explaining terms, timelines, or procedures..."
@@ -1000,7 +1078,7 @@ export function PartnershipDashboard() {
                     size="sm"
                     onClick={handleAddSponsorFaq}
                     disabled={!newFaqQuestion.trim() || !newFaqAnswer.trim()}
-                    className="gap-1.5 text-xs font-semibold w-full"
+                    className="w-full gap-1.5 font-semibold text-xs"
                   >
                     <Plus className="size-3.5" />
                     <span>Add Sponsor Question</span>

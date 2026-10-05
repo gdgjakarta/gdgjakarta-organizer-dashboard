@@ -399,14 +399,16 @@ export const DEFAULT_PARTNERSHIP_CONTENT: PartnershipContent = {
     {
       id: "tier-diamond",
       name: "Diamond",
+      badge: "Main Stage Titling",
       popular: false,
-      description: "",
-      slots: "",
+      description:
+        "Headline sponsorship featuring exclusive Main Stage titling, prime 4m x 3m booth space, brand promotion, video looping, and giant brand visibility.",
+      slots: "Exclusive Headline Tier",
       highlights: [
         "Main Stage Titling",
-        "Speaking Opportunities*\n(the title have to meet our criteria)",
-        "Sponsor’s Video Looping\n(max 2 mins)",
-        "Sponsor’s Brand Promotion\n(max 10 mins)",
+        "Speaking Opportunities* (the title have to meet our criteria)",
+        "Sponsor’s Video Looping (max 2 mins)",
+        "Sponsor’s Brand Promotion (max 10 mins)",
         "Brand Booth Space (4m x 3m)",
         "Brand’s Merchandise Placement",
         "Giant Brand Visibility",
@@ -416,13 +418,15 @@ export const DEFAULT_PARTNERSHIP_CONTENT: PartnershipContent = {
     {
       id: "tier-platinum",
       name: "Platinum",
-      popular: false,
-      description: "",
-      slots: "",
+      badge: "Dedicated Session Titling",
+      popular: true,
+      description:
+        "Conference partnership featuring dedicated session titling, 3m x 2m booth space, speaking opportunity, video looping, and large brand visibility.",
+      slots: "Limited Slots",
       highlights: [
         "Dedicated Session Titling",
-        "Speaking Opportunities*\n(the title have to meet our criteria)",
-        "Sponsor’s Video Looping\n(max 2 mins)",
+        "Speaking Opportunities* (the title have to meet our criteria)",
+        "Sponsor’s Video Looping (max 2 mins)",
         "Brand Booth Space (3m x 2m)",
         "Brand’s Merchandise Placement",
         "Large Brand Visibility",
@@ -432,11 +436,13 @@ export const DEFAULT_PARTNERSHIP_CONTENT: PartnershipContent = {
     {
       id: "tier-gold",
       name: "Gold",
+      badge: "Interactive Demo",
       popular: false,
-      description: "",
-      slots: "",
+      description:
+        "Interactive partnership featuring a 2m x 2m demo booth space, speaking opportunity, merchandise placement, and medium brand visibility.",
+      slots: "Limited Slots",
       highlights: [
-        "Speaking Opportunities *\n(the title have to meet our criteria)",
+        "Speaking Opportunities * (the title have to meet our criteria)",
         "Brand Booth Space (2m x 2m)",
         "Brand’s Merchandise Placement",
         "Medium Brand Visibility",
@@ -446,15 +452,17 @@ export const DEFAULT_PARTNERSHIP_CONTENT: PartnershipContent = {
     {
       id: "tier-silver",
       name: "Silver",
+      badge: "Brand Visibility",
       popular: false,
-      description: "",
-      slots: "",
+      description:
+        "Core brand visibility tier featuring merchandise placement, MC ad-libs in idle sessions, dedicated social media content, and newsletter inclusions.",
+      slots: "Available",
       highlights: [
         "Brand’s Merchandise Placement",
         "Small Brand Visibility",
-        "Ad-Libs in every idle\n(min 2 times)",
-        "Dedicated Social Media Content\n(in our Instagram’s post & stories)",
-        "GDG Jakarta’s Newsletter\n(min 2 times)",
+        "Ad-Libs in every idle (min 2 times)",
+        "Dedicated Social Media Content (in our Instagram’s post & stories)",
+        "GDG Jakarta’s Newsletter (min 2 times)",
       ],
     },
   ],
