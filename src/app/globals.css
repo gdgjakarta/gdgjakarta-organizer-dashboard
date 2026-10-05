@@ -87,11 +87,11 @@ These serve as the fallback; there is no separate default.css file. */
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.985 0 0);
+  --sidebar: oklch(95.815% 0.00011 271.152);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent: oklch(100% 0.00011 271.152);
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
@@ -100,7 +100,7 @@ These serve as the fallback; there is no separate default.css file. */
   --font-sans: var(--font-google-sans-flex);
   --font-heading: var(--font-google-sans-flex);
   --font-mono: var(--font-google-sans-flex);
-  --background: oklch(1 0 0);
+  --background: oklch(95.815% 0.00011 271.152);
   --foreground: oklch(0.145 0 0);
 
   /* Golden Ratio (1.618) Typography Scale */
