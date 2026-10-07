@@ -3,11 +3,17 @@ import { Google_Sans, Google_Sans_Flex } from "next/font/google";
 const googleSans = Google_Sans({
   subsets: ["latin"],
   variable: "--font-google-sans",
+  display: "swap",
+  adjustFontFallback: false,
+  fallback: ["system-ui", "sans-serif"],
 });
 
 const googleSansFlex = Google_Sans_Flex({
   subsets: ["latin"],
   variable: "--font-google-sans-flex",
+  display: "swap",
+  adjustFontFallback: false,
+  fallback: ["system-ui", "sans-serif"],
 });
 
 export const fontRegistry = {
