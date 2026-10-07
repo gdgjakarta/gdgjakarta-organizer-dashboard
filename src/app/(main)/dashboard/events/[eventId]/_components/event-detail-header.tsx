@@ -91,7 +91,7 @@ export function EventDetailHeader({ event, totalRegistrations, totalApproved }: 
               </Badge>
             ) : null}
 
-            {isVirtual ? (
+            {isVirtual && (
               <Badge
                 variant="outline"
                 className="gap-1 border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400"
@@ -99,7 +99,9 @@ export function EventDetailHeader({ event, totalRegistrations, totalApproved }: 
                 <Radio className="size-3" />
                 Virtual
               </Badge>
-            ) : isHybrid ? (
+            )}
+
+            {isHybrid && (
               <Badge
                 variant="outline"
                 className="gap-1 border-purple-500/20 bg-purple-500/10 text-purple-600 dark:text-purple-400"
@@ -107,7 +109,9 @@ export function EventDetailHeader({ event, totalRegistrations, totalApproved }: 
                 <Globe className="size-3" />
                 Hybrid
               </Badge>
-            ) : (
+            )}
+
+            {!isVirtual && !isHybrid && (
               <Badge
                 variant="outline"
                 className="gap-1 border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
