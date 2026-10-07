@@ -30,10 +30,9 @@ export const remoteConfig = typeof window !== "undefined" ? getRemoteConfig(app)
 if (remoteConfig) {
   remoteConfig.settings.minimumFetchIntervalMillis = process.env.NODE_ENV === "development" ? 10000 : 60000;
 
+  // Only public client feature flags should have defaults in browser SDK.
+  // Administrative credentials (BEVY_COOKIE, BEVY_CSRF_TOKEN) must remain server-only.
   remoteConfig.defaultConfig = {
-    [REMOTE_CONFIG_KEYS.BEVY_COOKIE]: process.env.BEVY_COOKIE || "",
-    [REMOTE_CONFIG_KEYS.BEVY_X_CSRFTOKEN]: process.env.BEVY_CSRF_TOKEN || "",
-    [REMOTE_CONFIG_KEYS.ORGANIZER_EMAILS]: process.env.ORGANIZER_EMAILS || "[]",
     [REMOTE_CONFIG_KEYS.FEATURE_FLAGS]: process.env.FEATURE_FLAGS || process.env.NEXT_PUBLIC_FEATURE_FLAGS || "{}",
   };
 }

@@ -1,0 +1,447 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // This security rules file assumes the following data structures:
+    //
+    // Collection: members
+    // Document ID: memberId (UID or Bevy User ID)
+    // Fields:
+    //   - id: string (required, immutable for members, 1-128 chars) - Member ID (UID or Bevy User ID)
+    //   - uid: string (optional, immutable for members, <= 128 chars) - Firebase Auth UID
+    //   - bevy_user_id: string|int|float|null (optional) - Associated Bevy User ID
+    //   - bevy_member_id: string|int|float|null (optional) - Associated Bevy Member ID
+    //   - name: string (required, 1-150 chars) - Full display name
+    //   - first_name: string|null (optional, <= 100 chars) - First name
+    //   - last_name: string|null (optional, <= 100 chars) - Last name
+    //   - email: string (required, valid email, <= 150 chars) - Member email address
+    //   - company: string|null (optional, <= 150 chars) - Company or organization name
+    //   - company_or_institution: string|null (optional, <= 150 chars) - Alternate company or institution
+    //   - title: string|null (optional, <= 150 chars) - Professional title or job role
+    //   - role: string (required, immutable for members) - Chapter role ('organizer'|'Organizer'|'Core Team'|'Check-in Staff'|'Member'|'member')
+    //   - chapter_role: string|null (optional, <= 100 chars) - Bevy chapter role title
+    //   - team: string (required, immutable for members) - Team assignment ('Core Team'|'Community')
+    //   - status: string (required) - Membership status ('Active'|'Inactive')
+    //   - joined_date: string (required, ISO date string, <= 50 chars) - Date joined
+    //   - raw_created_date: string|null (optional, <= 50 chars) - Raw timestamp from Bevy
+    //   - events_registered_count: int|float|null (optional, >= 0) - Registered events count
+    //   - avatar_url: string|null (optional, <= 1000 chars) - Profile picture URL
+    //   - profile_url: string|null (optional, <= 1000 chars) - Public profile URL
+    //   - is_email_verified: bool|null (optional) - Email verification status
+    //   - phone: string|null (optional, <= 30 chars) - Phone number
+    //   - events_attended_count: int|float|null (optional, >= 0) - Check-in / attended events count
+    //   - last_active: string|null (optional, <= 50 chars) - Last activity timestamp
+    //   - notes: string|null (optional, <= 2000 chars) - Organizer notes
+    //   - synced_from_bevy_at: string|null (optional, <= 50 chars) - Bevy sync timestamp
+    //   - updated_at: string (required, ISO date string, <= 50 chars) - Last update timestamp
+    //
+    // Collection: event_registrations
+    // Document ID: registrationId (e.g. eventId_memberId)
+    // Fields:
+    //   - id: string (required, immutable, <= 200 chars) - Registration ID
+    //   - event_id: string (required, immutable, <= 128 chars) - Event ID
+    //   - event_title: string (required, <= 300 chars) - Event title
+    //   - member_id: string (required, immutable, <= 128 chars) - Member UID
+    //   - member_name: string (required, <= 150 chars) - Member display name
+    //   - member_email: string (required, valid email, <= 150 chars) - Member email
+    //   - member_avatar: string|null (optional, <= 1000 chars) - Avatar URL
+    //   - member_role: string|null (optional, <= 100 chars) - Member role
+    //   - status: string (required, immutable for members) - Registration status ('pending'|'approved'|'rejected'|'waitlisted'|'attended')
+    //   - answers: map|null (optional, <= 50 keys) - Custom question answers
+    //   - notes: string|null (optional, <= 2000 chars) - Registration notes
+    //   - ticket_tier: string|null (optional, <= 100 chars) - Ticket tier name
+    //   - registered_at: string (required, <= 50 chars) - Registration timestamp
+    //   - reviewed_at: string|null (optional, immutable for members, <= 50 chars) - Review timestamp
+    //   - reviewed_by_id: string|null (optional, immutable for members, <= 128 chars) - Reviewer UID
+    //   - reviewed_by_name: string|null (optional, immutable for members, <= 150 chars) - Reviewer name
+    //   - checked_in_at: string|null (optional, immutable for members, <= 50 chars) - Check-in timestamp
+    //
+    // Collection: events
+    // Document ID: eventId
+    // Fields:
+    //   - id: string (required, immutable, <= 128 chars) - Event ID
+    //   - title: string (required, <= 300 chars) - Event title
+    //   - description: string|null (optional, <= 50000 chars) - Full description / HTML
+    //   - description_short: string|null (optional, <= 1000 chars) - Short summary
+    //   - status: string (required) - Status ('Draft'|'Published'|'Completed'|'Canceled')
+    //   - start_date: string (required, <= 50 chars) - Start date ISO string
+    //   - end_date: string (required, <= 50 chars) - End date ISO string
+    //   - picture_url: string|null (optional, <= 2000 chars) - Thumbnail image URL
+    //   - banner_url: string|null (optional, <= 2000 chars) - Header banner image URL
+    //   - event_type_title: string|null (optional, <= 100 chars) - Category / event type
+    //   - audience_type: string|null (optional, <= 50 chars) - Audience type
+    //   - is_virtual: bool|null (optional) - Virtual event flag
+    //   - venue: map|null (optional, <= 20 keys) - Venue location details
+    //   - url: string|null (optional, <= 2000 chars) - External Bevy URL
+    //   - static_url: string|null (optional, <= 2000 chars) - Static landing URL
+    //   - tags: list|null (optional, <= 50 items) - Search tags
+    //   - is_hidden: bool|null (optional) - Hidden visibility flag
+    //   - is_test: bool|null (optional) - Test event flag
+    //   - requires_approval: bool|null (optional) - Organizer RSVP review requirement
+    //   - max_attendees: int|float|null (optional, >= 0) - Attendee capacity limit
+    //   - total_registrations: int|float (required, >= 0) - Registered attendee count
+    //   - total_approved: int|float|null (optional, >= 0) - Approved attendee count
+    //   - total_checked_in: int|float|null (optional, >= 0) - Checked-in attendee count
+    //   - custom_questions: list|null (optional, <= 50 items) - Custom RSVP questions
+    //   - synced_from_bevy_at: string|null (optional, <= 50 chars) - Bevy sync timestamp
+    //   - created_at: string|null (optional, <= 50 chars) - Creation timestamp
+    //   - updated_at: string (required, <= 50 chars) - Last update timestamp
+    //
+    // Collection: sync_metadata
+    // Document ID: bevy
+    // Fields:
+    //   - id: string (required, 'bevy') - Sync document ID
+    //   - last_synced_events_at: string|null (optional, <= 50 chars) - Events sync timestamp
+    //   - last_synced_members_at: string|null (optional, <= 50 chars) - Members sync timestamp
+    //   - total_events_synced: int|float|null (optional, >= 0) - Total events synced
+    //   - total_members_synced: int|float|null (optional, >= 0) - Total members synced
+    //   - status: string (required) - Sync status ('idle'|'syncing'|'success'|'error')
+    //   - error_message: string|null (optional, <= 2000 chars) - Error message if sync failed
+    //   - synced_by: string|null (optional, <= 128 chars) - UID of organizer who ran sync
+    //
+    // Collection: content_settings
+    // Document ID: faq, partnership
+    // Fields:
+    //   - header: map|null (optional, <= 20 keys)
+    //   - notice: map|null (optional, <= 20 keys)
+    //   - categories: list|null (optional, <= 50 items)
+    //   - items: list|null (optional, <= 100 items)
+    //   - contact: map|null (optional, <= 20 keys)
+    //   - faqs: list|null (optional, <= 100 items)
+    //   - hero: map|null (optional, <= 20 keys)
+    //   - whyUs: list|null (optional, <= 50 items)
+    //   - devfest: map|null (optional, <= 20 keys)
+    //   - formats: list|null (optional, <= 50 items)
+    //   - benefits: list|null (optional, <= 50 items)
+    //   - tiers: list|null (optional, <= 50 items)
+    //   - partnerTiers: list|null (optional, <= 50 items)
+    //   - sponsors: list|null (optional, <= 50 items)
+    //   - updatedAt: string|null (optional, <= 50 chars)
+    //   - updatedBy: string|null (optional, <= 150 chars)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    // Check if the request is from an authenticated user
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Check if the authenticated user matches the specified userId
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Dynamic Organizer Verification:
+    // Evaluates custom auth claims or verifies organizer role / Core Team membership in the members collection.
+    // Explicitly avoids static hardcoded email whitelists.
+    function isOrganizer() {
+      return isAuthenticated() && (
+        ('role' in request.auth.token && request.auth.token.role == 'organizer') ||
+        (
+          exists(/databases/$(database)/documents/members/$(request.auth.uid)) &&
+          (
+            get(/databases/$(database)/documents/members/$(request.auth.uid)).data.role == 'organizer' ||
+            get(/databases/$(database)/documents/members/$(request.auth.uid)).data.role == 'Organizer' ||
+            get(/databases/$(database)/documents/members/$(request.auth.uid)).data.team == 'Core Team'
+          )
+        )
+      );
+    }
+
+    // Validate email string format
+    function isValidEmail(email) {
+      return email is string &&
+        email.matches('^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$');
+    }
+
+    // Check if document data has all required keys
+    function hasRequiredFields(data, fields) {
+      return data.keys().hasAll(fields);
+    }
+
+    // Check if document data contains only allowed keys
+    function hasOnlyAllowedFields(data, fields) {
+      return data.keys().hasOnly(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    // Validates members document structure, data types, and bounds
+    function isValidMember(data) {
+      return hasRequiredFields(data, ['id', 'name', 'email', 'role', 'team', 'status', 'joined_date', 'updated_at']) &&
+        hasOnlyAllowedFields(data, [
+          'id', 'uid', 'bevy_user_id', 'bevy_member_id', 'name', 'first_name', 'last_name',
+          'email', 'company', 'company_or_institution', 'title', 'role', 'chapter_role',
+          'team', 'status', 'joined_date', 'raw_created_date', 'events_registered_count',
+          'avatar_url', 'profile_url', 'is_email_verified', 'phone', 'events_attended_count',
+          'last_active', 'notes', 'synced_from_bevy_at', 'updated_at'
+        ]) &&
+        data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
+        data.name is string && data.name.size() > 0 && data.name.size() <= 150 &&
+        data.email is string && isValidEmail(data.email) && data.email.size() <= 150 &&
+        data.role is string && (data.role in ['organizer', 'Organizer', 'Core Team', 'Check-in Staff', 'Member', 'member']) &&
+        data.team is string && (data.team in ['Core Team', 'Community']) &&
+        data.status is string && (data.status in ['Active', 'Inactive']) &&
+        data.joined_date is string && data.joined_date.size() <= 50 &&
+        data.updated_at is string && data.updated_at.size() <= 50 &&
+        (!('uid' in data) || data.uid == null || (data.uid is string && data.uid.size() <= 128)) &&
+        (!('bevy_user_id' in data) || data.bevy_user_id == null || data.bevy_user_id is int || data.bevy_user_id is float || (data.bevy_user_id is string && data.bevy_user_id.size() <= 64)) &&
+        (!('bevy_member_id' in data) || data.bevy_member_id == null || data.bevy_member_id is int || data.bevy_member_id is float || (data.bevy_member_id is string && data.bevy_member_id.size() <= 64)) &&
+        (!('first_name' in data) || data.first_name == null || (data.first_name is string && data.first_name.size() <= 100)) &&
+        (!('last_name' in data) || data.last_name == null || (data.last_name is string && data.last_name.size() <= 100)) &&
+        (!('company' in data) || data.company == null || (data.company is string && data.company.size() <= 150)) &&
+        (!('company_or_institution' in data) || data.company_or_institution == null || (data.company_or_institution is string && data.company_or_institution.size() <= 150)) &&
+        (!('title' in data) || data.title == null || (data.title is string && data.title.size() <= 150)) &&
+        (!('chapter_role' in data) || data.chapter_role == null || (data.chapter_role is string && data.chapter_role.size() <= 100)) &&
+        (!('raw_created_date' in data) || data.raw_created_date == null || (data.raw_created_date is string && data.raw_created_date.size() <= 50)) &&
+        (!('events_registered_count' in data) || data.events_registered_count == null || ((data.events_registered_count is int || data.events_registered_count is float) && data.events_registered_count >= 0)) &&
+        (!('events_attended_count' in data) || data.events_attended_count == null || ((data.events_attended_count is int || data.events_attended_count is float) && data.events_attended_count >= 0)) &&
+        (!('avatar_url' in data) || data.avatar_url == null || (data.avatar_url is string && data.avatar_url.size() <= 1000)) &&
+        (!('profile_url' in data) || data.profile_url == null || (data.profile_url is string && data.profile_url.size() <= 1000)) &&
+        (!('is_email_verified' in data) || data.is_email_verified == null || data.is_email_verified is bool) &&
+        (!('phone' in data) || data.phone == null || (data.phone is string && data.phone.size() <= 30)) &&
+        (!('last_active' in data) || data.last_active == null || (data.last_active is string && data.last_active.size() <= 50)) &&
+        (!('notes' in data) || data.notes == null || (data.notes is string && data.notes.size() <= 2000)) &&
+        (!('synced_from_bevy_at' in data) || data.synced_from_bevy_at == null || (data.synced_from_bevy_at is string && data.synced_from_bevy_at.size() <= 50));
+    }
+
+    // Validates event_registrations document structure, data types, and bounds
+    function isValidRegistration(data) {
+      return hasRequiredFields(data, ['id', 'event_id', 'event_title', 'member_id', 'member_name', 'member_email', 'status', 'registered_at']) &&
+        hasOnlyAllowedFields(data, [
+          'id', 'event_id', 'event_title', 'member_id', 'member_name', 'member_email',
+          'member_avatar', 'member_role', 'status', 'answers', 'notes', 'ticket_tier',
+          'registered_at', 'reviewed_at', 'reviewed_by_id', 'reviewed_by_name', 'checked_in_at'
+        ]) &&
+        data.id is string && data.id.size() > 0 && data.id.size() <= 200 &&
+        data.event_id is string && data.event_id.size() > 0 && data.event_id.size() <= 128 &&
+        data.event_title is string && data.event_title.size() > 0 && data.event_title.size() <= 300 &&
+        data.member_id is string && data.member_id.size() > 0 && data.member_id.size() <= 128 &&
+        data.member_name is string && data.member_name.size() > 0 && data.member_name.size() <= 150 &&
+        data.member_email is string && isValidEmail(data.member_email) && data.member_email.size() <= 150 &&
+        data.status is string && (data.status in ['pending', 'approved', 'rejected', 'waitlisted', 'attended']) &&
+        data.registered_at is string && data.registered_at.size() <= 50 &&
+        (!('member_avatar' in data) || data.member_avatar == null || (data.member_avatar is string && data.member_avatar.size() <= 1000)) &&
+        (!('member_role' in data) || data.member_role == null || (data.member_role is string && data.member_role.size() <= 100)) &&
+        (!('answers' in data) || data.answers == null || (data.answers is map && data.answers.size() <= 50)) &&
+        (!('notes' in data) || data.notes == null || (data.notes is string && data.notes.size() <= 2000)) &&
+        (!('ticket_tier' in data) || data.ticket_tier == null || (data.ticket_tier is string && data.ticket_tier.size() <= 100)) &&
+        (!('reviewed_at' in data) || data.reviewed_at == null || (data.reviewed_at is string && data.reviewed_at.size() <= 50)) &&
+        (!('reviewed_by_id' in data) || data.reviewed_by_id == null || (data.reviewed_by_id is string && data.reviewed_by_id.size() <= 128)) &&
+        (!('reviewed_by_name' in data) || data.reviewed_by_name == null || (data.reviewed_by_name is string && data.reviewed_by_name.size() <= 150)) &&
+        (!('checked_in_at' in data) || data.checked_in_at == null || (data.checked_in_at is string && data.checked_in_at.size() <= 50));
+    }
+
+    // Validates events document structure, data types, and bounds
+    function isValidEvent(data) {
+      return hasRequiredFields(data, ['id', 'title', 'status', 'start_date', 'end_date', 'updated_at']) &&
+        hasOnlyAllowedFields(data, [
+          'id', 'title', 'description', 'description_short', 'status', 'start_date', 'end_date',
+          'picture_url', 'banner_url', 'event_type_title', 'audience_type', 'is_virtual',
+          'venue', 'url', 'static_url', 'tags', 'is_hidden', 'is_test', 'requires_approval',
+          'max_attendees', 'total_registrations', 'total_approved', 'total_checked_in',
+          'custom_questions', 'synced_from_bevy_at', 'created_at', 'updated_at'
+        ]) &&
+        data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
+        data.title is string && data.title.size() > 0 && data.title.size() <= 300 &&
+        data.status is string && (data.status in ['Draft', 'Published', 'Completed', 'Canceled']) &&
+        data.start_date is string && data.start_date.size() <= 50 &&
+        data.end_date is string && data.end_date.size() <= 50 &&
+        data.updated_at is string && data.updated_at.size() <= 50 &&
+        (!('description' in data) || data.description == null || (data.description is string && data.description.size() <= 50000)) &&
+        (!('description_short' in data) || data.description_short == null || (data.description_short is string && data.description_short.size() <= 1000)) &&
+        (!('picture_url' in data) || data.picture_url == null || (data.picture_url is string && data.picture_url.size() <= 2000)) &&
+        (!('banner_url' in data) || data.banner_url == null || (data.banner_url is string && data.banner_url.size() <= 2000)) &&
+        (!('event_type_title' in data) || data.event_type_title == null || (data.event_type_title is string && data.event_type_title.size() <= 100)) &&
+        (!('audience_type' in data) || data.audience_type == null || (data.audience_type is string && data.audience_type.size() <= 50)) &&
+        (!('is_virtual' in data) || data.is_virtual == null || data.is_virtual is bool) &&
+        (!('is_hidden' in data) || data.is_hidden == null || data.is_hidden is bool) &&
+        (!('is_test' in data) || data.is_test == null || data.is_test is bool) &&
+        (!('requires_approval' in data) || data.requires_approval == null || data.requires_approval is bool) &&
+        (!('venue' in data) || data.venue == null || (data.venue is map && data.venue.size() <= 20)) &&
+        (!('url' in data) || data.url == null || (data.url is string && data.url.size() <= 2000)) &&
+        (!('static_url' in data) || data.static_url == null || (data.static_url is string && data.static_url.size() <= 2000)) &&
+        (!('tags' in data) || data.tags == null || (data.tags is list && data.tags.size() <= 50)) &&
+        (!('custom_questions' in data) || data.custom_questions == null || (data.custom_questions is list && data.custom_questions.size() <= 50)) &&
+        (!('max_attendees' in data) || data.max_attendees == null || ((data.max_attendees is int || data.max_attendees is float) && data.max_attendees >= 0)) &&
+        (!('total_registrations' in data) || data.total_registrations == null || ((data.total_registrations is int || data.total_registrations is float) && data.total_registrations >= 0)) &&
+        (!('total_approved' in data) || data.total_approved == null || ((data.total_approved is int || data.total_approved is float) && data.total_approved >= 0)) &&
+        (!('total_checked_in' in data) || data.total_checked_in == null || ((data.total_checked_in is int || data.total_checked_in is float) && data.total_checked_in >= 0)) &&
+        (!('synced_from_bevy_at' in data) || data.synced_from_bevy_at == null || (data.synced_from_bevy_at is string && data.synced_from_bevy_at.size() <= 50)) &&
+        (!('created_at' in data) || data.created_at == null || (data.created_at is string && data.created_at.size() <= 50));
+    }
+
+    // Validates sync_metadata document structure
+    function isValidSyncMetadata(data) {
+      return hasRequiredFields(data, ['id', 'status']) &&
+        hasOnlyAllowedFields(data, [
+          'id', 'last_synced_events_at', 'last_synced_members_at',
+          'total_events_synced', 'total_members_synced', 'status', 'error_message', 'synced_by'
+        ]) &&
+        data.id == 'bevy' &&
+        data.status is string && (data.status in ['idle', 'syncing', 'success', 'error']) &&
+        (!('last_synced_events_at' in data) || data.last_synced_events_at == null || (data.last_synced_events_at is string && data.last_synced_events_at.size() <= 50)) &&
+        (!('last_synced_members_at' in data) || data.last_synced_members_at == null || (data.last_synced_members_at is string && data.last_synced_members_at.size() <= 50)) &&
+        (!('total_events_synced' in data) || data.total_events_synced == null || ((data.total_events_synced is int || data.total_events_synced is float) && data.total_events_synced >= 0)) &&
+        (!('total_members_synced' in data) || data.total_members_synced == null || ((data.total_members_synced is int || data.total_members_synced is float) && data.total_members_synced >= 0)) &&
+        (!('error_message' in data) || data.error_message == null || (data.error_message is string && data.error_message.size() <= 2000)) &&
+        (!('synced_by' in data) || data.synced_by == null || (data.synced_by is string && data.synced_by.size() <= 128));
+    }
+
+    // Validates content_settings document structure
+    function isValidContentSettings(data, docId) {
+      return docId in ['faq', 'partnership'] &&
+        hasOnlyAllowedFields(data, [
+          'header', 'notice', 'categories', 'items', 'contact', 'faqs',
+          'hero', 'whyUs', 'devfest', 'formats', 'benefits', 'tiers',
+          'partnerTiers', 'sponsors', 'updatedAt', 'updatedBy'
+        ]) &&
+        (!('updatedAt' in data) || data.updatedAt == null || (data.updatedAt is string && data.updatedAt.size() <= 50)) &&
+        (!('updatedBy' in data) || data.updatedBy == null || (data.updatedBy is string && data.updatedBy.size() <= 150)) &&
+        (!('header' in data) || data.header == null || (data.header is map && data.header.size() <= 20)) &&
+        (!('notice' in data) || data.notice == null || (data.notice is map && data.notice.size() <= 20)) &&
+        (!('contact' in data) || data.contact == null || (data.contact is map && data.contact.size() <= 20)) &&
+        (!('hero' in data) || data.hero == null || (data.hero is map && data.hero.size() <= 20)) &&
+        (!('devfest' in data) || data.devfest == null || (data.devfest is map && data.devfest.size() <= 20)) &&
+        (!('categories' in data) || data.categories == null || (data.categories is list && data.categories.size() <= 50)) &&
+        (!('items' in data) || data.items == null || (data.items is list && data.items.size() <= 100)) &&
+        (!('faqs' in data) || data.faqs == null || (data.faqs is list && data.faqs.size() <= 100)) &&
+        (!('whyUs' in data) || data.whyUs == null || (data.whyUs is list && data.whyUs.size() <= 50)) &&
+        (!('formats' in data) || data.formats == null || (data.formats is list && data.formats.size() <= 50)) &&
+        (!('benefits' in data) || data.benefits == null || (data.benefits is list && data.benefits.size() <= 50)) &&
+        (!('tiers' in data) || data.tiers == null || (data.tiers is list && data.tiers.size() <= 50)) &&
+        (!('partnerTiers' in data) || data.partnerTiers == null || (data.partnerTiers is list && data.partnerTiers.size() <= 50)) &&
+        (!('sponsors' in data) || data.sponsors == null || (data.sponsors is list && data.sponsors.size() <= 50));
+    }
+
+    // ===============================================================
+    // Collection Security Rules
+    // ===============================================================
+
+    // Root default deny for any unmatched document paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------
+    // Members Collection
+    // -------------------------------------------------------------
+    match /members/{memberId} {
+      // Individual profile lookup: Organizers or the document owner (by ID or UID)
+      allow get: if isOrganizer() ||
+        isOwner(memberId) ||
+        (isAuthenticated() && ('uid' in resource.data) && resource.data.uid == request.auth.uid);
+
+      // Listing members: STRICTLY Organizers only.
+      // Eliminates public or unprivileged member dumps of emails, phone numbers, and notes.
+      allow list: if isOrganizer();
+
+      // Creation: Organizers or authenticated members creating their initial profile.
+      // Members are restricted to role 'member' and team 'Community' to prevent self-privilege escalation.
+      allow create: if isValidMember(request.resource.data) && (
+        isOrganizer() ||
+        (isOwner(memberId) && request.resource.data.role == 'member' && request.resource.data.team == 'Community')
+      );
+
+      // Update: Organizers or members updating their own profile.
+      // Members are strictly prevented from altering privilege fields ('role', 'team', 'uid', 'id').
+      allow update: if isValidMember(request.resource.data) && (
+        isOrganizer() ||
+        (isOwner(memberId) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'team', 'uid', 'id']))
+      );
+
+      // Deletion: Organizers only.
+      allow delete: if isOrganizer();
+    }
+
+    // -------------------------------------------------------------
+    // Event Registrations Collection
+    // -------------------------------------------------------------
+    match /event_registrations/{registrationId} {
+      // Read: Organizers or the registrant themselves (matching member_id or member_email).
+      allow read: if isOrganizer() ||
+        (isAuthenticated() && (
+          resource.data.member_id == request.auth.uid ||
+          (('member_email' in resource.data) && resource.data.member_email == request.auth.token.email)
+        ));
+
+      // Create: Organizers or authenticated users registering themselves.
+      allow create: if isValidRegistration(request.resource.data) && (
+        isOrganizer() ||
+        (isAuthenticated() && request.auth.uid == request.resource.data.member_id)
+      );
+
+      // Update: Organizers (e.g. status review, check-in) or the registrant updating their RSVP form details.
+      // Registrants cannot alter status, review fields, check-in timestamp, or event/member identifiers.
+      allow update: if isValidRegistration(request.resource.data) && (
+        isOrganizer() ||
+        (
+          isOwner(resource.data.member_id) &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            'status', 'reviewed_at', 'reviewed_by_id', 'reviewed_by_name', 'checked_in_at', 'member_id', 'event_id'
+          ])
+        )
+      );
+
+      // Deletion: Organizers only.
+      allow delete: if isOrganizer();
+    }
+
+    // -------------------------------------------------------------
+    // Events Collection
+    // -------------------------------------------------------------
+    match /events/{eventId} {
+      // Read: Public read for published, non-hidden events; Organizers can read all (including drafts/hidden).
+      allow read: if (
+        ('status' in resource.data) &&
+        resource.data.status in ['Published', 'Completed'] &&
+        (!('is_hidden' in resource.data) || !resource.data.is_hidden)
+      ) || isOrganizer();
+
+      // Create & Delete: Organizers only.
+      allow create: if isOrganizer() && isValidEvent(request.resource.data);
+      allow delete: if isOrganizer();
+
+      // Update: Organizers (full event editing) or authenticated users incrementing total_registrations upon RSVP.
+      // Non-organizers are strictly constrained to only update total_registrations and updated_at.
+      allow update: if isValidEvent(request.resource.data) && (
+        isOrganizer() ||
+        (
+          isAuthenticated() &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['total_registrations', 'updated_at']) &&
+          (request.resource.data.total_registrations is int || request.resource.data.total_registrations is float) &&
+          request.resource.data.total_registrations >= resource.data.total_registrations
+        )
+      );
+    }
+
+    // -------------------------------------------------------------
+    // Sync Metadata Collection
+    // -------------------------------------------------------------
+    match /sync_metadata/{docId} {
+      allow read: if isOrganizer();
+      allow write: if isOrganizer() && isValidSyncMetadata(request.resource.data) && docId == 'bevy';
+    }
+
+    // -------------------------------------------------------------
+    // Content Settings Collection (FAQ, Partnership)
+    // -------------------------------------------------------------
+    match /content_settings/{docId} {
+      // Read: Public read for public website FAQ and partnership content.
+      allow read: if true;
+
+      // Write: Organizers only.
+      allow write: if isOrganizer() && isValidContentSettings(request.resource.data, docId);
+    }
+  }
+}

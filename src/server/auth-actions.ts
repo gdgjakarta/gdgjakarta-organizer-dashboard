@@ -165,20 +165,79 @@ export async function syncSingleMemberToBevyAction(params: {
 }
 
 /**
+ * Cryptographically verifies a Firebase Auth ID Token using Firebase Identity Toolkit REST API.
+ * Runs in all JavaScript/Edge/Cloudflare environments via standard fetch.
+ */
+async function verifyFirebaseIdToken(idToken: string): Promise<{ valid: boolean; email?: string; uid?: string }> {
+  if (!idToken) return { valid: false };
+  const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyCVk8ECyA8Lqd7KNqdnItxYUu9jdFzoohU";
+  try {
+    const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idToken }),
+    });
+
+    if (!res.ok) {
+      console.warn(`[Auth Token Verification] Verification failed with status ${res.status}`);
+      return { valid: false };
+    }
+
+    const data = (await res.json()) as { users?: Array<{ localId: string; email?: string }> };
+    const user = data.users?.[0];
+    if (user?.localId && user?.email) {
+      return { valid: true, email: user.email.toLowerCase().trim(), uid: user.localId };
+    }
+    return { valid: false };
+  } catch (err) {
+    console.error("[Auth Token Verification] Network error verifying token:", err);
+    return { valid: false };
+  }
+}
+
+/**
  * Handles user post-login sync:
- * 1. Validates strictly against Authorized Organizer list & exact Bevy Chapter Team.
- * 2. Sets the session cookies (auth_token & auth_role).
+ * 1. Cryptographically validates Firebase ID token.
+ * 2. Validates strictly against Authorized Organizer list & exact Bevy Chapter Team via session spoofing.
+ * 3. Sets the session cookies (auth_token & auth_role).
  * Note: Firestore member profile persistence is handled on the authenticated browser client
  * to prevent Protobuf/V8 EvalError in Cloudflare Workers.
  */
 export async function handleUserPostLoginAction(params: UserAuthSyncParams): Promise<OrganizerValidationResult> {
   try {
     const { uid, email, name, token, firstName, lastName } = params;
-    console.log(
-      `[Auth Step 1 - Server] Received handleUserPostLoginAction for UID: ${uid}, Email: ${email}, Name: ${name ?? "N/A"}`,
-    );
+    console.log(`[Auth Step 1 - Server] Received handleUserPostLoginAction for UID: ${uid}, Email: ${email}`);
 
-    // 1. Validate role against authorized whitelist and exact Bevy Chapter Team
+    // Security check: Validate the Firebase ID token cryptographically to prevent email spoofing
+    let verifiedEmail = email ? email.toLowerCase().trim() : "";
+    let isTokenVerified = false;
+
+    if (token) {
+      const tokenVerification = await verifyFirebaseIdToken(token);
+      if (tokenVerification.valid && tokenVerification.email) {
+        verifiedEmail = tokenVerification.email;
+        isTokenVerified = true;
+        console.log(`[Auth Step 1.5 - Server] Successfully verified ID token for email: ${verifiedEmail}`);
+      } else {
+        console.warn(`[Auth Step 1.5 - Server] Token verification failed for email: ${email}`);
+      }
+    }
+
+    if (!isTokenVerified) {
+      console.warn(`[Auth Security] Rejecting session creation for unverified token (email: ${email})`);
+      return {
+        isValidOrganizer: false,
+        role: "member",
+        bevyUserId: null,
+        chapterRole: "Member",
+        chapterRoleType: ChapterRole.MEMBER,
+        roleId: null,
+        roleTitle: "Member",
+        wasImported: false,
+      };
+    }
+
+    // 1. Validate role against authorized whitelist and exact Bevy Chapter Team using the verified email
     let validation: OrganizerValidationResult = {
       isValidOrganizer: false,
       role: "Member",
@@ -186,7 +245,7 @@ export async function handleUserPostLoginAction(params: UserAuthSyncParams): Pro
       chapterRole: "Member",
     };
     try {
-      validation = await validateBevyOrganizer(email, name, firstName, lastName);
+      validation = await validateBevyOrganizer(verifiedEmail, name, firstName, lastName);
     } catch (valErr) {
       console.error("[Auth Step 2 - Server] Validation error:", valErr);
     }
@@ -196,16 +255,18 @@ export async function handleUserPostLoginAction(params: UserAuthSyncParams): Pro
     const chapterRole = isOrganizer ? (validation.chapterRole ?? "Organizer") : "Member";
     const team = isOrganizer ? "Core Team" : "Community";
     console.log(
-      `[Auth Step 2 - Server] Role resolved for ${email} -> role: "${role}", chapterRole: "${chapterRole}", team: "${team}"`,
+      `[Auth Step 2 - Server] Role resolved for ${verifiedEmail} -> role: "${role}", chapterRole: "${chapterRole}", team: "${team}"`,
     );
 
-    // 2. Set Session Cookie if token provided
+    // 2. Set Session Cookie if token verified
     if (token) {
-      console.log(`[Auth Step 3 - Server] Setting session cookies (auth_token & auth_role="${role}") for ${email}`);
+      console.log(
+        `[Auth Step 3 - Server] Setting session cookies (auth_token & auth_role="${role}") for ${verifiedEmail}`,
+      );
       await setAuthSessionCookie(token, role, true);
     }
 
-    console.log(`[Auth Step 4 - Server] Completed post-login sync for ${email}`);
+    console.log(`[Auth Step 4 - Server] Completed post-login sync for ${verifiedEmail}`);
     // 3. Return ONLY a plain, cleanly serializable object to prevent RSC flight serialization failures
     return {
       isValidOrganizer: isOrganizer,
@@ -233,9 +294,9 @@ export async function handleUserPostLoginAction(params: UserAuthSyncParams): Pro
 }
 
 /**
- * Sets the auth_token cookie after successful authentication (e.g. Firebase Google Sign-In).
+ * Internal helper to set session cookies. Not exported as a public server action.
  */
-export async function setAuthSessionCookie(token: string, role: string, remember = true): Promise<void> {
+async function setAuthSessionCookie(token: string, role: string, remember = true): Promise<void> {
   try {
     const cookieStore = await cookies();
     const options: {
@@ -277,26 +338,12 @@ export async function clearAuthSessionCookie(): Promise<void> {
 }
 
 /**
- * Authenticates the user and sets the auth_token cookie.
- *
- * Replace the credential check below with your real backend / API call.
- * The cookie value should be an opaque session token or JWT from your server.
+ * Direct password login action - disabled for security.
+ * GDG Jakarta uses Google Sign-In with Firebase Authentication.
  */
 export async function loginAction(email: string, password: string, remember: boolean): Promise<LoginResult> {
-  console.log(`[Auth Demo] loginAction called for email: ${email}`);
-  // ── Demo auth ─────────────────────────────────────────────────────────────
-  const isDemoLogin = email === "admin@gdgjakarta.com" && password === "password";
-  if (!isDemoLogin) {
-    console.warn(`[Auth Demo] Invalid credentials for ${email}`);
-    return { success: false, error: "Invalid email or password." };
-  }
-  const token = `demo-auth-token-${Date.now()}`;
-  // ── End demo auth ──────────────────────────────────────────────────────────
-
-  await setAuthSessionCookie(token, "organizer", remember);
-  console.log(`[Auth Demo] Demo login success for ${email}`);
-
-  return { success: true };
+  console.warn(`[Auth Security] Direct password login attempt rejected for: ${email}`);
+  return { success: false, error: "Password authentication is disabled. Please sign in using Google." };
 }
 
 /**

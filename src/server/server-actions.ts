@@ -11,7 +11,17 @@ import {
   parsePreference,
 } from "@/lib/preferences/preferences-config";
 
+const ALLOWED_UI_COOKIES = new Set<string>(["mail_panel_layout", "sidebar_state"]);
+
+function isAllowedCookie(key: string): boolean {
+  return key in PREFERENCE_REGISTRY || ALLOWED_UI_COOKIES.has(key);
+}
+
 export async function getValueFromCookie(key: string): Promise<string | undefined> {
+  if (!isAllowedCookie(key)) {
+    console.warn(`[Security] Attempted to read unauthorized cookie key via server action: "${key}"`);
+    return undefined;
+  }
   try {
     const cookieStore = await cookies();
     return cookieStore.get(key)?.value;
@@ -25,6 +35,12 @@ export async function setValueToCookie(
   value: string,
   options: { path?: string; maxAge?: number } = {},
 ): Promise<void> {
+  // Security guard: Only allow registered UI preference keys, never auth tokens or session roles
+  if (!isAllowedCookie(key)) {
+    console.warn(`[Security] Blocked unauthorized attempt to set cookie key "${key}" via setValueToCookie`);
+    return;
+  }
+
   try {
     const cookieStore = await cookies();
     cookieStore.set(key, value, {

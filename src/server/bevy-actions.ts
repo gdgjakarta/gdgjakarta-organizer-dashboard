@@ -29,24 +29,55 @@ export async function fetchAllBevyChapterEventsAction(includeHidden = false, sta
 
 export const getAllEventsAction = fetchAllBevyChapterEventsAction;
 
+import { cookies } from "next/headers";
+
 /**
- * Server action to fetch Bevy chapter members safely on the server
+ * Verifies that the caller has an active, authenticated organizer session.
+ */
+async function isAuthorizedOrganizerSession(): Promise<boolean> {
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get("auth_token")?.value;
+    const role = cookieStore.get("auth_role")?.value;
+    return Boolean(token) && (role === "organizer" || role === "core_team" || role === "googler");
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Server action to fetch Bevy chapter members safely on the server.
+ * Protected: requires an active organizer session.
  */
 export async function fetchBevyChapterMembersAction(pageSize = 200, page = 1, orderBy = "-created_date") {
+  if (!(await isAuthorizedOrganizerSession())) {
+    console.warn("[Security] Blocked unauthorized attempt to fetch Bevy chapter members");
+    return { count: 0, results: [] };
+  }
   return await getBevyChapterMembers(undefined, pageSize, page, orderBy);
 }
 
 /**
- * Server action to fetch Bevy chapter teams safely on the server
+ * Server action to fetch Bevy chapter teams safely on the server.
+ * Protected: requires an active organizer session.
  */
 export async function fetchBevyChapterTeamsAction() {
+  if (!(await isAuthorizedOrganizerSession())) {
+    console.warn("[Security] Blocked unauthorized attempt to fetch Bevy chapter teams");
+    return [];
+  }
   return await getBevyChapterTeams();
 }
 
 /**
- * Server action to fetch a Bevy member by ID or email
+ * Server action to fetch a Bevy member by ID or email.
+ * Protected: requires an active organizer session.
  */
 export async function fetchBevyMemberByIdAction(identifier: string) {
+  if (!(await isAuthorizedOrganizerSession())) {
+    console.warn(`[Security] Blocked unauthorized attempt to fetch Bevy member by ID: ${identifier}`);
+    return null;
+  }
   return await getMemberById(identifier);
 }
 
