@@ -4,7 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 
 import { useRouter } from "next/navigation";
 
-import { ExternalLink, Layers, Plus, Save, Trash2 } from "lucide-react";
+import { ExternalLink, Layers, Plus, Save, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -16,9 +16,16 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { VALIDATION_TYPE_OPTIONS } from "@/lib/events/question-validator";
 import {
+  COMMITMENT_FEE_TEMPLATE,
   COMMON_MEETUP_TEMPLATE,
+  CURATED_COMBINED_SESSIONS_TEMPLATE,
+  CURATED_REGISTRATION_TEMPLATE,
   DEFAULT_COMBINED_QUESTIONS,
   DEFAULT_GDG_SESSIONS,
+  EVENT_FORMAT_TEMPLATES,
+  FREE_REGISTRATION_TEMPLATE,
+  MULTI_TRACK_TEMPLATE,
+  PAID_REGISTRATION_TEMPLATE,
   QUICK_RSVP_TEMPLATE,
   REGISTRATION_SECTIONS,
   ROAD_TO_DEVFEST_TEMPLATE,
@@ -141,19 +148,66 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
     setQuestions(questions.map((q) => (q.id === id ? { ...q, ...updates } : q)));
   };
 
+  // Apply entire Event Format Template (Policy + Sessions + Questionnaire)
+  const handleApplyFormatTemplate = (templateId: string) => {
+    const tmpl = EVENT_FORMAT_TEMPLATES.find((t) => t.id === templateId);
+    if (!tmpl) return;
+
+    setRequiresApproval(tmpl.requires_approval);
+    if (tmpl.sessions && tmpl.sessions.length > 0) {
+      setSessions(tmpl.sessions);
+    } else {
+      setSessions([]);
+    }
+    setQuestions(tmpl.questions);
+
+    toast.success(`Applied "${tmpl.name}" format preset. Review policy, sessions, and questionnaire below.`);
+  };
+
   const handleLoadTemplate = (templateName: string) => {
-    if (templateName === "combined") {
-      setQuestions(DEFAULT_COMBINED_QUESTIONS);
-      toast.success("Loaded Combined Form (Road to DevFest + Common Form) template.");
-    } else if (templateName === "devfest") {
-      setQuestions(ROAD_TO_DEVFEST_TEMPLATE);
-      toast.success("Loaded Road to DevFest Builder Sprint template.");
-    } else if (templateName === "common") {
-      setQuestions(COMMON_MEETUP_TEMPLATE);
-      toast.success("Loaded Common Meetup template.");
-    } else if (templateName === "quick") {
-      setQuestions(QUICK_RSVP_TEMPLATE);
-      toast.success("Loaded Fast RSVP template.");
+    switch (templateName) {
+      case "free":
+        setQuestions(FREE_REGISTRATION_TEMPLATE);
+        toast.success("Loaded Free Registration questionnaire.");
+        break;
+      case "paid":
+        setQuestions(PAID_REGISTRATION_TEMPLATE);
+        toast.success("Loaded Paid Registration questionnaire.");
+        break;
+      case "commitment":
+        setQuestions(COMMITMENT_FEE_TEMPLATE);
+        toast.success("Loaded Free Registration with Commitment Fee questionnaire.");
+        break;
+      case "multi_track":
+        setQuestions(MULTI_TRACK_TEMPLATE);
+        toast.success("Loaded Multiple Track / Session questionnaire.");
+        break;
+      case "curated":
+        setQuestions(CURATED_REGISTRATION_TEMPLATE);
+        toast.success("Loaded Curated Registration questionnaire (Mandatory Work Email & LinkedIn).");
+        break;
+      case "curated_combined":
+        setQuestions(CURATED_COMBINED_SESSIONS_TEMPLATE);
+        toast.success("Loaded Curated Registration with Combined Sessions questionnaire.");
+        break;
+      case "combined":
+        setQuestions(DEFAULT_COMBINED_QUESTIONS);
+        toast.success("Loaded Combined Form (Road to DevFest + Common Form) template.");
+        break;
+      case "devfest":
+        setQuestions(ROAD_TO_DEVFEST_TEMPLATE);
+        toast.success("Loaded Road to DevFest Builder Sprint template.");
+        break;
+      case "common":
+        setQuestions(COMMON_MEETUP_TEMPLATE);
+        toast.success("Loaded Common Meetup template.");
+        break;
+      case "quick":
+        setQuestions(QUICK_RSVP_TEMPLATE);
+        toast.success("Loaded Fast RSVP template.");
+        break;
+      default:
+        break;
     }
   };
 
@@ -184,6 +238,57 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
 
   return (
     <div className="space-y-6">
+      {/* ── 0. EVENT FORMAT PRESETS & TEMPLATES ──────────────────────── */}
+      <Card className="border-primary/20 bg-primary/5">
+        <CardHeader className="flex flex-col gap-3 pb-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-2">
+              <Sparkles className="size-4 text-primary" />
+              <CardTitle className="text-base">Event Format Templates & Presets</CardTitle>
+            </div>
+            <CardDescription className="text-xs">
+              Quickly draft your registration policy, breakout sessions, and questionnaire based on your event format.
+            </CardDescription>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Select onValueChange={handleApplyFormatTemplate}>
+              <SelectTrigger size="sm" className="h-8 w-[240px] bg-background text-xs shadow-2xs">
+                <SelectValue placeholder="Apply Format Template..." />
+              </SelectTrigger>
+              <SelectContent>
+                {EVENT_FORMAT_TEMPLATES.map((tmpl) => (
+                  <SelectItem key={tmpl.id} value={tmpl.id} className="text-xs">
+                    <span className="font-medium">{tmpl.name}</span>
+                    <span className="ml-1.5 text-[10px] text-muted-foreground">({tmpl.badge})</span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <div className="grid grid-cols-2 gap-2 pt-1 sm:grid-cols-3 lg:grid-cols-6">
+            {EVENT_FORMAT_TEMPLATES.map((tmpl) => (
+              <button
+                key={tmpl.id}
+                type="button"
+                onClick={() => handleApplyFormatTemplate(tmpl.id)}
+                className="flex flex-col items-start gap-1 rounded-md border border-border/70 bg-card p-2.5 text-left transition-all hover:border-primary/50 hover:bg-muted/40 active:scale-[0.98]"
+              >
+                <span className="line-clamp-1 font-semibold text-foreground text-xs leading-snug">{tmpl.name}</span>
+                <Badge variant="outline" className="h-4 px-1.5 py-0 text-[10px]">
+                  {tmpl.badge}
+                </Badge>
+                <span className="line-clamp-2 pt-0.5 text-[10px] text-muted-foreground leading-tight">
+                  {tmpl.description}
+                </span>
+              </button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* ── 1. APPROVAL & CAPACITY SETTINGS ─────────────────────────── */}
       <Card>
         <CardHeader>
@@ -482,7 +587,13 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
                 <SelectValue placeholder="Load Preset Template..." />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="combined">Combined Default Form (Full)</SelectItem>
+                <SelectItem value="free">Free Registration (Open Meetup)</SelectItem>
+                <SelectItem value="paid">Paid Registration (Ticketing & Invoice)</SelectItem>
+                <SelectItem value="commitment">Free with Commitment Fee (Refundable)</SelectItem>
+                <SelectItem value="multi_track">Multiple Track / Session Form</SelectItem>
+                <SelectItem value="curated">Curated Registration (Mandatory Work Email & LinkedIn)</SelectItem>
+                <SelectItem value="curated_combined">Curated Combined Sessions (Sprint)</SelectItem>
+                <SelectItem value="combined">Combined Default Form (Full 23 Fields)</SelectItem>
                 <SelectItem value="devfest">Road to DevFest Builder Sprint</SelectItem>
                 <SelectItem value="common">Common Meetup & Talk</SelectItem>
                 <SelectItem value="quick">Quick Lightweight RSVP</SelectItem>

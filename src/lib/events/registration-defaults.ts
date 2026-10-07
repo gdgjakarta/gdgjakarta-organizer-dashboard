@@ -4,6 +4,8 @@ import type { CustomQuestion, EventSession } from "@/lib/firestore/types";
  * Section definitions for structuring the combined registration form.
  */
 export const REGISTRATION_SECTIONS = [
+  "Payment & Ticket Details",
+  "Commitment Fee & Attendance",
   "Personal & Contact Information",
   "Professional Background & Experience",
   "Technical Focus & Event Preferences",
@@ -327,6 +329,598 @@ export const QUICK_RSVP_TEMPLATE: CustomQuestion[] = [
 ];
 
 /**
+ * Free Registration Template (Open Community Meetup / Tech Talk).
+ * Low friction, open community admission.
+ */
+export const FREE_REGISTRATION_TEMPLATE: CustomQuestion[] = [
+  {
+    id: "whatsapp",
+    label: "WhatsApp Phone Number",
+    type: "text",
+    required: true,
+    placeholder: "e.g. 628123444555",
+    description: "For venue access, checkpoint coordination, and announcements.",
+    section: "Personal & Contact Information",
+    validation_type: "isWhatsappNumber",
+  },
+  {
+    id: "gender",
+    label: "Gender",
+    type: "radio",
+    options: ["Male", "Female", "Prefer not to say"],
+    required: true,
+    section: "Personal & Contact Information",
+  },
+  {
+    id: "role_or_title",
+    label: "Current Role / Job Title",
+    type: "text",
+    required: true,
+    placeholder: "e.g. Frontend Developer, Student",
+    section: "Professional Background & Experience",
+  },
+  {
+    id: "company_or_institution",
+    label: "Current Company or Institution",
+    type: "text",
+    required: true,
+    placeholder: "e.g. GoTo, UI, Freelance",
+    section: "Professional Background & Experience",
+  },
+  {
+    id: "dietary_preference",
+    label: "Dietary Restrictions / Catering Preference",
+    type: "select",
+    options: ["No Restrictions (Standard)", "Halal", "Vegetarian", "Vegan", "No Beef", "Other"],
+    required: true,
+    section: "Personal & Contact Information",
+  },
+  {
+    id: "tshirt_size",
+    label: "T-Shirt Size (Unisex)",
+    type: "select",
+    options: ["S", "M", "L", "XL", "2XL", "3XL"],
+    required: false,
+    description: "For GDG community event merchandise and apparel.",
+    section: "Personal & Contact Information",
+  },
+  {
+    id: "referral_source",
+    label: "How did you find out about this event?",
+    type: "select",
+    options: [
+      "Community Platform (https://gdg.community.dev/gdg-jakarta)",
+      "Instagram (https://gdgjakarta.org/instagram)",
+      "LinkedIn (https://gdgjakarta.org/linkedin)",
+      "Friends / Colleagues",
+      "Other",
+    ],
+    required: true,
+    section: "Expectations & Community",
+  },
+  {
+    id: "terms_agreement",
+    label: "GDG Community Guidelines & Media Consent",
+    type: "checkbox",
+    options: [
+      "I agree to adhere to the GDG Community Guidelines and Code of Conduct.",
+      "I agree that event photos and videos may be taken for GDG community coverage.",
+    ],
+    required: true,
+    section: "Consent & Code of Conduct",
+  },
+];
+
+/**
+ * Paid Registration Template (Ticketing with Payment Reconciliation & Invoicing).
+ */
+export const PAID_REGISTRATION_TEMPLATE: CustomQuestion[] = [
+  {
+    id: "ticket_tier",
+    label: "Selected Ticket Tier",
+    type: "select",
+    options: ["Regular Admission", "Early Bird Pass", "Student / Academic Pass", "Corporate / VIP Pass"],
+    required: true,
+    section: "Payment & Ticket Details",
+  },
+  {
+    id: "payment_proof",
+    label: "Payment Reference / Bank Transfer Slip",
+    type: "text",
+    required: true,
+    placeholder: "Transfer reference number, bank receipt number, or public image URL",
+    description: "Used by organizers to verify payment before ticket confirmation.",
+    section: "Payment & Ticket Details",
+  },
+  {
+    id: "billing_name",
+    label: "Full Name for Invoice / E-Receipt",
+    type: "text",
+    required: true,
+    placeholder: "e.g. John Doe / PT. Tech Nusantara",
+    section: "Payment & Ticket Details",
+  },
+  {
+    id: "billing_company",
+    label: "Company / Tax Entity for Official Receipt (Optional)",
+    type: "text",
+    required: false,
+    placeholder: "Leave empty if registering as individual",
+    section: "Payment & Ticket Details",
+  },
+  {
+    id: "whatsapp",
+    label: "WhatsApp Phone Number",
+    type: "text",
+    required: true,
+    placeholder: "e.g. 628123444555",
+    description: "For e-ticket dispatch and check-in QR coordination.",
+    section: "Personal & Contact Information",
+    validation_type: "isWhatsappNumber",
+  },
+  {
+    id: "role_or_title",
+    label: "Current Role / Occupation",
+    type: "text",
+    required: true,
+    placeholder: "e.g. Software Engineer, Tech Lead",
+    section: "Professional Background & Experience",
+  },
+  {
+    id: "company_or_institution",
+    label: "Company / Organization",
+    type: "text",
+    required: true,
+    placeholder: "e.g. GoTo, Shopee, Startup",
+    section: "Professional Background & Experience",
+  },
+  {
+    id: "tshirt_size",
+    label: "Event Merchandise T-Shirt Size",
+    type: "select",
+    options: ["S", "M", "L", "XL", "2XL", "3XL"],
+    required: true,
+    section: "Personal & Contact Information",
+  },
+  {
+    id: "dietary_preference",
+    label: "Dietary Restrictions / Catering",
+    type: "select",
+    options: ["No Restrictions (Standard)", "Halal", "Vegetarian", "Vegan", "No Beef", "Other"],
+    required: true,
+    section: "Personal & Contact Information",
+  },
+  {
+    id: "terms_paid",
+    label: "Ticketing & Refund Terms",
+    type: "checkbox",
+    options: [
+      "I understand that purchased tickets are non-refundable and non-transferable.",
+      "I agree to adhere to the GDG Community Guidelines and Code of Conduct.",
+    ],
+    required: true,
+    section: "Consent & Code of Conduct",
+  },
+];
+
+/**
+ * Free Registration with Commitment Fee Template.
+ * Fully refundable upon physical check-in at the venue desk; strictly forfeited on no-show.
+ */
+export const COMMITMENT_FEE_TEMPLATE: CustomQuestion[] = [
+  {
+    id: "commitment_fee_proof",
+    label: "Commitment Fee Transfer Slip / Reference",
+    type: "text",
+    required: true,
+    placeholder: "e.g. Bank transfer reference number or slip image URL",
+    description:
+      "Proof of commitment fee transfer. Fee is 100% refunded in cash at the venue check-in desk upon physical attendance.",
+    section: "Commitment Fee & Attendance",
+  },
+  {
+    id: "commitment_refund_choice",
+    label: "Commitment Fee Refund Disbursement",
+    type: "select",
+    options: [
+      "Cash Refund at Venue Desk upon Check-in (Standard)",
+      "Bank Transfer / E-Wallet (Emergency fallback only)",
+    ],
+    required: true,
+    section: "Commitment Fee & Attendance",
+  },
+  {
+    id: "commitment_refund_account",
+    label: "Bank Name & Account Number (Emergency Digital Fallback)",
+    type: "text",
+    required: false,
+    placeholder: "e.g. BCA 123456789 a/n Nama Lengkap",
+    section: "Commitment Fee & Attendance",
+  },
+  {
+    id: "whatsapp",
+    label: "WhatsApp Phone Number",
+    type: "text",
+    required: true,
+    placeholder: "e.g. 628123444555",
+    description: "For check-in verification and commitment fee cash return desk.",
+    section: "Personal & Contact Information",
+    validation_type: "isWhatsappNumber",
+  },
+  {
+    id: "role_or_title",
+    label: "Current Role / Occupation",
+    type: "text",
+    required: true,
+    placeholder: "e.g. Software Engineer, Student",
+    section: "Professional Background & Experience",
+  },
+  {
+    id: "company_or_institution",
+    label: "Company or Institution",
+    type: "text",
+    required: true,
+    placeholder: "e.g. GoTo, UI, Freelance",
+    section: "Professional Background & Experience",
+  },
+  {
+    id: "tshirt_size",
+    label: "T-Shirt Size",
+    type: "select",
+    options: ["S", "M", "L", "XL", "2XL", "3XL"],
+    required: false,
+    section: "Personal & Contact Information",
+  },
+  {
+    id: "dietary_preference",
+    label: "Dietary Restrictions",
+    type: "select",
+    options: ["No Restrictions (Standard)", "Halal", "Vegetarian", "Vegan", "No Beef", "Other"],
+    required: true,
+    section: "Personal & Contact Information",
+  },
+  {
+    id: "commitment_policy_agreement",
+    label: "Commitment Fee Terms & Attendance Agreement",
+    type: "checkbox",
+    options: [
+      "I understand that the commitment fee will be refunded 100% in cash upon physical attendance and check-in on event day.",
+      "I acknowledge that failing to attend the event physically forfeits the commitment fee to cover venue catering and reservation expenses.",
+      "I agree to adhere to the GDG Community Guidelines.",
+    ],
+    required: true,
+    section: "Consent & Code of Conduct",
+  },
+];
+
+/**
+ * Multiple Track / Session Registration Template.
+ * Tailored for multi-track agendas (e.g. Morning Keynote vs Afternoon Codelabs vs Regular Ticket).
+ */
+export const MULTI_TRACK_TEMPLATE: CustomQuestion[] = [
+  {
+    id: "whatsapp",
+    label: "WhatsApp Phone Number",
+    type: "text",
+    required: true,
+    placeholder: "e.g. 628123444555",
+    section: "Personal & Contact Information",
+    validation_type: "isWhatsappNumber",
+  },
+  {
+    id: "track_preference",
+    label: "Technical Tracks of Interest",
+    type: "multiselect",
+    options: [
+      "Keynote & Technical Roadmap",
+      "AI & Machine Learning (Gemini / Vertex AI)",
+      "Android & Mobile Engineering",
+      "Cloud, Kubernetes & DevOps",
+      "Web Technologies & Frameworks",
+    ],
+    required: true,
+    description: "Helps the team allocate breakout room capacities.",
+    section: "Technical Focus & Event Preferences",
+  },
+  {
+    id: "primary_tech_stack",
+    label: "Primary Tech Stack & Languages",
+    type: "select",
+    options: [
+      "TypeScript / JavaScript",
+      "Python",
+      "Kotlin / Android",
+      "Go",
+      "Java",
+      "Cloud / DevOps",
+      "AI / ML",
+      "Flutter",
+      "Other",
+    ],
+    required: true,
+    section: "Professional Background & Experience",
+  },
+  {
+    id: "years_of_experience",
+    label: "Years of Professional Experience",
+    type: "select",
+    options: ["Student / < 1 year", "1 – 3 years", "3 – 5 years", "5+ years"],
+    required: true,
+    section: "Professional Background & Experience",
+  },
+  {
+    id: "company_or_institution",
+    label: "Current Company or Institution",
+    type: "text",
+    required: true,
+    placeholder: "e.g. GoTo, Universitas Indonesia, Freelance",
+    section: "Professional Background & Experience",
+  },
+  {
+    id: "role_or_title",
+    label: "Current Role / Job Title",
+    type: "text",
+    required: true,
+    placeholder: "e.g. Software Engineer, Student",
+    section: "Professional Background & Experience",
+  },
+  {
+    id: "dietary_preference",
+    label: "Dietary Restrictions",
+    type: "select",
+    options: ["No Restrictions (Standard)", "Halal", "Vegetarian", "Vegan", "No Beef", "Other"],
+    required: true,
+    section: "Personal & Contact Information",
+  },
+  {
+    id: "terms_agreement",
+    label: "Code of Conduct & Media Agreement",
+    type: "checkbox",
+    options: [
+      "I agree to adhere to the GDG Community Guidelines and Code of Conduct.",
+      "I agree that photos and videos taken during the event may be shared for community highlights.",
+    ],
+    required: true,
+    section: "Consent & Code of Conduct",
+  },
+];
+
+/**
+ * Curated Registration Template (Single Track / General).
+ * Enforces Curation Mode (requires_approval = true) with MANDATORY LinkedIn Profile and Work Email.
+ */
+export const CURATED_REGISTRATION_TEMPLATE: CustomQuestion[] = [
+  {
+    id: "work_email",
+    label: "Work Email (Mandatory for Curation)",
+    type: "text",
+    required: true,
+    placeholder: "e.g. alex@company.com or dev@startup.id",
+    description: "Corporate or institutional domain. Consumer webmail (@gmail.com, @yahoo.com) is not accepted.",
+    section: "Personal & Contact Information",
+    validation_type: "isWorkEmail",
+  },
+  {
+    id: "linkedin_url",
+    label: "LinkedIn Profile URL (Mandatory for Curation)",
+    type: "text",
+    required: true,
+    placeholder: "https://linkedin.com/in/username",
+    description: "Public LinkedIn profile for organizing committee review.",
+    section: "Personal & Contact Information",
+    validation_type: "isLinkedInProfileUrl",
+  },
+  {
+    id: "whatsapp",
+    label: "WhatsApp Phone Number",
+    type: "text",
+    required: true,
+    placeholder: "e.g. 628123444555",
+    section: "Personal & Contact Information",
+    validation_type: "isWhatsappNumber",
+  },
+  {
+    id: "portfolio_github_url",
+    label: "GitHub / Portfolio Link",
+    type: "text",
+    required: false,
+    placeholder: "https://github.com/username",
+    description: "Projects or repositories demonstrating engineering experience.",
+    section: "Personal & Contact Information",
+    validation_type: "isGithubUrl",
+  },
+  {
+    id: "company_or_institution",
+    label: "Company / Organization / Institution",
+    type: "text",
+    required: true,
+    placeholder: "e.g. Google, GoTo, Blibli, UI",
+    section: "Professional Background & Experience",
+  },
+  {
+    id: "role_or_title",
+    label: "Current Role / Job Title",
+    type: "text",
+    required: true,
+    placeholder: "e.g. Senior Software Engineer, Engineering Lead",
+    section: "Professional Background & Experience",
+  },
+  {
+    id: "years_of_experience",
+    label: "Years of Professional Experience",
+    type: "select",
+    options: ["Student / < 1 year", "1 – 3 years", "3 – 5 years", "5+ years"],
+    required: true,
+    section: "Professional Background & Experience",
+  },
+  {
+    id: "primary_tech_stack",
+    label: "Primary Tech Stack & Languages",
+    type: "select",
+    options: [
+      "TypeScript / JavaScript",
+      "Python",
+      "Kotlin / Android",
+      "Go",
+      "Java",
+      "Cloud / DevOps",
+      "AI / ML",
+      "Flutter",
+      "Other",
+    ],
+    required: true,
+    section: "Professional Background & Experience",
+  },
+  {
+    id: "curation_motivation",
+    label: "Why are you interested in joining, and what will you contribute?",
+    type: "textarea",
+    required: true,
+    min_length: 30,
+    max_length: 600,
+    placeholder: "Share your engineering motivations, goals, and technical background...",
+    description: "The organizing committee reviews this answer to curate the participant cohort.",
+    section: "Expectations & Community",
+  },
+  {
+    id: "curation_terms",
+    label: "Curation & Admission Agreement",
+    type: "checkbox",
+    options: [
+      "I understand that submissions are curated and registration is only confirmed once approved by the organizing committee.",
+      "I agree to adhere to the GDG Community Guidelines and Code of Conduct.",
+    ],
+    required: true,
+    section: "Consent & Code of Conduct",
+  },
+];
+
+/**
+ * Curated Registration with Combined Multi-Track Sessions Template (e.g. Road to DevFest Builder Sprint).
+ * Combines Multi-Track session breakdown with mandatory LinkedIn Profile and Work Email curation.
+ */
+export const CURATED_COMBINED_SESSIONS_TEMPLATE: CustomQuestion[] = [
+  {
+    id: "work_email",
+    label: "Work Email (Mandatory for Curated Combined Sessions)",
+    type: "text",
+    required: true,
+    placeholder: "e.g. alex@company.com or dev@startup.id",
+    description: "Corporate or institutional domain. Personal email (@gmail.com) is not accepted.",
+    section: "Personal & Contact Information",
+    validation_type: "isWorkEmail",
+  },
+  {
+    id: "linkedin_url",
+    label: "LinkedIn Profile URL (Mandatory for Curated Combined Sessions)",
+    type: "text",
+    required: true,
+    placeholder: "https://linkedin.com/in/username",
+    description: "Public LinkedIn profile for organizing committee review.",
+    section: "Personal & Contact Information",
+    validation_type: "isLinkedInProfileUrl",
+  },
+  {
+    id: "whatsapp",
+    label: "WhatsApp Phone Number",
+    type: "text",
+    required: true,
+    placeholder: "e.g. 628123444555",
+    section: "Personal & Contact Information",
+    validation_type: "isWhatsappNumber",
+  },
+  {
+    id: "portfolio_github_url",
+    label: "GitHub / Portfolio / Project Link",
+    type: "text",
+    required: false,
+    placeholder: "https://github.com/username",
+    description: "Open-source work, personal projects, or published repositories.",
+    section: "Personal & Contact Information",
+    validation_type: "isGithubUrl",
+  },
+  {
+    id: "company_or_institution",
+    label: "Company / Organization / University",
+    type: "text",
+    required: true,
+    placeholder: "e.g. GoTo, Shopee, UI, ITB",
+    section: "Professional Background & Experience",
+  },
+  {
+    id: "role_or_title",
+    label: "Current Role / Job Title",
+    type: "text",
+    required: true,
+    placeholder: "e.g. Senior Software Engineer, ML Engineer",
+    section: "Professional Background & Experience",
+  },
+  {
+    id: "years_of_experience",
+    label: "Years of Professional Experience",
+    type: "select",
+    options: ["Student / < 1 year", "1 – 3 years", "3 – 5 years", "5+ years"],
+    required: true,
+    section: "Professional Background & Experience",
+  },
+  {
+    id: "primary_tech_stack",
+    label: "Primary Tech Stack",
+    type: "select",
+    options: [
+      "TypeScript / JavaScript",
+      "Python",
+      "Kotlin / Android",
+      "Go",
+      "Java",
+      "Cloud / DevOps",
+      "AI / ML",
+      "Flutter",
+      "Other",
+    ],
+    required: true,
+    section: "Professional Background & Experience",
+  },
+  {
+    id: "genai_experience",
+    label: "Experience with Generative AI & Google Cloud Technologies",
+    type: "multiselect",
+    options: [
+      "Gemini API / Google AI Studio",
+      "Google Agent Development Kit (ADK) / Agent Engines",
+      "Android Studio Agent Mode / AICore",
+      "Cloud Run / Container Sandboxes / Vertex AI",
+      "None yet, but eager to learn",
+      "Other",
+    ],
+    required: false,
+    section: "Technical Focus & Event Preferences",
+  },
+  {
+    id: "curation_motivation",
+    label: "Why are you interested in joining, and what will you contribute?",
+    type: "textarea",
+    required: true,
+    min_length: 30,
+    max_length: 600,
+    placeholder: "Tell us about what you hope to build, problems you're tackling, and your sprint goals...",
+    description: "Reviewers evaluate this essay to select participants for limited breakout session seats.",
+    section: "Expectations & Community",
+  },
+  {
+    id: "curation_terms",
+    label: "Curation & Admission Agreement",
+    type: "checkbox",
+    options: [
+      "I understand that submissions are curated and registration is only confirmed once approved by the organizing committee.",
+      "I agree to adhere to the GDG Community Guidelines and Code of Conduct.",
+    ],
+    required: true,
+    section: "Consent & Code of Conduct",
+  },
+];
+
+/**
  * Standard GDG Jakarta Session Tracks matching n8n workflow configurations:
  * - Morning Session: 105 seats, 08:15 WIB - 12:00 WIB (checkin deadline: 09:05 WIB)
  * - Afternoon Session: 100 seats, 13:10 WIB - 16:55 WIB (checkin deadline: 14:00 WIB)
@@ -384,6 +978,75 @@ export const DEFAULT_GDG_SESSIONS: EventSession[] = [
     location: "Main Venue",
     capacity: 136,
     total_registered: 0,
+  },
+];
+
+/**
+ * Event Format Template structure definition.
+ */
+export interface EventFormatTemplate {
+  id: string;
+  name: string;
+  badge: string;
+  description: string;
+  requires_approval: boolean;
+  sessions?: EventSession[];
+  questions: CustomQuestion[];
+}
+
+/**
+ * Registry of all GDG Jakarta Event Format Templates.
+ */
+export const EVENT_FORMAT_TEMPLATES: EventFormatTemplate[] = [
+  {
+    id: "free",
+    name: "Free Registration",
+    badge: "Open RSVP",
+    description: "Open community meetup or tech talk with instant RSVP confirmation.",
+    requires_approval: false,
+    questions: FREE_REGISTRATION_TEMPLATE,
+  },
+  {
+    id: "paid",
+    name: "Paid Registration",
+    badge: "Paid Admission",
+    description: "Paid conference or summit with payment reconciliation, ticket tier, and invoicing.",
+    requires_approval: false,
+    questions: PAID_REGISTRATION_TEMPLATE,
+  },
+  {
+    id: "commitment_fee",
+    name: "Free Registration with Commitment Fee",
+    badge: "Refundable Fee",
+    description: "100% refundable fee returned in cash upon physical check-in; strictly forfeited on no-show.",
+    requires_approval: false,
+    questions: COMMITMENT_FEE_TEMPLATE,
+  },
+  {
+    id: "multi_track",
+    name: "Multiple Track / Session Registration",
+    badge: "Multi-Track",
+    description: "Event split into Morning, Afternoon, and Regular session tracks with independent capacity.",
+    requires_approval: false,
+    sessions: DEFAULT_GDG_SESSIONS,
+    questions: MULTI_TRACK_TEMPLATE,
+  },
+  {
+    id: "curated",
+    name: "Curated Registration",
+    badge: "Curated RSVP",
+    description: "Organizer curation mode. ALWAYS requires verified Work Email and LinkedIn Profile.",
+    requires_approval: true,
+    questions: CURATED_REGISTRATION_TEMPLATE,
+  },
+  {
+    id: "curated_combined_sessions",
+    name: "Curated Registration with Combined Sessions",
+    badge: "Curated + Tracks",
+    description: "Multi-track breakout sessions with curation review. ALWAYS requires Work Email & LinkedIn Profile.",
+    requires_approval: true,
+    sessions: DEFAULT_GDG_SESSIONS,
+    questions: CURATED_COMBINED_SESSIONS_TEMPLATE,
   },
 ];
 
