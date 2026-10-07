@@ -2,13 +2,13 @@
 
 import { useState } from "react";
 
-import { Package, Plus, Sparkles } from "lucide-react";
+import { Check, Package, Plus, Sparkles } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import type { FirestoreEvent } from "@/lib/firestore/types";
+import { cn } from "@/lib/utils";
 
 interface MerchandiseTabProps {
   event: FirestoreEvent;
@@ -79,15 +79,22 @@ export function MerchandiseTab({ event: _event }: MerchandiseTabProps) {
                 <button
                   type="button"
                   key={item.id}
+                  aria-pressed={isSelected}
                   onClick={() => toggleMerch(item.id)}
-                  className={`flex cursor-pointer flex-col justify-between rounded-xl p-4 text-left transition-all ${
-                    isSelected ? "bg-primary/5 shadow-xs ring-2 ring-primary" : "bg-card shadow-xs hover:bg-muted/40"
-                  }`}
+                  className={cn(
+                    "flex cursor-pointer flex-col justify-between rounded-xl border p-4 text-left transition-all",
+                    isSelected
+                      ? "border-primary/50 bg-primary/5 shadow-xs ring-2 ring-primary"
+                      : "border-border/80 bg-card shadow-xs hover:bg-muted/40",
+                  )}
                 >
                   <div className="flex w-full items-start justify-between gap-3">
                     <div className="flex items-center gap-2.5">
                       <div
-                        className={`rounded-lg p-2 ${isSelected ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}
+                        className={cn(
+                          "rounded-lg p-2",
+                          isSelected ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground",
+                        )}
                       >
                         <Package className="size-5" />
                       </div>
@@ -98,11 +105,15 @@ export function MerchandiseTab({ event: _event }: MerchandiseTabProps) {
                         </Badge>
                       </div>
                     </div>
-                    <Checkbox
-                      checked={isSelected}
-                      onCheckedChange={() => toggleMerch(item.id)}
-                      aria-label={`Select ${item.name}`}
-                    />
+                    <div
+                      className={cn(
+                        "flex size-4 shrink-0 items-center justify-center rounded-xs border border-primary transition-colors",
+                        isSelected ? "bg-primary text-primary-foreground" : "bg-transparent",
+                      )}
+                      aria-hidden="true"
+                    >
+                      {isSelected && <Check className="size-3.5 stroke-[3]" />}
+                    </div>
                   </div>
 
                   <p className="mt-3 text-muted-foreground text-xs leading-relaxed">{item.description}</p>

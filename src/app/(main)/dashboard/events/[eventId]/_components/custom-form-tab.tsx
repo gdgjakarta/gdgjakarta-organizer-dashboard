@@ -89,9 +89,14 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
         const docData = await getFirestoreEventById(String(event.id));
         if (docData) {
           if (docData.requires_approval !== undefined) setRequiresApproval(docData.requires_approval);
-          if (docData.max_attendees !== undefined)
-            setMaxAttendees(docData.max_attendees ? String(docData.max_attendees) : "");
-          if (docData.sessions && docData.sessions.length > 0) setSessions(docData.sessions);
+          if (docData.max_attendees !== undefined && docData.max_attendees !== null) {
+            setMaxAttendees(String(docData.max_attendees));
+          } else {
+            setMaxAttendees("");
+          }
+          if (Array.isArray(docData.sessions)) {
+            setSessions(docData.sessions);
+          }
           if (docData.custom_questions && docData.custom_questions.length > 0) setQuestions(docData.custom_questions);
         }
       } catch (err) {
@@ -115,13 +120,13 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
     const created: EventSession = {
       id: `sess_${Date.now()}`,
       title: newSession.title.trim(),
-      description: newSession.description?.trim() || undefined,
-      time_slot: newSession.time_slot?.trim() || undefined,
-      checkin_deadline: newSession.checkin_deadline?.trim() || undefined,
-      location: newSession.location?.trim() || undefined,
-      location_url: newSession.location_url?.trim() || undefined,
       capacity: Number(newSession.capacity) || 50,
       total_registered: 0,
+      ...(newSession.description?.trim() ? { description: newSession.description.trim() } : {}),
+      ...(newSession.time_slot?.trim() ? { time_slot: newSession.time_slot.trim() } : {}),
+      ...(newSession.checkin_deadline?.trim() ? { checkin_deadline: newSession.checkin_deadline.trim() } : {}),
+      ...(newSession.location?.trim() ? { location: newSession.location.trim() } : {}),
+      ...(newSession.location_url?.trim() ? { location_url: newSession.location_url.trim() } : {}),
     };
     setSessions([...sessions, created]);
     setNewSession({
@@ -290,25 +295,28 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
   const handleSave = () => {
     startTransition(async () => {
       try {
-        let resolvedMaxAttendees: number | undefined;
+        const { deleteField, saveFirestoreEvent } = await import("@/lib/firestore/client");
+
+        let resolvedMaxAttendees: number | ReturnType<typeof deleteField>;
         if (hasMultipleSessions) {
-          resolvedMaxAttendees = totalSessionCapacity > 0 ? totalSessionCapacity : undefined;
-        } else if (maxAttendees) {
+          resolvedMaxAttendees = totalSessionCapacity > 0 ? totalSessionCapacity : deleteField();
+        } else if (maxAttendees && maxAttendees.trim().length > 0 && !Number.isNaN(Number(maxAttendees))) {
           resolvedMaxAttendees = Number(maxAttendees);
+        } else {
+          resolvedMaxAttendees = deleteField();
         }
 
-        const updatedEvent: FirestoreEvent = {
+        const updatedEvent: Record<string, unknown> = {
           ...event,
           requires_approval: requiresApproval,
           max_attendees: resolvedMaxAttendees,
-          webhook_url: event.webhook_url,
-          sessions: sessions.length > 0 ? sessions : undefined,
+          webhook_url: event.webhook_url ? event.webhook_url : deleteField(),
+          sessions: sessions.length > 0 ? sessions : deleteField(),
           custom_questions: questions.filter((q) => q.label.trim().length > 0),
           updated_at: new Date().toISOString(),
         };
 
-        const { saveFirestoreEvent } = await import("@/lib/firestore/client");
-        await saveFirestoreEvent(updatedEvent);
+        await saveFirestoreEvent(updatedEvent as unknown as FirestoreEvent);
         toast.success("Registration form and session settings saved successfully!");
         router.refresh();
       } catch (err) {

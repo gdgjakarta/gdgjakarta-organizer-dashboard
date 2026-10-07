@@ -10,17 +10,11 @@ import {
   fetchBevyChapterTeamsAction,
 } from "@/server/bevy-actions";
 
-import { db, updateSyncMetadata } from "./client";
+import { db, sanitizeFirestoreData, updateSyncMetadata } from "./client";
 import type { FirestoreEvent } from "./types";
 
 function cleanPayload<T extends Record<string, unknown>>(obj: T): Partial<T> {
-  const result: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(obj)) {
-    if (value !== undefined) {
-      result[key] = value;
-    }
-  }
-  return result as Partial<T>;
+  return sanitizeFirestoreData(obj);
 }
 
 /**

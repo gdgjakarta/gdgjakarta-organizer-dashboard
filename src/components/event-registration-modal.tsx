@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState, useTransition } from "react";
+import React, { useEffect, useId, useState, useTransition } from "react";
 
 import { useRouter } from "next/navigation";
 
@@ -41,6 +41,7 @@ interface EventRegistrationModalProps {
   event: FirestoreEvent;
   existingRegistration?: FirestoreRegistration | null;
   children?: React.ReactNode;
+  className?: string;
 }
 
 function isEventPast(event: FirestoreEvent): boolean {
@@ -54,7 +55,12 @@ function isEventPast(event: FirestoreEvent): boolean {
   }
 }
 
-export function EventRegistrationModal({ event, existingRegistration, children }: EventRegistrationModalProps) {
+export function EventRegistrationModal({
+  event,
+  existingRegistration,
+  children,
+  className,
+}: EventRegistrationModalProps) {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const formUid = useId();
@@ -326,6 +332,18 @@ export function EventRegistrationModal({ event, existingRegistration, children }
           }
         });
 
+        setLocalReg({
+          id: result.registrationId || `${event.id}_${user?.id || Date.now()}`,
+          event_id: String(event.id),
+          event_title: event.title,
+          member_id: user?.id || "",
+          member_name: user?.displayName || user?.name || "Attendee",
+          member_email: (combinedAnswers.work_email as string) || user?.email || "",
+          status: eventConfig.requires_approval ? "pending" : "approved",
+          registered_at: new Date().toISOString(),
+          answers: combinedAnswers,
+        });
+
         if (event.requires_approval) {
           toast.success("Registration submitted! Your application is now pending organizer review.", {
             duration: 5000,
@@ -346,24 +364,53 @@ export function EventRegistrationModal({ event, existingRegistration, children }
   };
 
   if (activeRegistration) {
-    const isApproved = activeRegistration.status === "approved" || activeRegistration.status === "attended";
-    const isPendingReview = activeRegistration.status === "pending";
+    let isFullWidth = Boolean(className?.includes("w-full"));
+    let buttonSize: "default" | "sm" | "lg" | "icon" = "sm";
+
+    if (React.isValidElement(children)) {
+      const childProps = children.props as { className?: string; size?: "default" | "sm" | "lg" | "icon" };
+      if (childProps.className?.includes("w-full")) {
+        isFullWidth = true;
+      }
+      if (childProps.size) {
+        buttonSize = childProps.size;
+      }
+    }
+
+    const statusLower = activeRegistration.status.toLowerCase();
+    const isApproved = statusLower === "approved" || statusLower === "attended";
+    const isPendingReview = statusLower === "pending";
     let statusLabel = "Registered";
     if (isApproved) {
-      statusLabel = "Registered (Approved)";
+      statusLabel = eventConfig.requires_approval ? "Registered (Approved)" : "Registered";
     } else if (isPendingReview) {
       statusLabel = "Pending Approval";
     }
 
     return (
       <Button
+        type="button"
         variant={isApproved ? "outline" : "secondary"}
-        size="sm"
-        disabled
-        className="cursor-default gap-1.5 opacity-90"
+        size={buttonSize}
+        aria-disabled="true"
+        className={cn(
+          "relative cursor-default gap-2 overflow-hidden font-medium transition-colors",
+          isApproved
+            ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-300"
+            : "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-300",
+          isFullWidth && "w-full",
+          className,
+        )}
       >
-        <CheckCircle2 className={cn("size-3.5", isApproved ? "text-emerald-500" : "text-amber-500")} />
-        {statusLabel}
+        <CheckCircle2
+          className={cn(
+            "relative z-10 shrink-0",
+            buttonSize === "lg" ? "size-4" : "size-3.5",
+            isApproved ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400",
+          )}
+        />
+        <span className="relative z-10">{statusLabel}</span>
+        <div className="shimmer-wave" aria-hidden="true" />
       </Button>
     );
   }

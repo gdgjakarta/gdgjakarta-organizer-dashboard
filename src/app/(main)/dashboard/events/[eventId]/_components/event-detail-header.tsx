@@ -1,6 +1,6 @@
 "use client";
 
-import { useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -45,6 +45,47 @@ interface EventDetailHeaderProps {
 export function EventDetailHeader({ event, totalRegistrations, totalApproved }: EventDetailHeaderProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [liveTotals, setLiveTotals] = useState({
+    totalRegistrations,
+    totalApproved,
+  });
+
+  useEffect(() => {
+    setLiveTotals({ totalRegistrations, totalApproved });
+  }, [totalRegistrations, totalApproved]);
+
+  useEffect(() => {
+    if (!event.id) return;
+    let unsubscribe: () => void = () => {
+      // No-op initial cleanup
+    };
+
+    async function subscribeTotals() {
+      try {
+        const { subscribeEventRegistrations } = await import("@/lib/firestore/client");
+        unsubscribe = subscribeEventRegistrations(String(event.id), (list) => {
+          if (list) {
+            const approvedCount = list.filter((r) => {
+              const s = (r.status || "").toLowerCase().trim();
+              return s === "approved" || s === "attended" || s === "confirmed" || s === "registered";
+            }).length;
+            setLiveTotals({
+              totalRegistrations: Math.max(list.length, totalRegistrations),
+              totalApproved: Math.max(approvedCount, totalApproved),
+            });
+          }
+        });
+      } catch (err) {
+        console.warn("[EventDetailHeader] Could not subscribe to live totals:", err);
+      }
+    }
+
+    void subscribeTotals();
+
+    return () => {
+      unsubscribe();
+    };
+  }, [event.id, totalRegistrations, totalApproved]);
 
   const handleSync = () => {
     startTransition(async () => {
@@ -184,12 +225,12 @@ export function EventDetailHeader({ event, totalRegistrations, totalApproved }: 
             <span>•</span>
             <span className="flex items-center gap-1.5">
               <Users className="size-4" />
-              <strong className="text-foreground">{totalRegistrations}</strong> Total Registrants
+              <strong className="text-foreground">{liveTotals.totalRegistrations}</strong> Total Registrants
             </span>
             <span>•</span>
             <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
               <CheckCircle2 className="size-4" />
-              <strong>{totalApproved}</strong> Approved
+              <strong>{liveTotals.totalApproved}</strong> Approved
             </span>
           </div>
         </div>

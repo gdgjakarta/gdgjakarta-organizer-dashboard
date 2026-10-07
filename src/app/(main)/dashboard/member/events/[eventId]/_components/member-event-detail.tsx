@@ -30,6 +30,7 @@ import { Separator } from "@/components/ui/separator";
 import { resolveEventAudience } from "@/lib/bevy/audience";
 import { checkEventRegistrationAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
+import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
 interface MemberEventDetailProps {
@@ -201,13 +202,25 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
             : "⏳ You have already applied. You will be notified once reviewed."}
         </div>
         <Button
-          disabled
+          type="button"
+          aria-disabled="true"
           variant={isApproved ? "outline" : "secondary"}
-          className="w-full cursor-default gap-2 font-medium opacity-90"
+          className={cn(
+            "relative w-full cursor-default gap-2 overflow-hidden font-medium transition-colors",
+            isApproved
+              ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-300"
+              : "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-300",
+          )}
           size="lg"
         >
-          <CheckCircle2 className={`size-4 ${isApproved ? "text-emerald-500" : "text-amber-500"}`} />
-          {statusBadgeText}
+          <CheckCircle2
+            className={cn(
+              "relative z-10 size-4",
+              isApproved ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400",
+            )}
+          />
+          <span className="relative z-10">{statusBadgeText}</span>
+          <div className="shimmer-wave" aria-hidden="true" />
         </Button>
       </div>
     );

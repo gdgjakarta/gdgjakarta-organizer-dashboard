@@ -2,6 +2,7 @@
 
 import {
   collection,
+  deleteField,
   doc,
   type Firestore,
   getDoc,
@@ -16,10 +17,50 @@ import {
   where,
 } from "firebase/firestore";
 
+export { deleteField };
+
 import { app } from "@/config/firebase";
 import type { FaqContent, PartnershipContent } from "@/lib/content/types";
 
 export const db: Firestore = typeof window !== "undefined" ? getFirestore(app) : (null as unknown as Firestore);
+
+export function isFirestoreFieldValue(val: unknown): boolean {
+  return (
+    val !== null &&
+    typeof val === "object" &&
+    ("_methodName" in val ||
+      Boolean((val as { constructor?: { name?: string } }).constructor?.name?.includes("FieldValue")))
+  );
+}
+
+/**
+ * Recursively removes `undefined` properties from objects and arrays so Firestore writes
+ * never fail with: "Unsupported field value: undefined".
+ * Preserves null, Date, and Firestore FieldValues (such as deleteField()).
+ */
+export function sanitizeFirestoreData<T>(data: T): T {
+  if (data === null || data === undefined) {
+    return data;
+  }
+  if (Array.isArray(data)) {
+    return data
+      .filter((item) => item !== undefined && !isFirestoreFieldValue(item))
+      .map((item) => sanitizeFirestoreData(item)) as unknown as T;
+  }
+  if (isFirestoreFieldValue(data) || data instanceof Date) {
+    return data;
+  }
+  if (typeof data === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
+      if (value !== undefined) {
+        result[key] = sanitizeFirestoreData(value);
+      }
+    }
+    return result as T;
+  }
+  return data;
+}
 
 import type {
   FirestoreEvent,
@@ -63,10 +104,11 @@ export async function getFirestoreEventById(eventId: string): Promise<FirestoreE
   }
 }
 
-export async function saveFirestoreEvent(event: FirestoreEvent): Promise<void> {
+export async function saveFirestoreEvent(event: Partial<FirestoreEvent> | Record<string, unknown>): Promise<void> {
   if (typeof window === "undefined") return;
   const docRef = doc(db, "events", String(event.id));
-  await setDoc(docRef, event, { merge: true });
+  const sanitized = sanitizeFirestoreData(event);
+  await setDoc(docRef, sanitized, { merge: true });
 }
 
 // ── Members ─────────────────────────────────────────────────────────────────
@@ -101,24 +143,22 @@ export async function getFirestoreMemberById(memberId: string): Promise<Firestor
   }
 }
 
-export async function saveFirestoreMember(member: FirestoreMember): Promise<void> {
+export async function saveFirestoreMember(member: Partial<FirestoreMember> | Record<string, unknown>): Promise<void> {
   if (typeof window === "undefined") return;
   const docRef = doc(db, "members", String(member.id));
-  await setDoc(docRef, member, { merge: true });
+  const sanitized = sanitizeFirestoreData(member);
+  await setDoc(docRef, sanitized, { merge: true });
 }
 
 export async function updateFirestoreMemberBevyId(uid: string, bevyUserId: string): Promise<void> {
   if (typeof window === "undefined" || !uid || !bevyUserId) return;
   try {
     const memberRef = doc(db, "members", uid);
-    await setDoc(
-      memberRef,
-      {
-        bevy_user_id: String(bevyUserId),
-        updated_at: new Date().toISOString(),
-      },
-      { merge: true },
-    );
+    const sanitized = sanitizeFirestoreData({
+      bevy_user_id: String(bevyUserId),
+      updated_at: new Date().toISOString(),
+    });
+    await setDoc(memberRef, sanitized, { merge: true });
     console.log(`[Firestore] Updated member ${uid} with bevy_user_id: ${bevyUserId}`);
   } catch (error) {
     console.error(`[Firestore] Failed to update bevy_user_id for member ${uid}:`, error);
@@ -131,14 +171,29 @@ export async function getEventRegistrations(eventId: string): Promise<FirestoreR
   if (typeof window === "undefined") return [];
   try {
     const regRef = collection(db, "event_registrations");
-    const q = query(regRef, where("event_id", "==", String(eventId)));
-    const snapshot = await getDocs(q);
+    const strId = String(eventId);
+    const numId = Number(eventId);
+    const hasNum = !Number.isNaN(numId) && String(numId) === strId;
 
-    const list = snapshot.docs.map((docSnap) => ({
-      id: docSnap.id,
-      ...docSnap.data(),
-    })) as FirestoreRegistration[];
+    const snapshot = await getDocs(query(regRef, where("event_id", "==", strId)));
+    const map = new Map<string, FirestoreRegistration>();
 
+    for (const docSnap of snapshot.docs) {
+      map.set(docSnap.id, { id: docSnap.id, ...docSnap.data() } as FirestoreRegistration);
+    }
+
+    if (hasNum) {
+      try {
+        const snapNum = await getDocs(query(regRef, where("event_id", "==", numId)));
+        for (const docSnap of snapNum.docs) {
+          map.set(docSnap.id, { id: docSnap.id, ...docSnap.data() } as FirestoreRegistration);
+        }
+      } catch {
+        // Numeric query fallback ignored if index requires exact type
+      }
+    }
+
+    const list = Array.from(map.values());
     return list.sort((a, b) => {
       const timeA = new Date(a.registered_at || 0).getTime();
       const timeB = new Date(b.registered_at || 0).getTime();
@@ -147,6 +202,51 @@ export async function getEventRegistrations(eventId: string): Promise<FirestoreR
   } catch (error) {
     console.error(`[Firestore] getEventRegistrations error for ${eventId}:`, error);
     return [];
+  }
+}
+
+export function subscribeEventRegistrations(
+  eventId: string,
+  callback: (registrations: FirestoreRegistration[]) => void,
+  onError?: (error: Error) => void,
+): () => void {
+  if (typeof window === "undefined") {
+    return () => {
+      // No-op on server
+    };
+  }
+
+  try {
+    const regRef = collection(db, "event_registrations");
+    const strId = String(eventId);
+    const q = query(regRef, where("event_id", "==", strId));
+
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        const list = snapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...docSnap.data(),
+        })) as FirestoreRegistration[];
+
+        list.sort((a, b) => {
+          const timeA = new Date(a.registered_at || 0).getTime();
+          const timeB = new Date(b.registered_at || 0).getTime();
+          return timeB - timeA;
+        });
+
+        callback(list);
+      },
+      (error) => {
+        console.warn(`[Firestore] subscribeEventRegistrations error for ${eventId}:`, error);
+        onError?.(error);
+      },
+    );
+  } catch (err) {
+    console.warn(`[Firestore] Failed to subscribe to event registrations for ${eventId}:`, err);
+    return () => {
+      // No-op on error
+    };
   }
 }
 
@@ -285,13 +385,13 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
     ...(registration.session_title ? { session_title: registration.session_title } : {}),
   };
 
-  const cleanPayload: FirestoreRegistration = {
+  const cleanPayload = sanitizeFirestoreData<FirestoreRegistration>({
     ...registration,
     answers: updatedAnswers,
     event_id: eventIdStr,
     member_email: normalizedEmail,
     id: regId,
-  };
+  });
 
   await setDoc(docRef, cleanPayload, { merge: true });
 
@@ -320,7 +420,7 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
         updateData.sessions = updatedSessions;
       }
 
-      await updateDoc(eventRef, updateData);
+      await updateDoc(eventRef, sanitizeFirestoreData(updateData));
     }
   } catch (err) {
     console.warn("[Firestore] Failed to update event registration / session counters:", err);
@@ -357,12 +457,12 @@ export async function updateRegistrationStatus(
 ): Promise<void> {
   if (typeof window === "undefined") return;
   const docRef = doc(db, "event_registrations", registrationId);
-  const updatePayload: Partial<FirestoreRegistration> = {
+  const updatePayload = sanitizeFirestoreData<Partial<FirestoreRegistration>>({
     status,
     reviewed_at: new Date().toISOString(),
     ...(reviewer ? { reviewed_by_id: reviewer.id, reviewed_by_name: reviewer.name } : {}),
     ...(notes !== undefined ? { notes } : {}),
-  };
+  });
 
   await updateDoc(docRef, updatePayload);
 
@@ -398,7 +498,8 @@ export async function getSyncMetadata(): Promise<FirestoreSyncMetadata | null> {
 export async function updateSyncMetadata(metadata: Partial<FirestoreSyncMetadata>): Promise<void> {
   if (typeof window === "undefined") return;
   const docRef = doc(db, "sync_metadata", "bevy");
-  await setDoc(docRef, { ...metadata, id: "bevy" }, { merge: true });
+  const sanitized = sanitizeFirestoreData({ ...metadata, id: "bevy" });
+  await setDoc(docRef, sanitized, { merge: true });
 }
 
 // ── Content Settings (FAQ & Partnership) ────────────────────────────────────
@@ -419,14 +520,11 @@ export async function getFaqContentDoc(): Promise<FaqContent | null> {
 export async function saveFaqContentDoc(content: FaqContent): Promise<void> {
   if (typeof window === "undefined") return;
   const docRef = doc(db, "content_settings", "faq");
-  await setDoc(
-    docRef,
-    {
-      ...content,
-      updatedAt: new Date().toISOString(),
-    },
-    { merge: true },
-  );
+  const sanitized = sanitizeFirestoreData({
+    ...content,
+    updatedAt: new Date().toISOString(),
+  });
+  await setDoc(docRef, sanitized, { merge: true });
 }
 
 export function subscribeFaqContentDoc(
@@ -469,14 +567,11 @@ export async function getPartnershipContentDoc(): Promise<PartnershipContent | n
 export async function savePartnershipContentDoc(content: PartnershipContent): Promise<void> {
   if (typeof window === "undefined") return;
   const docRef = doc(db, "content_settings", "partnership");
-  await setDoc(
-    docRef,
-    {
-      ...content,
-      updatedAt: new Date().toISOString(),
-    },
-    { merge: true },
-  );
+  const sanitized = sanitizeFirestoreData({
+    ...content,
+    updatedAt: new Date().toISOString(),
+  });
+  await setDoc(docRef, sanitized, { merge: true });
 }
 
 export function subscribePartnershipContentDoc(

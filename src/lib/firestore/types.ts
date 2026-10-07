@@ -67,13 +67,13 @@ export interface FirestoreEvent {
 
   // Dashboard & Registration Extensions
   requires_approval: boolean;
-  max_attendees?: number;
+  max_attendees?: number | null;
   total_registrations: number;
   total_approved: number;
   total_checked_in: number;
   custom_questions?: CustomQuestion[];
   sessions?: EventSession[];
-  webhook_url?: string;
+  webhook_url?: string | null;
 
   // Metadata
   synced_from_bevy_at?: string;

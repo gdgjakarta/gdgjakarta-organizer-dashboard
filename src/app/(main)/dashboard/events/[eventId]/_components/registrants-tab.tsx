@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 
 import { format, parseISO } from "date-fns";
 import {
@@ -11,6 +11,7 @@ import {
   MoreHorizontal,
   Search,
   UserCheck,
+  Users,
   UserX,
   X,
   XCircle,
@@ -32,7 +33,7 @@ import {
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { fetchEventRegistrationsAction, updateRegistrationStatusAction } from "@/lib/firestore/actions";
+import { updateRegistrationStatusAction } from "@/lib/firestore/actions";
 import type { EventSession, FirestoreEvent, FirestoreRegistration, RegistrationStatus } from "@/lib/firestore/types";
 import { cn, getInitials } from "@/lib/utils";
 
@@ -70,8 +71,68 @@ const STATUS_VARIANTS: Record<RegistrationStatus, { label: string; badgeClass: s
   },
 };
 
+function RegistrantsTableSkeleton({ hasSessions }: { hasSessions: boolean }) {
+  return (
+    <>
+      {[1, 2, 3, 4, 5].map((idx) => (
+        <TableRow key={idx}>
+          <TableCell className="w-10">
+            <div className="relative size-4 overflow-hidden rounded-xs bg-muted">
+              <div className="shimmer-wave" aria-hidden="true" />
+            </div>
+          </TableCell>
+          <TableCell>
+            <div className="flex items-center gap-3">
+              <div className="relative size-8 shrink-0 overflow-hidden rounded-full bg-muted">
+                <div className="shimmer-wave" aria-hidden="true" />
+              </div>
+              <div className="space-y-1.5">
+                <div className="relative h-3.5 w-28 overflow-hidden rounded bg-muted">
+                  <div className="shimmer-wave" aria-hidden="true" />
+                </div>
+                <div className="relative h-3 w-36 overflow-hidden rounded bg-muted/70">
+                  <div className="shimmer-wave" aria-hidden="true" />
+                </div>
+              </div>
+            </div>
+          </TableCell>
+          <TableCell>
+            <div className="relative h-5 w-24 overflow-hidden rounded-full bg-muted">
+              <div className="shimmer-wave" aria-hidden="true" />
+            </div>
+          </TableCell>
+          {hasSessions && (
+            <TableCell>
+              <div className="relative h-4 w-24 overflow-hidden rounded bg-muted">
+                <div className="shimmer-wave" aria-hidden="true" />
+              </div>
+            </TableCell>
+          )}
+          <TableCell>
+            <div className="relative h-4 w-44 overflow-hidden rounded bg-muted">
+              <div className="shimmer-wave" aria-hidden="true" />
+            </div>
+          </TableCell>
+          <TableCell>
+            <div className="relative h-3.5 w-24 overflow-hidden rounded bg-muted">
+              <div className="shimmer-wave" aria-hidden="true" />
+            </div>
+          </TableCell>
+          <TableCell className="text-right">
+            <div className="relative ml-auto size-7 overflow-hidden rounded bg-muted">
+              <div className="shimmer-wave" aria-hidden="true" />
+            </div>
+          </TableCell>
+        </TableRow>
+      ))}
+    </>
+  );
+}
+
 export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTabProps) {
   const [registrationsList, setRegistrationsList] = useState<FirestoreRegistration[]>(registrations);
+  const [isLoading, setIsLoading] = useState(registrations.length === 0);
+  const [isFiltering, setIsFiltering] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [sessionFilter, setSessionFilter] = useState<string>("all");
@@ -81,16 +142,76 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
-    setRegistrationsList(registrations);
+    if (registrations.length > 0) {
+      setRegistrationsList(registrations);
+      setIsLoading(false);
+    }
   }, [registrations]);
 
   useEffect(() => {
-    void fetchEventRegistrationsAction(eventId).then((list) => {
-      if (list && list.length > 0) {
-        setRegistrationsList(list);
+    let unsubscribe: () => void = () => {
+      // No-op initial cleanup
+    };
+
+    async function initRegistrations() {
+      try {
+        const { getEventRegistrations, subscribeEventRegistrations } = await import("@/lib/firestore/client");
+
+        // 1. Initial direct load
+        const directList = await getEventRegistrations(eventId);
+        if (directList && directList.length > 0) {
+          setRegistrationsList(directList);
+          setIsLoading(false);
+        }
+
+        // 2. Real-time subscription listener
+        unsubscribe = subscribeEventRegistrations(
+          eventId,
+          (liveList) => {
+            setRegistrationsList(liveList);
+            setIsLoading(false);
+          },
+          (err) => {
+            console.warn("[RegistrantsTab] Live registrations listener warning:", err);
+            setIsLoading(false);
+          },
+        );
+      } catch (err) {
+        console.warn("[RegistrantsTab] Failed to initialize registrations listener:", err);
+        setIsLoading(false);
       }
-    });
+    }
+
+    void initRegistrations();
+
+    return () => {
+      unsubscribe();
+    };
   }, [eventId]);
+
+  const handleStatusFilterChange = (val: string) => {
+    setIsFiltering(true);
+    setStatusFilter(val);
+    setTimeout(() => {
+      setIsFiltering(false);
+    }, 200);
+  };
+
+  const handleSessionFilterChange = (val: string) => {
+    setIsFiltering(true);
+    setSessionFilter(val);
+    setTimeout(() => {
+      setIsFiltering(false);
+    }, 200);
+  };
+
+  const handleSearchChange = (val: string) => {
+    setIsFiltering(true);
+    setSearch(val);
+    setTimeout(() => {
+      setIsFiltering(false);
+    }, 150);
+  };
 
   useEffect(() => {
     if (event?.sessions && event.sessions.length > 0) {
@@ -121,21 +242,42 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   }
 
   // Filter logic
-  const filtered = registrationsList.filter((reg) => {
-    const matchesSearch =
-      reg.member_name.toLowerCase().includes(search.toLowerCase()) ||
-      reg.member_email.toLowerCase().includes(search.toLowerCase()) ||
-      (reg.answers && JSON.stringify(reg.answers).toLowerCase().includes(search.toLowerCase()));
+  const filtered = useMemo(() => {
+    return registrationsList.filter((reg) => {
+      const searchLower = search.trim().toLowerCase();
+      const matchesSearch =
+        !searchLower ||
+        reg.member_name.toLowerCase().includes(searchLower) ||
+        reg.member_email.toLowerCase().includes(searchLower) ||
+        (reg.answers && JSON.stringify(reg.answers).toLowerCase().includes(searchLower));
 
-    const matchesStatus = statusFilter === "all" || reg.status === statusFilter;
+      const regStatus = (reg.status || "").toLowerCase().trim();
+      const filterStatus = (statusFilter || "all").toLowerCase().trim();
 
-    const matchesSession =
-      sessionFilter === "all" ||
-      reg.session_id === sessionFilter ||
-      (reg.answers?.session_id as string) === sessionFilter;
+      // "all" matches ANY status without exception
+      let matchesStatus = filterStatus === "all";
+      if (!matchesStatus) {
+        if (filterStatus === "approved") {
+          matchesStatus =
+            regStatus === "approved" ||
+            regStatus === "attended" ||
+            regStatus === "confirmed" ||
+            regStatus === "registered";
+        } else if (filterStatus === "pending") {
+          matchesStatus = regStatus === "pending" || regStatus === "applied" || regStatus === "review";
+        } else {
+          matchesStatus = regStatus === filterStatus;
+        }
+      }
 
-    return matchesSearch && matchesStatus && matchesSession;
-  });
+      const matchesSession =
+        sessionFilter === "all" ||
+        reg.session_id === sessionFilter ||
+        (reg.answers?.session_id as string) === sessionFilter;
+
+      return matchesSearch && matchesStatus && matchesSession;
+    });
+  }, [registrationsList, search, statusFilter, sessionFilter]);
 
   const handleStatusChange = (registrationId: string, newStatus: RegistrationStatus) => {
     startTransition(async () => {
@@ -231,7 +373,13 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       <Card>
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <CardTitle className="text-lg">Registrants & Attendance Filtration ({filtered.length})</CardTitle>
+            <CardTitle className="text-lg">
+              Registrants & Attendance Filtration ({isLoading ? "..." : filtered.length}
+              {!isLoading && registrationsList.length > 0 && filtered.length !== registrationsList.length
+                ? ` of ${registrationsList.length}`
+                : ""}
+              )
+            </CardTitle>
             <CardDescription>
               Review attendee applications, session tracks, and approve or reject participants.
             </CardDescription>
@@ -277,11 +425,11 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                   className="h-8 text-xs"
                   placeholder="Search name, email, details..."
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={(e) => handleSearchChange(e.target.value)}
                 />
               </InputGroup>
 
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
                 <SelectTrigger size="sm" className="h-8 text-xs">
                   <span className="text-muted-foreground">Status:</span>
                   <SelectValue />
@@ -299,7 +447,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
               </Select>
 
               {hasSessions && (
-                <Select value={sessionFilter} onValueChange={setSessionFilter}>
+                <Select value={sessionFilter} onValueChange={handleSessionFilterChange}>
                   <SelectTrigger size="sm" className="h-8 text-xs">
                     <span className="text-muted-foreground">Session:</span>
                     <SelectValue />
@@ -347,17 +495,64 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.length === 0 ? (
+                {(isLoading || isFiltering) && <RegistrantsTableSkeleton hasSessions={hasSessions} />}
+
+                {!isLoading && !isFiltering && filtered.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={hasSessions ? 7 : 6} className="h-32 text-center text-muted-foreground text-sm">
-                      {registrations.length === 0
-                        ? "No registrations received yet for this event."
-                        : "No applicants match the selected filter criteria."}
+                    <TableCell colSpan={hasSessions ? 7 : 6} className="h-40 text-center text-muted-foreground text-sm">
+                      {registrationsList.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center gap-2 py-6">
+                          <div className="flex size-10 items-center justify-center rounded-full bg-muted">
+                            <Users className="size-5 text-muted-foreground" />
+                          </div>
+                          <p className="font-semibold text-foreground text-sm">No registrations received yet</p>
+                          <p className="max-w-md text-muted-foreground text-xs leading-relaxed">
+                            When members RSVP or submit registration forms for this event, their details will appear
+                            here automatically in real-time.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center gap-2 py-6">
+                          <div className="flex size-10 items-center justify-center rounded-full bg-muted">
+                            <Search className="size-5 text-muted-foreground" />
+                          </div>
+                          <p className="font-semibold text-foreground text-sm">
+                            No applicants match the selected filter
+                          </p>
+                          <p className="max-w-md text-muted-foreground text-xs leading-relaxed">
+                            {statusFilter !== "all"
+                              ? `No applicants currently have status "${STATUS_VARIANTS[statusFilter as RegistrationStatus]?.label || statusFilter}".`
+                              : "No applicants match your search criteria."}
+                          </p>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="mt-1 h-7 text-xs"
+                            onClick={() => {
+                              setIsFiltering(true);
+                              setStatusFilter("all");
+                              setSessionFilter("all");
+                              setSearch("");
+                              setTimeout(() => setIsFiltering(false), 200);
+                            }}
+                          >
+                            Reset All Filters
+                          </Button>
+                        </div>
+                      )}
                     </TableCell>
                   </TableRow>
-                ) : (
+                )}
+
+                {!isLoading &&
+                  !isFiltering &&
                   filtered.map((reg) => {
-                    const statusMeta = STATUS_VARIANTS[reg.status] || STATUS_VARIANTS.pending;
+                    const statusKey = (reg.status || "").toLowerCase().trim() as RegistrationStatus;
+                    const statusMeta =
+                      STATUS_VARIANTS[statusKey] ||
+                      (statusKey === "confirmed" || statusKey === "registered"
+                        ? STATUS_VARIANTS.approved
+                        : STATUS_VARIANTS.pending);
                     const sessionTitle =
                       reg.session_title ||
                       (reg.answers?.session_title as string) ||
@@ -501,8 +696,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                         </TableCell>
                       </TableRow>
                     );
-                  })
-                )}
+                  })}
               </TableBody>
             </Table>
           </div>
