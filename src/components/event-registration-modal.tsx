@@ -485,7 +485,11 @@ export function EventRegistrationModal({ event, existingRegistration, children }
                         </div>
 
                         {sess.description && (
-                          <p className="text-muted-foreground text-xs leading-relaxed">{sess.description}</p>
+                          <div
+                            className="prose prose-xs dark:prose-invert max-w-none text-muted-foreground text-xs leading-relaxed [&_a]:text-primary [&_a]:underline [&_ol]:list-decimal [&_ol]:pl-4 [&_ul]:list-disc [&_ul]:pl-4"
+                            // biome-ignore lint/security/noDangerouslySetInnerHtml: Event organizer session description
+                            dangerouslySetInnerHTML={{ __html: sess.description }}
+                          />
                         )}
 
                         <div className="flex flex-wrap items-center gap-3 pt-1 text-[11px] text-muted-foreground">

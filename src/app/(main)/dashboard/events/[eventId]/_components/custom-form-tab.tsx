@@ -4,6 +4,8 @@ import { useEffect, useState, useTransition } from "react";
 
 import { useRouter } from "next/navigation";
 
+import { DragDropProvider, type DragEndEvent } from "@dnd-kit/react";
+import { isSortable } from "@dnd-kit/react/sortable";
 import { ExternalLink, Layers, Plus, Save, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -22,7 +24,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { VALIDATION_TYPE_OPTIONS } from "@/lib/events/question-validator";
 import {
   COMMITMENT_FEE_TEMPLATE,
   COMMON_MEETUP_TEMPLATE,
@@ -38,10 +39,12 @@ import {
   MULTI_TRACK_TEMPLATE,
   PAID_REGISTRATION_TEMPLATE,
   QUICK_RSVP_TEMPLATE,
-  REGISTRATION_SECTIONS,
   ROAD_TO_DEVFEST_TEMPLATE,
 } from "@/lib/events/registration-defaults";
-import type { CustomQuestion, EventSession, FirestoreEvent, QuestionValidationType } from "@/lib/firestore/types";
+import type { CustomQuestion, EventSession, FirestoreEvent } from "@/lib/firestore/types";
+
+import { HtmlEditText } from "./html-edit-text";
+import { SortableQuestionCard } from "./sortable-question-card";
 
 interface CustomFormTabProps {
   event: FirestoreEvent;
@@ -97,7 +100,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
   // Session Handlers
   const handleLoadStandardSessions = () => {
     setSessions(DEFAULT_GDG_SESSIONS);
-    toast.success("Loaded standard GDG Jakarta sessions (Morning, Afternoon, Regular Ticket).");
+    toast.success("Loaded default sessions (Morning, Afternoon, Regular Ticket).");
   };
 
   const handleAddSession = () => {
@@ -158,6 +161,47 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
 
   const handleUpdateQuestion = (id: string, updates: Partial<CustomQuestion>) => {
     setQuestions(questions.map((q) => (q.id === id ? { ...q, ...updates } : q)));
+  };
+
+  const handleMoveQuestionUp = (index: number) => {
+    if (index <= 0) return;
+    setQuestions((prev) => {
+      const next = [...prev];
+      const item = next[index];
+      const prevItem = next[index - 1];
+      if (!item || !prevItem) return prev;
+      next[index] = prevItem;
+      next[index - 1] = item;
+      return next;
+    });
+  };
+
+  const handleMoveQuestionDown = (index: number) => {
+    if (index >= questions.length - 1) return;
+    setQuestions((prev) => {
+      const next = [...prev];
+      const item = next[index];
+      const nextItem = next[index + 1];
+      if (!item || !nextItem) return prev;
+      next[index] = nextItem;
+      next[index + 1] = item;
+      return next;
+    });
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { source } = event.operation;
+    if (event.canceled || !isSortable(source) || source.initialIndex === source.index) {
+      return;
+    }
+    setQuestions((prev) => {
+      const next = [...prev];
+      const [movedItem] = next.splice(source.initialIndex, 1);
+      if (movedItem) {
+        next.splice(source.index, 0, movedItem);
+      }
+      return next;
+    });
   };
 
   // Apply entire Event Format Template (Policy + Sessions + Questionnaire)
@@ -447,7 +491,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
               className="gap-1.5 self-start text-xs"
             >
               <Layers className="size-3.5" />
-              Load GDG Sessions
+              Load Default Sessions
             </Button>
             <Button
               size="sm"
@@ -527,11 +571,11 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
                 </Field>
 
                 <Field className="sm:col-span-2">
-                  <FieldLabel>Description / Prerequisites</FieldLabel>
-                  <Input
-                    placeholder="e.g. Morning keynote and technical sessions."
+                  <FieldLabel>Description / Prerequisites (HTML Format)</FieldLabel>
+                  <HtmlEditText
                     value={newSession.description ?? ""}
-                    onChange={(e) => setNewSession({ ...newSession, description: e.target.value })}
+                    onChange={(val) => setNewSession({ ...newSession, description: val })}
+                    placeholder="e.g. <b>Keynote:</b> Overview and announcements.<br/><ul><li>Bring laptop</li></ul>"
                   />
                 </Field>
               </div>
@@ -649,11 +693,11 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
                     </Field>
 
                     <Field className="sm:col-span-3">
-                      <FieldLabel className="text-xs">Description / Prerequisites</FieldLabel>
-                      <Input
+                      <FieldLabel className="text-xs">Description / Prerequisites (HTML Format)</FieldLabel>
+                      <HtmlEditText
                         value={sess.description ?? ""}
-                        placeholder="Session prerequisites or topics"
-                        onChange={(e) => handleUpdateSession(sess.id, { description: e.target.value })}
+                        placeholder="Session prerequisites or topics in HTML..."
+                        onChange={(val) => handleUpdateSession(sess.id, { description: val })}
                       />
                     </Field>
                   </div>
@@ -670,7 +714,8 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
           <div>
             <CardTitle className="text-lg">Registration Questionnaire ({questions.length} Fields)</CardTitle>
             <CardDescription>
-              Questions presented to GDG community members when applying or registering for this event.
+              Questions presented to GDG community members when applying or registering for this event. Drag by handle
+              or use arrows to reorder questions.
             </CardDescription>
           </div>
 
@@ -719,223 +764,22 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
               No custom questions configured. Registrants will only submit their member profile.
             </div>
           ) : (
-            questions.map((q, idx) => (
-              <div key={q.id} className="flex flex-col gap-3 rounded-lg border bg-card p-4 shadow-2xs">
-                <div className="flex items-center justify-between gap-2 border-b pb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-muted-foreground text-xs uppercase">Question #{idx + 1}</span>
-                    {q.section && (
-                      <Badge variant="outline" className="text-[10px]">
-                        {q.section}
-                      </Badge>
-                    )}
-                  </div>
-                  <Button
-                    size="icon-sm"
-                    variant="ghost"
-                    className="size-7 text-muted-foreground hover:text-destructive"
-                    onClick={() => handleRemoveQuestion(q.id)}
-                  >
-                    <Trash2 className="size-3.5" />
-                  </Button>
-                </div>
-
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
-                  <div className="md:col-span-5">
-                    <Field>
-                      <FieldLabel className="text-xs">Question Label *</FieldLabel>
-                      <Input
-                        placeholder="e.g. Primary Tech Stack or Project Idea"
-                        value={q.label}
-                        onChange={(e) => handleUpdateQuestion(q.id, { label: e.target.value })}
-                      />
-                    </Field>
-                  </div>
-
-                  <div className="md:col-span-3">
-                    <Field>
-                      <FieldLabel className="text-xs">Section Group</FieldLabel>
-                      <Select
-                        value={q.section || "Additional Information"}
-                        onValueChange={(val) => handleUpdateQuestion(q.id, { section: val })}
-                      >
-                        <SelectTrigger className="h-9 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {REGISTRATION_SECTIONS.map((sec) => (
-                            <SelectItem key={sec} value={sec}>
-                              {sec}
-                            </SelectItem>
-                          ))}
-                          <SelectItem value="Additional Information">Additional Information</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <Field>
-                      <FieldLabel className="text-xs">Input Type</FieldLabel>
-                      <Select
-                        value={q.type}
-                        onValueChange={(val: CustomQuestion["type"]) => handleUpdateQuestion(q.id, { type: val })}
-                      >
-                        <SelectTrigger className="h-9 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="text">Short Text</SelectItem>
-                          <SelectItem value="textarea">Paragraph</SelectItem>
-                          <SelectItem value="select">Dropdown</SelectItem>
-                          <SelectItem value="radio">Single Choice</SelectItem>
-                          <SelectItem value="multiselect">Multi-select</SelectItem>
-                          <SelectItem value="checkbox">Agreement Checkbox</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                  </div>
-
-                  <div className="flex items-end pb-2 md:col-span-2">
-                    <label
-                      htmlFor={`required-${q.id}`}
-                      className="flex cursor-pointer items-center gap-2 font-medium text-xs"
-                    >
-                      <Checkbox
-                        id={`required-${q.id}`}
-                        checked={q.required}
-                        onCheckedChange={(checked) => handleUpdateQuestion(q.id, { required: Boolean(checked) })}
-                      />
-                      Required
-                    </label>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                  <Field>
-                    <FieldLabel className="text-xs">Help Text / Description (Optional)</FieldLabel>
-                    <Input
-                      placeholder="Guidance shown beneath the question"
-                      value={q.description || ""}
-                      onChange={(e) => handleUpdateQuestion(q.id, { description: e.target.value })}
-                    />
-                  </Field>
-
-                  {["select", "radio", "multiselect", "checkbox"].includes(q.type) && (
-                    <Field>
-                      <FieldLabel className="text-xs">Options (Comma separated)</FieldLabel>
-                      <Input
-                        placeholder="Option 1, Option 2, Option 3"
-                        value={q.options?.join(", ") ?? ""}
-                        onChange={(e) =>
-                          handleUpdateQuestion(q.id, {
-                            options: e.target.value
-                              .split(",")
-                              .map((o) => o.trim())
-                              .filter(Boolean),
-                          })
-                        }
-                      />
-                    </Field>
-                  )}
-                </div>
-
-                {/* Validation & Constraints for Text & Paragraph inputs */}
-                {["text", "textarea"].includes(q.type) && (
-                  <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
-                    <div className="flex items-center justify-between border-b pb-1.5">
-                      <span className="font-medium text-foreground text-xs">Validation & Constraints</span>
-                      <span className="text-[10px] text-muted-foreground">
-                        Enforce format, character limits, and error message
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
-                      {/* Validation Rule Dropdown */}
-                      <Field className={q.validation_type === "customRegex" ? "" : "sm:col-span-2 md:col-span-1"}>
-                        <FieldLabel className="text-xs">Validation Rule</FieldLabel>
-                        <Select
-                          value={q.validation_type ?? "none"}
-                          onValueChange={(val: QuestionValidationType) =>
-                            handleUpdateQuestion(q.id, { validation_type: val })
-                          }
-                        >
-                          <SelectTrigger className="h-9 text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {VALIDATION_TYPE_OPTIONS.map((opt) => (
-                              <SelectItem key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </Field>
-
-                      {/* Custom Regex Pattern input */}
-                      {q.validation_type === "customRegex" && (
-                        <Field className="sm:col-span-2 md:col-span-2">
-                          <FieldLabel className="text-xs">Custom Regex Pattern</FieldLabel>
-                          <Input
-                            placeholder="e.g. ^[A-Za-z0-9_-]{3,20}$"
-                            value={q.regex_pattern ?? ""}
-                            onChange={(e) => handleUpdateQuestion(q.id, { regex_pattern: e.target.value })}
-                            className="font-mono text-xs"
-                          />
-                        </Field>
-                      )}
-
-                      {/* Minimum Characters */}
-                      <Field>
-                        <FieldLabel className="text-xs">Min Characters</FieldLabel>
-                        <Input
-                          type="number"
-                          min="0"
-                          placeholder="e.g. 5"
-                          value={q.min_length !== undefined ? String(q.min_length) : ""}
-                          onChange={(e) =>
-                            handleUpdateQuestion(q.id, {
-                              min_length: e.target.value ? Number(e.target.value) : undefined,
-                            })
-                          }
-                        />
-                      </Field>
-
-                      {/* Maximum Characters */}
-                      <Field>
-                        <FieldLabel className="text-xs">Max Characters</FieldLabel>
-                        <Input
-                          type="number"
-                          min="1"
-                          placeholder="e.g. 100"
-                          value={q.max_length !== undefined ? String(q.max_length) : ""}
-                          onChange={(e) =>
-                            handleUpdateQuestion(q.id, {
-                              max_length: e.target.value ? Number(e.target.value) : undefined,
-                            })
-                          }
-                        />
-                      </Field>
-                    </div>
-
-                    {/* Custom Error Message */}
-                    <Field>
-                      <FieldLabel className="text-xs">Custom Error Message (Optional)</FieldLabel>
-                      <Input
-                        placeholder="Leave blank to generate friendly message automatically"
-                        value={q.custom_error_message ?? ""}
-                        onChange={(e) => handleUpdateQuestion(q.id, { custom_error_message: e.target.value })}
-                      />
-                      <p className="pt-0.5 text-[10px] text-muted-foreground">
-                        Leave blank if you want the app to generate intelligent, context-aware error messages by
-                        default.
-                      </p>
-                    </Field>
-                  </div>
-                )}
+            <DragDropProvider onDragEnd={handleDragEnd}>
+              <div className="flex flex-col gap-3">
+                {questions.map((q, idx) => (
+                  <SortableQuestionCard
+                    key={q.id}
+                    question={q}
+                    index={idx}
+                    totalQuestions={questions.length}
+                    onUpdate={handleUpdateQuestion}
+                    onRemove={handleRemoveQuestion}
+                    onMoveUp={handleMoveQuestionUp}
+                    onMoveDown={handleMoveQuestionDown}
+                  />
+                ))}
               </div>
-            ))
+            </DragDropProvider>
           )}
 
           <div className="flex justify-end pt-4">
