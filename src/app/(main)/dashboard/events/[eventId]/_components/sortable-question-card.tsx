@@ -1,15 +1,26 @@
 "use client";
 
+import { useState } from "react";
+
 import { RestrictToVerticalAxis } from "@dnd-kit/abstract/modifiers";
 import { useSortable } from "@dnd-kit/react/sortable";
-import { ChevronDown, ChevronUp, GripVertical, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, GripVertical, Maximize2, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { VALIDATION_TYPE_OPTIONS } from "@/lib/events/question-validator";
 import { REGISTRATION_SECTIONS } from "@/lib/events/registration-defaults";
 import type { CustomQuestion, QuestionValidationType } from "@/lib/firestore/types";
@@ -42,6 +53,30 @@ export function SortableQuestionCard({
     group: "questions",
     modifiers: [RestrictToVerticalAxis],
   });
+
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [optionsDraft, setOptionsDraft] = useState("");
+
+  const handleOpenDialog = () => {
+    setOptionsDraft(q.options && q.options.length > 0 ? q.options.join("\n") : "");
+    setIsDialogOpen(true);
+  };
+
+  const handleSaveDialogOptions = () => {
+    const delimiter = optionsDraft.includes("\n") ? "\n" : ",";
+    const parsed = optionsDraft
+      .split(delimiter)
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    onUpdate(q.id, { options: parsed });
+    setIsDialogOpen(false);
+  };
+
+  const parsedPreviewOptions = optionsDraft
+    .split(optionsDraft.includes("\n") ? "\n" : ",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 
   return (
     <div
@@ -203,19 +238,104 @@ export function SortableQuestionCard({
 
         {["select", "radio", "multiselect", "checkbox"].includes(q.type) && (
           <Field>
-            <FieldLabel className="text-xs">Options (Comma separated)</FieldLabel>
-            <Input
-              placeholder="Option 1, Option 2, Option 3"
-              value={q.options?.join(", ") ?? ""}
-              onChange={(e) =>
-                onUpdate(q.id, {
-                  options: e.target.value
-                    .split(",")
-                    .map((o) => o.trim())
-                    .filter(Boolean),
-                })
-              }
-            />
+            <div className="flex items-center justify-between">
+              <FieldLabel className="text-xs">Options (Comma separated)</FieldLabel>
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                className="h-6 gap-1 px-1.5 text-[11px] text-muted-foreground hover:text-foreground"
+                onClick={handleOpenDialog}
+                title="Expand options in popup dialog"
+                aria-label="Expand options in popup dialog"
+              >
+                <Maximize2 className="size-3" />
+                <span>Expand Editor</span>
+              </Button>
+            </div>
+            <div className="relative flex items-center">
+              <Input
+                placeholder="Option 1, Option 2, Option 3"
+                value={q.options?.join(", ") ?? ""}
+                onChange={(e) =>
+                  onUpdate(q.id, {
+                    options: e.target.value
+                      .split(",")
+                      .map((o) => o.trim())
+                      .filter(Boolean),
+                  })
+                }
+                className="pr-8"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                className="absolute right-1 size-6 text-muted-foreground hover:text-foreground"
+                onClick={handleOpenDialog}
+                title="Expand options in popup dialog"
+                aria-label="Expand options in popup dialog"
+              >
+                <Maximize2 className="size-3.5" />
+              </Button>
+            </div>
+
+            {/* Popup Dialog for Expanded Options Editing */}
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+              <DialogContent className="sm:max-w-lg">
+                <DialogHeader>
+                  <DialogTitle className="text-base">
+                    Edit Options for {q.label ? `"${q.label}"` : `Question #${index + 1}`}
+                  </DialogTitle>
+                  <DialogDescription className="text-xs">
+                    Expand and edit long options or clauses comfortably. Enter each option on a new line or separate by
+                    commas.
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-3 py-2">
+                  <Textarea
+                    rows={6}
+                    className="min-h-[140px] font-mono text-xs leading-relaxed"
+                    placeholder="Enter options (one per line or comma separated)..."
+                    value={optionsDraft}
+                    onChange={(e) => setOptionsDraft(e.target.value)}
+                  />
+
+                  {parsedPreviewOptions.length > 0 && (
+                    <div className="space-y-1.5 rounded-md border bg-muted/30 p-2.5">
+                      <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                        <span className="font-medium">Parsed Choices Preview:</span>
+                        <span>
+                          {parsedPreviewOptions.length} choice{parsedPreviewOptions.length > 1 ? "s" : ""}
+                        </span>
+                      </div>
+                      <div className="max-h-36 space-y-1 overflow-y-auto">
+                        {parsedPreviewOptions.map((opt, i) => (
+                          <div
+                            // biome-ignore lint/suspicious/noArrayIndexKey: Preview list order represents line indices
+                            key={`${i}-${opt}`}
+                            className="flex items-start gap-1.5 rounded border bg-background px-2 py-1 text-foreground text-xs"
+                          >
+                            <span className="shrink-0 font-mono text-[10px] text-muted-foreground">{i + 1}.</span>
+                            <span className="break-words leading-snug">{opt}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <DialogFooter className="gap-2 sm:gap-0">
+                  <Button type="button" variant="outline" size="sm" onClick={() => setIsDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="button" size="sm" onClick={handleSaveDialogOptions}>
+                    Apply Options
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </Field>
         )}
       </div>
