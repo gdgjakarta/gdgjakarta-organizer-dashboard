@@ -48,7 +48,7 @@ export function PartnershipTiers() {
             >
               {tier.popular && (
                 <div
-                  className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full px-3 py-0.5 font-semibold text-[11px] uppercase tracking-wider shadow-sm"
+                  className="absolute -top-3 left-1/2 -translate-x-1/2 max-w-[calc(100%-2rem)] rounded-full px-3 py-0.5 text-center font-semibold text-[11px] shadow-sm"
                   style={{
                     backgroundColor: "var(--theme-primary)",
                     color: "var(--theme-primary-foreground)",
