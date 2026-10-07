@@ -71,6 +71,10 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
   });
   const [showAddSession, setShowAddSession] = useState(false);
 
+  // 3. Derived Capacity & Multi-Session Calculation
+  const hasMultipleSessions = sessions.length > 0;
+  const totalSessionCapacity = sessions.reduce((acc, sess) => acc + (Number(sess.capacity) || 0), 0);
+
   // 4. Registration Questions
   const [questions, setQuestions] = useState<CustomQuestion[]>(
     event.custom_questions && event.custom_questions.length > 0 ? event.custom_questions : DEFAULT_COMBINED_QUESTIONS,
@@ -286,10 +290,17 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
   const handleSave = () => {
     startTransition(async () => {
       try {
+        let resolvedMaxAttendees: number | undefined;
+        if (hasMultipleSessions) {
+          resolvedMaxAttendees = totalSessionCapacity > 0 ? totalSessionCapacity : undefined;
+        } else if (maxAttendees) {
+          resolvedMaxAttendees = Number(maxAttendees);
+        }
+
         const updatedEvent: FirestoreEvent = {
           ...event,
           requires_approval: requiresApproval,
-          max_attendees: maxAttendees ? Number(maxAttendees) : undefined,
+          max_attendees: resolvedMaxAttendees,
           webhook_url: event.webhook_url,
           sessions: sessions.length > 0 ? sessions : undefined,
           custom_questions: questions.filter((q) => q.label.trim().length > 0),
@@ -454,16 +465,30 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
 
           <div className="grid grid-cols-1 gap-4 pt-1 sm:grid-cols-2">
             <Field>
-              <FieldLabel htmlFor="max-attendees">Total Event Capacity (Optional)</FieldLabel>
+              <div className="flex items-center justify-between">
+                <FieldLabel htmlFor="max-attendees">Total Event Capacity (Optional)</FieldLabel>
+                {hasMultipleSessions && (
+                  <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                    Calculated: {totalSessionCapacity} seats across {sessions.length} sessions
+                  </Badge>
+                )}
+              </div>
               <Input
                 id="max-attendees"
                 type="number"
-                placeholder="Unlimited"
-                value={maxAttendees}
+                placeholder={hasMultipleSessions ? String(totalSessionCapacity) : "Unlimited"}
+                value={hasMultipleSessions ? String(totalSessionCapacity) : maxAttendees}
+                disabled={hasMultipleSessions}
                 onChange={(e) => setMaxAttendees(e.target.value)}
               />
               <p className="text-[11px] text-muted-foreground">
-                Leave empty for unlimited seats across the entire venue.
+                {hasMultipleSessions ? (
+                  <span className="font-medium text-amber-600 dark:text-amber-400">
+                    (Disabled to edit for multiple session, edit for each session instead)
+                  </span>
+                ) : (
+                  "Leave empty for unlimited seats across the entire venue."
+                )}
               </p>
             </Field>
           </div>
