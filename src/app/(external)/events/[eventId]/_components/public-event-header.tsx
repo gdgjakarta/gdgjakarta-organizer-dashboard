@@ -15,6 +15,81 @@ import { resolveEventAudience } from "@/lib/bevy/audience";
 import type { BevyEvent } from "@/lib/bevy/types";
 import { cn } from "@/lib/utils";
 
+function isSelfChapter(title?: string): boolean {
+  if (!title) return false;
+  const clean = title.toLowerCase().replace(/[^a-z]/g, "");
+  return clean === "gdgjakarta" || clean === "googledevelopergroupjakarta" || clean === "googledevelopergroupsjakarta";
+}
+
+function getCohostedChapters(event: BevyEvent): Array<{
+  title: string;
+  logo_url?: string;
+  city?: string;
+  country?: string;
+}> {
+  const chapters: Array<{
+    title: string;
+    logo_url?: string;
+    city?: string;
+    country?: string;
+  }> = [];
+
+  // 1. Check event.cohost_chapters
+  if (Array.isArray(event.cohost_chapters)) {
+    for (const c of event.cohost_chapters) {
+      if (c?.title && !isSelfChapter(c.title)) {
+        chapters.push({
+          title: c.title,
+          logo_url: c.logo_url,
+          city: c.city,
+          country: c.country,
+        });
+      }
+    }
+  }
+
+  // 2. Check event.cohosts
+  if (Array.isArray(event.cohosts)) {
+    for (const item of event.cohosts) {
+      const ch = item.chapter ?? item;
+      const title = ch.title ?? item.chapter_title;
+      if (title && !isSelfChapter(title)) {
+        if (!chapters.some((x) => x.title.toLowerCase() === title.toLowerCase())) {
+          chapters.push({
+            title,
+            logo_url: ch.logo_url ?? item.logo_url,
+            city: ch.city ?? item.city,
+            country: ch.country ?? item.country,
+          });
+        }
+      }
+    }
+  }
+
+  // 3. Check event.cohost_registration_chapter_title
+  if (event.cohost_registration_chapter_title && !isSelfChapter(event.cohost_registration_chapter_title)) {
+    const title = event.cohost_registration_chapter_title;
+    if (!chapters.some((x) => x.title.toLowerCase() === title.toLowerCase())) {
+      chapters.push({ title });
+    }
+  }
+
+  // 4. If primary event.chapter is not GDG Jakarta, then that chapter is cohosting with GDG Jakarta
+  if (event.chapter?.title && !isSelfChapter(event.chapter.title)) {
+    const title = event.chapter.title;
+    if (!chapters.some((x) => x.title.toLowerCase() === title.toLowerCase())) {
+      chapters.push({
+        title,
+        logo_url: event.chapter.logo_url,
+        city: event.chapter.city,
+        country: event.chapter.country,
+      });
+    }
+  }
+
+  return chapters;
+}
+
 interface PublicEventHeaderProps {
   event: BevyEvent;
 }
@@ -26,6 +101,7 @@ export function PublicEventHeader({ event }: PublicEventHeaderProps) {
   const isHidden = Boolean(event.is_hidden ?? (event as { hidden?: boolean }).hidden);
   const isTest = Boolean(event.is_test);
   const liveBevyUrl = getBevyLiveEventUrl(event);
+  const cohostedChapters = getCohostedChapters(event);
 
   const handleCopyLink = () => {
     if (typeof window !== "undefined") {
@@ -54,10 +130,6 @@ export function PublicEventHeader({ event }: PublicEventHeaderProps) {
       handleCopyLink();
     }
   };
-
-  const chapterTitle = event.chapter?.title ?? "GDG Jakarta";
-  const chapterCity = event.chapter?.city ?? "Jakarta";
-  const chapterCountry = event.chapter?.country ?? "Indonesia";
 
   let formatBadgeClass = "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
   let FormatIcon = MapPin;
@@ -142,21 +214,33 @@ export function PublicEventHeader({ event }: PublicEventHeaderProps) {
       {/* Title */}
       <h1 className="font-bold text-2xl text-foreground tracking-tight sm:text-3xl md:text-4xl">{event.title}</h1>
 
-      {/* Chapter Row */}
-      <div className="flex items-center gap-3 pt-1">
-        <Avatar className="size-10 rounded-xl border border-border/60 shadow-2xs">
-          {event.chapter?.logo_url && <AvatarImage src={event.chapter.logo_url} alt={chapterTitle} />}
-          <AvatarFallback className="rounded-xl bg-primary/10 font-bold text-primary text-xs">
-            {chapterTitle.slice(0, 2).toUpperCase()}
-          </AvatarFallback>
-        </Avatar>
-        <div>
-          <span className="block font-medium text-muted-foreground text-xs uppercase tracking-wider">Hosted by</span>
-          <span className="font-semibold text-foreground text-sm">
-            {chapterTitle} • {chapterCity}, {chapterCountry}
+      {/* Co-hosted Chapters Row (Only show if cohosted with other chapters) */}
+      {cohostedChapters.length > 0 && (
+        <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:items-center sm:gap-3">
+          <span className="font-medium text-muted-foreground text-xs uppercase tracking-wider">
+            Cohosted Event with
           </span>
+          <div className="flex flex-wrap items-center gap-3">
+            {cohostedChapters.map((ch) => {
+              const locationStr = [ch.city, ch.country].filter(Boolean).join(", ");
+              return (
+                <div key={ch.title} className="flex items-center gap-2">
+                  <Avatar className="size-8 rounded-lg border border-border/60 shadow-2xs">
+                    {ch.logo_url && <AvatarImage src={ch.logo_url} alt={ch.title} />}
+                    <AvatarFallback className="rounded-lg bg-primary/10 font-bold text-primary text-xs">
+                      {ch.title.slice(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="font-semibold text-foreground text-sm">
+                    {ch.title}
+                    {locationStr ? ` • ${locationStr}` : ""}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

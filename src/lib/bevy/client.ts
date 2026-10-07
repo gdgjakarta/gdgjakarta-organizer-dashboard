@@ -7,7 +7,15 @@ export {
   type EventAudienceType,
   resolveEventAudience,
 } from "./audience";
+export {
+  type BevyPartnerTierGroup,
+  extractEventPartners,
+  formatTierName,
+  getTierPriority,
+  groupPartnersByTier,
+} from "./partners";
 
+import { extractEventPartners } from "./partners";
 import {
   type BevyChapterSlim,
   type BevyChapterTeamMember,
@@ -672,6 +680,9 @@ export async function getBevyEventById(
 ): Promise<BevyEvent | null> {
   if (!eventId) return null;
   const result = await bevyFetch<BevyEvent>(`/event/${eventId}/`, {}, chapterId);
+  if (result) {
+    result.partners = extractEventPartners(result);
+  }
   return result;
 }
 
@@ -693,7 +704,10 @@ export async function getPublicEventById(
       (e) =>
         String(e.id) === String(eventId) || e.url?.includes(String(eventId)) || e.static_url?.includes(String(eventId)),
     );
-    if (matched) return matched;
+    if (matched) {
+      matched.partners = extractEventPartners(matched);
+      return matched;
+    }
   } catch (error) {
     console.warn("[BevyClient] getPublicEventById fallback search failed:", error);
   }

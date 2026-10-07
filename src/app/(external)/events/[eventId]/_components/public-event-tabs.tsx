@@ -6,8 +6,10 @@ import { Calendar, Clock, ExternalLink, Layers, MapPin, Sparkles, Users } from "
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { extractEventPartners, groupPartnersByTier } from "@/lib/bevy/partners";
 import type { BevyEvent, BevyPartner, BevySpeaker } from "@/lib/bevy/types";
 import type { EventSession } from "@/lib/firestore/types";
 
@@ -18,7 +20,10 @@ interface PublicEventTabsProps {
 
 export function PublicEventTabs({ event, firestoreSessions }: PublicEventTabsProps) {
   const hasSpeakers = Array.isArray(event.speakers) && event.speakers.length > 0;
-  const hasPartners = Array.isArray(event.partners) && event.partners.length > 0;
+  const partners =
+    Array.isArray(event.partners) && event.partners.length > 0 ? event.partners : extractEventPartners(event);
+  const hasPartners = partners.length > 0;
+  const tierGroups = groupPartnersByTier(partners);
   const hasBevyAgenda =
     Array.isArray(event.agenda?.days) &&
     event.agenda.days.some((day) => Array.isArray(day.items) && day.items.length > 0);
@@ -69,7 +74,7 @@ export function PublicEventTabs({ event, firestoreSessions }: PublicEventTabsPro
               Partners
               {hasPartners && (
                 <span className="ml-1.5 rounded-full bg-primary/10 px-1.5 py-0.2 text-[10px] text-primary">
-                  {event.partners?.length}
+                  {partners.length}
                 </span>
               )}
             </TabsTrigger>
@@ -101,6 +106,23 @@ export function PublicEventTabs({ event, firestoreSessions }: PublicEventTabsPro
               <p className="mt-1 max-w-sm text-muted-foreground text-xs">
                 Detailed event descriptions and highlights will be updated shortly.
               </p>
+            </div>
+          )}
+
+          {/* Sponsors spotlight on About tab */}
+          {hasPartners && (
+            <div className="space-y-4 border-border/60 border-t pt-6">
+              <div>
+                <h3 className="font-bold text-base text-foreground tracking-tight">Event Partners & Sponsors</h3>
+                <p className="text-muted-foreground text-xs">
+                  Proudly supported by organizations driving the developer community.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {partners.map((partner) => (
+                  <PartnerCard key={partner.id ?? partner.company} partner={partner} />
+                ))}
+              </div>
             </div>
           )}
         </TabsContent>
@@ -258,12 +280,24 @@ export function PublicEventTabs({ event, firestoreSessions }: PublicEventTabsPro
           )}
         </TabsContent>
 
-        {/* ── TAB 4: PARTNERS ─────────────────────────────────────── */}
-        <TabsContent value="partners" className="space-y-4 pt-4">
+        {/* ── TAB 4: PARTNERS & SPONSORS ───────────────────────────── */}
+        <TabsContent value="partners" className="space-y-6 pt-4">
           {hasPartners ? (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {event.partners?.map((partner) => (
-                <PartnerCard key={partner.id ?? partner.company} partner={partner} />
+            <div className="space-y-8">
+              {tierGroups.map((group) => (
+                <div key={group.tierName} className="space-y-3">
+                  <div className="flex items-center gap-2.5 border-border/60 border-b pb-2.5">
+                    <h3 className="font-bold text-foreground text-lg tracking-tight">{group.tierName}</h3>
+                    <Badge variant="secondary" className="px-2 py-0 text-xs">
+                      {group.partners.length}
+                    </Badge>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    {group.partners.map((partner) => (
+                      <PartnerCard key={partner.id ?? partner.company} partner={partner} />
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           ) : (
@@ -352,35 +386,49 @@ function XIcon({ className }: { className?: string }) {
 }
 
 function PartnerCard({ partner }: { partner: BevyPartner }) {
-  return (
-    <Card className="flex items-center justify-between gap-4 border-border/60 bg-card p-4 shadow-2xs transition-all hover:bg-muted/10">
-      <div className="flex items-center gap-3.5">
-        {partner.logo_url ? (
-          <div className="relative size-12 shrink-0 overflow-hidden rounded-xl border border-border/60 bg-muted/30 p-1">
-            <Image src={partner.logo_url} alt={partner.company} fill className="object-contain" />
-          </div>
-        ) : (
-          <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 font-bold text-primary text-xs">
-            {partner.company.slice(0, 2).toUpperCase()}
-          </div>
-        )}
-        <div className="min-w-0">
-          <h4 className="font-semibold text-foreground text-sm">{partner.company}</h4>
-          {partner.description && <p className="line-clamp-1 text-muted-foreground text-xs">{partner.description}</p>}
-        </div>
-      </div>
+  const logoUrl = partner.logo_url ?? partner.logo?.url ?? partner.logo?.thumbnail_url;
 
-      {partner.url && (
-        <a
-          href={partner.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg border border-border/60 text-muted-foreground hover:bg-muted hover:text-foreground"
-          title={`Visit ${partner.company}`}
-        >
-          <ExternalLink className="size-4" />
-        </a>
-      )}
+  return (
+    <Card className="flex flex-col justify-between border-border/60 bg-card p-4 shadow-2xs transition-all hover:bg-muted/10 sm:p-5">
+      <div className="space-y-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-3.5">
+            {logoUrl ? (
+              <div className="relative h-14 w-28 shrink-0 overflow-hidden rounded-xl border border-border/60 bg-white p-2 dark:bg-white/95">
+                <Image src={logoUrl} alt={partner.company} fill className="object-contain p-1" sizes="112px" />
+              </div>
+            ) : (
+              <div className="flex size-14 shrink-0 items-center justify-center rounded-xl bg-primary/10 font-bold text-base text-primary">
+                {partner.company.slice(0, 2).toUpperCase()}
+              </div>
+            )}
+            <div className="min-w-0 flex-1 space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h4 className="font-bold text-base text-foreground tracking-tight">{partner.company}</h4>
+                {partner.tier && (
+                  <Badge variant="outline" className="font-medium text-[11px]">
+                    {partner.tier}
+                  </Badge>
+                )}
+              </div>
+              {partner.is_global && <span className="block text-[11px] text-muted-foreground">Global Partner</span>}
+            </div>
+          </div>
+
+          {partner.url && (
+            <Button variant="outline" size="sm" asChild className="shrink-0 gap-1.5 text-xs">
+              <a href={partner.url} target="_blank" rel="noopener noreferrer">
+                <span>Visit Website</span>
+                <ExternalLink className="size-3.5" />
+              </a>
+            </Button>
+          )}
+        </div>
+
+        {partner.description && (
+          <p className="text-muted-foreground text-xs leading-relaxed sm:text-sm">{partner.description}</p>
+        )}
+      </div>
     </Card>
   );
 }

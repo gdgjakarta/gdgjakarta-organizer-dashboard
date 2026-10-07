@@ -96,14 +96,27 @@ export interface BevySpeaker {
   linkedin_url?: string;
 }
 
+export interface BevyPartnerLogo {
+  url?: string;
+  path?: string;
+  thumbnail_width?: number;
+  thumbnail_height?: number;
+  thumbnail_format?: string;
+  thumbnail_url?: string;
+}
+
 export interface BevyPartner {
   id?: number | string;
   company: string;
   description?: string;
   url?: string;
   logo_url?: string;
+  logo?: BevyPartnerLogo;
+  tier?: string;
+  tier_order?: number;
   is_global?: boolean;
   visible?: boolean;
+  event_sponsor_id?: number;
 }
 
 export interface BevyAgendaItem {
@@ -122,6 +135,26 @@ export interface BevyAgenda {
   multiday?: boolean;
   empty?: boolean;
   days?: BevyAgendaDay[];
+}
+
+export interface BevyCohostChapter {
+  id?: number | string;
+  title: string;
+  slug?: string;
+  logo_url?: string;
+  city?: string;
+  country?: string;
+}
+
+export interface BevyCohost {
+  id?: number | string;
+  chapter?: BevyCohostChapter;
+  title?: string;
+  chapter_title?: string;
+  logo_url?: string;
+  city?: string;
+  country?: string;
+  url?: string;
 }
 
 export interface BevyEvent {
@@ -147,7 +180,11 @@ export interface BevyEvent {
   };
   cropped_banner_url?: string;
   cropped_picture_url?: string;
+  allows_cohosting?: boolean;
+  cohosts?: BevyCohost[];
+  cohost_chapters?: BevyCohostChapter[];
   cohost_registration_url?: string;
+  cohost_registration_chapter_title?: string;
   url?: string;
   static_url?: string;
   relative_url?: string;
@@ -179,7 +216,11 @@ export interface BevyEvent {
   venue_longitude?: number;
   speakers?: BevySpeaker[];
   partners?: BevyPartner[];
+  sponsors?: unknown[];
+  partners_list?: unknown[];
+  media_partners?: unknown[];
   agenda?: BevyAgenda;
+  [key: string]: unknown;
 }
 
 export interface BevyEventsResponse {
