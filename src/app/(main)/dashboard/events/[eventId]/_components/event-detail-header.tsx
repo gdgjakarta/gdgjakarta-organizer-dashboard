@@ -6,12 +6,31 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { format, parseISO } from "date-fns";
-import { ArrowLeft, Calendar, CheckCircle2, ExternalLink, Globe, MapPin, Radio, RefreshCw, Users } from "lucide-react";
+import {
+  ArrowLeft,
+  Calendar,
+  CheckCircle2,
+  ChevronDown,
+  Copy,
+  ExternalLink,
+  Eye,
+  Globe,
+  MapPin,
+  Radio,
+  RefreshCw,
+  Users,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getBevyManageEventUrl } from "@/config/remote-config-utils";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { getBevyLiveEventUrl, getBevyManageEventUrl } from "@/config/remote-config-utils";
 import { resolveEventAudience } from "@/lib/bevy/audience";
 import { triggerEventsSyncAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent } from "@/lib/firestore/types";
@@ -52,6 +71,21 @@ export function EventDetailHeader({ event, totalRegistrations, totalApproved }: 
   }
 
   const { isVirtual, isHybrid } = resolveEventAudience(event.audience_type, event.is_virtual);
+  const liveBevyUrl = getBevyLiveEventUrl(event);
+
+  const handleCopyLivePage = () => {
+    if (!event.id) return;
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const liveUrl = `${origin}/dashboard/member/events/${event.id}`;
+    void navigator.clipboard.writeText(liveUrl);
+    toast.success("Live page link copied to clipboard");
+  };
+
+  const handleCopyLiveBevyPage = () => {
+    if (!liveBevyUrl) return;
+    void navigator.clipboard.writeText(liveBevyUrl);
+    toast.success("Live Bevy page link copied to clipboard");
+  };
 
   return (
     <div className="flex flex-col gap-4 border-b pb-6">
@@ -85,7 +119,7 @@ export function EventDetailHeader({ event, totalRegistrations, totalApproved }: 
             {event.is_test ? (
               <Badge
                 variant="outline"
-                className="border-purple-500/20 bg-purple-500/10 px-2 py-0.5 font-medium text-xs text-purple-600 dark:text-purple-400"
+                className="border-purple-500/20 bg-purple-500/10 px-2 py-0.5 font-medium text-purple-600 text-xs dark:text-purple-400"
               >
                 Test
               </Badge>
@@ -167,20 +201,54 @@ export function EventDetailHeader({ event, totalRegistrations, totalApproved }: 
             Sync
           </Button>
 
-          {(event.id || event.url) && (
-            <Button size="sm" asChild className="gap-1.5">
-              <a
-                href={
-                  event.id ? getBevyManageEventUrl(event.id) : (event.url ?? "https://gdg.community.dev/gdg-jakarta/")
-                }
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <ExternalLink className="size-3.5" />
-                Manage in Bevy
+          {event.id && (
+            <Button variant="outline" size="sm" asChild className="gap-1.5">
+              <Link href={`/dashboard/member/events/${event.id}`} target="_blank" rel="noopener noreferrer">
+                <Eye className="size-3.5" />
+                Preview Live Page
+              </Link>
+            </Button>
+          )}
+
+          {liveBevyUrl && (
+            <Button variant="outline" size="sm" asChild className="gap-1.5">
+              <a href={liveBevyUrl} target="_blank" rel="noopener noreferrer">
+                <Globe className="size-3.5" />
+                Preview Live Bevy Page
               </a>
             </Button>
           )}
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-1.5">
+                <Copy className="size-3.5" />
+                Copy Link
+                <ChevronDown className="size-3 opacity-60" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {event.id && (
+                <DropdownMenuItem onClick={handleCopyLivePage}>
+                  <Copy className="mr-2 size-3.5" />
+                  Copy Link Live Page
+                </DropdownMenuItem>
+              )}
+              {liveBevyUrl && (
+                <DropdownMenuItem onClick={handleCopyLiveBevyPage}>
+                  <Globe className="mr-2 size-3.5" />
+                  Copy Link Live Bevy Page
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <Button size="sm" asChild className="gap-1.5">
+            <a href={getBevyManageEventUrl(event.id)} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="size-3.5" />
+              Manage in Bevy
+            </a>
+          </Button>
         </div>
       </div>
     </div>

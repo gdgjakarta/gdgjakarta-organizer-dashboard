@@ -17,6 +17,21 @@ export function getBevyManageEventUrl(
 }
 
 /**
+ * Resolves the public live Bevy event URL.
+ * Format: https://gdg.community.dev/events/details/... or fallback to event URL
+ */
+export function getBevyLiveEventUrl(
+  event?: { url?: string | null; static_url?: string | null; id?: string | number | null } | null,
+  chapterSlug: string = DEFAULT_CHAPTER_SLUG,
+): string {
+  if (event?.url) return event.url;
+  if (event?.static_url) return event.static_url;
+  if (event?.id) return `https://gdg.community.dev/events/details/${event.id}/`;
+  const slug = chapterSlug || "gdg-jakarta";
+  return `https://gdg.community.dev/${slug}/`;
+}
+
+/**
  * Resolves standard Bevy organizer dashboard URLs.
  * Format: https://gdg.community.dev/dashboard/{chapterSlug}/{page}
  * Pages: home, events, emails, members, settings/team.

@@ -671,7 +671,7 @@ export async function getBevyEventById(
   chapterId: string | number = BEVY_CONFIG.chapterId,
 ): Promise<BevyEvent | null> {
   if (!eventId) return null;
-  const result = await bevyFetch<BevyEvent>(`/event/${eventId}`, {}, chapterId);
+  const result = await bevyFetch<BevyEvent>(`/event/${eventId}/`, {}, chapterId);
   return result;
 }
 

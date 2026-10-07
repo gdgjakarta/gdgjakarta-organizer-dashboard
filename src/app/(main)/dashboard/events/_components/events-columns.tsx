@@ -6,7 +6,8 @@ import Link from "next/link";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Subscribe } from "@tanstack/react-table";
 import { parse } from "date-fns";
-import { Calendar, ExternalLink, Globe, MapPin, MoreHorizontal, Radio, Users } from "lucide-react";
+import { Calendar, Copy, ExternalLink, Eye, Globe, MapPin, MoreHorizontal, Radio, Users } from "lucide-react";
+import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -16,9 +17,10 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { getBevyManageEventUrl } from "@/config/remote-config-utils";
+import { getBevyLiveEventUrl, getBevyManageEventUrl } from "@/config/remote-config-utils";
 import type { DataTableFeatures } from "@/lib/data-table-features";
 import { cn } from "@/lib/utils";
 
@@ -279,38 +281,87 @@ export const eventsColumns: ColumnDef<DataTableFeatures, EventRow>[] = [
   {
     id: "actions",
     header: () => <div className="text-right">Actions</div>,
-    cell: ({ row }) => (
-      <div className="text-right">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              aria-label={`Open actions for ${row.original.title}`}
-              className="size-8 rounded-md text-muted-foreground hover:bg-muted/50"
-              size="icon-sm"
-              variant="ghost"
-            >
-              <MoreHorizontal className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem asChild>
-              <a
-                href={
-                  row.original.id
-                    ? getBevyManageEventUrl(row.original.id)
-                    : row.original.url || "https://gdg.community.dev/gdg-jakarta/"
-                }
-                target="_blank"
-                rel="noopener noreferrer"
+    cell: ({ row }) => {
+      const liveBevyUrl = getBevyLiveEventUrl({
+        url: row.original.url,
+        static_url: row.original.staticUrl,
+        id: row.original.id,
+      });
+
+      return (
+        <div className="text-right">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                aria-label={`Open actions for ${row.original.title}`}
+                className="size-8 rounded-md text-muted-foreground hover:bg-muted/50"
+                size="icon-sm"
+                variant="ghost"
               >
-                <ExternalLink className="mr-2 size-3.5" />
-                Manage in Bevy
-              </a>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    ),
+                <MoreHorizontal className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {row.original.id && (
+                <DropdownMenuItem asChild>
+                  <Link href={`/dashboard/member/events/${row.original.id}`} target="_blank" rel="noopener noreferrer">
+                    <Eye className="mr-2 size-3.5" />
+                    Preview Live Page
+                  </Link>
+                </DropdownMenuItem>
+              )}
+              {row.original.id && (
+                <DropdownMenuItem
+                  onClick={() => {
+                    const origin = typeof window !== "undefined" ? window.location.origin : "";
+                    const liveUrl = `${origin}/dashboard/member/events/${row.original.id}`;
+                    void navigator.clipboard.writeText(liveUrl);
+                    toast.success("Live page link copied to clipboard");
+                  }}
+                >
+                  <Copy className="mr-2 size-3.5" />
+                  Copy Link Live Page
+                </DropdownMenuItem>
+              )}
+              {liveBevyUrl && (
+                <DropdownMenuItem asChild>
+                  <a href={liveBevyUrl} target="_blank" rel="noopener noreferrer">
+                    <Globe className="mr-2 size-3.5" />
+                    Preview Live Bevy Page
+                  </a>
+                </DropdownMenuItem>
+              )}
+              {liveBevyUrl && (
+                <DropdownMenuItem
+                  onClick={() => {
+                    void navigator.clipboard.writeText(liveBevyUrl);
+                    toast.success("Live Bevy page link copied to clipboard");
+                  }}
+                >
+                  <Copy className="mr-2 size-3.5" />
+                  Copy Link Live Bevy Page
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <a
+                  href={
+                    row.original.id
+                      ? getBevyManageEventUrl(row.original.id)
+                      : (row.original.url ?? "https://gdg.community.dev/gdg-jakarta/")
+                  }
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <ExternalLink className="mr-2 size-3.5" />
+                  Manage in Bevy
+                </a>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      );
+    },
     enableHiding: false,
     enableSorting: false,
   },

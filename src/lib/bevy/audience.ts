@@ -20,7 +20,10 @@ export function resolveEventAudience(
   rawAudienceType?: string | null,
   isVirtualEvent?: boolean | null,
 ): EventAudienceInfo {
-  const normalized = (rawAudienceType ?? "").trim().toUpperCase();
+  const normalized = (rawAudienceType ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[-\s]+/g, "_");
 
   if (normalized === "VIRTUAL") {
     return {
