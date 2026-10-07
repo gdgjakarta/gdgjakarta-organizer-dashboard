@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import Link from "next/link";
+
 import { Calendar, ChevronDown, Loader2 } from "lucide-react";
 
 import { EventCardImage } from "@/components/event-card-image";
@@ -139,7 +141,11 @@ export function EventsDirectory({ initialEvents, totalCount, pageSize = 15 }: Ev
               </EventCardImage>
 
               <CardHeader>
-                <CardTitle className="line-clamp-2 text-xl">{event.title}</CardTitle>
+                <Link href={`/events/${event.id}`} className="group/title">
+                  <CardTitle className="line-clamp-2 text-xl transition-colors group-hover/title:text-primary">
+                    {event.title}
+                  </CardTitle>
+                </Link>
                 <CardDescription>{formattedDate}</CardDescription>
               </CardHeader>
 
@@ -151,13 +157,7 @@ export function EventsDirectory({ initialEvents, totalCount, pageSize = 15 }: Ev
 
               <CardFooter>
                 <Button variant="secondary" className="w-full cursor-pointer" asChild>
-                  {event.url ? (
-                    <a href={event.url} target="_blank" rel="noreferrer">
-                      View Details
-                    </a>
-                  ) : (
-                    <span>Details Unavailable</span>
-                  )}
+                  <Link href={`/events/${event.id}`}>View Details</Link>
                 </Button>
               </CardFooter>
             </Card>

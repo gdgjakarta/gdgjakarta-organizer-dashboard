@@ -251,11 +251,43 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
     throw new Error(`Email ${normalizedEmail} is already registered for this event.`);
   }
 
+  // 2. Validate session capacity if session_id is provided
+  if (registration.session_id) {
+    try {
+      const eventRef = doc(db, "events", eventIdStr);
+      const eventSnap = await getDoc(eventRef);
+      if (eventSnap.exists()) {
+        const eventData = eventSnap.data() as FirestoreEvent;
+        const matchingSession = eventData.sessions?.find((s) => s.id === registration.session_id);
+        if (matchingSession && matchingSession.capacity > 0) {
+          const currentCount = matchingSession.total_registered || 0;
+          if (currentCount >= matchingSession.capacity) {
+            throw new Error(
+              `The session "${matchingSession.title}" has reached its maximum capacity (${matchingSession.capacity} attendees). Please select an alternate session.`,
+            );
+          }
+        }
+      }
+    } catch (sessionErr) {
+      if (sessionErr instanceof Error && sessionErr.message.includes("maximum capacity")) {
+        throw sessionErr;
+      }
+    }
+  }
+
   const regId = `${eventIdStr}_${registration.member_id}`;
   const docRef = doc(db, "event_registrations", regId);
 
-  const cleanPayload = {
+  // Include session_id and session_title inside answers for backward compatibility
+  const updatedAnswers = {
+    ...(registration.answers ?? {}),
+    ...(registration.session_id ? { session_id: registration.session_id } : {}),
+    ...(registration.session_title ? { session_title: registration.session_title } : {}),
+  };
+
+  const cleanPayload: FirestoreRegistration = {
     ...registration,
+    answers: updatedAnswers,
     event_id: eventIdStr,
     member_email: normalizedEmail,
     id: regId,
@@ -263,22 +295,57 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
 
   await setDoc(docRef, cleanPayload, { merge: true });
 
-  // Update event registration counter
+  // Update event registration counter & session total if available
   try {
     const eventRef = doc(db, "events", eventIdStr);
     const eventSnap = await getDoc(eventRef);
     if (eventSnap.exists()) {
-      const currentCount = eventSnap.data()?.total_registrations || 0;
-      await updateDoc(eventRef, {
+      const eventData = eventSnap.data() as FirestoreEvent;
+      const currentCount = typeof eventData.total_registrations === "number" ? eventData.total_registrations : 0;
+      const updateData: Record<string, unknown> = {
         total_registrations: currentCount + 1,
         updated_at: new Date().toISOString(),
-      });
+      };
+
+      if (registration.session_id && Array.isArray(eventData.sessions)) {
+        const updatedSessions = eventData.sessions.map((sess) => {
+          if (sess.id === registration.session_id) {
+            return {
+              ...sess,
+              total_registered: (sess.total_registered ?? 0) + 1,
+            };
+          }
+          return sess;
+        });
+        updateData.sessions = updatedSessions;
+      }
+
+      await updateDoc(eventRef, updateData);
     }
   } catch (err) {
-    console.warn("[Firestore] Failed to increment total_registrations count:", err);
+    console.warn("[Firestore] Failed to update event registration / session counters:", err);
   }
 
   return regId;
+}
+
+export async function getEventSessionRegistrationCounts(eventId: string): Promise<Record<string, number>> {
+  if (typeof window === "undefined") return {};
+  try {
+    const registrations = await getEventRegistrations(eventId);
+    const counts: Record<string, number> = {};
+    for (const reg of registrations) {
+      if (reg.status === "rejected") continue;
+      const sId = reg.session_id ?? (reg.answers?.session_id as string | undefined);
+      if (sId) {
+        counts[sId] = (counts[sId] ?? 0) + 1;
+      }
+    }
+    return counts;
+  } catch (error) {
+    console.warn("[Firestore] getEventSessionRegistrationCounts error:", error);
+    return {};
+  }
 }
 
 export async function updateRegistrationStatus(

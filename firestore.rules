@@ -54,6 +54,8 @@ service cloud.firestore {
     //   - answers: map|null (optional, <= 50 keys) - Custom question answers
     //   - notes: string|null (optional, <= 2000 chars) - Registration notes
     //   - ticket_tier: string|null (optional, <= 100 chars) - Ticket tier name
+    //   - session_id: string|null (optional, <= 128 chars) - Selected session identifier
+    //   - session_title: string|null (optional, <= 200 chars) - Selected session title
     //   - registered_at: string (required, <= 50 chars) - Registration timestamp
     //   - reviewed_at: string|null (optional, immutable for members, <= 50 chars) - Review timestamp
     //   - reviewed_by_id: string|null (optional, immutable for members, <= 128 chars) - Reviewer UID
@@ -87,6 +89,8 @@ service cloud.firestore {
     //   - total_approved: int|float|null (optional, >= 0) - Approved attendee count
     //   - total_checked_in: int|float|null (optional, >= 0) - Checked-in attendee count
     //   - custom_questions: list|null (optional, <= 50 items) - Custom RSVP questions
+    //   - sessions: list|null (optional, <= 30 items) - Event agenda / breakout sessions
+    //   - webhook_url: string|null (optional, <= 2000 chars) - Webhook integration URL
     //   - synced_from_bevy_at: string|null (optional, <= 50 chars) - Bevy sync timestamp
     //   - created_at: string|null (optional, <= 50 chars) - Creation timestamp
     //   - updated_at: string (required, <= 50 chars) - Last update timestamp
@@ -221,6 +225,7 @@ service cloud.firestore {
         hasOnlyAllowedFields(data, [
           'id', 'event_id', 'event_title', 'member_id', 'member_name', 'member_email',
           'member_avatar', 'member_role', 'status', 'answers', 'notes', 'ticket_tier',
+          'session_id', 'session_title',
           'registered_at', 'reviewed_at', 'reviewed_by_id', 'reviewed_by_name', 'checked_in_at'
         ]) &&
         data.id is string && data.id.size() > 0 && data.id.size() <= 200 &&
@@ -236,6 +241,8 @@ service cloud.firestore {
         (!('answers' in data) || data.answers == null || (data.answers is map && data.answers.size() <= 50)) &&
         (!('notes' in data) || data.notes == null || (data.notes is string && data.notes.size() <= 2000)) &&
         (!('ticket_tier' in data) || data.ticket_tier == null || (data.ticket_tier is string && data.ticket_tier.size() <= 100)) &&
+        (!('session_id' in data) || data.session_id == null || (data.session_id is string && data.session_id.size() <= 128)) &&
+        (!('session_title' in data) || data.session_title == null || (data.session_title is string && data.session_title.size() <= 200)) &&
         (!('reviewed_at' in data) || data.reviewed_at == null || (data.reviewed_at is string && data.reviewed_at.size() <= 50)) &&
         (!('reviewed_by_id' in data) || data.reviewed_by_id == null || (data.reviewed_by_id is string && data.reviewed_by_id.size() <= 128)) &&
         (!('reviewed_by_name' in data) || data.reviewed_by_name == null || (data.reviewed_by_name is string && data.reviewed_by_name.size() <= 150)) &&
@@ -250,7 +257,7 @@ service cloud.firestore {
           'picture_url', 'banner_url', 'event_type_title', 'audience_type', 'is_virtual',
           'venue', 'url', 'static_url', 'tags', 'is_hidden', 'is_test', 'requires_approval',
           'max_attendees', 'total_registrations', 'total_approved', 'total_checked_in',
-          'custom_questions', 'synced_from_bevy_at', 'created_at', 'updated_at'
+          'custom_questions', 'sessions', 'webhook_url', 'synced_from_bevy_at', 'created_at', 'updated_at'
         ]) &&
         data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
         data.title is string && data.title.size() > 0 && data.title.size() <= 300 &&
@@ -273,6 +280,8 @@ service cloud.firestore {
         (!('static_url' in data) || data.static_url == null || (data.static_url is string && data.static_url.size() <= 2000)) &&
         (!('tags' in data) || data.tags == null || (data.tags is list && data.tags.size() <= 50)) &&
         (!('custom_questions' in data) || data.custom_questions == null || (data.custom_questions is list && data.custom_questions.size() <= 50)) &&
+        (!('sessions' in data) || data.sessions == null || (data.sessions is list && data.sessions.size() <= 30)) &&
+        (!('webhook_url' in data) || data.webhook_url == null || (data.webhook_url is string && data.webhook_url.size() <= 2000)) &&
         (!('max_attendees' in data) || data.max_attendees == null || ((data.max_attendees is int || data.max_attendees is float) && data.max_attendees >= 0)) &&
         (!('total_registrations' in data) || data.total_registrations == null || ((data.total_registrations is int || data.total_registrations is float) && data.total_registrations >= 0)) &&
         (!('total_approved' in data) || data.total_approved == null || ((data.total_approved is int || data.total_approved is float) && data.total_approved >= 0)) &&

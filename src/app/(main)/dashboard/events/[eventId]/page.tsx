@@ -133,7 +133,7 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
         </TabsList>
 
         <TabsContent value="registrants" className="space-y-4">
-          <RegistrantsTab eventId={eventId} registrations={registrations} />
+          <RegistrantsTab eventId={eventId} registrations={registrations} event={event} />
         </TabsContent>
 
         <TabsContent value="form" className="space-y-4">

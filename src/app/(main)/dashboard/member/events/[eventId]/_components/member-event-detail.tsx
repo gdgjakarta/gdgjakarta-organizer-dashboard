@@ -12,6 +12,7 @@ import {
   Clock,
   ExternalLink,
   Globe,
+  Layers,
   MapPin,
   Radio,
   Share2,
@@ -60,11 +61,26 @@ function isEventPast(event?: FirestoreEvent): boolean {
 
 export function MemberEventDetail({ event, initialRegistration = null }: MemberEventDetailProps) {
   const user = useAuthStore((s) => s.user);
+  const [currentEvent, setCurrentEvent] = useState<FirestoreEvent>(event);
   const [registration, setRegistration] = useState<FirestoreRegistration | null>(initialRegistration);
-  const { isVirtual, isHybrid } = resolveEventAudience(event.audience_type, event.is_virtual);
+  const { isVirtual, isHybrid } = resolveEventAudience(currentEvent.audience_type, currentEvent.is_virtual);
 
   useEffect(() => {
-    async function checkMyRegistration() {
+    setCurrentEvent(event);
+    async function checkMyRegistrationAndEvent() {
+      try {
+        const { getFirestoreEventById } = await import("@/lib/firestore/client");
+        const docData = await getFirestoreEventById(String(event.id));
+        if (docData) {
+          setCurrentEvent((prev) => ({
+            ...prev,
+            ...docData,
+          }));
+        }
+      } catch (err) {
+        console.warn("[MemberEventDetail] Failed to load Firestore event:", err);
+      }
+
       if (!user) return;
       try {
         const found = await checkEventRegistrationAction(String(event.id), user.id, user.email);
@@ -76,10 +92,10 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
       }
     }
 
-    void checkMyRegistration();
-  }, [user, event.id]);
+    void checkMyRegistrationAndEvent();
+  }, [user, event]);
 
-  const isPast = isEventPast(event);
+  const isPast = isEventPast(currentEvent);
 
   let formattedStartDate = event.start_date;
   let formattedEndDate = event.end_date;
@@ -121,12 +137,54 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
     }
   } else if (isPast) {
     registrationStatusDescription = "This event has already concluded. Registrations are closed.";
-  } else if (event.requires_approval) {
+  } else if (currentEvent.requires_approval) {
     registrationStatusDescription = "This event has limited seats and requires attendee review.";
   }
 
+  const registeredSessionTitle =
+    registration?.session_title ??
+    (registration?.answers?.session_title as string | undefined) ??
+    (registration?.session_id ? `Track: ${registration.session_id}` : null);
+
+  let formatBadgeContent = (
+    <span className="flex items-center gap-1.5 text-emerald-500">
+      <MapPin className="size-3.5" /> In-Person Meetup
+    </span>
+  );
+  if (isVirtual) {
+    formatBadgeContent = (
+      <span className="flex items-center gap-1.5 text-blue-500">
+        <Radio className="size-3.5" /> Virtual Event
+      </span>
+    );
+  } else if (isHybrid) {
+    formatBadgeContent = (
+      <span className="flex items-center gap-1.5 text-purple-500">
+        <Globe className="size-3.5" /> Hybrid Event
+      </span>
+    );
+  }
+
+  let venueIcon = <MapPin className="mt-0.5 size-4 shrink-0 text-emerald-500" />;
+  let venueTitle = "In-Person Venue";
+  let venueDetail = "Jakarta, Indonesia (See Bevy page for detailed map)";
+
+  if (isVirtual) {
+    venueIcon = <Radio className="mt-0.5 size-4 shrink-0 text-blue-500" />;
+    venueTitle = "Virtual Session";
+    venueDetail = "Online link will be provided upon registration approval";
+  } else if (isHybrid) {
+    venueIcon = <Globe className="mt-0.5 size-4 shrink-0 text-purple-500" />;
+    venueTitle = "Hybrid Session & Venue";
+    venueDetail = event.venue?.name
+      ? `${event.venue.name} & Online link provided upon approval`
+      : "Jakarta, Indonesia & Online Session";
+  } else if (event.venue?.name) {
+    venueDetail = `${event.venue.name}${event.venue.city ? `, ${event.venue.city}` : ""}`;
+  }
+
   let actionButton = (
-    <EventRegistrationModal event={event} existingRegistration={registration}>
+    <EventRegistrationModal event={currentEvent} existingRegistration={registration}>
       <Button className="w-full gap-2 font-medium" size="lg">
         <Sparkles className="size-4" />
         Register for Event
@@ -203,19 +261,7 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
           >
             <div className="absolute top-4 left-4 z-20 flex gap-2">
               <Badge variant="secondary" className="bg-background/90 text-xs backdrop-blur-md">
-                {isVirtual ? (
-                  <span className="flex items-center gap-1.5 text-blue-500">
-                    <Radio className="size-3.5" /> Virtual Event
-                  </span>
-                ) : isHybrid ? (
-                  <span className="flex items-center gap-1.5 text-purple-500">
-                    <Globe className="size-3.5" /> Hybrid Event
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1.5 text-emerald-500">
-                    <MapPin className="size-3.5" /> In-Person Meetup
-                  </span>
-                )}
+                {formatBadgeContent}
               </Badge>
               {event.requires_approval && (
                 <Badge variant="secondary" className="bg-background/90 text-xs backdrop-blur-md">
@@ -225,7 +271,7 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
               {event.is_test && (
                 <Badge
                   variant="outline"
-                  className="border-purple-500/30 bg-purple-500/20 text-xs text-purple-700 backdrop-blur-md dark:text-purple-300"
+                  className="border-purple-500/30 bg-purple-500/20 text-purple-700 text-xs backdrop-blur-md dark:text-purple-300"
                 >
                   Test Event
                 </Badge>
@@ -242,7 +288,7 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
               {event.is_test && (
                 <Badge
                   variant="outline"
-                  className="border-purple-500/20 bg-purple-500/10 text-xs text-purple-600 dark:text-purple-400"
+                  className="border-purple-500/20 bg-purple-500/10 text-purple-600 text-xs dark:text-purple-400"
                 >
                   Test
                 </Badge>
@@ -279,6 +325,91 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
               )}
             </CardContent>
           </Card>
+
+          {/* Sessions / Breakout Tracks if configured */}
+          {currentEvent.sessions && currentEvent.sessions.length > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-2">
+                  <Layers className="size-4 text-primary" />
+                  <CardTitle className="text-lg">Event Sessions & Tracks</CardTitle>
+                </div>
+                <CardDescription>
+                  This event features specialized breakout sessions with limited capacity.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {currentEvent.sessions.map((sess, idx) => {
+                  const capacity = sess.capacity ?? 0;
+                  const totalRegistered = sess.total_registered ?? 0;
+                  const available = capacity > 0 ? capacity - totalRegistered > 0 : true;
+                  const remaining = Math.max(0, capacity - totalRegistered);
+
+                  let capacityLabel = "Open Capacity";
+                  if (capacity > 0) {
+                    capacityLabel = available
+                      ? `${totalRegistered}/${capacity} booked (${remaining} left)`
+                      : `Full (${capacity} max)`;
+                  }
+
+                  return (
+                    <div
+                      key={sess.id}
+                      className="flex flex-col gap-2 rounded-lg border bg-muted/20 p-3.5 text-xs sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-[10px]">
+                            Track #{idx + 1}
+                          </Badge>
+                          <span className="font-semibold text-foreground text-sm">{sess.title}</span>
+                        </div>
+                        {sess.description && (
+                          <p className="text-muted-foreground text-xs leading-relaxed">{sess.description}</p>
+                        )}
+                        <div className="flex flex-wrap items-center gap-3 pt-0.5 text-[11px] text-muted-foreground">
+                          {sess.time_slot && (
+                            <span className="flex items-center gap-1">
+                              <Clock className="size-3" /> {sess.time_slot}
+                            </span>
+                          )}
+                          {sess.checkin_deadline && (
+                            <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
+                              <Clock className="size-3" /> Check-in by: {sess.checkin_deadline}
+                            </span>
+                          )}
+                          {(sess.location || sess.location_url) &&
+                            (sess.location_url ? (
+                              <a
+                                href={sess.location_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-primary transition-colors hover:text-primary/80 hover:underline"
+                                title="Open Google Maps / Venue Location"
+                              >
+                                <MapPin className="size-3" />
+                                <span>{sess.location || "Google Maps"}</span>
+                                <ExternalLink className="size-2.5" />
+                              </a>
+                            ) : (
+                              <span className="flex items-center gap-1">
+                                <MapPin className="size-3" /> {sess.location}
+                              </span>
+                            ))}
+                        </div>
+                      </div>
+
+                      <div className="shrink-0 self-start sm:self-center">
+                        <Badge variant={available ? "secondary" : "destructive"} className="text-xs">
+                          {capacityLabel}
+                        </Badge>
+                      </div>
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Tags */}
           {event.tags && event.tags.length > 0 && (
@@ -318,6 +449,18 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
             </CardHeader>
 
             <CardContent className="space-y-4">
+              {registeredSessionTitle && (
+                <div className="flex items-center gap-2.5 rounded-lg border border-primary/20 bg-primary/5 p-2.5 text-xs">
+                  <Layers className="size-4 shrink-0 text-primary" />
+                  <div>
+                    <span className="block font-medium text-[10px] text-muted-foreground uppercase">
+                      Your Selected Session Track
+                    </span>
+                    <strong className="text-foreground">{registeredSessionTitle}</strong>
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-2 rounded-lg bg-muted/30 p-3.5 text-xs">
                 <div className="flex items-center justify-between text-muted-foreground">
                   <span>Capacity / RSVPs</span>
@@ -351,28 +494,10 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
               <Separator />
 
               <div className="flex items-start gap-3">
-                {isVirtual ? (
-                  <Radio className="mt-0.5 size-4 shrink-0 text-blue-500" />
-                ) : isHybrid ? (
-                  <Globe className="mt-0.5 size-4 shrink-0 text-purple-500" />
-                ) : (
-                  <MapPin className="mt-0.5 size-4 shrink-0 text-emerald-500" />
-                )}
+                {venueIcon}
                 <div>
-                  <div className="font-medium text-foreground">
-                    {isVirtual ? "Virtual Session" : isHybrid ? "Hybrid Session & Venue" : "In-Person Venue"}
-                  </div>
-                  <div className="text-muted-foreground">
-                    {isVirtual
-                      ? "Online link will be provided upon registration approval"
-                      : isHybrid
-                        ? event.venue?.name
-                          ? `${event.venue.name} & Online link provided upon approval`
-                          : "Jakarta, Indonesia & Online Session"
-                        : event.venue?.name
-                          ? `${event.venue.name}${event.venue.city ? `, ${event.venue.city}` : ""}`
-                          : "Jakarta, Indonesia (See Bevy page for detailed map)"}
-                  </div>
+                  <div className="font-medium text-foreground">{venueTitle}</div>
+                  <div className="text-muted-foreground">{venueDetail}</div>
                 </div>
               </div>
 

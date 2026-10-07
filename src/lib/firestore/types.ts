@@ -1,12 +1,44 @@
 export type RegistrationStatus = "pending" | "approved" | "rejected" | "waitlisted" | "attended";
 
+export type QuestionValidationType =
+  | "none"
+  | "isEmail"
+  | "isWorkEmail"
+  | "isUrl"
+  | "isGithubUrl"
+  | "isLinkedInProfileUrl"
+  | "isWhatsappNumber"
+  | "isNumber"
+  | "customRegex";
+
 export interface CustomQuestion {
   id: string;
   label: string;
-  type: "text" | "textarea" | "select" | "checkbox";
+  type: "text" | "textarea" | "select" | "radio" | "checkbox" | "multiselect";
   options?: string[];
   required: boolean;
   placeholder?: string;
+  description?: string;
+  section?: string;
+
+  // Question validation & constraint settings
+  validation_type?: QuestionValidationType;
+  regex_pattern?: string;
+  min_length?: number;
+  max_length?: number;
+  custom_error_message?: string;
+}
+
+export interface EventSession {
+  id: string;
+  title: string;
+  description?: string;
+  time_slot?: string;
+  checkin_deadline?: string;
+  location?: string;
+  location_url?: string;
+  capacity: number;
+  total_registered?: number;
 }
 
 export interface FirestoreEvent {
@@ -40,6 +72,8 @@ export interface FirestoreEvent {
   total_approved: number;
   total_checked_in: number;
   custom_questions?: CustomQuestion[];
+  sessions?: EventSession[];
+  webhook_url?: string;
 
   // Metadata
   synced_from_bevy_at?: string;
@@ -92,6 +126,8 @@ export interface FirestoreRegistration {
   member_role?: string;
   status: RegistrationStatus;
   answers?: Record<string, unknown>;
+  session_id?: string;
+  session_title?: string;
   notes?: string;
   ticket_tier?: string;
   registered_at: string;

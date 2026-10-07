@@ -676,6 +676,32 @@ export async function getBevyEventById(
 }
 
 /**
+ * Fetch full event details by ID directly from Bevy for public event pages,
+ * with fallback lookup by chapter events list if direct ID lookup fails.
+ */
+export async function getPublicEventById(
+  eventId: string | number,
+  chapterId: string | number = BEVY_CONFIG.chapterId,
+): Promise<BevyEvent | null> {
+  if (!eventId) return null;
+  const direct = await getBevyEventById(eventId, chapterId);
+  if (direct) return direct;
+
+  try {
+    const { results: chapterEvents } = await getAllBevyChapterEvents(undefined, true, "All");
+    const matched = chapterEvents.find(
+      (e) =>
+        String(e.id) === String(eventId) || e.url?.includes(String(eventId)) || e.static_url?.includes(String(eventId)),
+    );
+    if (matched) return matched;
+  } catch (error) {
+    console.warn("[BevyClient] getPublicEventById fallback search failed:", error);
+  }
+
+  return null;
+}
+
+/**
  * Fetch chapter sponsors & partners from Bevy
  */
 export async function getBevyChapterSponsors(

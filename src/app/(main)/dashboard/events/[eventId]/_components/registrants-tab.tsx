@@ -3,7 +3,18 @@
 import { useEffect, useState, useTransition } from "react";
 
 import { format, parseISO } from "date-fns";
-import { Check, CheckCircle, Download, MoreHorizontal, Search, UserCheck, UserX, X, XCircle } from "lucide-react";
+import {
+  Check,
+  CheckCircle,
+  Download,
+  Layers,
+  MoreHorizontal,
+  Search,
+  UserCheck,
+  UserX,
+  X,
+  XCircle,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -22,12 +33,13 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/in
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { fetchEventRegistrationsAction, updateRegistrationStatusAction } from "@/lib/firestore/actions";
-import type { FirestoreRegistration, RegistrationStatus } from "@/lib/firestore/types";
+import type { EventSession, FirestoreEvent, FirestoreRegistration, RegistrationStatus } from "@/lib/firestore/types";
 import { cn, getInitials } from "@/lib/utils";
 
 interface RegistrantsTabProps {
   eventId: string;
   registrations: FirestoreRegistration[];
+  event?: FirestoreEvent;
 }
 
 const STATUS_VARIANTS: Record<RegistrationStatus, { label: string; badgeClass: string; dotClass: string }> = {
@@ -58,10 +70,12 @@ const STATUS_VARIANTS: Record<RegistrationStatus, { label: string; badgeClass: s
   },
 };
 
-export function RegistrantsTab({ eventId, registrations }: RegistrantsTabProps) {
+export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTabProps) {
   const [registrationsList, setRegistrationsList] = useState<FirestoreRegistration[]>(registrations);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [sessionFilter, setSessionFilter] = useState<string>("all");
+  const [sessions, setSessions] = useState<EventSession[]>(event?.sessions ?? []);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [inspectRegistration, setInspectRegistration] = useState<FirestoreRegistration | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -77,6 +91,25 @@ export function RegistrantsTab({ eventId, registrations }: RegistrantsTabProps) 
       }
     });
   }, [eventId]);
+
+  useEffect(() => {
+    if (event?.sessions && event.sessions.length > 0) {
+      setSessions(event.sessions);
+      return;
+    }
+    async function fetchEventDetails() {
+      try {
+        const { getFirestoreEventById } = await import("@/lib/firestore/client");
+        const docData = await getFirestoreEventById(eventId);
+        if (docData?.sessions && docData.sessions.length > 0) {
+          setSessions(docData.sessions);
+        }
+      } catch (err) {
+        console.warn("[RegistrantsTab] Failed to load event sessions:", err);
+      }
+    }
+    void fetchEventDetails();
+  }, [eventId, event?.sessions]);
 
   // Compute email occurrences to detect duplicate registrant attempts
   const emailCounts = new Map<string, number>();
@@ -96,7 +129,12 @@ export function RegistrantsTab({ eventId, registrations }: RegistrantsTabProps) 
 
     const matchesStatus = statusFilter === "all" || reg.status === statusFilter;
 
-    return matchesSearch && matchesStatus;
+    const matchesSession =
+      sessionFilter === "all" ||
+      reg.session_id === sessionFilter ||
+      (reg.answers?.session_id as string) === sessionFilter;
+
+    return matchesSearch && matchesStatus && matchesSession;
   });
 
   const handleStatusChange = (registrationId: string, newStatus: RegistrationStatus) => {
@@ -144,6 +182,50 @@ export function RegistrantsTab({ eventId, registrations }: RegistrantsTabProps) 
     setSelectedIds(next);
   };
 
+  const handleExportCsv = () => {
+    if (filtered.length === 0) {
+      toast.error("No registrants to export.");
+      return;
+    }
+
+    const headers = ["Name", "Email", "Status", "Session Track", "Registered At", "Responses"];
+    const rows = filtered.map((r) => {
+      const sessionTitle =
+        r.session_title ||
+        (r.answers?.session_title as string) ||
+        (r.session_id ? `Session ID: ${r.session_id}` : "Standard RSVP");
+
+      const cleanAnswers = r.answers
+        ? Object.entries(r.answers)
+            .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : String(v)}`)
+            .join("; ")
+        : "";
+
+      return [
+        `"${(r.member_name || "").replace(/"/g, '""')}"`,
+        `"${(r.member_email || "").replace(/"/g, '""')}"`,
+        `"${(r.status || "").replace(/"/g, '""')}"`,
+        `"${sessionTitle.replace(/"/g, '""')}"`,
+        `"${(r.registered_at || "").replace(/"/g, '""')}"`,
+        `"${cleanAnswers.replace(/"/g, '""')}"`,
+      ].join(",");
+    });
+
+    const csvContent = [headers.join(","), ...rows].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `registrants-${eventId}-${format(new Date(), "yyyyMMdd-HHmm")}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${filtered.length} registrants to CSV.`);
+  };
+
+  const hasSessions = sessions.length > 0;
+
   return (
     <div className="space-y-4">
       <Card>
@@ -151,7 +233,7 @@ export function RegistrantsTab({ eventId, registrations }: RegistrantsTabProps) 
           <div>
             <CardTitle className="text-lg">Registrants & Attendance Filtration ({filtered.length})</CardTitle>
             <CardDescription>
-              Review attendee applications, professionalism criteria, and approve or reject participants.
+              Review attendee applications, session tracks, and approve or reject participants.
             </CardDescription>
           </div>
 
@@ -187,13 +269,13 @@ export function RegistrantsTab({ eventId, registrations }: RegistrantsTabProps) 
           {/* Filtration Controls */}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-3">
-              <InputGroup className="h-8 w-64">
+              <InputGroup className="h-8 w-60">
                 <InputGroupAddon align="inline-start">
                   <Search className="size-3.5" />
                 </InputGroupAddon>
                 <InputGroupInput
                   className="h-8 text-xs"
-                  placeholder="Search name, email, role..."
+                  placeholder="Search name, email, details..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
@@ -215,10 +297,29 @@ export function RegistrantsTab({ eventId, registrations }: RegistrantsTabProps) 
                   </SelectGroup>
                 </SelectContent>
               </Select>
+
+              {hasSessions && (
+                <Select value={sessionFilter} onValueChange={setSessionFilter}>
+                  <SelectTrigger size="sm" className="h-8 text-xs">
+                    <span className="text-muted-foreground">Session:</span>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem value="all">All Sessions ({registrationsList.length})</SelectItem>
+                      {sessions.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.title}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
             <div className="flex items-center gap-2">
-              <Button size="sm" variant="outline" className="h-8 gap-1 text-xs">
+              <Button size="sm" variant="outline" onClick={handleExportCsv} className="h-8 gap-1 text-xs">
                 <Download className="size-3" />
                 Export CSV
               </Button>
@@ -239,7 +340,8 @@ export function RegistrantsTab({ eventId, registrations }: RegistrantsTabProps) 
                   </TableHead>
                   <TableHead>Applicant</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Professionalism & Details</TableHead>
+                  {hasSessions && <TableHead>Session Track</TableHead>}
+                  <TableHead>Question Responses & Details</TableHead>
                   <TableHead>Registered At</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -247,7 +349,7 @@ export function RegistrantsTab({ eventId, registrations }: RegistrantsTabProps) 
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="h-32 text-center text-muted-foreground text-sm">
+                    <TableCell colSpan={hasSessions ? 7 : 6} className="h-32 text-center text-muted-foreground text-sm">
                       {registrations.length === 0
                         ? "No registrations received yet for this event."
                         : "No applicants match the selected filter criteria."}
@@ -256,9 +358,15 @@ export function RegistrantsTab({ eventId, registrations }: RegistrantsTabProps) 
                 ) : (
                   filtered.map((reg) => {
                     const statusMeta = STATUS_VARIANTS[reg.status] || STATUS_VARIANTS.pending;
+                    const sessionTitle =
+                      reg.session_title ||
+                      (reg.answers?.session_title as string) ||
+                      (reg.session_id ? `Track: ${reg.session_id}` : null);
+
                     const answersSummary = reg.answers
                       ? Object.entries(reg.answers)
-                          .map(([k, v]) => `${k}: ${String(v)}`)
+                          .filter(([k]) => k !== "session_id" && k !== "session_title")
+                          .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : String(v)}`)
                           .join(" • ")
                       : "Standard RSVP";
 
@@ -317,7 +425,20 @@ export function RegistrantsTab({ eventId, registrations }: RegistrantsTabProps) 
                           </Badge>
                         </TableCell>
 
-                        <TableCell onClick={() => setInspectRegistration(reg)} className="max-w-[280px]">
+                        {hasSessions && (
+                          <TableCell onClick={() => setInspectRegistration(reg)}>
+                            {sessionTitle ? (
+                              <Badge variant="secondary" className="gap-1 font-normal text-xs">
+                                <Layers className="size-3 text-primary" />
+                                {sessionTitle}
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">Main Event</span>
+                            )}
+                          </TableCell>
+                        )}
+
+                        <TableCell onClick={() => setInspectRegistration(reg)} className="max-w-[260px]">
                           <div className="truncate text-muted-foreground text-xs" title={answersSummary}>
                             {answersSummary}
                           </div>
@@ -404,7 +525,7 @@ export function RegistrantsTab({ eventId, registrations }: RegistrantsTabProps) 
                 </div>
               </DialogTitle>
               <DialogDescription>
-                Submitted registration details and question responses for filtration.
+                Submitted registration details, session selection, and question responses.
               </DialogDescription>
             </DialogHeader>
 
@@ -422,16 +543,39 @@ export function RegistrantsTab({ eventId, registrations }: RegistrantsTabProps) 
                 </Badge>
               </div>
 
+              {/* Session Track if present */}
+              {Boolean(
+                inspectRegistration.session_title ||
+                  inspectRegistration.session_id ||
+                  inspectRegistration.answers?.session_title,
+              ) && (
+                <div className="space-y-1 rounded-lg border border-primary/20 bg-primary/5 p-3">
+                  <div className="flex items-center gap-1.5 font-medium text-primary text-xs uppercase">
+                    <Layers className="size-3.5" />
+                    Selected Session Track
+                  </div>
+                  <div className="font-semibold text-foreground text-sm">
+                    {inspectRegistration.session_title ||
+                      String(inspectRegistration.answers?.session_title || "") ||
+                      inspectRegistration.session_id}
+                  </div>
+                </div>
+              )}
+
               {inspectRegistration.answers && Object.keys(inspectRegistration.answers).length > 0 ? (
                 <div className="space-y-3">
                   <div className="font-semibold text-muted-foreground text-xs uppercase">Question Responses</div>
-                  <div className="space-y-2.5">
-                    {Object.entries(inspectRegistration.answers).map(([question, answer]) => (
-                      <div key={question} className="rounded-md border p-2.5">
-                        <div className="font-medium text-muted-foreground text-xs">{question}</div>
-                        <div className="mt-1 font-medium text-foreground text-sm">{String(answer)}</div>
-                      </div>
-                    ))}
+                  <div className="max-h-64 space-y-2.5 overflow-y-auto pr-1">
+                    {Object.entries(inspectRegistration.answers)
+                      .filter(([k]) => k !== "session_id" && k !== "session_title")
+                      .map(([question, answer]) => (
+                        <div key={question} className="rounded-md border p-2.5">
+                          <div className="font-medium text-muted-foreground text-xs">{question}</div>
+                          <div className="mt-1 font-medium text-foreground text-sm">
+                            {Array.isArray(answer) ? answer.join(", ") : String(answer)}
+                          </div>
+                        </div>
+                      ))}
                   </div>
                 </div>
               ) : (

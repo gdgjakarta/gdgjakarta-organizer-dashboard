@@ -76,7 +76,7 @@ export function EventDetailHeader({ event, totalRegistrations, totalApproved }: 
   const handleCopyLivePage = () => {
     if (!event.id) return;
     const origin = typeof window !== "undefined" ? window.location.origin : "";
-    const liveUrl = `${origin}/dashboard/member/events/${event.id}`;
+    const liveUrl = `${origin}/events/${event.id}`;
     void navigator.clipboard.writeText(liveUrl);
     toast.success("Live page link copied to clipboard");
   };
@@ -203,7 +203,7 @@ export function EventDetailHeader({ event, totalRegistrations, totalApproved }: 
 
           {event.id && (
             <Button variant="outline" size="sm" asChild className="gap-1.5">
-              <Link href={`/dashboard/member/events/${event.id}`} target="_blank" rel="noopener noreferrer">
+              <Link href={`/events/${event.id}`} target="_blank" rel="noopener noreferrer">
                 <Eye className="size-3.5" />
                 Preview Live Page
               </Link>

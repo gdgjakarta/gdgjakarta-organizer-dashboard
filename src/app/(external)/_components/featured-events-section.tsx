@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { ArrowUpRight, Calendar, ChevronRight, MapPin } from "lucide-react";
+import { Calendar, ChevronRight, MapPin } from "lucide-react";
 
 import { EventCardImage } from "@/components/event-card-image";
 import { Button } from "@/components/ui/button";
@@ -30,7 +30,7 @@ export function FeaturedEventsSection({ events }: FeaturedEventsSectionProps) {
           <h2 className="mt-2 font-medium text-[32px] leading-[1.1] tracking-tight sm:text-[44px] lg:text-[59.33px]">
             Community powered by developers.
           </h2>
-          <p className="mt-3 max-w-2xl text-muted-foreground text-[14px] leading-relaxed">
+          <p className="mt-3 max-w-2xl text-[14px] text-muted-foreground leading-relaxed">
             Join thousands of passionate engineers and creators in Jakarta for hands-on workshops, technical talks, and
             flagship conferences.
           </p>
@@ -39,7 +39,7 @@ export function FeaturedEventsSection({ events }: FeaturedEventsSectionProps) {
         <Button
           variant="outline"
           asChild
-          className="rounded-full border-[var(--theme-border)] px-6 text-[14px] font-medium transition-all duration-300 hover:border-[var(--theme-primary)] hover:text-[var(--theme-text)]"
+          className="rounded-full border-[var(--theme-border)] px-6 font-medium text-[14px] transition-all duration-300 hover:border-[var(--theme-primary)] hover:text-[var(--theme-text)]"
         >
           <Link href="/events" className="flex items-center gap-1.5">
             <span>View All Events</span>
@@ -103,11 +103,13 @@ export function FeaturedEventsSection({ events }: FeaturedEventsSectionProps) {
                     <span className="line-clamp-1">{event.chapter?.title || "Jakarta, Indonesia"}</span>
                   </div>
 
-                  <h3 className="mt-2 line-clamp-2 font-medium text-[22.66px] tracking-tight leading-snug transition-colors group-hover:text-[var(--theme-text)]">
-                    {event.title}
+                  <h3 className="mt-2 line-clamp-2 font-medium text-[22.66px] leading-snug tracking-tight transition-colors group-hover:text-[var(--theme-text)]">
+                    <Link href={`/events/${event.id}`} className="hover:underline">
+                      {event.title}
+                    </Link>
                   </h3>
 
-                  <p className="mt-3 line-clamp-3 flex-1 text-muted-foreground text-[14px] leading-relaxed">
+                  <p className="mt-3 line-clamp-3 flex-1 text-[14px] text-muted-foreground leading-relaxed">
                     {event.description_short ||
                       "Join GDG Jakarta for technical sessions, live demonstrations, and collaborative networking."}
                   </p>
@@ -115,25 +117,16 @@ export function FeaturedEventsSection({ events }: FeaturedEventsSectionProps) {
                   <div className="mt-6 border-t pt-5" style={{ borderColor: "var(--theme-border)" }}>
                     <Button
                       asChild
-                      className="w-full rounded-full text-[14px] font-medium transition-all duration-300 hover:scale-[1.01]"
+                      className="w-full rounded-full font-medium text-[14px] transition-all duration-300 hover:scale-[1.01]"
                       style={{
                         backgroundColor: "var(--theme-primary)",
                         color: "var(--theme-primary-foreground)",
                       }}
                     >
-                      {event.url ? (
-                        <a
-                          href={event.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="flex items-center justify-center gap-1.5"
-                        >
-                          <span>View Details & RSVP</span>
-                          <ArrowUpRight className="size-4" />
-                        </a>
-                      ) : (
-                        <span>Details Available Soon</span>
-                      )}
+                      <Link href={`/events/${event.id}`} className="flex items-center justify-center gap-1.5">
+                        <span>View Details & RSVP</span>
+                        <ChevronRight className="size-4" />
+                      </Link>
                     </Button>
                   </div>
                 </div>

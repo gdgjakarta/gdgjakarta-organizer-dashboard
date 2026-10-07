@@ -304,7 +304,7 @@ export const eventsColumns: ColumnDef<DataTableFeatures, EventRow>[] = [
             <DropdownMenuContent align="end">
               {row.original.id && (
                 <DropdownMenuItem asChild>
-                  <Link href={`/dashboard/member/events/${row.original.id}`} target="_blank" rel="noopener noreferrer">
+                  <Link href={`/events/${row.original.id}`} target="_blank" rel="noopener noreferrer">
                     <Eye className="mr-2 size-3.5" />
                     Preview Live Page
                   </Link>
@@ -314,7 +314,7 @@ export const eventsColumns: ColumnDef<DataTableFeatures, EventRow>[] = [
                 <DropdownMenuItem
                   onClick={() => {
                     const origin = typeof window !== "undefined" ? window.location.origin : "";
-                    const liveUrl = `${origin}/dashboard/member/events/${row.original.id}`;
+                    const liveUrl = `${origin}/events/${row.original.id}`;
                     void navigator.clipboard.writeText(liveUrl);
                     toast.success("Live page link copied to clipboard");
                   }}

@@ -78,6 +78,52 @@ export interface BevyMembersResponse {
   results?: BevyChapterMember[];
 }
 
+export interface BevySpeaker {
+  id?: number | string;
+  first_name?: string;
+  last_name?: string;
+  full_name?: string;
+  company?: string;
+  title?: string;
+  bio?: string;
+  picture?: {
+    url?: string;
+    thumbnail_url?: string;
+  };
+  picture_url?: string;
+  personal_twitter?: string;
+  company_twitter?: string;
+  linkedin_url?: string;
+}
+
+export interface BevyPartner {
+  id?: number | string;
+  company: string;
+  description?: string;
+  url?: string;
+  logo_url?: string;
+  is_global?: boolean;
+  visible?: boolean;
+}
+
+export interface BevyAgendaItem {
+  time: string;
+  activity: string;
+  description?: string;
+  audience_type?: string;
+}
+
+export interface BevyAgendaDay {
+  title: string;
+  items: BevyAgendaItem[];
+}
+
+export interface BevyAgenda {
+  multiday?: boolean;
+  empty?: boolean;
+  days?: BevyAgendaDay[];
+}
+
 export interface BevyEvent {
   id: number | string;
   title: string;
@@ -89,6 +135,7 @@ export interface BevyEvent {
   is_virtual_event?: boolean;
   start_date: string;
   end_date: string;
+  timezone?: string;
   status: "Draft" | "Published" | "Completed" | "Canceled" | string;
   picture?: {
     url?: string;
@@ -105,6 +152,7 @@ export interface BevyEvent {
   static_url?: string;
   relative_url?: string;
   total_attendees?: number;
+  total_capacity?: number;
   checkin_count?: number;
   total_tickets?: number;
   total_rsvps_sold?: number;
@@ -116,7 +164,10 @@ export interface BevyEvent {
   chapter?: {
     id: number | string;
     title: string;
-    slug: string;
+    slug?: string;
+    logo_url?: string;
+    city?: string;
+    country?: string;
   };
   venue_name?: string;
   venue_address?: string;
@@ -124,6 +175,11 @@ export interface BevyEvent {
   venue_state?: string;
   venue_zip_code?: string;
   venue_country?: string;
+  venue_latitude?: number;
+  venue_longitude?: number;
+  speakers?: BevySpeaker[];
+  partners?: BevyPartner[];
+  agenda?: BevyAgenda;
 }
 
 export interface BevyEventsResponse {
