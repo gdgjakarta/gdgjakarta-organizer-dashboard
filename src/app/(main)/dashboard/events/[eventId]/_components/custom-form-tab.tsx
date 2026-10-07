@@ -13,13 +13,24 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { VALIDATION_TYPE_OPTIONS } from "@/lib/events/question-validator";
 import {
   COMMITMENT_FEE_TEMPLATE,
   COMMON_MEETUP_TEMPLATE,
-  CURATED_COMBINED_SESSIONS_TEMPLATE,
-  CURATED_REGISTRATION_TEMPLATE,
+  CURATED_COMMITMENT_FEE_TEMPLATE,
+  CURATED_FREE_TEMPLATE,
+  CURATED_MULTI_COMMITMENT_TEMPLATE,
+  CURATED_MULTI_FREE_TEMPLATE,
+  CURATED_MULTI_PAID_TEMPLATE,
   DEFAULT_COMBINED_QUESTIONS,
   DEFAULT_GDG_SESSIONS,
   EVENT_FORMAT_TEMPLATES,
@@ -61,6 +72,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
   const [questions, setQuestions] = useState<CustomQuestion[]>(
     event.custom_questions && event.custom_questions.length > 0 ? event.custom_questions : DEFAULT_COMBINED_QUESTIONS,
   );
+  const [templateCategoryFilter, setTemplateCategoryFilter] = useState<"all" | "curated" | "standard">("all");
 
   // Load any previously saved Firestore settings on client mount
   useEffect(() => {
@@ -175,6 +187,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
         toast.success("Loaded Paid Registration questionnaire.");
         break;
       case "commitment":
+      case "commitment_fee":
         setQuestions(COMMITMENT_FEE_TEMPLATE);
         toast.success("Loaded Free Registration with Commitment Fee questionnaire.");
         break;
@@ -182,13 +195,27 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
         setQuestions(MULTI_TRACK_TEMPLATE);
         toast.success("Loaded Multiple Track / Session questionnaire.");
         break;
+      case "curated_free":
       case "curated":
-        setQuestions(CURATED_REGISTRATION_TEMPLATE);
-        toast.success("Loaded Curated Registration questionnaire (Mandatory Work Email & LinkedIn).");
+        setQuestions(CURATED_FREE_TEMPLATE);
+        toast.success("Loaded Curated Registration (Free) questionnaire.");
         break;
+      case "curated_commitment":
+        setQuestions(CURATED_COMMITMENT_FEE_TEMPLATE);
+        toast.success("Loaded Curated Registration (Commitment Fee) questionnaire.");
+        break;
+      case "curated_multi_free":
       case "curated_combined":
-        setQuestions(CURATED_COMBINED_SESSIONS_TEMPLATE);
-        toast.success("Loaded Curated Registration with Combined Sessions questionnaire.");
+        setQuestions(CURATED_MULTI_FREE_TEMPLATE);
+        toast.success("Loaded Curated Registration + Multiple Sessions (Free) questionnaire.");
+        break;
+      case "curated_multi_commitment":
+        setQuestions(CURATED_MULTI_COMMITMENT_TEMPLATE);
+        toast.success("Loaded Curated Registration + Multiple Sessions (Commitment Fee) questionnaire.");
+        break;
+      case "curated_multi_paid":
+        setQuestions(CURATED_MULTI_PAID_TEMPLATE);
+        toast.success("Loaded Curated Registration + Multiple Sessions (Paid) questionnaire.");
         break;
       case "combined":
         setQuestions(DEFAULT_COMBINED_QUESTIONS);
@@ -236,6 +263,10 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
     });
   };
 
+  const displayedTemplates = EVENT_FORMAT_TEMPLATES.filter(
+    (tmpl) => templateCategoryFilter === "all" || tmpl.category === templateCategoryFilter,
+  );
+
   return (
     <div className="space-y-6">
       {/* ── 0. EVENT FORMAT PRESETS & TEMPLATES ──────────────────────── */}
@@ -253,36 +284,98 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
 
           <div className="flex items-center gap-2">
             <Select onValueChange={handleApplyFormatTemplate}>
-              <SelectTrigger size="sm" className="h-8 w-[240px] bg-background text-xs shadow-2xs">
+              <SelectTrigger size="sm" className="h-8 w-full bg-background text-xs shadow-2xs sm:w-[280px]">
                 <SelectValue placeholder="Apply Format Template..." />
               </SelectTrigger>
-              <SelectContent>
-                {EVENT_FORMAT_TEMPLATES.map((tmpl) => (
-                  <SelectItem key={tmpl.id} value={tmpl.id} className="text-xs">
-                    <span className="font-medium">{tmpl.name}</span>
-                    <span className="ml-1.5 text-[10px] text-muted-foreground">({tmpl.badge})</span>
-                  </SelectItem>
-                ))}
+              <SelectContent className="max-h-80">
+                <SelectGroup>
+                  <SelectLabel className="font-semibold text-[10px] text-muted-foreground uppercase tracking-wider">
+                    Curated Formats (Work Email & LinkedIn)
+                  </SelectLabel>
+                  {EVENT_FORMAT_TEMPLATES.filter((t) => t.category === "curated").map((tmpl) => (
+                    <SelectItem key={tmpl.id} value={tmpl.id} className="text-xs">
+                      <span className="font-medium">{tmpl.name}</span>
+                      <span className="ml-1.5 text-[10px] text-muted-foreground">({tmpl.badge})</span>
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+                <SelectGroup>
+                  <SelectLabel className="font-semibold text-[10px] text-muted-foreground uppercase tracking-wider">
+                    Standard Open Formats
+                  </SelectLabel>
+                  {EVENT_FORMAT_TEMPLATES.filter((t) => t.category === "standard").map((tmpl) => (
+                    <SelectItem key={tmpl.id} value={tmpl.id} className="text-xs">
+                      <span className="font-medium">{tmpl.name}</span>
+                      <span className="ml-1.5 text-[10px] text-muted-foreground">({tmpl.badge})</span>
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
               </SelectContent>
             </Select>
           </div>
         </CardHeader>
-        <CardContent className="pt-0">
-          <div className="grid grid-cols-2 gap-2 pt-1 sm:grid-cols-3 lg:grid-cols-6">
-            {EVENT_FORMAT_TEMPLATES.map((tmpl) => (
+
+        <CardContent className="space-y-3 pt-0">
+          {/* Category Filter Pills */}
+          <div className="flex flex-wrap items-center gap-1.5 border-border/50 border-b pb-2.5">
+            <Button
+              type="button"
+              size="sm"
+              variant={templateCategoryFilter === "all" ? "secondary" : "ghost"}
+              className="h-7 px-2.5 text-xs"
+              onClick={() => setTemplateCategoryFilter("all")}
+            >
+              All Formats ({EVENT_FORMAT_TEMPLATES.length})
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={templateCategoryFilter === "curated" ? "secondary" : "ghost"}
+              className="h-7 gap-1.5 px-2.5 text-xs"
+              onClick={() => setTemplateCategoryFilter("curated")}
+            >
+              <span>Curated Formats (5)</span>
+              <Badge variant="outline" className="h-4 border-primary/30 px-1 font-mono text-[9px] text-primary">
+                Work Email + LinkedIn
+              </Badge>
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={templateCategoryFilter === "standard" ? "secondary" : "ghost"}
+              className="h-7 px-2.5 text-xs"
+              onClick={() => setTemplateCategoryFilter("standard")}
+            >
+              Standard Open Formats (4)
+            </Button>
+          </div>
+
+          {/* Quick-Apply Format Cards Grid (Multi-line title wrap) */}
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+            {displayedTemplates.map((tmpl) => (
               <button
                 key={tmpl.id}
                 type="button"
                 onClick={() => handleApplyFormatTemplate(tmpl.id)}
-                className="flex flex-col items-start gap-1 rounded-md border border-border/70 bg-card p-2.5 text-left transition-all hover:border-primary/50 hover:bg-muted/40 active:scale-[0.98]"
+                className="group flex min-h-[115px] flex-col justify-between rounded-lg border border-border/80 bg-card p-3 text-left transition-all hover:border-primary/60 hover:bg-muted/40 hover:shadow-xs active:scale-[0.99]"
               >
-                <span className="line-clamp-1 font-semibold text-foreground text-xs leading-snug">{tmpl.name}</span>
-                <Badge variant="outline" className="h-4 px-1.5 py-0 text-[10px]">
-                  {tmpl.badge}
-                </Badge>
-                <span className="line-clamp-2 pt-0.5 text-[10px] text-muted-foreground leading-tight">
+                <div className="w-full space-y-1.5">
+                  <div className="flex items-center justify-between gap-1.5">
+                    <Badge
+                      variant={tmpl.category === "curated" ? "default" : "secondary"}
+                      className="h-4.5 px-1.5 font-medium text-[10px]"
+                    >
+                      {tmpl.badge}
+                    </Badge>
+                    {tmpl.sessions && <span className="font-mono text-[10px] text-muted-foreground">3 Tracks</span>}
+                  </div>
+                  <span className="block hyphens-auto break-words font-semibold text-foreground text-xs leading-snug">
+                    {tmpl.name}
+                  </span>
+                </div>
+                <p className="line-clamp-2 pt-2 text-[11px] text-muted-foreground leading-relaxed">
                   {tmpl.description}
-                </span>
+                </p>
               </button>
             ))}
           </div>
@@ -586,17 +679,30 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
               <SelectTrigger size="sm" className="h-8 text-xs">
                 <SelectValue placeholder="Load Preset Template..." />
               </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="free">Free Registration (Open Meetup)</SelectItem>
-                <SelectItem value="paid">Paid Registration (Ticketing & Invoice)</SelectItem>
-                <SelectItem value="commitment">Free with Commitment Fee (Refundable)</SelectItem>
-                <SelectItem value="multi_track">Multiple Track / Session Form</SelectItem>
-                <SelectItem value="curated">Curated Registration (Mandatory Work Email & LinkedIn)</SelectItem>
-                <SelectItem value="curated_combined">Curated Combined Sessions (Sprint)</SelectItem>
-                <SelectItem value="combined">Combined Default Form (Full 23 Fields)</SelectItem>
-                <SelectItem value="devfest">Road to DevFest Builder Sprint</SelectItem>
-                <SelectItem value="common">Common Meetup & Talk</SelectItem>
-                <SelectItem value="quick">Quick Lightweight RSVP</SelectItem>
+              <SelectContent className="max-h-80">
+                <SelectGroup>
+                  <SelectLabel className="font-semibold text-[10px] text-muted-foreground uppercase tracking-wider">
+                    Curated Questionnaires (Work Email & LinkedIn)
+                  </SelectLabel>
+                  <SelectItem value="curated_free">Curated Registration (Free)</SelectItem>
+                  <SelectItem value="curated_commitment">Curated Registration (Commitment Fee)</SelectItem>
+                  <SelectItem value="curated_multi_free">Curated + Multiple Sessions (Free)</SelectItem>
+                  <SelectItem value="curated_multi_commitment">Curated + Multiple Sessions (Commitment Fee)</SelectItem>
+                  <SelectItem value="curated_multi_paid">Curated + Multiple Sessions (Paid)</SelectItem>
+                </SelectGroup>
+                <SelectGroup>
+                  <SelectLabel className="font-semibold text-[10px] text-muted-foreground uppercase tracking-wider">
+                    Standard Questionnaires
+                  </SelectLabel>
+                  <SelectItem value="free">Free Registration (Open Meetup)</SelectItem>
+                  <SelectItem value="paid">Paid Registration (Ticketing & Invoice)</SelectItem>
+                  <SelectItem value="commitment">Free with Commitment Fee (Refundable)</SelectItem>
+                  <SelectItem value="multi_track">Multiple Track / Session Form</SelectItem>
+                  <SelectItem value="quick">Quick Lightweight RSVP</SelectItem>
+                  <SelectItem value="combined">Combined Default Form (Full 23 Fields)</SelectItem>
+                  <SelectItem value="devfest">Road to DevFest Builder Sprint</SelectItem>
+                  <SelectItem value="common">Common Meetup & Talk</SelectItem>
+                </SelectGroup>
               </SelectContent>
             </Select>
 
