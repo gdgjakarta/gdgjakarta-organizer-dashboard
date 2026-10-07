@@ -152,11 +152,24 @@ export function PublicEventTabs({ event, firestoreSessions }: PublicEventTabsPro
                                 <Clock className="size-3" /> {sess.time_slot}
                               </span>
                             )}
-                            {sess.location && (
-                              <span className="flex items-center gap-1">
-                                <MapPin className="size-3" /> {sess.location}
-                              </span>
-                            )}
+                            {(sess.location || sess.location_url) &&
+                              (sess.location_url ? (
+                                <a
+                                  href={sess.location_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-primary transition-colors hover:text-primary/80 hover:underline"
+                                  title="Open Google Maps / Venue Location"
+                                >
+                                  <MapPin className="size-3" />
+                                  <span>{sess.location || "Google Maps"}</span>
+                                  <ExternalLink className="size-2.5" />
+                                </a>
+                              ) : (
+                                <span className="flex items-center gap-1">
+                                  <MapPin className="size-3" /> {sess.location}
+                                </span>
+                              ))}
                           </div>
                         </div>
 
