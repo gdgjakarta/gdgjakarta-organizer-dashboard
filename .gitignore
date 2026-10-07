@@ -49,3 +49,17 @@ service-account/
 /service-account/
 *.service-account.json
 service-account.json
+
+# firebase
+.firebase/
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
+
+# ide / editors
+.idea/
+.vscode/
+*.swp
+*.swo
+Thumbs.db
+

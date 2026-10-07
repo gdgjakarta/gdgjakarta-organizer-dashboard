@@ -705,7 +705,9 @@ textarea:disabled,
   --tw-ring-shadow: 0 0 #0000 !important;
   --tw-ring-offset-shadow: 0 0 #0000 !important;
   outline: none !important;
-  box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow, 0 1px 2px 0 rgb(0 0 0 / 0.05)) !important;
+  box-shadow:
+    var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000),
+    var(--tw-shadow, 0 1px 2px 0 rgb(0 0 0 / 0.05)) !important;
 }
 
 [data-slot="sidebar-wrapper"] [data-slot="card-header"],
@@ -718,4 +720,3 @@ textarea:disabled,
   border-bottom-width: 0 !important;
   border-color: transparent !important;
 }
-

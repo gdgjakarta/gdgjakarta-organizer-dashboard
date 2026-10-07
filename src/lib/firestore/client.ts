@@ -207,20 +207,35 @@ export async function checkExistingRegistration(
       }
     }
 
-    // 2. Fetch all registrations for this specific event and match email or member_id
-    const eventQuery = query(regRef, where("event_id", "==", eventIdStr));
-    const eventSnap = await getDocs(eventQuery);
-    for (const docSnap of eventSnap.docs) {
-      const data = docSnap.data() as FirestoreRegistration;
-      const docEmail = data.member_email.trim().toLowerCase();
-      if ((normalizedEmail && docEmail === normalizedEmail) || (memberId && data.member_id === memberId)) {
-        return { ...data, id: docSnap.id };
+    // 2. Query scoped directly to the caller's member ID (avoids listing all event attendees)
+    if (memberId) {
+      const memberQuery = query(
+        regRef,
+        where("event_id", "==", eventIdStr),
+        where("member_id", "==", String(memberId)),
+      );
+      const snap = await getDocs(memberQuery);
+      if (!snap.empty) {
+        return { id: snap.docs[0].id, ...snap.docs[0].data() } as FirestoreRegistration;
+      }
+    }
+
+    // 3. Fallback scoped query by verified email
+    if (normalizedEmail) {
+      const emailQuery = query(
+        regRef,
+        where("event_id", "==", eventIdStr),
+        where("member_email", "==", normalizedEmail),
+      );
+      const snap = await getDocs(emailQuery);
+      if (!snap.empty) {
+        return { id: snap.docs[0].id, ...snap.docs[0].data() } as FirestoreRegistration;
       }
     }
 
     return null;
   } catch (error) {
-    console.error("[Firestore] checkExistingRegistration error:", error);
+    console.warn("[Firestore] checkExistingRegistration error:", error);
     return null;
   }
 }
