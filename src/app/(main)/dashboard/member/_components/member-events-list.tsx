@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 import { format, parseISO } from "date-fns";
-import { Calendar, Clock, MapPin, Radio } from "lucide-react";
+import { Calendar, Clock, Globe, MapPin, Radio } from "lucide-react";
 
 import { EventCardImage } from "@/components/event-card-image";
 import { EventRegistrationModal } from "@/components/event-registration-modal";
@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { resolveEventAudience } from "@/lib/bevy/audience";
 import { fetchMemberRegistrationsAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
 import { useAuthStore } from "@/stores/auth/auth-provider";
@@ -108,15 +109,28 @@ export function MemberEventsList({ events, myRegistrations = [] }: MemberEventsL
                   >
                     <div className="absolute top-3 left-3 z-20 flex gap-1.5">
                       <Badge variant="secondary" className="bg-background/85 text-[10px] backdrop-blur-xs">
-                        {event.is_virtual ? (
-                          <span className="flex items-center gap-1 text-blue-500">
-                            <Radio className="size-3" /> Virtual
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1 text-emerald-500">
-                            <MapPin className="size-3" /> In-Person
-                          </span>
-                        )}
+                        {(() => {
+                          const { isVirtual, isHybrid } = resolveEventAudience(event.audience_type, event.is_virtual);
+                          if (isVirtual) {
+                            return (
+                              <span className="flex items-center gap-1 text-blue-500">
+                                <Radio className="size-3" /> Virtual
+                              </span>
+                            );
+                          }
+                          if (isHybrid) {
+                            return (
+                              <span className="flex items-center gap-1 text-purple-500">
+                                <Globe className="size-3" /> Hybrid
+                              </span>
+                            );
+                          }
+                          return (
+                            <span className="flex items-center gap-1 text-emerald-500">
+                              <MapPin className="size-3" /> In-Person
+                            </span>
+                          );
+                        })()}
                       </Badge>
                       <Badge variant="secondary" className="bg-background/85 text-[10px] backdrop-blur-xs">
                         {isPast ? "Concluded" : "Upcoming"}

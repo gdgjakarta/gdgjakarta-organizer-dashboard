@@ -26,6 +26,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { resolveEventAudience } from "@/lib/bevy/audience";
 import { checkEventRegistrationAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
 import { useAuthStore } from "@/stores/auth/auth-provider";
@@ -60,6 +61,7 @@ function isEventPast(event?: FirestoreEvent): boolean {
 export function MemberEventDetail({ event, initialRegistration = null }: MemberEventDetailProps) {
   const user = useAuthStore((s) => s.user);
   const [registration, setRegistration] = useState<FirestoreRegistration | null>(initialRegistration);
+  const { isVirtual, isHybrid } = resolveEventAudience(event.audience_type, event.is_virtual);
 
   useEffect(() => {
     async function checkMyRegistration() {
@@ -201,9 +203,13 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
           >
             <div className="absolute top-4 left-4 z-20 flex gap-2">
               <Badge variant="secondary" className="bg-background/90 text-xs backdrop-blur-md">
-                {event.is_virtual ? (
+                {isVirtual ? (
                   <span className="flex items-center gap-1.5 text-blue-500">
                     <Radio className="size-3.5" /> Virtual Event
+                  </span>
+                ) : isHybrid ? (
+                  <span className="flex items-center gap-1.5 text-purple-500">
+                    <Globe className="size-3.5" /> Hybrid Event
                   </span>
                 ) : (
                   <span className="flex items-center gap-1.5 text-emerald-500">
@@ -345,19 +351,27 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
               <Separator />
 
               <div className="flex items-start gap-3">
-                {event.is_virtual ? (
-                  <Globe className="mt-0.5 size-4 shrink-0 text-blue-500" />
+                {isVirtual ? (
+                  <Radio className="mt-0.5 size-4 shrink-0 text-blue-500" />
+                ) : isHybrid ? (
+                  <Globe className="mt-0.5 size-4 shrink-0 text-purple-500" />
                 ) : (
                   <MapPin className="mt-0.5 size-4 shrink-0 text-emerald-500" />
                 )}
                 <div>
                   <div className="font-medium text-foreground">
-                    {event.is_virtual ? "Virtual Session" : "In-Person Venue"}
+                    {isVirtual ? "Virtual Session" : isHybrid ? "Hybrid Session & Venue" : "In-Person Venue"}
                   </div>
                   <div className="text-muted-foreground">
-                    {event.is_virtual
+                    {isVirtual
                       ? "Online link will be provided upon registration approval"
-                      : "Jakarta, Indonesia (See Bevy page for detailed map)"}
+                      : isHybrid
+                        ? event.venue?.name
+                          ? `${event.venue.name} & Online link provided upon approval`
+                          : "Jakarta, Indonesia & Online Session"
+                        : event.venue?.name
+                          ? `${event.venue.name}${event.venue.city ? `, ${event.venue.city}` : ""}`
+                          : "Jakarta, Indonesia (See Bevy page for detailed map)"}
                   </div>
                 </div>
               </div>

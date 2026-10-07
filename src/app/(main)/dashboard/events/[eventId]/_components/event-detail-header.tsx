@@ -6,12 +6,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { format, parseISO } from "date-fns";
-import { ArrowLeft, Calendar, CheckCircle2, ExternalLink, MapPin, Radio, RefreshCw, Users } from "lucide-react";
+import { ArrowLeft, Calendar, CheckCircle2, ExternalLink, Globe, MapPin, Radio, RefreshCw, Users } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getBevyManageEventUrl } from "@/config/remote-config-utils";
+import { resolveEventAudience } from "@/lib/bevy/audience";
 import { triggerEventsSyncAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
@@ -49,6 +50,8 @@ export function EventDetailHeader({ event, totalRegistrations, totalApproved }: 
   } catch {
     // Keep raw string
   }
+
+  const { isVirtual, isHybrid } = resolveEventAudience(event.audience_type, event.is_virtual);
 
   return (
     <div className="flex flex-col gap-4 border-b pb-6">
@@ -88,14 +91,31 @@ export function EventDetailHeader({ event, totalRegistrations, totalApproved }: 
               </Badge>
             ) : null}
 
-            <Badge variant="outline" className="gap-1">
-              {event.is_virtual ? (
-                <Radio className="size-3 text-blue-500" />
-              ) : (
-                <MapPin className="size-3 text-emerald-500" />
-              )}
-              {event.is_virtual ? "Virtual" : "In-Person"}
-            </Badge>
+            {isVirtual ? (
+              <Badge
+                variant="outline"
+                className="gap-1 border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400"
+              >
+                <Radio className="size-3" />
+                Virtual
+              </Badge>
+            ) : isHybrid ? (
+              <Badge
+                variant="outline"
+                className="gap-1 border-purple-500/20 bg-purple-500/10 text-purple-600 dark:text-purple-400"
+              >
+                <Globe className="size-3" />
+                Hybrid
+              </Badge>
+            ) : (
+              <Badge
+                variant="outline"
+                className="gap-1 border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+              >
+                <MapPin className="size-3" />
+                In-Person
+              </Badge>
+            )}
 
             {event.event_type_title && (
               <Badge variant="secondary" className="font-normal text-xs">
@@ -111,6 +131,18 @@ export function EventDetailHeader({ event, totalRegistrations, totalApproved }: 
               <Calendar className="size-4" />
               {formattedDate}
             </span>
+            {event.venue?.name && (
+              <>
+                <span>•</span>
+                <span className="flex items-center gap-1.5">
+                  <MapPin className="size-4 text-emerald-600 dark:text-emerald-400" />
+                  <span>
+                    {event.venue.name}
+                    {event.venue.city ? `, ${event.venue.city}` : ""}
+                  </span>
+                </span>
+              </>
+            )}
             <span>•</span>
             <span className="flex items-center gap-1.5">
               <Users className="size-4" />

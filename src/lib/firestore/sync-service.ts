@@ -2,6 +2,7 @@
 
 import { doc, writeBatch } from "firebase/firestore";
 
+import { resolveEventAudience } from "@/lib/bevy/audience";
 import { splitFullName } from "@/lib/utils";
 import {
   fetchBevyChapterEventsAction,
@@ -61,6 +62,8 @@ export async function syncBevyEventsToFirestore(): Promise<{
         status = "Completed";
       }
 
+      const { audienceType, isVirtual } = resolveEventAudience(event.audience_type, event.is_virtual_event);
+
       const rawEventPayload: Record<string, unknown> = {
         id: eventId,
         title: event.title || "Untitled Event",
@@ -72,8 +75,16 @@ export async function syncBevyEventsToFirestore(): Promise<{
         picture_url: event.picture?.thumbnail_url || event.picture?.url || event.banner?.thumbnail_url || null,
         banner_url: event.banner?.url || event.cropped_banner_url || null,
         event_type_title: event.event_type_title || "Standard Event",
-        audience_type: event.audience_type || (event.is_virtual_event ? "VIRTUAL" : "IN_PERSON"),
-        is_virtual: Boolean(event.is_virtual_event || event.audience_type === "VIRTUAL"),
+        audience_type: audienceType,
+        is_virtual: isVirtual,
+        venue:
+          event.venue_name || event.venue_address || event.venue_city
+            ? {
+                name: event.venue_name,
+                address: event.venue_address,
+                city: event.venue_city,
+              }
+            : null,
         url: event.url || event.cohost_registration_url || null,
         static_url: event.static_url || null,
         tags: event.tags || [],

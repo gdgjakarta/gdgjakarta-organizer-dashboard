@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { FileSpreadsheet, Package, Users } from "lucide-react";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { getAllBevyChapterEvents, getBevyEventById } from "@/lib/bevy/client";
+import { getAllBevyChapterEvents, getBevyEventById, resolveEventAudience } from "@/lib/bevy/client";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
 
 import { CustomFormTab } from "./_components/custom-form-tab";
@@ -26,6 +26,7 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
   try {
     const direct = await getBevyEventById(eventId);
     if (direct) {
+      const { audienceType, isVirtual } = resolveEventAudience(direct.audience_type, direct.is_virtual_event);
       event = {
         id: String(direct.id),
         title: direct.title,
@@ -37,8 +38,16 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
         picture_url: direct.picture?.thumbnail_url ?? direct.picture?.url ?? undefined,
         banner_url: direct.banner?.url ?? undefined,
         event_type_title: direct.event_type_title ?? "Standard Event",
-        audience_type: direct.audience_type ?? (direct.is_virtual_event ? "VIRTUAL" : "IN_PERSON"),
-        is_virtual: Boolean(direct.is_virtual_event ?? direct.audience_type === "VIRTUAL"),
+        audience_type: audienceType,
+        is_virtual: isVirtual,
+        venue:
+          direct.venue_name || direct.venue_address || direct.venue_city
+            ? {
+                name: direct.venue_name,
+                address: direct.venue_address,
+                city: direct.venue_city,
+              }
+            : undefined,
         url: direct.url ?? undefined,
         static_url: direct.static_url ?? undefined,
         tags: direct.tags ?? [],
@@ -55,6 +64,7 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
       const { results: chapterEvents } = await getAllBevyChapterEvents(undefined, true, "All");
       const matched = chapterEvents.find((e) => String(e.id) === eventId);
       if (matched) {
+        const { audienceType, isVirtual } = resolveEventAudience(matched.audience_type, matched.is_virtual_event);
         event = {
           id: String(matched.id),
           title: matched.title,
@@ -66,8 +76,16 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
           picture_url: matched.picture?.thumbnail_url ?? matched.picture?.url ?? undefined,
           banner_url: matched.banner?.url ?? undefined,
           event_type_title: matched.event_type_title ?? "Standard Event",
-          audience_type: matched.audience_type ?? (matched.is_virtual_event ? "VIRTUAL" : "IN_PERSON"),
-          is_virtual: Boolean(matched.is_virtual_event ?? matched.audience_type === "VIRTUAL"),
+          audience_type: audienceType,
+          is_virtual: isVirtual,
+          venue:
+            matched.venue_name || matched.venue_address || matched.venue_city
+              ? {
+                  name: matched.venue_name,
+                  address: matched.venue_address,
+                  city: matched.venue_city,
+                }
+              : undefined,
           url: matched.url ?? undefined,
           static_url: matched.static_url ?? undefined,
           tags: matched.tags ?? [],

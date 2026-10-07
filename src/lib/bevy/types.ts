@@ -118,6 +118,12 @@ export interface BevyEvent {
     title: string;
     slug: string;
   };
+  venue_name?: string;
+  venue_address?: string;
+  venue_city?: string;
+  venue_state?: string;
+  venue_zip_code?: string;
+  venue_country?: string;
 }
 
 export interface BevyEventsResponse {

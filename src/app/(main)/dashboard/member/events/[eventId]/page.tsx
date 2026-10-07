@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 
-import { getBevyChapterEvents, getBevyEventById } from "@/lib/bevy/client";
+import { getBevyChapterEvents, getBevyEventById, resolveEventAudience } from "@/lib/bevy/client";
 import type { FirestoreEvent } from "@/lib/firestore/types";
 
 import { MemberEventDetail } from "./_components/member-event-detail";
@@ -22,6 +22,7 @@ export default async function MemberEventDetailPage({ params }: MemberEventDetai
       if (direct.is_hidden || (direct as { hidden?: boolean }).hidden) {
         notFound();
       }
+      const { audienceType, isVirtual } = resolveEventAudience(direct.audience_type, direct.is_virtual_event);
       event = {
         id: String(direct.id),
         title: direct.title,
@@ -33,8 +34,16 @@ export default async function MemberEventDetailPage({ params }: MemberEventDetai
         picture_url: direct.picture?.thumbnail_url ?? direct.picture?.url ?? undefined,
         banner_url: direct.banner?.url ?? undefined,
         event_type_title: direct.event_type_title ?? "Standard Event",
-        audience_type: direct.audience_type ?? (direct.is_virtual_event ? "VIRTUAL" : "IN_PERSON"),
-        is_virtual: Boolean(direct.is_virtual_event ?? direct.audience_type === "VIRTUAL"),
+        audience_type: audienceType,
+        is_virtual: isVirtual,
+        venue:
+          direct.venue_name || direct.venue_address || direct.venue_city
+            ? {
+                name: direct.venue_name,
+                address: direct.venue_address,
+                city: direct.venue_city,
+              }
+            : undefined,
         url: direct.url ?? undefined,
         static_url: direct.static_url ?? undefined,
         tags: direct.tags ?? [],
@@ -57,6 +66,7 @@ export default async function MemberEventDetailPage({ params }: MemberEventDetai
           (e.status ? e.status.toLowerCase() === "published" : true),
       );
       if (matched) {
+        const { audienceType, isVirtual } = resolveEventAudience(matched.audience_type, matched.is_virtual_event);
         event = {
           id: String(matched.id),
           title: matched.title,
@@ -68,8 +78,16 @@ export default async function MemberEventDetailPage({ params }: MemberEventDetai
           picture_url: matched.picture?.thumbnail_url ?? matched.picture?.url ?? undefined,
           banner_url: matched.banner?.url ?? undefined,
           event_type_title: matched.event_type_title ?? "Standard Event",
-          audience_type: matched.audience_type ?? (matched.is_virtual_event ? "VIRTUAL" : "IN_PERSON"),
-          is_virtual: Boolean(matched.is_virtual_event ?? matched.audience_type === "VIRTUAL"),
+          audience_type: audienceType,
+          is_virtual: isVirtual,
+          venue:
+            matched.venue_name || matched.venue_address || matched.venue_city
+              ? {
+                  name: matched.venue_name,
+                  address: matched.venue_address,
+                  city: matched.venue_city,
+                }
+              : undefined,
           url: matched.url ?? undefined,
           static_url: matched.static_url ?? undefined,
           tags: matched.tags ?? [],

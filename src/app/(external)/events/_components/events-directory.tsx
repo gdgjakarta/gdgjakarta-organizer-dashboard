@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { resolveEventAudience } from "@/lib/bevy/audience";
 import type { BevyEvent } from "@/lib/bevy/types";
 import { fetchBevyChapterEventsAction } from "@/server/bevy-actions";
 
@@ -19,13 +20,8 @@ interface EventsDirectoryProps {
 }
 
 function getAudienceLabel(event: BevyEvent): string {
-  if (event.audience_type === "VIRTUAL" || event.is_virtual_event) {
-    return "Virtual";
-  }
-  if (event.audience_type === "HYBRID") {
-    return "Hybrid";
-  }
-  return "In-Person";
+  const { label } = resolveEventAudience(event.audience_type, event.is_virtual_event);
+  return label;
 }
 
 export function EventsDirectory({ initialEvents, totalCount, pageSize = 15 }: EventsDirectoryProps) {

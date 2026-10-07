@@ -8,6 +8,7 @@ import {
   getBevyChapterSlim,
   getChapterTeam,
   isEventActive,
+  resolveEventAudience,
 } from "@/lib/bevy/client";
 import type { FirestoreEvent, FirestoreMember } from "@/lib/firestore/types";
 
@@ -46,7 +47,7 @@ export default async function Page() {
     events = rawEvents
       .filter((e) => !e.is_hidden && !(e as { hidden?: boolean }).hidden)
       .map((e) => {
-        const audienceType = e.audience_type || (e.is_virtual_event ? "VIRTUAL" : "IN_PERSON");
+        const { audienceType, isVirtual } = resolveEventAudience(e.audience_type, e.is_virtual_event);
         return {
           id: String(e.id),
           title: e.title || "Untitled Event",
@@ -59,7 +60,15 @@ export default async function Page() {
           banner_url: e.banner?.url,
           event_type_title: e.event_type_title || "Standard Event",
           audience_type: audienceType,
-          is_virtual: audienceType === "VIRTUAL",
+          is_virtual: isVirtual,
+          venue:
+            e.venue_name || e.venue_address || e.venue_city
+              ? {
+                  name: e.venue_name,
+                  address: e.venue_address,
+                  city: e.venue_city,
+                }
+              : undefined,
           url: e.url,
           static_url: e.static_url,
           tags: e.tags || [],

@@ -25,6 +25,8 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { UnsavedChangesDialog } from "@/components/unsaved-changes-dialog";
+import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
 import { usePartnershipContent } from "@/lib/content/hooks";
 import type { PartnershipFaq, PartnershipFormat, PartnershipTier } from "@/lib/content/types";
 import { cn } from "@/lib/utils";
@@ -33,7 +35,21 @@ import { FormatDialog } from "./format-dialog";
 import { TierDialog } from "./tier-dialog";
 
 export function PartnershipDashboard() {
-  const { content, setContent, loading, saving, saveContent, resetToDefaults } = usePartnershipContent();
+  const { content, setContent, hasChanges, discardChanges, loading, saving, saveContent, resetToDefaults } =
+    usePartnershipContent();
+
+  const {
+    showPrompt: showUnsavedPrompt,
+    setShowPrompt: setShowUnsavedPrompt,
+    isSaving: isSavingAndLeaving,
+    cancelNavigation,
+    confirmDiscardAndLeave,
+    confirmSaveAndLeave,
+  } = useUnsavedChanges({
+    hasChanges,
+    onSave: async () => saveContent(content),
+    onDiscard: discardChanges,
+  });
 
   const [activeTab, setActiveTab] = useState("hero");
 
@@ -112,13 +128,25 @@ export function PartnershipDashboard() {
       {/* Top Header & Actions Bar */}
       <div className="flex flex-col gap-4 border-b pb-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <h1 className="font-bold text-foreground text-xl tracking-tight sm:text-2xl lg:text-3xl">
               Partnership & Sponsorship Configuration
             </h1>
             <Badge variant="outline" className="hidden text-xs sm:inline-flex">
               Live Editor
             </Badge>
+            {hasChanges && (
+              <Badge
+                variant="outline"
+                className="inline-flex items-center gap-1.5 border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-xs font-medium animate-in fade-in duration-200"
+              >
+                <span className="relative flex size-1.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
+                  <span className="relative inline-flex size-1.5 rounded-full bg-amber-500" />
+                </span>
+                Unsaved Changes
+              </Badge>
+            )}
           </div>
           <p className="mt-1 text-muted-foreground text-xs sm:text-sm">
             Configure sponsorship tiers, featured event spotlight, collaboration formats, and inquiry contact settings.
@@ -147,12 +175,34 @@ export function PartnershipDashboard() {
 
           <Button
             size="sm"
+            variant={hasChanges ? "default" : "secondary"}
             onClick={() => saveContent(content)}
-            disabled={saving || loading}
-            className="w-full justify-center gap-1.5 font-semibold text-xs sm:w-auto"
+            disabled={!hasChanges || saving || loading}
+            title={hasChanges ? "Save partnership configuration changes" : "No unsaved changes"}
+            className={cn(
+              "w-full justify-center gap-1.5 font-semibold text-xs sm:w-auto transition-all",
+              !hasChanges &&
+                "bg-muted text-muted-foreground/70 border border-border/50 shadow-none cursor-not-allowed hover:bg-muted opacity-60",
+              hasChanges && "ring-1 ring-primary/20 shadow-xs hover:ring-primary/40",
+            )}
           >
-            <Save className="size-3.5" />
-            <span>{saving ? "Saving..." : "Save Changes"}</span>
+            {saving ? (
+              <>
+                <RefreshCw className="size-3.5 animate-spin" />
+                <span>Saving...</span>
+              </>
+            ) : (
+              <>
+                {hasChanges && (
+                  <span className="relative flex size-1.5 mr-0.5">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
+                    <span className="relative inline-flex size-1.5 rounded-full bg-amber-400" />
+                  </span>
+                )}
+                <Save className="size-3.5" />
+                <span>Save Changes</span>
+              </>
+            )}
           </Button>
         </div>
       </div>
@@ -1165,6 +1215,18 @@ export function PartnershipDashboard() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Unsaved Changes Warning Dialog */}
+      <UnsavedChangesDialog
+        open={showUnsavedPrompt}
+        onOpenChange={setShowUnsavedPrompt}
+        onCancel={cancelNavigation}
+        onDiscard={confirmDiscardAndLeave}
+        onSave={confirmSaveAndLeave}
+        saving={isSavingAndLeaving}
+        title="Unsaved Partnership Changes"
+        description="You have unsaved changes in your Partnership & Sponsorship configuration. If you leave without saving, your modifications will be discarded."
+      />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { toast } from "sonner";
 
@@ -53,11 +53,41 @@ function writeCache<T>(key: string, value: T) {
   }
 }
 
+export function fastCanonicalStringify(obj: unknown): string {
+  if (obj === null || typeof obj !== "object") {
+    return JSON.stringify(obj);
+  }
+  if (Array.isArray(obj)) {
+    return `[${obj.map(fastCanonicalStringify).join(",")}]`;
+  }
+  const keys = Object.keys(obj as Record<string, unknown>).sort();
+  return `{${keys
+    .filter((k) => (obj as Record<string, unknown>)[k] !== undefined)
+    .map((k) => `${JSON.stringify(k)}:${fastCanonicalStringify((obj as Record<string, unknown>)[k])}`)
+    .join(",")}}`;
+}
+
 function useContent<T extends object>(config: ContentConfig<T>) {
   // Always start from defaults so server and client render the same markup (no hydration mismatch).
   const [content, setContent] = useState<T>(config.defaults);
+  const [savedContent, setSavedContent] = useState<T>(config.defaults);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const hasUserEditedRef = useRef({ edited: false });
+
+  const hasChanges = useMemo(() => {
+    return fastCanonicalStringify(content) !== fastCanonicalStringify(savedContent);
+  }, [content, savedContent]);
+
+  const updateContent: typeof setContent = useCallback((value) => {
+    hasUserEditedRef.current.edited = true;
+    setContent(value);
+  }, []);
+
+  const discardChanges = useCallback(() => {
+    setContent(savedContent);
+    hasUserEditedRef.current.edited = false;
+  }, [savedContent]);
 
   useEffect(() => {
     let isMounted = true;
@@ -65,7 +95,11 @@ function useContent<T extends object>(config: ContentConfig<T>) {
 
     try {
       const cached = localStorage.getItem(config.cacheKey);
-      if (cached) setContent({ ...config.defaults, ...(JSON.parse(cached) as Partial<T>) });
+      if (cached) {
+        const parsed = { ...config.defaults, ...(JSON.parse(cached) as Partial<T>) };
+        setContent(parsed);
+        setSavedContent(parsed);
+      }
     } catch {
       // Ignore malformed cache.
     }
@@ -73,7 +107,12 @@ function useContent<T extends object>(config: ContentConfig<T>) {
     const apply = (data: T) => {
       if (!isMounted) return;
       const merged = { ...config.defaults, ...data };
-      setContent(merged);
+      if (!hasUserEditedRef.current.edited) {
+        setContent(merged);
+        setSavedContent(merged);
+      } else {
+        setSavedContent(merged);
+      }
       writeCache(config.cacheKey, merged);
     };
 
@@ -107,6 +146,8 @@ function useContent<T extends object>(config: ContentConfig<T>) {
       try {
         await config.save(newContent);
         setContent(newContent);
+        setSavedContent(newContent);
+        hasUserEditedRef.current.edited = false;
         writeCache(config.cacheKey, newContent);
         await Promise.all(config.revalidatePaths.map((p) => revalidateDashboardPath(p)));
         toast.success(`${config.label} content saved`, {
@@ -128,7 +169,17 @@ function useContent<T extends object>(config: ContentConfig<T>) {
 
   const resetToDefaults = useCallback(() => saveContent(config.defaults), [saveContent, config]);
 
-  return { content, setContent, loading, saving, saveContent, resetToDefaults };
+  return {
+    content,
+    setContent: updateContent,
+    savedContent,
+    hasChanges,
+    discardChanges,
+    loading,
+    saving,
+    saveContent,
+    resetToDefaults,
+  };
 }
 
 export function useFaqContent() {

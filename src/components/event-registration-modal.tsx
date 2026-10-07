@@ -22,6 +22,7 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { resolveEventAudience } from "@/lib/bevy/audience";
 import { checkEventRegistrationAction, registerForEventAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
 import { useAuthStore } from "@/stores/auth/auth-provider";
@@ -210,7 +211,7 @@ export function EventRegistrationModal({ event, existingRegistration, children }
         <DialogHeader>
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="text-[10px]">
-              {event.is_virtual ? "Virtual" : "In-Person"}
+              {resolveEventAudience(event.audience_type, event.is_virtual).label}
             </Badge>
             {event.requires_approval && (
               <Badge variant="secondary" className="text-[10px]">

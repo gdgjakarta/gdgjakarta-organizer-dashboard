@@ -1,7 +1,7 @@
 import { format, isFuture, parseISO } from "date-fns";
 import type { Metadata } from "next";
 
-import { getAllBevyChapterEvents } from "@/lib/bevy/client";
+import { getAllBevyChapterEvents, resolveEventAudience } from "@/lib/bevy/client";
 
 import { type EventRow, type EventStatus, fallbackEvents } from "./_components/data";
 import { Events } from "./_components/events";
@@ -61,7 +61,7 @@ export default async function Page() {
         const checkinCount = event.checkin_count ?? 0;
         const dropped = Math.max(0, totalAttendees - checkinCount);
         const dropRate = totalAttendees > 0 ? (dropped / totalAttendees) * 100 : undefined;
-        const audienceType = event.audience_type ?? (event.is_virtual_event ? "VIRTUAL" : "IN_PERSON");
+        const { audienceType, isVirtual } = resolveEventAudience(event.audience_type, event.is_virtual_event);
 
         return {
           id: event.id,
@@ -71,7 +71,7 @@ export default async function Page() {
           status,
           eventType: event.event_type_title || "Standard Event",
           audienceType,
-          isVirtual: audienceType === "VIRTUAL",
+          isVirtual,
           totalAttendees,
           checkinCount,
           dropRate,
