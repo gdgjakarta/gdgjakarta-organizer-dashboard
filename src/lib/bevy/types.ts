@@ -124,6 +124,9 @@ export interface BevyAgendaItem {
   activity: string;
   description?: string;
   audience_type?: string;
+  slides_url?: string;
+  slides_title?: string;
+  related_links?: Array<{ title: string; url: string }>;
 }
 
 export interface BevyAgendaDay {
@@ -220,6 +223,12 @@ export interface BevyEvent {
   partners_list?: unknown[];
   media_partners?: unknown[];
   agenda?: BevyAgenda;
+  video_url?: string;
+  highlight_video_url?: string;
+  highlight_video_title?: string;
+  photo_album_url?: string;
+  photo_album_title?: string;
+  recap_description?: string;
   [key: string]: unknown;
 }
 

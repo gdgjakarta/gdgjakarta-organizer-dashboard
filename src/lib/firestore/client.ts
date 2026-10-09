@@ -63,6 +63,7 @@ export function sanitizeFirestoreData<T>(data: T): T {
 }
 
 import type {
+  EventMerchandiseItem,
   FirestoreEvent,
   FirestoreMember,
   FirestoreRegistration,
@@ -219,7 +220,12 @@ export function subscribeEventRegistrations(
   try {
     const regRef = collection(db, "event_registrations");
     const strId = String(eventId);
-    const q = query(regRef, where("event_id", "==", strId));
+    const numId = Number(eventId);
+    const hasNum = !Number.isNaN(numId) && String(numId) === strId;
+
+    const q = hasNum
+      ? query(regRef, where("event_id", "in", [strId, numId]))
+      : query(regRef, where("event_id", "==", strId));
 
     return onSnapshot(
       q,
@@ -478,6 +484,16 @@ export async function updateRegistrationStatus(
   } catch (err) {
     console.warn("[Firestore] Failed to recalculate approved counter:", err);
   }
+}
+
+export async function updateEventMerchandise(eventId: string, merchandise: EventMerchandiseItem[]): Promise<void> {
+  if (typeof window === "undefined") return;
+  const eventRef = doc(db, "events", String(eventId));
+  const sanitized = sanitizeFirestoreData({
+    merchandise,
+    updated_at: new Date().toISOString(),
+  });
+  await setDoc(eventRef, sanitized, { merge: true });
 }
 
 // ── Sync Metadata ───────────────────────────────────────────────────────────

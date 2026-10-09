@@ -2,7 +2,22 @@
 
 import Image from "next/image";
 
-import { Calendar, Clock, ExternalLink, Layers, MapPin, Sparkles, Users } from "lucide-react";
+import {
+  Calendar,
+  Camera,
+  Clock,
+  ExternalLink,
+  FileText,
+  Images,
+  Layers,
+  Link2,
+  MapPin,
+  Play,
+  Presentation,
+  Sparkles,
+  Users,
+  Video,
+} from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -11,14 +26,23 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { extractEventPartners, groupPartnersByTier } from "@/lib/bevy/partners";
 import type { BevyEvent, BevyPartner, BevySpeaker } from "@/lib/bevy/types";
-import type { EventSession } from "@/lib/firestore/types";
+import { parsePhotoAlbum, parseVideoUrl } from "@/lib/events/media-utils";
+import type { EventSession, FirestoreEvent } from "@/lib/firestore/types";
+
+const VIDEO_PLATFORM_LABELS: Record<string, string> = {
+  youtube: "YouTube",
+  vimeo: "Vimeo",
+  direct: "Original",
+  unknown: "Original",
+};
 
 interface PublicEventTabsProps {
   event: BevyEvent;
   firestoreSessions?: EventSession[];
+  firestoreEvent?: FirestoreEvent | null;
 }
 
-export function PublicEventTabs({ event, firestoreSessions }: PublicEventTabsProps) {
+export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: PublicEventTabsProps) {
   const hasSpeakers = Array.isArray(event.speakers) && event.speakers.length > 0;
   const partners =
     Array.isArray(event.partners) && event.partners.length > 0 ? event.partners : extractEventPartners(event);
@@ -29,6 +53,33 @@ export function PublicEventTabs({ event, firestoreSessions }: PublicEventTabsPro
     event.agenda.days.some((day) => Array.isArray(day.items) && day.items.length > 0);
   const hasFirestoreSessions = Array.isArray(firestoreSessions) && firestoreSessions.length > 0;
   const hasAgenda = hasBevyAgenda || hasFirestoreSessions;
+
+  // Post-Event Recap & Media
+  const highlightVideoUrl = firestoreEvent?.highlight_video_url ?? event.highlight_video_url ?? event.video_url;
+  const highlightVideoTitle =
+    firestoreEvent?.highlight_video_title ?? event.highlight_video_title ?? "Event Highlights & Recap";
+  const photoAlbumUrl = firestoreEvent?.photo_album_url ?? event.photo_album_url;
+  const photoAlbumTitle = firestoreEvent?.photo_album_title ?? event.photo_album_title ?? "Official Photo Album";
+  const recapDescription = firestoreEvent?.recap_description ?? event.recap_description;
+
+  const isEventPast =
+    event.status === "Completed" || (event.end_date ? new Date(event.end_date).getTime() < Date.now() : false);
+  const parsedVideo = parseVideoUrl(highlightVideoUrl);
+  const parsedAlbum = parsePhotoAlbum(photoAlbumUrl);
+
+  const allSessionsWithSlides = [
+    ...(firestoreSessions?.filter(
+      (s) => Boolean(s.slides_url) || Boolean(s.related_links && s.related_links.length > 0),
+    ) ?? []),
+  ];
+  const allBevyItemsWithSlides =
+    event.agenda?.days?.flatMap((d) =>
+      d.items.filter((i) => Boolean(i.slides_url) || Boolean(i.related_links && i.related_links.length > 0)),
+    ) ?? [];
+  const hasAnySlides = allSessionsWithSlides.length > 0 || allBevyItemsWithSlides.length > 0;
+
+  const hasHighlights =
+    Boolean(parsedVideo) || Boolean(parsedAlbum) || Boolean(recapDescription) || isEventPast || hasAnySlides;
 
   return (
     <div className="space-y-6">
@@ -78,6 +129,23 @@ export function PublicEventTabs({ event, firestoreSessions }: PublicEventTabsPro
                 </span>
               )}
             </TabsTrigger>
+
+            {hasHighlights && (
+              <TabsTrigger
+                value="highlights"
+                className="relative h-11 rounded-none border-transparent border-b-2 bg-transparent px-4 pt-2 pb-3 font-medium text-muted-foreground text-sm shadow-none transition-all data-[state=active]:border-primary data-[state=active]:font-semibold data-[state=active]:text-primary"
+              >
+                <span className="flex items-center gap-1.5">
+                  <Video className="size-3.5" />
+                  <span>Highlights</span>
+                  {(parsedVideo ?? parsedAlbum) && (
+                    <span className="ml-0.5 rounded-full bg-emerald-500/10 px-1.5 py-0.2 font-medium text-[10px] text-emerald-600 dark:text-emerald-400">
+                      Media
+                    </span>
+                  )}
+                </span>
+              </TabsTrigger>
+            )}
           </TabsList>
         </div>
 
@@ -165,6 +233,11 @@ export function PublicEventTabs({ event, firestoreSessions }: PublicEventTabsPro
                             </Badge>
                             <h4 className="font-semibold text-foreground text-sm">{sess.title}</h4>
                           </div>
+                          {sess.speaker_name && (
+                            <p className="text-[11px] font-medium text-foreground/80">
+                              Speaker: <span className="text-foreground">{sess.speaker_name}</span>
+                            </p>
+                          )}
                           {sess.description && (
                             <div
                               className="prose prose-xs dark:prose-invert max-w-none text-muted-foreground text-xs leading-relaxed [&_a]:text-primary [&_a]:underline [&_ol]:list-decimal [&_ol]:pl-4 [&_ul]:list-disc [&_ul]:pl-4"
@@ -188,7 +261,7 @@ export function PublicEventTabs({ event, firestoreSessions }: PublicEventTabsPro
                                   title="Open Google Maps / Venue Location"
                                 >
                                   <MapPin className="size-3" />
-                                  <span>{sess.location || "Google Maps"}</span>
+                                  <span>{sess.location ?? "Google Maps"}</span>
                                   <ExternalLink className="size-2.5" />
                                 </a>
                               ) : (
@@ -197,6 +270,39 @@ export function PublicEventTabs({ event, firestoreSessions }: PublicEventTabsPro
                                 </span>
                               ))}
                           </div>
+
+                          {/* Speaker Presentation Slides & Related Links */}
+                          {(sess.slides_url || (sess.related_links && sess.related_links.length > 0)) && (
+                            <div className="flex flex-wrap items-center gap-2 border-border/40 border-t pt-2">
+                              {sess.slides_url && (
+                                <Button
+                                  asChild
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 gap-1.5 border-primary/30 bg-primary/5 px-2.5 text-primary text-xs hover:bg-primary/10 hover:text-primary"
+                                >
+                                  <a href={sess.slides_url} target="_blank" rel="noopener noreferrer">
+                                    <Presentation className="size-3.5" />
+                                    <span>{sess.slides_title ?? "Speaker Slides"}</span>
+                                    <ExternalLink className="size-2.5" />
+                                  </a>
+                                </Button>
+                              )}
+                              {sess.related_links?.map((link) => (
+                                <a
+                                  key={link.url}
+                                  href={link.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:border-primary/40 hover:bg-muted/70 hover:text-foreground"
+                                >
+                                  <Link2 className="size-2.5 text-primary" />
+                                  <span className="max-w-[180px] truncate">{link.title ? link.title : link.url}</span>
+                                  <ExternalLink className="size-2" />
+                                </a>
+                              ))}
+                            </div>
+                          )}
                         </div>
 
                         <div className="shrink-0 self-start sm:self-center">
@@ -239,6 +345,39 @@ export function PublicEventTabs({ event, firestoreSessions }: PublicEventTabsPro
                             </div>
                             {item.description && (
                               <p className="text-muted-foreground text-xs leading-relaxed">{item.description}</p>
+                            )}
+
+                            {/* Speaker Slides & Related Links if any */}
+                            {(item.slides_url || (item.related_links && item.related_links.length > 0)) && (
+                              <div className="flex flex-wrap items-center gap-2 border-border/40 border-t pt-2">
+                                {item.slides_url && (
+                                  <Button
+                                    asChild
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 gap-1.5 border-primary/30 bg-primary/5 px-2.5 text-primary text-xs hover:bg-primary/10 hover:text-primary"
+                                  >
+                                    <a href={item.slides_url} target="_blank" rel="noopener noreferrer">
+                                      <Presentation className="size-3.5" />
+                                      <span>{item.slides_title ?? "Session Slides"}</span>
+                                      <ExternalLink className="size-2.5" />
+                                    </a>
+                                  </Button>
+                                )}
+                                {item.related_links?.map((link) => (
+                                  <a
+                                    key={link.url}
+                                    href={link.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:border-primary/40 hover:bg-muted/70 hover:text-foreground"
+                                  >
+                                    <Link2 className="size-2.5 text-primary" />
+                                    <span className="max-w-[180px] truncate">{link.title ? link.title : link.url}</span>
+                                    <ExternalLink className="size-2" />
+                                  </a>
+                                ))}
+                              </div>
                             )}
                           </div>
                         </div>
@@ -316,6 +455,283 @@ export function PublicEventTabs({ event, firestoreSessions }: PublicEventTabsPro
             </div>
           )}
         </TabsContent>
+
+        {/* ── TAB 5: HIGHLIGHTS & MEDIA RECAP ──────────────────────── */}
+        {hasHighlights && (
+          <TabsContent value="highlights" className="space-y-6 pt-4">
+            {/* Embedded Highlight Video */}
+            {parsedVideo && (
+              <Card className="overflow-hidden border-border/60 bg-card shadow-2xs">
+                <div className="border-border/60 border-b p-4 sm:p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="flex size-9 items-center justify-center rounded-xl bg-red-500/10 text-red-600 dark:text-red-400">
+                        <Video className="size-4.5" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-base text-foreground tracking-tight">{highlightVideoTitle}</h3>
+                        <p className="text-muted-foreground text-xs">Official event recap and session highlights</p>
+                      </div>
+                    </div>
+                    {parsedVideo.originalUrl && (
+                      <Button variant="outline" size="sm" asChild className="gap-1.5 text-xs">
+                        <a href={parsedVideo.originalUrl} target="_blank" rel="noopener noreferrer">
+                          <span>Watch on {VIDEO_PLATFORM_LABELS[parsedVideo.type] ?? "Original"}</span>
+                          <ExternalLink className="size-3" />
+                        </a>
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                <CardContent className="p-0">
+                  {parsedVideo.embedUrl ? (
+                    <div className="relative aspect-video w-full bg-black">
+                      {parsedVideo.type === "youtube" || parsedVideo.type === "vimeo" ? (
+                        <iframe
+                          src={parsedVideo.embedUrl}
+                          title={highlightVideoTitle}
+                          className="size-full border-0"
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                          allowFullScreen
+                        />
+                      ) : (
+                        <video controls playsInline className="size-full object-contain" src={parsedVideo.embedUrl}>
+                          <track kind="captions" />
+                        </video>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center p-8 text-center">
+                      <Button asChild size="lg" className="gap-2">
+                        <a href={parsedVideo.originalUrl} target="_blank" rel="noopener noreferrer">
+                          <Play className="size-4" />
+                          Watch Highlight Video
+                          <ExternalLink className="size-3.5" />
+                        </a>
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {!parsedVideo && isEventPast && (
+              <Card className="border-border/60 border-dashed bg-muted/20 p-6 text-center">
+                <div className="mx-auto flex size-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <Video className="size-6" />
+                </div>
+                <h4 className="mt-3 font-semibold text-foreground text-sm">Event Highlight Video</h4>
+                <p className="mx-auto mt-1 max-w-sm text-muted-foreground text-xs">
+                  The event recap video and highlight reel are currently being prepared by the organizing team.
+                </p>
+              </Card>
+            )}
+
+            {/* Official Photo Album Card */}
+            {parsedAlbum && (
+              <Card className="border-border/60 bg-gradient-to-br from-card via-card to-muted/30 p-5 shadow-2xs sm:p-6">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-4">
+                    <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl border border-border/60 bg-primary/10 text-primary shadow-2xs">
+                      <Camera className="size-6" />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge
+                          variant="secondary"
+                          className="gap-1 border-primary/20 bg-primary/10 text-[11px] text-primary"
+                        >
+                          <Sparkles className="size-3" />
+                          {parsedAlbum.label}
+                        </Badge>
+                        <h3 className="font-bold text-base text-foreground tracking-tight">{photoAlbumTitle}</h3>
+                      </div>
+                      <p className="max-w-xl text-muted-foreground text-xs leading-relaxed">
+                        Browse high-resolution event photography, keynote presentations, networking snapshots, and
+                        community memories from this gathering.
+                      </p>
+                    </div>
+                  </div>
+
+                  <Button
+                    asChild
+                    size="default"
+                    className="shrink-0 gap-2 self-start font-medium shadow-2xs sm:self-center"
+                  >
+                    <a href={parsedAlbum.url} target="_blank" rel="noopener noreferrer">
+                      <Images className="size-4" />
+                      <span>View Photo Album</span>
+                      <ExternalLink className="size-3.5" />
+                    </a>
+                  </Button>
+                </div>
+              </Card>
+            )}
+
+            {/* Organizer Recap Notes */}
+            {recapDescription && (
+              <Card className="border-border/60 bg-card p-5 shadow-2xs sm:p-6">
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 border-border/60 border-b pb-3">
+                    <FileText className="size-4 text-primary" />
+                    <h3 className="font-bold text-base text-foreground tracking-tight">Event Recap & Notes</h3>
+                  </div>
+                  <div
+                    className="prose dark:prose-invert max-w-none text-foreground/90 text-sm leading-relaxed"
+                    // biome-ignore lint/security/noDangerouslySetInnerHtml: Event organizer recap
+                    dangerouslySetInnerHTML={{ __html: recapDescription }}
+                  />
+                </div>
+              </Card>
+            )}
+
+            {/* Quick Access to Presentation Slides & Materials if available */}
+            {hasAnySlides && (
+              <Card className="space-y-4 border-border/60 bg-card p-5 shadow-2xs sm:p-6">
+                <div className="border-border/60 border-b pb-3">
+                  <div className="flex items-center gap-2">
+                    <Presentation className="size-4 text-primary" />
+                    <h3 className="font-bold text-base text-foreground tracking-tight">Speaker Slides & Resources</h3>
+                  </div>
+                  <p className="pt-0.5 text-muted-foreground text-xs">
+                    Access slide decks and resources shared by session speakers.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {allSessionsWithSlides.map((sess) => (
+                    <div
+                      key={sess.id}
+                      className="flex flex-col justify-between space-y-3 rounded-xl border border-border/60 bg-muted/20 p-4"
+                    >
+                      <div>
+                        <span className="block font-semibold text-foreground text-sm leading-snug">{sess.title}</span>
+                        {sess.speaker_name && (
+                          <span className="mt-0.5 block text-muted-foreground text-xs">
+                            Speaker: {sess.speaker_name}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="space-y-2 border-border/40 border-t pt-2">
+                        {sess.slides_url && (
+                          <Button
+                            asChild
+                            size="sm"
+                            variant="outline"
+                            className="w-full gap-1.5 border-primary/30 text-primary text-xs hover:bg-primary/10"
+                          >
+                            <a href={sess.slides_url} target="_blank" rel="noopener noreferrer">
+                              <Presentation className="size-3.5" />
+                              <span>{sess.slides_title ?? "Download / View Slides"}</span>
+                              <ExternalLink className="ml-auto size-3" />
+                            </a>
+                          </Button>
+                        )}
+                        {sess.related_links && sess.related_links.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 pt-1">
+                            {sess.related_links.map((link) => (
+                              <a
+                                key={link.url}
+                                href={link.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-card px-2 py-0.5 text-[11px] text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                              >
+                                <Link2 className="size-2.5 text-primary" />
+                                <span className="max-w-[140px] truncate">{link.title ? link.title : link.url}</span>
+                                <ExternalLink className="size-2" />
+                              </a>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+
+                  {allBevyItemsWithSlides.map((item) => (
+                    <div
+                      key={`${item.time}-${item.activity}`}
+                      className="flex flex-col justify-between space-y-3 rounded-xl border border-border/60 bg-muted/20 p-4"
+                    >
+                      <div>
+                        <span className="block font-semibold text-foreground text-sm leading-snug">
+                          {item.activity}
+                        </span>
+                        {item.audience_type && (
+                          <Badge variant="outline" className="mt-1 text-[10px]">
+                            {item.audience_type}
+                          </Badge>
+                        )}
+                      </div>
+
+                      <div className="space-y-2 border-border/40 border-t pt-2">
+                        {item.slides_url && (
+                          <Button
+                            asChild
+                            size="sm"
+                            variant="outline"
+                            className="w-full gap-1.5 border-primary/30 text-primary text-xs hover:bg-primary/10"
+                          >
+                            <a href={item.slides_url} target="_blank" rel="noopener noreferrer">
+                              <Presentation className="size-3.5" />
+                              <span>{item.slides_title ?? "Download / View Slides"}</span>
+                              <ExternalLink className="ml-auto size-3" />
+                            </a>
+                          </Button>
+                        )}
+                        {item.related_links && item.related_links.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 pt-1">
+                            {item.related_links.map((link) => (
+                              <a
+                                key={link.url}
+                                href={link.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-card px-2 py-0.5 text-[11px] text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                              >
+                                <Link2 className="size-2.5 text-primary" />
+                                <span className="max-w-[140px] truncate">{link.title ? link.title : link.url}</span>
+                                <ExternalLink className="size-2" />
+                              </a>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+
+            {/* Attendance & Event Summary Cards */}
+            {isEventPast && (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="rounded-xl border border-border/60 bg-card p-4 text-center">
+                  <span className="text-muted-foreground text-xs">Total Attendees</span>
+                  <p className="font-bold text-foreground text-lg sm:text-xl">
+                    {event.total_attendees ?? event.checkin_count ?? "-"}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border/60 bg-card p-4 text-center">
+                  <span className="text-muted-foreground text-xs">Sessions / Tracks</span>
+                  <p className="font-bold text-foreground text-lg sm:text-xl">
+                    {firestoreSessions?.length ?? event.agenda?.days?.length ?? 1}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border/60 bg-card p-4 text-center">
+                  <span className="text-muted-foreground text-xs">Speakers</span>
+                  <p className="font-bold text-foreground text-lg sm:text-xl">{event.speakers?.length ?? "-"}</p>
+                </div>
+                <div className="rounded-xl border border-border/60 bg-card p-4 text-center">
+                  <span className="text-muted-foreground text-xs">Status</span>
+                  <p className="font-bold text-emerald-600 dark:text-emerald-400 text-lg sm:text-xl">Completed</p>
+                </div>
+              </div>
+            )}
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

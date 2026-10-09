@@ -3,19 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 
 import { format, parseISO } from "date-fns";
-import {
-  Check,
-  CheckCircle,
-  Download,
-  Layers,
-  MoreHorizontal,
-  Search,
-  UserCheck,
-  Users,
-  UserX,
-  X,
-  XCircle,
-} from "lucide-react";
+import { Check, Download, Layers, MoreHorizontal, Search, UserCheck, Users, UserX, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -23,7 +11,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,9 +20,20 @@ import {
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { DEFAULT_COMBINED_QUESTIONS } from "@/lib/events/registration-defaults";
 import { updateRegistrationStatusAction } from "@/lib/firestore/actions";
-import type { EventSession, FirestoreEvent, FirestoreRegistration, RegistrationStatus } from "@/lib/firestore/types";
+import type {
+  CustomQuestion,
+  EventSession,
+  FirestoreEvent,
+  FirestoreRegistration,
+  RegistrationStatus,
+} from "@/lib/firestore/types";
 import { cn, getInitials } from "@/lib/utils";
+
+import { ApplicantDetailDialog } from "./applicant-detail-dialog";
+import { QuestionResponsesCell } from "./question-responses-cell";
+import { RegistrantStatistics } from "./registrant-statistics";
 
 interface RegistrantsTabProps {
   eventId: string;
@@ -137,6 +135,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [sessionFilter, setSessionFilter] = useState<string>("all");
   const [sessions, setSessions] = useState<EventSession[]>(event?.sessions ?? []);
+  const [customQuestions, setCustomQuestions] = useState<CustomQuestion[]>(event?.custom_questions ?? []);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [inspectRegistration, setInspectRegistration] = useState<FirestoreRegistration | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -216,21 +215,32 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   useEffect(() => {
     if (event?.sessions && event.sessions.length > 0) {
       setSessions(event.sessions);
-      return;
     }
-    async function fetchEventDetails() {
-      try {
-        const { getFirestoreEventById } = await import("@/lib/firestore/client");
-        const docData = await getFirestoreEventById(eventId);
-        if (docData?.sessions && docData.sessions.length > 0) {
-          setSessions(docData.sessions);
+    if (event?.custom_questions && event.custom_questions.length > 0) {
+      setCustomQuestions(event.custom_questions);
+    }
+
+    const needsSessions = !event?.sessions || event.sessions.length === 0;
+    const needsQuestions = !event?.custom_questions || event.custom_questions.length === 0;
+
+    if (needsSessions || needsQuestions) {
+      async function fetchEventDetails() {
+        try {
+          const { getFirestoreEventById } = await import("@/lib/firestore/client");
+          const docData = await getFirestoreEventById(eventId);
+          if (docData?.sessions && docData.sessions.length > 0) {
+            setSessions(docData.sessions);
+          }
+          if (docData?.custom_questions && docData.custom_questions.length > 0) {
+            setCustomQuestions(docData.custom_questions);
+          }
+        } catch (err) {
+          console.warn("[RegistrantsTab] Failed to load event details:", err);
         }
-      } catch (err) {
-        console.warn("[RegistrantsTab] Failed to load event sessions:", err);
       }
+      void fetchEventDetails();
     }
-    void fetchEventDetails();
-  }, [eventId, event?.sessions]);
+  }, [eventId, event?.sessions, event?.custom_questions]);
 
   // Compute email occurrences to detect duplicate registrant attempts
   const emailCounts = new Map<string, number>();
@@ -240,6 +250,61 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       emailCounts.set(email, (emailCounts.get(email) || 0) + 1);
     }
   }
+
+  // Map question IDs/keys to human-readable question labels
+  const questionLabelMap = useMemo(() => {
+    const map = new Map<string, string>();
+
+    // 1. Seed with DEFAULT_COMBINED_QUESTIONS
+    for (const q of DEFAULT_COMBINED_QUESTIONS) {
+      if (q.id && q.label) {
+        map.set(q.id.toLowerCase().trim(), q.label);
+      }
+    }
+
+    // 2. Override / supplement with event's custom_questions
+    for (const q of customQuestions) {
+      if (q.id && q.label) {
+        map.set(q.id.toLowerCase().trim(), q.label);
+      }
+    }
+
+    return map;
+  }, [customQuestions]);
+
+  const formatQuestionLabel = (key: string): string => {
+    const trimmed = key.trim();
+    const mapped = questionLabelMap.get(trimmed.toLowerCase());
+    if (mapped) return mapped;
+
+    // Preserve strings that are already natural sentence case or title case with spaces
+    if (/[A-Z]/.test(trimmed) && trimmed.includes(" ") && !trimmed.includes("_")) {
+      return trimmed;
+    }
+
+    // Convert snake_case or kebab-case to Title Case
+    const words = trimmed
+      .replace(/[_-]+/g, " ")
+      .split(" ")
+      .filter(Boolean)
+      .map((word) => {
+        const lower = word.toLowerCase();
+        if (lower === "url") return "URL";
+        if (lower === "id") return "ID";
+        if (lower === "github") return "GitHub";
+        if (lower === "linkedin") return "LinkedIn";
+        if (lower === "whatsapp") return "WhatsApp";
+        if (lower === "ai") return "AI";
+        if (lower === "gdg") return "GDG";
+        if (lower === "rsvp") return "RSVP";
+        if (lower === "faq") return "FAQ";
+        if (lower === "ui") return "UI";
+        if (lower === "ux") return "UX";
+        return word.charAt(0).toUpperCase() + word.slice(1);
+      });
+
+    return words.join(" ") || trimmed;
+  };
 
   // Filter logic
   const filtered = useMemo(() => {
@@ -339,7 +404,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
 
       const cleanAnswers = r.answers
         ? Object.entries(r.answers)
-            .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : String(v)}`)
+            .filter(([k]) => k !== "session_id" && k !== "session_title")
+            .map(([k, v]) => `${formatQuestionLabel(k)}: ${Array.isArray(v) ? v.join(", ") : String(v)}`)
             .join("; ")
         : "";
 
@@ -369,7 +435,18 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const hasSessions = sessions.length > 0;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      <RegistrantStatistics
+        registrations={registrationsList}
+        customQuestions={customQuestions}
+        sessions={sessions}
+        maxAttendees={event?.max_attendees}
+        activeStatusFilter={statusFilter}
+        onSelectStatusFilter={handleStatusFilterChange}
+        onSelectSearchFilter={handleSearchChange}
+        onSelectSessionFilter={handleSessionFilterChange}
+      />
+
       <Card>
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -547,23 +624,16 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 {!isLoading &&
                   !isFiltering &&
                   filtered.map((reg) => {
-                    const statusKey = (reg.status || "").toLowerCase().trim() as RegistrationStatus;
+                    const rawStatus = ((reg.status as string) || "").toLowerCase().trim();
                     const statusMeta =
-                      STATUS_VARIANTS[statusKey] ||
-                      (statusKey === "confirmed" || statusKey === "registered"
+                      STATUS_VARIANTS[rawStatus as RegistrationStatus] ||
+                      (rawStatus === "confirmed" || rawStatus === "registered"
                         ? STATUS_VARIANTS.approved
                         : STATUS_VARIANTS.pending);
                     const sessionTitle =
                       reg.session_title ||
                       (reg.answers?.session_title as string) ||
                       (reg.session_id ? `Track: ${reg.session_id}` : null);
-
-                    const answersSummary = reg.answers
-                      ? Object.entries(reg.answers)
-                          .filter(([k]) => k !== "session_id" && k !== "session_title")
-                          .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : String(v)}`)
-                          .join(" • ")
-                      : "Standard RSVP";
 
                     let regDate = reg.registered_at;
                     try {
@@ -633,10 +703,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                           </TableCell>
                         )}
 
-                        <TableCell onClick={() => setInspectRegistration(reg)} className="max-w-[260px]">
-                          <div className="truncate text-muted-foreground text-xs" title={answersSummary}>
-                            {answersSummary}
-                          </div>
+                        <TableCell onClick={() => setInspectRegistration(reg)} className="max-w-[400px]">
+                          <QuestionResponsesCell answers={reg.answers} formatQuestionLabel={formatQuestionLabel} />
                         </TableCell>
 
                         <TableCell
@@ -703,110 +771,14 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         </CardContent>
       </Card>
 
-      {/* Applicant Details Modal */}
-      {inspectRegistration && (
-        <Dialog open={Boolean(inspectRegistration)} onOpenChange={(open) => !open && setInspectRegistration(null)}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-3">
-                <Avatar className="size-9 rounded-full border">
-                  <AvatarImage src={inspectRegistration.member_avatar} alt={inspectRegistration.member_name} />
-                  <AvatarFallback>{getInitials(inspectRegistration.member_name)}</AvatarFallback>
-                </Avatar>
-                <div>
-                  <div className="font-semibold text-base">{inspectRegistration.member_name}</div>
-                  <div className="text-muted-foreground text-xs">{inspectRegistration.member_email}</div>
-                </div>
-              </DialogTitle>
-              <DialogDescription>
-                Submitted registration details, session selection, and question responses.
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="space-y-4 py-2 text-sm">
-              <div className="space-y-2 rounded-lg bg-muted/40 p-3">
-                <div className="font-medium text-muted-foreground text-xs uppercase">Status</div>
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    "gap-1.5 border px-2 py-0.5 font-medium text-xs",
-                    (STATUS_VARIANTS[inspectRegistration.status] || STATUS_VARIANTS.pending).badgeClass,
-                  )}
-                >
-                  {(STATUS_VARIANTS[inspectRegistration.status] || STATUS_VARIANTS.pending).label}
-                </Badge>
-              </div>
-
-              {/* Session Track if present */}
-              {Boolean(
-                inspectRegistration.session_title ||
-                  inspectRegistration.session_id ||
-                  inspectRegistration.answers?.session_title,
-              ) && (
-                <div className="space-y-1 rounded-lg border border-primary/20 bg-primary/5 p-3">
-                  <div className="flex items-center gap-1.5 font-medium text-primary text-xs uppercase">
-                    <Layers className="size-3.5" />
-                    Selected Session Track
-                  </div>
-                  <div className="font-semibold text-foreground text-sm">
-                    {inspectRegistration.session_title ||
-                      String(inspectRegistration.answers?.session_title || "") ||
-                      inspectRegistration.session_id}
-                  </div>
-                </div>
-              )}
-
-              {inspectRegistration.answers && Object.keys(inspectRegistration.answers).length > 0 ? (
-                <div className="space-y-3">
-                  <div className="font-semibold text-muted-foreground text-xs uppercase">Question Responses</div>
-                  <div className="max-h-64 space-y-2.5 overflow-y-auto pr-1">
-                    {Object.entries(inspectRegistration.answers)
-                      .filter(([k]) => k !== "session_id" && k !== "session_title")
-                      .map(([question, answer]) => (
-                        <div key={question} className="rounded-md border p-2.5">
-                          <div className="font-medium text-muted-foreground text-xs">{question}</div>
-                          <div className="mt-1 font-medium text-foreground text-sm">
-                            {Array.isArray(answer) ? answer.join(", ") : String(answer)}
-                          </div>
-                        </div>
-                      ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="text-muted-foreground text-xs italic">
-                  No additional custom questions were attached to this registration.
-                </div>
-              )}
-            </div>
-
-            <div className="flex items-center justify-end gap-2 border-t pt-3">
-              <Button
-                size="sm"
-                variant="outline"
-                className="text-destructive hover:bg-destructive/10"
-                onClick={() => {
-                  handleStatusChange(inspectRegistration.id, "rejected");
-                  setInspectRegistration(null);
-                }}
-              >
-                <XCircle className="mr-1.5 size-3.5" />
-                Reject
-              </Button>
-              <Button
-                size="sm"
-                className="bg-emerald-600 text-white hover:bg-emerald-700"
-                onClick={() => {
-                  handleStatusChange(inspectRegistration.id, "approved");
-                  setInspectRegistration(null);
-                }}
-              >
-                <CheckCircle className="mr-1.5 size-3.5" />
-                Approve
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
+      {/* Redesigned Applicant Details Dossier Dialog */}
+      <ApplicantDetailDialog
+        registration={inspectRegistration}
+        onClose={() => setInspectRegistration(null)}
+        onStatusChange={handleStatusChange}
+        customQuestions={customQuestions}
+        isPending={isPending}
+      />
     </div>
   );
 }

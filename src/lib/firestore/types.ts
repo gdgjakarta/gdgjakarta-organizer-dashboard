@@ -27,6 +27,15 @@ export interface CustomQuestion {
   min_length?: number;
   max_length?: number;
   custom_error_message?: string;
+
+  // Other option with custom text input (Google Forms style)
+  allow_other?: boolean;
+  other_placeholder?: string;
+}
+
+export interface SessionRelatedLink {
+  title: string;
+  url: string;
 }
 
 export interface EventSession {
@@ -39,6 +48,32 @@ export interface EventSession {
   location_url?: string;
   capacity: number;
   total_registered?: number;
+
+  // Speaker slides & resources
+  slides_url?: string;
+  slides_title?: string;
+  speaker_name?: string;
+  related_links?: SessionRelatedLink[];
+}
+
+export interface MerchandiseVariation {
+  name: string; // e.g. "Size", "Color", "Material"
+  options: string[]; // e.g. ["S", "M", "L", "XL"]
+}
+
+export interface EventMerchandiseItem {
+  id: string;
+  name: string;
+  description: string;
+  price: number; // In IDR (0 for free/included perk)
+  is_free: boolean;
+  tag: string; // e.g. "Free Perk", "Included with Ticket", "Exclusive", "Limited Edition"
+  image_url: string;
+  stock?: number | null; // null or undefined means unlimited
+  variations: MerchandiseVariation[];
+  status: "active" | "draft" | "out_of_stock";
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface FirestoreEvent {
@@ -73,7 +108,18 @@ export interface FirestoreEvent {
   total_checked_in: number;
   custom_questions?: CustomQuestion[];
   sessions?: EventSession[];
+  merchandise?: EventMerchandiseItem[];
   webhook_url?: string | null;
+  registration_status?: "Draft" | "Published" | "Closed";
+  registration_start_date?: string | null;
+  registration_end_date?: string | null;
+
+  // Post-Event Recap & Media Extensions
+  highlight_video_url?: string;
+  highlight_video_title?: string;
+  photo_album_url?: string;
+  photo_album_title?: string;
+  recap_description?: string;
 
   // Metadata
   synced_from_bevy_at?: string;

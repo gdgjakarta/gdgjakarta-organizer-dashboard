@@ -23,7 +23,31 @@ export async function generateMetadata({ params }: PublicEventDetailPageProps): 
     };
   }
 
-  const imageUrl = event.cropped_banner_url ?? event.banner?.url ?? event.cropped_picture_url ?? event.picture?.url;
+  const thumbnailImageUrl =
+    event.cropped_picture_url ??
+    event.picture?.url ??
+    event.picture?.thumbnail_url ??
+    event.cropped_banner_url ??
+    event.banner?.url;
+  const bannerImageUrl = event.cropped_banner_url ?? event.banner?.url ?? event.banner?.thumbnail_url;
+
+  const ogImages = [];
+  if (thumbnailImageUrl) {
+    ogImages.push({
+      url: thumbnailImageUrl,
+      width: 1080,
+      height: 1080,
+      alt: event.title,
+    });
+  }
+  if (bannerImageUrl && bannerImageUrl !== thumbnailImageUrl) {
+    ogImages.push({
+      url: bannerImageUrl,
+      width: 2560,
+      height: 650,
+      alt: `${event.title} Banner`,
+    });
+  }
 
   return {
     title: `${event.title} | GDG Jakarta`,
@@ -31,7 +55,13 @@ export async function generateMetadata({ params }: PublicEventDetailPageProps): 
     openGraph: {
       title: event.title,
       description: event.description_short ?? "Join us for this exciting Google Developer Groups Jakarta event!",
-      images: imageUrl ? [{ url: imageUrl, alt: event.title }] : undefined,
+      images: ogImages.length > 0 ? ogImages : undefined,
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: event.title,
+      description: event.description_short ?? "Join us for this exciting Google Developer Groups Jakarta event!",
+      images: thumbnailImageUrl ? [thumbnailImageUrl] : undefined,
     },
   };
 }

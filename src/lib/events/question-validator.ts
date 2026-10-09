@@ -169,13 +169,92 @@ export function isValidNumber(val: string): boolean {
 }
 
 /**
+ * Checks if a string represents an "Other" option.
+ * Case-insensitive match for "Other", "Others", "Lainnya", "Lain-lain", or prefixed with "Other:".
+ */
+export function isOtherOption(option?: string | null): boolean {
+  if (!option || typeof option !== "string") return false;
+  const normalized = option.trim().toLowerCase();
+  return (
+    normalized === "other" ||
+    normalized === "others" ||
+    normalized === "lainnya" ||
+    normalized === "lain-lain" ||
+    normalized.startsWith("other:") ||
+    normalized.startsWith("other (") ||
+    normalized.startsWith("lainnya (") ||
+    normalized.startsWith("lainnya:")
+  );
+}
+
+/**
+ * Parses an answer value to determine if it represents an "Other" option
+ * and extracts any custom write-in text.
+ */
+export function parseOtherAnswer(val: unknown): { isOther: boolean; customText: string } {
+  if (typeof val !== "string") {
+    return { isOther: false, customText: "" };
+  }
+  const trimmed = val.trim();
+  const lower = trimmed.toLowerCase();
+
+  if (lower.startsWith("other:")) {
+    return { isOther: true, customText: trimmed.slice(6).trim() };
+  }
+  if (lower.startsWith("lainnya:")) {
+    return { isOther: true, customText: trimmed.slice(8).trim() };
+  }
+  if (isOtherOption(trimmed)) {
+    return { isOther: true, customText: "" };
+  }
+  return { isOther: false, customText: "" };
+}
+
+/**
+ * Formats a custom "Other" write-in answer for storage.
+ * e.g., "Elixir" -> "Other: Elixir", "" -> "Other"
+ */
+export function formatOtherAnswer(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return "Other";
+  if (trimmed.toLowerCase().startsWith("other:")) return trimmed;
+  return `Other: ${trimmed}`;
+}
+
+/**
  * Validates a single question answer against its configuration.
  * Returns { isValid: true } or { isValid: false, error: "..." }.
  */
 export function validateQuestionAnswer(question: CustomQuestion, value: unknown): { isValid: boolean; error?: string } {
   const customError = question.custom_error_message?.trim();
 
-  // 1. Required Check
+  // 1. Validate "Other" custom text input requirement (like Google Forms)
+  const hasOtherOptionConfig = Boolean(question.allow_other ?? question.options?.some(isOtherOption));
+  if (hasOtherOptionConfig) {
+    if (typeof value === "string") {
+      const parsed = parseOtherAnswer(value);
+      if (parsed.isOther && !parsed.customText) {
+        return {
+          isValid: false,
+          error: customError || `Please specify your response for "Other" in "${question.label}".`,
+        };
+      }
+    } else if (Array.isArray(value)) {
+      for (const item of value) {
+        if (typeof item === "string") {
+          const parsed = parseOtherAnswer(item);
+          if (parsed.isOther && !parsed.customText) {
+            return {
+              isValid: false,
+              error: customError || `Please specify your response for "Other" in "${question.label}".`,
+            };
+          }
+        }
+      }
+    }
+  }
+
+  // 2. Required Check
   if (question.required) {
     if (value === undefined || value === null) {
       return { isValid: false, error: customError || `${question.label} is required.` };
@@ -202,140 +281,144 @@ export function validateQuestionAnswer(question: CustomQuestion, value: unknown)
       return { isValid: true };
     }
 
-    // 2. Minimum Length Constraint
-    if (question.min_length !== undefined && question.min_length > 0) {
-      if (trimmed.length < question.min_length) {
-        return {
-          isValid: false,
-          error: customError || `Must be at least ${question.min_length} characters (currently ${trimmed.length}).`,
-        };
-      }
-    }
-
-    // 3. Maximum Length Constraint
-    if (question.max_length !== undefined && question.max_length > 0) {
-      if (trimmed.length > question.max_length) {
-        return {
-          isValid: false,
-          error: customError || `Must not exceed ${question.max_length} characters (currently ${trimmed.length}).`,
-        };
-      }
-    }
-
-    // 4. Validation Type Rules
-    const valType = question.validation_type;
-    if (valType && valType !== "none" && trimmed.length > 0) {
-      switch (valType) {
-        case "isEmail": {
-          if (!isValidEmail(trimmed)) {
-            return {
-              isValid: false,
-              error: customError || "Please enter a valid email address (e.g. name@domain.com).",
-            };
-          }
-          break;
+    // Only apply text length and regex/format constraints to text/textarea inputs
+    if (question.type === "text" || question.type === "textarea") {
+      // 3. Minimum Length Constraint
+      if (question.min_length !== undefined && question.min_length > 0) {
+        if (trimmed.length < question.min_length) {
+          return {
+            isValid: false,
+            error: customError || `Must be at least ${question.min_length} characters (currently ${trimmed.length}).`,
+          };
         }
+      }
 
-        case "isWorkEmail": {
-          const check = isValidWorkEmail(trimmed);
-          if (!check.isValid) {
-            if (check.reason === "personal_domain") {
+      // 4. Maximum Length Constraint
+      if (question.max_length !== undefined && question.max_length > 0) {
+        if (trimmed.length > question.max_length) {
+          return {
+            isValid: false,
+            error: customError || `Must not exceed ${question.max_length} characters (currently ${trimmed.length}).`,
+          };
+        }
+      }
+
+      // 5. Validation Type Rules
+      const valType = question.validation_type;
+      if (valType && valType !== "none" && trimmed.length > 0) {
+        switch (valType) {
+          case "isEmail": {
+            if (!isValidEmail(trimmed)) {
+              return {
+                isValid: false,
+                error: customError || "Please enter a valid email address (e.g. name@domain.com).",
+              };
+            }
+            break;
+          }
+
+          case "isWorkEmail": {
+            const check = isValidWorkEmail(trimmed);
+            if (!check.isValid) {
+              if (check.reason === "personal_domain") {
+                return {
+                  isValid: false,
+                  error:
+                    customError ||
+                    `Please use your company or institutional work email (@${check.domain} is a personal webmail).`,
+                };
+              }
+              return {
+                isValid: false,
+                error: customError || "Please enter a valid corporate or work email address.",
+              };
+            }
+            break;
+          }
+
+          case "isUrl": {
+            if (!isValidUrl(trimmed)) {
+              return {
+                isValid: false,
+                error: customError || "Please enter a valid website URL starting with http:// or https://.",
+              };
+            }
+            break;
+          }
+
+          case "isGithubUrl": {
+            if (!isValidGithubUrl(trimmed)) {
               return {
                 isValid: false,
                 error:
-                  customError ||
-                  `Please use your company or institutional work email (@${check.domain} is a personal webmail).`,
+                  customError || "Please enter a valid GitHub profile or repo URL (e.g. https://github.com/username).",
               };
             }
-            return {
-              isValid: false,
-              error: customError || "Please enter a valid corporate or work email address.",
-            };
+            break;
           }
-          break;
-        }
 
-        case "isUrl": {
-          if (!isValidUrl(trimmed)) {
-            return {
-              isValid: false,
-              error: customError || "Please enter a valid website URL starting with http:// or https://.",
-            };
-          }
-          break;
-        }
-
-        case "isGithubUrl": {
-          if (!isValidGithubUrl(trimmed)) {
-            return {
-              isValid: false,
-              error:
-                customError || "Please enter a valid GitHub profile or repo URL (e.g. https://github.com/username).",
-            };
-          }
-          break;
-        }
-
-        case "isLinkedInProfileUrl": {
-          if (!isValidLinkedInUrl(trimmed)) {
-            return {
-              isValid: false,
-              error:
-                customError || "Please enter a valid LinkedIn profile URL (e.g. https://linkedin.com/in/username).",
-            };
-          }
-          break;
-        }
-
-        case "isWhatsappNumber": {
-          const waCheck = isValidWhatsappNumber(trimmed);
-          if (!waCheck.isValid) {
-            if (waCheck.hint === "starts_with_plus") {
+          case "isLinkedInProfileUrl": {
+            if (!isValidLinkedInUrl(trimmed)) {
               return {
                 isValid: false,
-                error: customError || "WhatsApp number must start with 62 without '+' (e.g. 6281234567890).",
+                error:
+                  customError || "Please enter a valid LinkedIn profile URL (e.g. https://linkedin.com/in/username).",
               };
             }
-            if (waCheck.hint === "starts_with_zero") {
-              return {
-                isValid: false,
-                error: customError || "WhatsApp number must start with 62 instead of 0 (e.g. 6281234567890).",
-              };
-            }
-            return {
-              isValid: false,
-              error: customError || "WhatsApp number must start with 62 and contain only digits (e.g. 6281234567890).",
-            };
+            break;
           }
-          break;
-        }
 
-        case "isNumber": {
-          if (!isValidNumber(trimmed)) {
-            return {
-              isValid: false,
-              error: customError || "Please enter a valid numeric value.",
-            };
-          }
-          break;
-        }
-
-        case "customRegex": {
-          if (question.regex_pattern?.trim()) {
-            try {
-              const reg = new RegExp(question.regex_pattern.trim());
-              if (!reg.test(trimmed)) {
+          case "isWhatsappNumber": {
+            const waCheck = isValidWhatsappNumber(trimmed);
+            if (!waCheck.isValid) {
+              if (waCheck.hint === "starts_with_plus") {
                 return {
                   isValid: false,
-                  error: customError || "Input does not match the required format.",
+                  error: customError || "WhatsApp number must start with 62 without '+' (e.g. 6281234567890).",
                 };
               }
-            } catch {
-              // If invalid regex pattern was stored, skip breaking submission
-              console.warn("[Validator] Invalid regular expression pattern:", question.regex_pattern);
+              if (waCheck.hint === "starts_with_zero") {
+                return {
+                  isValid: false,
+                  error: customError || "WhatsApp number must start with 62 instead of 0 (e.g. 6281234567890).",
+                };
+              }
+              return {
+                isValid: false,
+                error:
+                  customError || "WhatsApp number must start with 62 and contain only digits (e.g. 6281234567890).",
+              };
             }
+            break;
           }
-          break;
+
+          case "isNumber": {
+            if (!isValidNumber(trimmed)) {
+              return {
+                isValid: false,
+                error: customError || "Please enter a valid numeric value.",
+              };
+            }
+            break;
+          }
+
+          case "customRegex": {
+            if (question.regex_pattern?.trim()) {
+              try {
+                const reg = new RegExp(question.regex_pattern.trim());
+                if (!reg.test(trimmed)) {
+                  return {
+                    isValid: false,
+                    error: customError || "Input does not match the required format.",
+                  };
+                }
+              } catch {
+                // If invalid regex pattern was stored, skip breaking submission
+                console.warn("[Validator] Invalid regular expression pattern:", question.regex_pattern);
+              }
+            }
+            break;
+          }
         }
       }
     }

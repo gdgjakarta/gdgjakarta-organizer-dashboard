@@ -21,7 +21,7 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { VALIDATION_TYPE_OPTIONS } from "@/lib/events/question-validator";
+import { isOtherOption, VALIDATION_TYPE_OPTIONS } from "@/lib/events/question-validator";
 import { REGISTRATION_SECTIONS } from "@/lib/events/registration-defaults";
 import type { CustomQuestion, QuestionValidationType } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
@@ -280,6 +280,45 @@ export function SortableQuestionCard({
               </Button>
             </div>
 
+            {/* Other option toggle & settings for Single Choice, Dropdown, and Multi-select */}
+            {["radio", "select", "multiselect"].includes(q.type) && (
+              <div className="space-y-1.5 pt-1.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <label
+                    htmlFor={`allow-other-${q.id}`}
+                    className="flex cursor-pointer items-center gap-2 font-normal text-xs text-muted-foreground select-none hover:text-foreground"
+                  >
+                    <Checkbox
+                      id={`allow-other-${q.id}`}
+                      checked={q.allow_other === true || (q.options?.some(isOtherOption) ?? false)}
+                      onCheckedChange={(checked) => {
+                        const isChecked = Boolean(checked);
+                        if (isChecked) {
+                          const hasOther = q.options?.some(isOtherOption);
+                          const updatedOptions = hasOther ? q.options : [...(q.options ?? []), "Other"];
+                          onUpdate(q.id, { allow_other: true, options: updatedOptions });
+                        } else {
+                          const filteredOptions = q.options?.filter((opt) => !isOtherOption(opt));
+                          onUpdate(q.id, { allow_other: false, options: filteredOptions });
+                        }
+                      }}
+                    />
+                    <span>Allow &quot;Other&quot; option with custom text input</span>
+                  </label>
+                  <span className="text-[10px] text-muted-foreground">Like Google Forms</span>
+                </div>
+
+                {(q.allow_other === true || (q.options?.some(isOtherOption) ?? false)) && (
+                  <Input
+                    placeholder="Custom placeholder for 'Other' input (optional, e.g. Please specify...)"
+                    value={q.other_placeholder ?? ""}
+                    onChange={(e) => onUpdate(q.id, { other_placeholder: e.target.value })}
+                    className="h-7 text-xs"
+                  />
+                )}
+              </div>
+            )}
+
             {/* Popup Dialog for Expanded Options Editing */}
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
               <DialogContent className="sm:max-w-lg">
@@ -294,6 +333,27 @@ export function SortableQuestionCard({
                 </DialogHeader>
 
                 <div className="space-y-3 py-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-foreground text-xs">Options List</span>
+                    {["radio", "select", "multiselect"].includes(q.type) && (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="xs"
+                        className="h-6 gap-1 text-[11px]"
+                        onClick={() => {
+                          const delimiter = optionsDraft.includes("\n") ? "\n" : ",";
+                          const lines = optionsDraft.split(delimiter);
+                          if (!lines.some(isOtherOption)) {
+                            setOptionsDraft((prev) => (prev.trim() ? `${prev.trim()}\nOther` : "Other"));
+                          }
+                        }}
+                      >
+                        + Add &quot;Other&quot; option
+                      </Button>
+                    )}
+                  </div>
+
                   <Textarea
                     rows={6}
                     className="min-h-[140px] font-mono text-xs leading-relaxed"

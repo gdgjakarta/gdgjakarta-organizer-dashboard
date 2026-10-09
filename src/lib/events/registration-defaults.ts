@@ -1,4 +1,4 @@
-import type { CustomQuestion, EventSession } from "@/lib/firestore/types";
+import type { CustomQuestion, EventSession, FirestoreEvent } from "@/lib/firestore/types";
 
 /**
  * Section definitions for structuring the combined registration form.
@@ -1540,4 +1540,114 @@ export function getSessionRemainingSeats(session: EventSession, registeredCount 
   if (!session.capacity || session.capacity <= 0) return Number.POSITIVE_INFINITY;
   const count = session.total_registered ?? registeredCount;
   return Math.max(0, session.capacity - count);
+}
+
+export interface RegistrationWindowStatus {
+  isOpen: boolean;
+  status: "draft" | "upcoming" | "open" | "ended" | "completed";
+  message: string;
+  badgeLabel: string;
+  opensAt?: string;
+  closesAt?: string;
+}
+
+/**
+ * Calculates real-time registration status based on event draft status,
+ * custom registration window (start/end dates), and event start/end dates.
+ */
+export function getRegistrationWindowStatus(event: FirestoreEvent): RegistrationWindowStatus {
+  // 1. Event completed
+  if (event.status === "Completed") {
+    return {
+      isOpen: false,
+      status: "completed",
+      message: "Event Concluded",
+      badgeLabel: "Event Concluded",
+    };
+  }
+
+  // 2. Draft check (registration not opened yet)
+  const isDraft = event.registration_status === "Draft" || event.status === "Draft";
+  if (isDraft) {
+    return {
+      isOpen: false,
+      status: "draft",
+      message: "Registration Not Open Yet",
+      badgeLabel: "Draft — Not Open",
+    };
+  }
+
+  // 3. Explicitly closed check
+  if (event.registration_status === "Closed") {
+    return {
+      isOpen: false,
+      status: "ended",
+      message: "Registration Closed",
+      badgeLabel: "Registration Closed",
+    };
+  }
+
+  const now = Date.now();
+
+  // 4. Registration Opens At (scheduled in future)
+  if (event.registration_start_date) {
+    try {
+      const openTime = new Date(event.registration_start_date).getTime();
+      if (!Number.isNaN(openTime) && now < openTime) {
+        return {
+          isOpen: false,
+          status: "upcoming",
+          message: "Registration Opens Soon",
+          badgeLabel: "Opens Soon",
+          opensAt: event.registration_start_date,
+        };
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // 5. Registration Closes At (ended in past)
+  if (event.registration_end_date) {
+    try {
+      const closeTime = new Date(event.registration_end_date).getTime();
+      if (!Number.isNaN(closeTime) && now > closeTime) {
+        return {
+          isOpen: false,
+          status: "ended",
+          message: "Registration Closed",
+          badgeLabel: "Registration Closed",
+          closesAt: event.registration_end_date,
+        };
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  // 6. Event date past
+  const targetDate = event.end_date || event.start_date;
+  if (targetDate) {
+    try {
+      if (new Date(targetDate).getTime() < now) {
+        return {
+          isOpen: false,
+          status: "ended",
+          message: "Registration Closed",
+          badgeLabel: "Event Concluded",
+        };
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return {
+    isOpen: true,
+    status: "open",
+    message: "Register for Event",
+    badgeLabel: event.requires_approval ? "Approval Required" : "Open for RSVPs",
+    opensAt: event.registration_start_date ?? undefined,
+    closesAt: event.registration_end_date ?? undefined,
+  };
 }

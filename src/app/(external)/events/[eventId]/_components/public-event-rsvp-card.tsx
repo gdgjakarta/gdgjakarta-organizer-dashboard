@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 
-import { Check, Copy, ExternalLink, Share2, Sparkles, Users } from "lucide-react";
+import Image from "next/image";
+
+import { Camera, Check, Copy, ExternalLink, Share2, Sparkles, Users, Video } from "lucide-react";
 import { toast } from "sonner";
 
 import { EventRegistrationModal } from "@/components/event-registration-modal";
@@ -11,6 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { getBevyLiveEventUrl } from "@/config/remote-config-utils";
 import type { BevyEvent } from "@/lib/bevy/types";
+import { parsePhotoAlbum } from "@/lib/events/media-utils";
+import { getRegistrationWindowStatus } from "@/lib/events/registration-defaults";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
 
 interface PublicEventRsvpCardProps {
@@ -34,6 +38,15 @@ export function PublicEventRsvpCard({ event, firestoreEvent, existingRegistratio
   const [copied, setCopied] = useState(false);
   const isPast = isEventPast(event);
   const liveBevyUrl = getBevyLiveEventUrl(event);
+  const highlightVideoUrl = firestoreEvent?.highlight_video_url ?? event.highlight_video_url ?? event.video_url;
+  const photoAlbumUrl = firestoreEvent?.photo_album_url ?? event.photo_album_url;
+  const parsedAlbum = parsePhotoAlbum(photoAlbumUrl);
+  const thumbnailImageUrl =
+    event.cropped_picture_url ??
+    event.picture?.url ??
+    event.picture?.thumbnail_url ??
+    event.cropped_banner_url ??
+    event.banner?.url;
 
   // Map to FirestoreEvent compatible structure for EventRegistrationModal
   const registrationEvent: FirestoreEvent = {
@@ -66,6 +79,9 @@ export function PublicEventRsvpCard({ event, firestoreEvent, existingRegistratio
     total_checked_in: firestoreEvent?.total_checked_in ?? event.checkin_count ?? 0,
     custom_questions: firestoreEvent?.custom_questions,
     sessions: firestoreEvent?.sessions,
+    registration_status: firestoreEvent?.registration_status,
+    registration_start_date: firestoreEvent?.registration_start_date,
+    registration_end_date: firestoreEvent?.registration_end_date,
     is_hidden: event.is_hidden,
     is_test: event.is_test,
     created_at: new Date().toISOString(),
@@ -81,11 +97,32 @@ export function PublicEventRsvpCard({ event, firestoreEvent, existingRegistratio
     }
   };
 
-  let registrationBadgeLabel = "Open for RSVPs";
-  if (isPast) {
-    registrationBadgeLabel = "Event Concluded";
-  } else if (registrationEvent.requires_approval) {
-    registrationBadgeLabel = "Approval Required";
+  const windowStatus = getRegistrationWindowStatus(registrationEvent);
+
+  let registrationBadgeLabel = windowStatus.badgeLabel;
+  if (windowStatus.isOpen) {
+    registrationBadgeLabel = registrationEvent.requires_approval ? "Approval Required" : "Open for RSVPs";
+  }
+
+  let badgeColorClass = "text-xs";
+  if (windowStatus.isOpen) {
+    badgeColorClass = "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 text-xs dark:text-emerald-400";
+  } else if (windowStatus.status === "draft") {
+    badgeColorClass =
+      "border border-dashed border-amber-500/40 bg-amber-500/10 text-amber-700 text-xs dark:text-amber-300";
+  } else if (windowStatus.status === "upcoming") {
+    badgeColorClass = "border border-blue-500/40 bg-blue-500/10 text-blue-700 text-xs dark:text-blue-300";
+  }
+
+  let registrationDescription = "Reserve your spot today to receive updates and access.";
+  if (isPast || windowStatus.status === "completed") {
+    registrationDescription = "This event has already ended. Registrations are closed.";
+  } else if (windowStatus.status === "draft") {
+    registrationDescription = "Registration has not opened yet. Check back soon for announcements.";
+  } else if (windowStatus.status === "upcoming") {
+    registrationDescription = `Registration opens on ${windowStatus.opensAt ? new Date(windowStatus.opensAt).toLocaleDateString() : "soon"}.`;
+  } else if (windowStatus.status === "ended") {
+    registrationDescription = "Registration is closed for this event.";
   }
 
   return (
@@ -93,34 +130,64 @@ export function PublicEventRsvpCard({ event, firestoreEvent, existingRegistratio
       {/* ── DESKTOP STICKY SIDEBAR CARD ───────────────────────────── */}
       <Card className="sticky top-20 hidden border-border/60 bg-card/95 p-5 shadow-sm backdrop-blur-md lg:block">
         <CardContent className="space-y-4 p-0">
+          {/* Event Thumbnail (recommended Bevy size: 1080 x 1080 pixels) */}
+          {thumbnailImageUrl ? (
+            <div className="relative aspect-square w-full overflow-hidden rounded-xl border border-border/50 bg-muted/20 shadow-2xs">
+              <Image
+                src={thumbnailImageUrl}
+                alt={event.title}
+                fill
+                priority
+                sizes="(max-width: 1024px) 100vw, 400px"
+                className="size-full object-cover transition-transform duration-300 hover:scale-[1.02]"
+                unoptimized={!thumbnailImageUrl.includes("res.cloudinary.com")}
+              />
+            </div>
+          ) : null}
+
           <div className="space-y-1 border-border/50 border-b pb-3.5">
             <div className="flex items-center justify-between">
               <span className="font-medium text-muted-foreground text-xs uppercase tracking-wider">
                 Registration Status
               </span>
-              <Badge
-                variant={isPast ? "secondary" : "outline"}
-                className={
-                  isPast
-                    ? "text-xs"
-                    : "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 text-xs dark:text-emerald-400"
-                }
-              >
+              <Badge variant={windowStatus.isOpen ? "outline" : "secondary"} className={badgeColorClass}>
                 {registrationBadgeLabel}
               </Badge>
             </div>
-            <p className="text-muted-foreground text-xs">
-              {isPast
-                ? "This event has already ended. Registrations are closed."
-                : "Reserve your spot today to receive updates and access."}
-            </p>
+            <p className="text-muted-foreground text-xs">{registrationDescription}</p>
           </div>
 
           {/* Primary Action Button */}
           {isPast ? (
-            <Button disabled className="w-full font-medium" size="lg">
-              Registration Closed
-            </Button>
+            <div className="space-y-2">
+              <Button disabled className="w-full font-medium" size="lg">
+                Registration Closed
+              </Button>
+              {highlightVideoUrl && (
+                <Button
+                  variant="outline"
+                  className="w-full gap-2 border-primary/30 text-primary text-xs hover:bg-primary/10"
+                  size="sm"
+                  onClick={() => {
+                    const el = document.querySelector('[data-state][value="highlights"]') as HTMLButtonElement | null;
+                    el?.click();
+                    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+                  }}
+                >
+                  <Video className="size-3.5" />
+                  Watch Highlight Video
+                </Button>
+              )}
+              {photoAlbumUrl && (
+                <Button variant="outline" className="w-full gap-2 text-xs" size="sm" asChild>
+                  <a href={photoAlbumUrl} target="_blank" rel="noopener noreferrer">
+                    <Camera className="size-3.5" />
+                    <span>{parsedAlbum?.label ? `View ${parsedAlbum.label}` : "View Photo Album"}</span>
+                    <ExternalLink className="ml-auto size-3" />
+                  </a>
+                </Button>
+              )}
+            </div>
           ) : (
             <EventRegistrationModal event={registrationEvent} existingRegistration={existingRegistration}>
               <Button className="w-full gap-2 font-medium shadow-xs" size="lg">
@@ -165,9 +232,22 @@ export function PublicEventRsvpCard({ event, firestoreEvent, existingRegistratio
       {/* ── MOBILE STICKY BOTTOM BAR ──────────────────────────────── */}
       <div className="fixed inset-x-0 bottom-0 z-40 border-border/60 border-t bg-background/95 p-3.5 shadow-lg backdrop-blur-md lg:hidden">
         <div className="mx-auto flex max-w-md items-center justify-between gap-3">
+          {thumbnailImageUrl ? (
+            <div className="relative size-10 shrink-0 overflow-hidden rounded-lg border border-border/50 bg-muted/20 shadow-2xs">
+              <Image
+                src={thumbnailImageUrl}
+                alt={event.title}
+                fill
+                sizes="40px"
+                className="size-full object-cover"
+                unoptimized={!thumbnailImageUrl.includes("res.cloudinary.com")}
+              />
+            </div>
+          ) : null}
+
           <div className="min-w-0 flex-1">
             <p className="truncate font-semibold text-foreground text-sm">{event.title}</p>
-            <p className="text-muted-foreground text-xs">{isPast ? "Event Concluded" : "Open for RSVPs"}</p>
+            <p className="text-muted-foreground text-xs">{registrationBadgeLabel}</p>
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
@@ -175,18 +255,50 @@ export function PublicEventRsvpCard({ event, firestoreEvent, existingRegistratio
               {copied ? <Check className="size-4 text-emerald-500" /> : <Share2 className="size-4" />}
             </Button>
 
-            {isPast ? (
-              <Button disabled size="sm">
-                Closed
-              </Button>
-            ) : (
-              <EventRegistrationModal event={registrationEvent} existingRegistration={existingRegistration}>
-                <Button size="sm" className="gap-1.5 shadow-xs">
-                  <Sparkles className="size-3.5" />
-                  RSVP
+            {(() => {
+              if (!isPast) {
+                return (
+                  <EventRegistrationModal event={registrationEvent} existingRegistration={existingRegistration}>
+                    <Button size="sm" className="gap-1.5 shadow-xs">
+                      <Sparkles className="size-3.5" />
+                      RSVP
+                    </Button>
+                  </EventRegistrationModal>
+                );
+              }
+              if (photoAlbumUrl) {
+                return (
+                  <Button size="sm" variant="outline" asChild className="gap-1.5 text-xs">
+                    <a href={photoAlbumUrl} target="_blank" rel="noopener noreferrer">
+                      <Camera className="size-3.5" />
+                      Photos
+                    </a>
+                  </Button>
+                );
+              }
+              if (highlightVideoUrl) {
+                return (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5 border-primary/30 text-primary text-xs"
+                    onClick={() => {
+                      const el = document.querySelector('[data-state][value="highlights"]') as HTMLButtonElement | null;
+                      el?.click();
+                      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+                    }}
+                  >
+                    <Video className="size-3.5" />
+                    Recap
+                  </Button>
+                );
+              }
+              return (
+                <Button disabled size="sm">
+                  Closed
                 </Button>
-              </EventRegistrationModal>
-            )}
+              );
+            })()}
           </div>
         </div>
       </div>

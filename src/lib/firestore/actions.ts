@@ -147,3 +147,22 @@ export async function savePartnershipContentAction(content: import("@/lib/conten
     return { success: false, error: message };
   }
 }
+
+/**
+ * Update event merchandise items
+ */
+export async function updateEventMerchandiseAction(
+  eventId: string,
+  merchandise: import("./types").EventMerchandiseItem[],
+) {
+  try {
+    const { updateEventMerchandise } = await import("./client");
+    await updateEventMerchandise(eventId, merchandise);
+    await revalidateDashboardPath(`/dashboard/events/${eventId}`);
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to save merchandise.";
+    console.error("[updateEventMerchandiseAction] error:", message);
+    return { success: false, error: message };
+  }
+}

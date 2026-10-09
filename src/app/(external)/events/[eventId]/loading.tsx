@@ -33,8 +33,8 @@ export default function PublicEventDetailLoading() {
             </div>
           </div>
 
-          {/* Hero Banner Skeleton */}
-          <Skeleton className="aspect-[16/9] w-full rounded-2xl sm:aspect-[21/9]" />
+          {/* Hero Banner Skeleton (2560 x 650 pixels) */}
+          <Skeleton className="aspect-[2560/650] w-full rounded-2xl" />
 
           {/* Quick Info Cards Skeleton */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -57,7 +57,13 @@ export default function PublicEventDetailLoading() {
 
         {/* Sidebar Skeleton */}
         <div className="lg:col-span-4">
-          <Skeleton className="h-72 w-full rounded-xl" />
+          <div className="space-y-4 rounded-xl border border-border/60 bg-card p-5">
+            {/* Thumbnail Skeleton (1080 x 1080 square) */}
+            <Skeleton className="aspect-square w-full rounded-xl" />
+            <Skeleton className="h-6 w-3/4 rounded-lg" />
+            <Skeleton className="h-10 w-full rounded-lg" />
+            <Skeleton className="h-8 w-full rounded-lg" />
+          </div>
         </div>
       </div>
     </div>

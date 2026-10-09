@@ -11,6 +11,7 @@ import {
   Calendar,
   CheckCircle2,
   ChevronDown,
+  Clock,
   Copy,
   ExternalLink,
   Eye,
@@ -19,6 +20,7 @@ import {
   Radio,
   RefreshCw,
   Users,
+  XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -40,19 +42,34 @@ interface EventDetailHeaderProps {
   event: FirestoreEvent;
   totalRegistrations: number;
   totalApproved: number;
+  totalRejected?: number;
+  totalPending?: number;
 }
 
-export function EventDetailHeader({ event, totalRegistrations, totalApproved }: EventDetailHeaderProps) {
+export function EventDetailHeader({
+  event,
+  totalRegistrations,
+  totalApproved,
+  totalRejected = 0,
+  totalPending = 0,
+}: EventDetailHeaderProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [liveTotals, setLiveTotals] = useState({
     totalRegistrations,
     totalApproved,
+    totalRejected,
+    totalPending,
   });
 
   useEffect(() => {
-    setLiveTotals({ totalRegistrations, totalApproved });
-  }, [totalRegistrations, totalApproved]);
+    setLiveTotals((prev) => ({
+      totalRegistrations: Math.max(prev.totalRegistrations, totalRegistrations),
+      totalApproved: Math.max(prev.totalApproved, totalApproved),
+      totalRejected: Math.max(prev.totalRejected, totalRejected),
+      totalPending: Math.max(prev.totalPending, totalPending),
+    }));
+  }, [totalRegistrations, totalApproved, totalRejected, totalPending]);
 
   useEffect(() => {
     if (!event.id) return;
@@ -69,9 +86,17 @@ export function EventDetailHeader({ event, totalRegistrations, totalApproved }: 
               const s = (r.status || "").toLowerCase().trim();
               return s === "approved" || s === "attended" || s === "confirmed" || s === "registered";
             }).length;
+            const rejectedCount = list.filter((r) => (r.status || "").toLowerCase().trim() === "rejected").length;
+            const pendingCount = list.filter((r) => {
+              const s = (r.status || "").toLowerCase().trim();
+              return s === "pending" || s === "applied" || s === "review" || !s;
+            }).length;
+
             setLiveTotals({
-              totalRegistrations: Math.max(list.length, totalRegistrations),
-              totalApproved: Math.max(approvedCount, totalApproved),
+              totalRegistrations: list.length > 0 ? list.length : totalRegistrations,
+              totalApproved: list.length > 0 ? approvedCount : totalApproved,
+              totalRejected: rejectedCount,
+              totalPending: pendingCount,
             });
           }
         });
@@ -225,12 +250,22 @@ export function EventDetailHeader({ event, totalRegistrations, totalApproved }: 
             <span>•</span>
             <span className="flex items-center gap-1.5">
               <Users className="size-4" />
-              <strong className="text-foreground">{liveTotals.totalRegistrations}</strong> Total Registrants
+              <strong className="text-foreground">{liveTotals.totalRegistrations}</strong> Registrants
             </span>
             <span>•</span>
             <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
               <CheckCircle2 className="size-4" />
               <strong>{liveTotals.totalApproved}</strong> Approved
+            </span>
+            <span>•</span>
+            <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+              <Clock className="size-4" />
+              <strong>{liveTotals.totalPending}</strong> Pending
+            </span>
+            <span>•</span>
+            <span className="flex items-center gap-1.5 text-destructive">
+              <XCircle className="size-4" />
+              <strong>{liveTotals.totalRejected}</strong> Rejected
             </span>
           </div>
         </div>

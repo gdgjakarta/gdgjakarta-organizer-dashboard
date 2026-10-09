@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import Image from "next/image";
 import Link from "next/link";
 
 import { ArrowLeft, Check, Copy, ExternalLink, EyeOff, FlaskConical, Globe, MapPin, Radio, Share2 } from "lucide-react";
@@ -102,6 +103,7 @@ export function PublicEventHeader({ event }: PublicEventHeaderProps) {
   const isTest = Boolean(event.is_test);
   const liveBevyUrl = getBevyLiveEventUrl(event);
   const cohostedChapters = getCohostedChapters(event);
+  const thumbnailImageUrl = event.cropped_picture_url ?? event.picture?.url ?? event.picture?.thumbnail_url;
 
   const handleCopyLink = () => {
     if (typeof window !== "undefined") {
@@ -212,7 +214,23 @@ export function PublicEventHeader({ event }: PublicEventHeaderProps) {
       </div>
 
       {/* Title */}
-      <h1 className="font-bold text-2xl text-foreground tracking-tight sm:text-3xl md:text-4xl">{event.title}</h1>
+      <div className="flex items-start gap-3.5">
+        {thumbnailImageUrl && (
+          <div className="relative aspect-square size-16 shrink-0 overflow-hidden rounded-xl border border-border/60 bg-muted/30 shadow-2xs sm:size-20 lg:hidden">
+            <Image
+              src={thumbnailImageUrl}
+              alt={event.title}
+              fill
+              sizes="80px"
+              className="size-full object-cover"
+              unoptimized={!thumbnailImageUrl.includes("res.cloudinary.com")}
+            />
+          </div>
+        )}
+        <h1 className="min-w-0 flex-1 font-bold text-2xl text-foreground tracking-tight sm:text-3xl md:text-4xl">
+          {event.title}
+        </h1>
+      </div>
 
       {/* Co-hosted Chapters Row (Only show if cohosted with other chapters) */}
       {cohostedChapters.length > 0 && (

@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useEffect, useId, useState, useTransition } from "react";
+import React, { useEffect, useId, useRef, useState, useTransition } from "react";
 
 import { useRouter } from "next/navigation";
 
-import { CheckCircle2, Clock, ExternalLink, Layers, Loader2, MapPin, Sparkles } from "lucide-react";
+import { CheckCircle2, Clock, ExternalLink, FileEdit, Layers, Loader2, MapPin, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -25,9 +25,15 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { resolveEventAudience } from "@/lib/bevy/audience";
-import { validateQuestionAnswer } from "@/lib/events/question-validator";
+import {
+  formatOtherAnswer,
+  isOtherOption,
+  parseOtherAnswer,
+  validateQuestionAnswer,
+} from "@/lib/events/question-validator";
 import {
   DEFAULT_COMBINED_QUESTIONS,
+  getRegistrationWindowStatus,
   getSessionRemainingSeats,
   isSessionAvailable,
 } from "@/lib/events/registration-defaults";
@@ -72,6 +78,8 @@ export function EventRegistrationModal({
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const [localReg, setLocalReg] = useState<FirestoreRegistration | null>(existingRegistration ?? null);
   const [isPending, startTransition] = useTransition();
+  const [otherInputs, setOtherInputs] = useState<Record<string, string>>({});
+  const otherInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   useEffect(() => {
     if (existingRegistration) {
@@ -124,6 +132,26 @@ export function EventRegistrationModal({
   }, [event]);
 
   const activeRegistration = existingRegistration ?? localReg;
+
+  // Pre-fill answers and "Other" custom texts if existing registration is found
+  useEffect(() => {
+    if (activeRegistration?.answers) {
+      const initialOther: Record<string, string> = {};
+      for (const [key, val] of Object.entries(activeRegistration.answers)) {
+        if (typeof val === "string") {
+          const parsed = parseOtherAnswer(val);
+          if (parsed.isOther && parsed.customText) {
+            initialOther[key] = parsed.customText;
+          }
+        }
+      }
+      setOtherInputs((prev) => ({ ...initialOther, ...prev }));
+      setAnswers((prev) => ({
+        ...activeRegistration.answers,
+        ...prev,
+      }));
+    }
+  }, [activeRegistration]);
   const isPast = isEventPast(eventConfig);
 
   const questions: CustomQuestion[] =
@@ -197,6 +225,68 @@ export function EventRegistrationModal({
     });
   };
 
+  const handleSelectRadioRegular = (question: CustomQuestion, opt: string) => {
+    handleTextChange(question.id, opt);
+    handleBlur(question.id);
+  };
+
+  const handleSelectRadioOther = (question: CustomQuestion) => {
+    const currentText = otherInputs[question.id] || "";
+    const formatted = formatOtherAnswer(currentText);
+    handleTextChange(question.id, formatted);
+    setTimeout(() => {
+      otherInputRefs.current[question.id]?.focus();
+    }, 50);
+  };
+
+  const handleRadioOtherTextChange = (question: CustomQuestion, text: string) => {
+    setOtherInputs((prev) => ({ ...prev, [question.id]: text }));
+    const formatted = formatOtherAnswer(text);
+    handleTextChange(question.id, formatted);
+  };
+
+  const handleSelectDropdownChange = (question: CustomQuestion, val: string) => {
+    if (val === "__other__") {
+      const currentText = otherInputs[question.id] || "";
+      const formatted = formatOtherAnswer(currentText);
+      handleTextChange(question.id, formatted);
+      setTimeout(() => {
+        otherInputRefs.current[question.id]?.focus();
+      }, 50);
+    } else {
+      handleTextChange(question.id, val);
+      handleBlur(question.id);
+    }
+  };
+
+  const handleSelectOtherTextChange = (question: CustomQuestion, text: string) => {
+    setOtherInputs((prev) => ({ ...prev, [question.id]: text }));
+    const formatted = formatOtherAnswer(text);
+    handleTextChange(question.id, formatted);
+  };
+
+  const handleMultiSelectOtherTextChange = (question: CustomQuestion, text: string) => {
+    setOtherInputs((prev) => ({ ...prev, [question.id]: text }));
+    const formatted = formatOtherAnswer(text);
+    setAnswers((prev) => {
+      const current = Array.isArray(prev[question.id]) ? (prev[question.id] as string[]) : [];
+      const filtered = current.filter(
+        (it) => typeof it === "string" && !isOtherOption(it) && !it.toLowerCase().startsWith("other:"),
+      );
+      const updated = [...filtered, formatted];
+      const result = validateQuestionAnswer(question, updated);
+      setFieldErrors((errs) => {
+        if (result.isValid) {
+          const next = { ...errs };
+          delete next[question.id];
+          return next;
+        }
+        return { ...errs, [question.id]: result.error ?? "Invalid input" };
+      });
+      return { ...prev, [question.id]: updated };
+    });
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -206,8 +296,9 @@ export function EventRegistrationModal({
       return;
     }
 
-    if (isPast) {
-      toast.error("This event has already ended. Registration is closed.");
+    const windowStatus = getRegistrationWindowStatus(eventConfig);
+    if ((isPast || !windowStatus.isOpen) && !activeRegistration) {
+      toast.error(windowStatus.message || "Registration is currently closed.");
       setOpen(false);
       return;
     }
@@ -252,7 +343,8 @@ export function EventRegistrationModal({
       setTouchedFields(new Set(questions.map((q) => q.id)));
       toast.error(firstErrorMsg ?? "Please review the form for errors.");
       if (firstErrorId && typeof document !== "undefined") {
-        const el = document.getElementById(firstErrorId);
+        const otherEl = document.getElementById(`${firstErrorId}-other-text`);
+        const el = otherEl || document.getElementById(firstErrorId);
         el?.focus();
         el?.scrollIntoView({ behavior: "smooth", block: "center" });
       }
@@ -303,7 +395,7 @@ export function EventRegistrationModal({
             venue_name: event.venue?.name,
             audience_type: event.audience_type,
             is_virtual: event.is_virtual,
-            webhook_url: eventConfig.webhook_url,
+            webhook_url: eventConfig.webhook_url ?? undefined,
           },
           registration: {
             id: result.registrationId || `${event.id}_${user.id}`,
@@ -337,8 +429,8 @@ export function EventRegistrationModal({
           event_id: String(event.id),
           event_title: event.title,
           member_id: user?.id || "",
-          member_name: user?.displayName || user?.name || "Attendee",
-          member_email: (combinedAnswers.work_email as string) || user?.email || "",
+          member_name: user?.name || "Attendee",
+          member_email: ((combinedAnswers as Record<string, unknown>).work_email as string) || user?.email || "",
           status: eventConfig.requires_approval ? "pending" : "approved",
           registered_at: new Date().toISOString(),
           answers: combinedAnswers,
@@ -415,10 +507,32 @@ export function EventRegistrationModal({
     );
   }
 
-  if (isPast) {
+  const windowStatus = getRegistrationWindowStatus(eventConfig);
+
+  if (isPast || !windowStatus.isOpen) {
+    let buttonSize: "default" | "sm" | "lg" | "icon" = "sm";
+    if (React.isValidElement(children)) {
+      const childProps = children.props as { size?: "default" | "sm" | "lg" | "icon" };
+      if (childProps?.size) buttonSize = childProps.size;
+    }
+
     return (
-      <Button variant="secondary" size="sm" disabled className="cursor-default opacity-75">
-        Registration Closed
+      <Button
+        variant="secondary"
+        size={buttonSize}
+        disabled
+        className={cn(
+          "cursor-not-allowed opacity-80 font-medium",
+          className,
+          windowStatus.status === "draft" &&
+            "border border-dashed border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300",
+          windowStatus.status === "upcoming" &&
+            "border border-blue-500/40 bg-blue-500/10 text-blue-800 dark:text-blue-300",
+        )}
+      >
+        {windowStatus.status === "draft" && <FileEdit className="size-3.5 mr-1.5" />}
+        {windowStatus.status === "upcoming" && <Clock className="size-3.5 mr-1.5" />}
+        {windowStatus.message}
       </Button>
     );
   }
@@ -668,86 +782,316 @@ export function EventRegistrationModal({
                         )}
 
                         {/* Dropdown Select */}
-                        {q.type === "select" && (
-                          <Select
-                            value={(answers[q.id] as string) || ""}
-                            onValueChange={(val) => {
-                              handleTextChange(q.id, val);
-                              handleBlur(q.id);
-                            }}
-                          >
-                            <SelectTrigger
-                              id={fieldId}
-                              aria-invalid={Boolean(errorMessage)}
-                              className={cn(errorMessage && "border-destructive focus:ring-destructive/30")}
-                            >
-                              <SelectValue placeholder="Select an option" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {q.options?.map((opt) => (
-                                <SelectItem key={opt} value={opt}>
-                                  {opt}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        )}
+                        {q.type === "select" &&
+                          (() => {
+                            const hasOther = Boolean(q.allow_other || q.options?.some(isOtherOption));
+                            const regularOptions = (q.options ?? []).filter((opt) => !isOtherOption(opt));
+                            const rawVal = typeof answers[q.id] === "string" ? (answers[q.id] as string) : "";
+                            const parsed = parseOtherAnswer(rawVal);
+                            const isOtherSelected =
+                              hasOther && (parsed.isOther || (rawVal !== "" && !regularOptions.includes(rawVal)));
+                            const currentOtherText = otherInputs[q.id] ?? parsed.customText;
+
+                            return (
+                              <div className="space-y-2">
+                                <Select
+                                  value={isOtherSelected ? "__other__" : rawVal}
+                                  onValueChange={(val) => handleSelectDropdownChange(q, val)}
+                                >
+                                  <SelectTrigger
+                                    id={fieldId}
+                                    aria-invalid={Boolean(errorMessage)}
+                                    className={cn(errorMessage && "border-destructive focus:ring-destructive/30")}
+                                  >
+                                    <SelectValue placeholder="Select an option" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {regularOptions.map((opt) => (
+                                      <SelectItem key={opt} value={opt}>
+                                        {opt}
+                                      </SelectItem>
+                                    ))}
+                                    {hasOther && <SelectItem value="__other__">Other (specify below)</SelectItem>}
+                                  </SelectContent>
+                                </Select>
+
+                                {isOtherSelected && (
+                                  <div className="space-y-1 pt-1 animate-in fade-in-50 duration-200">
+                                    <label
+                                      htmlFor={`${fieldId}-other-text`}
+                                      className="block text-[11px] font-medium text-muted-foreground"
+                                    >
+                                      Please specify your response:
+                                    </label>
+                                    <Input
+                                      ref={(el) => {
+                                        otherInputRefs.current[q.id] = el;
+                                      }}
+                                      id={`${fieldId}-other-text`}
+                                      type="text"
+                                      placeholder={q.other_placeholder || "Type your custom response..."}
+                                      value={currentOtherText}
+                                      onChange={(e) => handleSelectOtherTextChange(q, e.target.value)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") e.preventDefault();
+                                      }}
+                                      onBlur={() => handleBlur(q.id)}
+                                      className={cn(
+                                        "h-8 text-xs bg-background/80",
+                                        errorMessage &&
+                                          !currentOtherText.trim() &&
+                                          "border-destructive focus-visible:ring-destructive/30",
+                                      )}
+                                      autoFocus
+                                    />
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
 
                         {/* Single Choice Radio */}
-                        {q.type === "radio" && (
-                          <RadioGroup
-                            value={(answers[q.id] as string) || ""}
-                            onValueChange={(val) => {
-                              handleTextChange(q.id, val);
-                              handleBlur(q.id);
-                            }}
-                            className="grid grid-cols-1 gap-2 pt-1 sm:grid-cols-2"
-                          >
-                            {q.options?.map((opt) => (
-                              <label
-                                key={opt}
-                                htmlFor={`${fieldId}-${opt}`}
-                                className={cn(
-                                  "flex cursor-pointer items-center gap-2 rounded-md border bg-card p-2.5 text-xs hover:bg-muted/40",
-                                  errorMessage && "border-destructive/60",
-                                )}
+                        {q.type === "radio" &&
+                          (() => {
+                            const hasOther = Boolean(q.allow_other || q.options?.some(isOtherOption));
+                            const regularOptions = (q.options ?? []).filter((opt) => !isOtherOption(opt));
+                            const rawVal = typeof answers[q.id] === "string" ? (answers[q.id] as string) : "";
+                            const parsed = parseOtherAnswer(rawVal);
+                            const isOtherSelected =
+                              hasOther && (parsed.isOther || (rawVal !== "" && !regularOptions.includes(rawVal)));
+                            const currentOtherText = otherInputs[q.id] ?? parsed.customText;
+
+                            return (
+                              <RadioGroup
+                                value={isOtherSelected ? "__other__" : rawVal}
+                                onValueChange={(val) => {
+                                  if (val === "__other__") {
+                                    handleSelectRadioOther(q);
+                                  } else {
+                                    handleSelectRadioRegular(q, val);
+                                  }
+                                }}
+                                className="grid grid-cols-1 gap-2 pt-1 sm:grid-cols-2"
                               >
-                                <RadioGroupItem value={opt} id={`${fieldId}-${opt}`} />
-                                <span className="text-foreground">{opt}</span>
-                              </label>
-                            ))}
-                          </RadioGroup>
-                        )}
+                                {regularOptions.map((opt) => {
+                                  const isSelected = !isOtherSelected && rawVal === opt;
+                                  return (
+                                    <label
+                                      key={opt}
+                                      htmlFor={`${fieldId}-${opt}`}
+                                      className={cn(
+                                        "flex cursor-pointer items-center gap-2 rounded-md border p-2.5 text-xs transition-colors",
+                                        isSelected
+                                          ? "border-primary bg-primary/10 text-foreground font-medium shadow-xs"
+                                          : "border-border bg-card text-foreground hover:bg-muted/40",
+                                        errorMessage && !isSelected && "border-destructive/40",
+                                        errorMessage && isSelected && "border-destructive",
+                                      )}
+                                    >
+                                      <RadioGroupItem value={opt} id={`${fieldId}-${opt}`} />
+                                      <span className="leading-snug">{opt}</span>
+                                    </label>
+                                  );
+                                })}
+
+                                {hasOther && (
+                                  <div
+                                    className={cn(
+                                      "flex flex-col sm:flex-row sm:items-center gap-2 rounded-md border p-2.5 text-xs transition-colors sm:col-span-2",
+                                      isOtherSelected
+                                        ? "border-primary bg-primary/5 text-foreground shadow-2xs ring-1 ring-primary/30"
+                                        : "border-border bg-card hover:bg-muted/40",
+                                      errorMessage && !isOtherSelected && "border-destructive/40",
+                                      errorMessage &&
+                                        isOtherSelected &&
+                                        !currentOtherText.trim() &&
+                                        "border-destructive ring-destructive/30",
+                                    )}
+                                  >
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      <RadioGroupItem
+                                        value="__other__"
+                                        id={`${fieldId}-__other__`}
+                                        checked={isOtherSelected}
+                                      />
+                                      <label
+                                        htmlFor={`${fieldId}-__other__`}
+                                        className="cursor-pointer font-medium text-foreground select-none"
+                                      >
+                                        Other:
+                                      </label>
+                                    </div>
+                                    <div className="flex-1 min-w-0 w-full">
+                                      <Input
+                                        ref={(el) => {
+                                          otherInputRefs.current[q.id] = el;
+                                        }}
+                                        id={`${fieldId}-other-text`}
+                                        type="text"
+                                        placeholder={q.other_placeholder || "Type your custom response..."}
+                                        value={currentOtherText}
+                                        onFocus={() => {
+                                          if (!isOtherSelected) {
+                                            handleSelectRadioOther(q);
+                                          }
+                                        }}
+                                        onChange={(e) => handleRadioOtherTextChange(q, e.target.value)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter") e.preventDefault();
+                                        }}
+                                        onBlur={() => handleBlur(q.id)}
+                                        className={cn(
+                                          "h-8 text-xs bg-background/80 transition-colors",
+                                          isOtherSelected && "border-primary/50 focus-visible:ring-primary/30",
+                                          errorMessage &&
+                                            isOtherSelected &&
+                                            !currentOtherText.trim() &&
+                                            "border-destructive focus-visible:ring-destructive/30",
+                                        )}
+                                      />
+                                    </div>
+                                  </div>
+                                )}
+                              </RadioGroup>
+                            );
+                          })()}
 
                         {/* Multi-Select Checkboxes */}
-                        {(q.type === "checkbox" || q.type === "multiselect") && (
-                          <div className="grid grid-cols-1 gap-2 pt-1 sm:grid-cols-2">
-                            {q.options?.map((opt) => {
-                              const selectedList = Array.isArray(answers[q.id]) ? (answers[q.id] as string[]) : [];
-                              const isChecked = selectedList.includes(opt);
+                        {(q.type === "checkbox" || q.type === "multiselect") &&
+                          (() => {
+                            const hasOther = Boolean(q.allow_other || q.options?.some(isOtherOption));
+                            const regularOptions = (q.options ?? []).filter((opt) => !isOtherOption(opt));
+                            const selectedList = Array.isArray(answers[q.id]) ? (answers[q.id] as string[]) : [];
+                            const otherItem = selectedList.find(
+                              (item) =>
+                                typeof item === "string" &&
+                                (isOtherOption(item) || item.toLowerCase().startsWith("other:")),
+                            );
+                            const isOtherChecked = Boolean(otherItem);
+                            const parsedOther = parseOtherAnswer(otherItem ?? "");
+                            const currentOtherText = otherInputs[q.id] ?? parsedOther.customText;
 
-                              return (
-                                <label
-                                  key={opt}
-                                  htmlFor={`${fieldId}-${opt}`}
-                                  className={cn(
-                                    "flex cursor-pointer items-start gap-2.5 rounded-md border p-2.5 text-xs transition-colors",
-                                    isChecked ? "border-primary/50 bg-primary/5" : "bg-card hover:bg-muted/30",
-                                    errorMessage && !isChecked && "border-destructive/60",
-                                  )}
-                                >
-                                  <Checkbox
-                                    id={`${fieldId}-${opt}`}
-                                    checked={isChecked}
-                                    onCheckedChange={() => handleMultiSelectToggle(q.id, opt)}
-                                    className="mt-0.5 shrink-0"
-                                  />
-                                  <span className="text-foreground leading-snug">{opt}</span>
-                                </label>
-                              );
-                            })}
-                          </div>
-                        )}
+                            return (
+                              <div className="grid grid-cols-1 gap-2 pt-1 sm:grid-cols-2">
+                                {regularOptions.map((opt) => {
+                                  const isChecked = selectedList.includes(opt);
+                                  return (
+                                    <label
+                                      key={opt}
+                                      htmlFor={`${fieldId}-${opt}`}
+                                      className={cn(
+                                        "flex cursor-pointer items-start gap-2.5 rounded-md border p-2.5 text-xs transition-colors",
+                                        isChecked ? "border-primary/50 bg-primary/5" : "bg-card hover:bg-muted/30",
+                                        errorMessage && !isChecked && "border-destructive/60",
+                                      )}
+                                    >
+                                      <Checkbox
+                                        id={`${fieldId}-${opt}`}
+                                        checked={isChecked}
+                                        onCheckedChange={() => handleMultiSelectToggle(q.id, opt)}
+                                        className="mt-0.5 shrink-0"
+                                      />
+                                      <span className="text-foreground leading-snug">{opt}</span>
+                                    </label>
+                                  );
+                                })}
+
+                                {hasOther && (
+                                  <div
+                                    className={cn(
+                                      "flex flex-col sm:flex-row sm:items-center gap-2 rounded-md border p-2.5 text-xs transition-colors sm:col-span-2",
+                                      isOtherChecked
+                                        ? "border-primary bg-primary/5 text-foreground shadow-2xs ring-1 ring-primary/30"
+                                        : "border-border bg-card hover:bg-muted/40",
+                                      errorMessage && "border-destructive/60",
+                                    )}
+                                  >
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      <Checkbox
+                                        id={`${fieldId}-__other__`}
+                                        checked={isOtherChecked}
+                                        onCheckedChange={(checked) => {
+                                          if (checked) {
+                                            const formatted = formatOtherAnswer(currentOtherText);
+                                            setAnswers((prev) => {
+                                              const cur = Array.isArray(prev[q.id]) ? (prev[q.id] as string[]) : [];
+                                              const filtered = cur.filter(
+                                                (it) =>
+                                                  typeof it === "string" &&
+                                                  !isOtherOption(it) &&
+                                                  !it.toLowerCase().startsWith("other:"),
+                                              );
+                                              return { ...prev, [q.id]: [...filtered, formatted] };
+                                            });
+                                            setTimeout(() => otherInputRefs.current[q.id]?.focus(), 50);
+                                          } else {
+                                            setAnswers((prev) => {
+                                              const cur = Array.isArray(prev[q.id]) ? (prev[q.id] as string[]) : [];
+                                              return {
+                                                ...prev,
+                                                [q.id]: cur.filter(
+                                                  (it) =>
+                                                    typeof it === "string" &&
+                                                    !isOtherOption(it) &&
+                                                    !it.toLowerCase().startsWith("other:"),
+                                                ),
+                                              };
+                                            });
+                                          }
+                                        }}
+                                        className="shrink-0"
+                                      />
+                                      <label
+                                        htmlFor={`${fieldId}-__other__`}
+                                        className="cursor-pointer font-medium text-foreground select-none"
+                                      >
+                                        Other:
+                                      </label>
+                                    </div>
+                                    <div className="flex-1 min-w-0 w-full">
+                                      <Input
+                                        ref={(el) => {
+                                          otherInputRefs.current[q.id] = el;
+                                        }}
+                                        id={`${fieldId}-other-text`}
+                                        type="text"
+                                        placeholder={q.other_placeholder || "Type your custom response..."}
+                                        value={currentOtherText}
+                                        onFocus={() => {
+                                          if (!isOtherChecked) {
+                                            const formatted = formatOtherAnswer(currentOtherText);
+                                            setAnswers((prev) => {
+                                              const cur = Array.isArray(prev[q.id]) ? (prev[q.id] as string[]) : [];
+                                              const filtered = cur.filter(
+                                                (it) =>
+                                                  typeof it === "string" &&
+                                                  !isOtherOption(it) &&
+                                                  !it.toLowerCase().startsWith("other:"),
+                                              );
+                                              return { ...prev, [q.id]: [...filtered, formatted] };
+                                            });
+                                          }
+                                        }}
+                                        onChange={(e) => handleMultiSelectOtherTextChange(q, e.target.value)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter") e.preventDefault();
+                                        }}
+                                        onBlur={() => handleBlur(q.id)}
+                                        className={cn(
+                                          "h-8 text-xs bg-background/80",
+                                          isOtherChecked && "border-primary/50 focus-visible:ring-primary/30",
+                                          errorMessage &&
+                                            isOtherChecked &&
+                                            !currentOtherText.trim() &&
+                                            "border-destructive focus-visible:ring-destructive/30",
+                                        )}
+                                      />
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
 
                         {/* Error message for select, radio, checkbox, multiselect */}
                         {errorMessage &&

@@ -112,7 +112,11 @@ export function PublicEventDetailView({ event, initialFirestoreEvent = null }: P
 
             <PublicEventInfoCards event={event} />
 
-            <PublicEventTabs event={event} firestoreSessions={firestoreEvent?.sessions} />
+            <PublicEventTabs
+              event={event}
+              firestoreSessions={firestoreEvent?.sessions}
+              firestoreEvent={firestoreEvent}
+            />
           </div>
 
           {/* Sidebar RSVP Column (Desktop 4 cols) */}
