@@ -9,7 +9,6 @@ import { isSortable } from "@dnd-kit/react/sortable";
 import {
   AlertTriangle,
   CalendarClock,
-  Check,
   CheckCircle2,
   Clock,
   ExternalLink,
@@ -19,13 +18,12 @@ import {
   Link2,
   Plus,
   Presentation,
-  RotateCcw,
-  Save,
   Sparkles,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { FloatingSaveBar } from "@/app/(main)/dashboard/_components/floating-save-bar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -631,7 +629,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-24">
       {/* ── 0. EVENT FORMAT PRESETS & TEMPLATES ──────────────────────── */}
       <Card className="border-primary/20 bg-primary/5">
         <CardHeader className="flex flex-col gap-3 pb-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1532,52 +1530,24 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
         </CardContent>
       </Card>
 
-      {/* Save All Settings Floating / Bottom Action Row */}
-      <div className="sticky bottom-4 z-20 flex flex-col gap-3 rounded-xl border border-border/80 bg-background/95 p-4 shadow-lg backdrop-blur-md sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2">
-          {isDirty ? (
-            <div className="flex items-center gap-2 text-xs font-medium text-amber-600 dark:text-amber-400">
-              <span className="size-2 rounded-full bg-amber-500 animate-pulse" />
-              <span>You have unsaved changes</span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Check className="size-3.5 text-emerald-500" />
-              <span>All settings are up to date</span>
-            </div>
-          )}
-          <span className="hidden text-muted-foreground/40 sm:inline">•</span>
-          <span className="hidden text-[11px] text-muted-foreground sm:inline">
+      {/* ── Fixed Floating Bottom Save Bar ──────────────────────────── */}
+      <FloatingSaveBar
+        isDirty={isDirty}
+        isSaving={isPending}
+        onSave={() => void handleSave()}
+        onDiscard={handleDiscardChanges}
+        discardLabel="Discard"
+        saveLabel="Save All Settings"
+        savingLabel="Saving Settings..."
+        savedLabel="Saved (No Changes)"
+        statusInfo={
+          <span>
             Status: <strong>{registrationStatus}</strong>
             {registrationStatus === "Draft" && " (Registration not open)"}
           </span>
-        </div>
-
-        <div className="flex items-center gap-2 self-end sm:self-auto">
-          {isDirty && (
-            <Button
-              type="button"
-              variant="outline"
-              size="default"
-              onClick={handleDiscardChanges}
-              disabled={isPending}
-              className="text-xs"
-            >
-              <RotateCcw className="size-3.5 mr-1.5" />
-              Discard
-            </Button>
-          )}
-          <Button
-            onClick={() => void handleSave()}
-            disabled={!isDirty || isPending}
-            className="shrink-0 gap-2 shadow-xs"
-            size="default"
-          >
-            <Save className="size-4" />
-            {isPending ? "Saving..." : isDirty ? "Save All Settings" : "Saved (No Changes)"}
-          </Button>
-        </div>
-      </div>
+        }
+        helperText="Form policies & session capacities will immediately apply."
+      />
 
       {/* ── UNSAVED CHANGES EXIT CONFIRMATION DIALOG ──────────────────── */}
       <Dialog open={showUnsavedDialog} onOpenChange={setShowUnsavedDialog}>

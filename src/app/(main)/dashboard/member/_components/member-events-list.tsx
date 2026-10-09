@@ -181,7 +181,13 @@ export function MemberEventsList({ events, myRegistrations = [] }: MemberEventsL
                   <Link href={`/dashboard/member/events/${event.id}`}>View Details →</Link>
                 </Button>
 
-                <EventRegistrationModal event={event} existingRegistration={existingReg} />
+                <EventRegistrationModal
+                  event={event}
+                  existingRegistration={existingReg}
+                  onSuccess={(newReg) => {
+                    setRegistrations((prev) => [...prev.filter((r) => r.event_id !== newReg.event_id), newReg]);
+                  }}
+                />
               </CardFooter>
             </Card>
           );

@@ -73,6 +73,12 @@ export const organizerSidebarItems: NavGroup[] = [
         icon: Calendar,
       },
       {
+        id: "my-events",
+        title: "My Events",
+        url: "/dashboard/my-events",
+        icon: CalendarCheck,
+      },
+      {
         id: "email-manager",
         title: "Emails",
         url: "/dashboard/email-manager",

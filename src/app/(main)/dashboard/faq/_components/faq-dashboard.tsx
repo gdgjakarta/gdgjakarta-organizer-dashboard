@@ -17,6 +17,7 @@ import {
   Trash2,
 } from "lucide-react";
 
+import { FloatingSaveBar } from "@/app/(main)/dashboard/_components/floating-save-bar";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -154,7 +155,7 @@ export function FaqDashboard() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-24">
       {/* Top Header & Actions Bar */}
       <div className="flex flex-col gap-4 border-b pb-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -950,6 +951,20 @@ export function FaqDashboard() {
         saving={isSavingAndLeaving}
         title="Unsaved FAQ Changes"
         description="You have unsaved changes in your FAQ & Policy configuration. If you leave without saving, your modifications will be discarded."
+      />
+
+      {/* ── Fixed Floating Bottom Save Bar ──────────────────────────── */}
+      <FloatingSaveBar
+        isDirty={hasChanges}
+        isSaving={saving}
+        onSave={() => void saveContent(content)}
+        onDiscard={() => setConfirmResetOpen(true)}
+        discardLabel="Reset Defaults"
+        saveLabel="Save Changes"
+        savingLabel="Saving FAQ..."
+        savedLabel="All Saved"
+        statusInfo={`${content.items.length} Questions, ${content.categories.length - 1} Categories`}
+        helperText="Updates will immediately reflect on the public FAQ page."
       />
     </div>
   );

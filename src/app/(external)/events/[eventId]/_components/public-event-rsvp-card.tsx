@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import Image from "next/image";
 
@@ -21,6 +21,7 @@ interface PublicEventRsvpCardProps {
   event: BevyEvent;
   firestoreEvent?: FirestoreEvent | null;
   existingRegistration?: FirestoreRegistration | null;
+  isCheckingRegistration?: boolean;
 }
 
 function isEventPast(event: BevyEvent): boolean {
@@ -34,8 +35,21 @@ function isEventPast(event: BevyEvent): boolean {
   }
 }
 
-export function PublicEventRsvpCard({ event, firestoreEvent, existingRegistration }: PublicEventRsvpCardProps) {
+export function PublicEventRsvpCard({
+  event,
+  firestoreEvent,
+  existingRegistration,
+  isCheckingRegistration = false,
+}: PublicEventRsvpCardProps) {
   const [copied, setCopied] = useState(false);
+  const [currentRegistration, setCurrentRegistration] = useState<FirestoreRegistration | null | undefined>(
+    existingRegistration,
+  );
+
+  useEffect(() => {
+    setCurrentRegistration(existingRegistration);
+  }, [existingRegistration]);
+
   const isPast = isEventPast(event);
   const liveBevyUrl = getBevyLiveEventUrl(event);
   const highlightVideoUrl = firestoreEvent?.highlight_video_url ?? event.highlight_video_url ?? event.video_url;
@@ -189,7 +203,12 @@ export function PublicEventRsvpCard({ event, firestoreEvent, existingRegistratio
               )}
             </div>
           ) : (
-            <EventRegistrationModal event={registrationEvent} existingRegistration={existingRegistration}>
+            <EventRegistrationModal
+              event={registrationEvent}
+              existingRegistration={currentRegistration}
+              isChecking={isCheckingRegistration}
+              onSuccess={(reg) => setCurrentRegistration(reg)}
+            >
               <Button className="w-full gap-2 font-medium shadow-xs" size="lg">
                 <Sparkles className="size-4" />
                 Register for Event
@@ -258,7 +277,12 @@ export function PublicEventRsvpCard({ event, firestoreEvent, existingRegistratio
             {(() => {
               if (!isPast) {
                 return (
-                  <EventRegistrationModal event={registrationEvent} existingRegistration={existingRegistration}>
+                  <EventRegistrationModal
+                    event={registrationEvent}
+                    existingRegistration={currentRegistration}
+                    isChecking={isCheckingRegistration}
+                    onSuccess={(reg) => setCurrentRegistration(reg)}
+                  >
                     <Button size="sm" className="gap-1.5 shadow-xs">
                       <Sparkles className="size-3.5" />
                       RSVP

@@ -5,22 +5,10 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import {
-  Camera,
-  ExternalLink,
-  Link2,
-  Play,
-  Plus,
-  Presentation,
-  RotateCcw,
-  Save,
-  Sparkles,
-  Trash2,
-  User,
-  Video,
-} from "lucide-react";
+import { Camera, ExternalLink, Link2, Play, Plus, Presentation, Sparkles, Trash2, User, Video } from "lucide-react";
 import { toast } from "sonner";
 
+import { FloatingSaveBar } from "@/app/(main)/dashboard/_components/floating-save-bar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -248,13 +236,6 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
     setSessions((prev) => [...prev, newSession]);
     toast.success("Added presentation session deck.");
   };
-
-  let saveButtonLabel = "Saved";
-  if (isSaving || isPending) {
-    saveButtonLabel = "Saving...";
-  } else if (isDirty) {
-    saveButtonLabel = "Save Changes";
-  }
 
   return (
     <div className="space-y-6 pb-24">
@@ -680,56 +661,17 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
       </Card>
 
       {/* ── Fixed Floating Bottom Save Bar ──────────────────────────── */}
-      <div className="fixed bottom-4 left-4 right-4 z-40 mx-auto max-w-4xl rounded-2xl border border-border/80 bg-background/95 p-3.5 shadow-xl backdrop-blur-md transition-all sm:left-64">
-        <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2 text-xs">
-            {isDirty ? (
-              <Badge
-                variant="outline"
-                className="border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400"
-              >
-                Unsaved Changes
-              </Badge>
-            ) : (
-              <Badge
-                variant="outline"
-                className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-              >
-                All Changes Saved
-              </Badge>
-            )}
-            <span className="text-muted-foreground text-[11px] hidden sm:inline">
-              Updates will immediately reflect on the public event page.
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2 self-end sm:self-auto">
-            {isDirty && (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={handleDiscardChanges}
-                disabled={isSaving || isPending}
-                className="h-8 gap-1 text-xs"
-              >
-                <RotateCcw className="size-3" />
-                Discard
-              </Button>
-            )}
-
-            <Button
-              size="sm"
-              onClick={handleSave}
-              disabled={isSaving || isPending || !isDirty}
-              className="h-8 gap-1.5 text-xs shadow-xs"
-            >
-              <Save className="size-3.5" />
-              {saveButtonLabel}
-            </Button>
-          </div>
-        </div>
-      </div>
+      <FloatingSaveBar
+        isDirty={isDirty}
+        isSaving={isSaving || isPending}
+        onSave={handleSave}
+        onDiscard={handleDiscardChanges}
+        discardLabel="Discard"
+        saveLabel="Save Changes"
+        savingLabel="Saving Media..."
+        savedLabel="All Changes Saved"
+        helperText="Updates will immediately reflect on the public event page."
+      />
     </div>
   );
 }

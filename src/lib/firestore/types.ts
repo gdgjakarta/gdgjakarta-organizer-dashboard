@@ -76,6 +76,14 @@ export interface EventMerchandiseItem {
   updated_at?: string;
 }
 
+export interface EventEmailTemplates {
+  interest?: string;
+  accepted?: string;
+  rejected_hybrid?: string;
+  rejected_non_hybrid?: string;
+  direct_ticket?: string;
+}
+
 export interface FirestoreEvent {
   id: string; // Bevy Event ID or generated ID
   title: string;
@@ -120,6 +128,9 @@ export interface FirestoreEvent {
   photo_album_url?: string;
   photo_album_title?: string;
   recap_description?: string;
+
+  // Email Automation Templates (n8n workflows)
+  email_templates?: EventEmailTemplates;
 
   // Metadata
   synced_from_bevy_at?: string;
@@ -172,8 +183,8 @@ export interface FirestoreRegistration {
   member_role?: string;
   status: RegistrationStatus;
   answers?: Record<string, unknown>;
-  session_id?: string;
-  session_title?: string;
+  session_id?: string | null;
+  session_title?: string | null;
   notes?: string;
   ticket_tier?: string;
   registered_at: string;
@@ -185,6 +196,7 @@ export interface FirestoreRegistration {
   bevy_attendee_id?: number | null;
   checkin_date?: string | null;
   attendee_code?: string | null;
+  updated_at?: string;
 }
 
 export interface FirestoreSyncMetadata {

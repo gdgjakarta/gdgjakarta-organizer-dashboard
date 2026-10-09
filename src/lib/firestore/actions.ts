@@ -78,6 +78,34 @@ export async function updateRegistrationStatusAction(
 }
 
 /**
+ * Update answers and session on an existing pending registration.
+ */
+export async function updateRegistrationAnswersAction(
+  registrationId: string,
+  eventId: string,
+  data: {
+    answers: Record<string, unknown>;
+    session_id?: string;
+    session_title?: string;
+  },
+) {
+  try {
+    const { updateRegistrationAnswers } = await import("./client");
+    await updateRegistrationAnswers(registrationId, eventId, data);
+    await revalidateDashboardPath("/dashboard/events");
+    await revalidateDashboardPath(`/dashboard/events/${eventId}`);
+    await revalidateDashboardPath("/dashboard/member");
+    await revalidateDashboardPath("/dashboard/member/my-events");
+    await revalidateDashboardPath("/dashboard/my-events");
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to update registration answers.";
+    console.error("[updateRegistrationAnswersAction] error:", message);
+    return { success: false, error: message };
+  }
+}
+
+/**
  * Register a member for an event.
  */
 export async function registerForEventAction(registration: Omit<FirestoreRegistration, "id">) {
@@ -163,6 +191,25 @@ export async function updateEventMerchandiseAction(
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to save merchandise.";
     console.error("[updateEventMerchandiseAction] error:", message);
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * Update event email templates for n8n automation
+ */
+export async function updateEventEmailTemplatesAction(
+  eventId: string,
+  emailTemplates: import("./types").EventEmailTemplates,
+) {
+  try {
+    const { updateEventEmailTemplates } = await import("./client");
+    await updateEventEmailTemplates(eventId, emailTemplates);
+    await revalidateDashboardPath(`/dashboard/events/${eventId}`);
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to save email templates.";
+    console.error("[updateEventEmailTemplatesAction] error:", message);
     return { success: false, error: message };
   }
 }

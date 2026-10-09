@@ -6,6 +6,7 @@ import Link from "next/link";
 
 import { ExternalLink, Eye, EyeOff, Pencil, Plus, RefreshCw, Save, Trash2 } from "lucide-react";
 
+import { FloatingSaveBar } from "@/app/(main)/dashboard/_components/floating-save-bar";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -124,7 +125,7 @@ export function PartnershipDashboard() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-24">
       {/* Top Header & Actions Bar */}
       <div className="flex flex-col gap-4 border-b pb-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -1226,6 +1227,20 @@ export function PartnershipDashboard() {
         saving={isSavingAndLeaving}
         title="Unsaved Partnership Changes"
         description="You have unsaved changes in your Partnership & Sponsorship configuration. If you leave without saving, your modifications will be discarded."
+      />
+
+      {/* ── Fixed Floating Bottom Save Bar ──────────────────────────── */}
+      <FloatingSaveBar
+        isDirty={hasChanges}
+        isSaving={saving}
+        onSave={() => void saveContent(content)}
+        onDiscard={() => setConfirmResetOpen(true)}
+        discardLabel="Reset Defaults"
+        saveLabel="Save Changes"
+        savingLabel="Saving Partnership..."
+        savedLabel="All Saved"
+        statusInfo={`${content.tiers.length} Tiers, ${content.formats.length} Formats`}
+        helperText="Updates will immediately reflect on the public Partnership page."
       />
     </div>
   );

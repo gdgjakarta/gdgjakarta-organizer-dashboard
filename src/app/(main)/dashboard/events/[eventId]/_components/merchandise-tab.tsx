@@ -5,6 +5,7 @@ import { useEffect, useState, useTransition } from "react";
 import { Copy, Edit2, Package, PackageOpen, Plus, Save, Sparkles, Tag, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { FloatingSaveBar } from "@/app/(main)/dashboard/_components/floating-save-bar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -124,8 +125,14 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
     });
   };
 
+  const handleDiscard = () => {
+    setItems(event.merchandise ?? []);
+    setIsDirty(false);
+    toast.info("Unsaved merchandise changes discarded.");
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-24">
       <Card>
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -366,6 +373,20 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
         onOpenChange={setIsTemplateDialogOpen}
         onSelectTemplate={handleSelectTemplate}
         existingNames={items.map((i) => i.name)}
+      />
+
+      {/* ── Fixed Floating Bottom Save Bar ──────────────────────────── */}
+      <FloatingSaveBar
+        isDirty={isDirty}
+        isSaving={isSaving}
+        onSave={handleSaveAll}
+        onDiscard={handleDiscard}
+        discardLabel="Discard"
+        saveLabel="Save Bundle"
+        savingLabel="Saving Bundle..."
+        savedLabel="All Saved"
+        statusInfo={`${items.length} Items Configured (${items.filter((i) => i.is_free).length} Free, ${items.filter((i) => !i.is_free).length} Paid)`}
+        helperText="Perks will immediately reflect on the registration checkout modal."
       />
     </div>
   );

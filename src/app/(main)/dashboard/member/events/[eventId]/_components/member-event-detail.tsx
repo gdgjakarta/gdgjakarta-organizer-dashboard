@@ -10,7 +10,9 @@ import {
   Calendar,
   CheckCircle2,
   Clock,
+  Edit3,
   ExternalLink,
+  FileText,
   Globe,
   Layers,
   MapPin,
@@ -21,6 +23,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { EditRegistrationModal } from "@/components/edit-registration-modal";
 import { EventCardImage } from "@/components/event-card-image";
 import { EventRegistrationModal } from "@/components/event-registration-modal";
 import { Badge } from "@/components/ui/badge";
@@ -62,9 +65,12 @@ function isEventPast(event?: FirestoreEvent): boolean {
 
 export function MemberEventDetail({ event, initialRegistration = null }: MemberEventDetailProps) {
   const user = useAuthStore((s) => s.user);
+  const isAuthLoading = useAuthStore((s) => s.isLoading);
   const [currentEvent, setCurrentEvent] = useState<FirestoreEvent>(event);
   const [registration, setRegistration] = useState<FirestoreRegistration | null>(initialRegistration);
-  const [isCheckingRegistration, setIsCheckingRegistration] = useState(initialRegistration === null && Boolean(user));
+  const [isCheckingRegistration, setIsCheckingRegistration] = useState(
+    initialRegistration === null && (Boolean(user) || isAuthLoading),
+  );
   const [isTransitioning, setIsTransitioning] = useState(false);
   const { isVirtual, isHybrid } = resolveEventAudience(currentEvent.audience_type, currentEvent.is_virtual);
 
@@ -84,6 +90,10 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
         console.warn("[MemberEventDetail] Failed to load Firestore event:", err);
       }
 
+      if (isAuthLoading) {
+        return;
+      }
+
       if (!user) {
         setIsCheckingRegistration(false);
         return;
@@ -95,7 +105,7 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
         if (found) {
           setIsTransitioning(true);
           setRegistration(found);
-          setTimeout(() => setIsTransitioning(false), 1200);
+          setTimeout(() => setIsTransitioning(false), 1500);
         }
       } catch (err) {
         console.error("[MemberEventDetail] Failed to check registration:", err);
@@ -105,7 +115,7 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
     }
 
     void checkMyRegistrationAndEvent();
-  }, [user, event]);
+  }, [user, isAuthLoading, event]);
 
   const isPast = isEventPast(currentEvent);
 
@@ -140,8 +150,12 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
     statusBadgeText = "Pending Review";
   }
 
+  const isChecking = !registration && (isCheckingRegistration || (isAuthLoading && initialRegistration === null));
+
   let registrationStatusDescription = "Open registration. Reserve your spot today.";
-  if (registration) {
+  if (isChecking) {
+    registrationStatusDescription = "Verifying your registration status...";
+  } else if (registration) {
     if (isApproved) {
       registrationStatusDescription = "Your spot is confirmed! See you at the session.";
     } else {
@@ -212,7 +226,7 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
     </EventRegistrationModal>
   );
 
-  if (isCheckingRegistration) {
+  if (isChecking) {
     actionButton = (
       <Button
         disabled
@@ -228,7 +242,7 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
   } else if (registration) {
     actionButton = (
       <div className="space-y-3">
-        <div className="rounded-lg bg-muted/60 p-3 text-center text-muted-foreground text-xs animate-in fade-in-50">
+        <div className="fade-in-50 animate-in rounded-lg bg-muted/60 p-3 text-center text-muted-foreground text-xs">
           {isApproved
             ? "✓ You are registered. Check your email for further event announcements."
             : "⏳ You have already applied. You will be notified once reviewed."}
@@ -242,7 +256,7 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
             isApproved
               ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-300"
               : "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-300",
-            isTransitioning && "scale-[1.01] ring-2 ring-emerald-500/40 animate-in fade-in-50 zoom-in-95",
+            isTransitioning && "fade-in-50 zoom-in-95 scale-[1.01] animate-in ring-2 ring-emerald-500/40",
           )}
           size="lg"
         >
@@ -256,6 +270,38 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
           <span className="relative z-10 font-medium">{statusBadgeText}</span>
           <div className="shimmer-wave" aria-hidden="true" />
         </Button>
+
+        {/* Edit or View Responses button */}
+        <EditRegistrationModal
+          registration={registration}
+          event={currentEvent}
+          onSuccess={(updated) => {
+            setRegistration(updated);
+          }}
+          triggerButton={
+            <Button
+              variant="outline"
+              size="sm"
+              className={cn(
+                "w-full gap-2 font-medium text-xs shadow-xs",
+                !isApproved &&
+                  "border-amber-500/30 hover:bg-amber-500/10 hover:text-amber-700 dark:hover:text-amber-300",
+              )}
+            >
+              {!isApproved ? (
+                <>
+                  <Edit3 className="size-3.5 text-amber-500" />
+                  Edit Form Responses
+                </>
+              ) : (
+                <>
+                  <FileText className="size-3.5" />
+                  View Submitted Responses
+                </>
+              )}
+            </Button>
+          }
+        />
       </div>
     );
   } else if (isPast) {
@@ -263,6 +309,30 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
       <Button disabled variant="secondary" className="w-full cursor-default font-medium opacity-75" size="lg">
         Event Ended • Registration Closed
       </Button>
+    );
+  }
+
+  let statusBadgeNode = (
+    <Badge variant="outline" className="text-muted-foreground">
+      Not Registered
+    </Badge>
+  );
+
+  if (isChecking) {
+    statusBadgeNode = (
+      <Badge variant="outline" className="relative overflow-hidden text-muted-foreground">
+        Checking...
+        <div className="shimmer-wave" aria-hidden="true" />
+      </Badge>
+    );
+  } else if (registration) {
+    statusBadgeNode = (
+      <Badge
+        variant={isApproved ? "default" : "secondary"}
+        className={cn(statusBadgeClass, isTransitioning && "fade-in-50 zoom-in-95 animate-in")}
+      >
+        {statusBadgeText}
+      </Badge>
     );
   }
 
@@ -482,15 +552,7 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
             <CardHeader className="pb-3">
               <CardTitle className="flex items-center justify-between text-base">
                 <span>Registration Status</span>
-                {registration ? (
-                  <Badge variant={isApproved ? "default" : "secondary"} className={statusBadgeClass}>
-                    {statusBadgeText}
-                  </Badge>
-                ) : (
-                  <Badge variant="outline" className="text-muted-foreground">
-                    Not Registered
-                  </Badge>
-                )}
+                {statusBadgeNode}
               </CardTitle>
               <CardDescription>{registrationStatusDescription}</CardDescription>
             </CardHeader>

@@ -48,6 +48,7 @@ interface EventRegistrationModalProps {
   existingRegistration?: FirestoreRegistration | null;
   children?: React.ReactNode;
   className?: string;
+  isChecking?: boolean;
   onSuccess?: (registration: FirestoreRegistration) => void;
 }
 
@@ -67,10 +68,12 @@ export function EventRegistrationModal({
   existingRegistration,
   children,
   className,
+  isChecking,
   onSuccess,
 }: EventRegistrationModalProps) {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
+  const isAuthLoading = useAuthStore((s) => s.isLoading);
   const formUid = useId();
 
   const [open, setOpen] = useState(false);
@@ -79,8 +82,8 @@ export function EventRegistrationModal({
   const [touchedFields, setTouchedFields] = useState<Set<string>>(new Set());
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const [localReg, setLocalReg] = useState<FirestoreRegistration | null>(existingRegistration ?? null);
-  const [isCheckingRegistration, setIsCheckingRegistration] = useState(
-    existingRegistration === undefined && Boolean(user),
+  const [isInternalChecking, setIsInternalChecking] = useState<boolean>(
+    existingRegistration === undefined && (Boolean(user) || isAuthLoading),
   );
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -89,32 +92,39 @@ export function EventRegistrationModal({
 
   useEffect(() => {
     if (existingRegistration !== undefined) {
+      if (existingRegistration && !localReg) {
+        setIsTransitioning(true);
+        setTimeout(() => setIsTransitioning(false), 1500);
+      }
       setLocalReg(existingRegistration);
-      setIsCheckingRegistration(false);
+      setIsInternalChecking(false);
+      return;
+    }
+    if (isAuthLoading) {
       return;
     }
     if (!user) {
-      setIsCheckingRegistration(false);
+      setIsInternalChecking(false);
       return;
     }
     async function checkStatus() {
       try {
-        setIsCheckingRegistration(true);
+        setIsInternalChecking(true);
         const found = await checkEventRegistrationAction(String(event.id), user?.id, user?.email);
         if (found) {
           setIsTransitioning(true);
           setLocalReg(found);
           onSuccess?.(found);
-          setTimeout(() => setIsTransitioning(false), 1200);
+          setTimeout(() => setIsTransitioning(false), 1500);
         }
       } catch (err) {
         console.error("[EventRegistrationModal] failed to check registration status:", err);
       } finally {
-        setIsCheckingRegistration(false);
+        setIsInternalChecking(false);
       }
     }
     void checkStatus();
-  }, [user, event.id, existingRegistration, onSuccess]);
+  }, [user, isAuthLoading, event.id, existingRegistration, onSuccess, localReg]);
 
   // Pre-fill user profile fields when modal opens
   useEffect(() => {
@@ -476,6 +486,10 @@ export function EventRegistrationModal({
     });
   };
 
+  const isCheckingRegistration =
+    isChecking ??
+    (!activeRegistration && (isInternalChecking || (isAuthLoading && existingRegistration === undefined)));
+
   if (isCheckingRegistration) {
     let isFullWidth = Boolean(className?.includes("w-full"));
     let buttonSize: "default" | "sm" | "lg" | "icon" = "sm";
@@ -496,12 +510,17 @@ export function EventRegistrationModal({
         variant="outline"
         size={buttonSize}
         className={cn(
-          "relative cursor-default gap-2 overflow-hidden border-border/60 bg-muted/50 font-medium text-muted-foreground opacity-90 transition-all duration-300",
+          "relative cursor-default gap-2 overflow-hidden border-border/60 bg-muted/50 font-medium text-muted-foreground opacity-90 shadow-xs transition-all duration-300",
           isFullWidth && "w-full",
           className,
         )}
       >
-        <Sparkles className="relative z-10 size-3.5 shrink-0 animate-pulse text-muted-foreground/60" />
+        <Sparkles
+          className={cn(
+            "relative z-10 shrink-0 animate-pulse text-muted-foreground/60",
+            buttonSize === "lg" ? "size-4" : "size-3.5",
+          )}
+        />
         <span className="relative z-10">Checking registration...</span>
         <div className="shimmer-wave" aria-hidden="true" />
       </Button>
@@ -543,7 +562,7 @@ export function EventRegistrationModal({
           isApproved
             ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-300"
             : "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-300",
-          isTransitioning && "scale-[1.01] ring-2 ring-emerald-500/40 animate-in fade-in-50 zoom-in-95",
+          isTransitioning && "fade-in-50 zoom-in-95 scale-[1.01] animate-in ring-2 ring-emerald-500/40",
           isFullWidth && "w-full",
           className,
         )}
@@ -577,16 +596,16 @@ export function EventRegistrationModal({
         size={buttonSize}
         disabled
         className={cn(
-          "cursor-not-allowed opacity-80 font-medium",
+          "cursor-not-allowed font-medium opacity-80",
           className,
           windowStatus.status === "draft" &&
-            "border border-dashed border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300",
+            "border border-amber-500/40 border-dashed bg-amber-500/10 text-amber-800 dark:text-amber-300",
           windowStatus.status === "upcoming" &&
             "border border-blue-500/40 bg-blue-500/10 text-blue-800 dark:text-blue-300",
         )}
       >
-        {windowStatus.status === "draft" && <FileEdit className="size-3.5 mr-1.5" />}
-        {windowStatus.status === "upcoming" && <Clock className="size-3.5 mr-1.5" />}
+        {windowStatus.status === "draft" && <FileEdit className="mr-1.5 size-3.5" />}
+        {windowStatus.status === "upcoming" && <Clock className="mr-1.5 size-3.5" />}
         {windowStatus.message}
       </Button>
     );
@@ -871,10 +890,10 @@ export function EventRegistrationModal({
                                 </Select>
 
                                 {isOtherSelected && (
-                                  <div className="space-y-1 pt-1 animate-in fade-in-50 duration-200">
+                                  <div className="fade-in-50 animate-in space-y-1 pt-1 duration-200">
                                     <label
                                       htmlFor={`${fieldId}-other-text`}
-                                      className="block text-[11px] font-medium text-muted-foreground"
+                                      className="block font-medium text-[11px] text-muted-foreground"
                                     >
                                       Please specify your response:
                                     </label>
@@ -892,7 +911,7 @@ export function EventRegistrationModal({
                                       }}
                                       onBlur={() => handleBlur(q.id)}
                                       className={cn(
-                                        "h-8 text-xs bg-background/80",
+                                        "h-8 bg-background/80 text-xs",
                                         errorMessage &&
                                           !currentOtherText.trim() &&
                                           "border-destructive focus-visible:ring-destructive/30",
@@ -937,7 +956,7 @@ export function EventRegistrationModal({
                                       className={cn(
                                         "flex cursor-pointer items-center gap-2 rounded-md border p-2.5 text-xs transition-colors",
                                         isSelected
-                                          ? "border-primary bg-primary/10 text-foreground font-medium shadow-xs"
+                                          ? "border-primary bg-primary/10 font-medium text-foreground shadow-xs"
                                           : "border-border bg-card text-foreground hover:bg-muted/40",
                                         errorMessage && !isSelected && "border-destructive/40",
                                         errorMessage && isSelected && "border-destructive",
@@ -952,7 +971,7 @@ export function EventRegistrationModal({
                                 {hasOther && (
                                   <div
                                     className={cn(
-                                      "flex flex-col sm:flex-row sm:items-center gap-2 rounded-md border p-2.5 text-xs transition-colors sm:col-span-2",
+                                      "flex flex-col gap-2 rounded-md border p-2.5 text-xs transition-colors sm:col-span-2 sm:flex-row sm:items-center",
                                       isOtherSelected
                                         ? "border-primary bg-primary/5 text-foreground shadow-2xs ring-1 ring-primary/30"
                                         : "border-border bg-card hover:bg-muted/40",
@@ -963,7 +982,7 @@ export function EventRegistrationModal({
                                         "border-destructive ring-destructive/30",
                                     )}
                                   >
-                                    <div className="flex items-center gap-2 shrink-0">
+                                    <div className="flex shrink-0 items-center gap-2">
                                       <RadioGroupItem
                                         value="__other__"
                                         id={`${fieldId}-__other__`}
@@ -971,12 +990,12 @@ export function EventRegistrationModal({
                                       />
                                       <label
                                         htmlFor={`${fieldId}-__other__`}
-                                        className="cursor-pointer font-medium text-foreground select-none"
+                                        className="cursor-pointer select-none font-medium text-foreground"
                                       >
                                         Other:
                                       </label>
                                     </div>
-                                    <div className="flex-1 min-w-0 w-full">
+                                    <div className="w-full min-w-0 flex-1">
                                       <Input
                                         ref={(el) => {
                                           otherInputRefs.current[q.id] = el;
@@ -996,7 +1015,7 @@ export function EventRegistrationModal({
                                         }}
                                         onBlur={() => handleBlur(q.id)}
                                         className={cn(
-                                          "h-8 text-xs bg-background/80 transition-colors",
+                                          "h-8 bg-background/80 text-xs transition-colors",
                                           isOtherSelected && "border-primary/50 focus-visible:ring-primary/30",
                                           errorMessage &&
                                             isOtherSelected &&
@@ -1054,14 +1073,14 @@ export function EventRegistrationModal({
                                 {hasOther && (
                                   <div
                                     className={cn(
-                                      "flex flex-col sm:flex-row sm:items-center gap-2 rounded-md border p-2.5 text-xs transition-colors sm:col-span-2",
+                                      "flex flex-col gap-2 rounded-md border p-2.5 text-xs transition-colors sm:col-span-2 sm:flex-row sm:items-center",
                                       isOtherChecked
                                         ? "border-primary bg-primary/5 text-foreground shadow-2xs ring-1 ring-primary/30"
                                         : "border-border bg-card hover:bg-muted/40",
                                       errorMessage && "border-destructive/60",
                                     )}
                                   >
-                                    <div className="flex items-center gap-2 shrink-0">
+                                    <div className="flex shrink-0 items-center gap-2">
                                       <Checkbox
                                         id={`${fieldId}-__other__`}
                                         checked={isOtherChecked}
@@ -1098,12 +1117,12 @@ export function EventRegistrationModal({
                                       />
                                       <label
                                         htmlFor={`${fieldId}-__other__`}
-                                        className="cursor-pointer font-medium text-foreground select-none"
+                                        className="cursor-pointer select-none font-medium text-foreground"
                                       >
                                         Other:
                                       </label>
                                     </div>
-                                    <div className="flex-1 min-w-0 w-full">
+                                    <div className="w-full min-w-0 flex-1">
                                       <Input
                                         ref={(el) => {
                                           otherInputRefs.current[q.id] = el;
@@ -1133,7 +1152,7 @@ export function EventRegistrationModal({
                                         }}
                                         onBlur={() => handleBlur(q.id)}
                                         className={cn(
-                                          "h-8 text-xs bg-background/80",
+                                          "h-8 bg-background/80 text-xs",
                                           isOtherChecked && "border-primary/50 focus-visible:ring-primary/30",
                                           errorMessage &&
                                             isOtherChecked &&

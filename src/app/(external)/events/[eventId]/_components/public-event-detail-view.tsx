@@ -23,8 +23,10 @@ interface PublicEventDetailViewProps {
 
 export function PublicEventDetailView({ event, initialFirestoreEvent = null }: PublicEventDetailViewProps) {
   const user = useAuthStore((s) => s.user);
+  const isAuthLoading = useAuthStore((s) => s.isLoading);
   const [firestoreEvent, setFirestoreEvent] = useState<FirestoreEvent | null>(initialFirestoreEvent);
-  const [registration, setRegistration] = useState<FirestoreRegistration | null>(null);
+  const [registration, setRegistration] = useState<FirestoreRegistration | null | undefined>(undefined);
+  const [isCheckingRegistration, setIsCheckingRegistration] = useState<boolean>(true);
 
   const isHidden = Boolean(event.is_hidden ?? (event as { hidden?: boolean }).hidden);
   const isTest = Boolean(event.is_test);
@@ -42,20 +44,30 @@ export function PublicEventDetailView({ event, initialFirestoreEvent = null }: P
         console.warn("[PublicEventDetailView] Failed to load Firestore event:", err);
       }
 
-      if (user) {
-        try {
-          const found = await checkEventRegistrationAction(String(event.id), user.id, user.email);
-          if (found) {
-            setRegistration(found);
-          }
-        } catch (regErr) {
-          console.warn("[PublicEventDetailView] Failed to check registration:", regErr);
-        }
+      if (isAuthLoading) {
+        return;
+      }
+
+      if (!user) {
+        setRegistration(null);
+        setIsCheckingRegistration(false);
+        return;
+      }
+
+      try {
+        setIsCheckingRegistration(true);
+        const found = await checkEventRegistrationAction(String(event.id), user.id, user.email);
+        setRegistration(found ?? null);
+      } catch (regErr) {
+        console.warn("[PublicEventDetailView] Failed to check registration:", regErr);
+        setRegistration(null);
+      } finally {
+        setIsCheckingRegistration(false);
       }
     }
 
     void loadFirestoreData();
-  }, [event.id, user]);
+  }, [event.id, user, isAuthLoading]);
 
   return (
     <div className="relative min-h-screen">
@@ -121,7 +133,12 @@ export function PublicEventDetailView({ event, initialFirestoreEvent = null }: P
 
           {/* Sidebar RSVP Column (Desktop 4 cols) */}
           <div className="lg:col-span-4">
-            <PublicEventRsvpCard event={event} firestoreEvent={firestoreEvent} existingRegistration={registration} />
+            <PublicEventRsvpCard
+              event={event}
+              firestoreEvent={firestoreEvent}
+              existingRegistration={registration}
+              isCheckingRegistration={isCheckingRegistration || (isAuthLoading && registration === undefined)}
+            />
           </div>
         </div>
       </div>

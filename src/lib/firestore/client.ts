@@ -63,6 +63,7 @@ export function sanitizeFirestoreData<T>(data: T): T {
 }
 
 import type {
+  EventEmailTemplates,
   EventMerchandiseItem,
   EventSession,
   FirestoreEvent,
@@ -487,6 +488,104 @@ export async function updateRegistrationStatus(
   }
 }
 
+/**
+ * Updates answers and session for an existing pending registration.
+ */
+export async function updateRegistrationAnswers(
+  registrationId: string,
+  eventId: string,
+  data: {
+    answers: Record<string, unknown>;
+    session_id?: string;
+    session_title?: string;
+  },
+): Promise<void> {
+  if (typeof window === "undefined") return;
+
+  const docRef = doc(db, "event_registrations", registrationId);
+  const snap = await getDoc(docRef);
+  if (!snap.exists()) {
+    throw new Error("Registration record not found.");
+  }
+
+  const existing = snap.data() as FirestoreRegistration;
+  if (existing.status === "approved" || existing.status === "attended") {
+    throw new Error("Cannot edit application because it has already been accepted.");
+  }
+  if (existing.status === "rejected") {
+    throw new Error("Cannot edit application because it has already been rejected.");
+  }
+
+  const oldSessionId = existing.session_id;
+  const newSessionId = data.session_id;
+
+  // Validate session capacity if session changed
+  if (newSessionId && newSessionId !== oldSessionId) {
+    try {
+      const eventRef = doc(db, "events", String(eventId));
+      const eventSnap = await getDoc(eventRef);
+      if (eventSnap.exists()) {
+        const eventData = eventSnap.data() as FirestoreEvent;
+        const matchingSession = eventData.sessions?.find((s) => s.id === newSessionId);
+        if (matchingSession && matchingSession.capacity > 0) {
+          const currentCount = matchingSession.total_registered || 0;
+          if (currentCount >= matchingSession.capacity) {
+            throw new Error(
+              `The session "${matchingSession.title}" has reached its maximum capacity (${matchingSession.capacity} attendees). Please select an alternate session.`,
+            );
+          }
+        }
+      }
+    } catch (sessionErr) {
+      if (sessionErr instanceof Error && sessionErr.message.includes("maximum capacity")) {
+        throw sessionErr;
+      }
+    }
+  }
+
+  const updatedAnswers = {
+    ...data.answers,
+    ...(data.session_id ? { session_id: data.session_id } : {}),
+    ...(data.session_title ? { session_title: data.session_title } : {}),
+  };
+
+  const updatePayload = sanitizeFirestoreData<Partial<FirestoreRegistration>>({
+    answers: updatedAnswers,
+    session_id: data.session_id ? data.session_id : null,
+    session_title: data.session_title ? data.session_title : null,
+  });
+
+  await updateDoc(docRef, updatePayload);
+
+  // If session changed, adjust session counters on event doc
+  if (oldSessionId !== newSessionId) {
+    try {
+      const eventRef = doc(db, "events", String(eventId));
+      const eventSnap = await getDoc(eventRef);
+      if (eventSnap.exists()) {
+        const eventData = eventSnap.data() as FirestoreEvent;
+        if (eventData.sessions) {
+          const updatedSessions = eventData.sessions.map((sess) => {
+            if (oldSessionId && sess.id === oldSessionId) {
+              return { ...sess, total_registered: Math.max(0, (sess.total_registered || 1) - 1) };
+            }
+            if (newSessionId && sess.id === newSessionId) {
+              return { ...sess, total_registered: (sess.total_registered || 0) + 1 };
+            }
+            return sess;
+          });
+          await updateDoc(eventRef, {
+            sessions: updatedSessions,
+            updated_at: new Date().toISOString(),
+          });
+        }
+      }
+    } catch (countErr) {
+      console.warn("[Firestore] Failed to update session counter on session change:", countErr);
+    }
+  }
+}
+
 export async function updateRegistrationCheckIn(
   registrationId: string,
   eventId: string,
@@ -571,6 +670,16 @@ export async function updateEventHighlightsMedia(
   }
 
   await setDoc(eventRef, updatePayload, { merge: true });
+}
+
+export async function updateEventEmailTemplates(eventId: string, emailTemplates: EventEmailTemplates): Promise<void> {
+  if (typeof window === "undefined") return;
+  const eventRef = doc(db, "events", String(eventId));
+  const sanitized = sanitizeFirestoreData({
+    email_templates: emailTemplates,
+    updated_at: new Date().toISOString(),
+  });
+  await setDoc(eventRef, sanitized, { merge: true });
 }
 
 // ── Sync Metadata ───────────────────────────────────────────────────────────
