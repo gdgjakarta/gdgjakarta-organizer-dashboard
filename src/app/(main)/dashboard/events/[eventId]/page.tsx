@@ -151,32 +151,34 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
       />
 
       <Tabs defaultValue="registrants" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2 sm:w-[980px] sm:grid-cols-6">
-          <TabsTrigger value="registrants" className="gap-1.5 text-xs sm:text-sm">
-            <Users className="size-4" />
-            Registrants
-          </TabsTrigger>
-          <TabsTrigger value="form" className="gap-1.5 text-xs sm:text-sm">
-            <FileSpreadsheet className="size-4" />
-            Registration Form
-          </TabsTrigger>
-          <TabsTrigger value="tickets" className="gap-1.5 text-xs sm:text-sm">
-            <Ticket className="size-4" />
-            Tickets
-          </TabsTrigger>
-          <TabsTrigger value="merch" className="gap-1.5 text-xs sm:text-sm">
-            <Package className="size-4" />
-            Merchandise
-          </TabsTrigger>
-          <TabsTrigger value="highlights" className="gap-1.5 text-xs sm:text-sm">
-            <Sparkles className="size-4" />
-            Highlights & Media
-          </TabsTrigger>
-          <TabsTrigger value="emails" className="gap-1.5 text-xs sm:text-sm">
-            <Mail className="size-4" />
-            Email Templates (n8n)
-          </TabsTrigger>
-        </TabsList>
+        <div className="scrollbar-none -mx-1 w-full overflow-x-auto px-1 pb-1 sm:mx-0 sm:px-0">
+          <TabsList className="inline-flex h-9 w-max items-center justify-start gap-1 rounded-lg bg-muted p-1 text-muted-foreground group-data-horizontal/tabs:h-9">
+            <TabsTrigger value="registrants" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
+              <Users className="size-4" />
+              Registrants
+            </TabsTrigger>
+            <TabsTrigger value="form" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
+              <FileSpreadsheet className="size-4" />
+              Registration Form
+            </TabsTrigger>
+            <TabsTrigger value="tickets" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
+              <Ticket className="size-4" />
+              Tickets
+            </TabsTrigger>
+            <TabsTrigger value="merch" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
+              <Package className="size-4" />
+              Merchandise
+            </TabsTrigger>
+            <TabsTrigger value="highlights" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
+              <Sparkles className="size-4" />
+              Highlights & Media
+            </TabsTrigger>
+            <TabsTrigger value="emails" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
+              <Mail className="size-4" />
+              Email Templates (n8n)
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="registrants" className="space-y-4">
           <RegistrantsTab eventId={eventId} registrations={registrations} event={event} />
