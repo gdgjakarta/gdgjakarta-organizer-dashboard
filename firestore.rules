@@ -45,6 +45,8 @@ service cloud.firestore {
     //   - id: string (required, immutable, <= 200 chars) - Registration ID
     //   - event_id: string (required, immutable, <= 128 chars) - Event ID
     //   - event_title: string (required, <= 300 chars) - Event title
+    //   - event_picture_url: string|null (optional, <= 2000 chars) - Event thumbnail image URL
+    //   - event_banner_url: string|null (optional, <= 2000 chars) - Event banner image URL
     //   - member_id: string (required, immutable, <= 128 chars) - Member UID
     //   - member_name: string (required, <= 150 chars) - Member display name
     //   - member_email: string (required, valid email, <= 150 chars) - Member email
@@ -54,6 +56,11 @@ service cloud.firestore {
     //   - answers: map|null (optional, <= 50 keys) - Custom question answers
     //   - notes: string|null (optional, <= 2000 chars) - Registration notes
     //   - ticket_tier: string|null (optional, <= 100 chars) - Ticket tier name
+    //   - ticket_id: string|null (optional, <= 128 chars) - Selected ticket tier ID
+    //   - ticket_name: string|null (optional, <= 200 chars) - Selected ticket tier name
+    //   - ticket_type: string|null (optional, <= 50 chars) - Ticket type ('free'|'paid'|'commitment_fee')
+    //   - ticket_price: int|float|null (optional, >= 0) - Ticket price
+    //   - selected_merchandise: list|null (optional, <= 50 items) - Selected merchandise orders
     //   - session_id: string|null (optional, <= 128 chars) - Selected session identifier
     //   - session_title: string|null (optional, <= 200 chars) - Selected session title
     //   - registered_at: string (required, <= 50 chars) - Registration timestamp
@@ -61,6 +68,11 @@ service cloud.firestore {
     //   - reviewed_by_id: string|null (optional, immutable for members, <= 128 chars) - Reviewer UID
     //   - reviewed_by_name: string|null (optional, immutable for members, <= 150 chars) - Reviewer name
     //   - checked_in_at: string|null (optional, immutable for members, <= 50 chars) - Check-in timestamp
+    //   - is_checked_in: bool|null (optional) - Check-in flag
+    //   - bevy_attendee_id: int|float|string|null (optional, <= 64 chars) - Associated Bevy attendee ID
+    //   - checkin_date: string|null (optional, <= 50 chars) - Check-in date string
+    //   - attendee_code: string|null (optional, <= 100 chars) - Attendee ticket QR tag / code
+    //   - updated_at: string|null (optional, <= 50 chars) - Last update timestamp
     //
     // Collection: events
     // Document ID: eventId
@@ -90,7 +102,20 @@ service cloud.firestore {
     //   - total_checked_in: int|float|null (optional, >= 0) - Checked-in attendee count
     //   - custom_questions: list|null (optional, <= 50 items) - Custom RSVP questions
     //   - sessions: list|null (optional, <= 30 items) - Event agenda / breakout sessions
+    //   - tickets: list|null (optional, <= 50 items) - Ticket tiers configuration
+    //   - max_tickets_per_person: int|float|null (optional, >= 0) - Limit tickets per person
+    //   - merchandise: list|null (optional, <= 50 items) - Merchandise items configuration
+    //   - max_merchandise_per_person: int|float|null (optional, >= 0) - Limit merchandise per person
     //   - webhook_url: string|null (optional, <= 2000 chars) - Webhook integration URL
+    //   - registration_status: string|null (optional) - Registration window status ('Draft'|'Published'|'Closed')
+    //   - registration_start_date: string|null (optional, <= 50 chars) - Registration start date ISO string
+    //   - registration_end_date: string|null (optional, <= 50 chars) - Registration end date ISO string
+    //   - highlight_video_url: string|null (optional, <= 2000 chars) - Highlight video URL
+    //   - highlight_video_title: string|null (optional, <= 300 chars) - Highlight video title
+    //   - photo_album_url: string|null (optional, <= 2000 chars) - Photo album URL
+    //   - photo_album_title: string|null (optional, <= 300 chars) - Photo album title
+    //   - recap_description: string|null (optional, <= 10000 chars) - Post-event recap description
+    //   - email_templates: map|null (optional, <= 20 keys) - Email template configurations
     //   - synced_from_bevy_at: string|null (optional, <= 50 chars) - Bevy sync timestamp
     //   - created_at: string|null (optional, <= 50 chars) - Creation timestamp
     //   - updated_at: string (required, <= 50 chars) - Last update timestamp
@@ -223,10 +248,14 @@ service cloud.firestore {
     function isValidRegistration(data) {
       return hasRequiredFields(data, ['id', 'event_id', 'event_title', 'member_id', 'member_name', 'member_email', 'status', 'registered_at']) &&
         hasOnlyAllowedFields(data, [
-          'id', 'event_id', 'event_title', 'member_id', 'member_name', 'member_email',
-          'member_avatar', 'member_role', 'status', 'answers', 'notes', 'ticket_tier',
-          'session_id', 'session_title',
-          'registered_at', 'reviewed_at', 'reviewed_by_id', 'reviewed_by_name', 'checked_in_at'
+          'id', 'event_id', 'event_title', 'event_picture_url', 'event_banner_url',
+          'member_id', 'member_name', 'member_email', 'member_avatar', 'member_role',
+          'status', 'answers', 'notes', 'ticket_tier',
+          'ticket_id', 'ticket_name', 'ticket_type', 'ticket_price',
+          'selected_merchandise', 'session_id', 'session_title',
+          'registered_at', 'reviewed_at', 'reviewed_by_id', 'reviewed_by_name',
+          'checked_in_at', 'is_checked_in', 'bevy_attendee_id', 'checkin_date',
+          'attendee_code', 'updated_at'
         ]) &&
         data.id is string && data.id.size() > 0 && data.id.size() <= 200 &&
         data.event_id is string && data.event_id.size() > 0 && data.event_id.size() <= 128 &&
@@ -241,12 +270,24 @@ service cloud.firestore {
         (!('answers' in data) || data.answers == null || (data.answers is map && data.answers.size() <= 50)) &&
         (!('notes' in data) || data.notes == null || (data.notes is string && data.notes.size() <= 2000)) &&
         (!('ticket_tier' in data) || data.ticket_tier == null || (data.ticket_tier is string && data.ticket_tier.size() <= 100)) &&
+        (!('ticket_id' in data) || data.ticket_id == null || (data.ticket_id is string && data.ticket_id.size() <= 128)) &&
+        (!('ticket_name' in data) || data.ticket_name == null || (data.ticket_name is string && data.ticket_name.size() <= 200)) &&
+        (!('ticket_type' in data) || data.ticket_type == null || (data.ticket_type is string && data.ticket_type.size() <= 50)) &&
+        (!('ticket_price' in data) || data.ticket_price == null || ((data.ticket_price is int || data.ticket_price is float) && data.ticket_price >= 0)) &&
+        (!('selected_merchandise' in data) || data.selected_merchandise == null || (data.selected_merchandise is list && data.selected_merchandise.size() <= 50)) &&
         (!('session_id' in data) || data.session_id == null || (data.session_id is string && data.session_id.size() <= 128)) &&
         (!('session_title' in data) || data.session_title == null || (data.session_title is string && data.session_title.size() <= 200)) &&
         (!('reviewed_at' in data) || data.reviewed_at == null || (data.reviewed_at is string && data.reviewed_at.size() <= 50)) &&
         (!('reviewed_by_id' in data) || data.reviewed_by_id == null || (data.reviewed_by_id is string && data.reviewed_by_id.size() <= 128)) &&
         (!('reviewed_by_name' in data) || data.reviewed_by_name == null || (data.reviewed_by_name is string && data.reviewed_by_name.size() <= 150)) &&
-        (!('checked_in_at' in data) || data.checked_in_at == null || (data.checked_in_at is string && data.checked_in_at.size() <= 50));
+        (!('checked_in_at' in data) || data.checked_in_at == null || (data.checked_in_at is string && data.checked_in_at.size() <= 50)) &&
+        (!('is_checked_in' in data) || data.is_checked_in == null || data.is_checked_in is bool) &&
+        (!('bevy_attendee_id' in data) || data.bevy_attendee_id == null || data.bevy_attendee_id is int || data.bevy_attendee_id is float || (data.bevy_attendee_id is string && data.bevy_attendee_id.size() <= 64)) &&
+        (!('checkin_date' in data) || data.checkin_date == null || (data.checkin_date is string && data.checkin_date.size() <= 50)) &&
+        (!('attendee_code' in data) || data.attendee_code == null || (data.attendee_code is string && data.attendee_code.size() <= 100)) &&
+        (!('event_picture_url' in data) || data.event_picture_url == null || (data.event_picture_url is string && data.event_picture_url.size() <= 2000)) &&
+        (!('event_banner_url' in data) || data.event_banner_url == null || (data.event_banner_url is string && data.event_banner_url.size() <= 2000)) &&
+        (!('updated_at' in data) || data.updated_at == null || (data.updated_at is string && data.updated_at.size() <= 50));
     }
 
     // Validates events document structure, data types, and bounds
@@ -257,7 +298,12 @@ service cloud.firestore {
           'picture_url', 'banner_url', 'event_type_title', 'audience_type', 'is_virtual',
           'venue', 'url', 'static_url', 'tags', 'is_hidden', 'is_test', 'requires_approval',
           'max_attendees', 'total_registrations', 'total_approved', 'total_checked_in',
-          'custom_questions', 'sessions', 'webhook_url', 'synced_from_bevy_at', 'created_at', 'updated_at'
+          'custom_questions', 'sessions', 'webhook_url',
+          'registration_status', 'registration_start_date', 'registration_end_date',
+          'tickets', 'max_tickets_per_person', 'merchandise', 'max_merchandise_per_person',
+          'highlight_video_url', 'highlight_video_title', 'photo_album_url', 'photo_album_title', 'recap_description',
+          'email_templates',
+          'synced_from_bevy_at', 'created_at', 'updated_at'
         ]) &&
         data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
         data.title is string && data.title.size() > 0 && data.title.size() <= 300 &&
@@ -286,6 +332,19 @@ service cloud.firestore {
         (!('total_registrations' in data) || data.total_registrations == null || ((data.total_registrations is int || data.total_registrations is float) && data.total_registrations >= 0)) &&
         (!('total_approved' in data) || data.total_approved == null || ((data.total_approved is int || data.total_approved is float) && data.total_approved >= 0)) &&
         (!('total_checked_in' in data) || data.total_checked_in == null || ((data.total_checked_in is int || data.total_checked_in is float) && data.total_checked_in >= 0)) &&
+        (!('registration_status' in data) || data.registration_status == null || (data.registration_status is string && (data.registration_status in ['Draft', 'Published', 'Closed']))) &&
+        (!('registration_start_date' in data) || data.registration_start_date == null || (data.registration_start_date is string && data.registration_start_date.size() <= 50)) &&
+        (!('registration_end_date' in data) || data.registration_end_date == null || (data.registration_end_date is string && data.registration_end_date.size() <= 50)) &&
+        (!('tickets' in data) || data.tickets == null || (data.tickets is list && data.tickets.size() <= 50)) &&
+        (!('max_tickets_per_person' in data) || data.max_tickets_per_person == null || ((data.max_tickets_per_person is int || data.max_tickets_per_person is float) && data.max_tickets_per_person >= 0)) &&
+        (!('merchandise' in data) || data.merchandise == null || (data.merchandise is list && data.merchandise.size() <= 50)) &&
+        (!('max_merchandise_per_person' in data) || data.max_merchandise_per_person == null || ((data.max_merchandise_per_person is int || data.max_merchandise_per_person is float) && data.max_merchandise_per_person >= 0)) &&
+        (!('highlight_video_url' in data) || data.highlight_video_url == null || (data.highlight_video_url is string && data.highlight_video_url.size() <= 2000)) &&
+        (!('highlight_video_title' in data) || data.highlight_video_title == null || (data.highlight_video_title is string && data.highlight_video_title.size() <= 300)) &&
+        (!('photo_album_url' in data) || data.photo_album_url == null || (data.photo_album_url is string && data.photo_album_url.size() <= 2000)) &&
+        (!('photo_album_title' in data) || data.photo_album_title == null || (data.photo_album_title is string && data.photo_album_title.size() <= 300)) &&
+        (!('recap_description' in data) || data.recap_description == null || (data.recap_description is string && data.recap_description.size() <= 10000)) &&
+        (!('email_templates' in data) || data.email_templates == null || (data.email_templates is map && data.email_templates.size() <= 20)) &&
         (!('synced_from_bevy_at' in data) || data.synced_from_bevy_at == null || (data.synced_from_bevy_at is string && data.synced_from_bevy_at.size() <= 50)) &&
         (!('created_at' in data) || data.created_at == null || (data.created_at is string && data.created_at.size() <= 50));
     }
@@ -422,12 +481,12 @@ service cloud.firestore {
       allow delete: if isOrganizer();
 
       // Update: Organizers (full event editing) or authenticated users incrementing total_registrations upon RSVP.
-      // Non-organizers are strictly constrained to only update total_registrations and updated_at.
+      // Non-organizers are strictly constrained to only update total_registrations, updated_at, sessions, and tickets.
       allow update: if isValidEvent(request.resource.data) && (
         isOrganizer() ||
         (
           isAuthenticated() &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['total_registrations', 'updated_at']) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['total_registrations', 'updated_at', 'sessions', 'tickets']) &&
           (request.resource.data.total_registrations is int || request.resource.data.total_registrations is float) &&
           request.resource.data.total_registrations >= resource.data.total_registrations
         )
