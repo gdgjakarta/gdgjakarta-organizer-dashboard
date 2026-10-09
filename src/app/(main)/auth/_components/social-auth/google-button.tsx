@@ -11,14 +11,24 @@ import googleFavicon from "@/app/Google_Favicon.webp";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { signInWithGoogle } from "@/stores/auth/auth-provider";
+import type { AuthOrganizer } from "@/stores/auth/auth-store";
+
+export interface GoogleButtonProps extends React.ComponentProps<typeof Button> {
+  redirect?: boolean;
+  callbackUrl?: string;
+  onSuccess?: (result: { organizer: AuthOrganizer; isAllowed: boolean }) => void;
+}
 
 export function GoogleButton({
   className,
   onClick,
   disabled,
   children,
+  redirect = true,
+  callbackUrl: propCallbackUrl,
+  onSuccess,
   ...props
-}: React.ComponentProps<typeof Button>) {
+}: GoogleButtonProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [loadingText, setLoadingText] = useState("Signing in…");
 
@@ -33,9 +43,16 @@ export function GoogleButton({
 
       const { organizer, isAllowed } = await signInWithGoogle();
 
+      if (!redirect) {
+        setIsLoading(false);
+        onSuccess?.({ organizer, isAllowed });
+        return;
+      }
+
       setLoadingText("Navigating to dashboard…");
       const callbackUrl =
-        typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("callbackUrl") : null;
+        propCallbackUrl ??
+        (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("callbackUrl") : null);
 
       console.log(
         "[Google Button] Processing redirection. Role allowed as organizer:",

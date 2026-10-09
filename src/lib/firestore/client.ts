@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  addDoc,
   collection,
   deleteDoc,
   deleteField,
@@ -65,6 +66,7 @@ export function sanitizeFirestoreData<T>(data: T): T {
 }
 
 import type {
+  AuditLogEntry,
   EventEmailTemplates,
   EventMerchandiseItem,
   EventSession,
@@ -74,6 +76,7 @@ import type {
   FirestoreRegistration,
   FirestoreSyncMetadata,
   RegistrationStatus,
+  RegistrationStatusLog,
 } from "./types";
 
 // ── Events ──────────────────────────────────────────────────────────────────
@@ -353,6 +356,9 @@ export async function checkExistingRegistration(
 
 export async function registerMemberForEvent(registration: Omit<FirestoreRegistration, "id">): Promise<string> {
   if (typeof window === "undefined") throw new Error("Registration must be performed from client");
+  if (!registration.member_id || !registration.member_email.trim()) {
+    throw new Error("You must join the community by signing in with Google before registering.");
+  }
   const normalizedEmail = registration.member_email.trim().toLowerCase();
   const eventIdStr = String(registration.event_id);
 
@@ -362,29 +368,41 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
     throw new Error(`Email ${normalizedEmail} is already registered for this event.`);
   }
 
-  // 2. Validate session capacity if session_id is provided
-  if (registration.session_id) {
-    try {
-      const eventRef = doc(db, "events", eventIdStr);
-      const eventSnap = await getDoc(eventRef);
-      if (eventSnap.exists()) {
-        const eventData = eventSnap.data() as FirestoreEvent;
-        const matchingSession = eventData.sessions?.find((s) => s.id === registration.session_id);
-        if (matchingSession && matchingSession.capacity > 0) {
-          const currentCount = matchingSession.total_registered || 0;
-          if (currentCount >= matchingSession.capacity) {
-            throw new Error(
-              `The session "${matchingSession.title}" has reached its maximum capacity (${matchingSession.capacity} attendees). Please select an alternate session.`,
-            );
-          }
-        }
-      }
-    } catch (sessionErr) {
-      if (sessionErr instanceof Error && sessionErr.message.includes("maximum capacity")) {
-        throw sessionErr;
+  // 2. Fetch event document to validate session capacity and evaluate curation mode
+  let eventData: FirestoreEvent | null = null;
+  const eventRef = doc(db, "events", eventIdStr);
+  try {
+    const eventSnap = await getDoc(eventRef);
+    if (eventSnap.exists()) {
+      eventData = eventSnap.data() as FirestoreEvent;
+    }
+  } catch (eventErr) {
+    console.warn("[Firestore] Could not load event document in registerMemberForEvent:", eventErr);
+  }
+
+  // Validate session capacity if session_id is provided
+  if (registration.session_id && eventData) {
+    const matchingSession = eventData.sessions?.find((s) => s.id === registration.session_id);
+    if (matchingSession && matchingSession.capacity > 0) {
+      const currentCount = matchingSession.total_registered || 0;
+      if (currentCount >= matchingSession.capacity) {
+        throw new Error(
+          `The session "${matchingSession.title}" has reached its maximum capacity (${matchingSession.capacity} attendees). Please select an alternate session.`,
+        );
       }
     }
   }
+
+  // 3. Enforce curation mode rule:
+  // When curation mode for an event is active (requires_approval === true or curation_mode === true),
+  // after submitting, the attendee status must default to "pending" (Pending Review).
+  const isCurationActive =
+    eventData?.requires_approval === true ||
+    eventData?.curation_mode === true ||
+    (registration as unknown as Record<string, unknown>).requires_approval === true ||
+    (registration as unknown as Record<string, unknown>).curation_mode === true;
+
+  const resolvedStatus: RegistrationStatus = isCurationActive ? "pending" : registration.status;
 
   const regId = `${eventIdStr}_${registration.member_id}`;
   const docRef = doc(db, "event_registrations", regId);
@@ -398,6 +416,7 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
 
   const cleanPayload = sanitizeFirestoreData<FirestoreRegistration>({
     ...registration,
+    status: resolvedStatus,
     answers: updatedAnswers,
     event_id: eventIdStr,
     member_email: normalizedEmail,
@@ -408,13 +427,14 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
 
   // Update event registration counter & session total if available
   try {
-    const eventRef = doc(db, "events", eventIdStr);
-    const eventSnap = await getDoc(eventRef);
-    if (eventSnap.exists()) {
-      const eventData = eventSnap.data() as FirestoreEvent;
+    if (eventData) {
       const currentCount = typeof eventData.total_registrations === "number" ? eventData.total_registrations : 0;
+      const currentApproved = typeof eventData.total_approved === "number" ? eventData.total_approved : 0;
+      const isApprovedStatus = resolvedStatus === "approved" || resolvedStatus === "attended";
+
       const updateData: Record<string, unknown> = {
         total_registrations: currentCount + 1,
+        ...(isApprovedStatus ? { total_approved: currentApproved + 1 } : {}),
         updated_at: new Date().toISOString(),
       };
 
@@ -476,19 +496,88 @@ export async function updateRegistrationStatus(
   registrationId: string,
   eventId: string,
   status: RegistrationStatus,
-  reviewer?: { id: string; name: string },
+  reviewer?: { id: string; name: string; email?: string },
   notes?: string,
 ): Promise<void> {
   if (typeof window === "undefined") return;
   const docRef = doc(db, "event_registrations", registrationId);
+  const now = new Date().toISOString();
+
+  let previousStatus: RegistrationStatus | undefined;
+  let memberName = "";
+  let memberEmail = "";
+  let eventTitle = "";
+  let existingLogs: RegistrationStatusLog[] = [];
+
+  try {
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const data = snap.data() as FirestoreRegistration;
+      previousStatus = data.status;
+      memberName = data.member_name || "";
+      memberEmail = data.member_email || "";
+      eventTitle = data.event_title || "";
+      existingLogs = Array.isArray(data.status_logs) ? data.status_logs : [];
+    }
+  } catch (readErr) {
+    console.warn("[updateRegistrationStatus] Failed to read existing registration for audit log:", readErr);
+  }
+
+  const logEntry: RegistrationStatusLog = {
+    id: `log_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    status,
+    previous_status: previousStatus,
+    changed_at: now,
+    changed_by_id: reviewer?.id ?? "unknown",
+    changed_by_name: reviewer?.name ?? "Organizer",
+    changed_by_email: reviewer?.email,
+    notes,
+  };
+
+  const updatedLogs = [...existingLogs, logEntry];
+
   const updatePayload = sanitizeFirestoreData<Partial<FirestoreRegistration>>({
     status,
-    reviewed_at: new Date().toISOString(),
-    ...(reviewer ? { reviewed_by_id: reviewer.id, reviewed_by_name: reviewer.name } : {}),
+    reviewed_at: now,
+    ...(reviewer
+      ? {
+          reviewed_by_id: reviewer.id,
+          reviewed_by_name: reviewer.name,
+          ...(reviewer.email ? { reviewed_by_email: reviewer.email } : {}),
+        }
+      : {}),
     ...(notes !== undefined ? { notes } : {}),
+    status_logs: updatedLogs,
+    updated_at: now,
   });
 
   await updateDoc(docRef, updatePayload);
+
+  // Dedicated audit_logs collection entry
+  try {
+    const auditEntry: AuditLogEntry = {
+      action: "registration_status_change",
+      entity_type: "registration",
+      entity_id: registrationId,
+      event_id: eventId,
+      event_title: eventTitle,
+      member_name: memberName,
+      member_email: memberEmail,
+      actor_id: reviewer?.id ?? "unknown",
+      actor_name: reviewer?.name ?? "Organizer",
+      actor_email: reviewer?.email,
+      previous_value: previousStatus,
+      new_value: status,
+      notes,
+      timestamp: now,
+    };
+    await addDoc(collection(db, "audit_logs"), sanitizeFirestoreData(auditEntry));
+    console.log(
+      `[Organizer Review Audit] Organizer ${reviewer?.name ?? "Organizer"} (${reviewer?.email ?? "unknown"}) updated registration ${registrationId} (${memberName}) to ${status}.`,
+    );
+  } catch (auditErr) {
+    console.warn("[updateRegistrationStatus] Failed to write audit log entry:", auditErr);
+  }
 
   // If approved or rejected, update event approved counter
   try {

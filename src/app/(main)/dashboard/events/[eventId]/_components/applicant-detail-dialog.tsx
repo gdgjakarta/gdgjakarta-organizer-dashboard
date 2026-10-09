@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { format, parseISO } from "date-fns";
 import {
@@ -34,7 +34,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { DEFAULT_COMBINED_QUESTIONS } from "@/lib/events/registration-defaults";
 import type { CustomQuestion, FirestoreRegistration, RegistrationStatus } from "@/lib/firestore/types";
 import { cn, getInitials } from "@/lib/utils";
@@ -108,6 +107,11 @@ function formatLabel(key: string, labelMap: Map<string, string>): string {
     return trimmed;
   }
 
+  // Handle auto-generated IDs e.g. q_123456 or custom_123456
+  if (/^q_\d+$/i.test(trimmed)) {
+    return `Question #${trimmed.replace(/^q_/i, "")}`;
+  }
+
   const words = trimmed
     .replace(/[_-]+/g, " ")
     .split(" ")
@@ -125,6 +129,7 @@ function formatLabel(key: string, labelMap: Map<string, string>): string {
       if (lower === "faq") return "FAQ";
       if (lower === "ui") return "UI";
       if (lower === "ux") return "UX";
+      if (lower === "cv") return "CV";
       return word.charAt(0).toUpperCase() + word.slice(1);
     });
 
@@ -148,6 +153,32 @@ export function ApplicantDetailDialog({
 }: ApplicantDetailDialogProps) {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [copiedProfile, setCopiedProfile] = useState(false);
+  const [loadedQuestions, setLoadedQuestions] = useState<CustomQuestion[]>([]);
+
+  // Hydrate custom questions from Firestore if not provided
+  useEffect(() => {
+    if (customQuestions && customQuestions.length > 0) return;
+    if (!registration?.event_id) return;
+
+    let active = true;
+    async function fetchQuestions() {
+      try {
+        const { getFirestoreEventById } = await import("@/lib/firestore/client");
+        const eventDoc = await getFirestoreEventById(String(registration?.event_id));
+        if (active && eventDoc?.custom_questions && eventDoc.custom_questions.length > 0) {
+          setLoadedQuestions(eventDoc.custom_questions);
+        }
+      } catch (err) {
+        console.warn("[ApplicantDetailDialog] Could not fetch event questions:", err);
+      }
+    }
+    void fetchQuestions();
+    return () => {
+      active = false;
+    };
+  }, [customQuestions, registration?.event_id]);
+
+  const effectiveQuestions = customQuestions && customQuestions.length > 0 ? customQuestions : loadedQuestions;
 
   // Label and Section mapping
   const { labelMap, sectionMap } = useMemo(() => {
@@ -164,7 +195,7 @@ export function ApplicantDetailDialog({
       }
     }
 
-    for (const q of customQuestions) {
+    for (const q of effectiveQuestions) {
       if (q.id && q.label) {
         const idLower = q.id.toLowerCase().trim();
         lMap.set(idLower, q.label);
@@ -175,7 +206,7 @@ export function ApplicantDetailDialog({
     }
 
     return { labelMap: lMap, sectionMap: sMap };
-  }, [customQuestions]);
+  }, [effectiveQuestions]);
 
   // Grouped answers
   const groupedSections = useMemo(() => {
@@ -292,6 +323,30 @@ export function ApplicantDetailDialog({
   const renderResponseValue = (key: string, value: unknown) => {
     const keyLower = key.toLowerCase();
     const strVal = String(value);
+
+    // Boolean responses
+    if (value === true || strVal.toLowerCase() === "true" || strVal.toLowerCase() === "yes") {
+      return (
+        <Badge
+          variant="outline"
+          className="gap-1 border-emerald-500/30 bg-emerald-500/10 font-semibold text-emerald-700 text-xs dark:text-emerald-400"
+        >
+          <Check className="size-3" />
+          Yes
+        </Badge>
+      );
+    }
+    if (value === false || strVal.toLowerCase() === "false" || strVal.toLowerCase() === "no") {
+      return (
+        <Badge
+          variant="outline"
+          className="gap-1 border-border bg-muted/40 font-semibold text-muted-foreground text-xs"
+        >
+          <XCircle className="size-3 opacity-60" />
+          No
+        </Badge>
+      );
+    }
 
     // URL / Links
     if (strVal.startsWith("http://") || strVal.startsWith("https://")) {
@@ -450,9 +505,9 @@ export function ApplicantDetailDialog({
 
   return (
     <Dialog open={Boolean(registration)} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[92vh] p-0 sm:max-w-xl md:max-w-2xl">
+      <DialogContent className="flex max-h-[92vh] flex-col overflow-hidden p-0 sm:max-w-xl md:max-w-2xl lg:max-w-3xl">
         {/* Header Bar */}
-        <div className="border-b bg-muted/20 px-6 pt-6 pb-4">
+        <div className="shrink-0 border-b bg-muted/20 px-6 pt-5 pb-4">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex items-start gap-3.5">
               <Avatar className="size-12 rounded-full border border-border shadow-xs">
@@ -505,35 +560,40 @@ export function ApplicantDetailDialog({
             Detailed applicant dossier with submitted questions, track selection, and contact details.
           </DialogDescription>
 
-          {/* Session Track Banner if present */}
-          {Boolean(registration.session_title ?? registration.session_id ?? registration.answers?.session_title) && (
-            <div className="mt-4 flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-3.5 py-2.5 text-xs">
-              <div className="flex items-center gap-2 font-medium text-foreground">
-                <Layers className="size-4 text-primary" />
-                <span className="text-muted-foreground">Session Track:</span>
-                <span className="font-semibold text-primary">
-                  {registration.session_title ??
-                    String(registration.answers?.session_title ?? "") ??
-                    `Track ID: ${registration.session_id}`}
-                </span>
+          {/* Compact Metadata Attributes Strip */}
+          <div className="mt-3.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {/* Session Track Banner if present */}
+            {Boolean(registration.session_title ?? registration.session_id ?? registration.answers?.session_title) && (
+              <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
+                <div className="flex min-w-0 items-center gap-2">
+                  <Layers className="size-3.5 shrink-0 text-primary" />
+                  <span className="shrink-0 text-muted-foreground text-[11px]">Track:</span>
+                  <span className="truncate font-semibold text-primary">
+                    {registration.session_title ??
+                      String(registration.answers?.session_title ?? "") ??
+                      `Track ID: ${registration.session_id}`}
+                  </span>
+                </div>
+                <Badge variant="secondary" className="shrink-0 font-medium text-[10px]">
+                  Assigned
+                </Badge>
               </div>
-              <Badge variant="secondary" className="font-medium text-[10px] uppercase tracking-wider">
-                Assigned
-              </Badge>
-            </div>
-          )}
+            )}
 
-          {/* Ticket Pass Details if present */}
-          {Boolean(registration.ticket_name ?? registration.ticket_type) && (
-            <div className="mt-2.5 flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-3.5 py-2.5 text-xs">
-              <div className="flex flex-wrap items-center gap-2 font-medium text-foreground">
-                <Ticket className="size-4 text-primary" />
-                <span className="text-muted-foreground">Ticket Tier:</span>
-                <span className="font-semibold text-foreground">{registration.ticket_name ?? "General Pass"}</span>
+            {/* Ticket Pass Details if present */}
+            {Boolean(registration.ticket_name ?? registration.ticket_type) && (
+              <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
+                <div className="flex min-w-0 items-center gap-2">
+                  <Ticket className="size-3.5 shrink-0 text-primary" />
+                  <span className="shrink-0 text-muted-foreground text-[11px]">Ticket:</span>
+                  <span className="truncate font-semibold text-foreground">
+                    {registration.ticket_name ?? "General Pass"}
+                  </span>
+                </div>
                 <Badge
                   variant="outline"
                   className={cn(
-                    "px-1.5 py-0 font-semibold text-[10px]",
+                    "shrink-0 px-1.5 py-0 font-semibold text-[10px]",
                     registration.ticket_type === "free" &&
                       "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
                     registration.ticket_type === "paid" &&
@@ -545,86 +605,104 @@ export function ApplicantDetailDialog({
                   {getTicketTierLabel(registration.ticket_type, registration.ticket_price)}
                 </Badge>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Merchandise Add-on Details if present */}
-          {Boolean(registration.selected_merchandise && registration.selected_merchandise.length > 0) && (
-            <div className="mt-2.5 space-y-2 rounded-lg border bg-muted/30 p-3 text-xs">
-              <div className="flex items-center gap-1.5 font-medium text-foreground">
-                <Package className="size-3.5 text-primary" />
-                <span>Merchandise Orders ({registration.selected_merchandise?.length} items)</span>
+            {/* Bevy On-Site Check-In Status & Action */}
+            <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-xs">
+              <div className="flex min-w-0 items-center gap-1.5">
+                <span className="shrink-0 font-medium text-muted-foreground text-[11px]">Check-In:</span>
+                {registration.is_checked_in ? (
+                  <Badge
+                    variant="outline"
+                    className="gap-1 border-emerald-500/30 bg-emerald-500/10 font-medium text-[10px] text-emerald-600 dark:text-emerald-400"
+                  >
+                    <UserCheck className="size-3" /> Checked In
+                    {registration.checked_in_at && ` • ${registration.checked_in_at}`}
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                    Not Checked In
+                  </Badge>
+                )}
               </div>
-              <div className="space-y-1.5">
-                {registration.selected_merchandise?.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between text-[11px]">
-                    <span className="text-muted-foreground">
-                      {item.quantity}x <strong className="text-foreground">{item.name}</strong>
-                      {item.selected_variations
-                        ? ` (${Object.entries(item.selected_variations)
-                            .map(([k, v]) => `${k}: ${v}`)
-                            .join(", ")})`
-                        : ""}
-                    </span>
-                    <span className="font-mono text-foreground">
-                      {item.price > 0 ? `Rp ${(item.price * item.quantity).toLocaleString("id-ID")}` : "Free Perk"}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
 
-          {/* Bevy On-Site Check-In Status & Action */}
-          <div className="mt-3 flex flex-col gap-2 rounded-lg border bg-muted/30 p-2.5 text-xs sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-2">
-              <span className="font-medium text-muted-foreground">On-Site Check-In (Bevy):</span>
-              {registration.is_checked_in ? (
-                <Badge
-                  variant="outline"
-                  className="gap-1 border-emerald-500/30 bg-emerald-500/10 font-medium text-[11px] text-emerald-600 dark:text-emerald-400"
+              {onToggleCheckIn && (
+                <Button
+                  size="sm"
+                  variant={registration.is_checked_in ? "ghost" : "outline"}
+                  className={cn(
+                    "h-6 px-2 text-[11px]",
+                    registration.is_checked_in
+                      ? "text-muted-foreground hover:text-destructive"
+                      : "border-primary/30 text-primary hover:bg-primary/5",
+                  )}
+                  disabled={isPending}
+                  onClick={() => onToggleCheckIn(registration, !registration.is_checked_in)}
                 >
-                  <UserCheck className="size-3" /> Checked In
-                  {registration.checked_in_at && ` • ${registration.checked_in_at}`}
-                </Badge>
-              ) : (
-                <Badge variant="outline" className="text-[11px] text-muted-foreground">
-                  Not Checked In
-                </Badge>
+                  {registration.is_checked_in ? (
+                    <>
+                      <RotateCcw className="mr-1 size-2.5" />
+                      Undo
+                    </>
+                  ) : (
+                    <>
+                      <UserCheck className="mr-1 size-2.5" />
+                      Check In
+                    </>
+                  )}
+                </Button>
               )}
             </div>
 
-            {onToggleCheckIn && (
-              <Button
-                size="sm"
-                variant={registration.is_checked_in ? "ghost" : "outline"}
-                className={cn(
-                  "h-7 gap-1 self-start text-xs sm:self-auto",
-                  registration.is_checked_in
-                    ? "text-muted-foreground hover:text-destructive"
-                    : "border-primary/30 text-primary hover:bg-primary/5",
+            {/* Merchandise Add-on Details if present */}
+            {Boolean(registration.selected_merchandise && registration.selected_merchandise.length > 0) && (
+              <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-xs">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <Package className="size-3.5 shrink-0 text-primary" />
+                  <span className="shrink-0 text-muted-foreground text-[11px]">Merch:</span>
+                  <span className="truncate font-medium text-foreground text-[11px]">
+                    {registration.selected_merchandise?.map((item) => `${item.quantity}x ${item.name}`).join(", ")}
+                  </span>
+                </div>
+                <Badge variant="secondary" className="shrink-0 text-[10px]">
+                  {registration.selected_merchandise?.length} items
+                </Badge>
+              </div>
+            )}
+
+            {/* Reviewed By Decision Maker Banner if reviewed */}
+            {Boolean(registration.reviewed_by_name) && (
+              <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-xs">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <UserCheck className="size-3.5 shrink-0 text-primary" />
+                  <span className="shrink-0 font-medium text-muted-foreground text-[11px]">Reviewed By:</span>
+                  <span className="truncate font-semibold text-foreground text-[11px]">
+                    {registration.reviewed_by_name}
+                    {registration.reviewed_by_email && (
+                      <span className="ml-1 font-normal text-muted-foreground text-[10px]">
+                        ({registration.reviewed_by_email})
+                      </span>
+                    )}
+                  </span>
+                </div>
+                {registration.reviewed_at && (
+                  <span className="shrink-0 text-[10px] text-muted-foreground">
+                    {(() => {
+                      try {
+                        return format(parseISO(registration.reviewed_at), "dd MMM, HH:mm");
+                      } catch {
+                        return registration.reviewed_at;
+                      }
+                    })()}
+                  </span>
                 )}
-                disabled={isPending}
-                onClick={() => onToggleCheckIn(registration, !registration.is_checked_in)}
-              >
-                {registration.is_checked_in ? (
-                  <>
-                    <RotateCcw className="size-3" />
-                    Undo Check-In
-                  </>
-                ) : (
-                  <>
-                    <UserCheck className="size-3" />
-                    Check In via Bevy
-                  </>
-                )}
-              </Button>
+              </div>
             )}
           </div>
         </div>
 
         {/* Scrollable Questions and Responses */}
-        <ScrollArea className="max-h-[55vh] px-6 py-4">
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
           <div className="space-y-6">
             {groupedSections.length > 0 ? (
               groupedSections.map(([sectionTitle, items]) => {
@@ -676,11 +754,67 @@ export function ApplicantDetailDialog({
                 </p>
               </div>
             )}
+
+            {/* Audit & Review History Timeline */}
+            {Boolean(registration.status_logs && registration.status_logs.length > 0) && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 border-border/40 border-b pb-1.5 font-semibold text-muted-foreground text-xs uppercase tracking-wider">
+                  <ShieldCheck className="size-3.5 text-primary" />
+                  <span>Review & Status Audit History</span>
+                  <span className="font-normal text-[11px] text-muted-foreground/70">
+                    ({registration.status_logs?.length} {registration.status_logs?.length === 1 ? "entry" : "entries"})
+                  </span>
+                </div>
+
+                <div className="space-y-2 rounded-lg border border-border/60 bg-muted/20 p-3">
+                  {registration.status_logs?.map((log, idx) => {
+                    const logStatusMeta = STATUS_VARIANTS[log.status] || {
+                      label: log.status,
+                      badgeClass: "border-muted bg-muted",
+                      dotClass: "bg-muted-foreground",
+                    };
+                    let logTime = log.changed_at;
+                    try {
+                      logTime = format(parseISO(log.changed_at), "dd MMM yyyy, HH:mm");
+                    } catch {
+                      // Keep raw
+                    }
+
+                    return (
+                      <div
+                        key={log.id || `log-${idx}`}
+                        className="flex flex-wrap items-center justify-between gap-2 border-border/40 border-b pb-2 last:border-b-0 last:pb-0"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Badge
+                            variant="outline"
+                            className={cn("gap-1 border px-2 py-0.5 font-medium text-[11px]", logStatusMeta.badgeClass)}
+                          >
+                            <span className={cn("size-1.5 rounded-full", logStatusMeta.dotClass)} />
+                            {logStatusMeta.label}
+                          </Badge>
+                          <span className="text-muted-foreground text-xs">
+                            by <span className="font-semibold text-foreground">{log.changed_by_name}</span>
+                            {log.changed_by_email && (
+                              <span className="text-muted-foreground text-[11px]"> ({log.changed_by_email})</span>
+                            )}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                          <Clock className="size-3" />
+                          <span>{logTime}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
-        </ScrollArea>
+        </div>
 
         {/* Footer Actions */}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t bg-muted/20 px-6 py-3.5">
+        <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 border-t bg-muted/20 px-6 py-3.5">
           <div className="flex items-center gap-2">
             {registration.status !== "waitlisted" && (
               <Button

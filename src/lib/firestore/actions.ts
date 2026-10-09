@@ -67,7 +67,7 @@ export async function updateRegistrationStatusAction(
   registrationId: string,
   eventId: string,
   status: RegistrationStatus,
-  reviewer?: { id: string; name: string },
+  reviewer?: { id: string; name: string; email?: string },
   notes?: string,
 ) {
   const { updateRegistrationStatus } = await import("./client");
@@ -110,6 +110,12 @@ export async function updateRegistrationAnswersAction(
  */
 export async function registerForEventAction(registration: Omit<FirestoreRegistration, "id">) {
   try {
+    if (!registration.member_id || !registration.member_email.trim()) {
+      return {
+        success: false,
+        error: "You must join the community by signing in with Google before registering.",
+      };
+    }
     const { registerMemberForEvent } = await import("./client");
     const regId = await registerMemberForEvent(registration);
     await revalidateDashboardPath("/dashboard/events");

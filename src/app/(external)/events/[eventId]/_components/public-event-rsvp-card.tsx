@@ -7,6 +7,7 @@ import Image from "next/image";
 import { Camera, Check, Copy, ExternalLink, Share2, Sparkles, Users, Video } from "lucide-react";
 import { toast } from "sonner";
 
+import googleFavicon from "@/app/Google_Favicon.webp";
 import { EventRegistrationModal } from "@/components/event-registration-modal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,7 @@ import type { BevyEvent } from "@/lib/bevy/types";
 import { parsePhotoAlbum } from "@/lib/events/media-utils";
 import { getRegistrationWindowStatus } from "@/lib/events/registration-defaults";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
+import { useAuthStore } from "@/stores/auth/auth-provider";
 
 interface PublicEventRsvpCardProps {
   event: BevyEvent;
@@ -41,6 +43,7 @@ export function PublicEventRsvpCard({
   existingRegistration,
   isCheckingRegistration = false,
 }: PublicEventRsvpCardProps) {
+  const user = useAuthStore((s) => s.user);
   const [copied, setCopied] = useState(false);
   const [currentRegistration, setCurrentRegistration] = useState<FirestoreRegistration | null | undefined>(
     existingRegistration,
@@ -137,6 +140,12 @@ export function PublicEventRsvpCard({
     registrationDescription = `Registration opens on ${windowStatus.opensAt ? new Date(windowStatus.opensAt).toLocaleDateString() : "soon"}.`;
   } else if (windowStatus.status === "ended") {
     registrationDescription = "Registration is closed for this event.";
+  } else if (
+    registrationEvent.requires_approval ||
+    (registrationEvent as unknown as Record<string, unknown>).curation_mode
+  ) {
+    registrationDescription =
+      "This event is in curation mode. Submissions are marked as Pending Review until approved by organizers.";
   }
 
   return (
@@ -203,17 +212,46 @@ export function PublicEventRsvpCard({
               )}
             </div>
           ) : (
-            <EventRegistrationModal
-              event={registrationEvent}
-              existingRegistration={currentRegistration}
-              isChecking={isCheckingRegistration}
-              onSuccess={(reg) => setCurrentRegistration(reg)}
-            >
-              <Button className="w-full gap-2 font-medium shadow-xs" size="lg">
-                <Sparkles className="size-4" />
-                Register for Event
-              </Button>
-            </EventRegistrationModal>
+            <>
+              {!user && windowStatus.isOpen && !currentRegistration && (
+                <div className="flex items-start gap-2.5 rounded-xl border border-primary/20 bg-primary/5 p-3 text-foreground text-xs leading-relaxed">
+                  <Users className="mt-0.5 size-4 shrink-0 text-primary" />
+                  <div className="space-y-0.5">
+                    <p className="font-semibold text-foreground">Join Community First</p>
+                    <p className="text-[11px] text-muted-foreground leading-normal">
+                      GDG Jakarta events require chapter membership. Sign in with Google to join our community before
+                      registering.
+                    </p>
+                  </div>
+                </div>
+              )}
+              <EventRegistrationModal
+                event={registrationEvent}
+                existingRegistration={currentRegistration}
+                isChecking={isCheckingRegistration}
+                onSuccess={(reg) => setCurrentRegistration(reg)}
+              >
+                <Button className="w-full gap-2 font-medium shadow-xs" size="lg">
+                  {!user ? (
+                    <>
+                      <Image
+                        src={googleFavicon}
+                        alt="Google"
+                        width={18}
+                        height={18}
+                        className="size-4 object-contain"
+                      />
+                      Join Community to Register
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="size-4" />
+                      Register for Event
+                    </>
+                  )}
+                </Button>
+              </EventRegistrationModal>
+            </>
           )}
 
           {/* Secondary Actions */}
@@ -284,8 +322,23 @@ export function PublicEventRsvpCard({
                     onSuccess={(reg) => setCurrentRegistration(reg)}
                   >
                     <Button size="sm" className="gap-1.5 shadow-xs">
-                      <Sparkles className="size-3.5" />
-                      RSVP
+                      {!user ? (
+                        <>
+                          <Image
+                            src={googleFavicon}
+                            alt="Google"
+                            width={16}
+                            height={16}
+                            className="size-3.5 object-contain"
+                          />
+                          Join &amp; RSVP
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="size-3.5" />
+                          RSVP
+                        </>
+                      )}
                     </Button>
                   </EventRegistrationModal>
                 );

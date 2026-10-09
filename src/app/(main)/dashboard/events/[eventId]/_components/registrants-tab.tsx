@@ -67,6 +67,7 @@ import type {
 } from "@/lib/firestore/types";
 import { cn, getInitials } from "@/lib/utils";
 import { checkInBevyAttendeeAction, fetchBevyEventAttendeesAction } from "@/server/bevy-actions";
+import { useAuthStore } from "@/stores/auth/auth-provider";
 
 import { ApplicantDetailDialog } from "./applicant-detail-dialog";
 import { type AvailableQuestionField, ColumnCustomizer } from "./column-customizer";
@@ -244,6 +245,13 @@ function RegistrantsTableSkeleton({
               </div>
             </TableCell>
           )}
+          {visibleStandardColumns.reviewed_by !== false && (
+            <TableCell>
+              <div className="relative h-4 w-24 overflow-hidden rounded bg-muted">
+                <div className="shimmer-wave" aria-hidden="true" />
+              </div>
+            </TableCell>
+          )}
           {hasTickets && visibleStandardColumns.ticket !== false && (
             <TableCell>
               <div className="relative h-5 w-24 overflow-hidden rounded bg-muted">
@@ -307,6 +315,7 @@ function RegistrantsTableSkeleton({
 }
 
 export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTabProps) {
+  const user = useAuthStore((s) => s.user);
   const [registrationsList, setRegistrationsList] = useState<FirestoreRegistration[]>(registrations);
   const [isLoading, setIsLoading] = useState(registrations.length === 0);
   const [isFiltering, setIsFiltering] = useState(false);
@@ -314,6 +323,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [sessionFilter, setSessionFilter] = useState<string>("all");
   const [ticketFilter, setTicketFilter] = useState<string>("all");
+  const [reviewerFilter, setReviewerFilter] = useState<string>("all");
   const [sessions, setSessions] = useState<EventSession[]>(event?.sessions ?? []);
   const [customQuestions, setCustomQuestions] = useState<CustomQuestion[]>(event?.custom_questions ?? []);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -327,6 +337,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const [visibleStandardColumns, setVisibleStandardColumns] = useState<Record<string, boolean>>({
     applicant: true,
     status: true,
+    reviewed_by: true,
     ticket: true,
     merchandise: true,
     session: true,
@@ -736,6 +747,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     const defaultStandard = {
       applicant: true,
       status: true,
+      reviewed_by: true,
       ticket: hasTickets,
       merchandise: hasMerchandise,
       session: hasSessions,
@@ -762,11 +774,30 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     }, 200);
   };
 
+  const availableReviewers = useMemo(() => {
+    const names = new Set<string>();
+    for (const r of registrationsList) {
+      if (r.reviewed_by_name) {
+        names.add(r.reviewed_by_name);
+      }
+    }
+    return Array.from(names).sort();
+  }, [registrationsList]);
+
+  const handleReviewerFilterChange = (val: string) => {
+    setIsFiltering(true);
+    setReviewerFilter(val);
+    setTimeout(() => {
+      setIsFiltering(false);
+    }, 200);
+  };
+
   const handleResetAllFilters = () => {
     setIsFiltering(true);
     setStatusFilter("all");
     setSessionFilter("all");
     setTicketFilter("all");
+    setReviewerFilter("all");
     setSearch("");
     setQuestionFilters({});
     setTimeout(() => {
@@ -782,6 +813,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         !searchLower ||
         reg.member_name.toLowerCase().includes(searchLower) ||
         reg.member_email.toLowerCase().includes(searchLower) ||
+        Boolean(reg.reviewed_by_name?.toLowerCase().includes(searchLower)) ||
+        Boolean(reg.reviewed_by_email?.toLowerCase().includes(searchLower)) ||
         Boolean(reg.ticket_name?.toLowerCase().includes(searchLower)) ||
         (reg.answers && JSON.stringify(reg.answers).toLowerCase().includes(searchLower));
 
@@ -815,7 +848,11 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         reg.ticket_name === ticketFilter ||
         reg.ticket_type === ticketFilter;
 
-      if (!matchesSearch || !matchesStatus || !matchesSession || !matchesTicket) {
+      const matchesReviewer =
+        reviewerFilter === "all" ||
+        (reviewerFilter === "unreviewed" ? !reg.reviewed_by_name : reg.reviewed_by_name === reviewerFilter);
+
+      if (!matchesSearch || !matchesStatus || !matchesSession || !matchesTicket || !matchesReviewer) {
         return false;
       }
 
@@ -852,6 +889,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     statusFilter,
     sessionFilter,
     ticketFilter,
+    reviewerFilter,
     selectedQuestionColumns,
     questionFilters,
     questionLabelMap,
@@ -860,9 +898,43 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const handleStatusChange = (registrationId: string, newStatus: RegistrationStatus) => {
     startTransition(async () => {
       try {
-        await updateRegistrationStatusAction(registrationId, eventId, newStatus);
-        setRegistrationsList((prev) => prev.map((r) => (r.id === registrationId ? { ...r, status: newStatus } : r)));
-        setInspectRegistration((prev) => (prev?.id === registrationId ? { ...prev, status: newStatus } : prev));
+        const reviewerPayload = user ? { id: user.id, name: user.name, email: user.email } : undefined;
+        const now = new Date().toISOString();
+        await updateRegistrationStatusAction(registrationId, eventId, newStatus, reviewerPayload);
+        setRegistrationsList((prev) =>
+          prev.map((r) =>
+            r.id === registrationId
+              ? {
+                  ...r,
+                  status: newStatus,
+                  reviewed_at: now,
+                  ...(user
+                    ? {
+                        reviewed_by_id: user.id,
+                        reviewed_by_name: user.name,
+                        reviewed_by_email: user.email,
+                      }
+                    : {}),
+                }
+              : r,
+          ),
+        );
+        setInspectRegistration((prev) =>
+          prev?.id === registrationId
+            ? {
+                ...prev,
+                status: newStatus,
+                reviewed_at: now,
+                ...(user
+                  ? {
+                      reviewed_by_id: user.id,
+                      reviewed_by_name: user.name,
+                      reviewed_by_email: user.email,
+                    }
+                  : {}),
+              }
+            : prev,
+        );
         toast.success(`Applicant marked as ${STATUS_VARIANTS[newStatus].label}`);
       } catch {
         toast.error("Failed to update status.");
@@ -947,9 +1019,30 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     if (selectedIds.size === 0) return;
     startTransition(async () => {
       try {
-        const promises = Array.from(selectedIds).map((id) => updateRegistrationStatusAction(id, eventId, newStatus));
+        const reviewerPayload = user ? { id: user.id, name: user.name, email: user.email } : undefined;
+        const now = new Date().toISOString();
+        const promises = Array.from(selectedIds).map((id) =>
+          updateRegistrationStatusAction(id, eventId, newStatus, reviewerPayload),
+        );
         await Promise.all(promises);
-        setRegistrationsList((prev) => prev.map((r) => (selectedIds.has(r.id) ? { ...r, status: newStatus } : r)));
+        setRegistrationsList((prev) =>
+          prev.map((r) =>
+            selectedIds.has(r.id)
+              ? {
+                  ...r,
+                  status: newStatus,
+                  reviewed_at: now,
+                  ...(user
+                    ? {
+                        reviewed_by_id: user.id,
+                        reviewed_by_name: user.name,
+                        reviewed_by_email: user.email,
+                      }
+                    : {}),
+                }
+              : r,
+          ),
+        );
         toast.success(`Updated ${selectedIds.size} registrants to ${STATUS_VARIANTS[newStatus].label}`);
         setSelectedIds(new Set());
       } catch {
@@ -1056,6 +1149,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       "Name",
       "Email",
       "Status",
+      "Reviewed By",
+      "Reviewed At",
       ...(hasTickets ? ["Ticket Pass", "Ticket Type", "Ticket Price"] : []),
       ...(hasMerchandise ? ["Merchandise Orders"] : []),
       "Bevy Check-In",
@@ -1098,6 +1193,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         `"${(r.member_name || "").replace(/"/g, '""')}"`,
         `"${(r.member_email || "").replace(/"/g, '""')}"`,
         `"${(r.status || "").replace(/"/g, '""')}"`,
+        `"${(r.reviewed_by_name || "").replace(/"/g, '""')}"`,
+        `"${(r.reviewed_at || "").replace(/"/g, '""')}"`,
         ...(hasTickets
           ? [
               `"${(r.ticket_name || "General RSVP").replace(/"/g, '""')}"`,
@@ -1132,6 +1229,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const totalColumnCount = useMemo(() => {
     let count = 2; // Checkbox + Applicant
     if (visibleStandardColumns.status !== false) count += 1;
+    if (visibleStandardColumns.reviewed_by !== false) count += 1;
     if (hasTickets && visibleStandardColumns.ticket !== false) count += 1;
     if (hasMerchandise && visibleStandardColumns.merchandise !== false) count += 1;
     if (hasSessions && visibleStandardColumns.session !== false) count += 1;
@@ -1152,6 +1250,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       statusFilter !== "all" ||
       sessionFilter !== "all" ||
       ticketFilter !== "all" ||
+      reviewerFilter !== "all" ||
       activeQuestionFilterCount > 0,
   );
 
@@ -1302,6 +1401,27 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 </Select>
               )}
 
+              {availableReviewers.length > 0 && (
+                <Select value={reviewerFilter} onValueChange={handleReviewerFilterChange}>
+                  <SelectTrigger size="sm" className="h-8 text-xs">
+                    <UserCheck className="mr-1 size-3 shrink-0 text-muted-foreground" />
+                    <span className="text-muted-foreground">Reviewer:</span>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem value="all">All Reviewers ({availableReviewers.length})</SelectItem>
+                      <SelectItem value="unreviewed">Not Reviewed Yet</SelectItem>
+                      {availableReviewers.map((name) => (
+                        <SelectItem key={name} value={name}>
+                          {name}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              )}
+
               {/* Dynamic Question Field Filters */}
               {selectedQuestionColumns.map((qKey) => {
                 const fieldInfo = availableQuestionFields.find((f) => f.key === qKey) || {
@@ -1428,6 +1548,20 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                   </button>
                 </Badge>
               )}
+              {reviewerFilter !== "all" && (
+                <Badge variant="secondary" className="gap-1 font-normal text-xs">
+                  <UserCheck className="size-3 text-primary" />
+                  <span>Reviewer: {reviewerFilter === "unreviewed" ? "Not Reviewed" : reviewerFilter}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleReviewerFilterChange("all")}
+                    className="ml-0.5 rounded-full p-0.5 hover:bg-muted-foreground/20"
+                    aria-label="Clear reviewer filter"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </Badge>
+              )}
               {selectedQuestionColumns.map((qKey) => {
                 const val = questionFilters[qKey];
                 if (!val || val === "all") return null;
@@ -1474,6 +1608,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                   </TableHead>
                   <TableHead>Applicant</TableHead>
                   {visibleStandardColumns.status !== false && <TableHead>Status</TableHead>}
+                  {visibleStandardColumns.reviewed_by !== false && <TableHead>Reviewed By</TableHead>}
                   {hasTickets && visibleStandardColumns.ticket !== false && <TableHead>Ticket Pass</TableHead>}
                   {hasMerchandise && visibleStandardColumns.merchandise !== false && <TableHead>Merchandise</TableHead>}
                   {hasSessions && visibleStandardColumns.session !== false && <TableHead>Session Track</TableHead>}
@@ -1622,6 +1757,32 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                               <span className={cn("size-1.5 rounded-full", statusMeta.dotClass)} />
                               {statusMeta.label}
                             </Badge>
+                          </TableCell>
+                        )}
+
+                        {visibleStandardColumns.reviewed_by !== false && (
+                          <TableCell onClick={() => setInspectRegistration(reg)} className="max-w-[180px]">
+                            {reg.reviewed_by_name ? (
+                              <div className="flex flex-col gap-0.5">
+                                <div className="flex items-center gap-1.5 font-medium text-foreground text-xs">
+                                  <UserCheck className="size-3.5 shrink-0 text-primary" />
+                                  <span className="truncate">{reg.reviewed_by_name}</span>
+                                </div>
+                                {reg.reviewed_at && (
+                                  <span className="text-[11px] text-muted-foreground">
+                                    {(() => {
+                                      try {
+                                        return format(parseISO(reg.reviewed_at), "dd MMM, HH:mm");
+                                      } catch {
+                                        return reg.reviewed_at;
+                                      }
+                                    })()}
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground text-xs italic">—</span>
+                            )}
                           </TableCell>
                         )}
 

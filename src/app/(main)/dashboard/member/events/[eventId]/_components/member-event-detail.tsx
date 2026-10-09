@@ -141,7 +141,14 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
   };
 
   const isApproved = registration?.status === "approved" || registration?.status === "attended";
-  const isPending = registration?.status === "pending";
+  const isPending =
+    registration?.status === "pending" ||
+    registration?.status === "waitlisted" ||
+    Boolean(
+      registration &&
+        !isApproved &&
+        (currentEvent.requires_approval || (currentEvent as unknown as Record<string, unknown>).curation_mode),
+    );
 
   let statusBadgeClass = "";
   let statusBadgeText = "Registered";
@@ -162,12 +169,14 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
     if (isApproved) {
       registrationStatusDescription = "Your spot is confirmed! See you at the session.";
     } else {
-      registrationStatusDescription = "Your application has been received and is being reviewed by the organizers.";
+      registrationStatusDescription =
+        "Your application has been received and is currently Pending Review by organizers.";
     }
   } else if (isPast) {
     registrationStatusDescription = "This event has already concluded. Registrations are closed.";
-  } else if (currentEvent.requires_approval) {
-    registrationStatusDescription = "This event has limited seats and requires attendee review.";
+  } else if (currentEvent.requires_approval || (currentEvent as unknown as Record<string, unknown>).curation_mode) {
+    registrationStatusDescription =
+      "This event is in curation mode. New registrations are Pending Review until approved.";
   }
 
   const registeredSessionTitle =
@@ -248,7 +257,7 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
         <div className="fade-in-50 animate-in rounded-lg bg-muted/60 p-3 text-center text-muted-foreground text-xs">
           {isApproved
             ? "✓ You are registered. Check your email for further event announcements."
-            : "⏳ You have already applied. You will be notified once reviewed."}
+            : "⏳ You have applied. Your registration is Pending Review by organizers."}
         </div>
         <Button
           type="button"
@@ -263,13 +272,21 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
           )}
           size="lg"
         >
-          <CheckCircle2
-            className={cn(
-              "relative z-10 size-4 transition-transform duration-500",
-              isApproved ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400",
-              isTransitioning && "scale-110",
-            )}
-          />
+          {isPending ? (
+            <Clock
+              className={cn(
+                "relative z-10 size-4 transition-transform duration-500 text-amber-600 dark:text-amber-400",
+                isTransitioning && "scale-110",
+              )}
+            />
+          ) : (
+            <CheckCircle2
+              className={cn(
+                "relative z-10 size-4 transition-transform duration-500 text-emerald-600 dark:text-emerald-400",
+                isTransitioning && "scale-110",
+              )}
+            />
+          )}
           <span className="relative z-10 font-medium">{statusBadgeText}</span>
           <div className="shimmer-wave" aria-hidden="true" />
         </Button>

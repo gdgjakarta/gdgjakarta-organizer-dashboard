@@ -63,6 +63,7 @@ export function ColumnCustomizer({
     const list: StandardColumnOption[] = [
       { id: "applicant", label: "Applicant", description: "Name, email, and avatar", locked: true },
       { id: "status", label: "Status", description: "Approved, Pending, or Rejected badge" },
+      { id: "reviewed_by", label: "Reviewed By", description: "Organizer who approved, rejected, or waitlisted" },
     ];
 
     if (hasTickets) {

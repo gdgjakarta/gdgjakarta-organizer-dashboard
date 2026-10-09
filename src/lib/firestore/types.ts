@@ -129,6 +129,7 @@ export interface FirestoreEvent {
 
   // Dashboard & Registration Extensions
   requires_approval: boolean;
+  curation_mode?: boolean;
   max_attendees?: number | null;
   total_registrations: number;
   total_approved: number;
@@ -202,6 +203,36 @@ export interface SelectedMerchandiseOrder {
   selected_variations?: Record<string, string>;
 }
 
+export interface RegistrationStatusLog {
+  id: string;
+  status: RegistrationStatus;
+  previous_status?: RegistrationStatus;
+  changed_at: string;
+  changed_by_id: string;
+  changed_by_name: string;
+  changed_by_email?: string;
+  notes?: string;
+}
+
+export interface AuditLogEntry {
+  id?: string;
+  action: "registration_status_change" | "event_update" | "member_update";
+  entity_type: "registration" | "event" | "member";
+  entity_id: string;
+  event_id?: string;
+  event_title?: string;
+  member_id?: string;
+  member_name?: string;
+  member_email?: string;
+  actor_id: string;
+  actor_name: string;
+  actor_email?: string;
+  previous_value?: unknown;
+  new_value?: unknown;
+  notes?: string;
+  timestamp: string;
+}
+
 export interface FirestoreRegistration {
   id: string; // `${event_id}_${member_id}`
   event_id: string;
@@ -228,6 +259,8 @@ export interface FirestoreRegistration {
   reviewed_at?: string;
   reviewed_by_id?: string;
   reviewed_by_name?: string;
+  reviewed_by_email?: string;
+  status_logs?: RegistrationStatusLog[];
   checked_in_at?: string;
   is_checked_in?: boolean;
   bevy_attendee_id?: number | null;
