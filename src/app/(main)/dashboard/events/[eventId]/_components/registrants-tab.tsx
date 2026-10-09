@@ -936,8 +936,10 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
             : prev,
         );
         toast.success(`Applicant marked as ${STATUS_VARIANTS[newStatus].label}`);
-      } catch {
-        toast.error("Failed to update status.");
+      } catch (err) {
+        console.error("[RegistrantsTab] Failed to update registration status:", err);
+        const msg = err instanceof Error ? err.message : "Failed to update status.";
+        toast.error(msg);
       }
     });
   };
@@ -1045,8 +1047,10 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         );
         toast.success(`Updated ${selectedIds.size} registrants to ${STATUS_VARIANTS[newStatus].label}`);
         setSelectedIds(new Set());
-      } catch {
-        toast.error("Batch update failed.");
+      } catch (err) {
+        console.error("[RegistrantsTab] Batch update failed:", err);
+        const msg = err instanceof Error ? err.message : "Batch update failed.";
+        toast.error(msg);
       }
     });
   };

@@ -67,6 +67,8 @@ service cloud.firestore {
     //   - reviewed_at: string|null (optional, immutable for members, <= 50 chars) - Review timestamp
     //   - reviewed_by_id: string|null (optional, immutable for members, <= 128 chars) - Reviewer UID
     //   - reviewed_by_name: string|null (optional, immutable for members, <= 150 chars) - Reviewer name
+    //   - reviewed_by_email: string|null (optional, immutable for members, valid email, <= 150 chars) - Reviewer email
+    //   - status_logs: list|null (optional, immutable for members, <= 100 items) - Status transition history
     //   - checked_in_at: string|null (optional, immutable for members, <= 50 chars) - Check-in timestamp
     //   - is_checked_in: bool|null (optional) - Check-in flag
     //   - bevy_attendee_id: int|float|string|null (optional, <= 64 chars) - Associated Bevy attendee ID
@@ -151,6 +153,26 @@ service cloud.firestore {
     //   - sponsors: list|null (optional, <= 50 items)
     //   - updatedAt: string|null (optional, <= 50 chars)
     //   - updatedBy: string|null (optional, <= 150 chars)
+    //
+    // Collection: audit_logs
+    // Document ID: auditId (auto-generated ID)
+    // Fields:
+    //   - id: string|null (optional, <= 128 chars) - Audit log entry ID
+    //   - action: string (required, <= 100 chars) - Audit action type ('registration_status_change'|'event_update'|'member_update')
+    //   - entity_type: string (required, <= 50 chars) - Target entity ('registration'|'event'|'member')
+    //   - entity_id: string (required, <= 200 chars) - Target entity identifier
+    //   - event_id: string|null (optional, <= 128 chars) - Associated event ID
+    //   - event_title: string|null (optional, <= 300 chars) - Associated event title
+    //   - member_id: string|null (optional, <= 128 chars) - Associated member ID
+    //   - member_name: string|null (optional, <= 150 chars) - Associated member display name
+    //   - member_email: string|null (optional, valid email, <= 150 chars) - Associated member email
+    //   - actor_id: string (required, <= 128 chars) - Actor UID
+    //   - actor_name: string (required, <= 150 chars) - Actor display name
+    //   - actor_email: string|null (optional, valid email, <= 150 chars) - Actor email
+    //   - previous_value: string|int|float|bool|null (optional, <= 2000 chars if string) - Value before transition
+    //   - new_value: string|int|float|bool|null (optional, <= 2000 chars if string) - Value after transition
+    //   - notes: string|null (optional, <= 2000 chars) - Change notes / comments
+    //   - timestamp: string (required, <= 50 chars) - Action timestamp ISO string
     //
     // ===============================================================
 
@@ -254,6 +276,7 @@ service cloud.firestore {
           'ticket_id', 'ticket_name', 'ticket_type', 'ticket_price',
           'selected_merchandise', 'session_id', 'session_title',
           'registered_at', 'reviewed_at', 'reviewed_by_id', 'reviewed_by_name',
+          'reviewed_by_email', 'status_logs',
           'checked_in_at', 'is_checked_in', 'bevy_attendee_id', 'checkin_date',
           'attendee_code', 'updated_at'
         ]) &&
@@ -280,6 +303,8 @@ service cloud.firestore {
         (!('reviewed_at' in data) || data.reviewed_at == null || (data.reviewed_at is string && data.reviewed_at.size() <= 50)) &&
         (!('reviewed_by_id' in data) || data.reviewed_by_id == null || (data.reviewed_by_id is string && data.reviewed_by_id.size() <= 128)) &&
         (!('reviewed_by_name' in data) || data.reviewed_by_name == null || (data.reviewed_by_name is string && data.reviewed_by_name.size() <= 150)) &&
+        (!('reviewed_by_email' in data) || data.reviewed_by_email == null || (data.reviewed_by_email is string && isValidEmail(data.reviewed_by_email) && data.reviewed_by_email.size() <= 150)) &&
+        (!('status_logs' in data) || data.status_logs == null || (data.status_logs is list && data.status_logs.size() <= 100)) &&
         (!('checked_in_at' in data) || data.checked_in_at == null || (data.checked_in_at is string && data.checked_in_at.size() <= 50)) &&
         (!('is_checked_in' in data) || data.is_checked_in == null || data.is_checked_in is bool) &&
         (!('bevy_attendee_id' in data) || data.bevy_attendee_id == null || data.bevy_attendee_id is int || data.bevy_attendee_id is float || (data.bevy_attendee_id is string && data.bevy_attendee_id.size() <= 64)) &&
@@ -392,6 +417,32 @@ service cloud.firestore {
         (!('sponsors' in data) || data.sponsors == null || (data.sponsors is list && data.sponsors.size() <= 50));
     }
 
+    // Validates audit_logs document structure, data types, and bounds
+    function isValidAuditLog(data) {
+      return hasRequiredFields(data, ['action', 'entity_type', 'entity_id', 'actor_id', 'actor_name', 'timestamp']) &&
+        hasOnlyAllowedFields(data, [
+          'id', 'action', 'entity_type', 'entity_id', 'event_id', 'event_title',
+          'member_id', 'member_name', 'member_email', 'actor_id', 'actor_name',
+          'actor_email', 'previous_value', 'new_value', 'notes', 'timestamp'
+        ]) &&
+        data.action is string && (data.action in ['registration_status_change', 'event_update', 'member_update']) &&
+        data.entity_type is string && (data.entity_type in ['registration', 'event', 'member']) &&
+        data.entity_id is string && data.entity_id.size() > 0 && data.entity_id.size() <= 200 &&
+        data.actor_id is string && data.actor_id.size() > 0 && data.actor_id.size() <= 128 &&
+        data.actor_name is string && data.actor_name.size() > 0 && data.actor_name.size() <= 150 &&
+        data.timestamp is string && data.timestamp.size() <= 50 &&
+        (!('id' in data) || data.id == null || (data.id is string && data.id.size() <= 128)) &&
+        (!('event_id' in data) || data.event_id == null || (data.event_id is string && data.event_id.size() <= 128)) &&
+        (!('event_title' in data) || data.event_title == null || (data.event_title is string && data.event_title.size() <= 300)) &&
+        (!('member_id' in data) || data.member_id == null || (data.member_id is string && data.member_id.size() <= 128)) &&
+        (!('member_name' in data) || data.member_name == null || (data.member_name is string && data.member_name.size() <= 150)) &&
+        (!('member_email' in data) || data.member_email == null || (data.member_email is string && isValidEmail(data.member_email) && data.member_email.size() <= 150)) &&
+        (!('actor_email' in data) || data.actor_email == null || (data.actor_email is string && isValidEmail(data.actor_email) && data.actor_email.size() <= 150)) &&
+        (!('previous_value' in data) || data.previous_value == null || (data.previous_value is string && data.previous_value.size() <= 2000) || data.previous_value is int || data.previous_value is float || data.previous_value is bool) &&
+        (!('new_value' in data) || data.new_value == null || (data.new_value is string && data.new_value.size() <= 2000) || data.new_value is int || data.new_value is float || data.new_value is bool) &&
+        (!('notes' in data) || data.notes == null || (data.notes is string && data.notes.size() <= 2000));
+    }
+
     // ===============================================================
     // Collection Security Rules
     // ===============================================================
@@ -456,7 +507,9 @@ service cloud.firestore {
         (
           isOwner(resource.data.member_id) &&
           !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-            'status', 'reviewed_at', 'reviewed_by_id', 'reviewed_by_name', 'checked_in_at', 'member_id', 'event_id'
+            'status', 'reviewed_at', 'reviewed_by_id', 'reviewed_by_name',
+            'reviewed_by_email', 'status_logs',
+            'checked_in_at', 'member_id', 'event_id'
           ])
         )
       );
@@ -510,6 +563,17 @@ service cloud.firestore {
 
       // Write: Organizers only.
       allow write: if isOrganizer() && isValidContentSettings(request.resource.data, docId);
+    }
+
+    // -------------------------------------------------------------
+    // Audit Logs Collection
+    // -------------------------------------------------------------
+    match /audit_logs/{auditId} {
+      // Read: Organizers only.
+      allow read: if isOrganizer();
+
+      // Create: Organizers only, validating schema, required fields, and bounds.
+      allow create: if isOrganizer() && isValidAuditLog(request.resource.data);
     }
   }
 }
