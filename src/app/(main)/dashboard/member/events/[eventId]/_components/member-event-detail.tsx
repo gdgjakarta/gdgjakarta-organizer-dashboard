@@ -64,6 +64,8 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
   const user = useAuthStore((s) => s.user);
   const [currentEvent, setCurrentEvent] = useState<FirestoreEvent>(event);
   const [registration, setRegistration] = useState<FirestoreRegistration | null>(initialRegistration);
+  const [isCheckingRegistration, setIsCheckingRegistration] = useState(initialRegistration === null && Boolean(user));
+  const [isTransitioning, setIsTransitioning] = useState(false);
   const { isVirtual, isHybrid } = resolveEventAudience(currentEvent.audience_type, currentEvent.is_virtual);
 
   useEffect(() => {
@@ -82,14 +84,23 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
         console.warn("[MemberEventDetail] Failed to load Firestore event:", err);
       }
 
-      if (!user) return;
+      if (!user) {
+        setIsCheckingRegistration(false);
+        return;
+      }
+
       try {
+        setIsCheckingRegistration(true);
         const found = await checkEventRegistrationAction(String(event.id), user.id, user.email);
         if (found) {
+          setIsTransitioning(true);
           setRegistration(found);
+          setTimeout(() => setIsTransitioning(false), 1200);
         }
       } catch (err) {
         console.error("[MemberEventDetail] Failed to check registration:", err);
+      } finally {
+        setIsCheckingRegistration(false);
       }
     }
 
@@ -185,7 +196,15 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
   }
 
   let actionButton = (
-    <EventRegistrationModal event={currentEvent} existingRegistration={registration}>
+    <EventRegistrationModal
+      event={currentEvent}
+      existingRegistration={registration}
+      onSuccess={(newReg) => {
+        setIsTransitioning(true);
+        setRegistration(newReg);
+        setTimeout(() => setIsTransitioning(false), 1500);
+      }}
+    >
       <Button className="w-full gap-2 font-medium" size="lg">
         <Sparkles className="size-4" />
         Register for Event
@@ -193,10 +212,23 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
     </EventRegistrationModal>
   );
 
-  if (registration) {
+  if (isCheckingRegistration) {
+    actionButton = (
+      <Button
+        disabled
+        variant="outline"
+        className="relative w-full cursor-default gap-2 overflow-hidden border-border/60 bg-muted/60 font-medium text-muted-foreground opacity-90 shadow-xs transition-all duration-300"
+        size="lg"
+      >
+        <Sparkles className="relative z-10 size-4 shrink-0 animate-pulse text-muted-foreground/60" />
+        <span className="relative z-10">Checking registration...</span>
+        <div className="shimmer-wave" aria-hidden="true" />
+      </Button>
+    );
+  } else if (registration) {
     actionButton = (
       <div className="space-y-3">
-        <div className="rounded-lg bg-muted/60 p-3 text-center text-muted-foreground text-xs">
+        <div className="rounded-lg bg-muted/60 p-3 text-center text-muted-foreground text-xs animate-in fade-in-50">
           {isApproved
             ? "✓ You are registered. Check your email for further event announcements."
             : "⏳ You have already applied. You will be notified once reviewed."}
@@ -206,20 +238,22 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
           aria-disabled="true"
           variant={isApproved ? "outline" : "secondary"}
           className={cn(
-            "relative w-full cursor-default gap-2 overflow-hidden font-medium transition-colors",
+            "relative w-full cursor-default gap-2 overflow-hidden font-medium transition-all duration-500",
             isApproved
               ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-300"
               : "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-300",
+            isTransitioning && "scale-[1.01] ring-2 ring-emerald-500/40 animate-in fade-in-50 zoom-in-95",
           )}
           size="lg"
         >
           <CheckCircle2
             className={cn(
-              "relative z-10 size-4",
+              "relative z-10 size-4 transition-transform duration-500",
               isApproved ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400",
+              isTransitioning && "scale-110",
             )}
           />
-          <span className="relative z-10">{statusBadgeText}</span>
+          <span className="relative z-10 font-medium">{statusBadgeText}</span>
           <div className="shimmer-wave" aria-hidden="true" />
         </Button>
       </div>

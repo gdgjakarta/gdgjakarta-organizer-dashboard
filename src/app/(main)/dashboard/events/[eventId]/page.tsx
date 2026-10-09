@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 
-import { FileSpreadsheet, Package, Users } from "lucide-react";
+import { FileSpreadsheet, Package, Sparkles, Users } from "lucide-react";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getAllBevyChapterEvents, getBevyEventById, resolveEventAudience } from "@/lib/bevy/client";
@@ -8,6 +8,7 @@ import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/type
 
 import { CustomFormTab } from "./_components/custom-form-tab";
 import { EventDetailHeader } from "./_components/event-detail-header";
+import { HighlightsMediaTab } from "./_components/highlights-media-tab";
 import { MerchandiseTab } from "./_components/merchandise-tab";
 import { RegistrantsTab } from "./_components/registrants-tab";
 
@@ -117,7 +118,7 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
       />
 
       <Tabs defaultValue="registrants" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3 sm:w-[480px]">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 sm:w-[640px]">
           <TabsTrigger value="registrants" className="gap-1.5 text-xs sm:text-sm">
             <Users className="size-4" />
             Registrants
@@ -129,6 +130,10 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
           <TabsTrigger value="merch" className="gap-1.5 text-xs sm:text-sm">
             <Package className="size-4" />
             Merchandise
+          </TabsTrigger>
+          <TabsTrigger value="highlights" className="gap-1.5 text-xs sm:text-sm">
+            <Sparkles className="size-4" />
+            Highlights & Media
           </TabsTrigger>
         </TabsList>
 
@@ -142,6 +147,10 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
 
         <TabsContent value="merch" className="space-y-4">
           <MerchandiseTab event={event} />
+        </TabsContent>
+
+        <TabsContent value="highlights" className="space-y-4">
+          <HighlightsMediaTab event={event} />
         </TabsContent>
       </Tabs>
     </div>

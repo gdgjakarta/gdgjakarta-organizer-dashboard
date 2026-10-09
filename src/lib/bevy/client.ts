@@ -1,5 +1,5 @@
 import { isAuthorizedOrganizerEmail } from "@/config/auth-config";
-import { BEVY_CONFIG, getBevyAuthCredentials } from "@/config/bevy-config";
+import { BEVY_CONFIG, getBevyAuthCredentials, getBevyRefererUrl } from "@/config/bevy-config";
 import { extractApiMessage, splitFullName } from "@/lib/utils";
 
 export {
@@ -17,6 +17,9 @@ export {
 
 import { extractEventPartners } from "./partners";
 import {
+  type BevyAttendeeCheckInRequest,
+  type BevyAttendeeCheckInResponse,
+  type BevyAttendeesResponse,
   type BevyChapterSlim,
   type BevyChapterTeamMember,
   type BevyEvent,
@@ -756,4 +759,82 @@ export async function getBevyChapterSlim(
   }
 
   return null;
+}
+
+/**
+ * Fetch attendee roster for a specific event directly from Bevy API.
+ * Endpoint: GET /event/{eventId}/attendee/
+ * Referer: https://gdg.community.dev/events/details/google-gdg-{chapterSlug}/?event={eventId}
+ */
+export async function getBevyEventAttendees(
+  eventId: string | number,
+  chapterId: string | number = BEVY_CONFIG.chapterId,
+  options: { pageSize?: number; page?: number; orderBy?: string } = {},
+): Promise<BevyAttendeesResponse> {
+  const { pageSize = 200, page = 1, orderBy = "-created_date" } = options;
+  const referer = await getBevyRefererUrl(chapterId, eventId);
+  const endpoint = `/event/${eventId}/attendee/?page_size=${pageSize}&page=${page}&order_by=${encodeURIComponent(orderBy)}`;
+
+  const result = await bevyFetch<BevyAttendeesResponse>(
+    endpoint,
+    {
+      headers: {
+        Referer: referer,
+      },
+    },
+    chapterId,
+  );
+
+  return result ?? { count: 0, results: [] };
+}
+
+/**
+ * Check-in or undo check-in for an attendee in Bevy.
+ * Endpoint: PUT /attendee/checkin/
+ * Body: { event: Number(eventId), chapter: Number(chapterId), attendees: [{ id: attendeeId, is_checked_in: isCheckedIn }] }
+ * Referer: https://gdg.community.dev/events/details/google-gdg-{chapterSlug}/?event={eventId}
+ */
+export async function putBevyAttendeeCheckIn(
+  eventId: string | number,
+  attendeeId: number,
+  isCheckedIn: boolean,
+  chapterId: string | number = BEVY_CONFIG.chapterId,
+): Promise<{ success: boolean; data?: BevyAttendeeCheckInResponse | null; error?: string }> {
+  try {
+    const referer = await getBevyRefererUrl(chapterId, eventId);
+    const body: BevyAttendeeCheckInRequest = {
+      event: Number(eventId),
+      chapter: Number(chapterId),
+      attendees: [
+        {
+          id: Number(attendeeId),
+          is_checked_in: isCheckedIn,
+        },
+      ],
+    };
+
+    const response = await bevyFetchWithResponse<BevyAttendeeCheckInResponse>(
+      "/attendee/checkin/",
+      {
+        method: "PUT",
+        headers: {
+          Referer: referer,
+        },
+        body: JSON.stringify(body),
+      },
+      chapterId,
+    );
+
+    if (response.ok) {
+      return { success: true, data: response.data };
+    }
+    return {
+      success: false,
+      error: `Bevy check-in failed with status ${response.status}`,
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Failed to update Bevy check-in status";
+    console.error("[putBevyAttendeeCheckIn] error:", err);
+    return { success: false, error: msg };
+  }
 }

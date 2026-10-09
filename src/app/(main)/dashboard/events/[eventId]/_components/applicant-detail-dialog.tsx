@@ -290,7 +290,7 @@ export function ApplicantDetailDialog({
             href={strVal}
             target="_blank"
             rel="noopener noreferrer"
-            className="group inline-flex items-center gap-1.5 font-medium text-primary text-xs hover:underline break-all"
+            className="group inline-flex items-center gap-1.5 break-all font-medium text-primary text-xs hover:underline"
           >
             <Globe className="size-3.5 shrink-0 opacity-80" />
             <span className="truncate">{strVal}</span>
@@ -315,7 +315,7 @@ export function ApplicantDetailDialog({
       const cleanPhone = strVal.replace(/[^0-9]/g, "");
       return (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="font-semibold text-foreground text-xs sm:text-sm tracking-wide">{strVal}</span>
+          <span className="font-semibold text-foreground text-xs tracking-wide sm:text-sm">{strVal}</span>
           <div className="flex items-center gap-1">
             {cleanPhone.length >= 8 && (
               <a
@@ -347,7 +347,7 @@ export function ApplicantDetailDialog({
     if (keyLower.includes("email")) {
       return (
         <div className="flex items-center justify-between gap-2">
-          <a href={`mailto:${strVal}`} className="font-medium text-primary text-xs hover:underline truncate">
+          <a href={`mailto:${strVal}`} className="truncate font-medium text-primary text-xs hover:underline">
             {strVal}
           </a>
           <Button
@@ -427,7 +427,7 @@ export function ApplicantDetailDialog({
     // Longer paragraphs / open text
     if (strVal.length > 60 || strVal.includes("\n")) {
       return (
-        <div className="rounded-md border border-border/50 bg-muted/30 p-2.5 text-foreground text-xs leading-relaxed whitespace-pre-wrap">
+        <div className="whitespace-pre-wrap rounded-md border border-border/50 bg-muted/30 p-2.5 text-foreground text-xs leading-relaxed">
           {strVal}
         </div>
       );
@@ -513,19 +513,19 @@ export function ApplicantDetailDialog({
           )}
 
           {/* Bevy On-Site Check-In Status & Action */}
-          <div className="mt-3 flex flex-col gap-2 rounded-lg border bg-muted/30 p-2.5 sm:flex-row sm:items-center sm:justify-between text-xs">
+          <div className="mt-3 flex flex-col gap-2 rounded-lg border bg-muted/30 p-2.5 text-xs sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2">
               <span className="font-medium text-muted-foreground">On-Site Check-In (Bevy):</span>
               {registration.is_checked_in ? (
                 <Badge
                   variant="outline"
-                  className="gap-1 border-emerald-500/30 bg-emerald-500/10 text-emerald-600 font-medium text-[11px] dark:text-emerald-400"
+                  className="gap-1 border-emerald-500/30 bg-emerald-500/10 font-medium text-[11px] text-emerald-600 dark:text-emerald-400"
                 >
                   <UserCheck className="size-3" /> Checked In
                   {registration.checked_in_at && ` • ${registration.checked_in_at}`}
                 </Badge>
               ) : (
-                <Badge variant="outline" className="text-muted-foreground text-[11px]">
+                <Badge variant="outline" className="text-[11px] text-muted-foreground">
                   Not Checked In
                 </Badge>
               )}
@@ -536,7 +536,7 @@ export function ApplicantDetailDialog({
                 size="sm"
                 variant={registration.is_checked_in ? "ghost" : "outline"}
                 className={cn(
-                  "h-7 gap-1 text-xs self-start sm:self-auto",
+                  "h-7 gap-1 self-start text-xs sm:self-auto",
                   registration.is_checked_in
                     ? "text-muted-foreground hover:text-destructive"
                     : "border-primary/30 text-primary hover:bg-primary/5",
@@ -569,7 +569,7 @@ export function ApplicantDetailDialog({
 
                 return (
                   <div key={sectionTitle} className="space-y-3">
-                    <div className="flex items-center gap-2 border-b border-border/40 pb-1.5 font-semibold text-muted-foreground text-xs uppercase tracking-wider">
+                    <div className="flex items-center gap-2 border-border/40 border-b pb-1.5 font-semibold text-muted-foreground text-xs uppercase tracking-wider">
                       <SectionIcon className="size-3.5 text-primary" />
                       <span>{sectionTitle}</span>
                       <span className="font-normal text-[11px] text-muted-foreground/70">
@@ -608,7 +608,7 @@ export function ApplicantDetailDialog({
               <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
                 <FileText className="mb-2 size-8 opacity-40" />
                 <p className="font-medium text-sm">No custom questionnaire responses recorded.</p>
-                <p className="text-xs text-muted-foreground/80">
+                <p className="text-muted-foreground/80 text-xs">
                   This attendee registered via Standard RSVP without additional custom questions.
                 </p>
               </div>
@@ -638,7 +638,7 @@ export function ApplicantDetailDialog({
               <Button
                 size="sm"
                 variant="outline"
-                className="text-amber-600 hover:bg-amber-500/10 border-amber-500/30 text-xs"
+                className="border-amber-500/30 text-amber-600 text-xs hover:bg-amber-500/10"
                 disabled={isPending}
                 onClick={() => {
                   onStatusChange(registration.id, "pending");
@@ -656,7 +656,7 @@ export function ApplicantDetailDialog({
               <Button
                 size="sm"
                 variant="outline"
-                className="text-destructive hover:bg-destructive/10 text-xs"
+                className="text-destructive text-xs hover:bg-destructive/10"
                 disabled={isPending}
                 onClick={() => {
                   onStatusChange(registration.id, "rejected");
@@ -671,7 +671,7 @@ export function ApplicantDetailDialog({
             {registration.status !== "approved" && (
               <Button
                 size="sm"
-                className="bg-emerald-600 text-white hover:bg-emerald-700 text-xs shadow-xs"
+                className="bg-emerald-600 text-white text-xs shadow-xs hover:bg-emerald-700"
                 disabled={isPending}
                 onClick={() => {
                   onStatusChange(registration.id, "approved");

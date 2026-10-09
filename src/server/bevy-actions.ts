@@ -4,8 +4,10 @@ import {
   getBevyChapterEvents,
   getBevyChapterMembers,
   getBevyChapterTeams,
+  getBevyEventAttendees,
   getMemberById,
   importMemberToBevy,
+  putBevyAttendeeCheckIn,
 } from "@/lib/bevy/client";
 
 /**
@@ -86,4 +88,28 @@ export async function fetchBevyMemberByIdAction(identifier: string) {
  */
 export async function importBevyMemberAction(params: { firstName: string; lastName: string; email: string }) {
   return await importMemberToBevy(params);
+}
+
+/**
+ * Server action to fetch Bevy event attendees safely on the server.
+ * Protected: requires an active organizer session.
+ */
+export async function fetchBevyEventAttendeesAction(eventId: string | number, pageSize = 200, page = 1) {
+  if (!(await isAuthorizedOrganizerSession())) {
+    console.warn("[Security] Blocked unauthorized attempt to fetch Bevy event attendees");
+    return { count: 0, results: [] };
+  }
+  return await getBevyEventAttendees(eventId, undefined, { pageSize, page });
+}
+
+/**
+ * Server action to toggle check-in for an attendee in Bevy.
+ * Protected: requires an active organizer session.
+ */
+export async function checkInBevyAttendeeAction(eventId: string | number, attendeeId: number, isCheckedIn: boolean) {
+  if (!(await isAuthorizedOrganizerSession())) {
+    console.warn("[Security] Blocked unauthorized attempt to check in Bevy attendee");
+    return { success: false, error: "Unauthorized session" };
+  }
+  return await putBevyAttendeeCheckIn(eventId, attendeeId, isCheckedIn);
 }

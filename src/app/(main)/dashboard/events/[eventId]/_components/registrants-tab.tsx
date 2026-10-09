@@ -1,9 +1,23 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 
 import { format, parseISO } from "date-fns";
-import { Check, Download, Layers, MoreHorizontal, Search, UserCheck, Users, UserX, X } from "lucide-react";
+import {
+  Check,
+  Clock,
+  Download,
+  Eye,
+  Layers,
+  MoreHorizontal,
+  RefreshCw,
+  RotateCcw,
+  Search,
+  UserCheck,
+  Users,
+  UserX,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -20,8 +34,9 @@ import {
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import type { BevyAttendee } from "@/lib/bevy/types";
 import { DEFAULT_COMBINED_QUESTIONS } from "@/lib/events/registration-defaults";
-import { updateRegistrationStatusAction } from "@/lib/firestore/actions";
+import { updateRegistrationCheckInAction, updateRegistrationStatusAction } from "@/lib/firestore/actions";
 import type {
   CustomQuestion,
   EventSession,
@@ -30,6 +45,7 @@ import type {
   RegistrationStatus,
 } from "@/lib/firestore/types";
 import { cn, getInitials } from "@/lib/utils";
+import { checkInBevyAttendeeAction, fetchBevyEventAttendeesAction } from "@/server/bevy-actions";
 
 import { ApplicantDetailDialog } from "./applicant-detail-dialog";
 import { QuestionResponsesCell } from "./question-responses-cell";
@@ -107,6 +123,11 @@ function RegistrantsTableSkeleton({ hasSessions }: { hasSessions: boolean }) {
             </TableCell>
           )}
           <TableCell>
+            <div className="relative h-5 w-20 overflow-hidden rounded-md bg-muted">
+              <div className="shimmer-wave" aria-hidden="true" />
+            </div>
+          </TableCell>
+          <TableCell>
             <div className="relative h-4 w-44 overflow-hidden rounded bg-muted">
               <div className="shimmer-wave" aria-hidden="true" />
             </div>
@@ -138,6 +159,9 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const [customQuestions, setCustomQuestions] = useState<CustomQuestion[]>(event?.custom_questions ?? []);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [inspectRegistration, setInspectRegistration] = useState<FirestoreRegistration | null>(null);
+  const [bevyAttendeesMap, setBevyAttendeesMap] = useState<Map<string, BevyAttendee>>(new Map());
+  const [isSyncingBevy, setIsSyncingBevy] = useState(false);
+  const [isCheckingInId, setIsCheckingInId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -187,6 +211,68 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       unsubscribe();
     };
   }, [eventId]);
+
+  const syncBevyAttendees = useCallback(
+    async (showNotification = false) => {
+      setIsSyncingBevy(true);
+      try {
+        const res = await fetchBevyEventAttendeesAction(eventId, 500, 1);
+        const attendees = res.results ?? [];
+        const map = new Map<string, BevyAttendee>();
+        for (const att of attendees) {
+          if (att.email) {
+            map.set(att.email.toLowerCase().trim(), att);
+          }
+        }
+        setBevyAttendeesMap(map);
+
+        // Silently sync check-in states to registrationsList & update Firestore when there's new data
+        if (map.size > 0) {
+          setRegistrationsList((prev) =>
+            prev.map((reg) => {
+              const email = (reg.member_email || "").toLowerCase().trim();
+              const bevyAtt = map.get(email);
+              if (bevyAtt) {
+                const isCheckedIn = Boolean(bevyAtt.is_checked_in);
+                const bevyId = bevyAtt.id;
+                const checkinDate = bevyAtt.checkin_date || (isCheckedIn ? new Date().toISOString() : null);
+
+                if (reg.is_checked_in !== isCheckedIn || reg.bevy_attendee_id !== bevyId) {
+                  void updateRegistrationCheckInAction(reg.id, eventId, isCheckedIn, bevyId, checkinDate);
+                  return {
+                    ...reg,
+                    is_checked_in: isCheckedIn,
+                    bevy_attendee_id: bevyId,
+                    checkin_date: checkinDate,
+                    checked_in_at: isCheckedIn ? (checkinDate ?? new Date().toISOString()) : undefined,
+                  };
+                }
+              }
+              return reg;
+            }),
+          );
+        }
+
+        if (showNotification) {
+          toast.success(`Synced ${attendees.length} attendee(s) from Bevy API.`);
+        }
+      } catch (err) {
+        console.warn("[RegistrantsTab] Failed to sync Bevy attendees:", err);
+        if (showNotification) {
+          toast.error("Failed to sync attendees from Bevy.");
+        }
+      } finally {
+        setIsSyncingBevy(false);
+      }
+    },
+    [eventId],
+  );
+
+  useEffect(() => {
+    if (eventId) {
+      void syncBevyAttendees(false);
+    }
+  }, [eventId, syncBevyAttendees]);
 
   const handleStatusFilterChange = (val: string) => {
     setIsFiltering(true);
@@ -349,11 +435,85 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       try {
         await updateRegistrationStatusAction(registrationId, eventId, newStatus);
         setRegistrationsList((prev) => prev.map((r) => (r.id === registrationId ? { ...r, status: newStatus } : r)));
+        setInspectRegistration((prev) => (prev?.id === registrationId ? { ...prev, status: newStatus } : prev));
         toast.success(`Applicant marked as ${STATUS_VARIANTS[newStatus].label}`);
       } catch {
         toast.error("Failed to update status.");
       }
     });
+  };
+
+  const handleToggleCheckIn = async (registration: FirestoreRegistration, isCheckedIn: boolean) => {
+    setIsCheckingInId(registration.id);
+    try {
+      const email = (registration.member_email || "").toLowerCase().trim();
+      const matchedBevyAttendee =
+        (registration.bevy_attendee_id ? { id: registration.bevy_attendee_id } : null) ?? bevyAttendeesMap.get(email);
+
+      let bevySuccess = false;
+      if (matchedBevyAttendee?.id) {
+        const res = await checkInBevyAttendeeAction(eventId, matchedBevyAttendee.id, isCheckedIn);
+        bevySuccess = Boolean(res.success);
+      }
+
+      const checkinDate = isCheckedIn ? new Date().toISOString() : null;
+
+      // Persist to Firestore & recalculate total_checked_in counter
+      await updateRegistrationCheckInAction(
+        registration.id,
+        eventId,
+        isCheckedIn,
+        matchedBevyAttendee?.id ?? registration.bevy_attendee_id ?? null,
+        checkinDate,
+      );
+
+      const updatedReg: FirestoreRegistration = {
+        ...registration,
+        is_checked_in: isCheckedIn,
+        bevy_attendee_id: matchedBevyAttendee?.id ?? registration.bevy_attendee_id,
+        checkin_date: checkinDate,
+        checked_in_at: isCheckedIn ? (checkinDate ?? new Date().toISOString()) : undefined,
+      };
+
+      setRegistrationsList((prev) => prev.map((r) => (r.id === registration.id ? updatedReg : r)));
+      setInspectRegistration((prev) => (prev?.id === registration.id ? updatedReg : prev));
+
+      if (email && bevyAttendeesMap.has(email)) {
+        const existingBevy = bevyAttendeesMap.get(email);
+        if (existingBevy) {
+          setBevyAttendeesMap((prev) => {
+            const next = new Map(prev);
+            next.set(email, {
+              ...existingBevy,
+              is_checked_in: isCheckedIn,
+              checkin_date: checkinDate,
+            });
+            return next;
+          });
+        }
+      }
+
+      if (matchedBevyAttendee?.id && bevySuccess) {
+        toast.success(
+          isCheckedIn
+            ? `${registration.member_name} checked in via Bevy`
+            : `Check-in undone for ${registration.member_name} on Bevy`,
+        );
+      } else if (matchedBevyAttendee?.id && !bevySuccess) {
+        toast.warning("Checked in on dashboard, but Bevy check-in API returned an issue.");
+      } else {
+        toast.success(
+          isCheckedIn
+            ? `${registration.member_name} marked checked in (Dashboard only - not found in Bevy roster)`
+            : `Check-in undone for ${registration.member_name}`,
+        );
+      }
+    } catch (err) {
+      console.error("[handleToggleCheckIn] error:", err);
+      toast.error("Failed to update check-in status.");
+    } finally {
+      setIsCheckingInId(null);
+    }
   };
 
   const handleBatchAction = (newStatus: RegistrationStatus) => {
@@ -395,7 +555,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       return;
     }
 
-    const headers = ["Name", "Email", "Status", "Session Track", "Registered At", "Responses"];
+    const headers = ["Name", "Email", "Status", "Bevy Check-In", "Session Track", "Registered At", "Responses"];
     const rows = filtered.map((r) => {
       const sessionTitle =
         r.session_title ||
@@ -413,6 +573,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         `"${(r.member_name || "").replace(/"/g, '""')}"`,
         `"${(r.member_email || "").replace(/"/g, '""')}"`,
         `"${(r.status || "").replace(/"/g, '""')}"`,
+        `"${r.is_checked_in ? "Checked In" : "Not Checked In"}"`,
         `"${sessionTitle.replace(/"/g, '""')}"`,
         `"${(r.registered_at || "").replace(/"/g, '""')}"`,
         `"${cleanAnswers.replace(/"/g, '""')}"`,
@@ -474,7 +635,17 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 disabled={isPending}
               >
                 <UserCheck className="size-3.5" />
-                Approve All
+                Approve Selected
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1 text-amber-600 dark:text-amber-400"
+                onClick={() => handleBatchAction("pending")}
+                disabled={isPending}
+              >
+                <Clock className="size-3.5" />
+                Set Pending
               </Button>
               <Button
                 size="sm"
@@ -484,7 +655,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 disabled={isPending}
               >
                 <UserX className="size-3.5" />
-                Reject All
+                Reject Selected
               </Button>
             </div>
           )}
@@ -518,7 +689,6 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                     <SelectItem value="approved">Approved</SelectItem>
                     <SelectItem value="waitlisted">Waitlisted</SelectItem>
                     <SelectItem value="rejected">Rejected</SelectItem>
-                    <SelectItem value="attended">Attended</SelectItem>
                   </SelectGroup>
                 </SelectContent>
               </Select>
@@ -544,6 +714,18 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
             </div>
 
             <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => syncBevyAttendees(true)}
+                disabled={isSyncingBevy}
+                className="h-8 gap-1.5 text-xs"
+                title="Sync attendee roster and live on-site check-in statuses from Bevy API"
+              >
+                <RefreshCw className={cn("size-3", isSyncingBevy && "animate-spin")} />
+                <span>{isSyncingBevy ? "Syncing Bevy..." : "Sync Bevy Check-Ins"}</span>
+              </Button>
+
               <Button size="sm" variant="outline" onClick={handleExportCsv} className="h-8 gap-1 text-xs">
                 <Download className="size-3" />
                 Export CSV
@@ -566,6 +748,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                   <TableHead>Applicant</TableHead>
                   <TableHead>Status</TableHead>
                   {hasSessions && <TableHead>Session Track</TableHead>}
+                  <TableHead>Check-In (Bevy)</TableHead>
                   <TableHead>Question Responses & Details</TableHead>
                   <TableHead>Registered At</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -576,7 +759,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
 
                 {!isLoading && !isFiltering && filtered.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={hasSessions ? 7 : 6} className="h-40 text-center text-muted-foreground text-sm">
+                    <TableCell colSpan={hasSessions ? 8 : 7} className="h-40 text-center text-muted-foreground text-sm">
                       {registrationsList.length === 0 ? (
                         <div className="flex flex-col items-center justify-center gap-2 py-6">
                           <div className="flex size-10 items-center justify-center rounded-full bg-muted">
@@ -703,6 +886,41 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                           </TableCell>
                         )}
 
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          {reg.is_checked_in ? (
+                            <div className="flex items-center gap-1.5">
+                              <Badge
+                                variant="outline"
+                                className="gap-1 border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-medium text-[11px] text-emerald-600 dark:text-emerald-400"
+                              >
+                                <UserCheck className="size-3" />
+                                <span>Checked In</span>
+                              </Badge>
+                              <Button
+                                size="icon-xs"
+                                variant="ghost"
+                                className="size-6 text-muted-foreground hover:text-destructive"
+                                title="Undo check-in in Bevy"
+                                onClick={() => handleToggleCheckIn(reg, false)}
+                                disabled={isCheckingInId === reg.id}
+                              >
+                                <RotateCcw className="size-3" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-6 gap-1 px-2 font-normal text-[11px] text-muted-foreground hover:border-emerald-500/40 hover:bg-emerald-500/10 hover:text-emerald-600"
+                              onClick={() => handleToggleCheckIn(reg, true)}
+                              disabled={isCheckingInId === reg.id}
+                            >
+                              <UserCheck className="size-3" />
+                              <span>Check In</span>
+                            </Button>
+                          )}
+                        </TableCell>
+
                         <TableCell onClick={() => setInspectRegistration(reg)} className="max-w-[400px]">
                           <QuestionResponsesCell answers={reg.answers} formatQuestionLabel={formatQuestionLabel} />
                         </TableCell>
@@ -716,48 +934,94 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
 
                         <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-end gap-1">
-                            {reg.status !== "approved" && (
-                              <Button
-                                size="icon-sm"
-                                variant="ghost"
-                                className="size-7 text-emerald-600 hover:bg-emerald-500/10"
-                                title="Approve"
-                                onClick={() => handleStatusChange(reg.id, "approved")}
-                                disabled={isPending}
-                              >
-                                <Check className="size-4" />
-                              </Button>
-                            )}
+                            {/* 1. Approve Button */}
+                            <Button
+                              size="icon-xs"
+                              variant={reg.status === "approved" ? "default" : "ghost"}
+                              className={cn(
+                                "size-7 transition-colors",
+                                reg.status === "approved"
+                                  ? "bg-emerald-600 text-white shadow-xs hover:bg-emerald-700"
+                                  : "text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700",
+                              )}
+                              title={reg.status === "approved" ? "Approved" : "Approve application"}
+                              onClick={() => handleStatusChange(reg.id, "approved")}
+                              disabled={isPending}
+                            >
+                              <Check className="size-3.5" />
+                            </Button>
 
-                            {reg.status !== "rejected" && (
-                              <Button
-                                size="icon-sm"
-                                variant="ghost"
-                                className="size-7 text-destructive hover:bg-destructive/10"
-                                title="Reject"
-                                onClick={() => handleStatusChange(reg.id, "rejected")}
-                                disabled={isPending}
-                              >
-                                <X className="size-4" />
-                              </Button>
-                            )}
+                            {/* 2. Pending Button */}
+                            <Button
+                              size="icon-xs"
+                              variant={reg.status === "pending" ? "default" : "ghost"}
+                              className={cn(
+                                "size-7 transition-colors",
+                                reg.status === "pending"
+                                  ? "bg-amber-600 text-white shadow-xs hover:bg-amber-700"
+                                  : "text-amber-600 hover:bg-amber-500/10 hover:text-amber-700",
+                              )}
+                              title={reg.status === "pending" ? "Pending Review" : "Mark as Pending"}
+                              onClick={() => handleStatusChange(reg.id, "pending")}
+                              disabled={isPending}
+                            >
+                              <Clock className="size-3.5" />
+                            </Button>
 
+                            {/* 3. Reject Button */}
+                            <Button
+                              size="icon-xs"
+                              variant={reg.status === "rejected" ? "default" : "ghost"}
+                              className={cn(
+                                "size-7 transition-colors",
+                                reg.status === "rejected"
+                                  ? "bg-destructive text-destructive-foreground shadow-xs hover:bg-destructive/90"
+                                  : "text-destructive hover:bg-destructive/10 hover:text-destructive",
+                              )}
+                              title={reg.status === "rejected" ? "Rejected" : "Reject application"}
+                              onClick={() => handleStatusChange(reg.id, "rejected")}
+                              disabled={isPending}
+                            >
+                              <X className="size-3.5" />
+                            </Button>
+
+                            {/* 4. View Dossier / Details Button */}
+                            <Button
+                              size="icon-xs"
+                              variant="ghost"
+                              className="size-7 text-muted-foreground hover:bg-muted hover:text-foreground"
+                              title="View application details"
+                              onClick={() => setInspectRegistration(reg)}
+                            >
+                              <Eye className="size-3.5" />
+                            </Button>
+
+                            {/* 5. More Actions Dropdown */}
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
-                                <Button size="icon-sm" variant="ghost" className="size-7 text-muted-foreground">
-                                  <MoreHorizontal className="size-4" />
+                                <Button size="icon-xs" variant="ghost" className="size-7 text-muted-foreground">
+                                  <MoreHorizontal className="size-3.5" />
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
                                 <DropdownMenuItem onClick={() => setInspectRegistration(reg)}>
-                                  View application details
+                                  <Eye className="mr-2 size-3.5" />
+                                  View application dossier
                                 </DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => handleStatusChange(reg.id, "waitlisted")}>
+                                  <Layers className="mr-2 size-3.5" />
                                   Move to Waitlist
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleStatusChange(reg.id, "attended")}>
-                                  Mark as Attended
-                                </DropdownMenuItem>
+                                {reg.member_email && (
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      void navigator.clipboard.writeText(reg.member_email);
+                                      toast.success("Email copied to clipboard");
+                                    }}
+                                  >
+                                    Copy email address
+                                  </DropdownMenuItem>
+                                )}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </div>
@@ -776,8 +1040,9 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         registration={inspectRegistration}
         onClose={() => setInspectRegistration(null)}
         onStatusChange={handleStatusChange}
+        onToggleCheckIn={handleToggleCheckIn}
         customQuestions={customQuestions}
-        isPending={isPending}
+        isPending={isPending || isCheckingInId === inspectRegistration?.id}
       />
     </div>
   );

@@ -188,3 +188,29 @@ export async function updateRegistrationCheckInAction(
     return { success: false, error: message };
   }
 }
+
+/**
+ * Update event highlights and post-event media
+ */
+export async function updateEventHighlightsMediaAction(
+  eventId: string,
+  data: {
+    highlight_video_url?: string;
+    highlight_video_title?: string;
+    photo_album_url?: string;
+    photo_album_title?: string;
+    recap_description?: string;
+    sessions?: import("./types").EventSession[];
+  },
+) {
+  try {
+    const { updateEventHighlightsMedia } = await import("./client");
+    await updateEventHighlightsMedia(eventId, data);
+    await revalidateDashboardPath(`/dashboard/events/${eventId}`);
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to save highlights and media.";
+    console.error("[updateEventHighlightsMediaAction] error:", message);
+    return { success: false, error: message };
+  }
+}

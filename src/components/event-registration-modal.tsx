@@ -48,6 +48,7 @@ interface EventRegistrationModalProps {
   existingRegistration?: FirestoreRegistration | null;
   children?: React.ReactNode;
   className?: string;
+  onSuccess?: (registration: FirestoreRegistration) => void;
 }
 
 function isEventPast(event: FirestoreEvent): boolean {
@@ -66,6 +67,7 @@ export function EventRegistrationModal({
   existingRegistration,
   children,
   className,
+  onSuccess,
 }: EventRegistrationModalProps) {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
@@ -77,28 +79,42 @@ export function EventRegistrationModal({
   const [touchedFields, setTouchedFields] = useState<Set<string>>(new Set());
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const [localReg, setLocalReg] = useState<FirestoreRegistration | null>(existingRegistration ?? null);
+  const [isCheckingRegistration, setIsCheckingRegistration] = useState(
+    existingRegistration === undefined && Boolean(user),
+  );
+  const [isTransitioning, setIsTransitioning] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [otherInputs, setOtherInputs] = useState<Record<string, string>>({});
   const otherInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   useEffect(() => {
-    if (existingRegistration) {
+    if (existingRegistration !== undefined) {
       setLocalReg(existingRegistration);
+      setIsCheckingRegistration(false);
       return;
     }
-    if (!user) return;
+    if (!user) {
+      setIsCheckingRegistration(false);
+      return;
+    }
     async function checkStatus() {
       try {
+        setIsCheckingRegistration(true);
         const found = await checkEventRegistrationAction(String(event.id), user?.id, user?.email);
         if (found) {
+          setIsTransitioning(true);
           setLocalReg(found);
+          onSuccess?.(found);
+          setTimeout(() => setIsTransitioning(false), 1200);
         }
       } catch (err) {
         console.error("[EventRegistrationModal] failed to check registration status:", err);
+      } finally {
+        setIsCheckingRegistration(false);
       }
     }
     void checkStatus();
-  }, [user, event.id, existingRegistration]);
+  }, [user, event.id, existingRegistration, onSuccess]);
 
   // Pre-fill user profile fields when modal opens
   useEffect(() => {
@@ -424,7 +440,7 @@ export function EventRegistrationModal({
           }
         });
 
-        setLocalReg({
+        const newReg: FirestoreRegistration = {
           id: result.registrationId || `${event.id}_${user?.id || Date.now()}`,
           event_id: String(event.id),
           event_title: event.title,
@@ -434,7 +450,12 @@ export function EventRegistrationModal({
           status: eventConfig.requires_approval ? "pending" : "approved",
           registered_at: new Date().toISOString(),
           answers: combinedAnswers,
-        });
+        };
+
+        setIsTransitioning(true);
+        setLocalReg(newReg);
+        onSuccess?.(newReg);
+        setTimeout(() => setIsTransitioning(false), 1500);
 
         if (event.requires_approval) {
           toast.success("Registration submitted! Your application is now pending organizer review.", {
@@ -454,6 +475,38 @@ export function EventRegistrationModal({
       }
     });
   };
+
+  if (isCheckingRegistration) {
+    let isFullWidth = Boolean(className?.includes("w-full"));
+    let buttonSize: "default" | "sm" | "lg" | "icon" = "sm";
+
+    if (React.isValidElement(children)) {
+      const childProps = children.props as { className?: string; size?: "default" | "sm" | "lg" | "icon" };
+      if (childProps.className?.includes("w-full")) {
+        isFullWidth = true;
+      }
+      if (childProps.size) {
+        buttonSize = childProps.size;
+      }
+    }
+
+    return (
+      <Button
+        disabled
+        variant="outline"
+        size={buttonSize}
+        className={cn(
+          "relative cursor-default gap-2 overflow-hidden border-border/60 bg-muted/50 font-medium text-muted-foreground opacity-90 transition-all duration-300",
+          isFullWidth && "w-full",
+          className,
+        )}
+      >
+        <Sparkles className="relative z-10 size-3.5 shrink-0 animate-pulse text-muted-foreground/60" />
+        <span className="relative z-10">Checking registration...</span>
+        <div className="shimmer-wave" aria-hidden="true" />
+      </Button>
+    );
+  }
 
   if (activeRegistration) {
     let isFullWidth = Boolean(className?.includes("w-full"));
@@ -486,22 +539,24 @@ export function EventRegistrationModal({
         size={buttonSize}
         aria-disabled="true"
         className={cn(
-          "relative cursor-default gap-2 overflow-hidden font-medium transition-colors",
+          "relative cursor-default gap-2 overflow-hidden font-medium transition-all duration-500",
           isApproved
             ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-300"
             : "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-300",
+          isTransitioning && "scale-[1.01] ring-2 ring-emerald-500/40 animate-in fade-in-50 zoom-in-95",
           isFullWidth && "w-full",
           className,
         )}
       >
         <CheckCircle2
           className={cn(
-            "relative z-10 shrink-0",
+            "relative z-10 shrink-0 transition-transform duration-500",
             buttonSize === "lg" ? "size-4" : "size-3.5",
             isApproved ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400",
+            isTransitioning && "scale-110",
           )}
         />
-        <span className="relative z-10">{statusLabel}</span>
+        <span className="relative z-10 font-medium">{statusLabel}</span>
         <div className="shimmer-wave" aria-hidden="true" />
       </Button>
     );

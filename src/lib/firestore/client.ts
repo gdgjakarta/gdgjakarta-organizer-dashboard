@@ -64,6 +64,7 @@ export function sanitizeFirestoreData<T>(data: T): T {
 
 import type {
   EventMerchandiseItem,
+  EventSession,
   FirestoreEvent,
   FirestoreMember,
   FirestoreRegistration,
@@ -527,6 +528,49 @@ export async function updateEventMerchandise(eventId: string, merchandise: Event
     updated_at: new Date().toISOString(),
   });
   await setDoc(eventRef, sanitized, { merge: true });
+}
+
+export async function updateEventHighlightsMedia(
+  eventId: string,
+  data: {
+    highlight_video_url?: string;
+    highlight_video_title?: string;
+    photo_album_url?: string;
+    photo_album_title?: string;
+    recap_description?: string;
+    sessions?: EventSession[];
+  },
+): Promise<void> {
+  if (typeof window === "undefined") return;
+  const eventRef = doc(db, "events", String(eventId));
+  const updatePayload: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  };
+
+  if (data.highlight_video_url !== undefined) {
+    updatePayload.highlight_video_url = data.highlight_video_url.trim()
+      ? data.highlight_video_url.trim()
+      : deleteField();
+  }
+  if (data.highlight_video_title !== undefined) {
+    updatePayload.highlight_video_title = data.highlight_video_title.trim()
+      ? data.highlight_video_title.trim()
+      : deleteField();
+  }
+  if (data.photo_album_url !== undefined) {
+    updatePayload.photo_album_url = data.photo_album_url.trim() ? data.photo_album_url.trim() : deleteField();
+  }
+  if (data.photo_album_title !== undefined) {
+    updatePayload.photo_album_title = data.photo_album_title.trim() ? data.photo_album_title.trim() : deleteField();
+  }
+  if (data.recap_description !== undefined) {
+    updatePayload.recap_description = data.recap_description.trim() ? data.recap_description.trim() : deleteField();
+  }
+  if (data.sessions !== undefined) {
+    updatePayload.sessions = data.sessions.length > 0 ? data.sessions : deleteField();
+  }
+
+  await setDoc(eventRef, updatePayload, { merge: true });
 }
 
 // ── Sync Metadata ───────────────────────────────────────────────────────────

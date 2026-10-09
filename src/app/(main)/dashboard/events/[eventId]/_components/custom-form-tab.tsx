@@ -9,7 +9,6 @@ import { isSortable } from "@dnd-kit/react/sortable";
 import {
   AlertTriangle,
   CalendarClock,
-  Camera,
   Check,
   CheckCircle2,
   Clock,
@@ -24,7 +23,6 @@ import {
   Save,
   Sparkles,
   Trash2,
-  Video,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -51,7 +49,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { parsePhotoAlbum, parseVideoUrl } from "@/lib/events/media-utils";
 import {
   COMMITMENT_FEE_TEMPLATE,
   COMMON_MEETUP_TEMPLATE,
@@ -153,14 +150,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
   );
   const [templateCategoryFilter, setTemplateCategoryFilter] = useState<"all" | "curated" | "standard">("all");
 
-  // 6. Post-Event Media & Recap
-  const [highlightVideoUrl, setHighlightVideoUrl] = useState(event.highlight_video_url ?? "");
-  const [highlightVideoTitle, setHighlightVideoTitle] = useState(event.highlight_video_title ?? "");
-  const [photoAlbumUrl, setPhotoAlbumUrl] = useState(event.photo_album_url ?? "");
-  const [photoAlbumTitle, setPhotoAlbumTitle] = useState(event.photo_album_title ?? "");
-  const [recapDescription, setRecapDescription] = useState(event.recap_description ?? "");
-
-  // 7. Form Snapshot & Dirty State Tracking
+  // 6. Form Snapshot & Dirty State Tracking
   const [isInitialLoaded, setIsInitialLoaded] = useState(false);
   const initialSnapshotRef = useRef<string | null>(null);
 
@@ -170,11 +160,6 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
       maxAttendees,
       sessions,
       questions,
-      highlightVideoUrl,
-      highlightVideoTitle,
-      photoAlbumUrl,
-      photoAlbumTitle,
-      recapDescription,
       registrationStatus,
       registrationStartDate,
       registrationEndDate,
@@ -184,11 +169,6 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
     maxAttendees,
     sessions,
     questions,
-    highlightVideoUrl,
-    highlightVideoTitle,
-    photoAlbumUrl,
-    photoAlbumTitle,
-    recapDescription,
     registrationStatus,
     registrationStartDate,
     registrationEndDate,
@@ -223,11 +203,6 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
             : event.custom_questions && event.custom_questions.length > 0
               ? event.custom_questions
               : DEFAULT_COMBINED_QUESTIONS;
-        const loadedVideoUrl = docData?.highlight_video_url ?? event.highlight_video_url ?? "";
-        const loadedVideoTitle = docData?.highlight_video_title ?? event.highlight_video_title ?? "";
-        const loadedAlbumUrl = docData?.photo_album_url ?? event.photo_album_url ?? "";
-        const loadedAlbumTitle = docData?.photo_album_title ?? event.photo_album_title ?? "";
-        const loadedRecap = docData?.recap_description ?? event.recap_description ?? "";
         const loadedStatus = (docData?.registration_status ||
           event.registration_status ||
           (event.status === "Draft" ? "Draft" : "Published")) as "Draft" | "Published" | "Closed";
@@ -238,11 +213,6 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
         setMaxAttendees(loadedMaxAttendees);
         setSessions(loadedSessions);
         setQuestions(loadedQuestions);
-        setHighlightVideoUrl(loadedVideoUrl);
-        setHighlightVideoTitle(loadedVideoTitle);
-        setPhotoAlbumUrl(loadedAlbumUrl);
-        setPhotoAlbumTitle(loadedAlbumTitle);
-        setRecapDescription(loadedRecap);
         setRegistrationStatus(loadedStatus);
         setRegistrationStartDate(loadedStartDate);
         setRegistrationEndDate(loadedEndDate);
@@ -252,11 +222,6 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
           maxAttendees: loadedMaxAttendees,
           sessions: loadedSessions,
           questions: loadedQuestions,
-          highlightVideoUrl: loadedVideoUrl,
-          highlightVideoTitle: loadedVideoTitle,
-          photoAlbumUrl: loadedAlbumUrl,
-          photoAlbumTitle: loadedAlbumTitle,
-          recapDescription: loadedRecap,
           registrationStatus: loadedStatus,
           registrationStartDate: loadedStartDate,
           registrationEndDate: loadedEndDate,
@@ -271,11 +236,6 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
             event.custom_questions && event.custom_questions.length > 0
               ? event.custom_questions
               : DEFAULT_COMBINED_QUESTIONS,
-          highlightVideoUrl: event.highlight_video_url ?? "",
-          highlightVideoTitle: event.highlight_video_title ?? "",
-          photoAlbumUrl: event.photo_album_url ?? "",
-          photoAlbumTitle: event.photo_album_title ?? "",
-          recapDescription: event.recap_description ?? "",
           registrationStatus: (event.registration_status ?? (event.status === "Draft" ? "Draft" : "Published")) as
             | "Draft"
             | "Published"
@@ -581,11 +541,6 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
           maxAttendees: string;
           sessions: EventSession[];
           questions: CustomQuestion[];
-          highlightVideoUrl: string;
-          highlightVideoTitle: string;
-          photoAlbumUrl: string;
-          photoAlbumTitle: string;
-          recapDescription: string;
           registrationStatus: "Draft" | "Published" | "Closed";
           registrationStartDate: string;
           registrationEndDate: string;
@@ -594,11 +549,6 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
         setMaxAttendees(snap.maxAttendees);
         setSessions(snap.sessions);
         setQuestions(snap.questions);
-        setHighlightVideoUrl(snap.highlightVideoUrl);
-        setHighlightVideoTitle(snap.highlightVideoTitle);
-        setPhotoAlbumUrl(snap.photoAlbumUrl);
-        setPhotoAlbumTitle(snap.photoAlbumTitle);
-        setRecapDescription(snap.recapDescription);
         setRegistrationStatus(snap.registrationStatus);
         setRegistrationStartDate(snap.registrationStartDate);
         setRegistrationEndDate(snap.registrationEndDate);
@@ -639,11 +589,6 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
             webhook_url: event.webhook_url ? event.webhook_url : deleteField(),
             sessions: sessions.length > 0 ? sessions : deleteField(),
             custom_questions: questions.filter((q) => q.label.trim().length > 0),
-            highlight_video_url: highlightVideoUrl.trim() ? highlightVideoUrl.trim() : deleteField(),
-            highlight_video_title: highlightVideoTitle.trim() ? highlightVideoTitle.trim() : deleteField(),
-            photo_album_url: photoAlbumUrl.trim() ? photoAlbumUrl.trim() : deleteField(),
-            photo_album_title: photoAlbumTitle.trim() ? photoAlbumTitle.trim() : deleteField(),
-            recap_description: recapDescription.trim() ? recapDescription.trim() : deleteField(),
             updated_at: new Date().toISOString(),
           };
 
@@ -659,11 +604,6 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
             maxAttendees,
             sessions,
             questions,
-            highlightVideoUrl,
-            highlightVideoTitle,
-            photoAlbumUrl,
-            photoAlbumTitle,
-            recapDescription,
             registrationStatus: finalStatus,
             registrationStartDate,
             registrationEndDate,
@@ -1589,113 +1529,6 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
               </div>
             </DragDropProvider>
           )}
-        </CardContent>
-      </Card>
-
-      {/* ── 4. POST-EVENT HIGHLIGHTS & MEDIA RECAP ──────────────────── */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Video className="size-4 text-primary" />
-            <CardTitle className="text-lg">Post-Event Highlights & Media</CardTitle>
-          </div>
-          <CardDescription>
-            Embed highlight videos, link official photo albums (Google Drive or Google Photos), and provide recap notes
-            for attendees and public visitors after the event concludes.
-          </CardDescription>
-        </CardHeader>
-
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {/* Highlight Video URL */}
-            <Field className="sm:col-span-2">
-              <FieldLabel htmlFor="highlight-video-url">Event Highlight Video URL (YouTube, Vimeo, MP4)</FieldLabel>
-              <Input
-                id="highlight-video-url"
-                placeholder="https://www.youtube.com/watch?v=... or https://youtu.be/... or https://vimeo.com/..."
-                value={highlightVideoUrl}
-                onChange={(e) => setHighlightVideoUrl(e.target.value)}
-              />
-              <div className="flex flex-wrap items-center justify-between gap-1 pt-1">
-                <p className="text-[11px] text-muted-foreground">
-                  Paste YouTube (standard, shorts, embed) or Vimeo link. Automatically embeds as a responsive 16:9
-                  player on the public page.
-                </p>
-                {highlightVideoUrl &&
-                  (() => {
-                    const parsed = parseVideoUrl(highlightVideoUrl);
-                    return parsed?.embedUrl ? (
-                      <Badge
-                        variant="outline"
-                        className="border-emerald-500/30 bg-emerald-500/10 text-[10px] text-emerald-600 dark:text-emerald-400"
-                      >
-                        ✓ Valid {parsed.type.toUpperCase()} embed detected
-                      </Badge>
-                    ) : null;
-                  })()}
-              </div>
-            </Field>
-
-            {/* Highlight Video Title */}
-            <Field className="sm:col-span-2">
-              <FieldLabel htmlFor="highlight-video-title">Video Display Title (Optional)</FieldLabel>
-              <Input
-                id="highlight-video-title"
-                placeholder="e.g. GDG Jakarta DevFest 2025 Highlight Reel"
-                value={highlightVideoTitle}
-                onChange={(e) => setHighlightVideoTitle(e.target.value)}
-              />
-            </Field>
-
-            {/* Photo Album URL */}
-            <Field className="sm:col-span-2">
-              <FieldLabel htmlFor="photo-album-url">Photo Album Link (Google Photos / Google Drive)</FieldLabel>
-              <Input
-                id="photo-album-url"
-                placeholder="https://photos.app.goo.gl/... or https://drive.google.com/drive/folders/..."
-                value={photoAlbumUrl}
-                onChange={(e) => setPhotoAlbumUrl(e.target.value)}
-              />
-              <div className="flex flex-wrap items-center justify-between gap-1 pt-1">
-                <p className="text-[11px] text-muted-foreground">
-                  Official photo album link from Google Photos shared album or Google Drive folder.
-                </p>
-                {photoAlbumUrl &&
-                  (() => {
-                    const parsed = parsePhotoAlbum(photoAlbumUrl);
-                    return (
-                      <Badge
-                        variant="outline"
-                        className="border-blue-500/30 bg-blue-500/10 text-[10px] text-blue-600 dark:text-blue-400"
-                      >
-                        ✓ Detected {parsed?.label} link
-                      </Badge>
-                    );
-                  })()}
-              </div>
-            </Field>
-
-            {/* Photo Album Title */}
-            <Field className="sm:col-span-2">
-              <FieldLabel htmlFor="photo-album-title">Photo Album Title (Optional)</FieldLabel>
-              <Input
-                id="photo-album-title"
-                placeholder="e.g. Official GDG Jakarta Event Photos"
-                value={photoAlbumTitle}
-                onChange={(e) => setPhotoAlbumTitle(e.target.value)}
-              />
-            </Field>
-
-            {/* Recap Description */}
-            <Field className="sm:col-span-2">
-              <FieldLabel>Event Recap & Takeaways (HTML Format)</FieldLabel>
-              <HtmlEditText
-                value={recapDescription}
-                onChange={(val) => setRecapDescription(val)}
-                placeholder="Summary of sessions, key takeaways, thank you notes, or community announcements..."
-              />
-            </Field>
-          </div>
         </CardContent>
       </Card>
 
