@@ -685,6 +685,18 @@ export async function deleteEventRegistration(registrationId: string, eventId: s
         });
       }
 
+      if (regData.ticket_id && Array.isArray(eventData.tickets)) {
+        updateData.tickets = eventData.tickets.map((t) => {
+          if (t.id === regData.ticket_id) {
+            return {
+              ...t,
+              total_registered: Math.max(0, (t.total_registered || 1) - 1),
+            };
+          }
+          return t;
+        });
+      }
+
       await updateDoc(eventRef, sanitizeFirestoreData(updateData));
     }
   } catch (err) {
@@ -750,6 +762,24 @@ export async function deleteBatchEventRegistrations(registrationIds: string[], e
             return {
               ...sess,
               total_registered: Math.max(0, (sess.total_registered || 0) - countToRemove),
+            };
+          });
+        }
+      }
+
+      if (Array.isArray(eventData.tickets)) {
+        const ticketCountsToRemove = new Map<string, number>();
+        for (const reg of regsToDelete) {
+          if (reg.ticket_id) {
+            ticketCountsToRemove.set(reg.ticket_id, (ticketCountsToRemove.get(reg.ticket_id) ?? 0) + 1);
+          }
+        }
+        if (ticketCountsToRemove.size > 0) {
+          updateData.tickets = eventData.tickets.map((t) => {
+            const countToRemove = ticketCountsToRemove.get(t.id) || 0;
+            return {
+              ...t,
+              total_registered: Math.max(0, (t.total_registered || 0) - countToRemove),
             };
           });
         }
