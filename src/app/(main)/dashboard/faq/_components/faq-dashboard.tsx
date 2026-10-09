@@ -4,18 +4,7 @@ import { useMemo, useState } from "react";
 
 import Link from "next/link";
 
-import {
-  ArrowDown,
-  ArrowUp,
-  ExternalLink,
-  Pencil,
-  Plus,
-  RefreshCw,
-  Save,
-  Search,
-  ShieldAlert,
-  Trash2,
-} from "lucide-react";
+import { ArrowDown, ArrowUp, ExternalLink, Pencil, Plus, RefreshCw, Search, ShieldAlert, Trash2 } from "lucide-react";
 
 import { FloatingSaveBar } from "@/app/(main)/dashboard/_components/floating-save-bar";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -42,13 +31,11 @@ import { UnsavedChangesDialog } from "@/components/unsaved-changes-dialog";
 import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
 import { useFaqContent } from "@/lib/content/hooks";
 import type { FaqCategory, FaqItem } from "@/lib/content/types";
-import { cn } from "@/lib/utils";
 
 import { FaqItemDialog } from "./faq-item-dialog";
 
 export function FaqDashboard() {
-  const { content, setContent, hasChanges, discardChanges, loading, saving, saveContent, resetToDefaults } =
-    useFaqContent();
+  const { content, setContent, hasChanges, discardChanges, saving, saveContent, resetToDefaults } = useFaqContent();
 
   const {
     showPrompt: showUnsavedPrompt,
@@ -200,38 +187,6 @@ export function FaqDashboard() {
           >
             <RefreshCw className="size-3.5" />
             <span>Reset Defaults</span>
-          </Button>
-
-          <Button
-            size="sm"
-            variant={hasChanges ? "default" : "secondary"}
-            onClick={() => saveContent(content)}
-            disabled={!hasChanges || saving || loading}
-            title={hasChanges ? "Save FAQ changes" : "No unsaved changes"}
-            className={cn(
-              "col-span-2 justify-center gap-1.5 font-semibold text-xs sm:col-span-1 transition-all",
-              !hasChanges &&
-                "bg-muted text-muted-foreground/70 border border-border/50 shadow-none cursor-not-allowed hover:bg-muted opacity-60",
-              hasChanges && "ring-1 ring-primary/20 shadow-xs hover:ring-primary/40",
-            )}
-          >
-            {saving ? (
-              <>
-                <RefreshCw className="size-3.5 animate-spin" />
-                <span>Saving...</span>
-              </>
-            ) : (
-              <>
-                {hasChanges && (
-                  <span className="relative flex size-1.5 mr-0.5">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
-                    <span className="relative inline-flex size-1.5 rounded-full bg-amber-400" />
-                  </span>
-                )}
-                <Save className="size-3.5" />
-                <span>Save Changes</span>
-              </>
-            )}
           </Button>
         </div>
       </div>

@@ -8,6 +8,7 @@ import {
   Clock,
   Download,
   Eye,
+  Filter,
   Layers,
   MoreHorizontal,
   RefreshCw,
@@ -48,6 +49,8 @@ import { cn, getInitials } from "@/lib/utils";
 import { checkInBevyAttendeeAction, fetchBevyEventAttendeesAction } from "@/server/bevy-actions";
 
 import { ApplicantDetailDialog } from "./applicant-detail-dialog";
+import { type AvailableQuestionField, ColumnCustomizer } from "./column-customizer";
+import { QuestionColumnValueCell } from "./question-column-value-cell";
 import { QuestionResponsesCell } from "./question-responses-cell";
 import { RegistrantStatistics } from "./registrant-statistics";
 
@@ -85,11 +88,105 @@ const STATUS_VARIANTS: Record<RegistrationStatus, { label: string; badgeClass: s
   },
 };
 
-function RegistrantsTableSkeleton({ hasSessions }: { hasSessions: boolean }) {
+function resolveAnswerValue(
+  answers: Record<string, unknown> | undefined,
+  fieldKey: string,
+  questionLabelMap: Map<string, string>,
+): unknown {
+  if (!answers) return undefined;
+  if (answers[fieldKey] !== undefined) return answers[fieldKey];
+
+  const lower = fieldKey.toLowerCase().trim();
+  for (const [k, v] of Object.entries(answers)) {
+    const kLower = k.toLowerCase().trim();
+    if (kLower === lower) return v;
+    const mappedK = (questionLabelMap.get(kLower) ?? k).toLowerCase().trim();
+    const mappedField = (questionLabelMap.get(lower) ?? fieldKey).toLowerCase().trim();
+    if (mappedK === mappedField) return v;
+  }
+  return undefined;
+}
+
+function getQuestionFilterOptions(
+  field: AvailableQuestionField,
+  registrations: FirestoreRegistration[],
+  questionLabelMap: Map<string, string>,
+): Array<{ value: string; label: string; count: number }> {
+  const valueCounts = new Map<string, number>();
+
+  if (field.options && Array.isArray(field.options)) {
+    for (const opt of field.options) {
+      if (opt && typeof opt === "string" && opt.trim()) {
+        valueCounts.set(opt.trim(), 0);
+      }
+    }
+  }
+
+  for (const reg of registrations) {
+    const rawVal = resolveAnswerValue(reg.answers, field.key, questionLabelMap);
+    if (rawVal === undefined || rawVal === null || rawVal === "") continue;
+
+    if (Array.isArray(rawVal)) {
+      for (const item of rawVal) {
+        const str = String(item).trim();
+        if (str) {
+          valueCounts.set(str, (valueCounts.get(str) ?? 0) + 1);
+        }
+      }
+    } else {
+      const str = String(rawVal).trim();
+      if (str) {
+        valueCounts.set(str, (valueCounts.get(str) ?? 0) + 1);
+      }
+    }
+  }
+
+  return Array.from(valueCounts.entries())
+    .map(([val, count]) => ({
+      value: val,
+      label: `${val} (${count})`,
+      count,
+    }))
+    .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
+}
+
+const SKELETON_ROW_IDS = ["row-1", "row-2", "row-3", "row-4", "row-5"];
+const SKELETON_COL_IDS = [
+  "col-1",
+  "col-2",
+  "col-3",
+  "col-4",
+  "col-5",
+  "col-6",
+  "col-7",
+  "col-8",
+  "col-9",
+  "col-10",
+  "col-11",
+  "col-12",
+  "col-13",
+  "col-14",
+  "col-15",
+  "col-16",
+  "col-17",
+  "col-18",
+  "col-19",
+  "col-20",
+];
+
+function RegistrantsTableSkeleton({
+  hasSessions,
+  visibleStandardColumns = {},
+  questionColumnCount = 0,
+}: {
+  hasSessions: boolean;
+  visibleStandardColumns?: Record<string, boolean>;
+  questionColumnCount?: number;
+}) {
   return (
     <>
-      {[1, 2, 3, 4, 5].map((idx) => (
-        <TableRow key={idx}>
+      {SKELETON_ROW_IDS.map((rowId) => (
+        <TableRow key={rowId}>
           <TableCell className="w-10">
             <div className="relative size-4 overflow-hidden rounded-xs bg-muted">
               <div className="shimmer-wave" aria-hidden="true" />
@@ -110,38 +207,55 @@ function RegistrantsTableSkeleton({ hasSessions }: { hasSessions: boolean }) {
               </div>
             </div>
           </TableCell>
-          <TableCell>
-            <div className="relative h-5 w-24 overflow-hidden rounded-full bg-muted">
-              <div className="shimmer-wave" aria-hidden="true" />
-            </div>
-          </TableCell>
-          {hasSessions && (
+          {visibleStandardColumns.status !== false && (
+            <TableCell>
+              <div className="relative h-5 w-24 overflow-hidden rounded-full bg-muted">
+                <div className="shimmer-wave" aria-hidden="true" />
+              </div>
+            </TableCell>
+          )}
+          {hasSessions && visibleStandardColumns.session !== false && (
             <TableCell>
               <div className="relative h-4 w-24 overflow-hidden rounded bg-muted">
                 <div className="shimmer-wave" aria-hidden="true" />
               </div>
             </TableCell>
           )}
-          <TableCell>
-            <div className="relative h-5 w-20 overflow-hidden rounded-md bg-muted">
-              <div className="shimmer-wave" aria-hidden="true" />
-            </div>
-          </TableCell>
-          <TableCell>
-            <div className="relative h-4 w-44 overflow-hidden rounded bg-muted">
-              <div className="shimmer-wave" aria-hidden="true" />
-            </div>
-          </TableCell>
-          <TableCell>
-            <div className="relative h-3.5 w-24 overflow-hidden rounded bg-muted">
-              <div className="shimmer-wave" aria-hidden="true" />
-            </div>
-          </TableCell>
-          <TableCell className="text-right">
-            <div className="relative ml-auto size-7 overflow-hidden rounded bg-muted">
-              <div className="shimmer-wave" aria-hidden="true" />
-            </div>
-          </TableCell>
+          {visibleStandardColumns.checkin !== false && (
+            <TableCell>
+              <div className="relative h-5 w-20 overflow-hidden rounded-md bg-muted">
+                <div className="shimmer-wave" aria-hidden="true" />
+              </div>
+            </TableCell>
+          )}
+          {SKELETON_COL_IDS.slice(0, questionColumnCount).map((colId) => (
+            <TableCell key={colId}>
+              <div className="relative h-4 w-24 overflow-hidden rounded bg-muted">
+                <div className="shimmer-wave" aria-hidden="true" />
+              </div>
+            </TableCell>
+          ))}
+          {visibleStandardColumns.all_responses !== false && (
+            <TableCell>
+              <div className="relative h-4 w-44 overflow-hidden rounded bg-muted">
+                <div className="shimmer-wave" aria-hidden="true" />
+              </div>
+            </TableCell>
+          )}
+          {visibleStandardColumns.registered_at !== false && (
+            <TableCell>
+              <div className="relative h-3.5 w-24 overflow-hidden rounded bg-muted">
+                <div className="shimmer-wave" aria-hidden="true" />
+              </div>
+            </TableCell>
+          )}
+          {visibleStandardColumns.actions !== false && (
+            <TableCell className="text-right">
+              <div className="relative ml-auto size-7 overflow-hidden rounded bg-muted">
+                <div className="shimmer-wave" aria-hidden="true" />
+              </div>
+            </TableCell>
+          )}
         </TableRow>
       ))}
     </>
@@ -159,6 +273,19 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const [customQuestions, setCustomQuestions] = useState<CustomQuestion[]>(event?.custom_questions ?? []);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [inspectRegistration, setInspectRegistration] = useState<FirestoreRegistration | null>(null);
+
+  // Dynamic table column customization and question filters
+  const [selectedQuestionColumns, setSelectedQuestionColumns] = useState<string[]>([]);
+  const [visibleStandardColumns, setVisibleStandardColumns] = useState<Record<string, boolean>>({
+    applicant: true,
+    status: true,
+    session: true,
+    checkin: true,
+    all_responses: true,
+    registered_at: true,
+    actions: true,
+  });
+  const [questionFilters, setQuestionFilters] = useState<Record<string, string>>({});
   const [bevyAttendeesMap, setBevyAttendeesMap] = useState<Map<string, BevyAttendee>>(new Map());
   const [isSyncingBevy, setIsSyncingBevy] = useState(false);
   const [isCheckingInId, setIsCheckingInId] = useState<string | null>(null);
@@ -358,38 +485,201 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     return map;
   }, [customQuestions]);
 
-  const formatQuestionLabel = (key: string): string => {
-    const trimmed = key.trim();
-    const mapped = questionLabelMap.get(trimmed.toLowerCase());
-    if (mapped) return mapped;
+  const formatQuestionLabel = useCallback(
+    (key: string): string => {
+      const trimmed = key.trim();
+      const mapped = questionLabelMap.get(trimmed.toLowerCase());
+      if (mapped) return mapped;
 
-    // Preserve strings that are already natural sentence case or title case with spaces
-    if (/[A-Z]/.test(trimmed) && trimmed.includes(" ") && !trimmed.includes("_")) {
-      return trimmed;
+      // Preserve strings that are already natural sentence case or title case with spaces
+      if (/[A-Z]/.test(trimmed) && trimmed.includes(" ") && !trimmed.includes("_")) {
+        return trimmed;
+      }
+
+      // Convert snake_case or kebab-case to Title Case
+      const words = trimmed
+        .replace(/[_-]+/g, " ")
+        .split(" ")
+        .filter(Boolean)
+        .map((word) => {
+          const lower = word.toLowerCase();
+          if (lower === "url") return "URL";
+          if (lower === "id") return "ID";
+          if (lower === "github") return "GitHub";
+          if (lower === "linkedin") return "LinkedIn";
+          if (lower === "whatsapp") return "WhatsApp";
+          if (lower === "ai") return "AI";
+          if (lower === "gdg") return "GDG";
+          if (lower === "rsvp") return "RSVP";
+          if (lower === "faq") return "FAQ";
+          if (lower === "ui") return "UI";
+          if (lower === "ux") return "UX";
+          return word.charAt(0).toUpperCase() + word.slice(1);
+        });
+
+      return words.join(" ") || trimmed;
+    },
+    [questionLabelMap],
+  );
+
+  // Discover all available question fields from event definition and registrant answers
+  const availableQuestionFields = useMemo<AvailableQuestionField[]>(() => {
+    const fieldMap = new Map<string, { label: string; type?: string; options?: string[]; count: number }>();
+
+    // 1. Defined custom questions
+    for (const q of customQuestions) {
+      if (q.id && q.label) {
+        fieldMap.set(q.id, {
+          label: q.label,
+          type: q.type,
+          options: q.options,
+          count: 0,
+        });
+      }
     }
 
-    // Convert snake_case or kebab-case to Title Case
-    const words = trimmed
-      .replace(/[_-]+/g, " ")
-      .split(" ")
-      .filter(Boolean)
-      .map((word) => {
-        const lower = word.toLowerCase();
-        if (lower === "url") return "URL";
-        if (lower === "id") return "ID";
-        if (lower === "github") return "GitHub";
-        if (lower === "linkedin") return "LinkedIn";
-        if (lower === "whatsapp") return "WhatsApp";
-        if (lower === "ai") return "AI";
-        if (lower === "gdg") return "GDG";
-        if (lower === "rsvp") return "RSVP";
-        if (lower === "faq") return "FAQ";
-        if (lower === "ui") return "UI";
-        if (lower === "ux") return "UX";
-        return word.charAt(0).toUpperCase() + word.slice(1);
-      });
+    // 2. Discover from answers across all registrations
+    for (const reg of registrationsList) {
+      if (!reg.answers) continue;
+      for (const [k, v] of Object.entries(reg.answers)) {
+        if (k === "session_id" || k === "session_title" || k === "bevy_user_id") continue;
+        if (v === undefined || v === null || v === "") continue;
 
-    return words.join(" ") || trimmed;
+        const formattedLabel = formatQuestionLabel(k);
+        let targetKey = k;
+
+        let existing = fieldMap.get(k);
+        if (!existing) {
+          for (const [existingKey, existingData] of fieldMap.entries()) {
+            if (existingData.label.toLowerCase() === formattedLabel.toLowerCase()) {
+              targetKey = existingKey;
+              existing = existingData;
+              break;
+            }
+          }
+        }
+
+        if (existing) {
+          existing.count += 1;
+        } else {
+          fieldMap.set(targetKey, {
+            label: formattedLabel,
+            count: 1,
+          });
+        }
+      }
+    }
+
+    return Array.from(fieldMap.entries())
+      .map(([key, data]) => ({
+        key,
+        label: data.label,
+        type: data.type,
+        options: data.options,
+        responseCount: data.count,
+      }))
+      .sort((a, b) => b.responseCount - a.responseCount || a.label.localeCompare(b.label));
+  }, [customQuestions, registrationsList, formatQuestionLabel]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !eventId) return;
+    try {
+      const saved = localStorage.getItem(`gdg_event_cols_${eventId}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed.questions)) {
+          setSelectedQuestionColumns(parsed.questions);
+        }
+        if (parsed.standard && typeof parsed.standard === "object") {
+          setVisibleStandardColumns((prev) => ({ ...prev, ...parsed.standard }));
+        }
+      }
+    } catch {
+      // Ignore localStorage read errors
+    }
+  }, [eventId]);
+
+  const saveColumnsToStorage = (questions: string[], standard: Record<string, boolean>) => {
+    if (typeof window === "undefined" || !eventId) return;
+    try {
+      localStorage.setItem(`gdg_event_cols_${eventId}`, JSON.stringify({ questions, standard }));
+    } catch {
+      // Ignore localStorage write errors
+    }
+  };
+
+  const handleToggleQuestion = (key: string) => {
+    setSelectedQuestionColumns((prev) => {
+      const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
+      saveColumnsToStorage(next, visibleStandardColumns);
+      return next;
+    });
+    if (questionFilters[key]) {
+      setQuestionFilters((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    }
+  };
+
+  const handleSelectAllQuestions = () => {
+    const allKeys = availableQuestionFields.map((q) => q.key);
+    setSelectedQuestionColumns(allKeys);
+    saveColumnsToStorage(allKeys, visibleStandardColumns);
+  };
+
+  const handleClearAllQuestions = () => {
+    setSelectedQuestionColumns([]);
+    setQuestionFilters({});
+    saveColumnsToStorage([], visibleStandardColumns);
+  };
+
+  const handleToggleStandardColumn = (id: string) => {
+    setVisibleStandardColumns((prev) => {
+      const next = { ...prev, [id]: !prev[id] };
+      saveColumnsToStorage(selectedQuestionColumns, next);
+      return next;
+    });
+  };
+
+  const handleResetColumnDefaults = () => {
+    const defaultStandard = {
+      applicant: true,
+      status: true,
+      session: hasSessions,
+      checkin: true,
+      all_responses: true,
+      registered_at: true,
+      actions: true,
+    };
+    setSelectedQuestionColumns([]);
+    setVisibleStandardColumns(defaultStandard);
+    setQuestionFilters({});
+    saveColumnsToStorage([], defaultStandard);
+    toast.info("Table columns reset to default view");
+  };
+
+  const handleQuestionFilterChange = (qKey: string, val: string) => {
+    setIsFiltering(true);
+    setQuestionFilters((prev) => ({
+      ...prev,
+      [qKey]: val,
+    }));
+    setTimeout(() => {
+      setIsFiltering(false);
+    }, 200);
+  };
+
+  const handleResetAllFilters = () => {
+    setIsFiltering(true);
+    setStatusFilter("all");
+    setSessionFilter("all");
+    setSearch("");
+    setQuestionFilters({});
+    setTimeout(() => {
+      setIsFiltering(false);
+    }, 200);
   };
 
   // Filter logic
@@ -402,8 +692,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         reg.member_email.toLowerCase().includes(searchLower) ||
         (reg.answers && JSON.stringify(reg.answers).toLowerCase().includes(searchLower));
 
-      const regStatus = (reg.status || "").toLowerCase().trim();
-      const filterStatus = (statusFilter || "all").toLowerCase().trim();
+      const regStatus = (reg.status ?? "").toLowerCase().trim();
+      const filterStatus = (statusFilter ?? "all").toLowerCase().trim();
 
       // "all" matches ANY status without exception
       let matchesStatus = filterStatus === "all";
@@ -426,9 +716,46 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         reg.session_id === sessionFilter ||
         (reg.answers?.session_id as string) === sessionFilter;
 
-      return matchesSearch && matchesStatus && matchesSession;
+      if (!matchesSearch || !matchesStatus || !matchesSession) {
+        return false;
+      }
+
+      // Dynamic question columns filtering
+      for (const qKey of selectedQuestionColumns) {
+        const filterVal = questionFilters[qKey];
+        if (!filterVal || filterVal === "all") continue;
+
+        const rawAnswer = resolveAnswerValue(reg.answers, qKey, questionLabelMap);
+        if (rawAnswer === undefined || rawAnswer === null || rawAnswer === "") {
+          return false;
+        }
+
+        const filterLower = filterVal.toLowerCase().trim();
+        if (Array.isArray(rawAnswer)) {
+          const matched = rawAnswer.some((item) => {
+            const itemLower = String(item).toLowerCase().trim();
+            return itemLower === filterLower || itemLower.includes(filterLower);
+          });
+          if (!matched) return false;
+        } else {
+          const strLower = String(rawAnswer).toLowerCase().trim();
+          if (strLower !== filterLower && !strLower.includes(filterLower)) {
+            return false;
+          }
+        }
+      }
+
+      return true;
     });
-  }, [registrationsList, search, statusFilter, sessionFilter]);
+  }, [
+    registrationsList,
+    search,
+    statusFilter,
+    sessionFilter,
+    selectedQuestionColumns,
+    questionFilters,
+    questionLabelMap,
+  ]);
 
   const handleStatusChange = (registrationId: string, newStatus: RegistrationStatus) => {
     startTransition(async () => {
@@ -555,12 +882,30 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       return;
     }
 
-    const headers = ["Name", "Email", "Status", "Bevy Check-In", "Session Track", "Registered At", "Responses"];
+    const dynamicHeaders = selectedQuestionColumns.map((qKey) => formatQuestionLabel(qKey));
+    const headers = [
+      "Name",
+      "Email",
+      "Status",
+      "Bevy Check-In",
+      "Session Track",
+      ...dynamicHeaders,
+      "Registered At",
+      "All Responses",
+    ];
+
     const rows = filtered.map((r) => {
       const sessionTitle =
         r.session_title ||
         (r.answers?.session_title as string) ||
         (r.session_id ? `Session ID: ${r.session_id}` : "Standard RSVP");
+
+      const questionColsData = selectedQuestionColumns.map((qKey) => {
+        const val = resolveAnswerValue(r.answers, qKey, questionLabelMap);
+        if (val === undefined || val === null) return '""';
+        const strVal = Array.isArray(val) ? val.join("; ") : String(val);
+        return `"${strVal.replace(/"/g, '""')}"`;
+      });
 
       const cleanAnswers = r.answers
         ? Object.entries(r.answers)
@@ -575,6 +920,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         `"${(r.status || "").replace(/"/g, '""')}"`,
         `"${r.is_checked_in ? "Checked In" : "Not Checked In"}"`,
         `"${sessionTitle.replace(/"/g, '""')}"`,
+        ...questionColsData,
         `"${(r.registered_at || "").replace(/"/g, '""')}"`,
         `"${cleanAnswers.replace(/"/g, '""')}"`,
       ].join(",");
@@ -594,6 +940,26 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   };
 
   const hasSessions = sessions.length > 0;
+
+  const totalColumnCount = useMemo(() => {
+    let count = 2; // Checkbox + Applicant
+    if (visibleStandardColumns.status !== false) count += 1;
+    if (hasSessions && visibleStandardColumns.session !== false) count += 1;
+    if (visibleStandardColumns.checkin !== false) count += 1;
+    count += selectedQuestionColumns.length;
+    if (visibleStandardColumns.all_responses !== false) count += 1;
+    if (visibleStandardColumns.registered_at !== false) count += 1;
+    if (visibleStandardColumns.actions !== false) count += 1;
+    return count;
+  }, [visibleStandardColumns, hasSessions, selectedQuestionColumns.length]);
+
+  const activeQuestionFilterCount = useMemo(() => {
+    return Object.values(questionFilters).filter((v) => Boolean(v) && v !== "all").length;
+  }, [questionFilters]);
+
+  const hasActiveFilters = Boolean(
+    search.trim() || statusFilter !== "all" || sessionFilter !== "all" || activeQuestionFilterCount > 0,
+  );
 
   return (
     <div className="space-y-6">
@@ -711,9 +1077,55 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                   </SelectContent>
                 </Select>
               )}
+
+              {/* Dynamic Question Field Filters */}
+              {selectedQuestionColumns.map((qKey) => {
+                const fieldInfo = availableQuestionFields.find((f) => f.key === qKey) || {
+                  key: qKey,
+                  label: formatQuestionLabel(qKey),
+                  responseCount: 0,
+                };
+                const qLabel = fieldInfo.label;
+                const options = getQuestionFilterOptions(fieldInfo, registrationsList, questionLabelMap);
+                if (options.length === 0) return null;
+
+                const currentVal = questionFilters[qKey] || "all";
+
+                return (
+                  <Select key={qKey} value={currentVal} onValueChange={(val) => handleQuestionFilterChange(qKey, val)}>
+                    <SelectTrigger size="sm" className="h-8 max-w-[220px] text-xs">
+                      <Filter className="mr-1 size-3 shrink-0 text-muted-foreground" />
+                      <span className="truncate text-muted-foreground">{qLabel}:</span>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectItem value="all">All {qLabel}</SelectItem>
+                        {options.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                );
+              })}
             </div>
 
             <div className="flex items-center gap-2">
+              <ColumnCustomizer
+                availableQuestions={availableQuestionFields}
+                selectedQuestionKeys={selectedQuestionColumns}
+                onToggleQuestion={handleToggleQuestion}
+                onSelectAllQuestions={handleSelectAllQuestions}
+                onClearAllQuestions={handleClearAllQuestions}
+                visibleStandardColumns={visibleStandardColumns}
+                onToggleStandardColumn={handleToggleStandardColumn}
+                hasSessions={hasSessions}
+                onResetDefaults={handleResetColumnDefaults}
+              />
+
               <Button
                 size="sm"
                 variant="outline"
@@ -733,6 +1145,81 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
             </div>
           </div>
 
+          {/* Active Filter Indicators */}
+          {hasActiveFilters && (
+            <div className="flex flex-wrap items-center gap-1.5 pt-1 text-xs">
+              <span className="font-medium text-muted-foreground text-xs">Active Filters:</span>
+              {search.trim() && (
+                <Badge variant="secondary" className="gap-1 font-normal text-xs">
+                  <span>Search: &quot;{search}&quot;</span>
+                  <button
+                    type="button"
+                    onClick={() => handleSearchChange("")}
+                    className="ml-0.5 rounded-full p-0.5 hover:bg-muted-foreground/20"
+                    aria-label="Clear search filter"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </Badge>
+              )}
+              {statusFilter !== "all" && (
+                <Badge variant="secondary" className="gap-1 font-normal text-xs">
+                  <span>Status: {STATUS_VARIANTS[statusFilter as RegistrationStatus]?.label || statusFilter}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleStatusFilterChange("all")}
+                    className="ml-0.5 rounded-full p-0.5 hover:bg-muted-foreground/20"
+                    aria-label="Clear status filter"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </Badge>
+              )}
+              {sessionFilter !== "all" && (
+                <Badge variant="secondary" className="gap-1 font-normal text-xs">
+                  <span>Session: {sessions.find((s) => s.id === sessionFilter)?.title || sessionFilter}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleSessionFilterChange("all")}
+                    className="ml-0.5 rounded-full p-0.5 hover:bg-muted-foreground/20"
+                    aria-label="Clear session filter"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </Badge>
+              )}
+              {selectedQuestionColumns.map((qKey) => {
+                const val = questionFilters[qKey];
+                if (!val || val === "all") return null;
+                const fieldInfo = availableQuestionFields.find((f) => f.key === qKey);
+                const label = fieldInfo?.label || formatQuestionLabel(qKey);
+                return (
+                  <Badge key={qKey} variant="secondary" className="gap-1 font-normal text-xs">
+                    <span className="max-w-[200px] truncate">
+                      {label}: {val}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleQuestionFilterChange(qKey, "all")}
+                      className="ml-0.5 rounded-full p-0.5 hover:bg-muted-foreground/20"
+                      aria-label={`Clear ${label} filter`}
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </Badge>
+                );
+              })}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleResetAllFilters}
+                className="h-6 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+              >
+                Reset All
+              </Button>
+            </div>
+          )}
+
           {/* Registrants Table */}
           <div className="rounded-md border">
             <Table>
@@ -746,20 +1233,45 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                     />
                   </TableHead>
                   <TableHead>Applicant</TableHead>
-                  <TableHead>Status</TableHead>
-                  {hasSessions && <TableHead>Session Track</TableHead>}
-                  <TableHead>Check-In (Bevy)</TableHead>
-                  <TableHead>Question Responses & Details</TableHead>
-                  <TableHead>Registered At</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  {visibleStandardColumns.status !== false && <TableHead>Status</TableHead>}
+                  {hasSessions && visibleStandardColumns.session !== false && <TableHead>Session Track</TableHead>}
+                  {visibleStandardColumns.checkin !== false && <TableHead>Check-In (Bevy)</TableHead>}
+                  {selectedQuestionColumns.map((qKey) => {
+                    const fieldInfo = availableQuestionFields.find((f) => f.key === qKey);
+                    const label = fieldInfo?.label || formatQuestionLabel(qKey);
+                    const isFiltered = Boolean(questionFilters[qKey] && questionFilters[qKey] !== "all");
+                    return (
+                      <TableHead key={qKey} className="min-w-[150px] max-w-[240px]">
+                        <div className="flex items-center gap-1.5">
+                          <span className="truncate font-semibold">{label}</span>
+                          {isFiltered && (
+                            <Badge variant="secondary" className="bg-primary/10 px-1 py-0 text-[10px] text-primary">
+                              Filtered
+                            </Badge>
+                          )}
+                        </div>
+                      </TableHead>
+                    );
+                  })}
+                  {visibleStandardColumns.all_responses !== false && (
+                    <TableHead>Question Responses & Details</TableHead>
+                  )}
+                  {visibleStandardColumns.registered_at !== false && <TableHead>Registered At</TableHead>}
+                  {visibleStandardColumns.actions !== false && <TableHead className="text-right">Actions</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(isLoading || isFiltering) && <RegistrantsTableSkeleton hasSessions={hasSessions} />}
+                {(isLoading || isFiltering) && (
+                  <RegistrantsTableSkeleton
+                    hasSessions={hasSessions}
+                    visibleStandardColumns={visibleStandardColumns}
+                    questionColumnCount={selectedQuestionColumns.length}
+                  />
+                )}
 
                 {!isLoading && !isFiltering && filtered.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={hasSessions ? 8 : 7} className="h-40 text-center text-muted-foreground text-sm">
+                    <TableCell colSpan={totalColumnCount} className="h-40 text-center text-muted-foreground text-sm">
                       {registrationsList.length === 0 ? (
                         <div className="flex flex-col items-center justify-center gap-2 py-6">
                           <div className="flex size-10 items-center justify-center rounded-full bg-muted">
@@ -788,13 +1300,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                             variant="outline"
                             size="sm"
                             className="mt-1 h-7 text-xs"
-                            onClick={() => {
-                              setIsFiltering(true);
-                              setStatusFilter("all");
-                              setSessionFilter("all");
-                              setSearch("");
-                              setTimeout(() => setIsFiltering(false), 200);
-                            }}
+                            onClick={handleResetAllFilters}
                           >
                             Reset All Filters
                           </Button>
@@ -863,17 +1369,19 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                           </div>
                         </TableCell>
 
-                        <TableCell onClick={() => setInspectRegistration(reg)}>
-                          <Badge
-                            variant="outline"
-                            className={cn("gap-1.5 border px-2 py-0.5 font-medium text-xs", statusMeta.badgeClass)}
-                          >
-                            <span className={cn("size-1.5 rounded-full", statusMeta.dotClass)} />
-                            {statusMeta.label}
-                          </Badge>
-                        </TableCell>
+                        {visibleStandardColumns.status !== false && (
+                          <TableCell onClick={() => setInspectRegistration(reg)}>
+                            <Badge
+                              variant="outline"
+                              className={cn("gap-1.5 border px-2 py-0.5 font-medium text-xs", statusMeta.badgeClass)}
+                            >
+                              <span className={cn("size-1.5 rounded-full", statusMeta.dotClass)} />
+                              {statusMeta.label}
+                            </Badge>
+                          </TableCell>
+                        )}
 
-                        {hasSessions && (
+                        {hasSessions && visibleStandardColumns.session !== false && (
                           <TableCell onClick={() => setInspectRegistration(reg)}>
                             {sessionTitle ? (
                               <Badge variant="secondary" className="gap-1 font-normal text-xs">
@@ -886,146 +1394,168 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                           </TableCell>
                         )}
 
-                        <TableCell onClick={(e) => e.stopPropagation()}>
-                          {reg.is_checked_in ? (
-                            <div className="flex items-center gap-1.5">
-                              <Badge
+                        {visibleStandardColumns.checkin !== false && (
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            {reg.is_checked_in ? (
+                              <div className="flex items-center gap-1.5">
+                                <Badge
+                                  variant="outline"
+                                  className="gap-1 border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-medium text-[11px] text-emerald-600 dark:text-emerald-400"
+                                >
+                                  <UserCheck className="size-3" />
+                                  <span>Checked In</span>
+                                </Badge>
+                                <Button
+                                  size="icon-xs"
+                                  variant="ghost"
+                                  className="size-6 text-muted-foreground hover:text-destructive"
+                                  title="Undo check-in in Bevy"
+                                  onClick={() => handleToggleCheckIn(reg, false)}
+                                  disabled={isCheckingInId === reg.id}
+                                >
+                                  <RotateCcw className="size-3" />
+                                </Button>
+                              </div>
+                            ) : (
+                              <Button
+                                size="sm"
                                 variant="outline"
-                                className="gap-1 border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-medium text-[11px] text-emerald-600 dark:text-emerald-400"
+                                className="h-6 gap-1 px-2 font-normal text-[11px] text-muted-foreground hover:border-emerald-500/40 hover:bg-emerald-500/10 hover:text-emerald-600"
+                                onClick={() => handleToggleCheckIn(reg, true)}
+                                disabled={isCheckingInId === reg.id}
                               >
                                 <UserCheck className="size-3" />
-                                <span>Checked In</span>
-                              </Badge>
+                                <span>Check In</span>
+                              </Button>
+                            )}
+                          </TableCell>
+                        )}
+
+                        {/* Dynamic Question Columns */}
+                        {selectedQuestionColumns.map((qKey) => {
+                          const rawVal = resolveAnswerValue(reg.answers, qKey, questionLabelMap);
+                          return (
+                            <TableCell
+                              key={qKey}
+                              onClick={() => setInspectRegistration(reg)}
+                              className="max-w-[240px] align-top"
+                            >
+                              <QuestionColumnValueCell value={rawVal} />
+                            </TableCell>
+                          );
+                        })}
+
+                        {visibleStandardColumns.all_responses !== false && (
+                          <TableCell onClick={() => setInspectRegistration(reg)} className="max-w-[400px]">
+                            <QuestionResponsesCell answers={reg.answers} formatQuestionLabel={formatQuestionLabel} />
+                          </TableCell>
+                        )}
+
+                        {visibleStandardColumns.registered_at !== false && (
+                          <TableCell
+                            onClick={() => setInspectRegistration(reg)}
+                            className="text-muted-foreground text-xs"
+                          >
+                            {regDate}
+                          </TableCell>
+                        )}
+
+                        {visibleStandardColumns.actions !== false && (
+                          <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-end gap-1">
+                              {/* 1. Approve Button */}
+                              <Button
+                                size="icon-xs"
+                                variant={reg.status === "approved" ? "default" : "ghost"}
+                                className={cn(
+                                  "size-7 transition-colors",
+                                  reg.status === "approved"
+                                    ? "bg-emerald-600 text-white shadow-xs hover:bg-emerald-700"
+                                    : "text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700",
+                                )}
+                                title={reg.status === "approved" ? "Approved" : "Approve application"}
+                                onClick={() => handleStatusChange(reg.id, "approved")}
+                                disabled={isPending}
+                              >
+                                <Check className="size-3.5" />
+                              </Button>
+
+                              {/* 2. Pending Button */}
+                              <Button
+                                size="icon-xs"
+                                variant={reg.status === "pending" ? "default" : "ghost"}
+                                className={cn(
+                                  "size-7 transition-colors",
+                                  reg.status === "pending"
+                                    ? "bg-amber-600 text-white shadow-xs hover:bg-amber-700"
+                                    : "text-amber-600 hover:bg-amber-500/10 hover:text-amber-700",
+                                )}
+                                title={reg.status === "pending" ? "Pending Review" : "Mark as Pending"}
+                                onClick={() => handleStatusChange(reg.id, "pending")}
+                                disabled={isPending}
+                              >
+                                <Clock className="size-3.5" />
+                              </Button>
+
+                              {/* 3. Reject Button */}
+                              <Button
+                                size="icon-xs"
+                                variant={reg.status === "rejected" ? "default" : "ghost"}
+                                className={cn(
+                                  "size-7 transition-colors",
+                                  reg.status === "rejected"
+                                    ? "bg-destructive text-destructive-foreground shadow-xs hover:bg-destructive/90"
+                                    : "text-destructive hover:bg-destructive/10 hover:text-destructive",
+                                )}
+                                title={reg.status === "rejected" ? "Rejected" : "Reject application"}
+                                onClick={() => handleStatusChange(reg.id, "rejected")}
+                                disabled={isPending}
+                              >
+                                <X className="size-3.5" />
+                              </Button>
+
+                              {/* 4. View Dossier / Details Button */}
                               <Button
                                 size="icon-xs"
                                 variant="ghost"
-                                className="size-6 text-muted-foreground hover:text-destructive"
-                                title="Undo check-in in Bevy"
-                                onClick={() => handleToggleCheckIn(reg, false)}
-                                disabled={isCheckingInId === reg.id}
+                                className="size-7 text-muted-foreground hover:bg-muted hover:text-foreground"
+                                title="View application details"
+                                onClick={() => setInspectRegistration(reg)}
                               >
-                                <RotateCcw className="size-3" />
+                                <Eye className="size-3.5" />
                               </Button>
-                            </div>
-                          ) : (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-6 gap-1 px-2 font-normal text-[11px] text-muted-foreground hover:border-emerald-500/40 hover:bg-emerald-500/10 hover:text-emerald-600"
-                              onClick={() => handleToggleCheckIn(reg, true)}
-                              disabled={isCheckingInId === reg.id}
-                            >
-                              <UserCheck className="size-3" />
-                              <span>Check In</span>
-                            </Button>
-                          )}
-                        </TableCell>
 
-                        <TableCell onClick={() => setInspectRegistration(reg)} className="max-w-[400px]">
-                          <QuestionResponsesCell answers={reg.answers} formatQuestionLabel={formatQuestionLabel} />
-                        </TableCell>
-
-                        <TableCell
-                          onClick={() => setInspectRegistration(reg)}
-                          className="text-muted-foreground text-xs"
-                        >
-                          {regDate}
-                        </TableCell>
-
-                        <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center justify-end gap-1">
-                            {/* 1. Approve Button */}
-                            <Button
-                              size="icon-xs"
-                              variant={reg.status === "approved" ? "default" : "ghost"}
-                              className={cn(
-                                "size-7 transition-colors",
-                                reg.status === "approved"
-                                  ? "bg-emerald-600 text-white shadow-xs hover:bg-emerald-700"
-                                  : "text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700",
-                              )}
-                              title={reg.status === "approved" ? "Approved" : "Approve application"}
-                              onClick={() => handleStatusChange(reg.id, "approved")}
-                              disabled={isPending}
-                            >
-                              <Check className="size-3.5" />
-                            </Button>
-
-                            {/* 2. Pending Button */}
-                            <Button
-                              size="icon-xs"
-                              variant={reg.status === "pending" ? "default" : "ghost"}
-                              className={cn(
-                                "size-7 transition-colors",
-                                reg.status === "pending"
-                                  ? "bg-amber-600 text-white shadow-xs hover:bg-amber-700"
-                                  : "text-amber-600 hover:bg-amber-500/10 hover:text-amber-700",
-                              )}
-                              title={reg.status === "pending" ? "Pending Review" : "Mark as Pending"}
-                              onClick={() => handleStatusChange(reg.id, "pending")}
-                              disabled={isPending}
-                            >
-                              <Clock className="size-3.5" />
-                            </Button>
-
-                            {/* 3. Reject Button */}
-                            <Button
-                              size="icon-xs"
-                              variant={reg.status === "rejected" ? "default" : "ghost"}
-                              className={cn(
-                                "size-7 transition-colors",
-                                reg.status === "rejected"
-                                  ? "bg-destructive text-destructive-foreground shadow-xs hover:bg-destructive/90"
-                                  : "text-destructive hover:bg-destructive/10 hover:text-destructive",
-                              )}
-                              title={reg.status === "rejected" ? "Rejected" : "Reject application"}
-                              onClick={() => handleStatusChange(reg.id, "rejected")}
-                              disabled={isPending}
-                            >
-                              <X className="size-3.5" />
-                            </Button>
-
-                            {/* 4. View Dossier / Details Button */}
-                            <Button
-                              size="icon-xs"
-                              variant="ghost"
-                              className="size-7 text-muted-foreground hover:bg-muted hover:text-foreground"
-                              title="View application details"
-                              onClick={() => setInspectRegistration(reg)}
-                            >
-                              <Eye className="size-3.5" />
-                            </Button>
-
-                            {/* 5. More Actions Dropdown */}
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button size="icon-xs" variant="ghost" className="size-7 text-muted-foreground">
-                                  <MoreHorizontal className="size-3.5" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => setInspectRegistration(reg)}>
-                                  <Eye className="mr-2 size-3.5" />
-                                  View application dossier
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleStatusChange(reg.id, "waitlisted")}>
-                                  <Layers className="mr-2 size-3.5" />
-                                  Move to Waitlist
-                                </DropdownMenuItem>
-                                {reg.member_email && (
-                                  <DropdownMenuItem
-                                    onClick={() => {
-                                      void navigator.clipboard.writeText(reg.member_email);
-                                      toast.success("Email copied to clipboard");
-                                    }}
-                                  >
-                                    Copy email address
+                              {/* 5. More Actions Dropdown */}
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button size="icon-xs" variant="ghost" className="size-7 text-muted-foreground">
+                                    <MoreHorizontal className="size-3.5" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => setInspectRegistration(reg)}>
+                                    <Eye className="mr-2 size-3.5" />
+                                    View application dossier
                                   </DropdownMenuItem>
-                                )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                        </TableCell>
+                                  <DropdownMenuItem onClick={() => handleStatusChange(reg.id, "waitlisted")}>
+                                    <Layers className="mr-2 size-3.5" />
+                                    Move to Waitlist
+                                  </DropdownMenuItem>
+                                  {reg.member_email && (
+                                    <DropdownMenuItem
+                                      onClick={() => {
+                                        void navigator.clipboard.writeText(reg.member_email);
+                                        toast.success("Email copied to clipboard");
+                                      }}
+                                    >
+                                      Copy email address
+                                    </DropdownMenuItem>
+                                  )}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          </TableCell>
+                        )}
                       </TableRow>
                     );
                   })}

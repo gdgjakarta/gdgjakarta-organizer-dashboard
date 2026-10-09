@@ -4,7 +4,7 @@ import { useState } from "react";
 
 import Link from "next/link";
 
-import { ExternalLink, Eye, EyeOff, Pencil, Plus, RefreshCw, Save, Trash2 } from "lucide-react";
+import { ExternalLink, Eye, EyeOff, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 
 import { FloatingSaveBar } from "@/app/(main)/dashboard/_components/floating-save-bar";
 import {
@@ -36,7 +36,7 @@ import { FormatDialog } from "./format-dialog";
 import { TierDialog } from "./tier-dialog";
 
 export function PartnershipDashboard() {
-  const { content, setContent, hasChanges, discardChanges, loading, saving, saveContent, resetToDefaults } =
+  const { content, setContent, hasChanges, discardChanges, saving, saveContent, resetToDefaults } =
     usePartnershipContent();
 
   const {
@@ -154,56 +154,22 @@ export function PartnershipDashboard() {
           </p>
         </div>
 
-        <div className="flex w-full flex-col items-stretch gap-2 sm:w-auto sm:flex-row sm:items-center">
-          <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
-            <Button variant="outline" size="sm" asChild className="justify-center gap-1.5 text-xs">
-              <Link href="/partnership" target="_blank" rel="noopener noreferrer">
-                <ExternalLink className="size-3.5" />
-                <span>Preview Live</span>
-              </Link>
-            </Button>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setConfirmResetOpen(true)}
-              className="justify-center gap-1.5 text-muted-foreground text-xs hover:text-foreground"
-            >
-              <RefreshCw className="size-3.5" />
-              <span>Reset Defaults</span>
-            </Button>
-          </div>
+        <div className="grid w-full grid-cols-2 items-center gap-2 sm:flex sm:w-auto sm:flex-wrap">
+          <Button variant="outline" size="sm" asChild className="justify-center gap-1.5 text-xs">
+            <Link href="/partnership" target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="size-3.5" />
+              <span>Preview Live</span>
+            </Link>
+          </Button>
 
           <Button
+            variant="outline"
             size="sm"
-            variant={hasChanges ? "default" : "secondary"}
-            onClick={() => saveContent(content)}
-            disabled={!hasChanges || saving || loading}
-            title={hasChanges ? "Save partnership configuration changes" : "No unsaved changes"}
-            className={cn(
-              "w-full justify-center gap-1.5 font-semibold text-xs sm:w-auto transition-all",
-              !hasChanges &&
-                "bg-muted text-muted-foreground/70 border border-border/50 shadow-none cursor-not-allowed hover:bg-muted opacity-60",
-              hasChanges && "ring-1 ring-primary/20 shadow-xs hover:ring-primary/40",
-            )}
+            onClick={() => setConfirmResetOpen(true)}
+            className="justify-center gap-1.5 text-muted-foreground text-xs hover:text-foreground"
           >
-            {saving ? (
-              <>
-                <RefreshCw className="size-3.5 animate-spin" />
-                <span>Saving...</span>
-              </>
-            ) : (
-              <>
-                {hasChanges && (
-                  <span className="relative flex size-1.5 mr-0.5">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
-                    <span className="relative inline-flex size-1.5 rounded-full bg-amber-400" />
-                  </span>
-                )}
-                <Save className="size-3.5" />
-                <span>Save Changes</span>
-              </>
-            )}
+            <RefreshCw className="size-3.5" />
+            <span>Reset Defaults</span>
           </Button>
         </div>
       </div>

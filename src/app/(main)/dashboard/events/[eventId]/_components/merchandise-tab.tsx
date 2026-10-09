@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 
-import { Copy, Edit2, Package, PackageOpen, Plus, Save, Sparkles, Tag, Trash2 } from "lucide-react";
+import { Copy, Edit2, Package, PackageOpen, Plus, Sparkles, Tag, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { FloatingSaveBar } from "@/app/(main)/dashboard/_components/floating-save-bar";
@@ -47,13 +47,6 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
 
     void loadLatestMerchandise();
   }, [event.id]);
-
-  let saveButtonLabel = "Saved";
-  if (isSaving) {
-    saveButtonLabel = "Saving...";
-  } else if (isDirty) {
-    saveButtonLabel = "Save Changes";
-  }
 
   const handleCreateNew = () => {
     setEditingItem(null);
@@ -159,11 +152,6 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
             <Button size="sm" variant="outline" onClick={handleCreateNew} className="gap-1.5">
               <Plus className="size-3.5" />
               Custom Item
-            </Button>
-
-            <Button size="sm" disabled={isSaving || !isDirty} onClick={handleSaveAll} className="gap-1.5">
-              <Save className="size-3.5" />
-              {isSaving ? "Saving..." : "Save Bundle"}
             </Button>
           </div>
         </CardHeader>
@@ -348,10 +336,6 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
                 >
                   <Sparkles className="size-3.5 text-amber-500" />
                   Add More Templates
-                </Button>
-                <Button size="sm" disabled={isSaving || !isDirty} onClick={handleSaveAll} className="gap-1.5 text-xs">
-                  <Save className="size-3.5" />
-                  {saveButtonLabel}
                 </Button>
               </div>
             </div>

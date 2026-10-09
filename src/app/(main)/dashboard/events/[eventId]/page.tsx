@@ -1,12 +1,13 @@
 import { notFound } from "next/navigation";
 
-import { FileSpreadsheet, Package, Sparkles, Users } from "lucide-react";
+import { FileSpreadsheet, Mail, Package, Sparkles, Users } from "lucide-react";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getAllBevyChapterEvents, getBevyEventById, resolveEventAudience } from "@/lib/bevy/client";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
 
 import { CustomFormTab } from "./_components/custom-form-tab";
+import { EmailTemplatesTab } from "./_components/email-templates-tab";
 import { EventDetailHeader } from "./_components/event-detail-header";
 import { HighlightsMediaTab } from "./_components/highlights-media-tab";
 import { MerchandiseTab } from "./_components/merchandise-tab";
@@ -118,7 +119,7 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
       />
 
       <Tabs defaultValue="registrants" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 sm:w-[640px]">
+        <TabsList className="grid w-full grid-cols-2 sm:w-[840px] sm:grid-cols-5">
           <TabsTrigger value="registrants" className="gap-1.5 text-xs sm:text-sm">
             <Users className="size-4" />
             Registrants
@@ -134,6 +135,10 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
           <TabsTrigger value="highlights" className="gap-1.5 text-xs sm:text-sm">
             <Sparkles className="size-4" />
             Highlights & Media
+          </TabsTrigger>
+          <TabsTrigger value="emails" className="gap-1.5 text-xs sm:text-sm">
+            <Mail className="size-4" />
+            Email Templates (n8n)
           </TabsTrigger>
         </TabsList>
 
@@ -151,6 +156,10 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
 
         <TabsContent value="highlights" className="space-y-4">
           <HighlightsMediaTab event={event} />
+        </TabsContent>
+
+        <TabsContent value="emails" className="space-y-4">
+          <EmailTemplatesTab event={event} />
         </TabsContent>
       </Tabs>
     </div>
