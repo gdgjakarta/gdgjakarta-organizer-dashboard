@@ -1,10 +1,26 @@
 "use client";
 
-import React, { useEffect, useId, useRef, useState, useTransition } from "react";
+import React, { useEffect, useId, useMemo, useRef, useState, useTransition } from "react";
 
 import { useRouter } from "next/navigation";
 
-import { CheckCircle2, Clock, ExternalLink, FileEdit, Layers, Loader2, MapPin, Sparkles } from "lucide-react";
+import {
+  Banknote,
+  CheckCircle2,
+  Clock,
+  ExternalLink,
+  FileEdit,
+  Layers,
+  Loader2,
+  MapPin,
+  Minus,
+  Package,
+  Plus,
+  ShieldCheck,
+  ShoppingBag,
+  Sparkles,
+  Ticket,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -38,7 +54,13 @@ import {
   isSessionAvailable,
 } from "@/lib/events/registration-defaults";
 import { checkEventRegistrationAction, registerForEventAction } from "@/lib/firestore/actions";
-import type { CustomQuestion, EventSession, FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
+import type {
+  CustomQuestion,
+  EventSession,
+  FirestoreEvent,
+  FirestoreRegistration,
+  SelectedMerchandiseOrder,
+} from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 import { dispatchRegistrationWebhookAction, type RegistrationWebhookPayload } from "@/server/registration-actions";
 import { useAuthStore } from "@/stores/auth/auth-provider";
@@ -589,7 +611,7 @@ export function EventRegistrationModal({
     let buttonSize: "default" | "sm" | "lg" | "icon" = "sm";
     if (React.isValidElement(children)) {
       const childProps = children.props as { size?: "default" | "sm" | "lg" | "icon" };
-      if (childProps?.size) buttonSize = childProps.size;
+      if (childProps.size) buttonSize = childProps.size;
     }
 
     return (
