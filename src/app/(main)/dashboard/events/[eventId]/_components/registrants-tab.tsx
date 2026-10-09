@@ -288,21 +288,21 @@ function RegistrantsTableSkeleton({
             </TableCell>
           ))}
           {visibleStandardColumns.all_responses !== false && (
-            <TableCell>
+            <TableCell className="max-w-[380px]">
               <div className="relative h-4 w-44 overflow-hidden rounded bg-muted">
                 <div className="shimmer-wave" aria-hidden="true" />
               </div>
             </TableCell>
           )}
           {visibleStandardColumns.registered_at !== false && (
-            <TableCell>
+            <TableCell className="whitespace-nowrap">
               <div className="relative h-3.5 w-24 overflow-hidden rounded bg-muted">
                 <div className="shimmer-wave" aria-hidden="true" />
               </div>
             </TableCell>
           )}
           {visibleStandardColumns.actions !== false && (
-            <TableCell className="text-right">
+            <TableCell className="whitespace-nowrap text-right">
               <div className="relative ml-auto size-7 overflow-hidden rounded bg-muted">
                 <div className="shimmer-wave" aria-hidden="true" />
               </div>
@@ -1631,10 +1631,14 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                     );
                   })}
                   {visibleStandardColumns.all_responses !== false && (
-                    <TableHead>Question Responses & Details</TableHead>
+                    <TableHead className="min-w-[240px] max-w-[380px]">Question Responses & Details</TableHead>
                   )}
-                  {visibleStandardColumns.registered_at !== false && <TableHead>Registered At</TableHead>}
-                  {visibleStandardColumns.actions !== false && <TableHead className="text-right">Actions</TableHead>}
+                  {visibleStandardColumns.registered_at !== false && (
+                    <TableHead className="whitespace-nowrap">Registered At</TableHead>
+                  )}
+                  {visibleStandardColumns.actions !== false && (
+                    <TableHead className="whitespace-nowrap text-right">Actions</TableHead>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1896,7 +1900,10 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                         })}
 
                         {visibleStandardColumns.all_responses !== false && (
-                          <TableCell onClick={() => setInspectRegistration(reg)} className="max-w-[400px]">
+                          <TableCell
+                            onClick={() => setInspectRegistration(reg)}
+                            className="max-w-[380px] overflow-hidden"
+                          >
                             <QuestionResponsesCell answers={reg.answers} formatQuestionLabel={formatQuestionLabel} />
                           </TableCell>
                         )}
@@ -1904,14 +1911,14 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                         {visibleStandardColumns.registered_at !== false && (
                           <TableCell
                             onClick={() => setInspectRegistration(reg)}
-                            className="text-muted-foreground text-xs"
+                            className="whitespace-nowrap text-muted-foreground text-xs"
                           >
                             {regDate}
                           </TableCell>
                         )}
 
                         {visibleStandardColumns.actions !== false && (
-                          <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                          <TableCell className="whitespace-nowrap text-right" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-end gap-1">
                               {/* 1. Approve Button */}
                               <Button

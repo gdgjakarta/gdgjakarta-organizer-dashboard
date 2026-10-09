@@ -10,6 +10,66 @@ interface QuestionResponsesCellProps {
   formatQuestionLabel: (key: string) => string;
 }
 
+function getFieldPriority(key: string, value: string): number {
+  const k = key.toLowerCase();
+  // Specific professional background field
+  if (k === "professional_background" || k === "background" || k === "job_background") {
+    return 100;
+  }
+  // Specific years of experience field
+  if (
+    k === "years_of_professional_experience" ||
+    k === "years_of_experience" ||
+    k === "experience_level" ||
+    k === "years" ||
+    k === "years_experience"
+  ) {
+    return 90;
+  }
+  // Role / Job title
+  if (k === "job_title" || k === "current_role" || k === "role" || k === "occupation" || k.includes("job_title")) {
+    return 80;
+  }
+  // Company / Organization / Institution
+  if (k === "company" || k === "organization" || k === "institution" || k === "current_company" || k === "university") {
+    return 70;
+  }
+  // Generic background keyword (if not an open-ended survey question)
+  if (k.includes("background") && value.length < 30) {
+    return 65;
+  }
+  // Generic experience keyword only if it mentions years or has a short response
+  if (k.includes("experience") && (k.includes("year") || value.length < 25)) {
+    return 60;
+  }
+  // Short categorical answers (e.g. t-shirt size, dietary, tracks)
+  if (value.length <= 25 && key.length <= 35) {
+    return 40;
+  }
+  // Medium answers
+  if (value.length <= 50) {
+    return 20;
+  }
+  // Long open-ended answers (e.g. narrative essay or long tech survey answers)
+  return 10;
+}
+
+function getCompactLabel(key: string, fullLabel: string): string {
+  const k = key.toLowerCase();
+  if (k.includes("background")) return "Background";
+  if (k.includes("experience") || k.includes("year")) return "Experience";
+  if (k.includes("role") || k.includes("job_title")) return "Role";
+  if (k.includes("company") || k.includes("organization") || k.includes("university")) return "Company";
+  if (k.includes("tshirt") || k.includes("t_shirt") || k.includes("size")) return "Size";
+  if (k.includes("dietary") || k.includes("diet")) return "Diet";
+
+  // If fullLabel is concise (<= 14 characters), keep it intact
+  if (fullLabel.length <= 14) return fullLabel;
+
+  // Otherwise, use first 12 characters followed by an ellipsis
+  return `${fullLabel.slice(0, 12)}…`;
+}
+
 export function QuestionResponsesCell({ answers, formatQuestionLabel }: QuestionResponsesCellProps) {
   const { validEntries, displayEntries, remainingCount } = useMemo(() => {
     if (!answers || Object.keys(answers).length === 0) {
@@ -26,25 +86,47 @@ export function QuestionResponsesCell({ answers, formatQuestionLabel }: Question
         !(Array.isArray(v) && v.length === 0),
     );
 
-    // Look for prioritized highlighted fields
-    const highlights: Array<{ key: string; label: string; value: string; isHighlight: boolean }> = [];
-    const others: Array<{ key: string; label: string; value: string; isHighlight: boolean }> = [];
+    // Sort entries deterministically based on priority weight, then length, then alphabetical key
+    const sorted = [...entries].sort((a, b) => {
+      const valStrA = Array.isArray(a[1]) ? a[1].join(", ") : String(a[1]);
+      const valStrB = Array.isArray(b[1]) ? b[1].join(", ") : String(b[1]);
+      const prioA = getFieldPriority(a[0], valStrA);
+      const prioB = getFieldPriority(b[0], valStrB);
 
-    for (const [key, val] of entries) {
-      const keyLower = key.toLowerCase();
-      const strVal = Array.isArray(val) ? val.join(", ") : String(val);
-      const label = formatQuestionLabel(key);
-
-      if (keyLower.includes("background") || keyLower.includes("experience")) {
-        highlights.push({ key, label, value: strVal, isHighlight: true });
-      } else {
-        others.push({ key, label, value: strVal, isHighlight: false });
+      if (prioB !== prioA) {
+        return prioB - prioA;
       }
-    }
 
-    const combined = [...highlights, ...others];
-    const display = combined.slice(0, 2);
-    const remaining = Math.max(0, combined.length - display.length);
+      // Stable secondary sort: shorter value length first
+      if (valStrA.length !== valStrB.length) {
+        return valStrA.length - valStrB.length;
+      }
+
+      // Deterministic tertiary tiebreaker
+      return a[0].localeCompare(b[0]);
+    });
+
+    const display = sorted.slice(0, 2).map(([key, val]) => {
+      const fullLabel = formatQuestionLabel(key);
+      const compactLabel = getCompactLabel(key, fullLabel);
+      const value = Array.isArray(val) ? val.join(", ") : String(val);
+      const keyLower = key.toLowerCase();
+      const isPill =
+        value === "Tech" ||
+        value === "Non-Tech" ||
+        keyLower.includes("background") ||
+        (keyLower.includes("experience") && (keyLower.includes("year") || value.length < 25));
+
+      return {
+        key,
+        fullLabel,
+        compactLabel,
+        value,
+        isPill,
+      };
+    });
+
+    const remaining = Math.max(0, sorted.length - display.length);
 
     return {
       validEntries: entries,
@@ -60,23 +142,18 @@ export function QuestionResponsesCell({ answers, formatQuestionLabel }: Question
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <div className="group flex max-w-[420px] flex-wrap items-center gap-1.5 py-1 text-left">
+        <div className="group flex max-w-[360px] flex-wrap items-center gap-1.5 py-1 text-left">
           {displayEntries.map((item) => {
-            const isPill =
-              item.value === "Tech" ||
-              item.value === "Non-Tech" ||
-              item.key.toLowerCase().includes("experience") ||
-              item.key.toLowerCase().includes("background");
-
-            if (isPill) {
+            if (item.isPill) {
               return (
                 <Badge
                   key={item.key}
                   variant={item.value === "Tech" ? "secondary" : "outline"}
-                  className="px-2 py-0.5 font-medium text-[11px] shadow-2xs transition-colors group-hover:border-border"
+                  title={`${item.fullLabel}: ${item.value}`}
+                  className="inline-flex max-w-[170px] items-center gap-1 overflow-hidden px-2 py-0.5 font-medium text-[11px] shadow-2xs transition-colors group-hover:border-border"
                 >
-                  <span className="font-normal text-muted-foreground opacity-80">{item.label}:</span>{" "}
-                  <span className="font-semibold text-foreground">{item.value}</span>
+                  <span className="shrink-0 font-normal text-muted-foreground opacity-80">{item.compactLabel}:</span>
+                  <span className="truncate font-semibold text-foreground">{item.value}</span>
                 </Badge>
               );
             }
@@ -84,9 +161,10 @@ export function QuestionResponsesCell({ answers, formatQuestionLabel }: Question
             return (
               <span
                 key={item.key}
-                className="inline-flex max-w-[210px] items-center gap-1 rounded-md border border-border/60 bg-muted/30 px-2 py-0.5 font-medium text-xs shadow-2xs transition-colors hover:bg-muted/60"
+                title={`${item.fullLabel}: ${item.value}`}
+                className="inline-flex max-w-[170px] items-center gap-1 overflow-hidden rounded-md border border-border/60 bg-muted/30 px-2 py-0.5 font-medium text-xs shadow-2xs transition-colors hover:bg-muted/60"
               >
-                <span className="shrink-0 font-normal text-muted-foreground text-[11px]">{item.label}:</span>
+                <span className="shrink-0 font-normal text-muted-foreground text-[11px]">{item.compactLabel}:</span>
                 <span className="truncate font-medium text-foreground text-xs">{item.value}</span>
               </span>
             );
@@ -95,7 +173,7 @@ export function QuestionResponsesCell({ answers, formatQuestionLabel }: Question
           {remainingCount > 0 && (
             <Badge
               variant="outline"
-              className="border-dashed px-1.5 py-0.5 font-normal text-[11px] text-muted-foreground transition-colors hover:bg-muted"
+              className="shrink-0 border-dashed px-1.5 py-0.5 font-normal text-[11px] text-muted-foreground transition-colors hover:bg-muted"
             >
               +{remainingCount} more
             </Badge>
