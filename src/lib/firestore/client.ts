@@ -431,6 +431,19 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
         updateData.sessions = updatedSessions;
       }
 
+      if (registration.ticket_id && Array.isArray(eventData.tickets)) {
+        const updatedTickets = eventData.tickets.map((t) => {
+          if (t.id === registration.ticket_id) {
+            return {
+              ...t,
+              total_registered: (t.total_registered ?? 0) + 1,
+            };
+          }
+          return t;
+        });
+        updateData.tickets = updatedTickets;
+      }
+
       await updateDoc(eventRef, sanitizeFirestoreData(updateData));
     }
   } catch (err) {
