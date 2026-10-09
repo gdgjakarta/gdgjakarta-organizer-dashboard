@@ -390,15 +390,23 @@ export function EventRegistrationModal({
       const updated = current.includes(option) ? current.filter((item) => item !== option) : [...current, option];
       const question = questions.find((q) => q.id === questionId);
       if (question) {
-        const result = validateQuestionAnswer(question, updated);
-        setFieldErrors((errs) => {
-          if (result.isValid) {
+        if (updated.length > 0) {
+          const result = validateQuestionAnswer(question, updated);
+          setFieldErrors((errs) => {
+            if (result.isValid) {
+              const next = { ...errs };
+              delete next[questionId];
+              return next;
+            }
+            return { ...errs, [questionId]: result.error ?? "Invalid input" };
+          });
+        } else {
+          setFieldErrors((errs) => {
             const next = { ...errs };
             delete next[questionId];
             return next;
-          }
-          return { ...errs, [questionId]: result.error ?? "Invalid input" };
-        });
+          });
+        }
       }
       return { ...prev, [questionId]: updated };
     });
@@ -407,6 +415,11 @@ export function EventRegistrationModal({
   const handleSelectRadioRegular = (question: CustomQuestion, opt: string) => {
     setTouchedFields((prev) => new Set(prev).add(question.id));
     setAnswers((prev) => ({ ...prev, [question.id]: opt }));
+    setOtherInputs((prev) => {
+      const next = { ...prev };
+      delete next[question.id];
+      return next;
+    });
     const result = validateQuestionAnswer(question, opt);
     setFieldErrors((prev) => {
       if (result.isValid) {
@@ -415,6 +428,24 @@ export function EventRegistrationModal({
         return next;
       }
       return { ...prev, [question.id]: result.error ?? "Invalid input" };
+    });
+  };
+
+  const handleUnselectRadioOther = (question: CustomQuestion) => {
+    setAnswers((prev) => {
+      const next = { ...prev };
+      delete next[question.id];
+      return next;
+    });
+    setOtherInputs((prev) => {
+      const next = { ...prev };
+      delete next[question.id];
+      return next;
+    });
+    setFieldErrors((prev) => {
+      const next = { ...prev };
+      delete next[question.id];
+      return next;
     });
   };
 
@@ -496,6 +527,11 @@ export function EventRegistrationModal({
       }, 50);
     } else {
       setAnswers((prev) => ({ ...prev, [question.id]: val }));
+      setOtherInputs((prev) => {
+        const next = { ...prev };
+        delete next[question.id];
+        return next;
+      });
       const result = validateQuestionAnswer(question, val);
       setFieldErrors((prev) => {
         if (result.isValid) {
@@ -1303,7 +1339,18 @@ export function EventRegistrationModal({
                                       onKeyDown={(e) => {
                                         if (e.key === "Enter") e.preventDefault();
                                       }}
-                                      onBlur={(e) => handleBlur(q.id, formatOtherAnswer(e.target.value))}
+                                      onBlur={(e) => {
+                                        const trimmed = e.target.value.trim();
+                                        if (trimmed.length > 0) {
+                                          handleBlur(q.id, formatOtherAnswer(trimmed));
+                                        } else {
+                                          setFieldErrors((prev) => {
+                                            const next = { ...prev };
+                                            delete next[q.id];
+                                            return next;
+                                          });
+                                        }
+                                      }}
                                       className={cn(
                                         "h-8 bg-background/80 text-xs",
                                         errorMessage &&
@@ -1381,6 +1428,11 @@ export function EventRegistrationModal({
                                         value="__other__"
                                         id={`${fieldId}-__other__`}
                                         checked={isOtherSelected}
+                                        onClick={() => {
+                                          if (isOtherSelected) {
+                                            handleUnselectRadioOther(q);
+                                          }
+                                        }}
                                       />
                                       <label
                                         htmlFor={`${fieldId}-__other__`}
@@ -1407,7 +1459,18 @@ export function EventRegistrationModal({
                                         onKeyDown={(e) => {
                                           if (e.key === "Enter") e.preventDefault();
                                         }}
-                                        onBlur={(e) => handleBlur(q.id, formatOtherAnswer(e.target.value))}
+                                        onBlur={(e) => {
+                                          const trimmed = e.target.value.trim();
+                                          if (trimmed.length > 0) {
+                                            handleBlur(q.id, formatOtherAnswer(trimmed));
+                                          } else {
+                                            setFieldErrors((prev) => {
+                                              const next = { ...prev };
+                                              delete next[q.id];
+                                              return next;
+                                            });
+                                          }
+                                        }}
                                         className={cn(
                                           "h-8 bg-background/80 text-xs transition-colors",
                                           isOtherSelected && "border-primary/50 focus-visible:ring-primary/30",
@@ -1510,6 +1573,16 @@ export function EventRegistrationModal({
                                                 ),
                                               };
                                             });
+                                            setOtherInputs((prev) => {
+                                              const next = { ...prev };
+                                              delete next[q.id];
+                                              return next;
+                                            });
+                                            setFieldErrors((prev) => {
+                                              const next = { ...prev };
+                                              delete next[q.id];
+                                              return next;
+                                            });
                                           }
                                         }}
                                         className="shrink-0"
@@ -1550,16 +1623,25 @@ export function EventRegistrationModal({
                                           if (e.key === "Enter") e.preventDefault();
                                         }}
                                         onBlur={(e) => {
-                                          const current = Array.isArray(answers[q.id])
-                                            ? (answers[q.id] as string[])
-                                            : [];
-                                          const filtered = current.filter(
-                                            (it) =>
-                                              typeof it === "string" &&
-                                              !isOtherOption(it) &&
-                                              !it.toLowerCase().startsWith("other:"),
-                                          );
-                                          handleBlur(q.id, [...filtered, formatOtherAnswer(e.target.value)]);
+                                          const trimmed = e.target.value.trim();
+                                          if (trimmed.length > 0) {
+                                            const current = Array.isArray(answers[q.id])
+                                              ? (answers[q.id] as string[])
+                                              : [];
+                                            const filtered = current.filter(
+                                              (it) =>
+                                                typeof it === "string" &&
+                                                !isOtherOption(it) &&
+                                                !it.toLowerCase().startsWith("other:"),
+                                            );
+                                            handleBlur(q.id, [...filtered, formatOtherAnswer(trimmed)]);
+                                          } else {
+                                            setFieldErrors((prev) => {
+                                              const next = { ...prev };
+                                              delete next[q.id];
+                                              return next;
+                                            });
+                                          }
                                         }}
                                         className={cn(
                                           "h-8 bg-background/80 text-xs",

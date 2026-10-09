@@ -186,17 +186,44 @@ export function EditRegistrationModal({
       const updated = current.includes(option) ? current.filter((item) => item !== option) : [...current, option];
       const question = activeQuestions.find((q) => q.id === questionId);
       if (question) {
-        const result = validateQuestionAnswer(question, updated);
-        setFieldErrors((errs) => {
-          if (result.isValid) {
+        if (updated.length > 0) {
+          const result = validateQuestionAnswer(question, updated);
+          setFieldErrors((errs) => {
+            if (result.isValid) {
+              const next = { ...errs };
+              delete next[questionId];
+              return next;
+            }
+            return { ...errs, [questionId]: result.error ?? "Invalid input" };
+          });
+        } else {
+          setFieldErrors((errs) => {
             const next = { ...errs };
             delete next[questionId];
             return next;
-          }
-          return { ...errs, [questionId]: result.error ?? "Invalid input" };
-        });
+          });
+        }
       }
       return { ...prev, [questionId]: updated };
+    });
+  };
+
+  const handleUnselectRadioOther = (questionId: string) => {
+    if (!canEdit) return;
+    setAnswers((prev) => {
+      const next = { ...prev };
+      delete next[questionId];
+      return next;
+    });
+    setOtherInputs((prev) => {
+      const next = { ...prev };
+      delete next[questionId];
+      return next;
+    });
+    setFieldErrors((prev) => {
+      const next = { ...prev };
+      delete next[questionId];
+      return next;
     });
   };
 
@@ -217,6 +244,11 @@ export function EditRegistrationModal({
       }, 50);
     } else {
       setAnswers((prev) => ({ ...prev, [question.id]: val }));
+      setOtherInputs((prev) => {
+        const next = { ...prev };
+        delete next[question.id];
+        return next;
+      });
       const result = validateQuestionAnswer(question, val);
       setFieldErrors((errs) => {
         if (result.isValid) {
@@ -593,7 +625,18 @@ export function EditRegistrationModal({
                                     placeholder="Enter your specific details..."
                                     value={currentOtherText}
                                     onChange={(e) => handleOtherInputChange(q, e.target.value)}
-                                    onBlur={(e) => handleBlur(q.id, formatOtherAnswer(e.target.value))}
+                                    onBlur={(e) => {
+                                      const trimmed = e.target.value.trim();
+                                      if (trimmed.length > 0) {
+                                        handleBlur(q.id, formatOtherAnswer(trimmed));
+                                      } else {
+                                        setFieldErrors((prev) => {
+                                          const next = { ...prev };
+                                          delete next[q.id];
+                                          return next;
+                                        });
+                                      }
+                                    }}
                                     className={cn(
                                       "h-8 bg-background/80 text-xs",
                                       errorMessage &&
@@ -640,6 +683,11 @@ export function EditRegistrationModal({
                                     }, 50);
                                   } else {
                                     setAnswers((prev) => ({ ...prev, [q.id]: val }));
+                                    setOtherInputs((prev) => {
+                                      const next = { ...prev };
+                                      delete next[q.id];
+                                      return next;
+                                    });
                                     const result = validateQuestionAnswer(q, val);
                                     setFieldErrors((errs) => {
                                       if (result.isValid) {
@@ -689,6 +737,11 @@ export function EditRegistrationModal({
                                         value="__other__"
                                         id={`${fieldId}-__other__`}
                                         disabled={!canEdit}
+                                        onClick={() => {
+                                          if (isOtherSelected) {
+                                            handleUnselectRadioOther(q.id);
+                                          }
+                                        }}
                                       />
                                       <label
                                         htmlFor={`${fieldId}-__other__`}
@@ -714,7 +767,18 @@ export function EditRegistrationModal({
                                           }
                                         }}
                                         onChange={(e) => handleOtherInputChange(q, e.target.value)}
-                                        onBlur={(e) => handleBlur(q.id, formatOtherAnswer(e.target.value))}
+                                        onBlur={(e) => {
+                                          const trimmed = e.target.value.trim();
+                                          if (trimmed.length > 0) {
+                                            handleBlur(q.id, formatOtherAnswer(trimmed));
+                                          } else {
+                                            setFieldErrors((prev) => {
+                                              const next = { ...prev };
+                                              delete next[q.id];
+                                              return next;
+                                            });
+                                          }
+                                        }}
                                         className={cn("h-8 bg-background/80 text-xs transition-colors")}
                                       />
                                     </div>
@@ -793,8 +857,22 @@ export function EditRegistrationModal({
                                             setTimeout(() => {
                                               otherInputRefs.current[q.id]?.focus();
                                             }, 50);
-                                          } else if (otherEntry) {
-                                            handleMultiSelectToggle(q.id, otherEntry);
+                                          } else {
+                                            setAnswers((prev) => {
+                                              const cur = Array.isArray(prev[q.id]) ? (prev[q.id] as string[]) : [];
+                                              const filtered = cur.filter((item) => !isOtherOption(item));
+                                              return { ...prev, [q.id]: filtered };
+                                            });
+                                            setOtherInputs((prev) => {
+                                              const next = { ...prev };
+                                              delete next[q.id];
+                                              return next;
+                                            });
+                                            setFieldErrors((prev) => {
+                                              const next = { ...prev };
+                                              delete next[q.id];
+                                              return next;
+                                            });
                                           }
                                         }}
                                       />
@@ -822,7 +900,22 @@ export function EditRegistrationModal({
                                           }
                                         }}
                                         onChange={(e) => handleOtherInputChange(q, e.target.value, true)}
-                                        onBlur={(e) => handleBlur(q.id, formatOtherAnswer(e.target.value))}
+                                        onBlur={(e) => {
+                                          const trimmed = e.target.value.trim();
+                                          if (trimmed.length > 0) {
+                                            const current = Array.isArray(answers[q.id])
+                                              ? (answers[q.id] as string[])
+                                              : [];
+                                            const filtered = current.filter((item) => !isOtherOption(item));
+                                            handleBlur(q.id, [...filtered, formatOtherAnswer(trimmed)]);
+                                          } else {
+                                            setFieldErrors((prev) => {
+                                              const next = { ...prev };
+                                              delete next[q.id];
+                                              return next;
+                                            });
+                                          }
+                                        }}
                                         className={cn("h-8 bg-background/80 text-xs")}
                                       />
                                     </div>
