@@ -26,6 +26,7 @@ import { toast } from "sonner";
 import { GoogleButton } from "@/app/(main)/auth/_components/social-auth/google-button";
 import googleFavicon from "@/app/Google_Favicon.webp";
 import { GdgLogo } from "@/components/gdg-logo";
+import { RoleBadge } from "@/components/role-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -1120,9 +1121,7 @@ export function EventRegistrationModal({
                       {user.name} <span className="font-normal text-muted-foreground text-xs">({user.email})</span>
                     </div>
                   </div>
-                  <Badge variant="secondary" className="text-[10px]">
-                    {user.role}
-                  </Badge>
+                  <RoleBadge role={user.chapterRole || user.role} />
                 </div>
               )}
 

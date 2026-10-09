@@ -4,8 +4,8 @@ import { useState } from "react";
 
 import { ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
 
+import { RoleBadge } from "@/components/role-badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getBevyTeamSettingsUrl } from "@/config/remote-config-utils";
@@ -82,9 +82,7 @@ export function CommunityOrganizersWidget({ organizers, members }: RecentMembers
                   </div>
                 </div>
 
-                <Badge variant="outline" className="shrink-0 font-normal text-[10px]">
-                  {organizer.role || "Organizer"}
-                </Badge>
+                <RoleBadge role={organizer.role || "Organizer"} size="sm" className="shrink-0" />
               </div>
             );
           })
