@@ -166,3 +166,25 @@ export async function updateEventMerchandiseAction(
     return { success: false, error: message };
   }
 }
+
+/**
+ * Update attendee check-in state in Firestore
+ */
+export async function updateRegistrationCheckInAction(
+  registrationId: string,
+  eventId: string,
+  isCheckedIn: boolean,
+  bevyAttendeeId?: number | null,
+  checkinDate?: string | null,
+) {
+  try {
+    const { updateRegistrationCheckIn } = await import("./client");
+    await updateRegistrationCheckIn(registrationId, eventId, isCheckedIn, bevyAttendeeId, checkinDate);
+    await revalidateDashboardPath(`/dashboard/events/${eventId}`);
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to update check-in status.";
+    console.error("[updateRegistrationCheckInAction] error:", message);
+    return { success: false, error: message };
+  }
+}

@@ -486,6 +486,39 @@ export async function updateRegistrationStatus(
   }
 }
 
+export async function updateRegistrationCheckIn(
+  registrationId: string,
+  eventId: string,
+  isCheckedIn: boolean,
+  bevyAttendeeId?: number | null,
+  checkinDate?: string | null,
+): Promise<void> {
+  if (typeof window === "undefined") return;
+  const docRef = doc(db, "event_registrations", registrationId);
+  const now = new Date().toISOString();
+  const updatePayload = sanitizeFirestoreData<Partial<FirestoreRegistration>>({
+    is_checked_in: isCheckedIn,
+    checked_in_at: isCheckedIn ? (checkinDate ?? now) : null,
+    ...(bevyAttendeeId !== undefined ? { bevy_attendee_id: bevyAttendeeId } : {}),
+    ...(checkinDate !== undefined ? { checkin_date: checkinDate } : {}),
+  });
+
+  await updateDoc(docRef, updatePayload);
+
+  // Update event checked-in counter
+  try {
+    const allRegs = await getEventRegistrations(eventId);
+    const checkedInCount = allRegs.filter((r) => Boolean(r.is_checked_in)).length;
+    const eventRef = doc(db, "events", eventId);
+    await updateDoc(eventRef, {
+      total_checked_in: checkedInCount,
+      updated_at: now,
+    });
+  } catch (err) {
+    console.warn("[Firestore] Failed to recalculate checked-in counter:", err);
+  }
+}
+
 export async function updateEventMerchandise(eventId: string, merchandise: EventMerchandiseItem[]): Promise<void> {
   if (typeof window === "undefined") return;
   const eventRef = doc(db, "events", String(eventId));
