@@ -181,6 +181,10 @@ export interface FirestoreRegistration {
   reviewed_by_id?: string;
   reviewed_by_name?: string;
   checked_in_at?: string;
+  is_checked_in?: boolean;
+  bevy_attendee_id?: number | null;
+  checkin_date?: string | null;
+  attendee_code?: string | null;
 }
 
 export interface FirestoreSyncMetadata {
