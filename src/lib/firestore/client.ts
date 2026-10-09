@@ -536,16 +536,27 @@ export async function updateRegistrationStatus(
 
   const updatedLogs = [...existingLogs, logEntry];
 
-  const updatePayload = sanitizeFirestoreData<Partial<FirestoreRegistration>>({
+  const isPending = status === "pending";
+
+  const updatePayload = sanitizeFirestoreData<Record<string, unknown>>({
     status,
-    reviewed_at: now,
-    ...(reviewer
+    ...(isPending
       ? {
-          reviewed_by_id: reviewer.id,
-          reviewed_by_name: reviewer.name,
-          ...(reviewer.email ? { reviewed_by_email: reviewer.email } : {}),
+          reviewed_at: deleteField(),
+          reviewed_by_id: deleteField(),
+          reviewed_by_name: deleteField(),
+          reviewed_by_email: deleteField(),
         }
-      : {}),
+      : {
+          reviewed_at: now,
+          ...(reviewer
+            ? {
+                reviewed_by_id: reviewer.id,
+                reviewed_by_name: reviewer.name,
+                ...(reviewer.email ? { reviewed_by_email: reviewer.email } : { reviewed_by_email: deleteField() }),
+              }
+            : {}),
+        }),
     ...(notes !== undefined ? { notes } : {}),
     status_logs: updatedLogs,
     updated_at: now,

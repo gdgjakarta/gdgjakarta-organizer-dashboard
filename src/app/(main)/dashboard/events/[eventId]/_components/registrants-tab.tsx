@@ -901,20 +901,17 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         const reviewerPayload = user ? { id: user.id, name: user.name, email: user.email } : undefined;
         const now = new Date().toISOString();
         await updateRegistrationStatusAction(registrationId, eventId, newStatus, reviewerPayload);
+        const isPending = newStatus === "pending";
         setRegistrationsList((prev) =>
           prev.map((r) =>
             r.id === registrationId
               ? {
                   ...r,
                   status: newStatus,
-                  reviewed_at: now,
-                  ...(user
-                    ? {
-                        reviewed_by_id: user.id,
-                        reviewed_by_name: user.name,
-                        reviewed_by_email: user.email,
-                      }
-                    : {}),
+                  reviewed_at: isPending ? undefined : now,
+                  reviewed_by_id: isPending ? undefined : (user?.id ?? r.reviewed_by_id),
+                  reviewed_by_name: isPending ? undefined : (user?.name ?? r.reviewed_by_name),
+                  reviewed_by_email: isPending ? undefined : (user?.email ?? r.reviewed_by_email),
                 }
               : r,
           ),
@@ -924,14 +921,10 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
             ? {
                 ...prev,
                 status: newStatus,
-                reviewed_at: now,
-                ...(user
-                  ? {
-                      reviewed_by_id: user.id,
-                      reviewed_by_name: user.name,
-                      reviewed_by_email: user.email,
-                    }
-                  : {}),
+                reviewed_at: isPending ? undefined : now,
+                reviewed_by_id: isPending ? undefined : (user?.id ?? prev.reviewed_by_id),
+                reviewed_by_name: isPending ? undefined : (user?.name ?? prev.reviewed_by_name),
+                reviewed_by_email: isPending ? undefined : (user?.email ?? prev.reviewed_by_email),
               }
             : prev,
         );
@@ -1027,20 +1020,17 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
           updateRegistrationStatusAction(id, eventId, newStatus, reviewerPayload),
         );
         await Promise.all(promises);
+        const isPending = newStatus === "pending";
         setRegistrationsList((prev) =>
           prev.map((r) =>
             selectedIds.has(r.id)
               ? {
                   ...r,
                   status: newStatus,
-                  reviewed_at: now,
-                  ...(user
-                    ? {
-                        reviewed_by_id: user.id,
-                        reviewed_by_name: user.name,
-                        reviewed_by_email: user.email,
-                      }
-                    : {}),
+                  reviewed_at: isPending ? undefined : now,
+                  reviewed_by_id: isPending ? undefined : (user?.id ?? r.reviewed_by_id),
+                  reviewed_by_name: isPending ? undefined : (user?.name ?? r.reviewed_by_name),
+                  reviewed_by_email: isPending ? undefined : (user?.email ?? r.reviewed_by_email),
                 }
               : r,
           ),
