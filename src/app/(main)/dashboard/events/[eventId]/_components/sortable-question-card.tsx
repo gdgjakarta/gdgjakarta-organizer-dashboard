@@ -4,7 +4,7 @@ import { useState } from "react";
 
 import { RestrictToVerticalAxis } from "@dnd-kit/abstract/modifiers";
 import { useSortable } from "@dnd-kit/react/sortable";
-import { ChevronDown, ChevronUp, GripVertical, Maximize2, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Copy, GripVertical, Maximize2, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,7 @@ interface SortableQuestionCardProps {
   totalQuestions: number;
   onUpdate: (id: string, updates: Partial<CustomQuestion>) => void;
   onRemove: (id: string) => void;
+  onDuplicate: (id: string) => void;
   onMoveUp: (index: number) => void;
   onMoveDown: (index: number) => void;
 }
@@ -42,6 +43,7 @@ export function SortableQuestionCard({
   totalQuestions,
   onUpdate,
   onRemove,
+  onDuplicate,
   onMoveUp,
   onMoveDown,
 }: SortableQuestionCardProps) {
@@ -144,6 +146,18 @@ export function SortableQuestionCard({
             aria-label="Move question down"
           >
             <ChevronDown className="size-3.5" />
+          </Button>
+
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost"
+            className="size-7 text-muted-foreground hover:bg-muted hover:text-foreground"
+            onClick={() => onDuplicate(q.id)}
+            title="Duplicate question"
+            aria-label="Duplicate question"
+          >
+            <Copy className="size-3.5" />
           </Button>
 
           <Button

@@ -17,7 +17,6 @@ import {
   Layers,
   Link2,
   Plus,
-  Presentation,
   Sparkles,
   Trash2,
 } from "lucide-react";
@@ -65,7 +64,7 @@ import {
   QUICK_RSVP_TEMPLATE,
   ROAD_TO_DEVFEST_TEMPLATE,
 } from "@/lib/events/registration-defaults";
-import type { CustomQuestion, EventSession, FirestoreEvent, SessionRelatedLink } from "@/lib/firestore/types";
+import type { CustomQuestion, EventSession, FirestoreEvent } from "@/lib/firestore/types";
 
 import { HtmlEditText } from "./html-edit-text";
 import { SortableQuestionCard } from "./sortable-question-card";
@@ -406,6 +405,31 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
 
   const handleRemoveQuestion = (id: string) => {
     setQuestions(questions.filter((q) => q.id !== id));
+  };
+
+  const handleDuplicateQuestion = (id: string) => {
+    const targetIndex = questions.findIndex((q) => q.id === id);
+    if (targetIndex === -1) return;
+
+    const targetQuestion = questions[targetIndex];
+    if (!targetQuestion) return;
+
+    const duplicatedQ: CustomQuestion = {
+      ...targetQuestion,
+      id: `q_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      label: targetQuestion.label ? `${targetQuestion.label} (Copy)` : "",
+      options: targetQuestion.options ? [...targetQuestion.options] : undefined,
+    };
+
+    setQuestions((prev) => {
+      const next = [...prev];
+      next.splice(targetIndex + 1, 0, duplicatedQ);
+      return next;
+    });
+
+    toast.success(
+      targetQuestion.label ? `Duplicated "${targetQuestion.label}"` : `Duplicated Question #${targetIndex + 1}`,
+    );
   };
 
   const handleUpdateQuestion = (id: string, updates: Partial<CustomQuestion>) => {
@@ -1527,6 +1551,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
                     totalQuestions={questions.length}
                     onUpdate={handleUpdateQuestion}
                     onRemove={handleRemoveQuestion}
+                    onDuplicate={handleDuplicateQuestion}
                     onMoveUp={handleMoveQuestionUp}
                     onMoveDown={handleMoveQuestionDown}
                   />
