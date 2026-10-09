@@ -71,7 +71,26 @@ export interface EventMerchandiseItem {
   image_url: string;
   stock?: number | null; // null or undefined means unlimited
   variations: MerchandiseVariation[];
+  max_per_person?: number | null; // Limit items per person (null = unlimited or event-level limit)
   status: "active" | "draft" | "out_of_stock";
+  created_at?: string;
+  updated_at?: string;
+}
+
+export type TicketType = "free" | "paid" | "commitment_fee";
+
+export interface EventTicketTier {
+  id: string;
+  name: string; // e.g. "General Admission (Free)", "VIP Community Pass", "Commitment Deposit"
+  description?: string;
+  type: TicketType; // "free" | "paid" | "commitment_fee"
+  price: number; // In IDR (0 for free, amount for paid or refundable commitment fee)
+  capacity?: number | null; // null or undefined means unlimited
+  total_registered?: number;
+  max_per_person?: number | null; // maximum tickets allowed per person (default 1)
+  status: "active" | "sold_out" | "hidden";
+  sales_start_date?: string | null;
+  sales_end_date?: string | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -116,7 +135,10 @@ export interface FirestoreEvent {
   total_checked_in: number;
   custom_questions?: CustomQuestion[];
   sessions?: EventSession[];
+  tickets?: EventTicketTier[];
+  max_tickets_per_person?: number | null; // Limit tickets per person (default 1)
   merchandise?: EventMerchandiseItem[];
+  max_merchandise_per_person?: number | null; // Limit merchandise items per person (null = unlimited)
   webhook_url?: string | null;
   registration_status?: "Draft" | "Published" | "Closed";
   registration_start_date?: string | null;
@@ -172,6 +194,14 @@ export interface FirestoreMember {
   updated_at: string;
 }
 
+export interface SelectedMerchandiseOrder {
+  id: string;
+  name: string;
+  quantity: number;
+  price: number;
+  selected_variations?: Record<string, string>;
+}
+
 export interface FirestoreRegistration {
   id: string; // `${event_id}_${member_id}`
   event_id: string;
@@ -187,6 +217,11 @@ export interface FirestoreRegistration {
   session_title?: string | null;
   notes?: string;
   ticket_tier?: string;
+  ticket_id?: string | null;
+  ticket_name?: string | null;
+  ticket_type?: TicketType;
+  ticket_price?: number;
+  selected_merchandise?: SelectedMerchandiseOrder[];
   registered_at: string;
   reviewed_at?: string;
   reviewed_by_id?: string;

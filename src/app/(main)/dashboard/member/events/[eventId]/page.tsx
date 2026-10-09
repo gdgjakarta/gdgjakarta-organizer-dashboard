@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 
-import { getBevyChapterEvents, getBevyEventById, resolveEventAudience } from "@/lib/bevy/client";
+import { getAllBevyChapterEvents, getBevyEventById, resolveEventAudience } from "@/lib/bevy/client";
 import type { FirestoreEvent } from "@/lib/firestore/types";
 
 import { MemberEventDetail } from "./_components/member-event-detail";
@@ -19,9 +19,6 @@ export default async function MemberEventDetailPage({ params }: MemberEventDetai
   try {
     const direct = await getBevyEventById(eventId);
     if (direct) {
-      if (direct.is_hidden || (direct as { hidden?: boolean }).hidden) {
-        notFound();
-      }
       const { audienceType, isVirtual } = resolveEventAudience(direct.audience_type, direct.is_virtual_event);
       event = {
         id: String(direct.id),
@@ -51,20 +48,14 @@ export default async function MemberEventDetailPage({ params }: MemberEventDetai
         total_registrations: direct.total_attendees ?? 0,
         total_approved: direct.total_attendees ?? 0,
         total_checked_in: direct.checkin_count ?? 0,
-        is_hidden: false,
+        is_hidden: Boolean(direct.is_hidden ?? (direct as { hidden?: boolean }).hidden),
         is_test: Boolean(direct.is_test),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
     } else {
-      const chapterEvents = await getBevyChapterEvents(undefined, 100, 1, false, "Published");
-      const matched = chapterEvents?.results?.find(
-        (e) =>
-          String(e.id) === eventId &&
-          !e.is_hidden &&
-          !(e as { hidden?: boolean }).hidden &&
-          (e.status ? e.status.toLowerCase() === "published" : true),
-      );
+      const { results: chapterEvents } = await getAllBevyChapterEvents(undefined, true, "All");
+      const matched = chapterEvents.find((e) => String(e.id) === eventId);
       if (matched) {
         const { audienceType, isVirtual } = resolveEventAudience(matched.audience_type, matched.is_virtual_event);
         event = {
@@ -95,11 +86,31 @@ export default async function MemberEventDetailPage({ params }: MemberEventDetai
           total_registrations: matched.total_attendees ?? 0,
           total_approved: matched.total_attendees ?? 0,
           total_checked_in: matched.checkin_count ?? 0,
+          is_hidden: Boolean(matched.is_hidden ?? (matched as { hidden?: boolean }).hidden),
           is_test: Boolean(matched.is_test),
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         };
       }
+    }
+
+    // Merge or fallback to Firestore
+    try {
+      const { getFirestoreEventById } = await import("@/lib/firestore/client");
+      const firestoreDoc = await getFirestoreEventById(eventId);
+      if (firestoreDoc) {
+        event = event
+          ? {
+              ...event,
+              ...firestoreDoc,
+              id: String(firestoreDoc.id || event.id),
+              picture_url: firestoreDoc.picture_url || firestoreDoc.banner_url || event.picture_url,
+              banner_url: firestoreDoc.banner_url || firestoreDoc.picture_url || event.banner_url,
+            }
+          : firestoreDoc;
+      }
+    } catch {
+      // Ignore firestore load error
     }
   } catch (err) {
     console.error("[MemberEventDetailPage] Failed to fetch Bevy event:", err);

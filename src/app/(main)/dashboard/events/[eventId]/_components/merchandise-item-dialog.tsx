@@ -48,6 +48,7 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
   const [imageUrl, setImageUrl] = useState("");
   const [hasStockLimit, setHasStockLimit] = useState(false);
   const [stock, setStock] = useState<number | null>(null);
+  const [maxPerPerson, setMaxPerPerson] = useState<number | null>(null);
   const [variations, setVariations] = useState<MerchandiseVariation[]>([]);
   const [status, setStatus] = useState<"active" | "draft" | "out_of_stock">("active");
 
@@ -66,6 +67,7 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
       setImageUrl(item.image_url || "");
       setHasStockLimit(item.stock !== null && item.stock !== undefined);
       setStock(item.stock ?? null);
+      setMaxPerPerson(item.max_per_person ?? null);
       setVariations(JSON.parse(JSON.stringify(item.variations)));
       setStatus(item.status);
     } else {
@@ -77,6 +79,7 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
       setImageUrl("");
       setHasStockLimit(false);
       setStock(null);
+      setMaxPerPerson(null);
       setVariations([{ name: "Size", options: ["S", "M", "L", "XL", "XXL"] }]);
       setStatus("active");
     }
@@ -133,6 +136,7 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
       tag: tag.trim() || "Free Perk",
       image_url: imageUrl.trim(),
       stock: hasStockLimit && stock !== null ? Number(stock) : null,
+      max_per_person: maxPerPerson && maxPerPerson > 0 ? Number(maxPerPerson) : null,
       variations: variations.filter((v) => v.name.trim().length > 0),
       status,
       created_at: item?.created_at ?? new Date().toISOString(),
@@ -318,17 +322,41 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
                 />
               </div>
 
-              {hasStockLimit && (
-                <div className="pt-2">
+              <div className="pt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {hasStockLimit ? (
+                  <div className="space-y-1">
+                    <Label htmlFor="item-stock-limit" className="text-xs">
+                      Total Stock Quota
+                    </Label>
+                    <Input
+                      id="item-stock-limit"
+                      type="number"
+                      min="1"
+                      placeholder="Available quota (e.g. 100)"
+                      value={stock ?? ""}
+                      onChange={(e) => setStock(e.target.value ? Number(e.target.value) : null)}
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                ) : (
+                  <div className="flex items-center text-xs text-muted-foreground">Unlimited stock quota</div>
+                )}
+                <div className="space-y-1">
+                  <Label htmlFor="item-max-person" className="text-xs">
+                    Max Units / Person (Optional)
+                  </Label>
                   <Input
+                    id="item-max-person"
                     type="number"
                     min="1"
-                    placeholder="Available quota (e.g. 100)"
-                    value={stock ?? ""}
-                    onChange={(e) => setStock(e.target.value ? Number(e.target.value) : null)}
+                    max="10"
+                    placeholder="e.g. 1 (blank = no limit)"
+                    value={maxPerPerson ?? ""}
+                    onChange={(e) => setMaxPerPerson(e.target.value ? Number(e.target.value) : null)}
+                    className="h-8 text-xs"
                   />
                 </div>
-              )}
+              </div>
             </div>
 
             {/* Variations Manager (Sizes, Colors, etc.) */}

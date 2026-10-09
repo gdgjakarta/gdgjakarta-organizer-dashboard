@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 
-import { FileSpreadsheet, Mail, Package, Sparkles, Users } from "lucide-react";
+import { FileSpreadsheet, Mail, Package, Sparkles, Ticket, Users } from "lucide-react";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getAllBevyChapterEvents, getBevyEventById, resolveEventAudience } from "@/lib/bevy/client";
@@ -12,6 +12,7 @@ import { EventDetailHeader } from "./_components/event-detail-header";
 import { HighlightsMediaTab } from "./_components/highlights-media-tab";
 import { MerchandiseTab } from "./_components/merchandise-tab";
 import { RegistrantsTab } from "./_components/registrants-tab";
+import { TicketsTab } from "./_components/tickets-tab";
 
 export const dynamic = "force-dynamic";
 
@@ -102,6 +103,25 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
         };
       }
     }
+
+    // Merge or fallback to Firestore
+    try {
+      const { getFirestoreEventById } = await import("@/lib/firestore/client");
+      const firestoreDoc = await getFirestoreEventById(eventId);
+      if (firestoreDoc) {
+        event = event
+          ? {
+              ...event,
+              ...firestoreDoc,
+              id: String(firestoreDoc.id || event.id),
+              picture_url: firestoreDoc.picture_url || firestoreDoc.banner_url || event.picture_url,
+              banner_url: firestoreDoc.banner_url || firestoreDoc.picture_url || event.banner_url,
+            }
+          : firestoreDoc;
+      }
+    } catch {
+      // Ignore firestore load error
+    }
   } catch (error) {
     console.error("[Event Details] Failed to load event:", error);
   }
@@ -119,7 +139,7 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
       />
 
       <Tabs defaultValue="registrants" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2 sm:w-[840px] sm:grid-cols-5">
+        <TabsList className="grid w-full grid-cols-2 sm:w-[980px] sm:grid-cols-6">
           <TabsTrigger value="registrants" className="gap-1.5 text-xs sm:text-sm">
             <Users className="size-4" />
             Registrants
@@ -127,6 +147,10 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
           <TabsTrigger value="form" className="gap-1.5 text-xs sm:text-sm">
             <FileSpreadsheet className="size-4" />
             Registration Form
+          </TabsTrigger>
+          <TabsTrigger value="tickets" className="gap-1.5 text-xs sm:text-sm">
+            <Ticket className="size-4" />
+            Tickets
           </TabsTrigger>
           <TabsTrigger value="merch" className="gap-1.5 text-xs sm:text-sm">
             <Package className="size-4" />
@@ -148,6 +172,10 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
 
         <TabsContent value="form" className="space-y-4">
           <CustomFormTab event={event} />
+        </TabsContent>
+
+        <TabsContent value="tickets" className="space-y-4">
+          <TicketsTab event={event} />
         </TabsContent>
 
         <TabsContent value="merch" className="space-y-4">

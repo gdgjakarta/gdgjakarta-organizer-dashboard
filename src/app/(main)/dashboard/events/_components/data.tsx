@@ -25,7 +25,7 @@ export type EventRow = {
 };
 
 export const eventFilters = {
-  status: ["All", "Published", "Upcoming", "Past", "Draft", "Canceled", "Test"],
+  status: ["All", "Published", "Upcoming", "Past", "Draft", "Canceled", "Hidden", "Test"],
   eventType: [
     "All",
     "External registration",

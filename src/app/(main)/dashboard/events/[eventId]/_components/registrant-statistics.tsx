@@ -2,19 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 
-import {
-  BarChart3,
-  Briefcase,
-  Check,
-  CheckCircle2,
-  Clock,
-  Filter,
-  Layers,
-  Sparkles,
-  UserCheck,
-  Users,
-  UserX,
-} from "lucide-react";
+import { BarChart3, Clock, Layers, UserCheck, Users, UserX } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,6 +11,7 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -200,7 +189,7 @@ export function RegistrantStatistics({
   // Helper to compute distributions for any field
   const computeDistribution = useCallback(
     (fieldId: string): { items: DistributionItem[]; totalResponses: number } => {
-      if (targetPool.length === 0) {
+      if (!fieldId || targetPool.length === 0) {
         return { items: [], totalResponses: 0 };
       }
 
@@ -264,11 +253,13 @@ export function RegistrantStatistics({
   );
 
   const primaryDistribution = useMemo(() => {
+    if (!selectedField) return { items: [], totalResponses: 0 };
     return computeDistribution(selectedField);
   }, [selectedField, computeDistribution]);
 
   // Active field metadata
   const currentFieldMeta = useMemo(() => {
+    if (!selectedField) return null;
     return (
       availableFields.find((f) => f.id === selectedField) ?? {
         id: selectedField,
@@ -280,9 +271,21 @@ export function RegistrantStatistics({
 
   const togglePinField = (fieldId: string) => {
     if (pinnedFields.includes(fieldId)) {
-      setPinnedFields((prev) => prev.filter((id) => id !== fieldId));
+      const nextPinned = pinnedFields.filter((id) => id !== fieldId);
+      setPinnedFields(nextPinned);
+      if (selectedField === fieldId) {
+        if (nextPinned.length > 0) {
+          setSelectedField(nextPinned[0]);
+        } else {
+          setSelectedField("");
+        }
+      }
     } else {
-      setPinnedFields((prev) => [...prev, fieldId]);
+      const nextPinned = [...pinnedFields, fieldId];
+      setPinnedFields(nextPinned);
+      if (!selectedField) {
+        setSelectedField(fieldId);
+      }
     }
   };
 
@@ -297,6 +300,193 @@ export function RegistrantStatistics({
     if (onSelectSearchFilter && item.key !== "Not Specified") {
       onSelectSearchFilter(item.key);
     }
+  };
+
+  const renderAnalyticsContent = () => {
+    if (targetPool.length === 0) {
+      return (
+        <div className="rounded-xl border border-dashed py-8 text-center text-muted-foreground text-xs">
+          No registrants available in this filter scope to compute statistics.
+        </div>
+      );
+    }
+
+    if (pinnedFields.length === 0 || !selectedField) {
+      return (
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-12 text-center">
+          <div className="mb-3 flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+            <Layers className="size-5" />
+          </div>
+          <div className="font-semibold text-sm">No Pinned Statistics</div>
+          <p className="mt-1 max-w-sm text-xs text-muted-foreground">
+            All form fields have been unpinned. Select or pin a questionnaire response field to display demographic
+            statistics and attendee breakdowns.
+          </p>
+          {availableFields.length > 0 && (
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-1.5">
+              {availableFields.slice(0, 4).map((f) => (
+                <Button
+                  key={f.id}
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setSelectedField(f.id);
+                    setPinnedFields([f.id]);
+                  }}
+                  className="h-7 rounded-full px-3 text-xs"
+                >
+                  Pin {f.label}
+                </Button>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (primaryDistribution.items.length === 0) {
+      return (
+        <div className="rounded-xl border border-dashed py-8 text-center text-muted-foreground text-xs">
+          No recorded answers found for &quot;{currentFieldMeta?.label}&quot;.
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-4">
+        {/* Distribution Header & Count info */}
+        <div className="flex items-center justify-between text-xs">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-foreground text-sm">{currentFieldMeta?.label}</span>
+            <Badge variant="outline" className="text-[10px] text-muted-foreground">
+              {primaryDistribution.totalResponses} respondents
+            </Badge>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => togglePinField(selectedField)}
+              className="h-6 px-1.5 text-[11px] text-muted-foreground hover:text-destructive"
+              title="Unpin this field"
+            >
+              Unpin
+            </Button>
+          </div>
+          <span className="text-muted-foreground text-[11px]">Click any option below to filter registrant table</span>
+        </div>
+
+        {/* Segmented Distribution Meter Bar */}
+        <div className="flex h-3.5 w-full overflow-hidden rounded-full bg-muted shadow-inner">
+          {primaryDistribution.items.map((item) => {
+            if (item.percentage <= 0) return null;
+            return (
+              <div
+                key={item.key}
+                style={{ width: `${Math.max(item.percentage, 1.5)}%` }}
+                className={cn("h-full transition-all duration-300", item.colorClass)}
+                title={`${item.label}: ${item.count} (${item.percentage.toFixed(1)}%)`}
+              />
+            );
+          })}
+        </div>
+
+        {/* Detailed Breakdown Options Grid */}
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+          {primaryDistribution.items.map((item) => (
+            <button
+              type="button"
+              key={item.key}
+              onClick={() => handleFilterClick(item)}
+              className={cn(
+                "group flex flex-col justify-between rounded-xl border p-3 text-left transition-all hover:border-primary/50 hover:shadow-xs",
+                item.bgLightClass,
+              )}
+            >
+              <div className="flex w-full items-start justify-between gap-2">
+                <span className="font-medium text-foreground text-xs leading-snug group-hover:text-primary transition-colors">
+                  {item.label}
+                </span>
+                <span className="font-bold text-xs">{item.percentage.toFixed(1)}%</span>
+              </div>
+
+              <div className="mt-2.5 flex items-center justify-between text-[11px] text-muted-foreground">
+                <span>{item.count} attendees</span>
+                <span className="opacity-0 group-hover:opacity-100 text-primary transition-opacity text-[10px]">
+                  Filter ↗
+                </span>
+              </div>
+            </button>
+          ))}
+        </div>
+
+        {/* Secondary Pinned Metrics (if organizer pinned other fields) */}
+        {pinnedFields.filter((f) => f !== selectedField).length > 0 && (
+          <div className="mt-6 space-y-3 border-t pt-4">
+            <div className="font-semibold text-foreground text-xs">Pinned Comparisons:</div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              {pinnedFields
+                .filter((f) => f !== selectedField)
+                .map((fieldId) => {
+                  const dist = computeDistribution(fieldId);
+                  const meta = availableFields.find((f) => f.id === fieldId) || { id: fieldId, label: fieldId };
+
+                  return (
+                    <div key={fieldId} className="rounded-xl border bg-card p-3.5 shadow-xs">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-semibold text-foreground">{meta.label}</span>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setSelectedField(fieldId)}
+                            className="h-6 text-[10px] text-primary"
+                          >
+                            View Detailed
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => togglePinField(fieldId)}
+                            className="h-6 px-1 text-[10px] text-muted-foreground hover:text-destructive"
+                            title="Unpin comparison"
+                          >
+                            Unpin
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Mini bar */}
+                      <div className="my-2 flex h-2 w-full overflow-hidden rounded-full bg-muted">
+                        {dist.items.map((item) => (
+                          <div
+                            key={item.key}
+                            style={{ width: `${item.percentage}%` }}
+                            className={cn("h-full", item.colorClass)}
+                          />
+                        ))}
+                      </div>
+
+                      {/* Top 3 pills */}
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {dist.items.slice(0, 3).map((item) => (
+                          <Badge key={item.key} variant="outline" className="text-[10px] font-normal">
+                            {item.label}: <strong className="ml-1">{item.percentage.toFixed(0)}%</strong>
+                          </Badge>
+                        ))}
+                        {dist.items.length > 3 && (
+                          <Badge variant="secondary" className="text-[10px]">
+                            +{dist.items.length - 3} more
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -459,7 +649,15 @@ export function RegistrantStatistics({
 
               {/* Field dropdown selector */}
               <div className="w-[220px]">
-                <Select value={selectedField} onValueChange={setSelectedField}>
+                <Select
+                  value={selectedField || undefined}
+                  onValueChange={(val) => {
+                    setSelectedField(val);
+                    if (!pinnedFields.includes(val)) {
+                      setPinnedFields((prev) => [...prev, val]);
+                    }
+                  }}
+                >
                   <SelectTrigger className="h-8 text-xs">
                     <SelectValue placeholder="Choose form field..." />
                   </SelectTrigger>
@@ -481,19 +679,35 @@ export function RegistrantStatistics({
                     Pinned ({pinnedFields.length})
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56 text-xs">
+                <DropdownMenuContent align="end" className="w-56 max-h-72 overflow-y-auto text-xs">
                   <DropdownMenuLabel>Pinned Comparison Fields</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  {availableFields.slice(0, 10).map((field) => (
+                  {availableFields.map((field) => (
                     <DropdownMenuCheckboxItem
                       key={field.id}
                       checked={pinnedFields.includes(field.id)}
                       onCheckedChange={() => togglePinField(field.id)}
+                      onSelect={(event) => event.preventDefault()}
                       className="text-xs"
                     >
                       {field.label}
                     </DropdownMenuCheckboxItem>
                   ))}
+                  {pinnedFields.length > 0 && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onSelect={() => {
+                          setPinnedFields([]);
+                          setSelectedField("");
+                        }}
+                        className="justify-center text-center text-xs cursor-pointer"
+                      >
+                        Unpin all fields
+                      </DropdownMenuItem>
+                    </>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
@@ -507,7 +721,12 @@ export function RegistrantStatistics({
                 key={f.id}
                 size="sm"
                 variant={selectedField === f.id ? "secondary" : "outline"}
-                onClick={() => setSelectedField(f.id)}
+                onClick={() => {
+                  setSelectedField(f.id);
+                  if (!pinnedFields.includes(f.id)) {
+                    setPinnedFields((prev) => [...prev, f.id]);
+                  }
+                }}
                 className={cn(
                   "h-6 rounded-full px-2.5 text-[11px]",
                   selectedField === f.id && "bg-primary/10 font-semibold text-primary border-primary/30",
@@ -519,137 +738,7 @@ export function RegistrantStatistics({
           </div>
         </CardHeader>
 
-        <CardContent className="space-y-5 pt-0">
-          {targetPool.length === 0 && (
-            <div className="rounded-xl border border-dashed py-8 text-center text-muted-foreground text-xs">
-              No registrants available in this filter scope to compute statistics.
-            </div>
-          )}
-
-          {targetPool.length > 0 && primaryDistribution.items.length === 0 && (
-            <div className="rounded-xl border border-dashed py-8 text-center text-muted-foreground text-xs">
-              No recorded answers found for &quot;{currentFieldMeta.label}&quot;.
-            </div>
-          )}
-
-          {targetPool.length > 0 && primaryDistribution.items.length > 0 && (
-            <div className="space-y-4">
-              {/* Distribution Header & Count info */}
-              <div className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-foreground text-sm">{currentFieldMeta.label}</span>
-                  <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                    {primaryDistribution.totalResponses} respondents
-                  </Badge>
-                </div>
-                <span className="text-muted-foreground text-[11px]">
-                  Click any option below to filter registrant table
-                </span>
-              </div>
-
-              {/* Segmented Distribution Meter Bar */}
-              <div className="flex h-3.5 w-full overflow-hidden rounded-full bg-muted shadow-inner">
-                {primaryDistribution.items.map((item) => {
-                  if (item.percentage <= 0) return null;
-                  return (
-                    <div
-                      key={item.key}
-                      style={{ width: `${Math.max(item.percentage, 1.5)}%` }}
-                      className={cn("h-full transition-all duration-300", item.colorClass)}
-                      title={`${item.label}: ${item.count} (${item.percentage.toFixed(1)}%)`}
-                    />
-                  );
-                })}
-              </div>
-
-              {/* Detailed Breakdown Options Grid */}
-              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-                {primaryDistribution.items.map((item) => (
-                  <button
-                    type="button"
-                    key={item.key}
-                    onClick={() => handleFilterClick(item)}
-                    className={cn(
-                      "group flex flex-col justify-between rounded-xl border p-3 text-left transition-all hover:border-primary/50 hover:shadow-xs",
-                      item.bgLightClass,
-                    )}
-                  >
-                    <div className="flex w-full items-start justify-between gap-2">
-                      <span className="font-medium text-foreground text-xs leading-snug group-hover:text-primary transition-colors">
-                        {item.label}
-                      </span>
-                      <span className="font-bold text-xs">{item.percentage.toFixed(1)}%</span>
-                    </div>
-
-                    <div className="mt-2.5 flex items-center justify-between text-[11px] text-muted-foreground">
-                      <span>{item.count} attendees</span>
-                      <span className="opacity-0 group-hover:opacity-100 text-primary transition-opacity text-[10px]">
-                        Filter ↗
-                      </span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-
-              {/* Secondary Pinned Metrics (if organizer pinned other fields) */}
-              {pinnedFields.filter((f) => f !== selectedField).length > 0 && (
-                <div className="mt-6 space-y-3 border-t pt-4">
-                  <div className="font-semibold text-foreground text-xs">Pinned Comparisons:</div>
-
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    {pinnedFields
-                      .filter((f) => f !== selectedField)
-                      .map((fieldId) => {
-                        const dist = computeDistribution(fieldId);
-                        const meta = availableFields.find((f) => f.id === fieldId) || { id: fieldId, label: fieldId };
-
-                        return (
-                          <div key={fieldId} className="rounded-xl border bg-card p-3.5 shadow-xs">
-                            <div className="flex items-center justify-between text-xs">
-                              <span className="font-semibold text-foreground">{meta.label}</span>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => setSelectedField(fieldId)}
-                                className="h-6 text-[10px] text-primary"
-                              >
-                                View Detailed
-                              </Button>
-                            </div>
-
-                            {/* Mini bar */}
-                            <div className="my-2 flex h-2 w-full overflow-hidden rounded-full bg-muted">
-                              {dist.items.map((item) => (
-                                <div
-                                  key={item.key}
-                                  style={{ width: `${item.percentage}%` }}
-                                  className={cn("h-full", item.colorClass)}
-                                />
-                              ))}
-                            </div>
-
-                            {/* Top 3 pills */}
-                            <div className="flex flex-wrap gap-1.5 pt-1">
-                              {dist.items.slice(0, 3).map((item) => (
-                                <Badge key={item.key} variant="outline" className="text-[10px] font-normal">
-                                  {item.label}: <strong className="ml-1">{item.percentage.toFixed(0)}%</strong>
-                                </Badge>
-                              ))}
-                              {dist.items.length > 3 && (
-                                <Badge variant="secondary" className="text-[10px]">
-                                  +{dist.items.length - 3} more
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </CardContent>
+        <CardContent className="space-y-5 pt-0">{renderAnalyticsContent()}</CardContent>
       </Card>
     </div>
   );

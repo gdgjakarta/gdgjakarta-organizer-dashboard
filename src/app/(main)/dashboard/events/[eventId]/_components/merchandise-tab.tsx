@@ -9,6 +9,8 @@ import { FloatingSaveBar } from "@/app/(main)/dashboard/_components/floating-sav
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { updateEventMerchandiseAction } from "@/lib/firestore/actions";
 import type { EventMerchandiseItem, FirestoreEvent } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
@@ -23,6 +25,9 @@ interface MerchandiseTabProps {
 export function MerchandiseTab({ event }: MerchandiseTabProps) {
   // Start with empty array or existing event.merchandise — NO hardcoded default items!
   const [items, setItems] = useState<EventMerchandiseItem[]>(event.merchandise ?? []);
+  const [maxMerchandisePerPerson, setMaxMerchandisePerPerson] = useState<number | null>(
+    event.max_merchandise_per_person ?? null,
+  );
   const [editingItem, setEditingItem] = useState<EventMerchandiseItem | null>(null);
   const [isItemDialogOpen, setIsItemDialogOpen] = useState(false);
   const [isTemplateDialogOpen, setIsTemplateDialogOpen] = useState(false);
@@ -39,6 +44,9 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
         const docData = await getFirestoreEventById(String(event.id));
         if (docData?.merchandise && Array.isArray(docData.merchandise)) {
           setItems(docData.merchandise);
+        }
+        if (docData?.max_merchandise_per_person !== undefined) {
+          setMaxMerchandisePerPerson(docData.max_merchandise_per_person);
         }
       } catch (err) {
         console.warn("[MerchandiseTab] Failed to fetch latest event merchandise:", err);
@@ -105,7 +113,7 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
 
     startTransition(async () => {
       try {
-        const res = await updateEventMerchandiseAction(String(event.id), items);
+        const res = await updateEventMerchandiseAction(String(event.id), items, maxMerchandisePerPerson);
         if (res.success) {
           setIsDirty(false);
           toast.success("Event merchandise saved successfully!");
@@ -120,6 +128,7 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
 
   const handleDiscard = () => {
     setItems(event.merchandise ?? []);
+    setMaxMerchandisePerPerson(event.max_merchandise_per_person ?? null);
     setIsDirty(false);
     toast.info("Unsaved merchandise changes discarded.");
   };
@@ -157,6 +166,50 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
         </CardHeader>
 
         <CardContent className="space-y-6">
+          {/* Purchase Limits Box */}
+          <div className="grid grid-cols-1 gap-4 rounded-xl border bg-muted/20 p-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="max-merch-person" className="text-xs font-semibold">
+                  Global Limit: Max Merchandise Items per Attendee
+                </Label>
+                <Badge variant="outline" className="text-[10px] font-mono">
+                  {maxMerchandisePerPerson ? `${maxMerchandisePerPerson} Items / Person` : "Unlimited"}
+                </Badge>
+              </div>
+              <Input
+                id="max-merch-person"
+                type="number"
+                min={1}
+                max={20}
+                placeholder="e.g. 2 (Leave blank for no limit)"
+                value={maxMerchandisePerPerson ?? ""}
+                onChange={(e) => {
+                  setMaxMerchandisePerPerson(e.target.value ? Number(e.target.value) : null);
+                  setIsDirty(true);
+                }}
+                className="h-8 text-xs bg-background"
+              />
+              <p className="text-[11px] text-muted-foreground leading-normal">
+                Restricts the maximum total merchandise items that a single attendee can add during registration.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <span className="text-xs font-semibold">Configured Swag & Merchandise</span>
+              <div className="flex h-8 items-center gap-2 rounded-md border border-border/70 bg-background px-3 text-xs font-medium text-foreground">
+                <Package className="size-3.5 text-primary" />
+                <span>
+                  {items.length} item{items.length === 1 ? "" : "s"} ({items.filter((i) => i.is_free).length} Free,{" "}
+                  {items.filter((i) => !i.is_free).length} Paid)
+                </span>
+              </div>
+              <p className="text-[11px] text-muted-foreground leading-normal">
+                Active items appear on the registration checkout modal as add-ons.
+              </p>
+            </div>
+          </div>
+
           {items.length === 0 ? (
             /* Empty State: No items pre-selected or forced */
             <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/80 bg-muted/20 px-6 py-14 text-center">

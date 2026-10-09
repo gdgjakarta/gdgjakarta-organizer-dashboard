@@ -53,7 +53,7 @@ export const DEFAULT_COMBINED_QUESTIONS: CustomQuestion[] = [
     type: "text",
     required: false,
     placeholder: "https://linkedin.com/in/username",
-    description: "Please make sure your LinkedIn profile is publicly accessible.",
+    description: "Please make sure your LinkedIn profile is publicly accessible and not set to a private account.",
     section: "Personal & Contact Information",
     validation_type: "isLinkedInProfileUrl",
   },
@@ -706,7 +706,8 @@ export const CURATED_FREE_TEMPLATE: CustomQuestion[] = [
     type: "text",
     required: true,
     placeholder: "https://linkedin.com/in/username",
-    description: "Public LinkedIn profile for organizing committee review.",
+    description:
+      "Public LinkedIn profile for organizing committee review. Note: Profile must not be a private account so organizers can review and verify your background.",
     section: "Personal & Contact Information",
     validation_type: "isLinkedInProfileUrl",
   },
@@ -819,7 +820,8 @@ export const CURATED_COMMITMENT_FEE_TEMPLATE: CustomQuestion[] = [
     type: "text",
     required: true,
     placeholder: "https://linkedin.com/in/username",
-    description: "Public LinkedIn profile for organizing committee review.",
+    description:
+      "Public LinkedIn profile for organizing committee review. Note: Profile must not be a private account so organizers can review and verify your background.",
     section: "Personal & Contact Information",
     validation_type: "isLinkedInProfileUrl",
   },
@@ -959,7 +961,8 @@ export const CURATED_MULTI_FREE_TEMPLATE: CustomQuestion[] = [
     type: "text",
     required: true,
     placeholder: "https://linkedin.com/in/username",
-    description: "Public LinkedIn profile for organizing committee review.",
+    description:
+      "Public LinkedIn profile for organizing committee review. Note: Profile must not be a private account so organizers can review and verify your background.",
     section: "Personal & Contact Information",
     validation_type: "isLinkedInProfileUrl",
   },
@@ -1087,7 +1090,8 @@ export const CURATED_MULTI_COMMITMENT_TEMPLATE: CustomQuestion[] = [
     type: "text",
     required: true,
     placeholder: "https://linkedin.com/in/username",
-    description: "Public LinkedIn profile for organizing committee review.",
+    description:
+      "Public LinkedIn profile for organizing committee review. Note: Profile must not be a private account so organizers can review and verify your background.",
     section: "Personal & Contact Information",
     validation_type: "isLinkedInProfileUrl",
   },
@@ -1228,7 +1232,8 @@ export const CURATED_MULTI_PAID_TEMPLATE: CustomQuestion[] = [
     type: "text",
     required: true,
     placeholder: "https://linkedin.com/in/username",
-    description: "Public LinkedIn profile for organizing committee review.",
+    description:
+      "Public LinkedIn profile for organizing committee review. Note: Profile must not be a private account so organizers can review and verify your background.",
     section: "Personal & Contact Information",
     validation_type: "isLinkedInProfileUrl",
   },
@@ -1477,7 +1482,8 @@ export const EVENT_FORMAT_TEMPLATES: EventFormatTemplate[] = [
     name: "Curated Registration (Free)",
     badge: "Curated Free",
     category: "curated",
-    description: "Curated free admission reviewed by organizers. Requires Work Email and LinkedIn Profile.",
+    description:
+      "Curated free admission reviewed by organizers. Requires Work Email and Public LinkedIn Profile (not a private account).",
     requires_approval: true,
     questions: CURATED_FREE_TEMPLATE,
   },
@@ -1486,7 +1492,8 @@ export const EVENT_FORMAT_TEMPLATES: EventFormatTemplate[] = [
     name: "Curated Registration (Commitment Fee)",
     badge: "Curated Fee",
     category: "curated",
-    description: "Curated admission with refundable commitment fee. Requires Work Email and LinkedIn Profile.",
+    description:
+      "Curated admission with refundable commitment fee. Requires Work Email and Public LinkedIn Profile (not a private account).",
     requires_approval: true,
     questions: CURATED_COMMITMENT_FEE_TEMPLATE,
   },
@@ -1495,7 +1502,8 @@ export const EVENT_FORMAT_TEMPLATES: EventFormatTemplate[] = [
     name: "Curated Registration + Multiple Sessions (Free)",
     badge: "Curated + Sessions",
     category: "curated",
-    description: "Curated multi-track breakout sessions with free admission. Requires Work Email and LinkedIn Profile.",
+    description:
+      "Curated multi-track breakout sessions with free admission. Requires Work Email and Public LinkedIn Profile (not a private account).",
     requires_approval: true,
     sessions: DEFAULT_GDG_SESSIONS,
     questions: CURATED_MULTI_FREE_TEMPLATE,
@@ -1506,7 +1514,7 @@ export const EVENT_FORMAT_TEMPLATES: EventFormatTemplate[] = [
     badge: "Curated + Fee",
     category: "curated",
     description:
-      "Curated multi-track sessions with refundable commitment fee. Requires Work Email and LinkedIn Profile.",
+      "Curated multi-track sessions with refundable commitment fee. Requires Work Email and Public LinkedIn Profile (not a private account).",
     requires_approval: true,
     sessions: DEFAULT_GDG_SESSIONS,
     questions: CURATED_MULTI_COMMITMENT_TEMPLATE,
@@ -1517,7 +1525,7 @@ export const EVENT_FORMAT_TEMPLATES: EventFormatTemplate[] = [
     badge: "Curated + Paid",
     category: "curated",
     description:
-      "Curated multi-track conference with paid ticketing & invoicing. Requires Work Email and LinkedIn Profile.",
+      "Curated multi-track conference with paid ticketing & invoicing. Requires Work Email and Public LinkedIn Profile (not a private account).",
     requires_approval: true,
     sessions: DEFAULT_GDG_SESSIONS,
     questions: CURATED_MULTI_PAID_TEMPLATE,

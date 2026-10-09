@@ -34,54 +34,67 @@ export default async function Page() {
 
   try {
     const [eventsResponse, teamMembers, membersResponse, chapterSlim] = await Promise.all([
-      getAllEvents(BEVY_CONFIG.chapterId, false, "All"),
+      getAllEvents(BEVY_CONFIG.chapterId, true, "All"),
       getChapterTeam(BEVY_CONFIG.chapterId),
       getBevyChapterMembers(undefined, 50, 1),
       getBevyChapterSlim(),
     ]);
 
     const rawEvents = eventsResponse?.results ?? [];
-    totalEventsCount = eventsResponse?.count ?? rawEvents.length;
+
+    const isTestEvent = (e: { is_test?: boolean; title?: string }) => {
+      if (e.is_test || (e as { is_test?: boolean }).is_test) return true;
+      const title = (e.title ?? "").trim().toLowerCase();
+      return (
+        title.startsWith("[test]") ||
+        title.startsWith("(test)") ||
+        title === "test" ||
+        title.startsWith("test ") ||
+        title.startsWith("test:") ||
+        title.startsWith("test -")
+      );
+    };
+
+    const nonTestEvents = rawEvents.filter((e) => !isTestEvent(e));
+    totalEventsCount = nonTestEvents.length;
     totalMembersCount = chapterSlim?.members_count ?? membersResponse?.count;
 
-    events = rawEvents
-      .filter((e) => !e.is_hidden && !(e as { hidden?: boolean }).hidden)
-      .map((e) => {
-        const { audienceType, isVirtual } = resolveEventAudience(e.audience_type, e.is_virtual_event);
-        return {
-          id: String(e.id),
-          title: e.title || "Untitled Event",
-          description: e.description,
-          description_short: e.description_short,
-          status: (e.status as FirestoreEvent["status"]) || "Published",
-          start_date: e.start_date || new Date().toISOString(),
-          end_date: e.end_date || e.start_date || new Date().toISOString(),
-          picture_url: e.picture?.thumbnail_url || e.picture?.url,
-          banner_url: e.banner?.url,
-          event_type_title: e.event_type_title || "Standard Event",
-          audience_type: audienceType,
-          is_virtual: isVirtual,
-          venue:
-            e.venue_name || e.venue_address || e.venue_city
-              ? {
-                  name: e.venue_name,
-                  address: e.venue_address,
-                  city: e.venue_city,
-                }
-              : undefined,
-          url: e.url,
-          static_url: e.static_url,
-          tags: e.tags || [],
-          requires_approval: false,
-          total_registrations: e.total_attendees ?? 0,
-          total_approved: e.total_attendees ?? 0,
-          total_checked_in: e.checkin_count ?? 0,
-          is_hidden: Boolean(e.is_hidden || (e as { hidden?: boolean }).hidden),
-          is_test: Boolean(e.is_test),
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        };
-      });
+    events = nonTestEvents.map((e) => {
+      const { audienceType, isVirtual } = resolveEventAudience(e.audience_type, e.is_virtual_event);
+      return {
+        id: String(e.id),
+        title: e.title || "Untitled Event",
+        description: e.description,
+        description_short: e.description_short,
+        status: (e.status as FirestoreEvent["status"]) || "Published",
+        start_date: e.start_date || new Date().toISOString(),
+        end_date: e.end_date || e.start_date || new Date().toISOString(),
+        picture_url: e.picture?.thumbnail_url || e.picture?.url,
+        banner_url: e.banner?.url,
+        event_type_title: e.event_type_title || "Standard Event",
+        audience_type: audienceType,
+        is_virtual: isVirtual,
+        venue:
+          e.venue_name || e.venue_address || e.venue_city
+            ? {
+                name: e.venue_name,
+                address: e.venue_address,
+                city: e.venue_city,
+              }
+            : undefined,
+        url: e.url,
+        static_url: e.static_url,
+        tags: e.tags || [],
+        requires_approval: false,
+        total_registrations: e.total_attendees ?? 0,
+        total_approved: e.total_attendees ?? 0,
+        total_checked_in: e.checkin_count ?? 0,
+        is_hidden: Boolean(e.is_hidden || (e as { hidden?: boolean }).hidden),
+        is_test: Boolean(e.is_test),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+    });
 
     activeEventsCount = events.filter(isEventActive).length;
 

@@ -106,13 +106,7 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
   const eventMap = useMemo(() => {
     const map = new Map<string, FirestoreEvent>();
     for (const ev of allEvents) {
-      if (
-        !ev.is_hidden &&
-        !(ev as { hidden?: boolean }).hidden &&
-        (ev.status.toLowerCase() === "published" || ev.status.toLowerCase() === "completed")
-      ) {
-        map.set(String(ev.id), ev);
-      }
+      map.set(String(ev.id), ev);
     }
     return map;
   }, [allEvents]);
@@ -253,7 +247,7 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
                 {/* Event Picture / Banner */}
                 <Link href={`/dashboard/member/events/${reg.event_id}`} className="block">
                   <EventCardImage
-                    src={ev?.picture_url}
+                    src={ev?.picture_url || ev?.banner_url}
                     alt={reg.event_title}
                     className="transition-transform duration-300 group-hover:scale-105"
                   >

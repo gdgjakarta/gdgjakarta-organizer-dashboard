@@ -21,6 +21,7 @@ import {
   RotateCcw,
   ShieldCheck,
   Sparkles,
+  Trash2,
   User,
   UserCheck,
   XCircle,
@@ -41,6 +42,7 @@ interface ApplicantDetailDialogProps {
   onClose: () => void;
   onStatusChange: (registrationId: string, newStatus: RegistrationStatus) => void;
   onToggleCheckIn?: (registration: FirestoreRegistration, isCheckedIn: boolean) => void;
+  onDelete?: (registration: FirestoreRegistration) => void;
   customQuestions?: CustomQuestion[];
   isPending?: boolean;
 }
@@ -132,6 +134,7 @@ export function ApplicantDetailDialog({
   onClose,
   onStatusChange,
   onToggleCheckIn,
+  onDelete,
   customQuestions = [],
   isPending = false,
 }: ApplicantDetailDialogProps) {
@@ -647,6 +650,21 @@ export function ApplicantDetailDialog({
               >
                 <Clock className="mr-1.5 size-3.5" />
                 Set Pending
+              </Button>
+            )}
+
+            {onDelete && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-destructive/30 text-destructive text-xs hover:bg-destructive/10 hover:text-destructive"
+                disabled={isPending}
+                onClick={() => {
+                  onDelete(registration);
+                }}
+              >
+                <Trash2 className="mr-1.5 size-3.5" />
+                Remove Attendee
               </Button>
             )}
           </div>

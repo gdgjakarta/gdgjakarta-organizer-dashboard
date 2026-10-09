@@ -6,6 +6,7 @@ import { format, parseISO } from "date-fns";
 import {
   Check,
   Clock,
+  Copy,
   Download,
   Eye,
   Filter,
@@ -14,6 +15,7 @@ import {
   RefreshCw,
   RotateCcw,
   Search,
+  Trash2,
   UserCheck,
   Users,
   UserX,
@@ -21,6 +23,16 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,6 +42,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
@@ -37,7 +50,12 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { BevyAttendee } from "@/lib/bevy/types";
 import { DEFAULT_COMBINED_QUESTIONS } from "@/lib/events/registration-defaults";
-import { updateRegistrationCheckInAction, updateRegistrationStatusAction } from "@/lib/firestore/actions";
+import {
+  deleteBatchEventRegistrationsAction,
+  deleteEventRegistrationAction,
+  updateRegistrationCheckInAction,
+  updateRegistrationStatusAction,
+} from "@/lib/firestore/actions";
 import type {
   CustomQuestion,
   EventSession,
@@ -273,6 +291,9 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const [customQuestions, setCustomQuestions] = useState<CustomQuestion[]>(event?.custom_questions ?? []);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [inspectRegistration, setInspectRegistration] = useState<FirestoreRegistration | null>(null);
+  const [deleteConfirmRegistration, setDeleteConfirmRegistration] = useState<FirestoreRegistration | null>(null);
+  const [isBatchDeleteConfirmOpen, setIsBatchDeleteConfirmOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Dynamic table column customization and question filters
   const [selectedQuestionColumns, setSelectedQuestionColumns] = useState<string[]>([]);
@@ -858,6 +879,75 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     });
   };
 
+  const handleDeleteRegistration = (registration: FirestoreRegistration) => {
+    startTransition(async () => {
+      setIsDeleting(true);
+      // Optimistic removal from table
+      setRegistrationsList((prev) => prev.filter((r) => r.id !== registration.id));
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(registration.id);
+        return next;
+      });
+      if (inspectRegistration?.id === registration.id) {
+        setInspectRegistration(null);
+      }
+      setDeleteConfirmRegistration(null);
+
+      try {
+        const res = await deleteEventRegistrationAction(registration.id, eventId);
+        if (res.success) {
+          toast.success(`Removed ${registration.member_name}. They can now re-register.`);
+        } else {
+          // Revert on failure
+          setRegistrationsList((prev) => [registration, ...prev]);
+          toast.error(res.error || "Failed to remove attendee registration.");
+        }
+      } catch (err) {
+        console.error("[handleDeleteRegistration] error:", err);
+        setRegistrationsList((prev) => [registration, ...prev]);
+        toast.error("Failed to remove attendee registration.");
+      } finally {
+        setIsDeleting(false);
+      }
+    });
+  };
+
+  const handleBatchDelete = () => {
+    if (selectedIds.size === 0) return;
+    const idsToDelete = Array.from(selectedIds);
+    const regsToDelete = registrationsList.filter((r) => selectedIds.has(r.id));
+    const count = idsToDelete.length;
+
+    startTransition(async () => {
+      setIsDeleting(true);
+      // Optimistic removal
+      setRegistrationsList((prev) => prev.filter((r) => !selectedIds.has(r.id)));
+      setSelectedIds(new Set());
+      if (inspectRegistration && selectedIds.has(inspectRegistration.id)) {
+        setInspectRegistration(null);
+      }
+      setIsBatchDeleteConfirmOpen(false);
+
+      try {
+        const res = await deleteBatchEventRegistrationsAction(idsToDelete, eventId);
+        if (res.success) {
+          toast.success(`Removed ${count} attendee${count === 1 ? "" : "s"}. They can now re-register.`);
+        } else {
+          // Revert on failure
+          setRegistrationsList((prev) => [...regsToDelete, ...prev]);
+          toast.error(res.error || "Failed to remove selected attendees.");
+        }
+      } catch (err) {
+        console.error("[handleBatchDelete] error:", err);
+        setRegistrationsList((prev) => [...regsToDelete, ...prev]);
+        toast.error("Failed to remove selected attendees.");
+      } finally {
+        setIsDeleting(false);
+      }
+    });
+  };
+
   const toggleSelectAll = () => {
     if (selectedIds.size === filtered.length) {
       setSelectedIds(new Set());
@@ -1018,10 +1108,20 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 variant="outline"
                 className="gap-1 text-destructive"
                 onClick={() => handleBatchAction("rejected")}
-                disabled={isPending}
+                disabled={isPending || isDeleting}
               >
                 <UserX className="size-3.5" />
                 Reject Selected
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                onClick={() => setIsBatchDeleteConfirmOpen(true)}
+                disabled={isPending || isDeleting}
+              >
+                <Trash2 className="size-3.5" />
+                Remove Selected
               </Button>
             </div>
           )}
@@ -1548,9 +1648,18 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                         toast.success("Email copied to clipboard");
                                       }}
                                     >
+                                      <Copy className="mr-2 size-3.5" />
                                       Copy email address
                                     </DropdownMenuItem>
                                   )}
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+                                    onClick={() => setDeleteConfirmRegistration(reg)}
+                                  >
+                                    <Trash2 className="mr-2 size-3.5" />
+                                    Remove attendee
+                                  </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
                             </div>
@@ -1571,9 +1680,73 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         onClose={() => setInspectRegistration(null)}
         onStatusChange={handleStatusChange}
         onToggleCheckIn={handleToggleCheckIn}
+        onDelete={(reg) => {
+          setInspectRegistration(null);
+          setDeleteConfirmRegistration(reg);
+        }}
         customQuestions={customQuestions}
         isPending={isPending || isCheckingInId === inspectRegistration?.id}
       />
+
+      {/* Confirmation Dialog: Single Attendee Removal */}
+      <AlertDialog
+        open={Boolean(deleteConfirmRegistration)}
+        onOpenChange={(open) => !open && setDeleteConfirmRegistration(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Attendee</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove{" "}
+              <strong className="text-foreground">{deleteConfirmRegistration?.member_name}</strong>
+              {deleteConfirmRegistration?.member_email ? ` (${deleteConfirmRegistration.member_email})` : ""}?
+              <br className="my-1.5" />
+              Their registration record will be permanently deleted, freeing up attendee capacity and allowing them to
+              re-register for this event.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={isDeleting}
+              onClick={() => {
+                if (deleteConfirmRegistration) {
+                  handleDeleteRegistration(deleteConfirmRegistration);
+                }
+              }}
+            >
+              {isDeleting ? "Removing..." : "Remove Attendee"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmation Dialog: Batch Attendee Removal */}
+      <AlertDialog open={isBatchDeleteConfirmOpen} onOpenChange={(open) => !open && setIsBatchDeleteConfirmOpen(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Selected Attendees</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove the <strong className="text-foreground">{selectedIds.size}</strong>{" "}
+              selected attendee{selectedIds.size === 1 ? "" : "s"}?
+              <br className="my-1.5" />
+              Their registration records will be permanently deleted, freeing up attendee capacity and allowing them to
+              re-register for this event.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={isDeleting}
+              onClick={handleBatchDelete}
+            >
+              {isDeleting ? "Removing..." : `Remove ${selectedIds.size} Attendee${selectedIds.size === 1 ? "" : "s"}`}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

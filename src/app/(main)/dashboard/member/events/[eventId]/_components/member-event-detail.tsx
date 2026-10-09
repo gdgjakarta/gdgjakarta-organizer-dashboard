@@ -106,6 +106,8 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
           setIsTransitioning(true);
           setRegistration(found);
           setTimeout(() => setIsTransitioning(false), 1500);
+        } else {
+          setRegistration(null);
         }
       } catch (err) {
         console.error("[MemberEventDetail] Failed to check registration:", err);

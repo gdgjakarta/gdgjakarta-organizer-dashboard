@@ -987,6 +987,13 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
                 When enabled, new registrants are marked as <strong>Pending Review</strong> and must be approved by an
                 organizer in the Registrants tab before their ticket is confirmed.
               </p>
+              {requiresApproval && (
+                <div className="mt-2 rounded-md border border-blue-500/20 bg-blue-500/10 p-2.5 text-xs text-blue-800 dark:text-blue-300">
+                  <span className="font-semibold">💡 Curation Requirement Note:</span> Registrants must provide a public
+                  LinkedIn profile that is <strong>not set to a private account</strong> so the organizing committee can
+                  review and verify their experience.
+                </div>
+              )}
             </div>
           </div>
 

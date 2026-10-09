@@ -116,6 +116,8 @@ export function EventRegistrationModal({
           setLocalReg(found);
           onSuccess?.(found);
           setTimeout(() => setIsTransitioning(false), 1500);
+        } else {
+          setLocalReg(null);
         }
       } catch (err) {
         console.error("[EventRegistrationModal] failed to check registration status:", err);

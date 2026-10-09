@@ -63,24 +63,48 @@ export function EventDetailHeader({
   });
 
   useEffect(() => {
-    setLiveTotals((prev) => ({
-      totalRegistrations: Math.max(prev.totalRegistrations, totalRegistrations),
-      totalApproved: Math.max(prev.totalApproved, totalApproved),
-      totalRejected: Math.max(prev.totalRejected, totalRejected),
-      totalPending: Math.max(prev.totalPending, totalPending),
-    }));
+    setLiveTotals({
+      totalRegistrations,
+      totalApproved,
+      totalRejected,
+      totalPending,
+    });
   }, [totalRegistrations, totalApproved, totalRejected, totalPending]);
 
   useEffect(() => {
-    if (!event.id) return;
+    const targetEventId = String(event.id || "");
+    if (!targetEventId) return;
     let unsubscribe: () => void = () => {
       // No-op initial cleanup
     };
 
     async function subscribeTotals() {
       try {
-        const { subscribeEventRegistrations } = await import("@/lib/firestore/client");
-        unsubscribe = subscribeEventRegistrations(String(event.id), (list) => {
+        const { getEventRegistrations, subscribeEventRegistrations } = await import("@/lib/firestore/client");
+
+        // 1. Initial direct fetch
+        const directList = await getEventRegistrations(targetEventId);
+        if (directList) {
+          const approvedCount = directList.filter((r) => {
+            const s = (r.status || "").toLowerCase().trim();
+            return s === "approved" || s === "attended" || s === "confirmed" || s === "registered";
+          }).length;
+          const rejectedCount = directList.filter((r) => (r.status || "").toLowerCase().trim() === "rejected").length;
+          const pendingCount = directList.filter((r) => {
+            const s = (r.status || "").toLowerCase().trim();
+            return s === "pending" || s === "applied" || s === "review" || !s;
+          }).length;
+
+          setLiveTotals({
+            totalRegistrations: directList.length,
+            totalApproved: approvedCount,
+            totalRejected: rejectedCount,
+            totalPending: pendingCount,
+          });
+        }
+
+        // 2. Real-time subscription
+        unsubscribe = subscribeEventRegistrations(targetEventId, (list) => {
           if (list) {
             const approvedCount = list.filter((r) => {
               const s = (r.status || "").toLowerCase().trim();
@@ -93,8 +117,8 @@ export function EventDetailHeader({
             }).length;
 
             setLiveTotals({
-              totalRegistrations: list.length > 0 ? list.length : totalRegistrations,
-              totalApproved: list.length > 0 ? approvedCount : totalApproved,
+              totalRegistrations: list.length,
+              totalApproved: approvedCount,
               totalRejected: rejectedCount,
               totalPending: pendingCount,
             });
@@ -110,7 +134,7 @@ export function EventDetailHeader({
     return () => {
       unsubscribe();
     };
-  }, [event.id, totalRegistrations, totalApproved]);
+  }, [event.id]);
 
   const handleSync = () => {
     startTransition(async () => {

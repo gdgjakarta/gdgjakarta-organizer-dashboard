@@ -201,6 +201,7 @@ export const eventsColumns: ColumnDef<DataTableFeatures, EventRow>[] = [
       if (!filterValue || filterValue === "All") return true;
       if (filterValue === "Upcoming") return row.original.isUpcoming;
       if (filterValue === "Past") return !row.original.isUpcoming;
+      if (filterValue === "Hidden") return Boolean(row.original.isHidden);
       if (filterValue === "Test") return Boolean(row.original.isTest);
       if (filterValue === "Published")
         return row.original.status === "Published" || row.original.status === "Completed";

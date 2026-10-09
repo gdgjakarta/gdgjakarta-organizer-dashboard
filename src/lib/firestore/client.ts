@@ -2,6 +2,7 @@
 
 import {
   collection,
+  deleteDoc,
   deleteField,
   doc,
   type Firestore,
@@ -15,6 +16,7 @@ import {
   setDoc,
   updateDoc,
   where,
+  writeBatch,
 } from "firebase/firestore";
 
 export { deleteField };
@@ -66,6 +68,7 @@ import type {
   EventEmailTemplates,
   EventMerchandiseItem,
   EventSession,
+  EventTicketTier,
   FirestoreEvent,
   FirestoreMember,
   FirestoreRegistration,
@@ -619,13 +622,166 @@ export async function updateRegistrationCheckIn(
   }
 }
 
-export async function updateEventMerchandise(eventId: string, merchandise: EventMerchandiseItem[]): Promise<void> {
+/**
+ * Permanently deletes an event registration document and recalculates event counters,
+ * freeing up capacity and allowing the attendee to re-register again.
+ */
+export async function deleteEventRegistration(registrationId: string, eventId: string): Promise<void> {
+  if (typeof window === "undefined") return;
+  const docRef = doc(db, "event_registrations", registrationId);
+  const snap = await getDoc(docRef);
+  if (!snap.exists()) {
+    return;
+  }
+  const regData = snap.data() as FirestoreRegistration;
+
+  // 1. Delete registration doc
+  await deleteDoc(docRef);
+
+  // 2. Decrement or recalculate event counters
+  try {
+    const eventIdStr = String(eventId);
+    const eventRef = doc(db, "events", eventIdStr);
+    const eventSnap = await getDoc(eventRef);
+    if (eventSnap.exists()) {
+      const eventData = eventSnap.data() as FirestoreEvent;
+      const currentTotal = typeof eventData.total_registrations === "number" ? eventData.total_registrations : 1;
+      const now = new Date().toISOString();
+
+      const allRegs = await getEventRegistrations(eventIdStr);
+      const approvedCount = allRegs.filter((r) => r.status === "approved" || r.status === "attended").length;
+      const checkedInCount = allRegs.filter((r) => Boolean(r.is_checked_in)).length;
+
+      const updateData: Record<string, unknown> = {
+        total_registrations: Math.max(0, currentTotal - 1),
+        total_approved: approvedCount,
+        total_checked_in: checkedInCount,
+        updated_at: now,
+      };
+
+      const sessionId = regData.session_id ?? (regData.answers?.session_id as string | undefined);
+      if (sessionId && Array.isArray(eventData.sessions)) {
+        updateData.sessions = eventData.sessions.map((sess) => {
+          if (sess.id === sessionId) {
+            return {
+              ...sess,
+              total_registered: Math.max(0, (sess.total_registered || 1) - 1),
+            };
+          }
+          return sess;
+        });
+      }
+
+      await updateDoc(eventRef, sanitizeFirestoreData(updateData));
+    }
+  } catch (err) {
+    console.warn("[Firestore] Failed to update event counters on registration deletion:", err);
+  }
+}
+
+/**
+ * Permanently deletes multiple event registration documents in batch and recalculates event counters.
+ */
+export async function deleteBatchEventRegistrations(registrationIds: string[], eventId: string): Promise<void> {
+  if (typeof window === "undefined" || registrationIds.length === 0) return;
+
+  const batch = writeBatch(db);
+  const regsToDelete: FirestoreRegistration[] = [];
+
+  for (const regId of registrationIds) {
+    const regRef = doc(db, "event_registrations", regId);
+    const snap = await getDoc(regRef);
+    if (snap.exists()) {
+      regsToDelete.push(snap.data() as FirestoreRegistration);
+      batch.delete(regRef);
+    }
+  }
+
+  if (regsToDelete.length === 0) return;
+
+  await batch.commit();
+
+  // Recalculate event counters
+  try {
+    const eventIdStr = String(eventId);
+    const eventRef = doc(db, "events", eventIdStr);
+    const eventSnap = await getDoc(eventRef);
+    if (eventSnap.exists()) {
+      const eventData = eventSnap.data() as FirestoreEvent;
+      const currentTotal =
+        typeof eventData.total_registrations === "number" ? eventData.total_registrations : regsToDelete.length;
+      const now = new Date().toISOString();
+
+      const allRegs = await getEventRegistrations(eventIdStr);
+      const approvedCount = allRegs.filter((r) => r.status === "approved" || r.status === "attended").length;
+      const checkedInCount = allRegs.filter((r) => Boolean(r.is_checked_in)).length;
+
+      const updateData: Record<string, unknown> = {
+        total_registrations: Math.max(0, currentTotal - regsToDelete.length),
+        total_approved: approvedCount,
+        total_checked_in: checkedInCount,
+        updated_at: now,
+      };
+
+      if (Array.isArray(eventData.sessions)) {
+        const sessionCountsToRemove = new Map<string, number>();
+        for (const reg of regsToDelete) {
+          const sId = reg.session_id ?? (reg.answers?.session_id as string | undefined);
+          if (sId) {
+            sessionCountsToRemove.set(sId, (sessionCountsToRemove.get(sId) ?? 0) + 1);
+          }
+        }
+        if (sessionCountsToRemove.size > 0) {
+          updateData.sessions = eventData.sessions.map((sess) => {
+            const countToRemove = sessionCountsToRemove.get(sess.id) || 0;
+            return {
+              ...sess,
+              total_registered: Math.max(0, (sess.total_registered || 0) - countToRemove),
+            };
+          });
+        }
+      }
+
+      await updateDoc(eventRef, sanitizeFirestoreData(updateData));
+    }
+  } catch (err) {
+    console.warn("[Firestore] Failed to update event counters on batch registration deletion:", err);
+  }
+}
+
+export async function updateEventTickets(
+  eventId: string,
+  tickets: EventTicketTier[],
+  maxTicketsPerPerson?: number | null,
+): Promise<void> {
   if (typeof window === "undefined") return;
   const eventRef = doc(db, "events", String(eventId));
-  const sanitized = sanitizeFirestoreData({
+  const updatePayload: Record<string, unknown> = {
+    tickets,
+    updated_at: new Date().toISOString(),
+  };
+  if (maxTicketsPerPerson !== undefined) {
+    updatePayload.max_tickets_per_person = maxTicketsPerPerson;
+  }
+  const sanitized = sanitizeFirestoreData(updatePayload);
+  await setDoc(eventRef, sanitized, { merge: true });
+}
+
+export async function updateEventMerchandise(
+  eventId: string,
+  merchandise: EventMerchandiseItem[],
+  maxMerchandisePerPerson?: number | null,
+): Promise<void> {
+  if (typeof window === "undefined") return;
+  const eventRef = doc(db, "events", String(eventId));
+  const updatePayload: Record<string, unknown> = {
     merchandise,
     updated_at: new Date().toISOString(),
-  });
+  };
+  if (maxMerchandisePerPerson !== undefined) {
+    updatePayload.max_merchandise_per_person = maxMerchandisePerPerson;
+  }
+  const sanitized = sanitizeFirestoreData(updatePayload);
   await setDoc(eventRef, sanitized, { merge: true });
 }
 

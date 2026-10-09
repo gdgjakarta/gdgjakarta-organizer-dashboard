@@ -177,15 +177,36 @@ export async function savePartnershipContentAction(content: import("@/lib/conten
 }
 
 /**
- * Update event merchandise items
+ * Update event tickets and per-person purchase limits
+ */
+export async function updateEventTicketsAction(
+  eventId: string,
+  tickets: import("./types").EventTicketTier[],
+  maxTicketsPerPerson?: number | null,
+) {
+  try {
+    const { updateEventTickets } = await import("./client");
+    await updateEventTickets(eventId, tickets, maxTicketsPerPerson);
+    await revalidateDashboardPath(`/dashboard/events/${eventId}`);
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to save tickets.";
+    console.error("[updateEventTicketsAction] error:", message);
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * Update event merchandise items and purchase limits
  */
 export async function updateEventMerchandiseAction(
   eventId: string,
   merchandise: import("./types").EventMerchandiseItem[],
+  maxMerchandisePerPerson?: number | null,
 ) {
   try {
     const { updateEventMerchandise } = await import("./client");
-    await updateEventMerchandise(eventId, merchandise);
+    await updateEventMerchandise(eventId, merchandise, maxMerchandisePerPerson);
     await revalidateDashboardPath(`/dashboard/events/${eventId}`);
     return { success: true };
   } catch (err) {
@@ -258,6 +279,50 @@ export async function updateEventHighlightsMediaAction(
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to save highlights and media.";
     console.error("[updateEventHighlightsMediaAction] error:", message);
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * Remove an event registration so the attendee can re-register again.
+ */
+export async function deleteEventRegistrationAction(registrationId: string, eventId: string) {
+  try {
+    const { deleteEventRegistration } = await import("./client");
+    await deleteEventRegistration(registrationId, eventId);
+    await revalidateDashboardPath(`/dashboard/events/${eventId}`);
+    await revalidateDashboardPath("/dashboard/events");
+    await revalidateDashboardPath("/dashboard/organizer");
+    await revalidateDashboardPath("/dashboard/member");
+    await revalidateDashboardPath("/dashboard/member/my-events");
+    await revalidateDashboardPath(`/dashboard/member/events/${eventId}`);
+    await revalidateDashboardPath(`/events/${eventId}`);
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to remove attendee registration.";
+    console.error("[deleteEventRegistrationAction] error:", message);
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * Remove multiple event registrations in batch so attendees can re-register again.
+ */
+export async function deleteBatchEventRegistrationsAction(registrationIds: string[], eventId: string) {
+  try {
+    const { deleteBatchEventRegistrations } = await import("./client");
+    await deleteBatchEventRegistrations(registrationIds, eventId);
+    await revalidateDashboardPath(`/dashboard/events/${eventId}`);
+    await revalidateDashboardPath("/dashboard/events");
+    await revalidateDashboardPath("/dashboard/organizer");
+    await revalidateDashboardPath("/dashboard/member");
+    await revalidateDashboardPath("/dashboard/member/my-events");
+    await revalidateDashboardPath(`/dashboard/member/events/${eventId}`);
+    await revalidateDashboardPath(`/events/${eventId}`);
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to remove attendee registrations.";
+    console.error("[deleteBatchEventRegistrationsAction] error:", message);
     return { success: false, error: message };
   }
 }
