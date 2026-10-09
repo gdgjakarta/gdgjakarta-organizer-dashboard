@@ -366,11 +366,11 @@ export function EventRegistrationModal({
     }
   };
 
-  const handleBlur = (questionId: string) => {
+  const handleBlur = (questionId: string, explicitVal?: unknown) => {
     setTouchedFields((prev) => new Set(prev).add(questionId));
     const question = questions.find((q) => q.id === questionId);
     if (question) {
-      const val = answers[questionId];
+      const val = explicitVal !== undefined ? explicitVal : answers[questionId];
       const result = validateQuestionAnswer(question, val);
       setFieldErrors((prev) => {
         if (result.isValid) {
@@ -405,14 +405,41 @@ export function EventRegistrationModal({
   };
 
   const handleSelectRadioRegular = (question: CustomQuestion, opt: string) => {
-    handleTextChange(question.id, opt);
-    handleBlur(question.id);
+    setTouchedFields((prev) => new Set(prev).add(question.id));
+    setAnswers((prev) => ({ ...prev, [question.id]: opt }));
+    const result = validateQuestionAnswer(question, opt);
+    setFieldErrors((prev) => {
+      if (result.isValid) {
+        const next = { ...prev };
+        delete next[question.id];
+        return next;
+      }
+      return { ...prev, [question.id]: result.error ?? "Invalid input" };
+    });
   };
 
   const handleSelectRadioOther = (question: CustomQuestion) => {
+    setTouchedFields((prev) => new Set(prev).add(question.id));
     const currentText = otherInputs[question.id] || "";
     const formatted = formatOtherAnswer(currentText);
-    handleTextChange(question.id, formatted);
+    setAnswers((prev) => ({ ...prev, [question.id]: formatted }));
+    if (currentText.trim()) {
+      const result = validateQuestionAnswer(question, formatted);
+      setFieldErrors((prev) => {
+        if (result.isValid) {
+          const next = { ...prev };
+          delete next[question.id];
+          return next;
+        }
+        return { ...prev, [question.id]: result.error ?? "Invalid input" };
+      });
+    } else {
+      setFieldErrors((prev) => {
+        const next = { ...prev };
+        delete next[question.id];
+        return next;
+      });
+    }
     setTimeout(() => {
       otherInputRefs.current[question.id]?.focus();
     }, 50);
@@ -421,27 +448,87 @@ export function EventRegistrationModal({
   const handleRadioOtherTextChange = (question: CustomQuestion, text: string) => {
     setOtherInputs((prev) => ({ ...prev, [question.id]: text }));
     const formatted = formatOtherAnswer(text);
-    handleTextChange(question.id, formatted);
+    setAnswers((prev) => ({ ...prev, [question.id]: formatted }));
+    if (text.trim().length > 0) {
+      const result = validateQuestionAnswer(question, formatted);
+      setFieldErrors((prev) => {
+        if (result.isValid) {
+          const next = { ...prev };
+          delete next[question.id];
+          return next;
+        }
+        return { ...prev, [question.id]: result.error ?? "Invalid input" };
+      });
+    } else {
+      setFieldErrors((prev) => {
+        const next = { ...prev };
+        delete next[question.id];
+        return next;
+      });
+    }
   };
 
   const handleSelectDropdownChange = (question: CustomQuestion, val: string) => {
+    setTouchedFields((prev) => new Set(prev).add(question.id));
     if (val === "__other__") {
       const currentText = otherInputs[question.id] || "";
       const formatted = formatOtherAnswer(currentText);
-      handleTextChange(question.id, formatted);
+      setAnswers((prev) => ({ ...prev, [question.id]: formatted }));
+      if (currentText.trim()) {
+        const result = validateQuestionAnswer(question, formatted);
+        setFieldErrors((prev) => {
+          if (result.isValid) {
+            const next = { ...prev };
+            delete next[question.id];
+            return next;
+          }
+          return { ...prev, [question.id]: result.error ?? "Invalid input" };
+        });
+      } else {
+        setFieldErrors((prev) => {
+          const next = { ...prev };
+          delete next[question.id];
+          return next;
+        });
+      }
       setTimeout(() => {
         otherInputRefs.current[question.id]?.focus();
       }, 50);
     } else {
-      handleTextChange(question.id, val);
-      handleBlur(question.id);
+      setAnswers((prev) => ({ ...prev, [question.id]: val }));
+      const result = validateQuestionAnswer(question, val);
+      setFieldErrors((prev) => {
+        if (result.isValid) {
+          const next = { ...prev };
+          delete next[question.id];
+          return next;
+        }
+        return { ...prev, [question.id]: result.error ?? "Invalid input" };
+      });
     }
   };
 
   const handleSelectOtherTextChange = (question: CustomQuestion, text: string) => {
     setOtherInputs((prev) => ({ ...prev, [question.id]: text }));
     const formatted = formatOtherAnswer(text);
-    handleTextChange(question.id, formatted);
+    setAnswers((prev) => ({ ...prev, [question.id]: formatted }));
+    if (text.trim().length > 0) {
+      const result = validateQuestionAnswer(question, formatted);
+      setFieldErrors((prev) => {
+        if (result.isValid) {
+          const next = { ...prev };
+          delete next[question.id];
+          return next;
+        }
+        return { ...prev, [question.id]: result.error ?? "Invalid input" };
+      });
+    } else {
+      setFieldErrors((prev) => {
+        const next = { ...prev };
+        delete next[question.id];
+        return next;
+      });
+    }
   };
 
   const handleMultiSelectOtherTextChange = (question: CustomQuestion, text: string) => {
@@ -453,15 +540,23 @@ export function EventRegistrationModal({
         (it) => typeof it === "string" && !isOtherOption(it) && !it.toLowerCase().startsWith("other:"),
       );
       const updated = [...filtered, formatted];
-      const result = validateQuestionAnswer(question, updated);
-      setFieldErrors((errs) => {
-        if (result.isValid) {
+      if (text.trim().length > 0) {
+        const result = validateQuestionAnswer(question, updated);
+        setFieldErrors((errs) => {
+          if (result.isValid) {
+            const next = { ...errs };
+            delete next[question.id];
+            return next;
+          }
+          return { ...errs, [question.id]: result.error ?? "Invalid input" };
+        });
+      } else {
+        setFieldErrors((errs) => {
           const next = { ...errs };
           delete next[question.id];
           return next;
-        }
-        return { ...errs, [question.id]: result.error ?? "Invalid input" };
-      });
+        });
+      }
       return { ...prev, [question.id]: updated };
     });
   };
@@ -1105,7 +1200,7 @@ export function EventRegistrationModal({
                             placeholder={q.placeholder || "Your answer"}
                             value={strVal}
                             onChange={(e) => handleTextChange(q.id, e.target.value)}
-                            onBlur={() => handleBlur(q.id)}
+                            onBlur={(e) => handleBlur(q.id, e.target.value)}
                             maxLength={q.max_length}
                             aria-invalid={Boolean(errorMessage)}
                             className={cn(errorMessage && "border-destructive focus-visible:ring-destructive/30")}
@@ -1120,7 +1215,7 @@ export function EventRegistrationModal({
                             placeholder={q.placeholder || "Type your response here..."}
                             value={strVal}
                             onChange={(e) => handleTextChange(q.id, e.target.value)}
-                            onBlur={() => handleBlur(q.id)}
+                            onBlur={(e) => handleBlur(q.id, e.target.value)}
                             rows={3}
                             maxLength={q.max_length}
                             aria-invalid={Boolean(errorMessage)}
@@ -1208,7 +1303,7 @@ export function EventRegistrationModal({
                                       onKeyDown={(e) => {
                                         if (e.key === "Enter") e.preventDefault();
                                       }}
-                                      onBlur={() => handleBlur(q.id)}
+                                      onBlur={(e) => handleBlur(q.id, formatOtherAnswer(e.target.value))}
                                       className={cn(
                                         "h-8 bg-background/80 text-xs",
                                         errorMessage &&
@@ -1312,7 +1407,7 @@ export function EventRegistrationModal({
                                         onKeyDown={(e) => {
                                           if (e.key === "Enter") e.preventDefault();
                                         }}
-                                        onBlur={() => handleBlur(q.id)}
+                                        onBlur={(e) => handleBlur(q.id, formatOtherAnswer(e.target.value))}
                                         className={cn(
                                           "h-8 bg-background/80 text-xs transition-colors",
                                           isOtherSelected && "border-primary/50 focus-visible:ring-primary/30",
@@ -1396,6 +1491,11 @@ export function EventRegistrationModal({
                                               );
                                               return { ...prev, [q.id]: [...filtered, formatted] };
                                             });
+                                            setFieldErrors((prev) => {
+                                              const next = { ...prev };
+                                              delete next[q.id];
+                                              return next;
+                                            });
                                             setTimeout(() => otherInputRefs.current[q.id]?.focus(), 50);
                                           } else {
                                             setAnswers((prev) => {
@@ -1449,7 +1549,18 @@ export function EventRegistrationModal({
                                         onKeyDown={(e) => {
                                           if (e.key === "Enter") e.preventDefault();
                                         }}
-                                        onBlur={() => handleBlur(q.id)}
+                                        onBlur={(e) => {
+                                          const current = Array.isArray(answers[q.id])
+                                            ? (answers[q.id] as string[])
+                                            : [];
+                                          const filtered = current.filter(
+                                            (it) =>
+                                              typeof it === "string" &&
+                                              !isOtherOption(it) &&
+                                              !it.toLowerCase().startsWith("other:"),
+                                          );
+                                          handleBlur(q.id, [...filtered, formatOtherAnswer(e.target.value)]);
+                                        }}
                                         className={cn(
                                           "h-8 bg-background/80 text-xs",
                                           isOtherChecked && "border-primary/50 focus-visible:ring-primary/30",

@@ -160,12 +160,12 @@ export function EditRegistrationModal({
     }
   };
 
-  const handleBlur = (questionId: string) => {
+  const handleBlur = (questionId: string, explicitVal?: unknown) => {
     if (!canEdit) return;
     setTouchedFields((prev) => new Set(prev).add(questionId));
     const question = activeQuestions.find((q) => q.id === questionId);
     if (question) {
-      const val = answers[questionId];
+      const val = explicitVal !== undefined ? explicitVal : answers[questionId];
       const result = validateQuestionAnswer(question, val);
       setFieldErrors((prev) => {
         if (result.isValid) {
@@ -207,6 +207,11 @@ export function EditRegistrationModal({
       const customVal = otherInputs[question.id] || "";
       const formatted = formatOtherAnswer(customVal);
       setAnswers((prev) => ({ ...prev, [question.id]: formatted }));
+      setFieldErrors((errs) => {
+        const next = { ...errs };
+        delete next[question.id];
+        return next;
+      });
       setTimeout(() => {
         otherInputRefs.current[question.id]?.focus();
       }, 50);
@@ -493,7 +498,7 @@ export function EditRegistrationModal({
                           placeholder={q.placeholder || "Your answer"}
                           value={strVal}
                           onChange={(e) => handleTextChange(q.id, e.target.value)}
-                          onBlur={() => handleBlur(q.id)}
+                          onBlur={(e) => handleBlur(q.id, e.target.value)}
                           maxLength={q.max_length}
                           aria-invalid={Boolean(errorMessage)}
                           className={cn(errorMessage && "border-destructive focus-visible:ring-destructive/30")}
@@ -509,7 +514,7 @@ export function EditRegistrationModal({
                           placeholder={q.placeholder || "Type your response here..."}
                           value={strVal}
                           onChange={(e) => handleTextChange(q.id, e.target.value)}
-                          onBlur={() => handleBlur(q.id)}
+                          onBlur={(e) => handleBlur(q.id, e.target.value)}
                           rows={3}
                           maxLength={q.max_length}
                           aria-invalid={Boolean(errorMessage)}
@@ -588,7 +593,7 @@ export function EditRegistrationModal({
                                     placeholder="Enter your specific details..."
                                     value={currentOtherText}
                                     onChange={(e) => handleOtherInputChange(q, e.target.value)}
-                                    onBlur={() => handleBlur(q.id)}
+                                    onBlur={(e) => handleBlur(q.id, formatOtherAnswer(e.target.value))}
                                     className={cn(
                                       "h-8 bg-background/80 text-xs",
                                       errorMessage &&
@@ -625,6 +630,11 @@ export function EditRegistrationModal({
                                     const customVal = otherInputs[q.id] || "";
                                     const formatted = formatOtherAnswer(customVal);
                                     setAnswers((prev) => ({ ...prev, [q.id]: formatted }));
+                                    setFieldErrors((errs) => {
+                                      const next = { ...errs };
+                                      delete next[q.id];
+                                      return next;
+                                    });
                                     setTimeout(() => {
                                       otherInputRefs.current[q.id]?.focus();
                                     }, 50);
@@ -704,7 +714,7 @@ export function EditRegistrationModal({
                                           }
                                         }}
                                         onChange={(e) => handleOtherInputChange(q, e.target.value)}
-                                        onBlur={() => handleBlur(q.id)}
+                                        onBlur={(e) => handleBlur(q.id, formatOtherAnswer(e.target.value))}
                                         className={cn("h-8 bg-background/80 text-xs transition-colors")}
                                       />
                                     </div>
@@ -775,6 +785,11 @@ export function EditRegistrationModal({
                                           if (checked) {
                                             const formatted = formatOtherAnswer(currentOtherText);
                                             handleMultiSelectToggle(q.id, formatted);
+                                            setFieldErrors((prev) => {
+                                              const next = { ...prev };
+                                              delete next[q.id];
+                                              return next;
+                                            });
                                             setTimeout(() => {
                                               otherInputRefs.current[q.id]?.focus();
                                             }, 50);
@@ -807,7 +822,7 @@ export function EditRegistrationModal({
                                           }
                                         }}
                                         onChange={(e) => handleOtherInputChange(q, e.target.value, true)}
-                                        onBlur={() => handleBlur(q.id)}
+                                        onBlur={(e) => handleBlur(q.id, formatOtherAnswer(e.target.value))}
                                         className={cn("h-8 bg-background/80 text-xs")}
                                       />
                                     </div>
