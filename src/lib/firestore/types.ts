@@ -206,6 +206,8 @@ export interface FirestoreRegistration {
   id: string; // `${event_id}_${member_id}`
   event_id: string;
   event_title: string;
+  event_picture_url?: string;
+  event_banner_url?: string;
   member_id: string;
   member_name: string;
   member_email: string;

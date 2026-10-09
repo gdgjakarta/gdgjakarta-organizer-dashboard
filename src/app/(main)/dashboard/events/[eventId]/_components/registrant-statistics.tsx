@@ -110,6 +110,24 @@ export function RegistrantStatistics({
   const availableFields = useMemo(() => {
     const fieldMap = new Map<string, { id: string; label: string; count: number }>();
 
+    // 0. Ticket Tiers
+    if (registrations.some((r) => r.ticket_name || r.ticket_type)) {
+      fieldMap.set("ticket_tier", {
+        id: "ticket_tier",
+        label: "Ticket Tier (Free / Paid / Commitment)",
+        count: registrations.filter((r) => r.ticket_name || r.ticket_type).length,
+      });
+    }
+
+    // 0. Merchandise Orders
+    if (registrations.some((r) => r.selected_merchandise && r.selected_merchandise.length > 0)) {
+      fieldMap.set("merchandise_orders", {
+        id: "merchandise_orders",
+        label: "Merchandise & Swag Orders",
+        count: registrations.filter((r) => r.selected_merchandise && r.selected_merchandise.length > 0).length,
+      });
+    }
+
     // 1. Session Track
     if (sessions.length > 0) {
       fieldMap.set("session_track", {
@@ -206,6 +224,25 @@ export function RegistrantStatistics({
           const val = title ?? "Standard RSVP";
           counts.set(val, (counts.get(val) ?? 0) + 1);
           totalCounted += 1;
+        }
+      } else if (fieldId === "ticket_tier") {
+        for (const r of targetPool) {
+          const val = r.ticket_name ?? (r.ticket_type ? `Ticket: ${r.ticket_type}` : "General RSVP");
+          counts.set(val, (counts.get(val) ?? 0) + 1);
+          totalCounted += 1;
+        }
+      } else if (fieldId === "merchandise_orders") {
+        for (const r of targetPool) {
+          if (r.selected_merchandise && r.selected_merchandise.length > 0) {
+            for (const item of r.selected_merchandise) {
+              const label = `${item.name} (${item.quantity}x)`;
+              counts.set(label, (counts.get(label) ?? 0) + 1);
+              totalCounted += 1;
+            }
+          } else {
+            counts.set("No Merchandise", (counts.get("No Merchandise") ?? 0) + 1);
+            totalCounted += 1;
+          }
         }
       } else {
         for (const r of targetPool) {

@@ -31,6 +31,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { resolveEventAudience } from "@/lib/bevy/audience";
+import { extractEventImageUrl } from "@/lib/events/media-utils";
 import { checkEventRegistrationAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
@@ -372,8 +373,8 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
         <div className="space-y-6 lg:col-span-2">
           {/* Banner / Poster */}
           <EventCardImage
-            src={event.banner_url ?? event.picture_url}
-            alt={event.title}
+            src={extractEventImageUrl(currentEvent as unknown as Record<string, unknown>)}
+            alt={currentEvent.title}
             aspectRatio="aspect-[21/9]"
             containerClassName="rounded-xl border shadow-xs"
             priority

@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { resolveEventAudience } from "@/lib/bevy/audience";
+import { extractEventImageUrl } from "@/lib/events/media-utils";
 import { fetchMemberRegistrationsAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
 import { useAuthStore } from "@/stores/auth/auth-provider";
@@ -103,7 +104,7 @@ export function MemberEventsList({ events, myRegistrations = [] }: MemberEventsL
                 {/* Event Thumbnail with Dynamic Link */}
                 <Link href={`/dashboard/member/events/${event.id}`} className="block">
                   <EventCardImage
-                    src={event.picture_url ?? event.banner_url}
+                    src={extractEventImageUrl(event as unknown as Record<string, unknown>)}
                     alt={event.title}
                     className="transition-transform duration-300 group-hover:scale-105"
                   >

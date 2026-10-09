@@ -39,6 +39,11 @@ export interface RegistrationWebhookPayload {
     session_location?: string;
     session_location_url?: string;
     Session?: string;
+    ticket_id?: string;
+    ticket_name?: string;
+    ticket_type?: string;
+    ticket_price?: number;
+    selected_merchandise?: unknown;
   };
   member: {
     id: string;

@@ -17,10 +17,12 @@ import {
   Layers,
   type LucideIcon,
   Mail,
+  Package,
   Phone,
   RotateCcw,
   ShieldCheck,
   Sparkles,
+  Ticket,
   Trash2,
   User,
   UserCheck,
@@ -127,6 +129,12 @@ function formatLabel(key: string, labelMap: Map<string, string>): string {
     });
 
   return words.join(" ") || trimmed;
+}
+
+function getTicketTierLabel(type?: string, price?: number): string {
+  if (type === "free") return "Free RSVP";
+  if (type === "paid") return `Rp ${(price ?? 0).toLocaleString("id-ID")}`;
+  return `Commitment Fee (Rp ${(price ?? 0).toLocaleString("id-ID")})`;
 }
 
 export function ApplicantDetailDialog({
@@ -512,6 +520,58 @@ export function ApplicantDetailDialog({
               <Badge variant="secondary" className="font-medium text-[10px] uppercase tracking-wider">
                 Assigned
               </Badge>
+            </div>
+          )}
+
+          {/* Ticket Pass Details if present */}
+          {Boolean(registration.ticket_name ?? registration.ticket_type) && (
+            <div className="mt-2.5 flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-3.5 py-2.5 text-xs">
+              <div className="flex flex-wrap items-center gap-2 font-medium text-foreground">
+                <Ticket className="size-4 text-primary" />
+                <span className="text-muted-foreground">Ticket Tier:</span>
+                <span className="font-semibold text-foreground">{registration.ticket_name ?? "General Pass"}</span>
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "px-1.5 py-0 font-semibold text-[10px]",
+                    registration.ticket_type === "free" &&
+                      "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+                    registration.ticket_type === "paid" &&
+                      "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-400",
+                    registration.ticket_type === "commitment_fee" &&
+                      "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400",
+                  )}
+                >
+                  {getTicketTierLabel(registration.ticket_type, registration.ticket_price)}
+                </Badge>
+              </div>
+            </div>
+          )}
+
+          {/* Merchandise Add-on Details if present */}
+          {Boolean(registration.selected_merchandise && registration.selected_merchandise.length > 0) && (
+            <div className="mt-2.5 space-y-2 rounded-lg border bg-muted/30 p-3 text-xs">
+              <div className="flex items-center gap-1.5 font-medium text-foreground">
+                <Package className="size-3.5 text-primary" />
+                <span>Merchandise Orders ({registration.selected_merchandise?.length} items)</span>
+              </div>
+              <div className="space-y-1.5">
+                {registration.selected_merchandise?.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between text-[11px]">
+                    <span className="text-muted-foreground">
+                      {item.quantity}x <strong className="text-foreground">{item.name}</strong>
+                      {item.selected_variations
+                        ? ` (${Object.entries(item.selected_variations)
+                            .map(([k, v]) => `${k}: ${v}`)
+                            .join(", ")})`
+                        : ""}
+                    </span>
+                    <span className="font-mono text-foreground">
+                      {item.price > 0 ? `Rp ${(item.price * item.quantity).toLocaleString("id-ID")}` : "Free Perk"}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

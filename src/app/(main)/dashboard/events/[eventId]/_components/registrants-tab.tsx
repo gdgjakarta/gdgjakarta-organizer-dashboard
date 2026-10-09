@@ -12,9 +12,11 @@ import {
   Filter,
   Layers,
   MoreHorizontal,
+  Package,
   RefreshCw,
   RotateCcw,
   Search,
+  Ticket,
   Trash2,
   UserCheck,
   Users,
@@ -106,6 +108,12 @@ const STATUS_VARIANTS: Record<RegistrationStatus, { label: string; badgeClass: s
   },
 };
 
+function getTicketBadgeText(type?: string, price?: number): string {
+  if (type === "free") return "Free RSVP";
+  if (type === "paid") return `Rp ${(price ?? 0).toLocaleString("id-ID")}`;
+  return `Deposit Rp ${(price ?? 0).toLocaleString("id-ID")}`;
+}
+
 function resolveAnswerValue(
   answers: Record<string, unknown> | undefined,
   fieldKey: string,
@@ -194,10 +202,14 @@ const SKELETON_COL_IDS = [
 
 function RegistrantsTableSkeleton({
   hasSessions,
+  hasTickets = false,
+  hasMerchandise = false,
   visibleStandardColumns = {},
   questionColumnCount = 0,
 }: {
   hasSessions: boolean;
+  hasTickets?: boolean;
+  hasMerchandise?: boolean;
   visibleStandardColumns?: Record<string, boolean>;
   questionColumnCount?: number;
 }) {
@@ -228,6 +240,20 @@ function RegistrantsTableSkeleton({
           {visibleStandardColumns.status !== false && (
             <TableCell>
               <div className="relative h-5 w-24 overflow-hidden rounded-full bg-muted">
+                <div className="shimmer-wave" aria-hidden="true" />
+              </div>
+            </TableCell>
+          )}
+          {hasTickets && visibleStandardColumns.ticket !== false && (
+            <TableCell>
+              <div className="relative h-5 w-24 overflow-hidden rounded bg-muted">
+                <div className="shimmer-wave" aria-hidden="true" />
+              </div>
+            </TableCell>
+          )}
+          {hasMerchandise && visibleStandardColumns.merchandise !== false && (
+            <TableCell>
+              <div className="relative h-5 w-24 overflow-hidden rounded bg-muted">
                 <div className="shimmer-wave" aria-hidden="true" />
               </div>
             </TableCell>
@@ -287,6 +313,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [sessionFilter, setSessionFilter] = useState<string>("all");
+  const [ticketFilter, setTicketFilter] = useState<string>("all");
   const [sessions, setSessions] = useState<EventSession[]>(event?.sessions ?? []);
   const [customQuestions, setCustomQuestions] = useState<CustomQuestion[]>(event?.custom_questions ?? []);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -300,6 +327,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const [visibleStandardColumns, setVisibleStandardColumns] = useState<Record<string, boolean>>({
     applicant: true,
     status: true,
+    ticket: true,
+    merchandise: true,
     session: true,
     checkin: true,
     all_responses: true,
@@ -438,6 +467,14 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     }, 200);
   };
 
+  const handleTicketFilterChange = (val: string) => {
+    setIsFiltering(true);
+    setTicketFilter(val);
+    setTimeout(() => {
+      setIsFiltering(false);
+    }, 200);
+  };
+
   const handleSearchChange = (val: string) => {
     setIsFiltering(true);
     setSearch(val);
@@ -484,6 +521,37 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       emailCounts.set(email, (emailCounts.get(email) || 0) + 1);
     }
   }
+
+  const availableTickets = useMemo(() => {
+    const list: Array<{ id: string; name: string; type?: string }> = [];
+    const seen = new Set<string>();
+
+    if (event?.tickets) {
+      for (const t of event.tickets) {
+        if (!seen.has(t.name)) {
+          seen.add(t.name);
+          list.push({ id: t.id, name: t.name, type: t.type });
+        }
+      }
+    }
+
+    for (const r of registrationsList) {
+      if (r.ticket_name && !seen.has(r.ticket_name)) {
+        seen.add(r.ticket_name);
+        list.push({ id: r.ticket_id || r.ticket_name, name: r.ticket_name, type: r.ticket_type });
+      }
+    }
+
+    return list;
+  }, [event?.tickets, registrationsList]);
+
+  const hasTickets = availableTickets.length > 0;
+  const hasMerchandise = useMemo(() => {
+    return (
+      Boolean(event?.merchandise && event.merchandise.length > 0) ||
+      registrationsList.some((r) => r.selected_merchandise && r.selected_merchandise.length > 0)
+    );
+  }, [event?.merchandise, registrationsList]);
 
   // Map question IDs/keys to human-readable question labels
   const questionLabelMap = useMemo(() => {
@@ -668,6 +736,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     const defaultStandard = {
       applicant: true,
       status: true,
+      ticket: hasTickets,
+      merchandise: hasMerchandise,
       session: hasSessions,
       checkin: true,
       all_responses: true,
@@ -696,6 +766,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     setIsFiltering(true);
     setStatusFilter("all");
     setSessionFilter("all");
+    setTicketFilter("all");
     setSearch("");
     setQuestionFilters({});
     setTimeout(() => {
@@ -711,6 +782,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         !searchLower ||
         reg.member_name.toLowerCase().includes(searchLower) ||
         reg.member_email.toLowerCase().includes(searchLower) ||
+        Boolean(reg.ticket_name?.toLowerCase().includes(searchLower)) ||
         (reg.answers && JSON.stringify(reg.answers).toLowerCase().includes(searchLower));
 
       const regStatus = (reg.status ?? "").toLowerCase().trim();
@@ -737,7 +809,13 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         reg.session_id === sessionFilter ||
         (reg.answers?.session_id as string) === sessionFilter;
 
-      if (!matchesSearch || !matchesStatus || !matchesSession) {
+      const matchesTicket =
+        ticketFilter === "all" ||
+        reg.ticket_id === ticketFilter ||
+        reg.ticket_name === ticketFilter ||
+        reg.ticket_type === ticketFilter;
+
+      if (!matchesSearch || !matchesStatus || !matchesSession || !matchesTicket) {
         return false;
       }
 
@@ -773,6 +851,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     search,
     statusFilter,
     sessionFilter,
+    ticketFilter,
     selectedQuestionColumns,
     questionFilters,
     questionLabelMap,
@@ -977,6 +1056,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       "Name",
       "Email",
       "Status",
+      ...(hasTickets ? ["Ticket Pass", "Ticket Type", "Ticket Price"] : []),
+      ...(hasMerchandise ? ["Merchandise Orders"] : []),
       "Bevy Check-In",
       "Session Track",
       ...dynamicHeaders,
@@ -1004,10 +1085,27 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
             .join("; ")
         : "";
 
+      const merchText = (r.selected_merchandise ?? [])
+        .map(
+          (m) =>
+            `${m.quantity}x ${m.name}${
+              m.selected_variations ? ` (${Object.values(m.selected_variations).join(", ")})` : ""
+            }`,
+        )
+        .join("; ");
+
       return [
         `"${(r.member_name || "").replace(/"/g, '""')}"`,
         `"${(r.member_email || "").replace(/"/g, '""')}"`,
         `"${(r.status || "").replace(/"/g, '""')}"`,
+        ...(hasTickets
+          ? [
+              `"${(r.ticket_name || "General RSVP").replace(/"/g, '""')}"`,
+              `"${(r.ticket_type || "free").replace(/"/g, '""')}"`,
+              `"${r.ticket_price || 0}"`,
+            ]
+          : []),
+        ...(hasMerchandise ? [`"${merchText.replace(/"/g, '""')}"`] : []),
         `"${r.is_checked_in ? "Checked In" : "Not Checked In"}"`,
         `"${sessionTitle.replace(/"/g, '""')}"`,
         ...questionColsData,
@@ -1034,6 +1132,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const totalColumnCount = useMemo(() => {
     let count = 2; // Checkbox + Applicant
     if (visibleStandardColumns.status !== false) count += 1;
+    if (hasTickets && visibleStandardColumns.ticket !== false) count += 1;
+    if (hasMerchandise && visibleStandardColumns.merchandise !== false) count += 1;
     if (hasSessions && visibleStandardColumns.session !== false) count += 1;
     if (visibleStandardColumns.checkin !== false) count += 1;
     count += selectedQuestionColumns.length;
@@ -1041,14 +1141,18 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     if (visibleStandardColumns.registered_at !== false) count += 1;
     if (visibleStandardColumns.actions !== false) count += 1;
     return count;
-  }, [visibleStandardColumns, hasSessions, selectedQuestionColumns.length]);
+  }, [visibleStandardColumns, hasSessions, hasTickets, hasMerchandise, selectedQuestionColumns.length]);
 
   const activeQuestionFilterCount = useMemo(() => {
     return Object.values(questionFilters).filter((v) => Boolean(v) && v !== "all").length;
   }, [questionFilters]);
 
   const hasActiveFilters = Boolean(
-    search.trim() || statusFilter !== "all" || sessionFilter !== "all" || activeQuestionFilterCount > 0,
+    search.trim() ||
+      statusFilter !== "all" ||
+      sessionFilter !== "all" ||
+      ticketFilter !== "all" ||
+      activeQuestionFilterCount > 0,
   );
 
   return (
@@ -1178,6 +1282,26 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 </Select>
               )}
 
+              {hasTickets && (
+                <Select value={ticketFilter} onValueChange={handleTicketFilterChange}>
+                  <SelectTrigger size="sm" className="h-8 text-xs">
+                    <Ticket className="mr-1 size-3 text-muted-foreground shrink-0" />
+                    <span className="text-muted-foreground">Ticket:</span>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem value="all">All Ticket Passes</SelectItem>
+                      {availableTickets.map((t) => (
+                        <SelectItem key={t.id} value={t.name}>
+                          {t.name}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              )}
+
               {/* Dynamic Question Field Filters */}
               {selectedQuestionColumns.map((qKey) => {
                 const fieldInfo = availableQuestionFields.find((f) => f.key === qKey) || {
@@ -1223,6 +1347,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 visibleStandardColumns={visibleStandardColumns}
                 onToggleStandardColumn={handleToggleStandardColumn}
                 hasSessions={hasSessions}
+                hasTickets={hasTickets}
+                hasMerchandise={hasMerchandise}
                 onResetDefaults={handleResetColumnDefaults}
               />
 
@@ -1288,6 +1414,20 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                   </button>
                 </Badge>
               )}
+              {ticketFilter !== "all" && (
+                <Badge variant="secondary" className="gap-1 font-normal text-xs">
+                  <Ticket className="size-3 text-primary" />
+                  <span>Ticket: {ticketFilter}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleTicketFilterChange("all")}
+                    className="ml-0.5 rounded-full p-0.5 hover:bg-muted-foreground/20"
+                    aria-label="Clear ticket filter"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </Badge>
+              )}
               {selectedQuestionColumns.map((qKey) => {
                 const val = questionFilters[qKey];
                 if (!val || val === "all") return null;
@@ -1334,6 +1474,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                   </TableHead>
                   <TableHead>Applicant</TableHead>
                   {visibleStandardColumns.status !== false && <TableHead>Status</TableHead>}
+                  {hasTickets && visibleStandardColumns.ticket !== false && <TableHead>Ticket Pass</TableHead>}
+                  {hasMerchandise && visibleStandardColumns.merchandise !== false && <TableHead>Merchandise</TableHead>}
                   {hasSessions && visibleStandardColumns.session !== false && <TableHead>Session Track</TableHead>}
                   {visibleStandardColumns.checkin !== false && <TableHead>Check-In (Bevy)</TableHead>}
                   {selectedQuestionColumns.map((qKey) => {
@@ -1364,6 +1506,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 {(isLoading || isFiltering) && (
                   <RegistrantsTableSkeleton
                     hasSessions={hasSessions}
+                    hasTickets={hasTickets}
+                    hasMerchandise={hasMerchandise}
                     visibleStandardColumns={visibleStandardColumns}
                     questionColumnCount={selectedQuestionColumns.length}
                   />
@@ -1478,6 +1622,51 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                               <span className={cn("size-1.5 rounded-full", statusMeta.dotClass)} />
                               {statusMeta.label}
                             </Badge>
+                          </TableCell>
+                        )}
+
+                        {hasTickets && visibleStandardColumns.ticket !== false && (
+                          <TableCell onClick={() => setInspectRegistration(reg)}>
+                            {reg.ticket_name ? (
+                              <div className="flex flex-col gap-0.5">
+                                <span className="font-medium text-foreground text-xs">{reg.ticket_name}</span>
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "w-fit px-1.5 py-0 text-[10px] font-semibold",
+                                    reg.ticket_type === "free" &&
+                                      "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+                                    reg.ticket_type === "paid" &&
+                                      "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-400",
+                                    reg.ticket_type === "commitment_fee" &&
+                                      "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400",
+                                  )}
+                                >
+                                  {getTicketBadgeText(reg.ticket_type, reg.ticket_price)}
+                                </Badge>
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">General RSVP</span>
+                            )}
+                          </TableCell>
+                        )}
+
+                        {hasMerchandise && visibleStandardColumns.merchandise !== false && (
+                          <TableCell onClick={() => setInspectRegistration(reg)}>
+                            {reg.selected_merchandise && reg.selected_merchandise.length > 0 ? (
+                              <div className="flex flex-col gap-1">
+                                {reg.selected_merchandise.map((m) => (
+                                  <Badge key={m.id} variant="secondary" className="w-fit gap-1 text-[10px] font-normal">
+                                    <Package className="size-2.5 text-primary" />
+                                    <span>
+                                      {m.quantity}x {m.name}
+                                    </span>
+                                  </Badge>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">—</span>
+                            )}
                           </TableCell>
                         )}
 

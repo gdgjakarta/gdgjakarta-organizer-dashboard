@@ -33,16 +33,17 @@ export function EventCardImage({
   children,
   isLoading: externalIsLoading,
 }: EventCardImageProps) {
-  const [internalLoading, setInternalLoading] = useState(Boolean(src));
+  const cleanSrc = typeof src === "string" && src.trim().length > 0 ? src.trim() : null;
+  const [internalLoading, setInternalLoading] = useState(Boolean(cleanSrc));
   const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
-    setInternalLoading(Boolean(src));
+    setInternalLoading(Boolean(cleanSrc));
     setHasError(false);
-  }, [src]);
+  }, [cleanSrc]);
 
   const isLoading = externalIsLoading ?? internalLoading;
-  const showFallback = (!src && !isLoading) || hasError;
+  const showFallback = (!cleanSrc && !isLoading) || hasError;
 
   const renderContent = () => {
     if (showFallback) {
@@ -53,10 +54,10 @@ export function EventCardImage({
       );
     }
 
-    if (src) {
+    if (cleanSrc) {
       return (
         <Image
-          src={src}
+          src={cleanSrc}
           alt={alt}
           fill={fill}
           unoptimized
@@ -78,7 +79,7 @@ export function EventCardImage({
     <div className={cn("relative w-full overflow-hidden bg-muted", aspectRatio, containerClassName)}>
       {/* Shimmer loading wave and placeholder icon while image is downloading or external loading is active */}
       {isLoading && !hasError && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center overflow-hidden bg-muted">
+        <div className="absolute inset-0 z-10 flex animate-pulse items-center justify-center overflow-hidden bg-muted">
           <Calendar className={cn("size-10 text-muted-foreground/20", fallbackIconClassName)} />
           <div className="shimmer-wave" aria-hidden="true" />
         </div>

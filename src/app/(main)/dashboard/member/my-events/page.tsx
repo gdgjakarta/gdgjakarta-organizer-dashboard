@@ -10,7 +10,7 @@ export default async function MyEventsPage() {
 
   try {
     const { results: chapterEvents } = await getAllBevyChapterEvents(undefined, true, "All");
-    allEvents = (chapterEvents ?? []).map((e) => {
+    allEvents = chapterEvents.map((e) => {
       const { audienceType, isVirtual } = resolveEventAudience(e.audience_type, e.is_virtual_event);
       return {
         id: String(e.id),
@@ -20,8 +20,21 @@ export default async function MyEventsPage() {
         status: (e.status as FirestoreEvent["status"]) || "Published",
         start_date: e.start_date || new Date().toISOString(),
         end_date: e.end_date || e.start_date || new Date().toISOString(),
-        picture_url: e.picture?.thumbnail_url || e.picture?.url,
-        banner_url: e.banner?.url,
+        picture_url:
+          e.picture?.url ||
+          e.picture?.thumbnail_url ||
+          e.cropped_picture_url ||
+          e.banner?.url ||
+          e.banner?.thumbnail_url ||
+          e.cropped_banner_url ||
+          undefined,
+        banner_url:
+          e.banner?.url ||
+          e.banner?.thumbnail_url ||
+          e.cropped_banner_url ||
+          e.picture?.url ||
+          e.cropped_picture_url ||
+          undefined,
         event_type_title: e.event_type_title || "Standard Event",
         audience_type: audienceType,
         is_virtual: isVirtual,

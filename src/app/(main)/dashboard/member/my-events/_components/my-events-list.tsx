@@ -30,6 +30,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { resolveEventAudience } from "@/lib/bevy/audience";
+import { extractEventImageUrl } from "@/lib/events/media-utils";
 import { fetchMemberRegistrationsAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent, FirestoreRegistration, RegistrationStatus } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
@@ -78,7 +79,9 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
   const user = useAuthStore((s) => s.user);
   const isAuthLoading = useAuthStore((s) => s.isLoading);
   const [registrations, setRegistrations] = useState<FirestoreRegistration[]>([]);
+  const [extraEvents, setExtraEvents] = useState<FirestoreEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isResolvingEvents, setIsResolvingEvents] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
@@ -103,13 +106,92 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
     void loadRegistrations();
   }, [user, isAuthLoading]);
 
+  // Resolve events that exist in registrations but are missing from Bevy allEvents
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function resolveMissingEvents() {
+      if (registrations.length === 0) return;
+
+      const knownIds = new Set([...allEvents.map((e) => String(e.id)), ...extraEvents.map((e) => String(e.id))]);
+      const missingIds = Array.from(
+        new Set(registrations.map((r) => String(r.event_id)).filter((id) => !knownIds.has(id))),
+      );
+
+      if (missingIds.length === 0) return;
+
+      try {
+        setIsResolvingEvents(true);
+        const { getFirestoreEvents, getFirestoreEventById } = await import("@/lib/firestore/client");
+
+        const foundMap = new Map<string, FirestoreEvent>();
+
+        // 1. Fetch top Firestore events
+        const fsEvents = await getFirestoreEvents(100);
+        for (const fe of fsEvents) {
+          foundMap.set(String(fe.id), fe);
+        }
+
+        // 2. Fetch specific missing docs individually if not found in batch
+        const stillMissing = missingIds.filter((id) => !foundMap.has(id));
+        if (stillMissing.length > 0) {
+          const singleFetches = await Promise.all(
+            stillMissing.map(async (id) => {
+              try {
+                return await getFirestoreEventById(id);
+              } catch {
+                return null;
+              }
+            }),
+          );
+          for (const item of singleFetches) {
+            if (item) {
+              foundMap.set(String(item.id), item);
+            }
+          }
+        }
+
+        if (!isCancelled && foundMap.size > 0) {
+          setExtraEvents((prev) => {
+            const prevMap = new Map(prev.map((e) => [String(e.id), e]));
+            for (const [id, event] of foundMap.entries()) {
+              prevMap.set(id, event);
+            }
+            return Array.from(prevMap.values());
+          });
+        }
+      } catch (err) {
+        console.warn("[MyEventsList] Failed to resolve missing events from Firestore:", err);
+      } finally {
+        if (!isCancelled) {
+          setIsResolvingEvents(false);
+        }
+      }
+    }
+
+    void resolveMissingEvents();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [registrations, allEvents, extraEvents]);
+
   const eventMap = useMemo(() => {
     const map = new Map<string, FirestoreEvent>();
     for (const ev of allEvents) {
       map.set(String(ev.id), ev);
     }
+    for (const ev of extraEvents) {
+      const existing = map.get(String(ev.id));
+      map.set(String(ev.id), {
+        ...existing,
+        ...ev,
+        picture_url: ev.picture_url || ev.banner_url || existing?.picture_url,
+        banner_url: ev.banner_url || ev.picture_url || existing?.banner_url,
+      });
+    }
     return map;
-  }, [allEvents]);
+  }, [allEvents, extraEvents]);
 
   const handleRegistrationUpdated = (updated: FirestoreRegistration) => {
     setRegistrations((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
@@ -235,6 +317,12 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
             // Keep raw string
           }
 
+          const imageUrl = extractEventImageUrl(
+            ev as unknown as Record<string, unknown>,
+            reg as unknown as Record<string, unknown>,
+          );
+          const isCardLoading = isResolvingEvents && !ev;
+
           return (
             <Card
               key={reg.id}
@@ -247,8 +335,9 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
                 {/* Event Picture / Banner */}
                 <Link href={`/dashboard/member/events/${reg.event_id}`} className="block">
                   <EventCardImage
-                    src={ev?.picture_url || ev?.banner_url}
+                    src={imageUrl}
                     alt={reg.event_title}
+                    isLoading={isCardLoading}
                     className="transition-transform duration-300 group-hover:scale-105"
                   >
                     <div className="absolute top-3 left-3 z-20 flex flex-wrap gap-1.5">

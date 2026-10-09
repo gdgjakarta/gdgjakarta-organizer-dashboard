@@ -5,7 +5,6 @@ import React, { useEffect, useId, useMemo, useRef, useState, useTransition } fro
 import { useRouter } from "next/navigation";
 
 import {
-  Banknote,
   CheckCircle2,
   Clock,
   ExternalLink,
@@ -41,6 +40,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { resolveEventAudience } from "@/lib/bevy/audience";
+import { extractEventImageUrl } from "@/lib/events/media-utils";
 import {
   formatOtherAnswer,
   isOtherOption,
@@ -56,6 +56,7 @@ import {
 import { checkEventRegistrationAction, registerForEventAction } from "@/lib/firestore/actions";
 import type {
   CustomQuestion,
+  EventMerchandiseItem,
   EventSession,
   FirestoreEvent,
   FirestoreRegistration,
@@ -85,6 +86,18 @@ function isEventPast(event: FirestoreEvent): boolean {
   }
 }
 
+function getTicketTypeBadge(type: string): string {
+  if (type === "free") return "Free RSVP";
+  if (type === "paid") return "Paid Pass";
+  return "Refundable Deposit";
+}
+
+function getMerchPriceDisplay(item: EventMerchandiseItem, quantity: number): string {
+  if (quantity <= 0) return "";
+  if (item.is_free) return "Free";
+  return `Rp ${((item.price || 0) * quantity).toLocaleString("id-ID")}`;
+}
+
 export function EventRegistrationModal({
   event,
   existingRegistration,
@@ -103,6 +116,10 @@ export function EventRegistrationModal({
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [touchedFields, setTouchedFields] = useState<Set<string>>(new Set());
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
+  const [selectedTicketId, setSelectedTicketId] = useState<string>("");
+  const [selectedMerch, setSelectedMerch] = useState<
+    Record<string, { quantity: number; selectedVariations: Record<string, string> }>
+  >({});
   const [localReg, setLocalReg] = useState<FirestoreRegistration | null>(existingRegistration ?? null);
   const [isInternalChecking, setIsInternalChecking] = useState<boolean>(
     existingRegistration === undefined && (Boolean(user) || isAuthLoading),
@@ -210,6 +227,118 @@ export function EventRegistrationModal({
       : DEFAULT_COMBINED_QUESTIONS;
 
   const hasSessions = Array.isArray(eventConfig.sessions) && eventConfig.sessions.length > 0;
+
+  const availableTickets = useMemo(() => {
+    return (eventConfig.tickets ?? []).filter((t) => t.status !== "hidden");
+  }, [eventConfig.tickets]);
+  const hasTickets = availableTickets.length > 0;
+
+  const availableMerchandise = useMemo(() => {
+    return (eventConfig.merchandise ?? []).filter((m) => m.status === "active");
+  }, [eventConfig.merchandise]);
+  const hasMerchandise = availableMerchandise.length > 0;
+
+  // Auto-select first active ticket if available and none selected
+  useEffect(() => {
+    const activeTickets = availableTickets.filter((t) => t.status === "active");
+    if (activeTickets.length > 0 && !selectedTicketId) {
+      setSelectedTicketId(activeTickets[0].id);
+    }
+  }, [availableTickets, selectedTicketId]);
+
+  const selectedTicket = useMemo(() => {
+    return availableTickets.find((t) => t.id === selectedTicketId) ?? null;
+  }, [availableTickets, selectedTicketId]);
+
+  const ticketPrice = selectedTicket ? selectedTicket.price || 0 : 0;
+
+  const totalMerchandiseItems = useMemo(() => {
+    return Object.values(selectedMerch).reduce((sum, item) => sum + (item.quantity || 0), 0);
+  }, [selectedMerch]);
+
+  const maxMerchandiseAllowed = eventConfig.max_merchandise_per_person ?? null;
+
+  const merchandiseTotalPrice = useMemo(() => {
+    let total = 0;
+    for (const [itemId, order] of Object.entries(selectedMerch)) {
+      if (order.quantity > 0) {
+        const item = availableMerchandise.find((m) => m.id === itemId);
+        if (item && !item.is_free) {
+          total += (item.price || 0) * order.quantity;
+        }
+      }
+    }
+    return total;
+  }, [selectedMerch, availableMerchandise]);
+
+  const grandTotal = ticketPrice + merchandiseTotalPrice;
+
+  const handleUpdateMerchQuantity = (itemId: string, delta: number) => {
+    const item = availableMerchandise.find((m) => m.id === itemId);
+    if (!item) return;
+
+    setSelectedMerch((prev) => {
+      const current = prev[itemId] ?? {
+        quantity: 0,
+        selectedVariations: {},
+      };
+      const newQty = Math.max(0, current.quantity + delta);
+
+      // Check max limits
+      if (delta > 0) {
+        // Event-level max check
+        if (maxMerchandiseAllowed !== null && totalMerchandiseItems >= maxMerchandiseAllowed) {
+          toast.error(`You can select at most ${maxMerchandiseAllowed} merchandise item(s) for this event.`);
+          return prev;
+        }
+        // Item-level max check
+        const itemMax = item.max_per_person ?? null;
+        if (itemMax !== null && current.quantity >= itemMax) {
+          toast.error(`Limit of ${itemMax} unit(s) per person for "${item.name}".`);
+          return prev;
+        }
+        // Stock quota check
+        if (item.stock !== null && item.stock !== undefined && current.quantity >= item.stock) {
+          toast.error(`Only ${item.stock} item(s) available in stock.`);
+          return prev;
+        }
+      }
+
+      // Initialize default variations if empty and incrementing
+      const nextVariations = { ...current.selectedVariations };
+      if (newQty > 0 && item.variations && item.variations.length > 0) {
+        for (const v of item.variations) {
+          if (!nextVariations[v.name] && v.options.length > 0) {
+            nextVariations[v.name] = v.options[0];
+          }
+        }
+      }
+
+      return {
+        ...prev,
+        [itemId]: {
+          quantity: newQty,
+          selectedVariations: nextVariations,
+        },
+      };
+    });
+  };
+
+  const handleUpdateMerchVariation = (itemId: string, varName: string, optionVal: string) => {
+    setSelectedMerch((prev) => {
+      const current = prev[itemId] ?? { quantity: 1, selectedVariations: {} };
+      return {
+        ...prev,
+        [itemId]: {
+          ...current,
+          selectedVariations: {
+            ...current.selectedVariations,
+            [varName]: optionVal,
+          },
+        },
+      };
+    });
+  };
 
   // Group questions by section for structured rendering
   const sectionsMap = new Map<string, CustomQuestion[]>();
@@ -371,6 +500,17 @@ export function EventRegistrationModal({
       }
     }
 
+    if (hasTickets) {
+      if (!selectedTicket) {
+        toast.error("Please choose a ticket tier to attend.");
+        return;
+      }
+      if (selectedTicket.status === "sold_out") {
+        toast.error(`The ticket tier "${selectedTicket.name}" is sold out. Please select another tier.`);
+        return;
+      }
+    }
+
     // 2. Validate All Questions (Required, Min/Max Length, Format, Custom Regex)
     const newErrors: Record<string, string> = {};
     let firstErrorMsg: string | null = null;
@@ -411,9 +551,32 @@ export function EventRegistrationModal({
           Session: sessionKey,
         };
 
+        const selectedMerchOrders: SelectedMerchandiseOrder[] = [];
+        for (const [itemId, order] of Object.entries(selectedMerch)) {
+          if (order.quantity > 0) {
+            const item = availableMerchandise.find((m) => m.id === itemId);
+            if (item) {
+              selectedMerchOrders.push({
+                id: item.id,
+                name: item.name,
+                quantity: order.quantity,
+                price: item.is_free ? 0 : item.price || 0,
+                selected_variations:
+                  Object.keys(order.selectedVariations).length > 0 ? order.selectedVariations : undefined,
+              });
+            }
+          }
+        }
+
+        const cachedImg =
+          extractEventImageUrl(eventConfig as unknown as Record<string, unknown>) ??
+          extractEventImageUrl(event as unknown as Record<string, unknown>);
+
         const registrationPayload: Omit<FirestoreRegistration, "id"> = {
           event_id: String(event.id),
           event_title: event.title,
+          event_picture_url: cachedImg ?? undefined,
+          event_banner_url: eventConfig.banner_url ?? event.banner_url ?? cachedImg ?? undefined,
           member_id: user.id,
           member_name: user.name,
           member_email: user.email,
@@ -423,6 +586,11 @@ export function EventRegistrationModal({
           answers: combinedAnswers,
           session_id: selectedSession?.id,
           session_title: selectedSession?.title,
+          ticket_id: selectedTicket?.id,
+          ticket_name: selectedTicket?.name,
+          ticket_type: selectedTicket?.type,
+          ticket_price: selectedTicket?.price,
+          selected_merchandise: selectedMerchOrders.length > 0 ? selectedMerchOrders : undefined,
           registered_at: new Date().toISOString(),
         };
 
@@ -456,6 +624,11 @@ export function EventRegistrationModal({
             session_location: selectedSession?.location,
             session_location_url: selectedSession?.location_url,
             Session: sessionKey,
+            ticket_id: selectedTicket?.id,
+            ticket_name: selectedTicket?.name,
+            ticket_type: selectedTicket?.type,
+            ticket_price: selectedTicket?.price,
+            selected_merchandise: selectedMerchOrders.length > 0 ? selectedMerchOrders : undefined,
           },
           member: {
             id: user.id,
@@ -484,6 +657,13 @@ export function EventRegistrationModal({
           status: eventConfig.requires_approval ? "pending" : "approved",
           registered_at: new Date().toISOString(),
           answers: combinedAnswers,
+          session_id: selectedSession?.id,
+          session_title: selectedSession?.title,
+          ticket_id: selectedTicket?.id,
+          ticket_name: selectedTicket?.name,
+          ticket_type: selectedTicket?.type,
+          ticket_price: selectedTicket?.price,
+          selected_merchandise: selectedMerchOrders.length > 0 ? selectedMerchOrders : undefined,
         };
 
         setIsTransitioning(true);
@@ -785,6 +965,101 @@ export function EventRegistrationModal({
                               </span>
                             ))}
                         </div>
+                      </div>
+                    </label>
+                  );
+                })}
+              </RadioGroup>
+            </div>
+          )}
+
+          {/* ── TICKET TIER SELECTION SECTION ───────────────────────── */}
+          {hasTickets && (
+            <div className="space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Ticket className="size-4 text-primary" />
+                  <h3 className="font-semibold text-foreground text-sm">Select Your Registration Ticket</h3>
+                  <span className="text-destructive">*</span>
+                </div>
+                {eventConfig.max_tickets_per_person && (
+                  <Badge variant="outline" className="text-[10px]">
+                    Max {eventConfig.max_tickets_per_person} / person
+                  </Badge>
+                )}
+              </div>
+              <p className="text-muted-foreground text-xs">
+                Select your preferred pass type. Free RSVP, Commitment Deposit, and Paid tiers are supported.
+              </p>
+
+              <RadioGroup
+                value={selectedTicketId}
+                onValueChange={setSelectedTicketId}
+                className="grid grid-cols-1 gap-2.5 pt-1"
+              >
+                {availableTickets.map((t) => {
+                  const isSelected = selectedTicketId === t.id;
+                  const isSoldOut = t.status === "sold_out";
+
+                  return (
+                    <label
+                      key={t.id}
+                      htmlFor={`ticket-opt-${t.id}`}
+                      className={cn(
+                        "relative flex cursor-pointer items-start gap-3 rounded-lg border p-3.5 transition-colors",
+                        isSelected
+                          ? "border-primary bg-primary/10 shadow-xs ring-1 ring-primary/40"
+                          : "border-border bg-card hover:bg-muted/30",
+                        isSoldOut && "cursor-not-allowed opacity-60 hover:bg-card",
+                      )}
+                    >
+                      <RadioGroupItem
+                        value={t.id}
+                        id={`ticket-opt-${t.id}`}
+                        disabled={isSoldOut}
+                        className="mt-0.5 shrink-0"
+                      />
+                      <div className="flex-1 space-y-1">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-foreground text-sm">{t.name}</span>
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "text-[10px] font-semibold",
+                                t.type === "free" &&
+                                  "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+                                t.type === "paid" &&
+                                  "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-400",
+                                t.type === "commitment_fee" &&
+                                  "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400",
+                              )}
+                            >
+                              {getTicketTypeBadge(t.type)}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-foreground text-sm">
+                              {t.type === "free" ? "Free" : `Rp ${(t.price || 0).toLocaleString("id-ID")}`}
+                            </span>
+                            {isSoldOut && (
+                              <Badge variant="destructive" className="text-[10px]">
+                                Sold Out
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+
+                        {t.description && (
+                          <p className="text-muted-foreground text-xs leading-relaxed">{t.description}</p>
+                        )}
+
+                        {t.type === "commitment_fee" && (
+                          <div className="mt-1 flex items-center gap-1.5 text-[11px] text-amber-600 dark:text-amber-400">
+                            <ShieldCheck className="size-3.5 shrink-0" />
+                            <span>Deposit will be returned 100% in cash upon physical check-in at the venue.</span>
+                          </div>
+                        )}
                       </div>
                     </label>
                   );
@@ -1208,6 +1483,196 @@ export function EventRegistrationModal({
               </div>
             ))}
           </div>
+
+          {/* ── MERCHANDISE ADD-ONS SECTION ──────────────────────────── */}
+          {hasMerchandise && (
+            <div className="space-y-3 rounded-xl border border-border/80 bg-muted/20 p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ShoppingBag className="size-4 text-primary" />
+                  <h3 className="font-semibold text-foreground text-sm">Official Merchandise & Swag (Optional)</h3>
+                </div>
+                {maxMerchandiseAllowed && (
+                  <Badge variant="outline" className="text-[10px]">
+                    {totalMerchandiseItems}/{maxMerchandiseAllowed} items selected
+                  </Badge>
+                )}
+              </div>
+              <p className="text-muted-foreground text-xs">
+                Add exclusive community swag, apparel, and event merchandise to your registration.
+              </p>
+
+              <div className="space-y-3 pt-1">
+                {availableMerchandise.map((item) => {
+                  const order = selectedMerch[item.id] ?? { quantity: 0, selectedVariations: {} };
+                  const isAdded = order.quantity > 0;
+                  const itemMax = item.max_per_person ?? maxMerchandiseAllowed ?? null;
+                  const reachedLimit =
+                    (itemMax !== null && order.quantity >= itemMax) ||
+                    (maxMerchandiseAllowed !== null && totalMerchandiseItems >= maxMerchandiseAllowed);
+
+                  return (
+                    <div
+                      key={item.id}
+                      className={cn(
+                        "flex flex-col gap-3 rounded-lg border p-3.5 transition-all sm:flex-row sm:items-center sm:justify-between",
+                        isAdded
+                          ? "border-primary/50 bg-background shadow-xs ring-1 ring-primary/20"
+                          : "border-border/70 bg-card",
+                      )}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="relative size-12 shrink-0 overflow-hidden rounded-md bg-muted">
+                          {item.image_url ? (
+                            // biome-ignore lint/performance/noImgElement: merchandise preview
+                            // biome-ignore lint/a11y/useAltText: thumbnail
+                            <img src={item.image_url} className="size-full object-cover" />
+                          ) : (
+                            <div className="flex size-full items-center justify-center text-muted-foreground">
+                              <Package className="size-5 opacity-40" />
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="space-y-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="font-medium text-foreground text-xs sm:text-sm">{item.name}</span>
+                            <Badge
+                              variant="secondary"
+                              className={cn(
+                                "text-[10px] px-1.5 py-0",
+                                item.is_free
+                                  ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                  : "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+                              )}
+                            >
+                              {item.is_free ? "Free Perk" : `Rp ${(item.price || 0).toLocaleString("id-ID")}`}
+                            </Badge>
+                          </div>
+
+                          {item.description && (
+                            <p className="line-clamp-2 text-muted-foreground text-[11px] leading-relaxed">
+                              {item.description}
+                            </p>
+                          )}
+
+                          {/* Variations Selectors (e.g. Size, Color) */}
+                          {isAdded && item.variations && item.variations.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-2 pt-1.5">
+                              {item.variations.map((v) => (
+                                <div key={v.name} className="flex items-center gap-1 text-[11px]">
+                                  <span className="text-muted-foreground">{v.name}:</span>
+                                  <Select
+                                    value={order.selectedVariations[v.name] || v.options[0]}
+                                    onValueChange={(val) => handleUpdateMerchVariation(item.id, v.name, val)}
+                                  >
+                                    <SelectTrigger className="h-6 w-20 text-[10px] px-1.5 py-0">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {v.options.map((opt) => (
+                                        <SelectItem key={opt} value={opt} className="text-xs">
+                                          {opt}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Stepper Quantity Buttons */}
+                      <div className="flex items-center justify-between sm:justify-end gap-2 border-t pt-2 sm:border-t-0 sm:pt-0">
+                        <span className="text-xs font-semibold sm:hidden">
+                          {getMerchPriceDisplay(item, order.quantity)}
+                        </span>
+
+                        <div className="flex items-center gap-1.5 self-end sm:self-auto">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon-xs"
+                            onClick={() => handleUpdateMerchQuantity(item.id, -1)}
+                            disabled={order.quantity === 0}
+                            className="size-7"
+                          >
+                            <Minus className="size-3" />
+                          </Button>
+                          <span className="w-6 text-center font-mono text-xs font-semibold">{order.quantity}</span>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon-xs"
+                            onClick={() => handleUpdateMerchQuantity(item.id, 1)}
+                            disabled={reachedLimit}
+                            className="size-7"
+                          >
+                            <Plus className="size-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ── REGISTRATION & ORDER SUMMARY ─────────────────────────── */}
+          {(hasTickets || (hasMerchandise && totalMerchandiseItems > 0)) && (
+            <div className="rounded-xl border bg-muted/40 p-4 space-y-2.5">
+              <div className="flex items-center justify-between text-xs text-muted-foreground font-medium">
+                <span>Registration & Checkout Summary</span>
+                <span>Amount</span>
+              </div>
+
+              {selectedTicket && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-foreground">
+                    Ticket: <strong>{selectedTicket.name}</strong>
+                  </span>
+                  <span className="font-mono">
+                    {selectedTicket.type === "free"
+                      ? "Rp 0"
+                      : `Rp ${(selectedTicket.price || 0).toLocaleString("id-ID")}`}
+                  </span>
+                </div>
+              )}
+
+              {Object.entries(selectedMerch).map(([itemId, order]) => {
+                if (order.quantity <= 0) return null;
+                const m = availableMerchandise.find((it) => it.id === itemId);
+                if (!m) return null;
+                const varText = Object.values(order.selectedVariations).join(", ");
+                return (
+                  <div key={itemId} className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>
+                      {order.quantity}x {m.name} {varText ? `(${varText})` : ""}
+                    </span>
+                    <span className="font-mono">
+                      {m.is_free ? "Free" : `Rp ${((m.price || 0) * order.quantity).toLocaleString("id-ID")}`}
+                    </span>
+                  </div>
+                );
+              })}
+
+              <div className="border-t pt-2 flex items-center justify-between font-bold text-sm text-foreground">
+                <span>Total Amount</span>
+                <span className="font-mono text-primary">
+                  {grandTotal === 0 ? "Free (Rp 0)" : `Rp ${grandTotal.toLocaleString("id-ID")}`}
+                </span>
+              </div>
+
+              {selectedTicket?.type === "commitment_fee" && (
+                <p className="text-[11px] text-amber-600 dark:text-amber-400 pt-1 leading-normal">
+                  💡 Note: Your commitment deposit will be handed back in full upon physical check-in at the venue.
+                </p>
+              )}
+            </div>
+          )}
 
           <DialogFooter className="gap-2 border-t pt-4">
             <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={isPending}>

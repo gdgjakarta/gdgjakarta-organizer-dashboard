@@ -76,8 +76,20 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
           status: (matched.status as FirestoreEvent["status"]) ?? "Published",
           start_date: matched.start_date,
           end_date: matched.end_date,
-          picture_url: matched.picture?.thumbnail_url ?? matched.picture?.url ?? undefined,
-          banner_url: matched.banner?.url ?? undefined,
+          picture_url:
+            matched.picture?.url ??
+            matched.picture?.thumbnail_url ??
+            matched.cropped_picture_url ??
+            matched.banner?.url ??
+            matched.cropped_banner_url ??
+            undefined,
+          banner_url:
+            matched.banner?.url ??
+            matched.banner?.thumbnail_url ??
+            matched.cropped_banner_url ??
+            matched.picture?.url ??
+            matched.cropped_picture_url ??
+            undefined,
           event_type_title: matched.event_type_title ?? "Standard Event",
           audience_type: audienceType,
           is_virtual: isVirtual,

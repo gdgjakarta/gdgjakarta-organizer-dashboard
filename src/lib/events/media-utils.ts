@@ -89,3 +89,47 @@ export function parsePhotoAlbum(rawUrl?: string | null): ParsedPhotoAlbum | null
     url,
   };
 }
+
+/**
+ * Safely extract an image URL from an event or registration object,
+ * checking all known Bevy, Cloudinary, Firestore, and fallback fields.
+ */
+export function extractEventImageUrl(
+  event?: Record<string, unknown> | null,
+  registration?: Record<string, unknown> | null,
+): string | null {
+  if (!event && !registration) return null;
+
+  const candidateFields: (unknown | undefined | null)[] = [
+    // 1. Event primary image fields
+    event?.picture_url,
+    event?.banner_url,
+    event?.cropped_picture_url,
+    event?.cropped_banner_url,
+    event?.image_url,
+    event?.imageUrl,
+    event?.thumbnail_url,
+
+    // 2. Nested Bevy picture / banner objects
+    (event?.picture as { url?: string; thumbnail_url?: string } | undefined)?.url,
+    (event?.picture as { url?: string; thumbnail_url?: string } | undefined)?.thumbnail_url,
+    (event?.banner as { url?: string; thumbnail_url?: string } | undefined)?.url,
+    (event?.banner as { url?: string; thumbnail_url?: string } | undefined)?.thumbnail_url,
+
+    // 3. Registration-level cached event image fields
+    registration?.event_picture_url,
+    registration?.event_banner_url,
+    (registration?.answers as Record<string, unknown> | undefined)?.event_picture_url,
+    (registration?.answers as Record<string, unknown> | undefined)?.event_banner_url,
+    (registration?.answers as Record<string, unknown> | undefined)?.picture_url,
+    (registration?.answers as Record<string, unknown> | undefined)?.banner_url,
+  ];
+
+  for (const candidate of candidateFields) {
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      return candidate.trim();
+    }
+  }
+
+  return null;
+}

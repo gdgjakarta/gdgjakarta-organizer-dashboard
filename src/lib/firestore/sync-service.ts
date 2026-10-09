@@ -66,8 +66,21 @@ export async function syncBevyEventsToFirestore(): Promise<{
         status,
         start_date: event.start_date || now,
         end_date: event.end_date || event.start_date || now,
-        picture_url: event.picture?.thumbnail_url || event.picture?.url || event.banner?.thumbnail_url || null,
-        banner_url: event.banner?.url || event.cropped_banner_url || null,
+        picture_url:
+          event.picture?.url ||
+          event.picture?.thumbnail_url ||
+          event.cropped_picture_url ||
+          event.banner?.url ||
+          event.banner?.thumbnail_url ||
+          event.cropped_banner_url ||
+          null,
+        banner_url:
+          event.banner?.url ||
+          event.banner?.thumbnail_url ||
+          event.cropped_banner_url ||
+          event.picture?.url ||
+          event.cropped_picture_url ||
+          null,
         event_type_title: event.event_type_title || "Standard Event",
         audience_type: audienceType,
         is_virtual: isVirtual,

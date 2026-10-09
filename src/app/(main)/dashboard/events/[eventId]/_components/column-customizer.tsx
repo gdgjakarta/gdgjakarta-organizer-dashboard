@@ -37,6 +37,8 @@ interface ColumnCustomizerProps {
   visibleStandardColumns: Record<string, boolean>;
   onToggleStandardColumn: (id: string) => void;
   hasSessions: boolean;
+  hasTickets?: boolean;
+  hasMerchandise?: boolean;
   onResetDefaults: () => void;
 }
 
@@ -49,6 +51,8 @@ export function ColumnCustomizer({
   visibleStandardColumns,
   onToggleStandardColumn,
   hasSessions,
+  hasTickets = false,
+  hasMerchandise = false,
   onResetDefaults,
 }: ColumnCustomizerProps) {
   const [open, setOpen] = useState(false);
@@ -60,6 +64,14 @@ export function ColumnCustomizer({
       { id: "applicant", label: "Applicant", description: "Name, email, and avatar", locked: true },
       { id: "status", label: "Status", description: "Approved, Pending, or Rejected badge" },
     ];
+
+    if (hasTickets) {
+      list.push({ id: "ticket", label: "Ticket Pass", description: "Selected ticket tier, price, or free status" });
+    }
+
+    if (hasMerchandise) {
+      list.push({ id: "merchandise", label: "Merchandise", description: "Ordered event merchandise items and addons" });
+    }
 
     if (hasSessions) {
       list.push({ id: "session", label: "Session Track", description: "Selected event session" });
@@ -73,7 +85,7 @@ export function ColumnCustomizer({
     );
 
     return list;
-  }, [hasSessions]);
+  }, [hasSessions, hasTickets, hasMerchandise]);
 
   // Filtered lists based on search
   const filteredQuestions = useMemo(() => {
