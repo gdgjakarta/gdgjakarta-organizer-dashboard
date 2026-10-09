@@ -333,3 +333,53 @@ export interface BevyChapterSlim {
   twitter_handle?: string;
   linkedin_page?: string;
 }
+
+export interface BevyAttendee {
+  id: number;
+  attendee_code?: string | null;
+  attendee_uuid?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  name?: string | null;
+  email: string;
+  is_checked_in: boolean;
+  checkin_date?: string | null;
+  ticket_title?: string | null;
+  order_id?: string | null;
+  status?: string | null;
+  user_id?: number | null;
+  created_date?: string | null;
+  avatar?: {
+    url?: string | null;
+    thumbnail_url?: string | null;
+  } | null;
+  [key: string]: unknown;
+}
+
+export interface BevyAttendeesResponse {
+  count?: number;
+  pagination?: {
+    previous_page?: number | null;
+    current_page?: number;
+    next_page?: number | null;
+    page_size?: number;
+  };
+  results?: BevyAttendee[];
+}
+
+export interface BevyAttendeeCheckInRequest {
+  event: number;
+  chapter: number;
+  attendees: Array<{
+    id: number;
+    is_checked_in: boolean;
+  }>;
+}
+
+export interface BevyAttendeeCheckInResponse {
+  event?: number;
+  attendees?: Array<{
+    id: number;
+    is_checked_in: boolean;
+  }>;
+}
