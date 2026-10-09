@@ -498,7 +498,7 @@ export async function updateRegistrationCheckIn(
   const now = new Date().toISOString();
   const updatePayload = sanitizeFirestoreData<Partial<FirestoreRegistration>>({
     is_checked_in: isCheckedIn,
-    checked_in_at: isCheckedIn ? (checkinDate ?? now) : null,
+    checked_in_at: isCheckedIn ? (checkinDate ?? now) : undefined,
     ...(bevyAttendeeId !== undefined ? { bevy_attendee_id: bevyAttendeeId } : {}),
     ...(checkinDate !== undefined ? { checkin_date: checkinDate } : {}),
   });
