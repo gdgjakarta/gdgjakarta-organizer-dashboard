@@ -74,7 +74,9 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
   ];
   const allBevyItemsWithSlides =
     event.agenda?.days?.flatMap((d) =>
-      d.items.filter((i) => Boolean(i.slides_url) || Boolean(i.related_links && i.related_links.length > 0)),
+      Array.isArray(d.items)
+        ? d.items.filter((i) => Boolean(i.slides_url) || Boolean(i.related_links && i.related_links.length > 0))
+        : [],
     ) ?? [];
   const hasAnySlides = allSessionsWithSlides.length > 0 || allBevyItemsWithSlides.length > 0;
 
@@ -325,64 +327,67 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
                 <div key={day.title ?? `day-${dIdx + 1}`} className="space-y-3">
                   {day.title && <h4 className="font-bold text-base text-foreground tracking-tight">{day.title}</h4>}
                   <div className="space-y-2.5">
-                    {day.items.map((item) => (
-                      <Card key={`${item.time}-${item.activity}`} className="border-border/60 bg-card p-4 shadow-2xs">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-                          <div className="shrink-0">
-                            <Badge variant="secondary" className="font-mono text-xs">
-                              <Clock className="mr-1 size-3" />
-                              {item.time}
-                            </Badge>
-                          </div>
-                          <div className="flex-1 space-y-1">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <h5 className="font-semibold text-foreground text-sm">{item.activity}</h5>
-                              {item.audience_type && (
-                                <Badge variant="outline" className="text-[10px]">
-                                  {item.audience_type}
-                                </Badge>
+                    {Array.isArray(day.items) &&
+                      day.items.map((item) => (
+                        <Card key={`${item.time}-${item.activity}`} className="border-border/60 bg-card p-4 shadow-2xs">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                            <div className="shrink-0">
+                              <Badge variant="secondary" className="font-mono text-xs">
+                                <Clock className="mr-1 size-3" />
+                                {item.time}
+                              </Badge>
+                            </div>
+                            <div className="flex-1 space-y-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <h5 className="font-semibold text-foreground text-sm">{item.activity}</h5>
+                                {item.audience_type && (
+                                  <Badge variant="outline" className="text-[10px]">
+                                    {item.audience_type}
+                                  </Badge>
+                                )}
+                              </div>
+                              {item.description && (
+                                <p className="text-muted-foreground text-xs leading-relaxed">{item.description}</p>
+                              )}
+
+                              {/* Speaker Slides & Related Links if any */}
+                              {(item.slides_url || (item.related_links && item.related_links.length > 0)) && (
+                                <div className="flex flex-wrap items-center gap-2 border-border/40 border-t pt-2">
+                                  {item.slides_url && (
+                                    <Button
+                                      asChild
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-7 gap-1.5 border-primary/30 bg-primary/5 px-2.5 text-primary text-xs hover:bg-primary/10 hover:text-primary"
+                                    >
+                                      <a href={item.slides_url} target="_blank" rel="noopener noreferrer">
+                                        <Presentation className="size-3.5" />
+                                        <span>{item.slides_title ?? "Session Slides"}</span>
+                                        <ExternalLink className="size-2.5" />
+                                      </a>
+                                    </Button>
+                                  )}
+                                  {item.related_links?.map((link) => (
+                                    <a
+                                      key={link.url}
+                                      href={link.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:border-primary/40 hover:bg-muted/70 hover:text-foreground"
+                                    >
+                                      <Link2 className="size-2.5 text-primary" />
+                                      <span className="max-w-[180px] truncate">
+                                        {link.title ? link.title : link.url}
+                                      </span>
+                                      <ExternalLink className="size-2" />
+                                    </a>
+                                  ))}
+                                </div>
                               )}
                             </div>
-                            {item.description && (
-                              <p className="text-muted-foreground text-xs leading-relaxed">{item.description}</p>
-                            )}
-
-                            {/* Speaker Slides & Related Links if any */}
-                            {(item.slides_url || (item.related_links && item.related_links.length > 0)) && (
-                              <div className="flex flex-wrap items-center gap-2 border-border/40 border-t pt-2">
-                                {item.slides_url && (
-                                  <Button
-                                    asChild
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-7 gap-1.5 border-primary/30 bg-primary/5 px-2.5 text-primary text-xs hover:bg-primary/10 hover:text-primary"
-                                  >
-                                    <a href={item.slides_url} target="_blank" rel="noopener noreferrer">
-                                      <Presentation className="size-3.5" />
-                                      <span>{item.slides_title ?? "Session Slides"}</span>
-                                      <ExternalLink className="size-2.5" />
-                                    </a>
-                                  </Button>
-                                )}
-                                {item.related_links?.map((link) => (
-                                  <a
-                                    key={link.url}
-                                    href={link.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:border-primary/40 hover:bg-muted/70 hover:text-foreground"
-                                  >
-                                    <Link2 className="size-2.5 text-primary" />
-                                    <span className="max-w-[180px] truncate">{link.title ? link.title : link.url}</span>
-                                    <ExternalLink className="size-2" />
-                                  </a>
-                                ))}
-                              </div>
-                            )}
                           </div>
-                        </div>
-                      </Card>
-                    ))}
+                        </Card>
+                      ))}
                   </div>
                 </div>
               ))}

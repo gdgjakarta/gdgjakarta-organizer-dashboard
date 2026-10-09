@@ -18,6 +18,7 @@ import {
   type LucideIcon,
   Mail,
   Phone,
+  RotateCcw,
   ShieldCheck,
   Sparkles,
   User,
@@ -39,6 +40,7 @@ interface ApplicantDetailDialogProps {
   registration: FirestoreRegistration | null;
   onClose: () => void;
   onStatusChange: (registrationId: string, newStatus: RegistrationStatus) => void;
+  onToggleCheckIn?: (registration: FirestoreRegistration, isCheckedIn: boolean) => void;
   customQuestions?: CustomQuestion[];
   isPending?: boolean;
 }
@@ -129,6 +131,7 @@ export function ApplicantDetailDialog({
   registration,
   onClose,
   onStatusChange,
+  onToggleCheckIn,
   customQuestions = [],
   isPending = false,
 }: ApplicantDetailDialogProps) {
@@ -509,17 +512,52 @@ export function ApplicantDetailDialog({
             </div>
           )}
 
-          {/* Check-in status badge if checked in */}
-          {registration.checked_in_at && (
-            <div className="mt-2 flex items-center gap-2 text-muted-foreground text-xs">
-              <Badge
-                variant="outline"
-                className="gap-1 border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-              >
-                <UserCheck className="size-3" /> Checked in at {registration.checked_in_at}
-              </Badge>
+          {/* Bevy On-Site Check-In Status & Action */}
+          <div className="mt-3 flex flex-col gap-2 rounded-lg border bg-muted/30 p-2.5 sm:flex-row sm:items-center sm:justify-between text-xs">
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-muted-foreground">On-Site Check-In (Bevy):</span>
+              {registration.is_checked_in ? (
+                <Badge
+                  variant="outline"
+                  className="gap-1 border-emerald-500/30 bg-emerald-500/10 text-emerald-600 font-medium text-[11px] dark:text-emerald-400"
+                >
+                  <UserCheck className="size-3" /> Checked In
+                  {registration.checked_in_at && ` • ${registration.checked_in_at}`}
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="text-muted-foreground text-[11px]">
+                  Not Checked In
+                </Badge>
+              )}
             </div>
-          )}
+
+            {onToggleCheckIn && (
+              <Button
+                size="sm"
+                variant={registration.is_checked_in ? "ghost" : "outline"}
+                className={cn(
+                  "h-7 gap-1 text-xs self-start sm:self-auto",
+                  registration.is_checked_in
+                    ? "text-muted-foreground hover:text-destructive"
+                    : "border-primary/30 text-primary hover:bg-primary/5",
+                )}
+                disabled={isPending}
+                onClick={() => onToggleCheckIn(registration, !registration.is_checked_in)}
+              >
+                {registration.is_checked_in ? (
+                  <>
+                    <RotateCcw className="size-3" />
+                    Undo Check-In
+                  </>
+                ) : (
+                  <>
+                    <UserCheck className="size-3" />
+                    Check In via Bevy
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Scrollable Questions and Responses */}
@@ -596,18 +634,19 @@ export function ApplicantDetailDialog({
               </Button>
             )}
 
-            {registration.status !== "attended" && (
+            {registration.status !== "pending" && (
               <Button
                 size="sm"
                 variant="outline"
-                className="text-xs"
+                className="text-amber-600 hover:bg-amber-500/10 border-amber-500/30 text-xs"
                 disabled={isPending}
                 onClick={() => {
-                  onStatusChange(registration.id, "attended");
+                  onStatusChange(registration.id, "pending");
                   onClose();
                 }}
               >
-                Mark Attended
+                <Clock className="mr-1.5 size-3.5" />
+                Set Pending
               </Button>
             )}
           </div>
