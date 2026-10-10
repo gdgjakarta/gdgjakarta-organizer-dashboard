@@ -138,8 +138,14 @@ export const EMAIL_TEMPLATE_VARIABLES: Record<EmailTemplateKey, TemplateVariable
     {
       tag: "{{ $('Add Bevy Attendee API').item.json.attendee_code }}",
       label: "Attendee Reference Code",
-      description: "Unique attendee reference code from registration response",
+      description: "Unique attendee reference code from Add Bevy Attendee API response",
       sampleValue: "GDG-JKT-89241",
+    },
+    {
+      tag: "{{ $('Add Bevy Attendee API').item.json.id }}",
+      label: "Bevy Attendee ID",
+      description: "Numeric attendee ID fallback from Add Bevy Attendee API response",
+      sampleValue: "2793132",
     },
   ],
   rejected_hybrid: [
@@ -834,6 +840,8 @@ export function interpolateTemplateHtml(
     const qrCode = data.qrCode ?? SAMPLE_QR_CODE_BASE64;
     rendered = rendered.replaceAll("{{ $('Generate QR Code').item.json.qrCode }}", qrCode);
     rendered = rendered.replaceAll("{ $('Generate QR Code').item.json.qrCode }", qrCode);
+    rendered = rendered.replaceAll("{{ $('generate-qrcode').item.json.qrCode }}", qrCode);
+    rendered = rendered.replaceAll("{ $('generate-qrcode').item.json.qrCode }", qrCode);
 
     const attendeeCode = data.attendeeCode ?? "GDG-JKT-89241";
     rendered = rendered.replaceAll("{{ $('add-bevy-attendee-api').item.json.attendee_code }}", attendeeCode);
@@ -857,15 +865,23 @@ export function adjustBodyEmailForApprovedWebhook(html: string): string {
   // 1. Replace hardcoded SAMPLE_QR_CODE_BASE64 with the n8n Generate QR Code expression
   adjusted = adjusted.replaceAll(SAMPLE_QR_CODE_BASE64, "{{ $('Generate QR Code').item.json.qrCode }}");
 
-  // 2. Ensure any img with qr-img class has the n8n Generate QR Code expression if it does not already
+  // 2. Ensure any img with qr-img class has the n8n Generate QR Code expression regardless of attribute order
   adjusted = adjusted.replace(
-    /(<img\b[^>]*class=["'][^"']*qr-img[^"']*["'][^>]*src=["'])([^"']+)(["'][^>]*>)/gi,
+    /(<img\b(?=[^>]*\bclass=["'][^"']*\bqr-img\b[^"']*["'])[^>]*\bsrc=["'])([^"']+)(["'][^>]*>)/gi,
     (_match, prefix, _src, suffix) => {
       return `${prefix}data:image/png;base64,{{ $('Generate QR Code').item.json.qrCode }}${suffix}`;
     },
   );
 
-  // 3. Update attendee reference code tags to the dynamic n8n expression from Add Bevy Attendee API
+  // 3. Update legacy QR code and attendee reference code tags to the matching dynamic n8n expressions
+  adjusted = adjusted.replaceAll(
+    "{{ $('generate-qrcode').item.json.qrCode }}",
+    "{{ $('Generate QR Code').item.json.qrCode }}",
+  );
+  adjusted = adjusted.replaceAll(
+    "{ $('generate-qrcode').item.json.qrCode }",
+    "{{ $('Generate QR Code').item.json.qrCode }}",
+  );
   adjusted = adjusted.replaceAll(
     "{{ $('add-bevy-attendee-api').item.json.attendee_code }}",
     "{{ $('Add Bevy Attendee API').item.json.attendee_code }}",
@@ -888,7 +904,7 @@ export function adjustBodyEmailForApprovedWebhook(html: string): string {
 
   // 5. Ensure any div with attendee-id class uses the dynamic attendee_code expression if not already
   adjusted = adjusted.replace(
-    /(<div\b[^>]*class=["'][^"']*attendee-id[^"']*["'][^>]*>)([\s\S]*?)(<\/div>)/gi,
+    /(<div\b(?=[^>]*\bclass=["'][^"']*\battendee-id\b[^"']*["'])[^>]*>)([\s\S]*?)(<\/div>)/gi,
     (_match, prefix, content, suffix) => {
       if (content.includes("{{ $('Add Bevy Attendee API').item.json.attendee_code }}")) {
         return `${prefix}${content}${suffix}`;
@@ -1072,7 +1088,7 @@ export function resolveSendEmailWebhookUrl(customBaseUrl?: string): string {
     }
     return custom;
   }
-  const base = (customBaseUrl ?? process.env.N8N_WEBHOOK_BASE_URL ?? "https://n8n.gdgjakarta.com")
+  const base = (customBaseUrl ?? process.env.N8N_WEBHOOK_BASE_URL ?? "https://n8n.gdgjakarta.com/webhook/api")
     .trim()
     .replace(/\/+$/, "");
 

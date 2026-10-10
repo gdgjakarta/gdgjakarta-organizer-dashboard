@@ -1,13 +1,6 @@
 "use server";
 
-import {
-  buildRenderedEmailForAttendee,
-  getDefaultTemplateByKey,
-  getDefaultTemplateDataForType,
-  interpolateTemplateHtml,
-  interpolateTemplateSubject,
-  splitFullName,
-} from "@/lib/events/email-templates";
+import { buildRenderedEmailForAttendee } from "@/lib/events/email-templates";
 import {
   DEFAULT_GDG_CHECKIN_DEADLINE,
   DEFAULT_GDG_SESSION_CAPACITY,
@@ -16,7 +9,6 @@ import {
   GDG_SESSION_CHECKIN_DEADLINE_MAP,
   GDG_SESSION_TIME_MAP,
 } from "@/lib/events/registration-defaults";
-import type { EventEmailTemplates } from "@/lib/firestore/types";
 
 import { sendEmailWebhookAction } from "./email-template-actions";
 
@@ -78,6 +70,8 @@ export interface WebhookDispatchResult {
   status?: number;
   message?: string;
   error?: string;
+  emailDispatched?: boolean;
+  emailError?: string;
 }
 
 /**
@@ -165,15 +159,36 @@ export async function dispatchRegistrationWebhookAction(
     Boolean(payload.event.requires_approval) ||
     Boolean(payload.event.curation_mode);
 
+  let emailDispatched = false;
+  let emailError: string | undefined;
+
   if (isCurationMode) {
     try {
+      let resolvedEvent = payload.event;
+      if (!resolvedEvent.email_templates) {
+        try {
+          const { getFirestoreEventById } = await import("@/lib/firestore/client");
+          const fetchedEvent = await getFirestoreEventById(payload.event.id);
+          if (fetchedEvent) {
+            resolvedEvent = {
+              ...resolvedEvent,
+              email_templates: fetchedEvent.email_templates,
+              banner_url: fetchedEvent.banner_url ?? resolvedEvent.banner_url,
+              picture_url: fetchedEvent.picture_url ?? resolvedEvent.picture_url,
+            };
+          }
+        } catch (fetchErr) {
+          console.warn("[Registration Webhook] Failed to fetch event templates from Firestore:", fetchErr);
+        }
+      }
+
       const rendered = buildRenderedEmailForAttendee({
         templateKey: "interest",
         attendee: {
           name: payload.member.name,
           email: payload.member.email,
         },
-        event: payload.event,
+        event: resolvedEvent,
       });
 
       const emailRes = await sendEmailWebhookAction({
@@ -185,11 +200,14 @@ export async function dispatchRegistrationWebhookAction(
       });
 
       if (emailRes.success) {
+        emailDispatched = true;
         console.log(`[Registration Curation Flow] Successfully sent interest email to ${payload.member.email}`);
       } else {
+        emailError = emailRes.error ?? "Failed to send interest email";
         console.warn(`[Registration Curation Flow] Failed to send interest email:`, emailRes.error);
       }
     } catch (err) {
+      emailError = err instanceof Error ? err.message : "Failed to dispatch interest email";
       console.warn("[Registration Curation Flow] Failed to dispatch interest email:", err);
     }
   }
@@ -203,6 +221,8 @@ export async function dispatchRegistrationWebhookAction(
       success: true,
       dispatched: false,
       message: "Registration saved. Webhook URL not provided yet; payload logged on server.",
+      emailDispatched,
+      emailError,
     };
   }
 
@@ -242,6 +262,8 @@ export async function dispatchRegistrationWebhookAction(
         dispatched: true,
         status: response.status,
         error: `Webhook returned status ${response.status}: ${responseText.slice(0, 200)}`,
+        emailDispatched,
+        emailError,
       };
     }
 
@@ -251,6 +273,8 @@ export async function dispatchRegistrationWebhookAction(
       dispatched: true,
       status: response.status,
       message: "Webhook delivered successfully.",
+      emailDispatched,
+      emailError,
     };
   } catch (error) {
     const isAbort = error instanceof Error && error.name === "AbortError";
@@ -268,6 +292,8 @@ export async function dispatchRegistrationWebhookAction(
       success: true,
       dispatched: false,
       error: errorMsg,
+      emailDispatched,
+      emailError,
     };
   }
 }

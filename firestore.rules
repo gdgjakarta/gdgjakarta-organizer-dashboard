@@ -487,8 +487,17 @@ service cloud.firestore {
     // Event Registrations Collection
     // -------------------------------------------------------------
     match /event_registrations/{registrationId} {
-      // Read: Organizers or the registrant themselves (matching member_id or member_email).
-      allow read: if isOrganizer() ||
+      // Individual registration lookup: Organizers, or the registrant themselves (matching member_id or member_email).
+      // Handles non-existent doc lookup gracefully when resource == null before registration.
+      allow get: if isOrganizer() ||
+        (isAuthenticated() && (
+          resource == null ||
+          resource.data.member_id == request.auth.uid ||
+          (('member_email' in resource.data) && resource.data.member_email == request.auth.token.email)
+        ));
+
+      // Listing registrations: Organizers, or authenticated users querying their own registrations.
+      allow list: if isOrganizer() ||
         (isAuthenticated() && (
           resource.data.member_id == request.auth.uid ||
           (('member_email' in resource.data) && resource.data.member_email == request.auth.token.email)
@@ -501,16 +510,26 @@ service cloud.firestore {
       );
 
       // Update: Organizers (e.g. status review, check-in) or the registrant updating their RSVP form details.
-      // Registrants cannot alter status, review fields, check-in timestamp, or event/member identifiers.
+      // Registrants cannot alter review fields, check-in timestamp, or event/member identifiers, and can only update with unchanged status.
       allow update: if isValidRegistration(request.resource.data) && (
         isOrganizer() ||
         (
           isOwner(resource.data.member_id) &&
-          !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-            'status', 'reviewed_at', 'reviewed_by_id', 'reviewed_by_name',
-            'reviewed_by_email', 'status_logs',
-            'checked_in_at', 'member_id', 'event_id'
-          ])
+          (
+            !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+              'status', 'reviewed_at', 'reviewed_by_id', 'reviewed_by_name',
+              'reviewed_by_email', 'status_logs',
+              'checked_in_at', 'member_id', 'event_id'
+            ]) ||
+            (
+              request.resource.data.status == resource.data.status &&
+              !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+                'reviewed_at', 'reviewed_by_id', 'reviewed_by_name',
+                'reviewed_by_email', 'status_logs',
+                'checked_in_at', 'member_id', 'event_id'
+              ])
+            )
+          )
         )
       );
 
@@ -522,8 +541,14 @@ service cloud.firestore {
     // Events Collection
     // -------------------------------------------------------------
     match /events/{eventId} {
-      // Read: Public read for published, non-hidden events; Organizers can read all (including drafts/hidden).
-      allow read: if (
+      // Get: Public get for published/completed events (including unlisted/hidden events via direct link); Organizers can get all.
+      allow get: if (
+        ('status' in resource.data) &&
+        resource.data.status in ['Published', 'Completed']
+      ) || isOrganizer();
+
+      // List: Public list for published, non-hidden events; Organizers can list all (including drafts/hidden).
+      allow list: if (
         ('status' in resource.data) &&
         resource.data.status in ['Published', 'Completed'] &&
         (!('is_hidden' in resource.data) || !resource.data.is_hidden)
