@@ -1,6 +1,8 @@
 "use server";
 import {
+  deleteBevyAttendee,
   getAllBevyChapterEvents,
+  getAllBevyEventAttendees,
   getBevyChapterEvents,
   getBevyChapterMembers,
   getBevyChapterTeams,
@@ -103,6 +105,18 @@ export async function fetchBevyEventAttendeesAction(eventId: string | number, pa
 }
 
 /**
+ * Server action to fetch all Bevy event attendees across all pages safely on the server.
+ * Protected: requires an active organizer session.
+ */
+export async function fetchAllBevyEventAttendeesAction(eventId: string | number) {
+  if (!(await isAuthorizedOrganizerSession())) {
+    console.warn("[Security] Blocked unauthorized attempt to fetch all Bevy event attendees");
+    return { success: false, count: 0, results: [], error: "Unauthorized session" };
+  }
+  return await getAllBevyEventAttendees(eventId);
+}
+
+/**
  * Server action to toggle check-in for an attendee in Bevy.
  * Protected: requires an active organizer session.
  */
@@ -112,4 +126,32 @@ export async function checkInBevyAttendeeAction(eventId: string | number, attend
     return { success: false, error: "Unauthorized session" };
   }
   return await putBevyAttendeeCheckIn(eventId, attendeeId, isCheckedIn);
+}
+
+/**
+ * Server action to delete an attendee from Bevy using session spoofing.
+ * Protected: requires an active organizer session.
+ *
+ * Endpoint: DELETE https://gdg.community.dev/api/attendee/{attendeeId}/
+ */
+export async function deleteBevyAttendeeAction(attendeeId: string | number, eventId?: string | number) {
+  if (!(await isAuthorizedOrganizerSession())) {
+    console.warn("[Security] Blocked unauthorized attempt to delete Bevy attendee");
+    return { success: false, error: "Unauthorized session" };
+  }
+  return await deleteBevyAttendee(attendeeId, eventId);
+}
+
+/**
+ * Server action to batch delete attendees from Bevy using session spoofing.
+ * Protected: requires an active organizer session.
+ */
+export async function deleteBatchBevyAttendeesAction(attendeeIds: (string | number)[], eventId?: string | number) {
+  if (!(await isAuthorizedOrganizerSession())) {
+    console.warn("[Security] Blocked unauthorized attempt to batch delete Bevy attendees");
+    return { success: false, error: "Unauthorized session" };
+  }
+  const results = await Promise.allSettled(attendeeIds.map((id) => deleteBevyAttendee(id, eventId)));
+  const succeeded = results.filter((r) => r.status === "fulfilled" && r.value.success).length;
+  return { success: true, count: succeeded, total: attendeeIds.length };
 }

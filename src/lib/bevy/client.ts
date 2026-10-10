@@ -17,6 +17,7 @@ export {
 
 import { extractEventPartners } from "./partners";
 import {
+  type BevyAttendee,
   type BevyAttendeeCheckInRequest,
   type BevyAttendeeCheckInResponse,
   type BevyAttendeesResponse,
@@ -76,7 +77,19 @@ export async function bevyFetchWithResponse<T>(
       return { status: response.status, ok: false, data: null };
     }
 
-    const data = (await response.json()) as T;
+    if (response.status === 204) {
+      return { status: response.status, ok: true, data: null };
+    }
+
+    const text = await response.text();
+    let data: T | null = null;
+    if (text) {
+      try {
+        data = JSON.parse(text) as T;
+      } catch {
+        // Response is non-JSON
+      }
+    }
     return { status: response.status, ok: true, data };
   } catch (error) {
     console.error(`[Bevy API Error] Failed to fetch ${url}:`, error);
@@ -789,6 +802,64 @@ export async function getBevyEventAttendees(
 }
 
 /**
+ * Fetch all attendees for a given event from Bevy across all pages.
+ */
+export async function getAllBevyEventAttendees(
+  eventId: string | number,
+  chapterId: string | number = BEVY_CONFIG.chapterId,
+): Promise<{ success: boolean; results: BevyAttendee[]; count: number; error?: string }> {
+  const pageSize = 200;
+  const referer = await getBevyRefererUrl(chapterId, eventId);
+  const firstEndpoint = `/event/${eventId}/attendee/?page_size=${pageSize}&page=1&order_by=-created_date`;
+
+  const firstResponse = await bevyFetchWithResponse<BevyAttendeesResponse>(
+    firstEndpoint,
+    {
+      headers: {
+        Referer: referer,
+      },
+    },
+    chapterId,
+  );
+
+  if (!firstResponse.ok || !firstResponse.data) {
+    const errorMsg = `Failed to fetch Bevy attendees (status ${firstResponse.status})`;
+    console.error(`[getAllBevyEventAttendees] ${errorMsg}`);
+    return { success: false, results: [], count: 0, error: errorMsg };
+  }
+
+  const results: BevyAttendee[] = [...(firstResponse.data.results ?? [])];
+  const count = firstResponse.data.count ?? results.length;
+
+  if (count > results.length) {
+    const totalPages = Math.ceil(count / pageSize);
+    const pagePromises = [];
+    for (let p = 2; p <= totalPages; p++) {
+      pagePromises.push(
+        bevyFetchWithResponse<BevyAttendeesResponse>(
+          `/event/${eventId}/attendee/?page_size=${pageSize}&page=${p}&order_by=-created_date`,
+          {
+            headers: {
+              Referer: referer,
+            },
+          },
+          chapterId,
+        ),
+      );
+    }
+
+    const subsequentPages = await Promise.all(pagePromises);
+    for (const pageRes of subsequentPages) {
+      if (pageRes.ok && pageRes.data?.results) {
+        results.push(...pageRes.data.results);
+      }
+    }
+  }
+
+  return { success: true, results, count };
+}
+
+/**
  * Check-in or undo check-in for an attendee in Bevy.
  * Endpoint: PUT /attendee/checkin/
  * Body: { event: Number(eventId), chapter: Number(chapterId), attendees: [{ id: attendeeId, is_checked_in: isCheckedIn }] }
@@ -835,6 +906,65 @@ export async function putBevyAttendeeCheckIn(
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Failed to update Bevy check-in status";
     console.error("[putBevyAttendeeCheckIn] error:", err);
+    return { success: false, error: msg };
+  }
+}
+
+/**
+ * Deletes / removes an attendee from Bevy using session spoofing.
+ * Endpoint: DELETE /attendee/{attendeeId}/
+ * Referer: https://gdg.community.dev/dashboard/{chapterSlug}/events/{eventId}/registrations/
+ */
+export async function deleteBevyAttendee(
+  attendeeId: string | number,
+  eventId?: string | number,
+  chapterId: string | number = BEVY_CONFIG.chapterId,
+): Promise<{ success: boolean; status?: number; error?: string }> {
+  try {
+    const cleanAttendeeId = String(attendeeId).trim().replace(/\/+$/, "");
+    if (!cleanAttendeeId) {
+      return { success: false, error: "Attendee ID is required" };
+    }
+
+    const chapterSlug = process.env.BEVY_CHAPTER_SLUG || BEVY_CONFIG.chapterSlug || "gdg-jakarta";
+    const referer = eventId
+      ? `https://gdg.community.dev/dashboard/${chapterSlug}/events/${eventId}/registrations/`
+      : await getBevyRefererUrl(chapterId, eventId);
+
+    console.log(`[deleteBevyAttendee] Deleting attendee ${cleanAttendeeId} on Bevy (Event: ${eventId ?? "N/A"})...`);
+
+    const response = await bevyFetchWithResponse<unknown>(
+      `/attendee/${cleanAttendeeId}/`,
+      {
+        method: "DELETE",
+        headers: {
+          Origin: "https://gdg.community.dev",
+          Referer: referer,
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+      },
+      chapterId,
+    );
+
+    if (response.ok || response.status === 204) {
+      console.log(`[deleteBevyAttendee] Successfully deleted attendee ${cleanAttendeeId} from Bevy.`);
+      return { success: true, status: response.status };
+    }
+
+    // 404 means already deleted / not present on Bevy
+    if (response.status === 404) {
+      console.warn(`[deleteBevyAttendee] Attendee ${cleanAttendeeId} already removed on Bevy (404 Not Found).`);
+      return { success: true, status: 404 };
+    }
+
+    const errorMsg = `Bevy attendee deletion failed with status ${response.status}`;
+    console.warn(`[deleteBevyAttendee] ${errorMsg}`);
+    return { success: false, status: response.status, error: errorMsg };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Failed to delete attendee from Bevy";
+    console.error("[deleteBevyAttendee] error:", err);
     return { success: false, error: msg };
   }
 }

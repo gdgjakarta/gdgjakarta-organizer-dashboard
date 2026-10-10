@@ -120,6 +120,12 @@ export const EMAIL_TEMPLATE_VARIABLES: Record<EmailTemplateKey, TemplateVariable
       sampleValue: SAMPLE_QR_CODE_BASE64,
     },
     {
+      tag: "{{ $('event-params').item.json.eventCheclistItems }}",
+      label: "Checklist Items",
+      description: "Rendered HTML checklist items block configured on dashboard",
+      sampleValue: "Attendee Checklist",
+    },
+    {
       tag: "{{ $('add-bevy-attendee-api').item.json.attendee_code }}",
       label: "Attendee Reference Code",
       description: "Unique attendee code from Bevy check-in API",
@@ -249,19 +255,78 @@ export function getDefaultTemplateByKey(key: EmailTemplateKey): string {
   }
 }
 
-export function interpolateTemplatePreview(
-  html: string,
-  event: FirestoreEvent,
-  options?: {
-    sampleName?: string;
-    sampleEmail?: string;
-  },
-): string {
-  const sampleName = options?.sampleName ?? "Alex Pratama";
-  const eventTitle = event.title;
-  const headerUrl =
-    event.banner_url ?? event.picture_url ?? `https://placehold.co/600x300?text=${encodeURIComponent(eventTitle)}`;
-  const actionUrl = event.url ?? "https://gdg.community.dev/gdg-jakarta";
+export interface TemplateAttendeeData {
+  name: string;
+  email: string;
+}
+
+export interface TemplateEventData {
+  headerEmailUrl: string;
+  eventName: string;
+  eventCtaUrl: string;
+  eventChecklistItems: string[];
+}
+
+export interface TemplateSimulatedData {
+  attendee: TemplateAttendeeData;
+  event: TemplateEventData;
+  sessionTime?: string;
+  checkinDeadline?: string;
+  venueLocation?: string;
+  venueLocationUrl?: string;
+  eventDate?: string;
+  qrCode?: string;
+  attendeeCode?: string;
+}
+
+export const DEFAULT_CHECKLIST_ITEMS: string[] = [
+  "First-Come, First-Served Basis: Please arrive early! Seating is limited and entry operates strictly on a first-come, first-served basis. If the session is full, unfortunately, we won't be able to let you in.",
+  "Bring Your Laptop: Please ensure your laptop is fully charged before arriving, as power outlets may be limited.",
+  "ID Verification: Bring your KTP/SIM (Physical ID) for building access and check-in verification. Also, have this QR code ready on your phone (brightness up!).",
+  "Check-in Deadline: Registration closes strictly after the event starts. Late arrivals may be denied entry.",
+];
+
+export function splitFullName(fullName: string): { firstName: string; lastName: string } {
+  const clean = (fullName || "").trim();
+  if (!clean) return { firstName: "Attendee", lastName: "" };
+  const parts = clean.split(/\s+/);
+  if (parts.length === 1) return { firstName: parts[0], lastName: "" };
+  return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
+}
+
+export function renderChecklistItemsHtml(items: string[]): string {
+  if (!items || items.length === 0) return "";
+
+  const icons = ["🚨", "💻", "🪪", "⏰", "✨", "📌", "ℹ️"];
+
+  return items
+    .map((item, idx) => {
+      const icon = icons[idx % icons.length];
+      const colonIndex = item.indexOf(":");
+      let titleHtml = "";
+      let descHtml = item;
+      if (colonIndex > -1) {
+        titleHtml = `<strong>${item.slice(0, colonIndex).trim()}</strong><br>`;
+        descHtml = item.slice(colonIndex + 1).trim();
+      }
+      return `
+            <div class="checklist-item" style="margin-bottom: 15px; display: flex; align-items: flex-start;">
+                <span class="icon" style="margin-right: 12px; font-size: 1.2em; min-width: 25px;">${icon}</span>
+                <div class="text" style="font-size: 0.95em; line-height: 1.5;">
+                    ${titleHtml}${descHtml}
+                </div>
+            </div>`;
+    })
+    .join("\n");
+}
+
+export function getDefaultTemplateData(event: FirestoreEvent): TemplateSimulatedData {
+  const savedData = event.email_templates?.template_data;
+  const defaultHeader =
+    event.banner_url ??
+    event.picture_url ??
+    "https://assets.gdgjakarta.org/gdg-jakarta/gdg-jakarta-emailheaders-1244x388-blue.png";
+  const defaultCta = event.url ?? event.static_url ?? "https://gdg.community.dev/gdg-jakarta";
 
   let eventDate = "Saturday, 25 October 2026";
   if (event.start_date) {
@@ -280,45 +345,187 @@ export function interpolateTemplatePreview(
     }
   }
 
-  const sessionTime = "13:00 - 17:00 WIB";
-  const checkinDeadline = "13:30 WIB";
   const addressParts = [event.venue?.address, event.venue?.city].filter(Boolean).join(", ");
   const venueLocation =
     event.venue?.name ??
     (addressParts.length > 0 ? addressParts : "Google Indonesia, Pacific Century Place Level 45, SCBD");
-  const locationUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(venueLocation)}`;
+  const venueLocationUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(venueLocation)}`;
 
+  return {
+    attendee: {
+      name: "Alex Pratama",
+      email: "alex.pratama@example.com",
+    },
+    event: {
+      headerEmailUrl: savedData?.headerEmailUrl ?? defaultHeader,
+      eventName: savedData?.eventName ?? event.title ?? "Cloud Community Day Jakarta 2026",
+      eventCtaUrl: savedData?.eventCtaUrl ?? defaultCta,
+      eventChecklistItems:
+        savedData?.eventChecklistItems && savedData.eventChecklistItems.length > 0
+          ? savedData.eventChecklistItems
+          : [...DEFAULT_CHECKLIST_ITEMS],
+    },
+    sessionTime: "13:00 - 17:00 WIB",
+    checkinDeadline: "13:30 WIB",
+    venueLocation,
+    venueLocationUrl,
+    eventDate,
+    qrCode: SAMPLE_QR_CODE_BASE64,
+    attendeeCode: "GDG-JKT-89241",
+  };
+}
+
+export function interpolateTemplateHtml(html: string, data: TemplateSimulatedData): string {
   let rendered = html;
+  const { attendee, event } = data;
 
-  // Event params
-  rendered = rendered.replaceAll("{ $('event-params').item.json.eventName }", eventTitle);
+  // Checklist HTML block
+  const checklistHtml = renderChecklistItemsHtml(event.eventChecklistItems);
+
+  // Replace checklist tag
+  rendered = rendered.replaceAll("{{ $('event-params').item.json.eventCheclistItems }}", checklistHtml);
+  rendered = rendered.replaceAll("{ $('event-params').item.json.eventCheclistItems }", checklistHtml);
+  rendered = rendered.replaceAll("{{ $('event-params').item.json.eventChecklistItems }}", checklistHtml);
+  rendered = rendered.replaceAll("{ $('event-params').item.json.eventChecklistItems }", checklistHtml);
+  rendered = rendered.replaceAll("{{ eventChecklistItems }}", checklistHtml);
+  rendered = rendered.replaceAll("{{ eventCheclistItems }}", checklistHtml);
+
+  // If the template has the old static checklist items, replace them with dynamic items
+  if (rendered.includes('<div class="checklist-box">') && !rendered.includes(checklistHtml) && checklistHtml) {
+    rendered = rendered.replace(
+      /(<div class="checklist-box">[\s\S]*?<h3[^>]*>[\s\S]*?<\/h3>)([\s\S]*?)(<\/div>)/i,
+      `$1\n${checklistHtml}\n          $3`,
+    );
+  }
+
+  // Event Name
+  const eventName = event.eventName;
+  rendered = rendered.replaceAll("{{ $('event-params').item.json.eventName }}", eventName);
+  rendered = rendered.replaceAll("{ $('event-params').item.json.eventName }", eventName);
+  rendered = rendered.replaceAll("{{ $('bevy-config').item.json.bevyEventName }}", eventName);
+  rendered = rendered.replaceAll("{ $('bevy-config').item.json.bevyEventName }", eventName);
+  rendered = rendered.replaceAll("{{ $('email-config').item.json.eventName }}", eventName);
+  rendered = rendered.replaceAll("{ $('email-config').item.json.eventName }", eventName);
+  rendered = rendered.replaceAll("{{ eventName }}", eventName);
+
+  // Header Image URL
+  const headerUrl = event.headerEmailUrl;
+  rendered = rendered.replaceAll("{{ $('event-params').item.json.headerEmailUrl }}", headerUrl);
+  rendered = rendered.replaceAll("{ $('event-params').item.json.headerEmailUrl }", headerUrl);
+  rendered = rendered.replaceAll("{{ $('event-params').item.json.eventHeaderUrl }}", headerUrl);
   rendered = rendered.replaceAll("{ $('event-params').item.json.eventHeaderUrl }", headerUrl);
-  rendered = rendered.replaceAll("{ $('event-params').item.json.eventActionUrl }", actionUrl);
-
-  // Loop send email
-  rendered = rendered.replaceAll("{ $('loop-send-email').item.json['Full Name'] }", sampleName);
-  rendered = rendered.replaceAll("{ $('loop-send-rejected-email').item.json['Full Name'] }", sampleName);
-
-  // Bevy config
-  rendered = rendered.replaceAll("{ $('bevy-config').item.json.bevyEventName }", eventTitle);
-  rendered = rendered.replaceAll("{ $('bevy-config').item.json.bevyUserName }", sampleName);
-  rendered = rendered.replaceAll("{ $('bevy-config').item.json.bevyEventDate }", eventDate);
-  rendered = rendered.replaceAll("{ $('bevy-config').item.json.bevyEventLocation }", venueLocation);
-  rendered = rendered.replaceAll("{ $('bevy-config').item.json.bevyEventLocationUrl }", locationUrl);
+  rendered = rendered.replaceAll("{{ $('bevy-config').item.json.bevyEventHeaderEmailUrl }}", headerUrl);
   rendered = rendered.replaceAll("{ $('bevy-config').item.json.bevyEventHeaderEmailUrl }", headerUrl);
+  rendered = rendered.replaceAll("{{ $('email-config').item.json.eventHeaderEmailUrl }}", headerUrl);
+  rendered = rendered.replaceAll("{ $('email-config').item.json.eventHeaderEmailUrl }", headerUrl);
+  rendered = rendered.replaceAll("{{ headerEmailUrl }}", headerUrl);
 
-  // Session config
+  // Event Action / CTA URL
+  const ctaUrl = event.eventCtaUrl;
+  rendered = rendered.replaceAll("{{ $('event-params').item.json.eventCtaUrl }}", ctaUrl);
+  rendered = rendered.replaceAll("{ $('event-params').item.json.eventCtaUrl }", ctaUrl);
+  rendered = rendered.replaceAll("{{ $('event-params').item.json.eventActionUrl }}", ctaUrl);
+  rendered = rendered.replaceAll("{ $('event-params').item.json.eventActionUrl }", ctaUrl);
+  rendered = rendered.replaceAll("{{ $('email-config').item.json.actionButtonUrl }}", ctaUrl);
+  rendered = rendered.replaceAll("{ $('email-config').item.json.actionButtonUrl }", ctaUrl);
+  rendered = rendered.replaceAll("{{ eventCtaUrl }}", ctaUrl);
+
+  // Attendee Name
+  const attendeeName = attendee.name;
+  rendered = rendered.replaceAll("{{ $('loop-send-email').item.json['Full Name'] }}", attendeeName);
+  rendered = rendered.replaceAll("{ $('loop-send-email').item.json['Full Name'] }", attendeeName);
+  rendered = rendered.replaceAll("{{ $('loop-send-rejected-email').item.json['Full Name'] }}", attendeeName);
+  rendered = rendered.replaceAll("{ $('loop-send-rejected-email').item.json['Full Name'] }", attendeeName);
+  rendered = rendered.replaceAll("{{ $('bevy-config').item.json.bevyUserName }}", attendeeName);
+  rendered = rendered.replaceAll("{ $('bevy-config').item.json.bevyUserName }", attendeeName);
+  rendered = rendered.replaceAll("{{ $('attendee-data').item.json.name }}", attendeeName);
+  rendered = rendered.replaceAll("{ $('attendee-data').item.json.name }", attendeeName);
+  rendered = rendered.replaceAll("{{ name }}", attendeeName);
+
+  // Attendee Email
+  const attendeeEmail = attendee.email;
+  rendered = rendered.replaceAll("{{ $('loop-send-email').item.json['Email'] }}", attendeeEmail);
+  rendered = rendered.replaceAll("{ $('loop-send-email').item.json['Email'] }", attendeeEmail);
+  rendered = rendered.replaceAll("{{ $('bevy-config').item.json.bevyUserEmail }}", attendeeEmail);
+  rendered = rendered.replaceAll("{ $('bevy-config').item.json.bevyUserEmail }", attendeeEmail);
+  rendered = rendered.replaceAll("{{ $('attendee-data').item.json.email }}", attendeeEmail);
+  rendered = rendered.replaceAll("{ $('attendee-data').item.json.email }", attendeeEmail);
+  rendered = rendered.replaceAll("{{ email }}", attendeeEmail);
+
+  // Date, Session, Location, QR
+  const eventDate = data.eventDate ?? "Saturday, 25 October 2026";
+  rendered = rendered.replaceAll("{{ $('bevy-config').item.json.bevyEventDate }}", eventDate);
+  rendered = rendered.replaceAll("{ $('bevy-config').item.json.bevyEventDate }", eventDate);
+
+  const sessionTime = data.sessionTime ?? "13:00 - 17:00 WIB";
+  rendered = rendered.replaceAll("{{ $('session-config').item.json.bevySessionTime }}", sessionTime);
   rendered = rendered.replaceAll("{ $('session-config').item.json.bevySessionTime }", sessionTime);
+
+  const checkinDeadline = data.checkinDeadline ?? "13:30 WIB";
+  rendered = rendered.replaceAll("{{ $('session-config').item.json.bevyCheckinDeadline }}", checkinDeadline);
   rendered = rendered.replaceAll("{ $('session-config').item.json.bevyCheckinDeadline }", checkinDeadline);
 
-  // QR Code & Attendee Code
-  rendered = rendered.replaceAll("{ $('generate-qrcode').item.json.qrCode }", SAMPLE_QR_CODE_BASE64);
-  rendered = rendered.replaceAll("{ $('add-bevy-attendee-api').item.json.attendee_code }", "GDG-JKT-89241");
+  const venueLoc = data.venueLocation ?? "Google Indonesia, Pacific Century Place Level 45, SCBD";
+  rendered = rendered.replaceAll("{{ $('bevy-config').item.json.bevyEventLocation }}", venueLoc);
+  rendered = rendered.replaceAll("{ $('bevy-config').item.json.bevyEventLocation }", venueLoc);
 
-  // Email config
-  rendered = rendered.replaceAll("{ $('email-config').item.json.eventName }", eventTitle);
-  rendered = rendered.replaceAll("{ $('email-config').item.json.eventHeaderEmailUrl }", headerUrl);
-  rendered = rendered.replaceAll("{ $('email-config').item.json.actionButtonUrl }", actionUrl);
+  const venueLocUrl =
+    data.venueLocationUrl ?? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(venueLoc)}`;
+  rendered = rendered.replaceAll("{{ $('bevy-config').item.json.bevyEventLocationUrl }}", venueLocUrl);
+  rendered = rendered.replaceAll("{ $('bevy-config').item.json.bevyEventLocationUrl }", venueLocUrl);
+
+  const qrCode = data.qrCode ?? SAMPLE_QR_CODE_BASE64;
+  rendered = rendered.replaceAll("{{ $('generate-qrcode').item.json.qrCode }}", qrCode);
+  rendered = rendered.replaceAll("{ $('generate-qrcode').item.json.qrCode }", qrCode);
+
+  const attendeeCode = data.attendeeCode ?? "GDG-JKT-89241";
+  rendered = rendered.replaceAll("{{ $('add-bevy-attendee-api').item.json.attendee_code }}", attendeeCode);
+  rendered = rendered.replaceAll("{ $('add-bevy-attendee-api').item.json.attendee_code }", attendeeCode);
 
   return rendered;
+}
+
+export function interpolateTemplateSubject(subject: string, data: TemplateSimulatedData): string {
+  let rendered = subject;
+  const { attendee, event } = data;
+
+  rendered = rendered.replaceAll("{{ $('event-params').item.json.eventName }}", event.eventName);
+  rendered = rendered.replaceAll("{ $('event-params').item.json.eventName }", event.eventName);
+  rendered = rendered.replaceAll("{{ $('bevy-config').item.json.bevyEventName }}", event.eventName);
+  rendered = rendered.replaceAll("{ $('bevy-config').item.json.bevyEventName }", event.eventName);
+  rendered = rendered.replaceAll("{{ $('email-config').item.json.eventName }}", event.eventName);
+  rendered = rendered.replaceAll("{ $('email-config').item.json.eventName }", event.eventName);
+  rendered = rendered.replaceAll("{{ eventName }}", event.eventName);
+
+  rendered = rendered.replaceAll("{{ $('loop-send-email').item.json['Full Name'] }}", attendee.name);
+  rendered = rendered.replaceAll("{ $('loop-send-email').item.json['Full Name'] }", attendee.name);
+  rendered = rendered.replaceAll("{{ $('bevy-config').item.json.bevyUserName }}", attendee.name);
+  rendered = rendered.replaceAll("{ $('bevy-config').item.json.bevyUserName }", attendee.name);
+  rendered = rendered.replaceAll("{{ name }}", attendee.name);
+
+  return rendered;
+}
+
+export function interpolateTemplatePreview(
+  html: string,
+  event: FirestoreEvent,
+  options?: {
+    sampleName?: string;
+    sampleEmail?: string;
+    simulatedData?: TemplateSimulatedData;
+  },
+): string {
+  if (options?.simulatedData) {
+    return interpolateTemplateHtml(html, options.simulatedData);
+  }
+
+  const defaultData = getDefaultTemplateData(event);
+  if (options?.sampleName) {
+    defaultData.attendee.name = options.sampleName;
+  }
+  if (options?.sampleEmail) {
+    defaultData.attendee.email = options.sampleEmail;
+  }
+
+  return interpolateTemplateHtml(html, defaultData);
 }

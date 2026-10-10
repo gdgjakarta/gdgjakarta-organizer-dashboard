@@ -291,11 +291,26 @@ export async function updateEventHighlightsMediaAction(
 
 /**
  * Remove an event registration so the attendee can re-register again.
+ * If bevyAttendeeId is provided, also removes the attendee from Bevy using session spoofing.
  */
-export async function deleteEventRegistrationAction(registrationId: string, eventId: string) {
+export async function deleteEventRegistrationAction(
+  registrationId: string,
+  eventId: string,
+  bevyAttendeeId?: number | string | null,
+) {
   try {
     const { deleteEventRegistration } = await import("./client");
     await deleteEventRegistration(registrationId, eventId);
+
+    if (bevyAttendeeId) {
+      try {
+        const { deleteBevyAttendee } = await import("@/lib/bevy/client");
+        await deleteBevyAttendee(bevyAttendeeId, eventId);
+      } catch (bevyErr) {
+        console.warn("[deleteEventRegistrationAction] Failed to delete attendee from Bevy:", bevyErr);
+      }
+    }
+
     await revalidateDashboardPath(`/dashboard/events/${eventId}`);
     await revalidateDashboardPath("/dashboard/events");
     await revalidateDashboardPath("/dashboard/organizer");
@@ -313,11 +328,26 @@ export async function deleteEventRegistrationAction(registrationId: string, even
 
 /**
  * Remove multiple event registrations in batch so attendees can re-register again.
+ * If bevyAttendeeIds is provided, also removes the attendees from Bevy using session spoofing.
  */
-export async function deleteBatchEventRegistrationsAction(registrationIds: string[], eventId: string) {
+export async function deleteBatchEventRegistrationsAction(
+  registrationIds: string[],
+  eventId: string,
+  bevyAttendeeIds?: (number | string)[],
+) {
   try {
     const { deleteBatchEventRegistrations } = await import("./client");
     await deleteBatchEventRegistrations(registrationIds, eventId);
+
+    if (bevyAttendeeIds && bevyAttendeeIds.length > 0) {
+      try {
+        const { deleteBevyAttendee } = await import("@/lib/bevy/client");
+        await Promise.allSettled(bevyAttendeeIds.map((id) => deleteBevyAttendee(id, eventId)));
+      } catch (bevyErr) {
+        console.warn("[deleteBatchEventRegistrationsAction] Failed to delete attendees from Bevy:", bevyErr);
+      }
+    }
+
     await revalidateDashboardPath(`/dashboard/events/${eventId}`);
     await revalidateDashboardPath("/dashboard/events");
     await revalidateDashboardPath("/dashboard/organizer");

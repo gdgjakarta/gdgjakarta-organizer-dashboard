@@ -11,6 +11,7 @@ import {
   Eye,
   Filter,
   Layers,
+  Loader2,
   MoreHorizontal,
   Package,
   RefreshCw,
@@ -51,6 +52,7 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/in
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { BevyAttendee } from "@/lib/bevy/types";
+import { buildApprovedAttendeePayload } from "@/lib/events/approved-attendee-webhook";
 import { DEFAULT_COMBINED_QUESTIONS } from "@/lib/events/registration-defaults";
 import {
   deleteBatchEventRegistrationsAction,
@@ -66,7 +68,8 @@ import type {
   RegistrationStatus,
 } from "@/lib/firestore/types";
 import { cn, getInitials } from "@/lib/utils";
-import { checkInBevyAttendeeAction, fetchBevyEventAttendeesAction } from "@/server/bevy-actions";
+import { checkInBevyAttendeeAction, fetchAllBevyEventAttendeesAction } from "@/server/bevy-actions";
+import { approveAttendeeWebhookAction } from "@/server/registration-actions";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
 import { ApplicantDetailDialog } from "./applicant-detail-dialog";
@@ -349,7 +352,10 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const [questionFilters, setQuestionFilters] = useState<Record<string, string>>({});
   const [bevyAttendeesMap, setBevyAttendeesMap] = useState<Map<string, BevyAttendee>>(new Map());
   const [isSyncingBevy, setIsSyncingBevy] = useState(false);
+  const [isSyncingStatus, setIsSyncingStatus] = useState(false);
   const [isCheckingInId, setIsCheckingInId] = useState<string | null>(null);
+  const [approvingRegistrationId, setApprovingRegistrationId] = useState<string | null>(null);
+  const [isBatchApproving, setIsBatchApproving] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -404,8 +410,16 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     async (showNotification = false) => {
       setIsSyncingBevy(true);
       try {
-        const res = await fetchBevyEventAttendeesAction(eventId, 500, 1);
-        const attendees = res.results ?? [];
+        const res = await fetchAllBevyEventAttendeesAction(eventId);
+        if (!res.success) {
+          console.warn("[RegistrantsTab] Failed to fetch Bevy attendees for check-in sync:", res.error);
+          if (showNotification) {
+            toast.error(res.error ?? "Failed to sync attendees from Bevy.");
+          }
+          return;
+        }
+
+        const attendees = res.results;
         const map = new Map<string, BevyAttendee>();
         for (const att of attendees) {
           if (att.email) {
@@ -455,6 +469,107 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     },
     [eventId],
   );
+
+  const handleSyncBevyAttendeeStatus = useCallback(async () => {
+    setIsSyncingStatus(true);
+    try {
+      // 1. Fetch complete Bevy attendee roster across all pages
+      const res = await fetchAllBevyEventAttendeesAction(eventId);
+      if (!res.success) {
+        console.error("[handleSyncBevyAttendeeStatus] Bevy fetch error:", res.error);
+        toast.error(res.error ?? "Failed to fetch attendees from Bevy API.");
+        return;
+      }
+
+      const attendees = res.results;
+      const bevyEmailSet = new Set<string>();
+      const nextBevyMap = new Map<string, BevyAttendee>();
+
+      for (const att of attendees) {
+        if (att.email) {
+          const normalized = att.email.toLowerCase().trim();
+          bevyEmailSet.add(normalized);
+          nextBevyMap.set(normalized, att);
+        }
+      }
+      setBevyAttendeesMap(nextBevyMap);
+
+      // 2. Identify attendees who are approved on dashboard but NOT in Bevy
+      const missingApproved = registrationsList.filter((reg) => {
+        const isApproved = (reg.status ?? "").toLowerCase().trim() === "approved";
+        if (!isApproved) return false;
+        const email = (reg.member_email || "").toLowerCase().trim();
+        return !email || !bevyEmailSet.has(email);
+      });
+
+      if (missingApproved.length === 0) {
+        const totalApproved = registrationsList.filter(
+          (reg) => (reg.status ?? "").toLowerCase().trim() === "approved",
+        ).length;
+        toast.success(`Bevy attendee sync complete. All ${totalApproved} approved attendee(s) are present in Bevy.`);
+        return;
+      }
+
+      // 3. Reset missing approved attendees to "pending" (Pending Review)
+      const missingIds = new Set(missingApproved.map((r) => r.id));
+      const updatePromises = missingApproved.map(async (reg) => {
+        await updateRegistrationStatusAction(reg.id, eventId, "pending");
+        if (reg.is_checked_in || reg.bevy_attendee_id) {
+          await updateRegistrationCheckInAction(reg.id, eventId, false, null, null);
+        }
+      });
+
+      await Promise.allSettled(updatePromises);
+
+      // 4. Synchronize local registrations state
+      setRegistrationsList((prev) =>
+        prev.map((reg) => {
+          if (missingIds.has(reg.id)) {
+            return {
+              ...reg,
+              status: "pending",
+              reviewed_at: undefined,
+              reviewed_by_id: undefined,
+              reviewed_by_name: undefined,
+              reviewed_by_email: undefined,
+              is_checked_in: false,
+              bevy_attendee_id: undefined,
+              checkin_date: undefined,
+              checked_in_at: undefined,
+            };
+          }
+          return reg;
+        }),
+      );
+
+      setInspectRegistration((prev) => {
+        if (prev && missingIds.has(prev.id)) {
+          return {
+            ...prev,
+            status: "pending",
+            reviewed_at: undefined,
+            reviewed_by_id: undefined,
+            reviewed_by_name: undefined,
+            reviewed_by_email: undefined,
+            is_checked_in: false,
+            bevy_attendee_id: undefined,
+            checkin_date: undefined,
+            checked_in_at: undefined,
+          };
+        }
+        return prev;
+      });
+
+      toast.success(
+        `Synced Bevy attendee status: ${missingApproved.length} attendee(s) removed from Bevy reset to Pending Review.`,
+      );
+    } catch (err) {
+      console.error("[RegistrantsTab] Error syncing Bevy attendee status:", err);
+      toast.error("Failed to sync attendee status from Bevy.");
+    } finally {
+      setIsSyncingStatus(false);
+    }
+  }, [eventId, registrationsList]);
 
   useEffect(() => {
     if (eventId) {
@@ -896,6 +1011,18 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   ]);
 
   const handleStatusChange = (registrationId: string, newStatus: RegistrationStatus) => {
+    // If attendee is already approved, prevent changing status
+    const targetReg = registrationsList.find((r) => r.id === registrationId);
+    if (targetReg?.status === "approved" && newStatus !== "approved") {
+      toast.error("This attendee is already approved. Their status cannot be changed except by removal.");
+      return;
+    }
+
+    if (newStatus === "approved" && targetReg) {
+      void handleApproveAttendee(targetReg);
+      return;
+    }
+
     startTransition(async () => {
       try {
         const reviewerPayload = user ? { id: user.id, name: user.name, email: user.email } : undefined;
@@ -935,6 +1062,68 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         toast.error(msg);
       }
     });
+  };
+
+  const handleApproveAttendee = async (registration: FirestoreRegistration) => {
+    if (registration.status === "approved") {
+      return;
+    }
+
+    setApprovingRegistrationId(registration.id);
+    try {
+      const payload = buildApprovedAttendeePayload(registration, event);
+      const res = await approveAttendeeWebhookAction(payload);
+
+      if (!res.success) {
+        console.error("[RegistrantsTab] Approved attendee webhook error:", res.error, res.details);
+        toast.error(res.error ?? "Approval webhook returned status false.", {
+          description: typeof res.details === "string" ? res.details : undefined,
+        });
+        // API still under development, keep error without updating status to approved
+        return;
+      }
+
+      // Success: persist status to Firestore and update local state
+      const reviewerPayload = user ? { id: user.id, name: user.name, email: user.email } : undefined;
+      const now = new Date().toISOString();
+      await updateRegistrationStatusAction(registration.id, eventId, "approved", reviewerPayload);
+
+      setRegistrationsList((prev) =>
+        prev.map((r) =>
+          r.id === registration.id
+            ? {
+                ...r,
+                status: "approved",
+                reviewed_at: now,
+                reviewed_by_id: user?.id ?? r.reviewed_by_id,
+                reviewed_by_name: user?.name ?? r.reviewed_by_name,
+                reviewed_by_email: user?.email ?? r.reviewed_by_email,
+              }
+            : r,
+        ),
+      );
+
+      setInspectRegistration((prev) =>
+        prev?.id === registration.id
+          ? {
+              ...prev,
+              status: "approved",
+              reviewed_at: now,
+              reviewed_by_id: user?.id ?? prev.reviewed_by_id,
+              reviewed_by_name: user?.name ?? prev.reviewed_by_name,
+              reviewed_by_email: user?.email ?? prev.reviewed_by_email,
+            }
+          : prev,
+      );
+
+      toast.success(`${registration.member_name} approved successfully!`);
+    } catch (err) {
+      console.error("[RegistrantsTab] Error approving attendee:", err);
+      const msg = err instanceof Error ? err.message : "Failed to approve applicant.";
+      toast.error(msg);
+    } finally {
+      setApprovingRegistrationId(null);
+    }
   };
 
   const handleToggleCheckIn = async (registration: FirestoreRegistration, isCheckedIn: boolean) => {
@@ -1010,20 +1199,100 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     }
   };
 
+  const hasApprovedSelected = useMemo(() => {
+    return Array.from(selectedIds).some((id) => {
+      const r = registrationsList.find((reg) => reg.id === id);
+      return r?.status === "approved";
+    });
+  }, [selectedIds, registrationsList]);
+
+  const handleBatchApprove = async () => {
+    if (selectedIds.size === 0) return;
+    const toApprove = registrationsList.filter((r) => selectedIds.has(r.id) && r.status !== "approved");
+    if (toApprove.length === 0) {
+      toast.info("All selected attendees are already approved.");
+      return;
+    }
+
+    setIsBatchApproving(true);
+    try {
+      const reviewerPayload = user ? { id: user.id, name: user.name, email: user.email } : undefined;
+      const now = new Date().toISOString();
+      let successCount = 0;
+      const failedErrors: string[] = [];
+
+      for (const reg of toApprove) {
+        const payload = buildApprovedAttendeePayload(reg, event);
+        const res = await approveAttendeeWebhookAction(payload);
+        if (res.success) {
+          await updateRegistrationStatusAction(reg.id, eventId, "approved", reviewerPayload);
+          successCount++;
+          setRegistrationsList((prev) =>
+            prev.map((r) =>
+              r.id === reg.id
+                ? {
+                    ...r,
+                    status: "approved",
+                    reviewed_at: now,
+                    reviewed_by_id: user?.id ?? r.reviewed_by_id,
+                    reviewed_by_name: user?.name ?? r.reviewed_by_name,
+                    reviewed_by_email: user?.email ?? r.reviewed_by_email,
+                  }
+                : r,
+            ),
+          );
+        } else {
+          failedErrors.push(`${reg.member_name}: ${res.error ?? "Webhook returned false"}`);
+        }
+      }
+
+      if (successCount > 0) {
+        toast.success(`Successfully approved ${successCount} applicant(s).`);
+      }
+      if (failedErrors.length > 0) {
+        toast.error(`Approval webhook failed for ${failedErrors.length} applicant(s):`, {
+          description: failedErrors.slice(0, 3).join("\n"),
+        });
+      }
+      setSelectedIds(new Set());
+    } catch (err) {
+      console.error("[RegistrantsTab] Batch approve error:", err);
+      toast.error("Batch approval failed.");
+    } finally {
+      setIsBatchApproving(false);
+    }
+  };
+
   const handleBatchAction = (newStatus: RegistrationStatus) => {
     if (selectedIds.size === 0) return;
+    if (newStatus === "approved") {
+      void handleBatchApprove();
+      return;
+    }
+
+    // Filter out already approved attendees so their status cannot be modified
+    const eligibleIds = Array.from(selectedIds).filter((id) => {
+      const r = registrationsList.find((reg) => reg.id === id);
+      return r?.status !== "approved";
+    });
+
+    if (eligibleIds.length === 0) {
+      toast.warning("Selected attendees are already approved and their status cannot be modified.");
+      return;
+    }
+
     startTransition(async () => {
       try {
         const reviewerPayload = user ? { id: user.id, name: user.name, email: user.email } : undefined;
         const now = new Date().toISOString();
-        const promises = Array.from(selectedIds).map((id) =>
+        const promises = eligibleIds.map((id) =>
           updateRegistrationStatusAction(id, eventId, newStatus, reviewerPayload),
         );
         await Promise.all(promises);
         const isPending = newStatus === "pending";
         setRegistrationsList((prev) =>
           prev.map((r) =>
-            selectedIds.has(r.id)
+            eligibleIds.includes(r.id)
               ? {
                   ...r,
                   status: newStatus,
@@ -1035,7 +1304,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
               : r,
           ),
         );
-        toast.success(`Updated ${selectedIds.size} registrants to ${STATUS_VARIANTS[newStatus].label}`);
+        toast.success(`Updated ${eligibleIds.length} registrants to ${STATUS_VARIANTS[newStatus].label}`);
         setSelectedIds(new Set());
       } catch (err) {
         console.error("[RegistrantsTab] Batch update failed:", err);
@@ -1046,6 +1315,10 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   };
 
   const handleDeleteRegistration = (registration: FirestoreRegistration) => {
+    const email = (registration.member_email || "").toLowerCase().trim();
+    const matchedBevyAttendeeId =
+      registration.bevy_attendee_id ?? (email ? bevyAttendeesMap.get(email)?.id : undefined);
+
     startTransition(async () => {
       setIsDeleting(true);
       // Optimistic removal from table
@@ -1061,13 +1334,24 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       setDeleteConfirmRegistration(null);
 
       try {
-        const res = await deleteEventRegistrationAction(registration.id, eventId);
+        const res = await deleteEventRegistrationAction(registration.id, eventId, matchedBevyAttendeeId);
         if (res.success) {
-          toast.success(`Removed ${registration.member_name}. They can now re-register.`);
+          if (email && bevyAttendeesMap.has(email)) {
+            setBevyAttendeesMap((prev) => {
+              const next = new Map(prev);
+              next.delete(email);
+              return next;
+            });
+          }
+          toast.success(
+            matchedBevyAttendeeId
+              ? `Removed ${registration.member_name} from dashboard & Bevy.`
+              : `Removed ${registration.member_name}. They can now re-register.`,
+          );
         } else {
           // Revert on failure
           setRegistrationsList((prev) => [registration, ...prev]);
-          toast.error(res.error || "Failed to remove attendee registration.");
+          toast.error(res.error ?? "Failed to remove attendee registration.");
         }
       } catch (err) {
         console.error("[handleDeleteRegistration] error:", err);
@@ -1085,6 +1369,15 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     const regsToDelete = registrationsList.filter((r) => selectedIds.has(r.id));
     const count = idsToDelete.length;
 
+    const matchedBevyIds: (number | string)[] = [];
+    for (const r of regsToDelete) {
+      const email = (r.member_email || "").toLowerCase().trim();
+      const matchedId = r.bevy_attendee_id ?? (email ? bevyAttendeesMap.get(email)?.id : undefined);
+      if (matchedId) {
+        matchedBevyIds.push(matchedId);
+      }
+    }
+
     startTransition(async () => {
       setIsDeleting(true);
       // Optimistic removal
@@ -1096,13 +1389,27 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       setIsBatchDeleteConfirmOpen(false);
 
       try {
-        const res = await deleteBatchEventRegistrationsAction(idsToDelete, eventId);
+        const res = await deleteBatchEventRegistrationsAction(idsToDelete, eventId, matchedBevyIds);
         if (res.success) {
-          toast.success(`Removed ${count} attendee${count === 1 ? "" : "s"}. They can now re-register.`);
+          if (matchedBevyIds.length > 0) {
+            setBevyAttendeesMap((prev) => {
+              const next = new Map(prev);
+              for (const r of regsToDelete) {
+                const email = (r.member_email || "").toLowerCase().trim();
+                if (email) next.delete(email);
+              }
+              return next;
+            });
+          }
+          toast.success(
+            matchedBevyIds.length > 0
+              ? `Removed ${count} attendee${count === 1 ? "" : "s"} from dashboard & Bevy.`
+              : `Removed ${count} attendee${count === 1 ? "" : "s"}. They can now re-register.`,
+          );
         } else {
           // Revert on failure
           setRegistrationsList((prev) => [...regsToDelete, ...prev]);
-          toast.error(res.error || "Failed to remove selected attendees.");
+          toast.error(res.error ?? "Failed to remove selected attendees.");
         }
       } catch (err) {
         console.error("[handleBatchDelete] error:", err);
@@ -1285,9 +1592,9 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 variant="outline"
                 className="gap-1 text-emerald-600 dark:text-emerald-400"
                 onClick={() => handleBatchAction("approved")}
-                disabled={isPending}
+                disabled={isPending || isBatchApproving}
               >
-                <UserCheck className="size-3.5" />
+                {isBatchApproving ? <Loader2 className="size-3.5 animate-spin" /> : <UserCheck className="size-3.5" />}
                 Approve Selected
               </Button>
               <Button
@@ -1295,7 +1602,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 variant="outline"
                 className="gap-1 text-amber-600 dark:text-amber-400"
                 onClick={() => handleBatchAction("pending")}
-                disabled={isPending}
+                disabled={isPending || isBatchApproving || hasApprovedSelected}
+                title={hasApprovedSelected ? "Cannot modify status of approved attendees" : undefined}
               >
                 <Clock className="size-3.5" />
                 Set Pending
@@ -1305,7 +1613,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 variant="outline"
                 className="gap-1 text-destructive"
                 onClick={() => handleBatchAction("rejected")}
-                disabled={isPending || isDeleting}
+                disabled={isPending || isDeleting || isBatchApproving || hasApprovedSelected}
+                title={hasApprovedSelected ? "Cannot modify status of approved attendees" : undefined}
               >
                 <UserX className="size-3.5" />
                 Reject Selected
@@ -1315,7 +1624,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 variant="outline"
                 className="gap-1 text-destructive hover:bg-destructive/10 hover:text-destructive"
                 onClick={() => setIsBatchDeleteConfirmOpen(true)}
-                disabled={isPending || isDeleting}
+                disabled={isPending || isDeleting || isBatchApproving}
               >
                 <Trash2 className="size-3.5" />
                 Remove Selected
@@ -1451,7 +1760,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
               })}
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <ColumnCustomizer
                 availableQuestions={availableQuestionFields}
                 selectedQuestionKeys={selectedQuestionColumns}
@@ -1469,8 +1778,20 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
               <Button
                 size="sm"
                 variant="outline"
+                onClick={handleSyncBevyAttendeeStatus}
+                disabled={isSyncingStatus || isSyncingBevy}
+                className="h-8 gap-1.5 text-xs"
+                title="Check if attendees are removed on Bevy and reset their status back to Pending Review"
+              >
+                <RotateCcw className={cn("size-3", isSyncingStatus && "animate-spin")} />
+                <span>{isSyncingStatus ? "Syncing Status..." : "Sync Bevy Attendee Status"}</span>
+              </Button>
+
+              <Button
+                size="sm"
+                variant="outline"
                 onClick={() => syncBevyAttendees(true)}
-                disabled={isSyncingBevy}
+                disabled={isSyncingBevy || isSyncingStatus}
                 className="h-8 gap-1.5 text-xs"
                 title="Sync attendee roster and live on-site check-in statuses from Bevy API"
               >
@@ -1708,6 +2029,23 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                       // Keep raw string
                     }
 
+                    let approveTitle = "Approve application";
+                    if (reg.status === "approved") {
+                      approveTitle = "Approved";
+                    } else if (approvingRegistrationId === reg.id) {
+                      approveTitle = "Approving via webhook...";
+                    }
+
+                    let pendingTitle = reg.status === "pending" ? "Pending Review" : "Mark as Pending";
+                    if (reg.status === "approved") {
+                      pendingTitle = "Status locked (Approved)";
+                    }
+
+                    let rejectTitle = reg.status === "rejected" ? "Rejected" : "Reject application";
+                    if (reg.status === "approved") {
+                      rejectTitle = "Status locked (Approved)";
+                    }
+
                     return (
                       <TableRow key={reg.id} className="cursor-pointer hover:bg-muted/40">
                         <TableCell onClick={(e) => e.stopPropagation()}>
@@ -1921,14 +2259,18 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                 className={cn(
                                   "size-7 transition-colors",
                                   reg.status === "approved"
-                                    ? "bg-emerald-600 text-white shadow-xs hover:bg-emerald-700"
+                                    ? "bg-emerald-600 text-white shadow-xs opacity-90 cursor-default hover:bg-emerald-600"
                                     : "text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700",
                                 )}
-                                title={reg.status === "approved" ? "Approved" : "Approve application"}
-                                onClick={() => handleStatusChange(reg.id, "approved")}
-                                disabled={isPending}
+                                title={approveTitle}
+                                onClick={() => handleApproveAttendee(reg)}
+                                disabled={isPending || approvingRegistrationId === reg.id || reg.status === "approved"}
                               >
-                                <Check className="size-3.5" />
+                                {approvingRegistrationId === reg.id ? (
+                                  <Loader2 className="size-3.5 animate-spin" />
+                                ) : (
+                                  <Check className="size-3.5" />
+                                )}
                               </Button>
 
                               {/* 2. Pending Button */}
@@ -1941,9 +2283,9 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                     ? "bg-amber-600 text-white shadow-xs hover:bg-amber-700"
                                     : "text-amber-600 hover:bg-amber-500/10 hover:text-amber-700",
                                 )}
-                                title={reg.status === "pending" ? "Pending Review" : "Mark as Pending"}
+                                title={pendingTitle}
                                 onClick={() => handleStatusChange(reg.id, "pending")}
-                                disabled={isPending}
+                                disabled={isPending || approvingRegistrationId === reg.id || reg.status === "approved"}
                               >
                                 <Clock className="size-3.5" />
                               </Button>
@@ -1958,9 +2300,9 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                     ? "bg-destructive text-destructive-foreground shadow-xs hover:bg-destructive/90"
                                     : "text-destructive hover:bg-destructive/10 hover:text-destructive",
                                 )}
-                                title={reg.status === "rejected" ? "Rejected" : "Reject application"}
+                                title={rejectTitle}
                                 onClick={() => handleStatusChange(reg.id, "rejected")}
-                                disabled={isPending}
+                                disabled={isPending || approvingRegistrationId === reg.id || reg.status === "approved"}
                               >
                                 <X className="size-3.5" />
                               </Button>
@@ -1988,7 +2330,12 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                     <Eye className="mr-2 size-3.5" />
                                     View application dossier
                                   </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => handleStatusChange(reg.id, "waitlisted")}>
+                                  <DropdownMenuItem
+                                    disabled={
+                                      reg.status === "approved" || isPending || approvingRegistrationId === reg.id
+                                    }
+                                    onClick={() => handleStatusChange(reg.id, "waitlisted")}
+                                  >
                                     <Layers className="mr-2 size-3.5" />
                                     Move to Waitlist
                                   </DropdownMenuItem>
@@ -2030,6 +2377,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         registration={inspectRegistration}
         onClose={() => setInspectRegistration(null)}
         onStatusChange={handleStatusChange}
+        onApprove={handleApproveAttendee}
         onToggleCheckIn={handleToggleCheckIn}
         onDelete={(reg) => {
           setInspectRegistration(null);
@@ -2037,6 +2385,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         }}
         customQuestions={customQuestions}
         isPending={isPending || isCheckingInId === inspectRegistration?.id}
+        isApproving={approvingRegistrationId === inspectRegistration?.id}
       />
 
       {/* Confirmation Dialog: Single Attendee Removal */}
@@ -2052,8 +2401,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
               <strong className="text-foreground">{deleteConfirmRegistration?.member_name}</strong>
               {deleteConfirmRegistration?.member_email ? ` (${deleteConfirmRegistration.member_email})` : ""}?
               <br className="my-1.5" />
-              Their registration record will be permanently deleted, freeing up attendee capacity and allowing them to
-              re-register for this event.
+              Their registration will be permanently removed from the dashboard and Bevy roster, freeing up attendee
+              capacity and allowing them to re-register for this event.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -2082,8 +2431,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
               Are you sure you want to remove the <strong className="text-foreground">{selectedIds.size}</strong>{" "}
               selected attendee{selectedIds.size === 1 ? "" : "s"}?
               <br className="my-1.5" />
-              Their registration records will be permanently deleted, freeing up attendee capacity and allowing them to
-              re-register for this event.
+              Their registrations will be permanently removed from the dashboard and Bevy roster, freeing up attendee
+              capacity and allowing them to re-register for this event.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

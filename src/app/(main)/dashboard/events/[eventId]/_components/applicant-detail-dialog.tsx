@@ -15,6 +15,7 @@ import {
   Heart,
   HelpCircle,
   Layers,
+  Loader2,
   type LucideIcon,
   Mail,
   Package,
@@ -42,10 +43,12 @@ interface ApplicantDetailDialogProps {
   registration: FirestoreRegistration | null;
   onClose: () => void;
   onStatusChange: (registrationId: string, newStatus: RegistrationStatus) => void;
+  onApprove?: (registration: FirestoreRegistration) => void;
   onToggleCheckIn?: (registration: FirestoreRegistration, isCheckedIn: boolean) => void;
   onDelete?: (registration: FirestoreRegistration) => void;
   customQuestions?: CustomQuestion[];
   isPending?: boolean;
+  isApproving?: boolean;
 }
 
 const STATUS_VARIANTS: Record<RegistrationStatus, { label: string; badgeClass: string; dotClass: string }> = {
@@ -146,10 +149,12 @@ export function ApplicantDetailDialog({
   registration,
   onClose,
   onStatusChange,
+  onApprove,
   onToggleCheckIn,
   onDelete,
   customQuestions = [],
   isPending = false,
+  isApproving = false,
 }: ApplicantDetailDialogProps) {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [copiedProfile, setCopiedProfile] = useState(false);
@@ -814,92 +819,115 @@ export function ApplicantDetailDialog({
         </div>
 
         {/* Footer Actions */}
-        <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 border-t bg-muted/20 px-6 py-3.5">
-          <div className="flex items-center gap-2">
-            {registration.status !== "waitlisted" && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="text-xs"
-                disabled={isPending}
-                onClick={() => {
-                  onStatusChange(registration.id, "waitlisted");
-                  onClose();
-                }}
-              >
-                Waitlist
-              </Button>
-            )}
+        {(() => {
+          const isActionBlocked = isPending ? true : isApproving;
+          return (
+            <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 border-t bg-muted/20 px-6 py-3.5">
+              <div className="flex items-center gap-2">
+                {registration.status !== "waitlisted" && registration.status !== "approved" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs"
+                    disabled={isActionBlocked}
+                    onClick={() => {
+                      onStatusChange(registration.id, "waitlisted");
+                      onClose();
+                    }}
+                  >
+                    Waitlist
+                  </Button>
+                )}
 
-            {registration.status !== "pending" && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="border-amber-500/30 text-amber-600 text-xs hover:bg-amber-500/10"
-                disabled={isPending}
-                onClick={() => {
-                  onStatusChange(registration.id, "pending");
-                  onClose();
-                }}
-              >
-                <Clock className="mr-1.5 size-3.5" />
-                Set Pending
-              </Button>
-            )}
+                {registration.status !== "pending" && registration.status !== "approved" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-amber-500/30 text-amber-600 text-xs hover:bg-amber-500/10"
+                    disabled={isActionBlocked}
+                    onClick={() => {
+                      onStatusChange(registration.id, "pending");
+                      onClose();
+                    }}
+                  >
+                    <Clock className="mr-1.5 size-3.5" />
+                    Set Pending
+                  </Button>
+                )}
 
-            {onDelete && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="border-destructive/30 text-destructive text-xs hover:bg-destructive/10 hover:text-destructive"
-                disabled={isPending}
-                onClick={() => {
-                  onDelete(registration);
-                }}
-              >
-                <Trash2 className="mr-1.5 size-3.5" />
-                Remove Attendee
-              </Button>
-            )}
-          </div>
+                {onDelete && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-destructive/30 text-destructive text-xs hover:bg-destructive/10 hover:text-destructive"
+                    disabled={isActionBlocked}
+                    onClick={() => {
+                      onDelete(registration);
+                    }}
+                  >
+                    <Trash2 className="mr-1.5 size-3.5" />
+                    Remove Attendee
+                  </Button>
+                )}
+              </div>
 
-          <div className="flex items-center gap-2">
-            {registration.status !== "rejected" && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="text-destructive text-xs hover:bg-destructive/10"
-                disabled={isPending}
-                onClick={() => {
-                  onStatusChange(registration.id, "rejected");
-                  onClose();
-                }}
-              >
-                <XCircle className="mr-1.5 size-3.5" />
-                Reject
-              </Button>
-            )}
+              <div className="flex items-center gap-2">
+                {registration.status !== "rejected" && registration.status !== "approved" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-destructive text-xs hover:bg-destructive/10"
+                    disabled={isActionBlocked}
+                    onClick={() => {
+                      onStatusChange(registration.id, "rejected");
+                      onClose();
+                    }}
+                  >
+                    <XCircle className="mr-1.5 size-3.5" />
+                    Reject
+                  </Button>
+                )}
 
-            {registration.status !== "approved" && (
-              <Button
-                size="sm"
-                className="bg-emerald-600 text-white text-xs shadow-xs hover:bg-emerald-700"
-                disabled={isPending}
-                onClick={() => {
-                  onStatusChange(registration.id, "approved");
-                  onClose();
-                }}
-              >
-                <CheckCircle className="mr-1.5 size-3.5" />
-                Approve Applicant
-              </Button>
-            )}
+                {registration.status === "approved" ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled
+                    className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs cursor-default"
+                  >
+                    <CheckCircle className="mr-1.5 size-3.5" />
+                    Approved
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    className="bg-emerald-600 text-white text-xs shadow-xs hover:bg-emerald-700"
+                    disabled={isActionBlocked}
+                    onClick={() => {
+                      if (onApprove) {
+                        onApprove(registration);
+                      } else {
+                        onStatusChange(registration.id, "approved");
+                        onClose();
+                      }
+                    }}
+                  >
+                    {isApproving ? (
+                      <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                    ) : (
+                      <CheckCircle className="mr-1.5 size-3.5" />
+                    )}
+                    {isApproving ? "Approving..." : "Approve Applicant"}
+                  </Button>
+                )}
 
-            <Button size="sm" variant="secondary" className="text-xs" onClick={onClose}>
-              Close
-            </Button>
-          </div>
-        </div>
+                <Button size="sm" variant="secondary" className="text-xs" onClick={onClose}>
+                  Close
+                </Button>
+              </div>
+            </div>
+          );
+        })()}
       </DialogContent>
     </Dialog>
   );

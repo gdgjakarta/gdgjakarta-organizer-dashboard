@@ -1,6 +1,13 @@
 "use server";
 
 import {
+  getDefaultTemplateByKey,
+  getDefaultTemplateData,
+  interpolateTemplateHtml,
+  interpolateTemplateSubject,
+  splitFullName,
+} from "@/lib/events/email-templates";
+import {
   DEFAULT_GDG_CHECKIN_DEADLINE,
   DEFAULT_GDG_SESSION_CAPACITY,
   DEFAULT_GDG_SESSION_TIME,
@@ -8,6 +15,9 @@ import {
   GDG_SESSION_CHECKIN_DEADLINE_MAP,
   GDG_SESSION_TIME_MAP,
 } from "@/lib/events/registration-defaults";
+import type { EventEmailTemplates } from "@/lib/firestore/types";
+
+import { sendInterestEmailWebhookAction } from "./email-template-actions";
 
 export interface RegistrationWebhookPayload {
   // Top-level compatibility fields for n8n workflows
@@ -29,6 +39,11 @@ export interface RegistrationWebhookPayload {
     audience_type?: string;
     is_virtual?: boolean;
     webhook_url?: string;
+    requires_approval?: boolean;
+    curation_mode?: boolean;
+    banner_url?: string;
+    picture_url?: string;
+    email_templates?: unknown;
   };
   registration: {
     id: string;
@@ -142,6 +157,67 @@ export async function dispatchRegistrationWebhookAction(
       Session: sessionKey,
     },
   };
+
+  // 4. If event requires curation, automatically dispatch pre-constructed interest email to attendee
+  const isCurationMode =
+    payload.registration.status === "pending" ||
+    Boolean(payload.event.requires_approval) ||
+    Boolean(payload.event.curation_mode);
+
+  if (isCurationMode) {
+    try {
+      const { firstName, lastName } = splitFullName(payload.member.name);
+      const emailTemplates = payload.event.email_templates as EventEmailTemplates | undefined;
+      const rawInterestHtml = emailTemplates?.interest || getDefaultTemplateByKey("interest");
+      const rawInterestSubject =
+        emailTemplates?.interest_subject || "Registration Received: {{ $('event-params').item.json.eventName }}";
+
+      const simulatedData = getDefaultTemplateData({
+        id: payload.event.id,
+        title: payload.event.title,
+        status: (payload.event.status as "Published" | "Draft" | "Completed" | "Canceled") || "Published",
+        start_date: payload.event.start_date || "",
+        end_date: payload.event.end_date || "",
+        requires_approval: true,
+        total_registrations: 0,
+        total_approved: 0,
+        total_checked_in: 0,
+        banner_url: payload.event.banner_url,
+        picture_url: payload.event.picture_url,
+        email_templates: emailTemplates,
+        created_at: "",
+        updated_at: "",
+      });
+
+      simulatedData.attendee = {
+        name: payload.member.name,
+        email: payload.member.email,
+      };
+      simulatedData.event.eventName = payload.event.title;
+      if (payload.event.banner_url || payload.event.picture_url) {
+        simulatedData.event.headerEmailUrl = (payload.event.banner_url || payload.event.picture_url)!;
+      }
+
+      const bodyEmail = interpolateTemplateHtml(rawInterestHtml, simulatedData);
+      const subjectEmail = interpolateTemplateSubject(rawInterestSubject, simulatedData);
+
+      void sendInterestEmailWebhookAction({
+        first_name: firstName,
+        last_name: lastName,
+        email: payload.member.email,
+        subjectEmail,
+        bodyEmail,
+      }).then((res) => {
+        if (res.success) {
+          console.log(`[Registration Curation Flow] Successfully sent interest email to ${payload.member.email}`);
+        } else {
+          console.warn(`[Registration Curation Flow] Failed to send interest email:`, res.error);
+        }
+      });
+    } catch (err) {
+      console.warn("[Registration Curation Flow] Failed to dispatch interest email:", err);
+    }
+  }
 
   if (!webhookUrl) {
     console.log(
@@ -326,6 +402,154 @@ export async function testRegistrationWebhookAction(targetUrl: string): Promise<
       success: false,
       dispatched: false,
       error: errorMsg,
+    };
+  }
+}
+
+/**
+ * Approved Attendee Webhook Payload
+ * Matches standard n8n webhook API specification for GDG Jakarta:
+ * POST /webhook/api/approved-attendee
+ */
+import type {
+  ApproveAttendeeWebhookResult,
+  ApprovedAttendeeWebhookPayload,
+} from "@/lib/events/approved-attendee-webhook";
+import { resolveApprovedAttendeeWebhookUrl } from "@/lib/events/approved-attendee-webhook";
+
+export type { ApproveAttendeeWebhookResult, ApprovedAttendeeWebhookPayload };
+
+/**
+ * Server Action: Dispatches approved attendee notification to the n8n webhook API.
+ * Uses N8N_WEBHOOK_API_KEY like member import.
+ *
+ * Endpoint: POST https://n8n.gdgjakarta.com/webhook/api/approved-attendee
+ */
+export async function approveAttendeeWebhookAction(
+  payload: ApprovedAttendeeWebhookPayload,
+): Promise<ApproveAttendeeWebhookResult> {
+  const customBaseUrl = process.env.N8N_WEBHOOK_BASE_URL ?? process.env.N8N_BASE_URL;
+  let webhookUrl = resolveApprovedAttendeeWebhookUrl(customBaseUrl);
+
+  if (!customBaseUrl) {
+    const legacyUrl = process.env.N8N_APPROVED_ATTENDEE_WEBHOOK_URL ?? process.env.APPROVED_ATTENDEE_WEBHOOK_URL;
+    if (legacyUrl) {
+      webhookUrl = legacyUrl;
+    }
+  }
+
+  const authHeaderName = process.env.N8N_WEBHOOK_HEADER_NAME ?? process.env.N8N_AUTH_HEADER_NAME ?? "X-API-Key";
+
+  const apiKey = process.env.N8N_WEBHOOK_API_KEY ?? process.env.N8N_AUTH_SECRET ?? "";
+
+  console.log(`[Approved Attendee Webhook] Sending POST to ${webhookUrl}...`, {
+    email: payload.email,
+    fullName: payload.fullName,
+    bevyEventId: payload.bevyEventId,
+    session: payload.session,
+  });
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "User-Agent": "GDG-Jakarta-Dashboard/1.0",
+    };
+
+    if (apiKey) {
+      headers[authHeaderName] = apiKey;
+    }
+
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    const responseText = await response.text();
+    let responseJson: unknown = null;
+    try {
+      responseJson = JSON.parse(responseText);
+    } catch {
+      // Non-JSON response
+    }
+
+    const bodyData = (Array.isArray(responseJson) ? responseJson[0] : responseJson) as
+      | Record<string, unknown>
+      | null
+      | undefined;
+
+    // Response status is false means error with details in error message
+    const hasStatusFalse =
+      bodyData &&
+      (bodyData.status === false ||
+        bodyData.status === "false" ||
+        bodyData.status === "error" ||
+        bodyData.status === "failed" ||
+        bodyData.success === false);
+
+    if (!response.ok || hasStatusFalse) {
+      console.error(
+        `[Approved Attendee Webhook] Error response (HTTP ${response.status}):`,
+        responseText.slice(0, 500),
+      );
+
+      let errorMessage = `Approved attendee webhook returned status ${response.status}.`;
+      if (typeof bodyData?.message === "string") {
+        errorMessage = bodyData.message;
+      } else if (typeof bodyData?.error === "string") {
+        errorMessage = bodyData.error;
+      } else if (typeof bodyData?.errorMessage === "string") {
+        errorMessage = bodyData.errorMessage;
+      } else if (typeof bodyData?.details === "string") {
+        errorMessage = bodyData.details;
+      } else if (responseText && responseText.length < 300) {
+        errorMessage = responseText;
+      }
+
+      return {
+        success: false,
+        status: response.status,
+        error: errorMessage,
+        details: responseJson || responseText,
+      };
+    }
+
+    console.log(`[Approved Attendee Webhook] Succeeded for ${payload.email}:`, responseText.slice(0, 300));
+
+    let successMessage = "Attendee approved successfully via webhook.";
+    if (typeof bodyData?.message === "string") {
+      successMessage = bodyData.message;
+    } else if (typeof bodyData?.details === "string") {
+      successMessage = bodyData.details;
+    }
+
+    return {
+      success: true,
+      status: response.status,
+      message: successMessage,
+      details: responseJson,
+    };
+  } catch (error) {
+    const isAbort = error instanceof Error && error.name === "AbortError";
+    let errorMessage = "Failed to connect to approval webhook.";
+    if (isAbort) {
+      errorMessage = "Webhook request timed out after 15 seconds.";
+    } else if (error instanceof Error) {
+      errorMessage = error.message;
+    }
+
+    console.error("[Approved Attendee Webhook] Exception occurred:", errorMessage);
+
+    return {
+      success: false,
+      error: errorMessage,
+      details: error,
     };
   }
 }

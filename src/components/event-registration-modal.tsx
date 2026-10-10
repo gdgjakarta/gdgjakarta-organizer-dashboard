@@ -749,6 +749,11 @@ export function EventRegistrationModal({
             audience_type: event.audience_type,
             is_virtual: event.is_virtual,
             webhook_url: eventConfig.webhook_url ?? undefined,
+            requires_approval: Boolean(eventConfig.requires_approval),
+            curation_mode: Boolean(eventConfig.curation_mode),
+            banner_url: eventConfig.banner_url ?? event.banner_url ?? cachedImg ?? undefined,
+            picture_url: eventConfig.picture_url ?? event.picture_url ?? cachedImg ?? undefined,
+            email_templates: eventConfig.email_templates,
           },
           registration: {
             id: result.registrationId || `${event.id}_${user.id}`,

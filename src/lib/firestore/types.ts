@@ -95,12 +95,28 @@ export interface EventTicketTier {
   updated_at?: string;
 }
 
+export interface EventEmailTemplateData {
+  headerEmailUrl?: string;
+  eventName?: string;
+  eventCtaUrl?: string;
+  eventChecklistItems?: string[];
+}
+
 export interface EventEmailTemplates {
   interest?: string;
   accepted?: string;
   rejected_hybrid?: string;
   rejected_non_hybrid?: string;
   direct_ticket?: string;
+
+  // Custom subject lines
+  interest_subject?: string;
+  accepted_subject?: string;
+  rejected_hybrid_subject?: string;
+  rejected_non_hybrid_subject?: string;
+
+  // Saved event template data configuration
+  template_data?: EventEmailTemplateData;
 }
 
 export interface FirestoreEvent {
