@@ -103,8 +103,8 @@ export function resolveSessionInfo(
  * Matches n8n webhook API specification:
  * POST /webhook/api/approved-attendee
  *
- * All actual data is interpolated into bodyEmail, with the QR Code placeholder preserved
- * so n8n's "Generate QR Code" node can replace it with the dynamic generated ticket code.
+ * All actual data is interpolated into bodyEmail, with the QR Code and Attendee Ref Code preserved
+ * so n8n's "Generate QR Code" and "Add Bevy Attendee API" nodes can replace them dynamically.
  */
 export function buildApprovedAttendeePayload(
   registration: FirestoreRegistration,

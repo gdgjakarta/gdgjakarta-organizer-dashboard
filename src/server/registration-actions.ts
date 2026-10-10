@@ -439,7 +439,7 @@ export type { ApproveAttendeeWebhookResult, ApprovedAttendeeWebhookPayload };
  *   "sessionName": "Regular Ticket",
  *   "sessionCapacity": 100,
  *   "subjectEmail": "Your Official Ticket: GDG DevFest Jakarta",
- *   "bodyEmail": "<!DOCTYPE html>...<img src=\"data:image/png;base64,{{ $('Generate QR Code').item.json.qrCode }}\">...</html>"
+ *   "bodyEmail": "<!DOCTYPE html>...<img src=\"data:image/png;base64,{{ $('Generate QR Code').item.json.qrCode }}\">...Ref: {{ $('Add Bevy Attendee API').item.json.attendee_code }}...</html>"
  * }
  */
 export async function approveAttendeeWebhookAction(
