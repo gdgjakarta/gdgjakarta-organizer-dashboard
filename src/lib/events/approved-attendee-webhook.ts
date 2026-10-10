@@ -10,18 +10,22 @@ import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/type
 export interface ApprovedAttendeeWebhookPayload {
   email: string;
   fullName: string;
-  status: "ACCEPTED";
-  eventName: string;
-  eventHeaderEmailUrl: string;
-  actionButtonUrl: string;
+  status: "approved" | "ACCEPTED" | string;
   bevyEventId: string;
   bevyChapterId: string;
-  bevyEventDate: string;
-  bevyEventLocation: string;
-  bevyEventLocationUrl: string;
-  session: string;
-  subjectEmail?: string;
-  bodyEmail?: string;
+  sessionName: string;
+  sessionCapacity: number;
+  subjectEmail: string;
+  bodyEmail: string;
+
+  // Additional secondary fields for backward compatibility
+  session?: string;
+  eventName?: string;
+  eventHeaderEmailUrl?: string;
+  actionButtonUrl?: string;
+  bevyEventDate?: string;
+  bevyEventLocation?: string;
+  bevyEventLocationUrl?: string;
 }
 
 export interface ApproveAttendeeWebhookResult {
@@ -33,7 +37,74 @@ export interface ApproveAttendeeWebhookResult {
 }
 
 /**
+ * Resolves sessionName and sessionCapacity from registration and event data.
+ * - sessionName: queried by n8n Check Capacity API against Bevy
+ * - sessionCapacity: validated by n8n Validate Capacity node
+ */
+export function resolveSessionInfo(
+  registration: Partial<FirestoreRegistration>,
+  event?: FirestoreEvent,
+): { sessionName: string; sessionCapacity: number } {
+  const rawSession =
+    registration.session_title ??
+    registration.ticket_name ??
+    registration.ticket_tier ??
+    (registration.answers?.Session as string | undefined) ??
+    (registration.answers?.session as string | undefined) ??
+    (registration.answers?.Ticket as string | undefined) ??
+    (registration.answers?.ticket as string | undefined) ??
+    "";
+
+  let sessionName = "Regular Ticket";
+  if (rawSession && typeof rawSession === "string") {
+    const cleaned = rawSession.split(",")[0].trim();
+    if (cleaned) {
+      sessionName = cleaned;
+    }
+  } else if (event?.tickets && event.tickets.length > 0) {
+    sessionName = event.tickets[0].name.trim() || "Regular Ticket";
+  } else if (event?.sessions && event.sessions.length > 0) {
+    sessionName = event.sessions[0].title.trim() || "Regular Ticket";
+  }
+
+  let sessionCapacity = 100;
+
+  // 1. Check matching session from event
+  const matchedSession = event?.sessions?.find((s) => {
+    if (registration.session_id && s.id === registration.session_id) return true;
+    const sTitle = s.title.toLowerCase();
+    const target = sessionName.toLowerCase();
+    return sTitle === target || target.includes(sTitle) || sTitle.includes(target);
+  });
+
+  if (matchedSession && typeof matchedSession.capacity === "number" && matchedSession.capacity > 0) {
+    sessionCapacity = matchedSession.capacity;
+  } else {
+    // 2. Check matching ticket tier from event
+    const matchedTicket = event?.tickets?.find((t) => {
+      if (registration.ticket_id && t.id === registration.ticket_id) return true;
+      const tName = t.name.toLowerCase();
+      const target = sessionName.toLowerCase();
+      return tName === target || target.includes(tName) || tName.includes(target);
+    });
+
+    if (matchedTicket && typeof matchedTicket.capacity === "number" && matchedTicket.capacity > 0) {
+      sessionCapacity = matchedTicket.capacity;
+    } else if (typeof event?.max_attendees === "number" && event.max_attendees > 0) {
+      sessionCapacity = event.max_attendees;
+    }
+  }
+
+  return { sessionName, sessionCapacity };
+}
+
+/**
  * Builds the approved attendee webhook payload using the event and attendee registration objects.
+ * Matches n8n webhook API specification:
+ * POST /webhook/api/approved-attendee
+ *
+ * All actual data is interpolated into bodyEmail, with the QR Code placeholder preserved
+ * so n8n's "Generate QR Code" node can replace it with the dynamic generated ticket code.
  */
 export function buildApprovedAttendeePayload(
   registration: FirestoreRegistration,
@@ -104,20 +175,12 @@ export function buildApprovedAttendeePayload(
     ? actionButtonUrl
     : `https://maps.google.com/?q=${encodeURIComponent(location)}`;
 
-  const rawSession =
-    registration.session_title ??
-    (registration.answers?.Session as string | undefined) ??
-    (registration.answers?.session as string | undefined) ??
-    registration.ticket_name ??
-    "";
-  let session = "Morning Session";
-  if (rawSession && typeof rawSession === "string") {
-    session = rawSession.split(",")[0].trim();
-  }
+  // Resolve session name and session capacity
+  const { sessionName, sessionCapacity } = resolveSessionInfo(registration, event);
 
-  // Construct subjectEmail and bodyEmail directly on dashboard using accepted template
-  let subjectEmail: string | undefined;
-  let bodyEmail: string | undefined;
+  // Construct subjectEmail and bodyEmail with actual template data
+  let subjectEmail = `Your Official Ticket: ${eventName}`;
+  let bodyEmail = `<!DOCTYPE html><html><body><h2>Hi ${fullName},</h2><p>Your ticket is confirmed!</p></body></html>`;
 
   try {
     const rawHtml = event?.email_templates?.accepted ?? getDefaultTemplateByKey("accepted");
@@ -151,9 +214,10 @@ export function buildApprovedAttendeePayload(
     simulatedData.venueLocation = bevyEventLocation;
     simulatedData.venueLocationUrl = bevyEventLocationUrl;
     simulatedData.eventDate = bevyEventDate;
-    simulatedData.sessionTime = session;
+    simulatedData.sessionTime = sessionName;
 
-    bodyEmail = interpolateTemplateHtml(rawHtml, simulatedData);
+    // Actual interpolated data, preserving QR Code expression tag for n8n workflow
+    bodyEmail = interpolateTemplateHtml(rawHtml, simulatedData, { preserveQrCodeTag: true });
     subjectEmail = interpolateTemplateSubject(rawSubject, simulatedData);
   } catch (err) {
     console.warn("[buildApprovedAttendeePayload] Failed to construct email template:", err);
@@ -162,18 +226,20 @@ export function buildApprovedAttendeePayload(
   return {
     email,
     fullName,
-    status: "ACCEPTED",
+    status: "approved",
+    bevyEventId,
+    bevyChapterId,
+    sessionName,
+    sessionCapacity,
+    subjectEmail,
+    bodyEmail,
+    session: sessionName,
     eventName,
     eventHeaderEmailUrl,
     actionButtonUrl,
-    bevyEventId,
-    bevyChapterId,
     bevyEventDate,
     bevyEventLocation,
     bevyEventLocationUrl,
-    session,
-    subjectEmail,
-    bodyEmail,
   };
 }
 

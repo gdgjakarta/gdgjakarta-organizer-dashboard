@@ -425,6 +425,22 @@ export type { ApproveAttendeeWebhookResult, ApprovedAttendeeWebhookPayload };
  * Uses N8N_WEBHOOK_API_KEY like member import.
  *
  * Endpoint: POST https://n8n.gdgjakarta.com/webhook/api/approved-attendee
+ * Headers:
+ *   Content-Type: application/json
+ *   x-api-key: YOUR_API_KEY_HERE
+ *
+ * Payload:
+ * {
+ *   "email": "jane.doe@example.com",
+ *   "fullName": "Jane Doe",
+ *   "status": "approved",
+ *   "bevyEventId": "12345",
+ *   "bevyChapterId": "678",
+ *   "sessionName": "Regular Ticket",
+ *   "sessionCapacity": 100,
+ *   "subjectEmail": "Your Official Ticket: GDG DevFest Jakarta",
+ *   "bodyEmail": "<!DOCTYPE html>...<img src=\"data:image/png;base64,{{ $('Generate QR Code').item.json.qrCode }}\">...</html>"
+ * }
  */
 export async function approveAttendeeWebhookAction(
   payload: ApprovedAttendeeWebhookPayload,
@@ -439,15 +455,22 @@ export async function approveAttendeeWebhookAction(
     }
   }
 
-  const authHeaderName = process.env.N8N_WEBHOOK_HEADER_NAME ?? process.env.N8N_AUTH_HEADER_NAME ?? "X-API-Key";
+  const authHeaderName = process.env.N8N_WEBHOOK_HEADER_NAME ?? process.env.N8N_AUTH_HEADER_NAME ?? "x-api-key";
 
-  const apiKey = process.env.N8N_WEBHOOK_API_KEY ?? process.env.N8N_AUTH_SECRET ?? "";
+  const apiKey =
+    process.env.N8N_WEBHOOK_API_KEY ??
+    process.env.EVENT_REGISTRATION_WEBHOOK_API_KEY ??
+    process.env.N8N_AUTH_SECRET ??
+    "";
 
   console.log(`[Approved Attendee Webhook] Sending POST to ${webhookUrl}...`, {
     email: payload.email,
     fullName: payload.fullName,
+    status: payload.status,
     bevyEventId: payload.bevyEventId,
-    session: payload.session,
+    bevyChapterId: payload.bevyChapterId,
+    sessionName: payload.sessionName,
+    sessionCapacity: payload.sessionCapacity,
   });
 
   try {
@@ -461,6 +484,8 @@ export async function approveAttendeeWebhookAction(
 
     if (apiKey) {
       headers[authHeaderName] = apiKey;
+      headers["x-api-key"] = apiKey;
+      headers["X-API-Key"] = apiKey;
     }
 
     const response = await fetch(webhookUrl, {

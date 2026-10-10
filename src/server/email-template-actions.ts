@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 
-import { splitFullName } from "@/lib/events/email-templates";
+import { adjustBodyEmailForApprovedWebhook, splitFullName } from "@/lib/events/email-templates";
 import { extractApiMessage } from "@/lib/utils";
 
 /**
@@ -186,6 +186,9 @@ const sendTemplateEmailRequestSchema = z.object({
   headerEmailUrl: z.string().optional(),
   actionButtonUrl: z.string().optional(),
   bevyEventId: z.string().optional(),
+  bevyChapterId: z.string().optional(),
+  sessionName: z.string().optional(),
+  sessionCapacity: z.number().optional(),
 });
 
 export type SendTemplateEmailRequestInput = z.infer<typeof sendTemplateEmailRequestSchema>;
@@ -244,21 +247,32 @@ export async function sendTemplateEmailRequestAction(
       headers["x-api-key"] = apiKey;
     }
 
+    const sessionName = parsed.data.sessionName || "Regular Ticket";
+    const sessionCapacity = parsed.data.sessionCapacity || 100;
+    const bodyEmailToSend =
+      parsed.data.templateKey === "accepted"
+        ? adjustBodyEmailForApprovedWebhook(parsed.data.bodyEmail)
+        : parsed.data.bodyEmail;
+
     const payload = {
       email: parsed.data.recipientEmail,
       fullName: parsed.data.recipientName,
+      status: parsed.data.templateKey === "accepted" ? "approved" : "rejected",
+      bevyEventId: parsed.data.bevyEventId || parsed.data.eventId,
+      bevyChapterId: parsed.data.bevyChapterId || process.env.BEVY_CHAPTER_ID || "642",
+      sessionName,
+      sessionCapacity,
+      subjectEmail: parsed.data.subjectEmail,
+      bodyEmail: bodyEmailToSend,
+      // Optional backwards-compatible fields
       first_name: firstName,
       last_name: lastName,
-      status: parsed.data.templateKey === "accepted" ? "ACCEPTED" : "REJECTED",
+      session: sessionName,
       eventName: parsed.data.eventName || "GDG Jakarta Event",
       eventHeaderEmailUrl:
         parsed.data.headerEmailUrl ||
         "https://assets.gdgjakarta.org/gdg-jakarta/gdg-jakarta-emailheaders-1244x388-blue.png",
       actionButtonUrl: parsed.data.actionButtonUrl || "https://gdg.community.dev/gdg-jakarta",
-      bevyEventId: parsed.data.bevyEventId || parsed.data.eventId,
-      session: "Regular Ticket",
-      subjectEmail: parsed.data.subjectEmail,
-      bodyEmail: parsed.data.bodyEmail,
       templateKey: parsed.data.templateKey,
     };
 

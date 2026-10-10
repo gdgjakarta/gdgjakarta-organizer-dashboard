@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { resolveSessionInfo } from "@/lib/events/approved-attendee-webhook";
 import {
   EMAIL_TEMPLATES_CONFIG,
   type EmailTemplateKey,
@@ -143,6 +144,24 @@ export function SendTemplateEmailDialog({
     startTransition(async () => {
       try {
         const fullName = `${firstName} ${lastName}`.trim() || "Jane Doe";
+        const activeReg = registrations.find((r) => r.id === selectedRegId);
+        const { sessionName, sessionCapacity } = resolveSessionInfo(
+          activeReg ?? {
+            member_name: fullName,
+            member_email: recipientEmail,
+            event_id: String(event.id),
+            event_title: event.title,
+          },
+          event,
+        );
+
+        const chapterId = String(
+          (event as { chapter?: { id?: string | number }; chapter_id?: string | number }).chapter?.id ??
+            (event as { chapter_id?: string | number }).chapter_id ??
+            process.env.BEVY_CHAPTER_ID ??
+            "642",
+        );
+
         const res = await sendTemplateEmailRequestAction({
           eventId: String(event.id),
           recipientEmail,
@@ -154,6 +173,9 @@ export function SendTemplateEmailDialog({
           headerEmailUrl: simulatedData.event.headerEmailUrl,
           actionButtonUrl: simulatedData.event.eventCtaUrl,
           bevyEventId: String(event.id),
+          bevyChapterId: chapterId,
+          sessionName,
+          sessionCapacity,
         });
 
         if (res.success) {
@@ -355,7 +377,7 @@ export function SendTemplateEmailDialog({
                 readOnly
                 value={computedBody}
                 rows={7}
-                className="w-full rounded-md border bg-muted/40 p-2 font-mono text-[11px] leading-tight text-foreground outline-hidden focus:ring-1 focus:ring-primary"
+                className="w-full rounded-md border bg-muted/40 p-2 font-mono text-[11px] text-foreground leading-tight outline-hidden focus:ring-1 focus:ring-primary"
               />
             </TabsContent>
           </Tabs>
