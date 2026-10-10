@@ -70,7 +70,11 @@ import type {
 } from "@/lib/firestore/types";
 import { cn, getInitials } from "@/lib/utils";
 import { checkInBevyAttendeeAction, fetchAllBevyEventAttendeesAction } from "@/server/bevy-actions";
-import { rejectAttendeeAction, resendInterestEmailAction } from "@/server/email-template-actions";
+import {
+  rejectAttendeeAction,
+  resendInterestEmailAction,
+  sendCancelAttendeeEmailAction,
+} from "@/server/email-template-actions";
 import { approveAttendeeWebhookAction } from "@/server/registration-actions";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
@@ -336,6 +340,9 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const [deleteConfirmRegistration, setDeleteConfirmRegistration] = useState<FirestoreRegistration | null>(null);
   const [isBatchDeleteConfirmOpen, setIsBatchDeleteConfirmOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [cancelConfirmRegistration, setCancelConfirmRegistration] = useState<FirestoreRegistration | null>(null);
+  const [isBatchCancelConfirmOpen, setIsBatchCancelConfirmOpen] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
 
   // Dynamic table column customization and question filters
   const [selectedQuestionColumns, setSelectedQuestionColumns] = useState<string[]>([]);
@@ -1657,6 +1664,144 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     });
   };
 
+  const handleCancelRegistration = (registration: FirestoreRegistration) => {
+    const email = (registration.member_email || "").toLowerCase().trim();
+    const matchedBevyAttendeeId =
+      registration.bevy_attendee_id ?? (email ? bevyAttendeesMap.get(email)?.id : undefined);
+
+    startTransition(async () => {
+      setIsCancelling(true);
+      try {
+        // 1. Dispatch cancellation email to attendee
+        const reviewerPayload = user ? { id: user.id, name: user.name, email: user.email } : undefined;
+        const emailRes = await sendCancelAttendeeEmailAction({
+          registrationId: registration.id,
+          eventId,
+          attendeeName: registration.member_name,
+          attendeeEmail: registration.member_email,
+          reviewer: reviewerPayload,
+          eventData: event,
+        });
+
+        if (!emailRes.success) {
+          toast.error(emailRes.error ?? "Failed to send cancellation email. Registration not removed.", {
+            description: typeof emailRes.details === "string" ? emailRes.details : undefined,
+          });
+          setIsCancelling(false);
+          return;
+        }
+
+        // 2. Remove registration from Firestore and Bevy
+        const deleteRes = await deleteEventRegistrationAction(registration.id, eventId, matchedBevyAttendeeId);
+        if (!deleteRes.success) {
+          toast.error(deleteRes.error ?? "Cancellation email sent, but failed to remove registration from database.");
+          setIsCancelling(false);
+          return;
+        }
+
+        // 3. Update local state
+        setRegistrationsList((prev) => prev.filter((r) => r.id !== registration.id));
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          next.delete(registration.id);
+          return next;
+        });
+        if (email && bevyAttendeesMap.has(email)) {
+          setBevyAttendeesMap((prev) => {
+            const next = new Map(prev);
+            next.delete(email);
+            return next;
+          });
+        }
+        if (inspectRegistration?.id === registration.id) {
+          setInspectRegistration(null);
+        }
+        setCancelConfirmRegistration(null);
+
+        toast.success(
+          `Registration cancelled for ${registration.member_name}. Notification sent and capacity released.`,
+        );
+      } catch (err) {
+        console.error("[handleCancelRegistration] error:", err);
+        toast.error("Failed to cancel attendee registration.");
+      } finally {
+        setIsCancelling(false);
+      }
+    });
+  };
+
+  const handleBatchCancel = () => {
+    if (selectedIds.size === 0) return;
+    const idsToCancel = Array.from(selectedIds);
+    const regsToCancel = registrationsList.filter((r) => selectedIds.has(r.id));
+    const count = idsToCancel.length;
+
+    startTransition(async () => {
+      setIsCancelling(true);
+      setIsBatchCancelConfirmOpen(false);
+
+      let successCount = 0;
+      let failCount = 0;
+      const reviewerPayload = user ? { id: user.id, name: user.name, email: user.email } : undefined;
+
+      for (const reg of regsToCancel) {
+        try {
+          const email = (reg.member_email || "").toLowerCase().trim();
+          const matchedBevyAttendeeId = reg.bevy_attendee_id ?? (email ? bevyAttendeesMap.get(email)?.id : undefined);
+
+          // 1. Send cancellation email
+          const emailRes = await sendCancelAttendeeEmailAction({
+            registrationId: reg.id,
+            eventId,
+            attendeeName: reg.member_name,
+            attendeeEmail: reg.member_email,
+            reviewer: reviewerPayload,
+            eventData: event,
+          });
+
+          if (!emailRes.success) {
+            console.warn(`[handleBatchCancel] Failed to email ${reg.member_email}:`, emailRes.error);
+            failCount++;
+            continue;
+          }
+
+          // 2. Delete registration
+          const deleteRes = await deleteEventRegistrationAction(reg.id, eventId, matchedBevyAttendeeId);
+          if (deleteRes.success) {
+            successCount++;
+            setRegistrationsList((prev) => prev.filter((r) => r.id !== reg.id));
+            if (email && bevyAttendeesMap.has(email)) {
+              setBevyAttendeesMap((prev) => {
+                const next = new Map(prev);
+                next.delete(email);
+                return next;
+              });
+            }
+          } else {
+            failCount++;
+          }
+        } catch (err) {
+          console.error("[handleBatchCancel] item error:", err);
+          failCount++;
+        }
+      }
+
+      setSelectedIds(new Set());
+      if (inspectRegistration && selectedIds.has(inspectRegistration.id)) {
+        setInspectRegistration(null);
+      }
+      setIsCancelling(false);
+
+      if (successCount > 0 && failCount === 0) {
+        toast.success(`Cancelled ${successCount} registration${successCount === 1 ? "" : "s"} and sent notifications.`);
+      } else if (successCount > 0 && failCount > 0) {
+        toast.warning(`Cancelled ${successCount} registration(s); ${failCount} failed to process.`);
+      } else {
+        toast.error("Failed to cancel selected registrations.");
+      }
+    });
+  };
+
   const toggleSelectAll = () => {
     if (selectedIds.size === filtered.length) {
       setSelectedIds(new Set());
@@ -1884,9 +2029,34 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
               <Button
                 size="sm"
                 variant="outline"
-                className="gap-1 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                className="gap-1 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                onClick={() => setIsBatchCancelConfirmOpen(true)}
+                disabled={
+                  isPending ||
+                  isDeleting ||
+                  isCancelling ||
+                  isBatchApproving ||
+                  isBatchRejecting ||
+                  isBatchResendingInterest
+                }
+                title="Cancel registrations and send notification emails to selected attendees"
+              >
+                {isCancelling ? <Loader2 className="size-3.5 animate-spin" /> : <UserX className="size-3.5" />}
+                Cancel Selected
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1 text-muted-foreground hover:bg-muted/50"
                 onClick={() => setIsBatchDeleteConfirmOpen(true)}
-                disabled={isPending || isDeleting || isBatchApproving || isBatchRejecting || isBatchResendingInterest}
+                disabled={
+                  isPending ||
+                  isDeleting ||
+                  isCancelling ||
+                  isBatchApproving ||
+                  isBatchRejecting ||
+                  isBatchResendingInterest
+                }
               >
                 <Trash2 className="size-3.5" />
                 Remove Selected
@@ -2641,6 +2811,13 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                   <DropdownMenuSeparator />
                                   <DropdownMenuItem
                                     className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+                                    onClick={() => setCancelConfirmRegistration(reg)}
+                                  >
+                                    <UserX className="mr-2 size-3.5" />
+                                    Cancel registration
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    className="text-muted-foreground focus:bg-destructive/10 focus:text-destructive"
                                     onClick={() => setDeleteConfirmRegistration(reg)}
                                   >
                                     <Trash2 className="mr-2 size-3.5" />
@@ -2669,6 +2846,10 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         onReject={handleRejectAttendee}
         onResendInterestEmail={handleResendInterestEmail}
         onToggleCheckIn={handleToggleCheckIn}
+        onCancelRegistration={(reg) => {
+          setInspectRegistration(null);
+          setCancelConfirmRegistration(reg);
+        }}
         onDelete={(reg) => {
           setInspectRegistration(null);
           setDeleteConfirmRegistration(reg);
@@ -2678,7 +2859,90 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         isApproving={approvingRegistrationId === inspectRegistration?.id}
         isRejecting={rejectingRegistrationId === inspectRegistration?.id}
         isResendingInterest={isResendingInterestId === inspectRegistration?.id}
+        isCancelling={isCancelling}
       />
+
+      {/* Confirmation Dialog: Single Attendee Cancellation */}
+      <AlertDialog
+        open={Boolean(cancelConfirmRegistration)}
+        onOpenChange={(open) => !open && setCancelConfirmRegistration(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel Registration & Remove Attendee</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to cancel the registration for{" "}
+              <strong className="text-foreground">{cancelConfirmRegistration?.member_name}</strong>
+              {cancelConfirmRegistration?.member_email ? ` (${cancelConfirmRegistration.member_email})` : ""}?
+              <br className="my-2" />A cancellation email will be dispatched to their address informing them that their
+              registration has been cancelled by the organizer and they have been removed from the event. If they change
+              their mind, they will need to re-register again.
+              <br className="my-2" />
+              Their registration and allocated tickets will then be removed from the dashboard and Bevy roster, freeing
+              up capacity for new attendees.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isCancelling}>Keep Registration</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={isCancelling}
+              onClick={() => {
+                if (cancelConfirmRegistration) {
+                  handleCancelRegistration(cancelConfirmRegistration);
+                }
+              }}
+            >
+              {isCancelling ? (
+                <>
+                  <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                  Cancelling...
+                </>
+              ) : (
+                "Cancel Registration & Send Email"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmation Dialog: Batch Attendee Cancellation */}
+      <AlertDialog open={isBatchCancelConfirmOpen} onOpenChange={(open) => !open && setIsBatchCancelConfirmOpen(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel Selected Registrations</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to cancel the registrations for{" "}
+              <strong className="text-foreground">{selectedIds.size}</strong> selected attendee
+              {selectedIds.size === 1 ? "" : "s"}?
+              <br className="my-2" />
+              Each attendee will receive a cancellation email informing them that their registration has been cancelled
+              by the organizer, they have been removed from the event, and they must re-register if they change their
+              mind.
+              <br className="my-2" />
+              Their registrations will be permanently removed from the dashboard and Bevy roster, releasing attendee
+              capacity.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isCancelling}>Keep Registrations</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={isCancelling}
+              onClick={handleBatchCancel}
+            >
+              {isCancelling ? (
+                <>
+                  <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                  Cancelling {selectedIds.size}...
+                </>
+              ) : (
+                `Cancel ${selectedIds.size} Registration${selectedIds.size === 1 ? "" : "s"} & Send Emails`
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Confirmation Dialog: Single Attendee Removal */}
       <AlertDialog

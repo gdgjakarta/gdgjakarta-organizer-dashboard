@@ -18,9 +18,11 @@ import {
   Radio,
   Search,
   Sparkles,
+  UserX,
   X,
 } from "lucide-react";
 
+import { CancelRegistrationDialog } from "@/components/cancel-registration-dialog";
 import { EditRegistrationModal } from "@/components/edit-registration-modal";
 import { EventCardImage } from "@/components/event-card-image";
 import { Badge } from "@/components/ui/badge";
@@ -84,6 +86,7 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
   const [isResolvingEvents, setIsResolvingEvents] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [cancellingRegistration, setCancellingRegistration] = useState<FirestoreRegistration | null>(null);
 
   useEffect(() => {
     async function loadRegistrations() {
@@ -438,6 +441,9 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
                     registration={reg}
                     event={ev}
                     onSuccess={handleRegistrationUpdated}
+                    onCancel={() => {
+                      setRegistrations((prev) => prev.filter((r) => r.id !== reg.id));
+                    }}
                     triggerButton={
                       isPending ? (
                         <Button
@@ -469,6 +475,18 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
                   >
                     <Link href={`/dashboard/member/events/${reg.event_id}`}>Details →</Link>
                   </Button>
+
+                  {!isEventPast(ev) && reg.status !== "attended" && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 gap-1 text-destructive text-xs hover:bg-destructive/10 hover:text-destructive"
+                      onClick={() => setCancellingRegistration(reg)}
+                    >
+                      <UserX className="size-3.5" />
+                      Cancel RSVP
+                    </Button>
+                  )}
                 </div>
 
                 {ev?.url && (
@@ -595,6 +613,20 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
           {renderRegistrationGrid(pastRegs)}
         </TabsContent>
       </Tabs>
+
+      {cancellingRegistration && (
+        <CancelRegistrationDialog
+          open={Boolean(cancellingRegistration)}
+          onOpenChange={(open) => !open && setCancellingRegistration(null)}
+          registration={cancellingRegistration}
+          event={eventMap.get(String(cancellingRegistration.event_id))}
+          onSuccess={() => {
+            const cancelledId = cancellingRegistration.id;
+            setRegistrations((prev) => prev.filter((r) => r.id !== cancelledId));
+            setCancellingRegistration(null);
+          }}
+        />
+      )}
     </div>
   );
 }

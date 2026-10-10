@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 
-import { CheckCircle2, Loader2, Mail, Send, User, XCircle } from "lucide-react";
+import { CheckCircle2, Loader2, Mail, Send, User, UserX, XCircle } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -234,6 +234,7 @@ export function SendTemplateEmailDialog({
                   >
                     {cfg.key === "interest" && <Mail className="size-3 text-blue-500" />}
                     {cfg.key === "accepted" && <CheckCircle2 className="size-3 text-emerald-500" />}
+                    {cfg.key.startsWith("cancelled") && <UserX className="size-3 text-red-500" />}
                     {cfg.key.startsWith("rejected") && <XCircle className="size-3 text-red-500" />}
                     <span>{cfg.name}</span>
                   </button>
@@ -249,7 +250,7 @@ export function SendTemplateEmailDialog({
                 <Badge variant="outline" className="px-1.5 py-0 font-mono text-[10px]">
                   POST
                 </Badge>
-                {selectedKey === "interest" || selectedKey.startsWith("rejected")
+                {selectedKey === "interest" || selectedKey.startsWith("cancelled") || selectedKey.startsWith("rejected")
                   ? "https://n8n.gdgjakarta.com/webhook/api/send-email"
                   : "https://n8n.gdgjakarta.com/webhook/api/add-bevy-attendee"}
               </div>

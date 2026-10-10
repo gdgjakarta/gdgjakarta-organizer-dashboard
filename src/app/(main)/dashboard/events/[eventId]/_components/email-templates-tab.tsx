@@ -88,6 +88,8 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
       rejected_hybrid: event.email_templates?.rejected_hybrid ?? getDefaultTemplateByKey("rejected_hybrid"),
       rejected_non_hybrid: event.email_templates?.rejected_non_hybrid ?? getDefaultTemplateByKey("rejected_non_hybrid"),
       rejected_virtual: event.email_templates?.rejected_virtual ?? getDefaultTemplateByKey("rejected_virtual"),
+      cancelled: event.email_templates?.cancelled ?? getDefaultTemplateByKey("cancelled"),
+      cancelled_attendee: event.email_templates?.cancelled_attendee ?? getDefaultTemplateByKey("cancelled_attendee"),
     };
   });
 
@@ -102,6 +104,8 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
       rejected_hybrid: event.email_templates?.rejected_hybrid ?? getDefaultTemplateByKey("rejected_hybrid"),
       rejected_non_hybrid: event.email_templates?.rejected_non_hybrid ?? getDefaultTemplateByKey("rejected_non_hybrid"),
       rejected_virtual: event.email_templates?.rejected_virtual ?? getDefaultTemplateByKey("rejected_virtual"),
+      cancelled: event.email_templates?.cancelled ?? getDefaultTemplateByKey("cancelled"),
+      cancelled_attendee: event.email_templates?.cancelled_attendee ?? getDefaultTemplateByKey("cancelled_attendee"),
     };
   });
 
@@ -160,6 +164,9 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
               rejected_non_hybrid:
                 docData.email_templates.rejected_non_hybrid ?? getDefaultTemplateByKey("rejected_non_hybrid"),
               rejected_virtual: docData.email_templates.rejected_virtual ?? getDefaultTemplateByKey("rejected_virtual"),
+              cancelled: docData.email_templates.cancelled ?? getDefaultTemplateByKey("cancelled"),
+              cancelled_attendee:
+                docData.email_templates.cancelled_attendee ?? getDefaultTemplateByKey("cancelled_attendee"),
             };
             setTemplates(loaded);
             setSavedTemplates(loaded);
@@ -183,7 +190,9 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
       templates.accepted !== savedTemplates.accepted ||
       templates.rejected_hybrid !== savedTemplates.rejected_hybrid ||
       templates.rejected_non_hybrid !== savedTemplates.rejected_non_hybrid ||
-      templates.rejected_virtual !== savedTemplates.rejected_virtual;
+      templates.rejected_virtual !== savedTemplates.rejected_virtual ||
+      templates.cancelled !== savedTemplates.cancelled ||
+      templates.cancelled_attendee !== savedTemplates.cancelled_attendee;
 
     const dataChanged = JSON.stringify(templatesData) !== JSON.stringify(savedTemplatesData);
 
@@ -271,6 +280,8 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
       rejected_hybrid: getDefaultTemplateByKey("rejected_hybrid"),
       rejected_non_hybrid: getDefaultTemplateByKey("rejected_non_hybrid"),
       rejected_virtual: getDefaultTemplateByKey("rejected_virtual"),
+      cancelled: getDefaultTemplateByKey("cancelled"),
+      cancelled_attendee: getDefaultTemplateByKey("cancelled_attendee"),
     };
     setTemplates(allDefaults);
 
@@ -287,6 +298,8 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
       rejected_hybrid: getDefaultTemplateByKey("rejected_hybrid"),
       rejected_non_hybrid: getDefaultTemplateByKey("rejected_non_hybrid"),
       rejected_virtual: getDefaultTemplateByKey("rejected_virtual"),
+      cancelled: getDefaultTemplateByKey("cancelled"),
+      cancelled_attendee: getDefaultTemplateByKey("cancelled_attendee"),
     };
     const cleanData = getAllCleanDefaultTemplatesData(event);
     setTemplates(allDefaults);
@@ -300,6 +313,8 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
           rejected_hybrid: allDefaults.rejected_hybrid,
           rejected_non_hybrid: allDefaults.rejected_non_hybrid,
           rejected_virtual: allDefaults.rejected_virtual,
+          cancelled: allDefaults.cancelled,
+          cancelled_attendee: allDefaults.cancelled_attendee,
           template_data: {
             headerEmailUrl: cleanData[activeKey].event.headerEmailUrl,
             eventName: cleanData[activeKey].event.eventName,
@@ -355,6 +370,22 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
               attendeeName: cleanData.rejected_virtual.attendee.name,
               attendeeEmail: cleanData.rejected_virtual.attendee.email,
             },
+            cancelled: {
+              headerEmailUrl: cleanData.cancelled.event.headerEmailUrl,
+              eventName: cleanData.cancelled.event.eventName,
+              eventCtaUrl: cleanData.cancelled.event.eventCtaUrl,
+              eventChecklistItems: cleanData.cancelled.event.eventChecklistItems,
+              attendeeName: cleanData.cancelled.attendee.name,
+              attendeeEmail: cleanData.cancelled.attendee.email,
+            },
+            cancelled_attendee: {
+              headerEmailUrl: cleanData.cancelled_attendee.event.headerEmailUrl,
+              eventName: cleanData.cancelled_attendee.event.eventName,
+              eventCtaUrl: cleanData.cancelled_attendee.event.eventCtaUrl,
+              eventChecklistItems: cleanData.cancelled_attendee.event.eventChecklistItems,
+              attendeeName: cleanData.cancelled_attendee.attendee.name,
+              attendeeEmail: cleanData.cancelled_attendee.attendee.email,
+            },
           },
         };
         const res = await updateEventEmailTemplatesAction(String(event.id), payload);
@@ -409,6 +440,8 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
           rejected_hybrid: templates.rejected_hybrid,
           rejected_non_hybrid: templates.rejected_non_hybrid,
           rejected_virtual: templates.rejected_virtual,
+          cancelled: templates.cancelled,
+          cancelled_attendee: templates.cancelled_attendee,
           // Legacy template_data fallback for existing listeners
           template_data: {
             headerEmailUrl: templatesData[activeKey].event.headerEmailUrl,
@@ -465,6 +498,22 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
               eventChecklistItems: templatesData.rejected_virtual.event.eventChecklistItems,
               attendeeName: templatesData.rejected_virtual.attendee.name,
               attendeeEmail: templatesData.rejected_virtual.attendee.email,
+            },
+            cancelled: {
+              headerEmailUrl: templatesData.cancelled.event.headerEmailUrl,
+              eventName: templatesData.cancelled.event.eventName,
+              eventCtaUrl: templatesData.cancelled.event.eventCtaUrl,
+              eventChecklistItems: templatesData.cancelled.event.eventChecklistItems,
+              attendeeName: templatesData.cancelled.attendee.name,
+              attendeeEmail: templatesData.cancelled.attendee.email,
+            },
+            cancelled_attendee: {
+              headerEmailUrl: templatesData.cancelled_attendee.event.headerEmailUrl,
+              eventName: templatesData.cancelled_attendee.event.eventName,
+              eventCtaUrl: templatesData.cancelled_attendee.event.eventCtaUrl,
+              eventChecklistItems: templatesData.cancelled_attendee.event.eventChecklistItems,
+              attendeeName: templatesData.cancelled_attendee.attendee.name,
+              attendeeEmail: templatesData.cancelled_attendee.attendee.email,
             },
           },
         };

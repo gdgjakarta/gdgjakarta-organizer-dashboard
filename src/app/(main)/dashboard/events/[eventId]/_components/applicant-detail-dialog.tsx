@@ -27,6 +27,7 @@ import {
   Trash2,
   User,
   UserCheck,
+  UserX,
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -47,12 +48,14 @@ interface ApplicantDetailDialogProps {
   onReject?: (registration: FirestoreRegistration) => void;
   onResendInterestEmail?: (registration: FirestoreRegistration) => void;
   onToggleCheckIn?: (registration: FirestoreRegistration, isCheckedIn: boolean) => void;
+  onCancelRegistration?: (registration: FirestoreRegistration) => void;
   onDelete?: (registration: FirestoreRegistration) => void;
   customQuestions?: CustomQuestion[];
   isPending?: boolean;
   isApproving?: boolean;
   isRejecting?: boolean;
   isResendingInterest?: boolean;
+  isCancelling?: boolean;
 }
 
 const STATUS_VARIANTS: Record<RegistrationStatus, { label: string; badgeClass: string; dotClass: string }> = {
@@ -163,6 +166,8 @@ export function ApplicantDetailDialog({
   isApproving = false,
   isRejecting = false,
   isResendingInterest = false,
+  onCancelRegistration,
+  isCancelling = false,
 }: ApplicantDetailDialogProps) {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [copiedProfile, setCopiedProfile] = useState(false);
@@ -828,7 +833,9 @@ export function ApplicantDetailDialog({
 
         {/* Footer Actions */}
         {(() => {
-          const isActionBlocked = [isPending, isApproving, isRejecting, isResendingInterest].some(Boolean);
+          const isActionBlocked = [isPending, isApproving, isRejecting, isResendingInterest, isCancelling].some(
+            Boolean,
+          );
           return (
             <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 border-t bg-muted/20 px-6 py-3.5">
               <div className="flex items-center gap-2">
@@ -882,11 +889,30 @@ export function ApplicantDetailDialog({
                   </Button>
                 )}
 
-                {onDelete && (
+                {onCancelRegistration && (
                   <Button
                     size="sm"
                     variant="outline"
                     className="border-destructive/30 text-destructive text-xs hover:bg-destructive/10 hover:text-destructive"
+                    disabled={isActionBlocked}
+                    onClick={() => {
+                      onCancelRegistration(registration);
+                    }}
+                  >
+                    {isCancelling ? (
+                      <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                    ) : (
+                      <UserX className="mr-1.5 size-3.5" />
+                    )}
+                    Cancel Registration
+                  </Button>
+                )}
+
+                {onDelete && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-muted-foreground/30 text-muted-foreground text-xs hover:bg-muted/50"
                     disabled={isActionBlocked}
                     onClick={() => {
                       onDelete(registration);

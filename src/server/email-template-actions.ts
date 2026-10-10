@@ -221,8 +221,13 @@ export async function sendTemplateEmailRequestAction(
   const safeFirstName = firstName || "Attendee";
   const safeLastName = lastName || firstName || "-";
 
-  // If this is the registration interest template or any rejected template, use the reusable /send-email endpoint
-  if (parsed.data.templateKey === "interest" || parsed.data.templateKey.startsWith("rejected")) {
+  // If this is the registration interest, cancelled (by organizer or attendee), or any rejected template, use the reusable /send-email endpoint
+  if (
+    parsed.data.templateKey === "interest" ||
+    parsed.data.templateKey === "cancelled" ||
+    parsed.data.templateKey === "cancelled_attendee" ||
+    parsed.data.templateKey.startsWith("rejected")
+  ) {
     return await sendEmailWebhookAction({
       first_name: safeFirstName,
       last_name: safeLastName,
@@ -535,6 +540,197 @@ export async function resendInterestEmailAction(input: ResendInterestEmailInput)
   } catch (err) {
     console.error("[Resend Interest Email] Exception:", err);
     const errorMsg = extractApiMessage(err, "Failed to resend interest email.");
+    return {
+      success: false,
+      error: errorMsg,
+      details: err,
+    };
+  }
+}
+
+export interface CancelAttendeeEmailInput {
+  registrationId: string;
+  eventId: string;
+  attendeeName: string;
+  attendeeEmail: string;
+  reviewer?: {
+    id?: string;
+    name?: string;
+    email?: string;
+  };
+  eventData?: FirestoreEvent;
+}
+
+export interface CancelAttendeeEmailResult extends EmailDispatchResult {
+  templateKey?: string;
+}
+
+/**
+ * Server Action: Sends the registration cancellation email notification via n8n send-email webhook.
+ * Informs the attendee:
+ * "your registration has been cancelled by organizer and you has been remove from the event. if you change your mind, you need to re-register again"
+ */
+export async function sendCancelAttendeeEmailAction(
+  input: CancelAttendeeEmailInput,
+): Promise<CancelAttendeeEmailResult> {
+  try {
+    let event: FirestoreEvent | Partial<FirestoreEvent> | undefined = input.eventData;
+    if (!event) {
+      const { getBevyEventById } = await import("@/lib/bevy/client");
+      const fetched = await getBevyEventById(input.eventId);
+      if (!fetched) {
+        return { success: false, error: "Event not found." };
+      }
+      event = {
+        id: String(fetched.id),
+        title: fetched.title,
+        status: (fetched.status as FirestoreEvent["status"]) ?? "Published",
+        start_date: fetched.start_date ?? "",
+        end_date: fetched.end_date ?? "",
+        requires_approval: false,
+        total_registrations: 0,
+        total_approved: 0,
+        total_checked_in: 0,
+        banner_url: fetched.picture?.url,
+        picture_url: fetched.picture?.url,
+        created_at: "",
+        updated_at: "",
+        audience_type: fetched.audience_type,
+        is_virtual: Boolean(fetched.is_virtual),
+        event_type_title: fetched.event_type_title,
+        venue: fetched.venue as FirestoreEvent["venue"],
+        url: fetched.url,
+        static_url: fetched.static_url,
+      };
+    }
+
+    if (!event) {
+      return { success: false, error: "Event not found." };
+    }
+
+    const templateKey = "cancelled";
+    const rendered = buildRenderedEmailForAttendee({
+      templateKey,
+      attendee: {
+        name: input.attendeeName,
+        email: input.attendeeEmail,
+      },
+      event,
+    });
+
+    const emailResult = await sendEmailWebhookAction({
+      first_name: rendered.firstName,
+      last_name: rendered.lastName,
+      email: input.attendeeEmail,
+      subjectEmail: rendered.subjectEmail,
+      bodyEmail: rendered.bodyEmail,
+    });
+
+    if (!emailResult.success) {
+      console.error(`[Cancel Attendee Email] Failed for ${input.attendeeEmail}:`, emailResult.error);
+      return {
+        ...emailResult,
+        templateKey,
+      };
+    }
+
+    return {
+      success: true,
+      status: emailResult.status,
+      templateKey,
+      message: `Cancellation notification sent to ${input.attendeeName} (${input.attendeeEmail}).`,
+      details: emailResult.details,
+    };
+  } catch (err) {
+    console.error("[Cancel Attendee Email] Exception:", err);
+    const errorMsg = extractApiMessage(err, "Failed to send cancellation email.");
+    return {
+      success: false,
+      error: errorMsg,
+      details: err,
+    };
+  }
+}
+
+/**
+ * Server Action: Sends the attendee self-service registration cancellation email notification via n8n send-email webhook.
+ * Informs the attendee:
+ * "your registration has been canceled and your registration will be removed from the event. if you change your mind, you need to reregister again"
+ */
+export async function sendAttendeeCancelEmailAction(
+  input: CancelAttendeeEmailInput,
+): Promise<CancelAttendeeEmailResult> {
+  try {
+    let event: FirestoreEvent | Partial<FirestoreEvent> | undefined = input.eventData;
+    if (!event) {
+      const { getBevyEventById } = await import("@/lib/bevy/client");
+      const fetched = await getBevyEventById(input.eventId);
+      if (!fetched) {
+        return { success: false, error: "Event not found." };
+      }
+      event = {
+        id: String(fetched.id),
+        title: fetched.title,
+        status: (fetched.status as FirestoreEvent["status"]) ?? "Published",
+        start_date: fetched.start_date ?? "",
+        end_date: fetched.end_date ?? "",
+        requires_approval: false,
+        total_registrations: 0,
+        total_approved: 0,
+        total_checked_in: 0,
+        banner_url: fetched.picture?.url,
+        picture_url: fetched.picture?.url,
+        created_at: "",
+        updated_at: "",
+        audience_type: fetched.audience_type,
+        is_virtual: Boolean(fetched.is_virtual),
+        event_type_title: fetched.event_type_title,
+        venue: fetched.venue as FirestoreEvent["venue"],
+        url: fetched.url,
+        static_url: fetched.static_url,
+      };
+    }
+
+    if (!event) {
+      return { success: false, error: "Event not found." };
+    }
+
+    const templateKey = "cancelled_attendee";
+    const rendered = buildRenderedEmailForAttendee({
+      templateKey,
+      attendee: {
+        name: input.attendeeName,
+        email: input.attendeeEmail,
+      },
+      event,
+    });
+
+    const emailResult = await sendEmailWebhookAction({
+      first_name: rendered.firstName,
+      last_name: rendered.lastName,
+      email: input.attendeeEmail,
+      subjectEmail: rendered.subjectEmail,
+      bodyEmail: rendered.bodyEmail,
+    });
+
+    if (!emailResult.success) {
+      console.error(`[Attendee Cancel Email] Failed for ${input.attendeeEmail}:`, emailResult.error);
+      return {
+        ...emailResult,
+        templateKey,
+      };
+    }
+
+    return {
+      success: true,
+      status: emailResult.status,
+      templateKey,
+      message: `Cancellation confirmation sent to ${input.attendeeName} (${input.attendeeEmail}).`,
+      details: emailResult.details,
+    };
+  } catch (err) {
+    console.error("[Attendee Cancel Email] Exception:", err);
+    const errorMsg = extractApiMessage(err, "Failed to send cancellation confirmation email.");
     return {
       success: false,
       error: errorMsg,

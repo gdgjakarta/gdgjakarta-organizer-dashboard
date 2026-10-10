@@ -95,7 +95,14 @@ export interface EventTicketTier {
   updated_at?: string;
 }
 
-export type EmailTemplateKey = "interest" | "accepted" | "rejected_hybrid" | "rejected_non_hybrid" | "rejected_virtual";
+export type EmailTemplateKey =
+  | "interest"
+  | "accepted"
+  | "rejected_hybrid"
+  | "rejected_non_hybrid"
+  | "rejected_virtual"
+  | "cancelled"
+  | "cancelled_attendee";
 
 export interface EventEmailTemplateData {
   headerEmailUrl?: string;
@@ -120,6 +127,8 @@ export interface EventEmailTemplates {
   rejected_non_hybrid?: string;
   rejected_virtual?: string;
   direct_ticket?: string;
+  cancelled?: string;
+  cancelled_attendee?: string;
 
   // Custom subject lines
   interest_subject?: string;
@@ -127,6 +136,8 @@ export interface EventEmailTemplates {
   rejected_hybrid_subject?: string;
   rejected_non_hybrid_subject?: string;
   rejected_virtual_subject?: string;
+  cancelled_subject?: string;
+  cancelled_attendee_subject?: string;
 
   // Saved event template data configuration (legacy fallback)
   template_data?: EventEmailTemplateData;

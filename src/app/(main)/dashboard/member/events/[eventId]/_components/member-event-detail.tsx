@@ -20,9 +20,11 @@ import {
   Share2,
   Sparkles,
   Users,
+  UserX,
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { CancelRegistrationDialog } from "@/components/cancel-registration-dialog";
 import { EditRegistrationModal } from "@/components/edit-registration-modal";
 import { EventCardImage } from "@/components/event-card-image";
 import { EventRegistrationModal } from "@/components/event-registration-modal";
@@ -73,6 +75,7 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
     initialRegistration === null && (Boolean(user) || isAuthLoading),
   );
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
   const { isVirtual, isHybrid } = resolveEventAudience(currentEvent.audience_type, currentEvent.is_virtual);
 
   useEffect(() => {
@@ -298,6 +301,9 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
           onSuccess={(updated) => {
             setRegistration(updated);
           }}
+          onCancel={() => {
+            setRegistration(null);
+          }}
           triggerButton={
             <Button
               variant="outline"
@@ -322,6 +328,20 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
             </Button>
           }
         />
+
+        {/* Cancel Registration Button (only if event is not concluded and registration is not attended) */}
+        {!isPast && registration.status !== "attended" && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setIsCancelModalOpen(true)}
+            className="w-full gap-2 border-destructive/30 text-destructive text-xs hover:bg-destructive/10 hover:text-destructive shadow-xs"
+          >
+            <UserX className="size-3.5" />
+            Cancel Registration
+          </Button>
+        )}
       </div>
     );
   } else if (isPast) {
@@ -643,6 +663,19 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
           </Card>
         </div>
       </div>
+
+      {registration && (
+        <CancelRegistrationDialog
+          open={isCancelModalOpen}
+          onOpenChange={setIsCancelModalOpen}
+          registration={registration}
+          event={currentEvent}
+          onSuccess={() => {
+            setRegistration(null);
+            setIsCancelModalOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }
