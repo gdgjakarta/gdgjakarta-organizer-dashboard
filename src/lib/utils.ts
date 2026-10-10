@@ -5,7 +5,7 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export const getInitials = (str: string): string => {
+export const getInitials = (str: string, maxWords = 2): string => {
   if (typeof str !== "string" || !str.trim()) return "?";
 
   return (
@@ -13,6 +13,7 @@ export const getInitials = (str: string): string => {
       .trim()
       .split(/\s+/)
       .filter(Boolean)
+      .slice(0, maxWords)
       .map((word) => word[0])
       .join("")
       .toUpperCase() || "?"
