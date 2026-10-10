@@ -88,6 +88,12 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
           setCurrentEvent((prev) => ({
             ...prev,
             ...docData,
+            picture_url: docData.picture_url || prev.picture_url,
+            banner_url: docData.banner_url || prev.banner_url,
+            picture: docData.picture || prev.picture,
+            banner: docData.banner || prev.banner,
+            cropped_picture_url: docData.cropped_picture_url || prev.cropped_picture_url,
+            cropped_banner_url: docData.cropped_banner_url || prev.cropped_banner_url,
           }));
         }
       } catch (err) {
@@ -387,7 +393,16 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
           </Link>
         </Button>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {event.id && (
+            <Button variant="outline" size="sm" asChild className="gap-1.5 text-xs">
+              <Link href={`/events/${event.id}`} target="_blank" rel="noopener noreferrer">
+                <Globe className="size-3.5" />
+                Open Live Page
+              </Link>
+            </Button>
+          )}
+
           <Button variant="outline" size="sm" onClick={handleShare} className="gap-1.5 text-xs">
             <Share2 className="size-3.5" />
             Share Event
@@ -409,32 +424,41 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
         {/* Left 2 Cols: Hero Banner & Full Content */}
         <div className="space-y-6 lg:col-span-2">
           {/* Banner / Poster */}
-          <EventCardImage
-            src={extractEventImageUrl(currentEvent as unknown as Record<string, unknown>)}
-            alt={currentEvent.title}
-            aspectRatio="aspect-[21/9]"
-            containerClassName="rounded-xl border shadow-xs"
-            priority
-          >
-            <div className="absolute top-4 left-4 z-20 flex gap-2">
-              <Badge variant="secondary" className="bg-background/90 text-xs backdrop-blur-md">
-                {formatBadgeContent}
-              </Badge>
-              {event.requires_approval && (
-                <Badge variant="secondary" className="bg-background/90 text-xs backdrop-blur-md">
-                  Curated RSVP
-                </Badge>
-              )}
-              {event.is_test && (
-                <Badge
-                  variant="outline"
-                  className="border-purple-500/30 bg-purple-500/20 text-purple-700 text-xs backdrop-blur-md dark:text-purple-300"
-                >
-                  Test Event
-                </Badge>
-              )}
-            </div>
-          </EventCardImage>
+          {(() => {
+            const imageUrl = extractEventImageUrl(
+              currentEvent as unknown as Record<string, unknown>,
+              registration as unknown as Record<string, unknown>,
+            );
+            return (
+              <EventCardImage
+                src={imageUrl}
+                alt={currentEvent.title}
+                aspectRatio="aspect-[21/9]"
+                containerClassName="rounded-xl border shadow-xs"
+                priority
+                isLoading={isCheckingRegistration && !imageUrl}
+              >
+                <div className="absolute top-4 left-4 z-20 flex gap-2">
+                  <Badge variant="secondary" className="bg-background/90 text-xs backdrop-blur-md">
+                    {formatBadgeContent}
+                  </Badge>
+                  {event.requires_approval && (
+                    <Badge variant="secondary" className="bg-background/90 text-xs backdrop-blur-md">
+                      Curated RSVP
+                    </Badge>
+                  )}
+                  {event.is_test && (
+                    <Badge
+                      variant="outline"
+                      className="border-purple-500/30 bg-purple-500/20 text-purple-700 text-xs backdrop-blur-md dark:text-purple-300"
+                    >
+                      Test Event
+                    </Badge>
+                  )}
+                </div>
+              </EventCardImage>
+            );
+          })()}
 
           {/* Title & Short Summary */}
           <div className="space-y-3">

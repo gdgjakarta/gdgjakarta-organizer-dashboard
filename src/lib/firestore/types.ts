@@ -156,6 +156,16 @@ export interface FirestoreEvent {
   end_date: string;
   picture_url?: string;
   banner_url?: string;
+  picture?: {
+    url?: string;
+    thumbnail_url?: string;
+  };
+  banner?: {
+    url?: string;
+    thumbnail_url?: string;
+  };
+  cropped_picture_url?: string;
+  cropped_banner_url?: string;
   event_type_title?: string;
   audience_type?: "IN_PERSON" | "VIRTUAL" | "HYBRID" | string;
   is_virtual?: boolean;

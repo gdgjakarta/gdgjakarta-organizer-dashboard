@@ -30,6 +30,25 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
     const direct = await getBevyEventById(eventId);
     if (direct) {
       const { audienceType, isVirtual } = resolveEventAudience(direct.audience_type, direct.is_virtual_event);
+      const pictureUrl =
+        direct.picture?.url ??
+        direct.picture?.thumbnail_url ??
+        direct.cropped_picture_url ??
+        direct.banner?.url ??
+        direct.banner?.thumbnail_url ??
+        direct.cropped_banner_url ??
+        (direct as unknown as { picture_url?: string }).picture_url ??
+        undefined;
+      const bannerUrl =
+        direct.banner?.url ??
+        direct.banner?.thumbnail_url ??
+        direct.cropped_banner_url ??
+        direct.picture?.url ??
+        direct.picture?.thumbnail_url ??
+        direct.cropped_picture_url ??
+        (direct as unknown as { banner_url?: string }).banner_url ??
+        undefined;
+
       event = {
         id: String(direct.id),
         title: direct.title,
@@ -38,8 +57,12 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
         status: (direct.status as FirestoreEvent["status"]) ?? "Published",
         start_date: direct.start_date,
         end_date: direct.end_date,
-        picture_url: direct.picture?.thumbnail_url ?? direct.picture?.url ?? undefined,
-        banner_url: direct.banner?.url ?? undefined,
+        picture_url: pictureUrl,
+        banner_url: bannerUrl,
+        picture: direct.picture,
+        banner: direct.banner,
+        cropped_picture_url: direct.cropped_picture_url,
+        cropped_banner_url: direct.cropped_banner_url,
         event_type_title: direct.event_type_title ?? "Standard Event",
         audience_type: audienceType,
         is_virtual: isVirtual,
@@ -68,6 +91,23 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
       const matched = chapterEvents.find((e) => String(e.id) === eventId);
       if (matched) {
         const { audienceType, isVirtual } = resolveEventAudience(matched.audience_type, matched.is_virtual_event);
+        const pictureUrl =
+          matched.picture?.url ??
+          matched.picture?.thumbnail_url ??
+          matched.cropped_picture_url ??
+          matched.banner?.url ??
+          matched.cropped_banner_url ??
+          (matched as unknown as { picture_url?: string }).picture_url ??
+          undefined;
+        const bannerUrl =
+          matched.banner?.url ??
+          matched.banner?.thumbnail_url ??
+          matched.cropped_banner_url ??
+          matched.picture?.url ??
+          matched.cropped_picture_url ??
+          (matched as unknown as { banner_url?: string }).banner_url ??
+          undefined;
+
         event = {
           id: String(matched.id),
           title: matched.title,
@@ -76,20 +116,12 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
           status: (matched.status as FirestoreEvent["status"]) ?? "Published",
           start_date: matched.start_date,
           end_date: matched.end_date,
-          picture_url:
-            matched.picture?.url ??
-            matched.picture?.thumbnail_url ??
-            matched.cropped_picture_url ??
-            matched.banner?.url ??
-            matched.cropped_banner_url ??
-            undefined,
-          banner_url:
-            matched.banner?.url ??
-            matched.banner?.thumbnail_url ??
-            matched.cropped_banner_url ??
-            matched.picture?.url ??
-            matched.cropped_picture_url ??
-            undefined,
+          picture_url: pictureUrl,
+          banner_url: bannerUrl,
+          picture: matched.picture,
+          banner: matched.banner,
+          cropped_picture_url: matched.cropped_picture_url,
+          cropped_banner_url: matched.cropped_banner_url,
           event_type_title: matched.event_type_title ?? "Standard Event",
           audience_type: audienceType,
           is_virtual: isVirtual,

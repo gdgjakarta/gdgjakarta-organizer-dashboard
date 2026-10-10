@@ -109,6 +109,8 @@ export function extractEventImageUrl(
     event?.image_url,
     event?.imageUrl,
     event?.thumbnail_url,
+    typeof event?.picture === "string" ? event.picture : undefined,
+    typeof event?.banner === "string" ? event.banner : undefined,
 
     // 2. Nested Bevy picture / banner objects
     (event?.picture as { url?: string; thumbnail_url?: string } | undefined)?.url,
@@ -119,10 +121,13 @@ export function extractEventImageUrl(
     // 3. Registration-level cached event image fields
     registration?.event_picture_url,
     registration?.event_banner_url,
+    typeof registration?.event_picture === "string" ? registration.event_picture : undefined,
+    typeof registration?.event_banner === "string" ? registration.event_banner : undefined,
     (registration?.answers as Record<string, unknown> | undefined)?.event_picture_url,
     (registration?.answers as Record<string, unknown> | undefined)?.event_banner_url,
     (registration?.answers as Record<string, unknown> | undefined)?.picture_url,
-    (registration?.answers as Record<string, unknown> | undefined)?.banner_url,
+    (registration?.answers as Record<string, unknown> | undefined)?.picture,
+    (registration?.answers as Record<string, unknown> | undefined)?.banner,
   ];
 
   for (const candidate of candidateFields) {
