@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import Image from "next/image";
 
@@ -61,6 +61,13 @@ export function ConfigureTemplateDataDialog({
 }: ConfigureTemplateDataDialogProps) {
   const [selectedKey, setSelectedKey] = useState<EmailTemplateKey>(activeTemplateKey);
   const [newChecklistItem, setNewChecklistItem] = useState("");
+
+  // Sync selectedKey whenever dialog opens or activeTemplateKey changes
+  useEffect(() => {
+    if (open) {
+      setSelectedKey(activeTemplateKey);
+    }
+  }, [open, activeTemplateKey]);
 
   const attendeePickerId = useId();
   const attendeeNameId = useId();
@@ -499,7 +506,7 @@ export function ConfigureTemplateDataDialog({
             <p className="text-xs text-muted-foreground">
               These items are formatted into HTML with icons and titles, then injected into{" "}
               <code className="text-primary text-[11px] bg-muted px-1 py-0.5 rounded">
-                {"{{ $('event-params').item.json.eventCheclistItems }}"}
+                {"{{ $('event-params').item.json.eventChecklistItems }}"}
               </code>
               . Use format: <span className="font-semibold text-foreground">Title: Description</span> for prominent bold
               styling.
