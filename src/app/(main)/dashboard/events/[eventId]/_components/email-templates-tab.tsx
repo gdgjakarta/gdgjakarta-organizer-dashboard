@@ -43,6 +43,7 @@ import {
   EMAIL_TEMPLATES_CONFIG,
   type EmailTemplateKey,
   type EmailTemplateMeta,
+  ensureCheckinDeadlineInAcceptedHtml,
   getAllCleanDefaultTemplatesData,
   getAllDefaultTemplatesData,
   getDefaultTemplateByKey,
@@ -78,20 +79,30 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
   );
 
   // Template HTML state dictionary
-  const [templates, setTemplates] = useState<Record<EmailTemplateKey, string>>(() => ({
-    interest: event.email_templates?.interest ?? getDefaultTemplateByKey("interest"),
-    accepted: event.email_templates?.accepted ?? getDefaultTemplateByKey("accepted"),
-    rejected_hybrid: event.email_templates?.rejected_hybrid ?? getDefaultTemplateByKey("rejected_hybrid"),
-    rejected_non_hybrid: event.email_templates?.rejected_non_hybrid ?? getDefaultTemplateByKey("rejected_non_hybrid"),
-  }));
+  const [templates, setTemplates] = useState<Record<EmailTemplateKey, string>>(() => {
+    const acceptedHtml = ensureCheckinDeadlineInAcceptedHtml(
+      event.email_templates?.accepted ?? getDefaultTemplateByKey("accepted"),
+    );
+    return {
+      interest: event.email_templates?.interest ?? getDefaultTemplateByKey("interest"),
+      accepted: acceptedHtml,
+      rejected_hybrid: event.email_templates?.rejected_hybrid ?? getDefaultTemplateByKey("rejected_hybrid"),
+      rejected_non_hybrid: event.email_templates?.rejected_non_hybrid ?? getDefaultTemplateByKey("rejected_non_hybrid"),
+    };
+  });
 
   // Initial templates reference for dirty tracking
-  const [savedTemplates, setSavedTemplates] = useState<Record<EmailTemplateKey, string>>(() => ({
-    interest: event.email_templates?.interest ?? getDefaultTemplateByKey("interest"),
-    accepted: event.email_templates?.accepted ?? getDefaultTemplateByKey("accepted"),
-    rejected_hybrid: event.email_templates?.rejected_hybrid ?? getDefaultTemplateByKey("rejected_hybrid"),
-    rejected_non_hybrid: event.email_templates?.rejected_non_hybrid ?? getDefaultTemplateByKey("rejected_non_hybrid"),
-  }));
+  const [savedTemplates, setSavedTemplates] = useState<Record<EmailTemplateKey, string>>(() => {
+    const acceptedHtml = ensureCheckinDeadlineInAcceptedHtml(
+      event.email_templates?.accepted ?? getDefaultTemplateByKey("accepted"),
+    );
+    return {
+      interest: event.email_templates?.interest ?? getDefaultTemplateByKey("interest"),
+      accepted: acceptedHtml,
+      rejected_hybrid: event.email_templates?.rejected_hybrid ?? getDefaultTemplateByKey("rejected_hybrid"),
+      rejected_non_hybrid: event.email_templates?.rejected_non_hybrid ?? getDefaultTemplateByKey("rejected_non_hybrid"),
+    };
+  });
 
   const [previewDevice, setPreviewDevice] = useState<"desktop" | "mobile">("desktop");
   const [previewMode, setPreviewMode] = useState<"simulated" | "raw">("simulated");
@@ -142,7 +153,9 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
           if (docData.email_templates) {
             const loaded = {
               interest: docData.email_templates.interest ?? getDefaultTemplateByKey("interest"),
-              accepted: docData.email_templates.accepted ?? getDefaultTemplateByKey("accepted"),
+              accepted: ensureCheckinDeadlineInAcceptedHtml(
+                docData.email_templates.accepted ?? getDefaultTemplateByKey("accepted"),
+              ),
               rejected_hybrid: docData.email_templates.rejected_hybrid ?? getDefaultTemplateByKey("rejected_hybrid"),
               rejected_non_hybrid:
                 docData.email_templates.rejected_non_hybrid ?? getDefaultTemplateByKey("rejected_non_hybrid"),

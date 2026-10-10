@@ -26,6 +26,7 @@ export interface ApprovedAttendeeWebhookPayload {
   bevyEventDate?: string;
   bevyEventLocation?: string;
   bevyEventLocationUrl?: string;
+  checkinDeadline?: string;
 }
 
 export interface ApproveAttendeeWebhookResult {
@@ -181,6 +182,7 @@ export function buildApprovedAttendeePayload(
   // Construct subjectEmail and bodyEmail with actual template data
   let subjectEmail = `Your Official Ticket: ${eventName}`;
   let bodyEmail = `<!DOCTYPE html><html><body><h2>Hi ${fullName},</h2><p>Your ticket is confirmed!</p></body></html>`;
+  let checkinDeadline = "13:30 WIB";
 
   try {
     const rawHtml = event?.email_templates?.accepted ?? getDefaultTemplateByKey("accepted");
@@ -219,6 +221,7 @@ export function buildApprovedAttendeePayload(
     // Actual interpolated data, preserving QR Code expression tag for n8n workflow
     bodyEmail = interpolateTemplateHtml(rawHtml, simulatedData, { preserveQrCodeTag: true });
     subjectEmail = interpolateTemplateSubject(rawSubject, simulatedData);
+    checkinDeadline = simulatedData.checkinDeadline ?? "13:30 WIB";
   } catch (err) {
     console.warn("[buildApprovedAttendeePayload] Failed to construct email template:", err);
   }
@@ -240,6 +243,7 @@ export function buildApprovedAttendeePayload(
     bevyEventDate,
     bevyEventLocation,
     bevyEventLocationUrl,
+    checkinDeadline,
   };
 }
 
