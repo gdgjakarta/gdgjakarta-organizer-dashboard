@@ -6,53 +6,11 @@ import {
   adjustBodyEmailForApprovedWebhook,
   buildRenderedEmailForAttendee,
   resolveRejectedTemplateKeyForEvent,
+  resolveSendEmailWebhookUrl,
   splitFullName,
 } from "@/lib/events/email-templates";
 import type { FirestoreEvent } from "@/lib/firestore/types";
 import { extractApiMessage } from "@/lib/utils";
-
-/**
- * Resolves the webhook URL for send-email (reusable across interest, rejected hybrid/in-person/virtual).
- */
-export function resolveSendEmailWebhookUrl(customBaseUrl?: string): string {
-  if (process.env.N8N_SEND_EMAIL_WEBHOOK_URL) {
-    return process.env.N8N_SEND_EMAIL_WEBHOOK_URL.trim();
-  }
-  if (process.env.N8N_SEND_INTEREST_EMAIL_WEBHOOK_URL) {
-    const custom = process.env.N8N_SEND_INTEREST_EMAIL_WEBHOOK_URL.trim();
-    if (custom.endsWith("/send-interest-email")) {
-      return custom.replace(/\/send-interest-email$/, "/send-email");
-    }
-    return custom;
-  }
-  const base = (customBaseUrl ?? process.env.N8N_WEBHOOK_BASE_URL ?? "https://n8n.gdgjakarta.com")
-    .trim()
-    .replace(/\/+$/, "");
-
-  if (base.endsWith("/send-email")) {
-    return base;
-  }
-  if (base.endsWith("/send-interest-email")) {
-    return base.replace(/\/send-interest-email$/, "/send-email");
-  }
-  if (base.endsWith("/webhook/api")) {
-    return `${base}/send-email`;
-  }
-  if (base.endsWith("/webhook")) {
-    return `${base}/api/send-email`;
-  }
-  if (base.endsWith("/api")) {
-    return `${base.slice(0, -4)}/webhook/api/send-email`;
-  }
-  return `${base}/webhook/api/send-email`;
-}
-
-/**
- * Resolves the webhook URL for send-interest-email (legacy alias pointing to updated send-email).
- */
-export function resolveSendInterestEmailWebhookUrl(customBaseUrl?: string): string {
-  return resolveSendEmailWebhookUrl(customBaseUrl);
-}
 
 const sendEmailSchema = z.object({
   first_name: z.string().min(1, "First name is required"),
