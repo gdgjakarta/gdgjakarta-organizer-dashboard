@@ -88,8 +88,6 @@ export async function sendEmailWebhookAction(data: SendEmailInput): Promise<Emai
 
     if (apiKey) {
       headers["x-api-key"] = apiKey;
-      headers["X-API-KEY"] = apiKey;
-      headers["X-Api-Key"] = apiKey;
     }
 
     const payload = {
@@ -257,7 +255,6 @@ export async function sendTemplateEmailRequestAction(
     };
 
     if (apiKey) {
-      headers["X-API-Key"] = apiKey;
       headers["x-api-key"] = apiKey;
     }
 

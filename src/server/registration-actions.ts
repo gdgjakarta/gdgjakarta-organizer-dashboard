@@ -85,6 +85,10 @@ export interface WebhookDispatchResult {
  * Checks environment variables first, then event-level override.
  */
 function resolveWebhookUrl(eventWebhookUrl?: string): string | null {
+  if (eventWebhookUrl && eventWebhookUrl.trim().length > 0) {
+    return eventWebhookUrl.trim();
+  }
+
   const envUrl =
     process.env.EVENT_REGISTRATION_WEBHOOK_URL ||
     process.env.N8N_REGISTRATION_WEBHOOK_URL ||
@@ -94,10 +98,6 @@ function resolveWebhookUrl(eventWebhookUrl?: string): string | null {
 
   if (envUrl && envUrl.trim().length > 0) {
     return envUrl.trim();
-  }
-
-  if (eventWebhookUrl && eventWebhookUrl.trim().length > 0) {
-    return eventWebhookUrl.trim();
   }
 
   return null;
@@ -462,8 +462,6 @@ export async function approveAttendeeWebhookAction(
 
     if (apiKey) {
       headers[authHeaderName] = apiKey;
-      headers["x-api-key"] = apiKey;
-      headers["X-API-Key"] = apiKey;
     }
 
     const response = await fetch(webhookUrl, {

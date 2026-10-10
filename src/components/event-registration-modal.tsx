@@ -782,11 +782,14 @@ export function EventRegistrationModal({
           timestamp: new Date().toISOString(),
         };
 
-        void dispatchRegistrationWebhookAction(webhookPayload).then((webhookResult) => {
+        try {
+          const webhookResult = await dispatchRegistrationWebhookAction(webhookPayload);
           if (webhookResult.dispatched && webhookResult.error) {
             console.warn("[Registration Modal] Webhook warning:", webhookResult.error);
           }
-        });
+        } catch (webhookErr) {
+          console.warn("[Registration Modal] Webhook dispatch error:", webhookErr);
+        }
 
         const newReg: FirestoreRegistration = {
           id: result.registrationId || `${event.id}_${user?.id || Date.now()}`,

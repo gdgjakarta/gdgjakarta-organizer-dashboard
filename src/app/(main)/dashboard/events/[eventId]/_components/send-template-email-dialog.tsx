@@ -249,8 +249,8 @@ export function SendTemplateEmailDialog({
                 <Badge variant="outline" className="px-1.5 py-0 font-mono text-[10px]">
                   POST
                 </Badge>
-                {selectedKey === "interest"
-                  ? "https://n8n.gdgjakarta.com/webhook/api/send-interest-email"
+                {selectedKey === "interest" || selectedKey.startsWith("rejected")
+                  ? "https://n8n.gdgjakarta.com/webhook/api/send-email"
                   : "https://n8n.gdgjakarta.com/webhook/api/add-bevy-attendee"}
               </div>
               <Badge variant="secondary" className="text-[10px]">
