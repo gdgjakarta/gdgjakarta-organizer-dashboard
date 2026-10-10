@@ -1594,7 +1594,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       setDeleteConfirmRegistration(null);
 
       try {
-        const res = await deleteEventRegistrationAction(registration.id, eventId, matchedBevyAttendeeId);
+        const res = await deleteEventRegistrationAction(registration.id, eventId, matchedBevyAttendeeId, email);
         if (res.success) {
           if (email && bevyAttendeesMap.has(email)) {
             setBevyAttendeesMap((prev) => {
@@ -1709,7 +1709,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         }
 
         // 2. Remove registration from Firestore and Bevy
-        const deleteRes = await deleteEventRegistrationAction(registration.id, eventId, matchedBevyAttendeeId);
+        const deleteRes = await deleteEventRegistrationAction(registration.id, eventId, matchedBevyAttendeeId, email);
         if (!deleteRes.success) {
           toast.error(deleteRes.error ?? "Cancellation email sent, but failed to remove registration from database.");
           setIsCancelling(false);
@@ -1781,7 +1781,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
           }
 
           // 2. Delete registration
-          const deleteRes = await deleteEventRegistrationAction(reg.id, eventId, matchedBevyAttendeeId);
+          const deleteRes = await deleteEventRegistrationAction(reg.id, eventId, matchedBevyAttendeeId, email);
           if (deleteRes.success) {
             successCount++;
             setRegistrationsList((prev) => prev.filter((r) => r.id !== reg.id));
@@ -2134,7 +2134,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
               {hasTickets && (
                 <Select value={ticketFilter} onValueChange={handleTicketFilterChange}>
                   <SelectTrigger size="sm" className="h-8 text-xs">
-                    <Ticket className="mr-1 size-3 text-muted-foreground shrink-0" />
+                    <Ticket className="mr-1 size-3 shrink-0 text-muted-foreground" />
                     <span className="text-muted-foreground">Ticket:</span>
                     <SelectValue />
                   </SelectTrigger>
@@ -2577,7 +2577,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                 <Badge
                                   variant="outline"
                                   className={cn(
-                                    "w-fit px-1.5 py-0 text-[10px] font-semibold",
+                                    "w-fit px-1.5 py-0 font-semibold text-[10px]",
                                     reg.ticket_type === "free" &&
                                       "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
                                     reg.ticket_type === "paid" &&
@@ -2600,7 +2600,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                             {reg.selected_merchandise && reg.selected_merchandise.length > 0 ? (
                               <div className="flex flex-col gap-1">
                                 {reg.selected_merchandise.map((m) => (
-                                  <Badge key={m.id} variant="secondary" className="w-fit gap-1 text-[10px] font-normal">
+                                  <Badge key={m.id} variant="secondary" className="w-fit gap-1 font-normal text-[10px]">
                                     <Package className="size-2.5 text-primary" />
                                     <span>
                                       {m.quantity}x {m.name}
@@ -2706,7 +2706,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                 className={cn(
                                   "size-7 transition-colors",
                                   reg.status === "approved"
-                                    ? "bg-emerald-600 text-white shadow-xs opacity-90 cursor-default hover:bg-emerald-600"
+                                    ? "cursor-default bg-emerald-600 text-white opacity-90 shadow-xs hover:bg-emerald-600"
                                     : "text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700",
                                 )}
                                 title={approveTitle}
@@ -2882,25 +2882,31 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         open={Boolean(cancelConfirmRegistration)}
         onOpenChange={(open) => !open && setCancelConfirmRegistration(null)}
       >
-        <AlertDialogContent>
+        <AlertDialogContent className="data-[size=default]:max-w-md sm:max-w-lg data-[size=default]:sm:max-w-lg">
           <AlertDialogHeader>
             <AlertDialogTitle>Cancel Registration & Remove Attendee</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to cancel the registration for{" "}
-              <strong className="text-foreground">{cancelConfirmRegistration?.member_name}</strong>
-              {cancelConfirmRegistration?.member_email ? ` (${cancelConfirmRegistration.member_email})` : ""}?
-              <br className="my-2" />A cancellation email will be dispatched to their address informing them that their
-              registration has been cancelled by the organizer and they have been removed from the event. If they change
-              their mind, they will need to re-register again.
-              <br className="my-2" />
-              Their registration and allocated tickets will then be removed from the dashboard and Bevy roster, freeing
-              up capacity for new attendees.
+            <AlertDialogDescription className="space-y-2.5 pt-1 text-left text-sm">
+              <span className="block text-foreground">
+                Are you sure you want to cancel the registration for{" "}
+                <strong>{cancelConfirmRegistration?.member_name}</strong>
+                {cancelConfirmRegistration?.member_email ? ` (${cancelConfirmRegistration.member_email})` : ""}?
+              </span>
+              <span className="block text-muted-foreground text-xs leading-relaxed">
+                A cancellation email will be dispatched to their address informing them that their registration has been
+                cancelled by the organizer and they have been removed from the event. If they change their mind, they
+                will need to re-register again.
+              </span>
+              <span className="block text-muted-foreground text-xs leading-relaxed">
+                Their registration and allocated tickets will then be removed from the dashboard and Bevy roster,
+                freeing up capacity for new attendees.
+              </span>
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
+          <AlertDialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <AlertDialogCancel disabled={isCancelling}>Keep Registration</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
+              className="bg-destructive text-white shadow-xs hover:bg-destructive/90"
               disabled={isCancelling}
               onClick={() => {
                 if (cancelConfirmRegistration) {
@@ -2923,26 +2929,31 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
 
       {/* Confirmation Dialog: Batch Attendee Cancellation */}
       <AlertDialog open={isBatchCancelConfirmOpen} onOpenChange={(open) => !open && setIsBatchCancelConfirmOpen(false)}>
-        <AlertDialogContent>
+        <AlertDialogContent className="data-[size=default]:max-w-md sm:max-w-lg data-[size=default]:sm:max-w-lg">
           <AlertDialogHeader>
             <AlertDialogTitle>Cancel Selected Registrations</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to cancel the registrations for{" "}
-              <strong className="text-foreground">{selectedIds.size}</strong> selected attendee
-              {selectedIds.size === 1 ? "" : "s"}?
-              <br className="my-2" />
-              Each attendee will receive a cancellation email informing them that their registration has been cancelled
-              by the organizer, they have been removed from the event, and they must re-register if they change their
-              mind.
-              <br className="my-2" />
-              Their registrations will be permanently removed from the dashboard and Bevy roster, releasing attendee
-              capacity.
+            <AlertDialogDescription className="space-y-2.5 pt-1 text-left text-sm">
+              <span className="block text-foreground">
+                Are you sure you want to cancel the registrations for{" "}
+                <strong className="text-foreground">{selectedIds.size}</strong> selected attendee
+                {selectedIds.size === 1 ? "" : "s"}?
+              </span>
+              <span className="block text-muted-foreground text-xs leading-relaxed">
+                Each attendee will receive a cancellation email informing them that their registration has been
+                cancelled by the organizer, they have been removed from the event, and they must re-register if they
+                change their mind.
+              </span>
+              <span className="block text-muted-foreground text-xs leading-relaxed">
+                Their registrations will be permanently removed from the dashboard and Bevy roster, releasing attendee
+                capacity.
+              </span>
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
+          <AlertDialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <AlertDialogCancel disabled={isCancelling}>Keep Registrations</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
+              className="bg-destructive text-white shadow-xs hover:bg-destructive/90"
               disabled={isCancelling}
               onClick={handleBatchCancel}
             >
@@ -2964,22 +2975,25 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         open={Boolean(deleteConfirmRegistration)}
         onOpenChange={(open) => !open && setDeleteConfirmRegistration(null)}
       >
-        <AlertDialogContent>
+        <AlertDialogContent className="data-[size=default]:max-w-md sm:max-w-lg data-[size=default]:sm:max-w-lg">
           <AlertDialogHeader>
             <AlertDialogTitle>Remove Attendee</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to remove{" "}
-              <strong className="text-foreground">{deleteConfirmRegistration?.member_name}</strong>
-              {deleteConfirmRegistration?.member_email ? ` (${deleteConfirmRegistration.member_email})` : ""}?
-              <br className="my-1.5" />
-              Their registration will be permanently removed from the dashboard and Bevy roster, freeing up attendee
-              capacity and allowing them to re-register for this event.
+            <AlertDialogDescription className="space-y-2 pt-1 text-left text-sm">
+              <span className="block text-foreground">
+                Are you sure you want to remove <strong>{deleteConfirmRegistration?.member_name}</strong>
+                {deleteConfirmRegistration?.member_email ? ` (${deleteConfirmRegistration.member_email})` : ""}?
+              </span>
+              <span className="block text-muted-foreground text-xs leading-relaxed">
+                Their registration will be permanently removed from the dashboard and Bevy roster, freeing up attendee
+                capacity and allowing them to re-register for this event.
+              </span>
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
+          <AlertDialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
+              className="bg-destructive text-white shadow-xs hover:bg-destructive/90"
               disabled={isDeleting}
               onClick={() => {
                 if (deleteConfirmRegistration) {
@@ -2995,21 +3009,25 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
 
       {/* Confirmation Dialog: Batch Attendee Removal */}
       <AlertDialog open={isBatchDeleteConfirmOpen} onOpenChange={(open) => !open && setIsBatchDeleteConfirmOpen(false)}>
-        <AlertDialogContent>
+        <AlertDialogContent className="data-[size=default]:max-w-md sm:max-w-lg data-[size=default]:sm:max-w-lg">
           <AlertDialogHeader>
             <AlertDialogTitle>Remove Selected Attendees</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to remove the <strong className="text-foreground">{selectedIds.size}</strong>{" "}
-              selected attendee{selectedIds.size === 1 ? "" : "s"}?
-              <br className="my-1.5" />
-              Their registrations will be permanently removed from the dashboard and Bevy roster, freeing up attendee
-              capacity and allowing them to re-register for this event.
+            <AlertDialogDescription className="space-y-2 pt-1 text-left text-sm">
+              <span className="block text-foreground">
+                Are you sure you want to remove the <strong>{selectedIds.size}</strong> selected attendee
+                {selectedIds.size === 1 ? "" : "s"}?
+              </span>
+              <span className="block text-muted-foreground text-xs leading-relaxed">
+                Their registrations will be permanently removed from the dashboard and Bevy roster, freeing up attendee
+                capacity and allowing them to re-register for this event.
+              </span>
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
+          <AlertDialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              variant="destructive"
+              className="bg-destructive text-white shadow-xs hover:bg-destructive/90"
               disabled={isDeleting}
               onClick={handleBatchDelete}
             >

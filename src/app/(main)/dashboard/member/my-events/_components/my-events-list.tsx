@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 import { format, parseISO } from "date-fns";
 import {
@@ -77,6 +78,7 @@ function isEventPast(event?: FirestoreEvent): boolean {
 }
 
 export function MyEventsList({ allEvents }: MyEventsListProps) {
+  const pathname = usePathname();
   const user = useAuthStore((s) => s.user);
   const isAuthLoading = useAuthStore((s) => s.isLoading);
   const [registrations, setRegistrations] = useState<FirestoreRegistration[]>([]);
@@ -324,6 +326,7 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
             reg as unknown as Record<string, unknown>,
           );
           const isCardLoading = isResolvingEvents && !ev;
+          const detailsHref = `/dashboard/member/events/${reg.event_id}?from=${encodeURIComponent(pathname || "/dashboard/member/my-events")}`;
 
           return (
             <Card
@@ -335,7 +338,7 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
             >
               <div>
                 {/* Event Picture / Banner */}
-                <Link href={`/dashboard/member/events/${reg.event_id}`} className="block">
+                <Link href={detailsHref} className="block">
                   <EventCardImage
                     src={imageUrl}
                     alt={reg.event_title}
@@ -390,10 +393,7 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
                   </div>
 
                   <CardTitle className="line-clamp-2 font-semibold text-base leading-snug">
-                    <Link
-                      href={`/dashboard/member/events/${reg.event_id}`}
-                      className="transition-colors hover:text-primary hover:underline"
-                    >
+                    <Link href={detailsHref} className="transition-colors hover:text-primary hover:underline">
                       {reg.event_title}
                     </Link>
                   </CardTitle>
@@ -472,7 +472,7 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
                     asChild
                     className="h-8 gap-1 text-muted-foreground text-xs hover:text-foreground"
                   >
-                    <Link href={`/dashboard/member/events/${reg.event_id}`}>Details →</Link>
+                    <Link href={detailsHref}>Details →</Link>
                   </Button>
 
                   {!isEventPast(ev) && reg.status !== "attended" && (

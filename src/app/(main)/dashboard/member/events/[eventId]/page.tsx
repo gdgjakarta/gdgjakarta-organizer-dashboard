@@ -9,10 +9,13 @@ export const dynamic = "force-dynamic";
 
 interface MemberEventDetailPageProps {
   params: Promise<{ eventId: string }>;
+  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
 }
 
-export default async function MemberEventDetailPage({ params }: MemberEventDetailPageProps) {
+export default async function MemberEventDetailPage({ params, searchParams }: MemberEventDetailPageProps) {
   const { eventId } = await params;
+  const resolvedSearchParams = (await searchParams) ?? {};
+  const from = typeof resolvedSearchParams.from === "string" ? resolvedSearchParams.from : undefined;
 
   let event: FirestoreEvent | null = null;
 
@@ -166,7 +169,7 @@ export default async function MemberEventDetailPage({ params }: MemberEventDetai
 
   return (
     <div className="flex h-full flex-col p-4 md:p-6 lg:p-8">
-      <MemberEventDetail event={event} />
+      <MemberEventDetail event={event} from={from} />
     </div>
   );
 }

@@ -42,6 +42,7 @@ import { useAuthStore } from "@/stores/auth/auth-provider";
 interface MemberEventDetailProps {
   event: FirestoreEvent;
   initialRegistration?: FirestoreRegistration | null;
+  from?: string;
 }
 
 function EventDescriptionContent({ html }: { html: string }) {
@@ -66,7 +67,7 @@ function isEventPast(event?: FirestoreEvent): boolean {
   }
 }
 
-export function MemberEventDetail({ event, initialRegistration = null }: MemberEventDetailProps) {
+export function MemberEventDetail({ event, initialRegistration = null, from }: MemberEventDetailProps) {
   const user = useAuthStore((s) => s.user);
   const isAuthLoading = useAuthStore((s) => s.isLoading);
   const [currentEvent, setCurrentEvent] = useState<FirestoreEvent>(event);
@@ -77,6 +78,28 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
   const { isVirtual, isHybrid } = resolveEventAudience(currentEvent.audience_type, currentEvent.is_virtual);
+
+  const rawFrom = from ? decodeURIComponent(from) : undefined;
+  const validFrom = rawFrom?.startsWith("/dashboard") ? rawFrom : undefined;
+  const [referrerPath, setReferrerPath] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && !validFrom && document.referrer) {
+      try {
+        const refUrl = new URL(document.referrer);
+        if (refUrl.origin === window.location.origin && refUrl.pathname.startsWith("/dashboard")) {
+          setReferrerPath(refUrl.pathname + refUrl.search);
+        }
+      } catch {
+        // ignore invalid referrer
+      }
+    }
+  }, [validFrom]);
+
+  const defaultBackUrl = user?.role === "organizer" ? "/dashboard/organizer" : "/dashboard/member";
+  const targetBackUrl = validFrom || referrerPath || defaultBackUrl;
+  const isFromMyEvents = targetBackUrl.includes("my-events");
+  const backLabel = isFromMyEvents ? "Back to My Events" : "Back to Events";
 
   useEffect(() => {
     setCurrentEvent(event);
@@ -387,9 +410,9 @@ export function MemberEventDetail({ event, initialRegistration = null }: MemberE
       {/* Top Breadcrumb / Back Link */}
       <div className="flex items-center justify-between">
         <Button variant="ghost" size="sm" asChild className="gap-2 text-muted-foreground hover:text-foreground">
-          <Link href="/dashboard/member">
+          <Link href={targetBackUrl}>
             <ArrowLeft className="size-4" />
-            Back to Events
+            {backLabel}
           </Link>
         </Button>
 
