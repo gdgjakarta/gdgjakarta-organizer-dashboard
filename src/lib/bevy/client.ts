@@ -968,3 +968,82 @@ export async function deleteBevyAttendee(
     return { success: false, error: msg };
   }
 }
+
+/**
+ * Searches attendees for an event using Bevy's attendee search endpoint.
+ * Endpoint: GET /attendee_search/
+ * Query Parameters: event, search, page_size
+ */
+export async function searchBevyAttendees(
+  eventId: string | number,
+  searchQuery: string,
+  chapterId: string | number = BEVY_CONFIG.chapterId,
+): Promise<BevyAttendee[]> {
+  try {
+    const cleanQuery = searchQuery.trim();
+    if (!cleanQuery || !eventId) return [];
+
+    const referer = await getBevyRefererUrl(chapterId, eventId);
+    const endpoint = `/attendee_search/?event=${encodeURIComponent(eventId)}&search=${encodeURIComponent(cleanQuery)}&page_size=50`;
+
+    const response = await bevyFetchWithResponse<{
+      count?: number;
+      results?: BevyAttendee[];
+    }>(
+      endpoint,
+      {
+        headers: {
+          Referer: referer,
+        },
+      },
+      chapterId,
+    );
+
+    if (response.ok && response.data?.results) {
+      return response.data.results;
+    }
+    return [];
+  } catch (err) {
+    console.warn(`[searchBevyAttendees] Error searching attendees for event ${eventId}:`, err);
+    return [];
+  }
+}
+
+/**
+ * Finds a Bevy attendee ID for a specific event by matching their email address.
+ * First queries `/attendee_search/` for rapid lookup, then falls back to full event roster.
+ */
+export async function findBevyAttendeeIdByEmail(
+  eventId: string | number,
+  email: string,
+  chapterId: string | number = BEVY_CONFIG.chapterId,
+): Promise<number | null> {
+  const normalizedEmail = email.toLowerCase().trim();
+  if (!normalizedEmail || !eventId) return null;
+
+  try {
+    // 1. Fast search via attendee_search endpoint
+    const searchResults = await searchBevyAttendees(eventId, normalizedEmail, chapterId);
+    const match = searchResults.find((att) => att.email && att.email.toLowerCase().trim() === normalizedEmail);
+    if (match?.id) {
+      return match.id;
+    }
+  } catch (searchErr) {
+    console.warn(`[findBevyAttendeeIdByEmail] Search endpoint fallback triggered for ${normalizedEmail}:`, searchErr);
+  }
+
+  try {
+    // 2. Fallback to event attendees roster
+    const allAttendees = await getAllBevyEventAttendees(eventId, chapterId);
+    if (allAttendees.success && allAttendees.results) {
+      const match = allAttendees.results.find((att) => att.email && att.email.toLowerCase().trim() === normalizedEmail);
+      if (match?.id) {
+        return match.id;
+      }
+    }
+  } catch (rosterErr) {
+    console.warn(`[findBevyAttendeeIdByEmail] Roster lookup failed for ${normalizedEmail}:`, rosterErr);
+  }
+
+  return null;
+}

@@ -1,6 +1,7 @@
 "use server";
 import {
   deleteBevyAttendee,
+  findBevyAttendeeIdByEmail,
   getAllBevyChapterEvents,
   getAllBevyEventAttendees,
   getBevyChapterEvents,
@@ -154,4 +155,75 @@ export async function deleteBatchBevyAttendeesAction(attendeeIds: (string | numb
   const results = await Promise.allSettled(attendeeIds.map((id) => deleteBevyAttendee(id, eventId)));
   const succeeded = results.filter((r) => r.status === "fulfilled" && r.value.success).length;
   return { success: true, count: succeeded, total: attendeeIds.length };
+}
+
+/**
+ * Server action to remove an attendee from Bevy by attendee ID or email.
+ * Always called before removing attendee registration from dashboard.
+ *
+ * Endpoint: DELETE https://gdg.community.dev/api/attendee/{attendeeId}/
+ */
+export async function removeAttendeeFromBevyAction(params: {
+  eventId: string | number;
+  attendeeId?: string | number | null;
+  attendeeEmail?: string | null;
+}): Promise<{ success: boolean; error?: string; attendeeId?: number | string | null; notFoundOnBevy?: boolean }> {
+  try {
+    const { eventId, attendeeId, attendeeEmail } = params;
+    const cleanEmail = attendeeEmail?.toLowerCase().trim();
+
+    let resolvedId = attendeeId ? String(attendeeId).trim() : null;
+
+    // If attendee ID is not provided or empty, resolve it from Bevy by email
+    if (!resolvedId && cleanEmail) {
+      console.log(
+        `[removeAttendeeFromBevyAction] Looking up Bevy attendee ID by email ${cleanEmail} for event ${eventId}...`,
+      );
+      const foundId = await findBevyAttendeeIdByEmail(eventId, cleanEmail);
+      if (foundId) {
+        resolvedId = String(foundId);
+        console.log(`[removeAttendeeFromBevyAction] Resolved Bevy attendee ID ${resolvedId} for ${cleanEmail}`);
+      } else {
+        console.log(
+          `[removeAttendeeFromBevyAction] Attendee ${cleanEmail} not found on Bevy for event ${eventId}. Already absent.`,
+        );
+        return { success: true, notFoundOnBevy: true };
+      }
+    }
+
+    if (!resolvedId) {
+      console.warn(
+        `[removeAttendeeFromBevyAction] Neither attendeeId nor matching attendeeEmail found for event ${eventId}.`,
+      );
+      return { success: true, notFoundOnBevy: true };
+    }
+
+    console.log(`[removeAttendeeFromBevyAction] Removing attendee ${resolvedId} from Bevy for event ${eventId}...`);
+    const result = await deleteBevyAttendee(resolvedId, eventId);
+
+    // If deletion returned 404 (already deleted) or success: true
+    if (result.success || result.status === 404) {
+      return { success: true, attendeeId: resolvedId };
+    }
+
+    // If first attempt with passed ID returned non-404 error, and email is available, try looking up fresh ID
+    if (cleanEmail && resolvedId === String(attendeeId)) {
+      console.log(
+        `[removeAttendeeFromBevyAction] Attempt with provided ID ${resolvedId} failed (${result.error}). Retrying lookup by email ${cleanEmail}...`,
+      );
+      const freshId = await findBevyAttendeeIdByEmail(eventId, cleanEmail);
+      if (freshId && String(freshId) !== resolvedId) {
+        const retryResult = await deleteBevyAttendee(freshId, eventId);
+        if (retryResult.success || retryResult.status === 404) {
+          return { success: true, attendeeId: freshId };
+        }
+      }
+    }
+
+    return { success: false, error: result.error, attendeeId: resolvedId };
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : "Failed to remove attendee from Bevy";
+    console.error("[removeAttendeeFromBevyAction] error:", err);
+    return { success: false, error: errorMsg };
+  }
 }

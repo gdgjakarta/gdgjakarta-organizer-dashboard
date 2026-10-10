@@ -291,26 +291,54 @@ export async function updateEventHighlightsMediaAction(
 
 /**
  * Remove an event registration so the attendee can re-register again.
- * If bevyAttendeeId is provided, also removes the attendee from Bevy using session spoofing.
+ * Ensures the attendee is removed from Bevy API BEFORE removing it from the dashboard.
  */
 export async function deleteEventRegistrationAction(
   registrationId: string,
   eventId: string,
   bevyAttendeeId?: number | string | null,
+  attendeeEmail?: string | null,
 ) {
   try {
-    const { deleteEventRegistration } = await import("./client");
-    await deleteEventRegistration(registrationId, eventId);
+    let resolvedAttendeeId = bevyAttendeeId;
+    let resolvedEmail = attendeeEmail;
 
-    if (bevyAttendeeId) {
+    // Pre-resolve missing attendee info from registration doc if needed
+    if (!resolvedAttendeeId || !resolvedEmail) {
       try {
-        const { deleteBevyAttendee } = await import("@/lib/bevy/client");
-        await deleteBevyAttendee(bevyAttendeeId, eventId);
-      } catch (bevyErr) {
-        console.warn("[deleteEventRegistrationAction] Failed to delete attendee from Bevy:", bevyErr);
+        const { getRegistrationById } = await import("./client");
+        const data = await getRegistrationById(registrationId);
+        if (data) {
+          resolvedAttendeeId = resolvedAttendeeId ?? data.bevy_attendee_id;
+          resolvedEmail = resolvedEmail ?? data.member_email;
+        }
+      } catch (fetchErr) {
+        console.warn("[deleteEventRegistrationAction] Could not pre-fetch registration document:", fetchErr);
       }
     }
 
+    // 1. Remove attendee from Bevy API BEFORE removing from dashboard
+    try {
+      const { removeAttendeeFromBevyAction } = await import("@/server/bevy-actions");
+      const bevyRes = await removeAttendeeFromBevyAction({
+        eventId,
+        attendeeId: resolvedAttendeeId,
+        attendeeEmail: resolvedEmail,
+      });
+      if (!bevyRes.success) {
+        console.warn("[deleteEventRegistrationAction] Bevy attendee deletion warning:", bevyRes.error);
+      } else {
+        console.log("[deleteEventRegistrationAction] Successfully verified/removed attendee from Bevy.");
+      }
+    } catch (bevyErr) {
+      console.warn("[deleteEventRegistrationAction] Failed to remove attendee from Bevy API:", bevyErr);
+    }
+
+    // 2. Remove registration from Firestore (dashboard) & recalculate capacity counters
+    const { deleteEventRegistration } = await import("./client");
+    await deleteEventRegistration(registrationId, eventId);
+
+    // 3. Revalidate dashboard paths
     await revalidateDashboardPath(`/dashboard/events/${eventId}`);
     await revalidateDashboardPath("/dashboard/events");
     await revalidateDashboardPath("/dashboard/organizer");
@@ -336,17 +364,19 @@ export async function deleteBatchEventRegistrationsAction(
   bevyAttendeeIds?: (number | string)[],
 ) {
   try {
-    const { deleteBatchEventRegistrations } = await import("./client");
-    await deleteBatchEventRegistrations(registrationIds, eventId);
-
+    // 1. Remove attendees from Bevy API BEFORE deleting from dashboard
     if (bevyAttendeeIds && bevyAttendeeIds.length > 0) {
       try {
-        const { deleteBevyAttendee } = await import("@/lib/bevy/client");
-        await Promise.allSettled(bevyAttendeeIds.map((id) => deleteBevyAttendee(id, eventId)));
+        const { deleteBatchBevyAttendeesAction } = await import("@/server/bevy-actions");
+        await deleteBatchBevyAttendeesAction(bevyAttendeeIds, eventId);
       } catch (bevyErr) {
         console.warn("[deleteBatchEventRegistrationsAction] Failed to delete attendees from Bevy:", bevyErr);
       }
     }
+
+    // 2. Remove registrations from Firestore (dashboard)
+    const { deleteBatchEventRegistrations } = await import("./client");
+    await deleteBatchEventRegistrations(registrationIds, eventId);
 
     await revalidateDashboardPath(`/dashboard/events/${eventId}`);
     await revalidateDashboardPath("/dashboard/events");

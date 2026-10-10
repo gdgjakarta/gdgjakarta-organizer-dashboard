@@ -37,17 +37,29 @@ export function CancelRegistrationDialog({
 }: CancelRegistrationDialogProps) {
   const [isCancelling, setIsCancelling] = useState(false);
 
-  const displayTitle = eventTitle ?? event?.title ?? registration.event_title ?? "this event";
-  const memberEmail = registration.member_email ?? "";
+  const displayTitle = eventTitle ?? event?.title ?? registration.event_title;
+  const memberEmail = registration.member_email;
 
   const handleConfirmCancel = async () => {
     try {
       setIsCancelling(true);
       const email = memberEmail.toLowerCase().trim();
-      const name = registration.member_name ?? "Attendee";
+      const name = registration.member_name || "Attendee";
       const eventId = String(registration.event_id);
 
-      // 1. Send attendee cancellation email notification via webhook API
+      // 1. Call remove attendee Bevy API BEFORE removing it from the dashboard
+      const { removeAttendeeFromBevyAction } = await import("@/server/bevy-actions");
+      const bevyRes = await removeAttendeeFromBevyAction({
+        eventId,
+        attendeeId: registration.bevy_attendee_id,
+        attendeeEmail: email,
+      });
+
+      if (!bevyRes.success) {
+        console.warn("[CancelRegistrationDialog] Warning while removing attendee from Bevy:", bevyRes.error);
+      }
+
+      // 2. Send attendee cancellation email notification via webhook API
       const emailRes = await sendAttendeeCancelEmailAction({
         registrationId: registration.id,
         eventId,
@@ -62,8 +74,13 @@ export function CancelRegistrationDialog({
         return;
       }
 
-      // 2. Delete registration from Firestore & Bevy roster, decrement capacity counters
-      const deleteRes = await deleteEventRegistrationAction(registration.id, eventId, registration.bevy_attendee_id);
+      // 3. Delete registration from Firestore (dashboard) & recalculate capacity counters
+      const deleteRes = await deleteEventRegistrationAction(
+        registration.id,
+        eventId,
+        registration.bevy_attendee_id,
+        email,
+      );
 
       if (!deleteRes.success) {
         toast.error(deleteRes.error ?? "Failed to remove event registration.");

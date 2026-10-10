@@ -354,6 +354,20 @@ export async function checkExistingRegistration(
   }
 }
 
+export async function getRegistrationById(registrationId: string): Promise<FirestoreRegistration | null> {
+  if (typeof window === "undefined" || !registrationId) return null;
+  try {
+    const docRef = doc(db, "event_registrations", registrationId);
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      return { id: snap.id, ...snap.data() } as FirestoreRegistration;
+    }
+  } catch (err) {
+    console.warn(`[Firestore] getRegistrationById error for ${registrationId}:`, err);
+  }
+  return null;
+}
+
 export async function registerMemberForEvent(registration: Omit<FirestoreRegistration, "id">): Promise<string> {
   if (typeof window === "undefined") throw new Error("Registration must be performed from client");
   if (!registration.member_id || !registration.member_email.trim()) {

@@ -212,37 +212,35 @@ export function SendTemplateEmailDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          {/* Template Selector Tabs */}
+          {/* Template Selector Dropdown */}
           <div className="space-y-1.5">
             <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Select Template to Send
             </Label>
-            <div className="flex flex-wrap items-center gap-1.5 rounded-lg border bg-muted/40 p-1">
-              {EMAIL_TEMPLATES_CONFIG.map((cfg) => {
-                const isSelected = selectedKey === cfg.key;
-                return (
-                  <button
-                    type="button"
-                    key={cfg.key}
-                    onClick={() => {
-                      setSelectedKey(cfg.key);
-                      setCustomSubject("");
-                    }}
-                    className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                      isSelected
-                        ? "bg-background text-foreground shadow-xs"
-                        : "text-muted-foreground hover:bg-background/40 hover:text-foreground"
-                    }`}
-                  >
-                    {cfg.key === "interest" && <Mail className="size-3 text-blue-500" />}
-                    {cfg.key === "accepted" && <CheckCircle2 className="size-3 text-emerald-500" />}
-                    {cfg.key.startsWith("cancelled") && <UserX className="size-3 text-red-500" />}
-                    {cfg.key.startsWith("rejected") && <XCircle className="size-3 text-red-500" />}
-                    <span>{cfg.name}</span>
-                  </button>
-                );
-              })}
-            </div>
+            <Select
+              value={selectedKey}
+              onValueChange={(val) => {
+                setSelectedKey(val as EmailTemplateKey);
+                setCustomSubject("");
+              }}
+            >
+              <SelectTrigger className="h-9 w-full text-xs bg-background shadow-xs">
+                <SelectValue placeholder="Select template to send" />
+              </SelectTrigger>
+              <SelectContent>
+                {EMAIL_TEMPLATES_CONFIG.map((cfg) => (
+                  <SelectItem key={cfg.key} value={cfg.key} className="text-xs">
+                    <div className="flex items-center gap-2">
+                      {cfg.key === "interest" && <Mail className="size-3.5 text-blue-500 shrink-0" />}
+                      {cfg.key === "accepted" && <CheckCircle2 className="size-3.5 text-emerald-500 shrink-0" />}
+                      {cfg.key.startsWith("cancelled") && <UserX className="size-3.5 text-amber-500 shrink-0" />}
+                      {cfg.key.startsWith("rejected") && <XCircle className="size-3.5 text-red-500 shrink-0" />}
+                      <span>{cfg.name}</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Endpoint Specification Badge */}
@@ -386,7 +384,7 @@ export function SendTemplateEmailDialog({
           </Tabs>
         </div>
 
-        <DialogFooter className="gap-2 sm:gap-0">
+        <DialogFooter className="gap-2 sm:gap-3">
           <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>

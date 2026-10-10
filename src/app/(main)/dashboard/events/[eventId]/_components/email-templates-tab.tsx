@@ -7,6 +7,7 @@ import {
   BookmarkCheck,
   Check,
   CheckCircle2,
+  ChevronDown,
   Code2,
   Copy,
   Eye,
@@ -37,7 +38,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   EMAIL_TEMPLATES_CONFIG,
   type EmailTemplateKey,
@@ -720,36 +729,36 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
 
       {/* ── Template Switcher & Actions ─────────────────────────────── */}
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          {/* Template Selector Tabs */}
-          <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-border/60 bg-muted/60 p-1">
-            {EMAIL_TEMPLATES_CONFIG.map((cfg) => {
-              const isSelected = activeKey === cfg.key;
-              const isCurrentActiveInFlow = isCurated ? true : cfg.key === "accepted";
-              return (
-                <button
-                  type="button"
-                  key={cfg.key}
-                  onClick={() => setActiveKey(cfg.key)}
-                  className={cn(
-                    "flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-medium text-xs transition-all",
-                    isSelected
-                      ? "bg-background text-foreground shadow-xs"
-                      : "text-muted-foreground hover:bg-background/50 hover:text-foreground",
-                  )}
-                >
-                  {cfg.key === "interest" && <Mail className="size-3.5 text-blue-500" />}
-                  {cfg.key === "accepted" && <CheckCircle2 className="size-3.5 text-emerald-500" />}
-                  {cfg.key.startsWith("rejected") && <XCircle className="size-3.5 text-red-500" />}
-                  <span>{cfg.name}</span>
-                  {!isCurrentActiveInFlow && (
-                    <Badge variant="outline" className="ml-0.5 px-1 py-0 text-[9px] opacity-70">
-                      Curated only
-                    </Badge>
-                  )}
-                </button>
-              );
-            })}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          {/* Template Selector Dropdown */}
+          <div className="flex items-center gap-2">
+            <Label className="text-xs font-medium text-muted-foreground whitespace-nowrap">Email Template:</Label>
+            <Select value={activeKey} onValueChange={(val) => setActiveKey(val as EmailTemplateKey)}>
+              <SelectTrigger className="h-9 w-full min-w-[260px] sm:w-[320px] text-xs bg-background shadow-xs">
+                <SelectValue placeholder="Select email template" />
+              </SelectTrigger>
+              <SelectContent>
+                {EMAIL_TEMPLATES_CONFIG.map((cfg) => {
+                  const isCurrentActiveInFlow = isCurated ? true : cfg.key === "accepted";
+                  return (
+                    <SelectItem key={cfg.key} value={cfg.key} className="text-xs">
+                      <div className="flex items-center gap-2">
+                        {cfg.key === "interest" && <Mail className="size-3.5 text-blue-500 shrink-0" />}
+                        {cfg.key === "accepted" && <CheckCircle2 className="size-3.5 text-emerald-500 shrink-0" />}
+                        {cfg.key.startsWith("rejected") && <XCircle className="size-3.5 text-red-500 shrink-0" />}
+                        {cfg.key.startsWith("cancelled") && <XCircle className="size-3.5 text-amber-500 shrink-0" />}
+                        <span className="truncate">{cfg.name}</span>
+                        {!isCurrentActiveInFlow && (
+                          <Badge variant="outline" className="ml-1 px-1 py-0 text-[9px] opacity-70">
+                            Curated only
+                          </Badge>
+                        )}
+                      </div>
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Quick Actions Bar */}
@@ -779,41 +788,43 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
               )}
             </Button>
 
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="gap-1.5 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10 text-xs shadow-xs"
-              onClick={() => setIsSaveAsDefaultsDialogOpen(true)}
-              title="Save current template changes as new defaults to replace defaults"
-            >
-              <BookmarkCheck className="size-3.5" />
-              Save as Defaults
-            </Button>
-
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="gap-1.5 text-muted-foreground text-xs hover:text-foreground"
-              onClick={handleResetToDefault}
-              title={`Reset current "${activeMeta.name}" template`}
-            >
-              <RotateCcw className="size-3.5" />
-              Reset Tab
-            </Button>
-
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="gap-1.5 text-amber-600 dark:text-amber-400 border-amber-500/30 hover:bg-amber-500/10 text-xs shadow-xs"
-              onClick={() => setIsResetAllDialogOpen(true)}
-              title="Reset all 4 templates and configured data to defaults"
-            >
-              <RotateCcw className="size-3.5" />
-              Reset All to Defaults
-            </Button>
+            {/* Template Defaults Dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 text-xs shadow-xs text-muted-foreground hover:text-foreground"
+                  title="Template default options"
+                >
+                  <RotateCcw className="size-3.5" />
+                  <span>Defaults</span>
+                  <ChevronDown className="size-3 text-muted-foreground" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem onClick={handleResetToDefault} className="gap-2 text-xs cursor-pointer">
+                  <RotateCcw className="size-3.5 text-muted-foreground" />
+                  <span>Reset Current Template</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setIsResetAllDialogOpen(true)}
+                  className="gap-2 text-xs text-amber-600 dark:text-amber-400 focus:text-amber-600 dark:focus:text-amber-400 cursor-pointer"
+                >
+                  <RotateCcw className="size-3.5" />
+                  <span>Reset All to Defaults</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => setIsSaveAsDefaultsDialogOpen(true)}
+                  className="gap-2 text-xs text-emerald-600 dark:text-emerald-400 focus:text-emerald-600 dark:focus:text-emerald-400 cursor-pointer"
+                >
+                  <BookmarkCheck className="size-3.5" />
+                  <span>Save as Defaults</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
 
@@ -1073,7 +1084,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
             </ul>
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter className="gap-2 sm:gap-3">
             <Button type="button" variant="outline" size="sm" onClick={() => setIsResetAllDialogOpen(false)}>
               Cancel
             </Button>
@@ -1127,7 +1138,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
             </ul>
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter className="gap-2 sm:gap-3">
             <Button type="button" variant="outline" size="sm" onClick={() => setIsSaveAsDefaultsDialogOpen(false)}>
               Cancel
             </Button>
