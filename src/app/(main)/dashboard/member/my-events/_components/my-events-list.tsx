@@ -9,7 +9,6 @@ import {
   CalendarCheck,
   Clock,
   Edit3,
-  ExternalLink,
   FileText,
   Filter,
   Globe,
@@ -488,15 +487,6 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
                     </Button>
                   )}
                 </div>
-
-                {ev?.url && (
-                  <Button variant="outline" size="sm" asChild className="h-8 gap-1 text-xs">
-                    <a href={ev.url} target="_blank" rel="noopener noreferrer">
-                      <ExternalLink className="size-3" />
-                      Bevy
-                    </a>
-                  </Button>
-                )}
               </CardFooter>
             </Card>
           );

@@ -2744,7 +2744,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                 className={cn(
                                   "size-7 transition-colors",
                                   reg.status === "rejected"
-                                    ? "bg-destructive text-destructive-foreground shadow-xs hover:bg-destructive/90"
+                                    ? "bg-destructive text-white shadow-xs hover:bg-destructive/90"
                                     : "text-destructive hover:bg-destructive/10 hover:text-destructive",
                                 )}
                                 title={rejectTitle}
@@ -2759,7 +2759,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                 {rejectingRegistrationId === reg.id ? (
                                   <Loader2 className="size-3.5 animate-spin" />
                                 ) : (
-                                  <X className="size-3.5" />
+                                  <X className={cn("size-3.5", reg.status === "rejected" && "text-white")} />
                                 )}
                               </Button>
 
