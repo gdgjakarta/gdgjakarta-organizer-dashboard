@@ -216,7 +216,22 @@ export function buildApprovedAttendeePayload(
     simulatedData.venueLocation = bevyEventLocation;
     simulatedData.venueLocationUrl = bevyEventLocationUrl;
     simulatedData.eventDate = bevyEventDate;
-    simulatedData.sessionTime = sessionName;
+
+    // If registrant is associated with a specific session that has a time slot, use it;
+    // otherwise preserve the configured sessionTime from the event template data
+    const matchedSession = event?.sessions?.find((s) => {
+      if (registration.session_id && s.id === registration.session_id) return true;
+      const sTitle = s.title.toLowerCase();
+      const target = sessionName.toLowerCase();
+      return sTitle === target || target.includes(sTitle) || sTitle.includes(target);
+    });
+
+    if (matchedSession?.time_slot) {
+      simulatedData.sessionTime = matchedSession.time_slot;
+    }
+    if (matchedSession?.checkin_deadline) {
+      simulatedData.checkinDeadline = matchedSession.checkin_deadline;
+    }
 
     // Actual interpolated data, preserving QR Code expression tag for n8n workflow
     bodyEmail = interpolateTemplateHtml(rawHtml, simulatedData, { preserveQrCodeTag: true });

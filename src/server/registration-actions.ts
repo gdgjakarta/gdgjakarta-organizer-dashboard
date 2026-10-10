@@ -164,23 +164,7 @@ export async function dispatchRegistrationWebhookAction(
 
   if (isCurationMode) {
     try {
-      let resolvedEvent = payload.event;
-      if (!resolvedEvent.email_templates) {
-        try {
-          const { getFirestoreEventById } = await import("@/lib/firestore/client");
-          const fetchedEvent = await getFirestoreEventById(payload.event.id);
-          if (fetchedEvent) {
-            resolvedEvent = {
-              ...resolvedEvent,
-              email_templates: fetchedEvent.email_templates,
-              banner_url: fetchedEvent.banner_url ?? resolvedEvent.banner_url,
-              picture_url: fetchedEvent.picture_url ?? resolvedEvent.picture_url,
-            };
-          }
-        } catch (fetchErr) {
-          console.warn("[Registration Webhook] Failed to fetch event templates from Firestore:", fetchErr);
-        }
-      }
+      const resolvedEvent = payload.event;
 
       const rendered = buildRenderedEmailForAttendee({
         templateKey: "interest",

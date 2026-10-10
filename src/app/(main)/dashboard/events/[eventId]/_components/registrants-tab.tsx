@@ -1163,6 +1163,9 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         return;
       }
 
+      // Persist status update in Firestore (client-side)
+      await updateRegistrationStatusAction(registration.id, eventId, "rejected", reviewerPayload);
+
       const now = new Date().toISOString();
       setRegistrationsList((prev) =>
         prev.map((r) =>
@@ -1406,6 +1409,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         });
 
         if (res.success) {
+          await updateRegistrationStatusAction(reg.id, eventId, "rejected", reviewerPayload);
           successCount++;
           const now = new Date().toISOString();
           setRegistrationsList((prev) =>

@@ -370,14 +370,38 @@ export interface RejectAttendeeResult extends EmailDispatchResult {
  */
 export async function rejectAttendeeAction(input: RejectAttendeeInput): Promise<RejectAttendeeResult> {
   try {
-    let event = input.eventData;
+    let event: FirestoreEvent | Partial<FirestoreEvent> | undefined = input.eventData;
     if (!event) {
-      const { getFirestoreEventById } = await import("@/lib/firestore/client");
-      const fetched = await getFirestoreEventById(input.eventId);
+      const { getBevyEventById } = await import("@/lib/bevy/client");
+      const fetched = await getBevyEventById(input.eventId);
       if (!fetched) {
         return { success: false, error: "Event not found." };
       }
-      event = fetched;
+      event = {
+        id: String(fetched.id),
+        title: fetched.title,
+        status: (fetched.status as FirestoreEvent["status"]) ?? "Published",
+        start_date: fetched.start_date ?? "",
+        end_date: fetched.end_date ?? "",
+        requires_approval: false,
+        total_registrations: 0,
+        total_approved: 0,
+        total_checked_in: 0,
+        banner_url: fetched.picture?.url,
+        picture_url: fetched.picture?.url,
+        created_at: "",
+        updated_at: "",
+        audience_type: fetched.audience_type,
+        is_virtual: Boolean(fetched.is_virtual),
+        event_type_title: fetched.event_type_title,
+        venue: fetched.venue as FirestoreEvent["venue"],
+        url: fetched.url,
+        static_url: fetched.static_url,
+      };
+    }
+
+    if (!event) {
+      return { success: false, error: "Event not found." };
     }
 
     const templateKey = resolveRejectedTemplateKeyForEvent(event);
@@ -407,16 +431,12 @@ export async function rejectAttendeeAction(input: RejectAttendeeInput): Promise<
       };
     }
 
-    // 2. Persist status update in Firestore
-    const { updateRegistrationStatusAction } = await import("@/lib/firestore/actions");
-    const reviewerParam =
-      input.reviewer?.id && input.reviewer?.name
-        ? { id: input.reviewer.id, name: input.reviewer.name, email: input.reviewer.email }
-        : undefined;
-    await updateRegistrationStatusAction(input.registrationId, input.eventId, "rejected", reviewerParam);
-
-    const friendlyTypeName =
-      templateKey === "rejected_hybrid" ? "Hybrid" : templateKey === "rejected_virtual" ? "Virtual" : "In-Person";
+    let friendlyTypeName = "In-Person";
+    if (templateKey === "rejected_hybrid") {
+      friendlyTypeName = "Hybrid";
+    } else if (templateKey === "rejected_virtual") {
+      friendlyTypeName = "Virtual";
+    }
 
     return {
       success: true,
@@ -450,14 +470,38 @@ export interface ResendInterestEmailInput {
  */
 export async function resendInterestEmailAction(input: ResendInterestEmailInput): Promise<EmailDispatchResult> {
   try {
-    let event = input.eventData;
+    let event: FirestoreEvent | Partial<FirestoreEvent> | undefined = input.eventData;
     if (!event) {
-      const { getFirestoreEventById } = await import("@/lib/firestore/client");
-      const fetched = await getFirestoreEventById(input.eventId);
+      const { getBevyEventById } = await import("@/lib/bevy/client");
+      const fetched = await getBevyEventById(input.eventId);
       if (!fetched) {
         return { success: false, error: "Event not found." };
       }
-      event = fetched;
+      event = {
+        id: String(fetched.id),
+        title: fetched.title,
+        status: (fetched.status as FirestoreEvent["status"]) ?? "Published",
+        start_date: fetched.start_date ?? "",
+        end_date: fetched.end_date ?? "",
+        requires_approval: false,
+        total_registrations: 0,
+        total_approved: 0,
+        total_checked_in: 0,
+        banner_url: fetched.picture?.url,
+        picture_url: fetched.picture?.url,
+        created_at: "",
+        updated_at: "",
+        audience_type: fetched.audience_type,
+        is_virtual: Boolean(fetched.is_virtual),
+        event_type_title: fetched.event_type_title,
+        venue: fetched.venue as FirestoreEvent["venue"],
+        url: fetched.url,
+        static_url: fetched.static_url,
+      };
+    }
+
+    if (!event) {
+      return { success: false, error: "Event not found." };
     }
 
     const rendered = buildRenderedEmailForAttendee({

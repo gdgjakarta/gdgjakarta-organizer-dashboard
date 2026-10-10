@@ -29,8 +29,8 @@ service cloud.firestore {
     //   - joined_date: string (required, ISO date string, <= 50 chars) - Date joined
     //   - raw_created_date: string|null (optional, <= 50 chars) - Raw timestamp from Bevy
     //   - events_registered_count: int|float|null (optional, >= 0) - Registered events count
-    //   - avatar_url: string|null (optional, <= 1000 chars) - Profile picture URL
-    //   - profile_url: string|null (optional, <= 1000 chars) - Public profile URL
+    //   - avatar_url: string|null (optional, <= 3000 chars) - Profile picture URL
+    //   - profile_url: string|null (optional, <= 2000 chars) - Public profile URL
     //   - is_email_verified: bool|null (optional) - Email verification status
     //   - phone: string|null (optional, <= 30 chars) - Phone number
     //   - events_attended_count: int|float|null (optional, >= 0) - Check-in / attended events count
@@ -50,7 +50,7 @@ service cloud.firestore {
     //   - member_id: string (required, immutable, <= 128 chars) - Member UID
     //   - member_name: string (required, <= 150 chars) - Member display name
     //   - member_email: string (required, valid email, <= 150 chars) - Member email
-    //   - member_avatar: string|null (optional, <= 1000 chars) - Avatar URL
+    //   - member_avatar: string|null (optional, <= 3000 chars) - Avatar URL
     //   - member_role: string|null (optional, <= 100 chars) - Member role
     //   - status: string (required, immutable for members) - Registration status ('pending'|'approved'|'rejected'|'waitlisted'|'attended')
     //   - answers: map|null (optional, <= 50 keys) - Custom question answers
@@ -257,8 +257,8 @@ service cloud.firestore {
         (!('raw_created_date' in data) || data.raw_created_date == null || (data.raw_created_date is string && data.raw_created_date.size() <= 50)) &&
         (!('events_registered_count' in data) || data.events_registered_count == null || ((data.events_registered_count is int || data.events_registered_count is float) && data.events_registered_count >= 0)) &&
         (!('events_attended_count' in data) || data.events_attended_count == null || ((data.events_attended_count is int || data.events_attended_count is float) && data.events_attended_count >= 0)) &&
-        (!('avatar_url' in data) || data.avatar_url == null || (data.avatar_url is string && data.avatar_url.size() <= 1000)) &&
-        (!('profile_url' in data) || data.profile_url == null || (data.profile_url is string && data.profile_url.size() <= 1000)) &&
+        (!('avatar_url' in data) || data.avatar_url == null || (data.avatar_url is string && data.avatar_url.size() <= 3000)) &&
+        (!('profile_url' in data) || data.profile_url == null || (data.profile_url is string && data.profile_url.size() <= 2000)) &&
         (!('is_email_verified' in data) || data.is_email_verified == null || data.is_email_verified is bool) &&
         (!('phone' in data) || data.phone == null || (data.phone is string && data.phone.size() <= 30)) &&
         (!('last_active' in data) || data.last_active == null || (data.last_active is string && data.last_active.size() <= 50)) &&
@@ -288,7 +288,7 @@ service cloud.firestore {
         data.member_email is string && isValidEmail(data.member_email) && data.member_email.size() <= 150 &&
         data.status is string && (data.status in ['pending', 'approved', 'rejected', 'waitlisted', 'attended']) &&
         data.registered_at is string && data.registered_at.size() <= 50 &&
-        (!('member_avatar' in data) || data.member_avatar == null || (data.member_avatar is string && data.member_avatar.size() <= 1000)) &&
+        (!('member_avatar' in data) || data.member_avatar == null || (data.member_avatar is string && data.member_avatar.size() <= 3000)) &&
         (!('member_role' in data) || data.member_role == null || (data.member_role is string && data.member_role.size() <= 100)) &&
         (!('answers' in data) || data.answers == null || (data.answers is map && data.answers.size() <= 50)) &&
         (!('notes' in data) || data.notes == null || (data.notes is string && data.notes.size() <= 2000)) &&
