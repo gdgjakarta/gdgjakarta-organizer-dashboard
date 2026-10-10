@@ -95,11 +95,22 @@ export interface EventTicketTier {
   updated_at?: string;
 }
 
+export type EmailTemplateKey = "interest" | "accepted" | "rejected_hybrid" | "rejected_non_hybrid";
+
 export interface EventEmailTemplateData {
   headerEmailUrl?: string;
   eventName?: string;
   eventCtaUrl?: string;
   eventChecklistItems?: string[];
+  attendeeName?: string;
+  attendeeEmail?: string;
+  eventDate?: string;
+  sessionTime?: string;
+  checkinDeadline?: string;
+  venueLocation?: string;
+  venueLocationUrl?: string;
+  attendeeCode?: string;
+  qrCode?: string;
 }
 
 export interface EventEmailTemplates {
@@ -115,8 +126,11 @@ export interface EventEmailTemplates {
   rejected_hybrid_subject?: string;
   rejected_non_hybrid_subject?: string;
 
-  // Saved event template data configuration
+  // Saved event template data configuration (legacy fallback)
   template_data?: EventEmailTemplateData;
+
+  // Per-template configurable data
+  templates_data?: Partial<Record<EmailTemplateKey, EventEmailTemplateData>>;
 }
 
 export interface FirestoreEvent {

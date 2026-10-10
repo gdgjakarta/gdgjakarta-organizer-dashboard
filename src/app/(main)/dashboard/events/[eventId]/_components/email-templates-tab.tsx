@@ -4,26 +4,20 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import Editor, { type OnMount } from "@monaco-editor/react";
 import {
-  Calendar,
   Check,
   CheckCircle2,
-  ChevronDown,
-  ChevronUp,
   Code2,
   Copy,
   Eye,
   Info,
   Laptop,
   Mail,
-  Plus,
   RotateCcw,
   Send,
   SlidersHorizontal,
   Smartphone,
   Sparkles,
   Terminal,
-  Trash2,
-  User,
   Wand2,
   Workflow,
   XCircle,
@@ -35,16 +29,14 @@ import { FloatingSaveBar } from "@/app/(main)/dashboard/_components/floating-sav
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  DEFAULT_CHECKLIST_ITEMS,
   EMAIL_TEMPLATES_CONFIG,
   type EmailTemplateKey,
   type EmailTemplateMeta,
+  getAllDefaultTemplatesData,
   getDefaultTemplateByKey,
-  getDefaultTemplateData,
+  getDefaultTemplateDataForType,
   interpolateTemplatePreview,
   type TemplateSimulatedData,
 } from "@/lib/events/email-templates";
@@ -52,6 +44,7 @@ import { updateEventEmailTemplatesAction } from "@/lib/firestore/actions";
 import type { EventEmailTemplates, FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
+import { ConfigureTemplateDataDialog } from "./configure-template-data-dialog";
 import { SendTemplateEmailDialog } from "./send-template-email-dialog";
 
 type EditorInstance = Parameters<OnMount>[0];
@@ -93,12 +86,13 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [isSendDialogOpen, setIsSendDialogOpen] = useState(false);
   const [registrations, setRegistrations] = useState<FirestoreRegistration[]>([]);
-  const [newChecklistItem, setNewChecklistItem] = useState("");
 
-  // Simulated template data (Attendee Data & Event Data)
-  const [simulatedData, setSimulatedData] = useState<TemplateSimulatedData>(() => getDefaultTemplateData(event));
-  const [savedTemplateData, setSavedTemplateData] = useState<TemplateSimulatedData>(() =>
-    getDefaultTemplateData(event),
+  // Per-template simulated data dictionary (Attendee & Event configuration per template)
+  const [templatesData, setTemplatesData] = useState<Record<EmailTemplateKey, TemplateSimulatedData>>(() =>
+    getAllDefaultTemplatesData(event),
+  );
+  const [savedTemplatesData, setSavedTemplatesData] = useState<Record<EmailTemplateKey, TemplateSimulatedData>>(() =>
+    getAllDefaultTemplatesData(event),
   );
 
   const [isSaving, startTransition] = useTransition();
@@ -142,23 +136,9 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
             setTemplates(loaded);
             setSavedTemplates(loaded);
 
-            if (docData.email_templates.template_data) {
-              const tData = docData.email_templates.template_data;
-              const merged = {
-                ...getDefaultTemplateData(docData),
-                event: {
-                  headerEmailUrl: tData.headerEmailUrl || getDefaultTemplateData(docData).event.headerEmailUrl,
-                  eventName: tData.eventName || docData.title,
-                  eventCtaUrl: tData.eventCtaUrl || getDefaultTemplateData(docData).event.eventCtaUrl,
-                  eventChecklistItems:
-                    tData.eventChecklistItems && tData.eventChecklistItems.length > 0
-                      ? tData.eventChecklistItems
-                      : [...DEFAULT_CHECKLIST_ITEMS],
-                },
-              };
-              setSimulatedData(merged);
-              setSavedTemplateData(merged);
-            }
+            const allData = getAllDefaultTemplatesData(docData);
+            setTemplatesData(allData);
+            setSavedTemplatesData(allData);
           }
         }
       } catch (err) {
@@ -168,7 +148,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
     void loadLatestEventData();
   }, [event.id]);
 
-  // Dirty state calculation for both HTML templates and Event Data configuration
+  // Dirty state calculation for both HTML templates and per-template data configuration
   const isDirty = useMemo(() => {
     const templatesChanged =
       templates.interest !== savedTemplates.interest ||
@@ -176,15 +156,10 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
       templates.rejected_hybrid !== savedTemplates.rejected_hybrid ||
       templates.rejected_non_hybrid !== savedTemplates.rejected_non_hybrid;
 
-    const configChanged =
-      simulatedData.event.headerEmailUrl !== savedTemplateData.event.headerEmailUrl ||
-      simulatedData.event.eventName !== savedTemplateData.event.eventName ||
-      simulatedData.event.eventCtaUrl !== savedTemplateData.event.eventCtaUrl ||
-      JSON.stringify(simulatedData.event.eventChecklistItems) !==
-        JSON.stringify(savedTemplateData.event.eventChecklistItems);
+    const dataChanged = JSON.stringify(templatesData) !== JSON.stringify(savedTemplatesData);
 
-    return templatesChanged || configChanged;
-  }, [templates, savedTemplates, simulatedData, savedTemplateData]);
+    return templatesChanged || dataChanged;
+  }, [templates, savedTemplates, templatesData, savedTemplatesData]);
 
   const activeMeta = useMemo<EmailTemplateMeta>(() => {
     const found = EMAIL_TEMPLATES_CONFIG.find((cfg) => cfg.key === activeKey);
@@ -205,16 +180,18 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
     );
   }, [activeKey]);
 
-  // Interpolated preview HTML using simulatedData
+  // Interpolated preview HTML using currently active template's data
   const previewHtml = useMemo(() => {
     const rawHtml = templates[activeKey] ?? "";
     if (previewMode === "raw") {
       return rawHtml;
     }
+    const currentData = templatesData[activeKey] ?? getDefaultTemplateDataForType(activeKey, event);
     return interpolateTemplatePreview(rawHtml, event, {
-      simulatedData,
+      templateKey: activeKey,
+      simulatedData: currentData,
     });
-  }, [templates, activeKey, previewMode, event, simulatedData]);
+  }, [templates, activeKey, previewMode, event, templatesData]);
 
   const handleEditorDidMount: OnMount = (editor) => {
     editorRef.current = editor;
@@ -272,7 +249,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
 
   const handleDiscardChanges = () => {
     setTemplates(savedTemplates);
-    setSimulatedData(savedTemplateData);
+    setTemplatesData(savedTemplatesData);
     toast.info("Unsaved edits discarded");
   };
 
@@ -284,17 +261,61 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
           accepted: templates.accepted,
           rejected_hybrid: templates.rejected_hybrid,
           rejected_non_hybrid: templates.rejected_non_hybrid,
+          // Legacy template_data fallback for existing listeners
           template_data: {
-            headerEmailUrl: simulatedData.event.headerEmailUrl,
-            eventName: simulatedData.event.eventName,
-            eventCtaUrl: simulatedData.event.eventCtaUrl,
-            eventChecklistItems: simulatedData.event.eventChecklistItems,
+            headerEmailUrl: templatesData[activeKey].event.headerEmailUrl,
+            eventName: templatesData[activeKey].event.eventName,
+            eventCtaUrl: templatesData[activeKey].event.eventCtaUrl,
+            eventChecklistItems: templatesData[activeKey].event.eventChecklistItems,
+            attendeeName: templatesData[activeKey].attendee.name,
+            attendeeEmail: templatesData[activeKey].attendee.email,
+          },
+          // Per-template configurable data
+          templates_data: {
+            interest: {
+              headerEmailUrl: templatesData.interest.event.headerEmailUrl,
+              eventName: templatesData.interest.event.eventName,
+              eventCtaUrl: templatesData.interest.event.eventCtaUrl,
+              eventChecklistItems: templatesData.interest.event.eventChecklistItems,
+              attendeeName: templatesData.interest.attendee.name,
+              attendeeEmail: templatesData.interest.attendee.email,
+            },
+            accepted: {
+              headerEmailUrl: templatesData.accepted.event.headerEmailUrl,
+              eventName: templatesData.accepted.event.eventName,
+              eventCtaUrl: templatesData.accepted.event.eventCtaUrl,
+              eventChecklistItems: templatesData.accepted.event.eventChecklistItems,
+              attendeeName: templatesData.accepted.attendee.name,
+              attendeeEmail: templatesData.accepted.attendee.email,
+              eventDate: templatesData.accepted.eventDate,
+              sessionTime: templatesData.accepted.sessionTime,
+              checkinDeadline: templatesData.accepted.checkinDeadline,
+              venueLocation: templatesData.accepted.venueLocation,
+              venueLocationUrl: templatesData.accepted.venueLocationUrl,
+              attendeeCode: templatesData.accepted.attendeeCode,
+            },
+            rejected_hybrid: {
+              headerEmailUrl: templatesData.rejected_hybrid.event.headerEmailUrl,
+              eventName: templatesData.rejected_hybrid.event.eventName,
+              eventCtaUrl: templatesData.rejected_hybrid.event.eventCtaUrl,
+              eventChecklistItems: templatesData.rejected_hybrid.event.eventChecklistItems,
+              attendeeName: templatesData.rejected_hybrid.attendee.name,
+              attendeeEmail: templatesData.rejected_hybrid.attendee.email,
+            },
+            rejected_non_hybrid: {
+              headerEmailUrl: templatesData.rejected_non_hybrid.event.headerEmailUrl,
+              eventName: templatesData.rejected_non_hybrid.event.eventName,
+              eventCtaUrl: templatesData.rejected_non_hybrid.event.eventCtaUrl,
+              eventChecklistItems: templatesData.rejected_non_hybrid.event.eventChecklistItems,
+              attendeeName: templatesData.rejected_non_hybrid.attendee.name,
+              attendeeEmail: templatesData.rejected_non_hybrid.attendee.email,
+            },
           },
         };
         const res = await updateEventEmailTemplatesAction(String(event.id), payload);
         if (res.success) {
           setSavedTemplates(templates);
-          setSavedTemplateData(simulatedData);
+          setSavedTemplatesData(templatesData);
           toast.success("Email templates and configuration saved to event successfully!");
         } else {
           toast.error(res.error ?? "Failed to save email templates.");
@@ -738,18 +759,17 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {/* Configure Data Toggle */}
+                  {/* Configure Data Dialog Modal Button */}
                   {previewMode === "simulated" && (
                     <Button
                       type="button"
-                      variant={isConfigOpen ? "secondary" : "outline"}
+                      variant="outline"
                       size="sm"
                       className="h-6 gap-1 px-2 text-xs"
-                      onClick={() => setIsConfigOpen((prev) => !prev)}
+                      onClick={() => setIsConfigOpen(true)}
                     >
-                      <SlidersHorizontal className="size-3" />
+                      <SlidersHorizontal className="size-3 text-primary" />
                       <span className="hidden sm:inline">Configure Data</span>
-                      {isConfigOpen ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
                     </Button>
                   )}
 
@@ -778,350 +798,6 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
                   </div>
                 </div>
               </div>
-
-              {/* ── Collapsible Simulated Template Data Configuration Panel ── */}
-              {previewMode === "simulated" && isConfigOpen && (
-                <div className="border-b bg-background/95 p-3.5 text-xs backdrop-blur-xs transition-all">
-                  <div className="mb-3 flex items-center justify-between border-b pb-2">
-                    <div className="flex items-center gap-1.5 font-semibold text-xs text-foreground">
-                      <SlidersHorizontal className="size-3.5 text-primary" />
-                      Configure Simulated Template Data
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 gap-1 px-2 text-[11px] text-muted-foreground hover:text-foreground"
-                      onClick={() => {
-                        setSimulatedData(getDefaultTemplateData(event));
-                        toast.info("Reset simulated data to event defaults");
-                      }}
-                    >
-                      <RotateCcw className="size-3" />
-                      Reset All Defaults
-                    </Button>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                    {/* SECTION 1: Attendee Data (name, email) */}
-                    <div className="space-y-2.5 rounded-lg border bg-muted/20 p-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5 font-semibold text-[11px] text-primary uppercase tracking-wider">
-                          <User className="size-3.5" /> 1. Attendee Data
-                        </div>
-                        <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
-                          {registrations.length > 0 ? `${registrations.length} registrants` : "simulated"}
-                        </Badge>
-                      </div>
-
-                      {/* Quick Pick Registrant Dropdown */}
-                      {registrations.length > 0 && (
-                        <div className="space-y-1">
-                          <Label className="text-[10px] text-muted-foreground">Pick from Registrants</Label>
-                          <Select
-                            onValueChange={(regId) => {
-                              if (regId === "custom") return;
-                              const found = registrations.find((r) => r.id === regId);
-                              if (found) {
-                                setSimulatedData((prev) => ({
-                                  ...prev,
-                                  attendee: {
-                                    name: found.member_name || prev.attendee.name,
-                                    email: found.member_email || prev.attendee.email,
-                                  },
-                                }));
-                                toast.success(`Loaded data for ${found.member_name}`);
-                              }
-                            }}
-                          >
-                            <SelectTrigger className="h-7 text-[11px]">
-                              <SelectValue placeholder="Select an attendee to test..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {registrations.slice(0, 50).map((r) => (
-                                <SelectItem key={r.id} value={r.id} className="text-xs">
-                                  {r.member_name} ({r.member_email || "no email"})
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      )}
-
-                      {/* Name input */}
-                      <div className="space-y-1">
-                        <Label className="text-[10px] text-muted-foreground">
-                          Attendee Name (
-                          <code className="font-mono text-[9px] text-primary">
-                            {"{{ $('loop-send-email').item.json['Full Name'] }}"}
-                          </code>
-                          )
-                        </Label>
-                        <Input
-                          value={simulatedData.attendee.name}
-                          onChange={(e) =>
-                            setSimulatedData((prev) => ({
-                              ...prev,
-                              attendee: { ...prev.attendee, name: e.target.value },
-                            }))
-                          }
-                          placeholder="Alex Pratama"
-                          className="h-7 text-xs"
-                        />
-                      </div>
-
-                      {/* Email input */}
-                      <div className="space-y-1">
-                        <Label className="text-[10px] text-muted-foreground">
-                          Attendee Email (
-                          <code className="font-mono text-[9px] text-primary">
-                            {"{{ $('loop-send-email').item.json['Email'] }}"}
-                          </code>
-                          )
-                        </Label>
-                        <Input
-                          value={simulatedData.attendee.email}
-                          onChange={(e) =>
-                            setSimulatedData((prev) => ({
-                              ...prev,
-                              attendee: { ...prev.attendee, email: e.target.value },
-                            }))
-                          }
-                          placeholder="alex.pratama@example.com"
-                          className="h-7 text-xs"
-                        />
-                      </div>
-                    </div>
-
-                    {/* SECTION 2: Event Data (headerEmailUrl, eventName, eventCtaUrl, eventCheclistItems) */}
-                    <div className="space-y-2.5 rounded-lg border bg-muted/20 p-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5 font-semibold text-[11px] text-primary uppercase tracking-wider">
-                          <Calendar className="size-3.5" /> 2. Event Data
-                        </div>
-                        <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
-                          configurable
-                        </Badge>
-                      </div>
-
-                      {/* Event Name */}
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between">
-                          <Label className="text-[10px] text-muted-foreground">
-                            Event Name (
-                            <code className="font-mono text-[9px] text-primary">
-                              {"{{ $('event-params').item.json.eventName }}"}
-                            </code>
-                            )
-                          </Label>
-                          <button
-                            type="button"
-                            className="text-[10px] text-primary hover:underline"
-                            onClick={() =>
-                              setSimulatedData((prev) => ({
-                                ...prev,
-                                event: { ...prev.event, eventName: event.title },
-                              }))
-                            }
-                          >
-                            Reset Title
-                          </button>
-                        </div>
-                        <Input
-                          value={simulatedData.event.eventName}
-                          onChange={(e) =>
-                            setSimulatedData((prev) => ({
-                              ...prev,
-                              event: { ...prev.event, eventName: e.target.value },
-                            }))
-                          }
-                          placeholder={event.title}
-                          className="h-7 text-xs"
-                        />
-                      </div>
-
-                      {/* Header Email URL */}
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between">
-                          <Label className="text-[10px] text-muted-foreground">
-                            Header Image URL (
-                            <code className="font-mono text-[9px] text-primary">
-                              {"{{ $('event-params').item.json.headerEmailUrl }}"}
-                            </code>
-                            )
-                          </Label>
-                          <button
-                            type="button"
-                            className="text-[10px] text-primary hover:underline"
-                            onClick={() =>
-                              setSimulatedData((prev) => ({
-                                ...prev,
-                                event: {
-                                  ...prev.event,
-                                  headerEmailUrl:
-                                    event.banner_url ??
-                                    event.picture_url ??
-                                    "https://assets.gdgjakarta.org/gdg-jakarta/gdg-jakarta-emailheaders-1244x388-blue.png",
-                                },
-                              }))
-                            }
-                          >
-                            Reset Banner
-                          </button>
-                        </div>
-                        <Input
-                          value={simulatedData.event.headerEmailUrl}
-                          onChange={(e) =>
-                            setSimulatedData((prev) => ({
-                              ...prev,
-                              event: { ...prev.event, headerEmailUrl: e.target.value },
-                            }))
-                          }
-                          placeholder="https://assets.gdgjakarta.org/..."
-                          className="h-7 text-xs"
-                        />
-                      </div>
-
-                      {/* Event CTA URL */}
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between">
-                          <Label className="text-[10px] text-muted-foreground">
-                            Event CTA URL (
-                            <code className="font-mono text-[9px] text-primary">
-                              {"{{ $('event-params').item.json.eventCtaUrl }}"}
-                            </code>
-                            )
-                          </Label>
-                          <button
-                            type="button"
-                            className="text-[10px] text-primary hover:underline"
-                            onClick={() =>
-                              setSimulatedData((prev) => ({
-                                ...prev,
-                                event: {
-                                  ...prev.event,
-                                  eventCtaUrl: event.url ?? event.static_url ?? "https://gdg.community.dev/gdg-jakarta",
-                                },
-                              }))
-                            }
-                          >
-                            Reset URL
-                          </button>
-                        </div>
-                        <Input
-                          value={simulatedData.event.eventCtaUrl}
-                          onChange={(e) =>
-                            setSimulatedData((prev) => ({
-                              ...prev,
-                              event: { ...prev.event, eventCtaUrl: e.target.value },
-                            }))
-                          }
-                          placeholder="https://gdg.community.dev/..."
-                          className="h-7 text-xs"
-                        />
-                      </div>
-
-                      {/* Checklist Items Manager (eventCheclistItems) */}
-                      <div className="space-y-1.5 pt-1">
-                        <div className="flex items-center justify-between">
-                          <Label className="text-[10px] text-muted-foreground">
-                            Event Checklist Items (
-                            <code className="font-mono text-[9px] text-primary">
-                              {"{{ $('event-params').item.json.eventCheclistItems }}"}
-                            </code>
-                            )
-                          </Label>
-                          <button
-                            type="button"
-                            className="text-[10px] text-primary hover:underline"
-                            onClick={() =>
-                              setSimulatedData((prev) => ({
-                                ...prev,
-                                event: {
-                                  ...prev.event,
-                                  eventChecklistItems: [...DEFAULT_CHECKLIST_ITEMS],
-                                },
-                              }))
-                            }
-                          >
-                            Reset Defaults
-                          </button>
-                        </div>
-
-                        <div className="max-h-32 space-y-1 overflow-y-auto rounded-md border bg-background/50 p-1.5">
-                          {simulatedData.event.eventChecklistItems.map((item, idx) => (
-                            <div
-                              key={`checklist-${item}-${idx}`}
-                              className="flex items-start justify-between gap-1.5 rounded bg-muted/40 p-1.5 text-[11px]"
-                            >
-                              <span className="flex-1 leading-snug">{item}</span>
-                              <button
-                                type="button"
-                                className="text-muted-foreground hover:text-destructive"
-                                title="Remove item"
-                                onClick={() => {
-                                  setSimulatedData((prev) => ({
-                                    ...prev,
-                                    event: {
-                                      ...prev.event,
-                                      eventChecklistItems: prev.event.eventChecklistItems.filter((_, i) => i !== idx),
-                                    },
-                                  }));
-                                }}
-                              >
-                                <Trash2 className="size-3" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* Add checklist item row */}
-                        <div className="flex items-center gap-1.5">
-                          <Input
-                            value={newChecklistItem}
-                            onChange={(e) => setNewChecklistItem(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" && newChecklistItem.trim()) {
-                                e.preventDefault();
-                                setSimulatedData((prev) => ({
-                                  ...prev,
-                                  event: {
-                                    ...prev.event,
-                                    eventChecklistItems: [...prev.event.eventChecklistItems, newChecklistItem.trim()],
-                                  },
-                                }));
-                                setNewChecklistItem("");
-                              }
-                            }}
-                            placeholder="e.g. Bring Physical ID: KTP/SIM required for check-in"
-                            className="h-7 text-xs"
-                          />
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="h-7 shrink-0 gap-1 px-2 text-xs"
-                            onClick={() => {
-                              if (newChecklistItem.trim()) {
-                                setSimulatedData((prev) => ({
-                                  ...prev,
-                                  event: {
-                                    ...prev.event,
-                                    eventChecklistItems: [...prev.event.eventChecklistItems, newChecklistItem.trim()],
-                                  },
-                                }));
-                                setNewChecklistItem("");
-                              }
-                            }}
-                          >
-                            <Plus className="size-3" /> Add
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
 
               {/* Preview Canvas Container */}
               <div className="relative flex min-h-[580px] flex-1 items-center justify-center overflow-auto bg-muted/20 p-4">
@@ -1162,6 +838,22 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
         }
       />
 
+      {/* ── Configure Template Data Modal Dialog ────────────────────── */}
+      <ConfigureTemplateDataDialog
+        open={isConfigOpen}
+        onOpenChange={setIsConfigOpen}
+        event={event}
+        registrations={registrations}
+        activeTemplateKey={activeKey}
+        templatesData={templatesData}
+        onChangeData={(key, nextData) => {
+          setTemplatesData((prev) => ({
+            ...prev,
+            [key]: nextData,
+          }));
+        }}
+      />
+
       {/* ── Direct Send Email via Request Modal ──────────────────────── */}
       <SendTemplateEmailDialog
         open={isSendDialogOpen}
@@ -1169,7 +861,8 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
         event={event}
         activeKey={activeKey}
         templates={templates}
-        simulatedData={simulatedData}
+        simulatedData={templatesData[activeKey]}
+        templatesData={templatesData}
         registrations={registrations}
       />
     </div>

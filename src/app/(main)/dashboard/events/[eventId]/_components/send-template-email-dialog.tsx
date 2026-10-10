@@ -37,6 +37,7 @@ interface SendTemplateEmailDialogProps {
   activeKey: EmailTemplateKey;
   templates: Record<EmailTemplateKey, string>;
   simulatedData: TemplateSimulatedData;
+  templatesData?: Record<EmailTemplateKey, TemplateSimulatedData>;
   registrations: FirestoreRegistration[];
 }
 
@@ -47,6 +48,7 @@ export function SendTemplateEmailDialog({
   activeKey: initialActiveKey,
   templates,
   simulatedData,
+  templatesData,
   registrations,
 }: SendTemplateEmailDialogProps) {
   const [selectedKey, setSelectedKey] = useState<EmailTemplateKey>(initialActiveKey);
@@ -96,21 +98,26 @@ export function SendTemplateEmailDialog({
     return EMAIL_TEMPLATES_CONFIG.find((cfg) => cfg.key === selectedKey) ?? EMAIL_TEMPLATES_CONFIG[0];
   }, [selectedKey]);
 
+  // Active base template data (per template key)
+  const activeBaseData = useMemo(() => {
+    return templatesData?.[selectedKey] ?? simulatedData;
+  }, [templatesData, selectedKey, simulatedData]);
+
   // Build target simulated data for this specific recipient
   const targetData = useMemo<TemplateSimulatedData>(() => {
     const fullName = `${firstName} ${lastName}`.trim() || "Jane Doe";
     return {
-      ...simulatedData,
+      ...activeBaseData,
       attendee: {
         name: fullName,
         email: recipientEmail,
       },
       event: {
-        ...simulatedData.event,
-        eventName: simulatedData.event.eventName || event.title,
+        ...activeBaseData.event,
+        eventName: activeBaseData.event.eventName || event.title,
       },
     };
-  }, [simulatedData, firstName, lastName, recipientEmail, event.title]);
+  }, [activeBaseData, firstName, lastName, recipientEmail, event.title]);
 
   // Compute subject and body
   const rawHtml = templates[selectedKey] ?? "";

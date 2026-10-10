@@ -2,7 +2,7 @@
 
 import {
   getDefaultTemplateByKey,
-  getDefaultTemplateData,
+  getDefaultTemplateDataForType,
   interpolateTemplateHtml,
   interpolateTemplateSubject,
   splitFullName,
@@ -168,16 +168,16 @@ export async function dispatchRegistrationWebhookAction(
     try {
       const { firstName, lastName } = splitFullName(payload.member.name);
       const emailTemplates = payload.event.email_templates as EventEmailTemplates | undefined;
-      const rawInterestHtml = emailTemplates?.interest || getDefaultTemplateByKey("interest");
+      const rawInterestHtml = emailTemplates?.interest ?? getDefaultTemplateByKey("interest");
       const rawInterestSubject =
-        emailTemplates?.interest_subject || "Registration Received: {{ $('event-params').item.json.eventName }}";
+        emailTemplates?.interest_subject ?? "Registration Received: {{ $('event-params').item.json.eventName }}";
 
-      const simulatedData = getDefaultTemplateData({
+      const simulatedData = getDefaultTemplateDataForType("interest", {
         id: payload.event.id,
         title: payload.event.title,
-        status: (payload.event.status as "Published" | "Draft" | "Completed" | "Canceled") || "Published",
-        start_date: payload.event.start_date || "",
-        end_date: payload.event.end_date || "",
+        status: payload.event.status as "Published" | "Draft" | "Completed" | "Canceled",
+        start_date: payload.event.start_date ?? "",
+        end_date: payload.event.end_date ?? "",
         requires_approval: true,
         total_registrations: 0,
         total_approved: 0,
@@ -194,8 +194,9 @@ export async function dispatchRegistrationWebhookAction(
         email: payload.member.email,
       };
       simulatedData.event.eventName = payload.event.title;
-      if (payload.event.banner_url || payload.event.picture_url) {
-        simulatedData.event.headerEmailUrl = (payload.event.banner_url || payload.event.picture_url)!;
+      const eventBanner = payload.event.banner_url ?? payload.event.picture_url;
+      if (eventBanner) {
+        simulatedData.event.headerEmailUrl = eventBanner;
       }
 
       const bodyEmail = interpolateTemplateHtml(rawInterestHtml, simulatedData);
