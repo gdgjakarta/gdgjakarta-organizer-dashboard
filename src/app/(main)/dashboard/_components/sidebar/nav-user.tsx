@@ -11,6 +11,7 @@ import {
   MessageSquarePlus,
 } from "lucide-react";
 
+import { formatRoleTitle } from "@/components/role-badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -119,7 +120,7 @@ export function NavUser({
                   <span className="truncate text-muted-foreground text-xs">{currentUser.email}</span>
                   {authUser?.chapterRole && (
                     <span className="mt-0.5 inline-block font-semibold text-[10px] text-primary">
-                      {authUser.chapterRole}
+                      {formatRoleTitle(authUser.chapterRole)}
                     </span>
                   )}
                 </div>

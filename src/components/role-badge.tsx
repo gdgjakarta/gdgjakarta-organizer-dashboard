@@ -29,6 +29,15 @@ export function formatRoleTitle(role?: string | null, fallback = "Member"): stri
 
   // Known canonical mappings
   if (lower === "organizer") return "Organizer";
+  if (lower === "gdg_organizer" || lower === "gdg-organizer" || lower === "gdg organizer") return "GDG Organizer";
+  if (lower === "gdg_lead" || lower === "gdg-lead" || lower === "gdg lead") return "GDG Lead";
+  if (
+    lower === "gdg_co_organizer" ||
+    lower === "gdg-co-organizer" ||
+    lower === "gdg co organizer" ||
+    lower === "gdg co-organizer"
+  )
+    return "GDG Co-Organizer";
   if (lower === "core_team" || lower === "core-team" || lower === "core team") return "Core Team";
   if (lower === "googler") return "Googler";
   if (lower === "member") return "Member";
@@ -38,6 +47,16 @@ export function formatRoleTitle(role?: string | null, fallback = "Member"): stri
   if (lower === "check_in_staff" || lower === "checkin_staff" || lower === "check-in staff") return "Check-in Staff";
   if (lower === "chapter_lead" || lower === "chapter lead") return "Chapter Lead";
 
+  const formatWord = (part: string) => {
+    const pLower = part.toLowerCase();
+    if (pLower === "gdg") return "GDG";
+    if (pLower === "wtm") return "WTM";
+    if (pLower === "gde") return "GDE";
+    if (pLower === "gdsc") return "GDSC";
+    if (pLower === "ai") return "AI";
+    return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+  };
+
   // General Title Case conversion while preserving hyphenated compounds if already present
   return trimmed
     .replace(/_/g, " ")
@@ -45,12 +64,9 @@ export function formatRoleTitle(role?: string | null, fallback = "Member"): stri
     .filter(Boolean)
     .map((word) => {
       if (word.includes("-")) {
-        return word
-          .split("-")
-          .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-          .join("-");
+        return word.split("-").map(formatWord).join("-");
       }
-      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+      return formatWord(word);
     })
     .join(" ");
 }
@@ -166,7 +182,7 @@ export function RoleBadge({
     <Badge
       variant="outline"
       className={cn(
-        "rounded-full border font-medium capitalize tracking-normal shadow-xs transition-colors",
+        "rounded-full border font-medium tracking-normal shadow-xs transition-colors",
         sizeConfig.badge,
         colorConfig.badgeClass,
         className,

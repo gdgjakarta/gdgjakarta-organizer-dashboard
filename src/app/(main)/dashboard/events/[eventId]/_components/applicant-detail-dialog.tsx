@@ -521,9 +521,9 @@ export function ApplicantDetailDialog({
       <DialogContent className="flex max-h-[92vh] flex-col overflow-hidden p-0 sm:max-w-xl md:max-w-2xl lg:max-w-3xl">
         {/* Header Bar */}
         <div className="shrink-0 border-b bg-muted/20 px-6 pt-5 pb-4">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div className="flex items-start gap-3.5">
-              <Avatar className="size-12 rounded-full border border-border shadow-xs">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:pr-8">
+            <div className="flex items-start gap-3.5 pr-8 sm:pr-0">
+              <Avatar className="size-12 shrink-0 rounded-full border border-border shadow-xs">
                 <AvatarImage src={registration.member_avatar} alt={registration.member_name} />
                 <AvatarFallback className="font-semibold text-sm">
                   {getInitials(registration.member_name)}
@@ -547,7 +547,7 @@ export function ApplicantDetailDialog({
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               <Badge
                 variant="outline"
                 className={cn("gap-1.5 border px-2.5 py-1 font-semibold text-xs", statusMeta.badgeClass)}

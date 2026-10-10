@@ -383,9 +383,9 @@ export async function getUserChapterRole(
   let roleTitle = "Member";
   if (isOrganizer) {
     if (matchedMember.title?.trim()) {
-      roleTitle = matchedMember.title.trim();
+      roleTitle = matchedMember.title.trim().replace(/\bGdg\b/gi, "GDG");
     } else if (typeof roleObj === "object" && roleObj !== null && roleObj.name) {
-      roleTitle = roleObj.name.trim();
+      roleTitle = roleObj.name.trim().replace(/\bGdg\b/gi, "GDG");
     } else {
       switch (chapterRole) {
         case ChapterRole.ORGANIZER:
