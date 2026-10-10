@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import Editor, { type OnMount } from "@monaco-editor/react";
 import {
+  BookmarkCheck,
   Check,
   CheckCircle2,
   Code2,
@@ -29,15 +30,26 @@ import { FloatingSaveBar } from "@/app/(main)/dashboard/_components/floating-sav
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import {
   EMAIL_TEMPLATES_CONFIG,
   type EmailTemplateKey,
   type EmailTemplateMeta,
+  getAllCleanDefaultTemplatesData,
   getAllDefaultTemplatesData,
   getDefaultTemplateByKey,
   getDefaultTemplateDataForType,
   interpolateTemplatePreview,
+  saveCustomDefaultTemplates,
+  saveCustomDefaultTemplatesData,
   type TemplateSimulatedData,
 } from "@/lib/events/email-templates";
 import { updateEventEmailTemplatesAction } from "@/lib/firestore/actions";
@@ -85,6 +97,8 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
   const [previewMode, setPreviewMode] = useState<"simulated" | "raw">("simulated");
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [isSendDialogOpen, setIsSendDialogOpen] = useState(false);
+  const [isResetAllDialogOpen, setIsResetAllDialogOpen] = useState(false);
+  const [isSaveAsDefaultsDialogOpen, setIsSaveAsDefaultsDialogOpen] = useState(false);
   const [registrations, setRegistrations] = useState<FirestoreRegistration[]>([]);
 
   // Per-template simulated data dictionary (Attendee & Event configuration per template)
@@ -233,6 +247,113 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
       [activeKey]: defaultHtml,
     }));
     toast.info(`Reset "${activeMeta.name}" to default GDG template`);
+  };
+
+  const handleResetAllToDefault = () => {
+    const allDefaults: Record<EmailTemplateKey, string> = {
+      interest: getDefaultTemplateByKey("interest"),
+      accepted: getDefaultTemplateByKey("accepted"),
+      rejected_hybrid: getDefaultTemplateByKey("rejected_hybrid"),
+      rejected_non_hybrid: getDefaultTemplateByKey("rejected_non_hybrid"),
+    };
+    setTemplates(allDefaults);
+
+    const cleanData = getAllCleanDefaultTemplatesData(event);
+    setTemplatesData(cleanData);
+
+    toast.info("All templates and configured data reset to defaults! Click 'Save Templates to Event' to save.");
+  };
+
+  const handleResetAllAndSave = () => {
+    const allDefaults: Record<EmailTemplateKey, string> = {
+      interest: getDefaultTemplateByKey("interest"),
+      accepted: getDefaultTemplateByKey("accepted"),
+      rejected_hybrid: getDefaultTemplateByKey("rejected_hybrid"),
+      rejected_non_hybrid: getDefaultTemplateByKey("rejected_non_hybrid"),
+    };
+    const cleanData = getAllCleanDefaultTemplatesData(event);
+    setTemplates(allDefaults);
+    setTemplatesData(cleanData);
+
+    startTransition(async () => {
+      try {
+        const payload: EventEmailTemplates = {
+          interest: allDefaults.interest,
+          accepted: allDefaults.accepted,
+          rejected_hybrid: allDefaults.rejected_hybrid,
+          rejected_non_hybrid: allDefaults.rejected_non_hybrid,
+          template_data: {
+            headerEmailUrl: cleanData[activeKey].event.headerEmailUrl,
+            eventName: cleanData[activeKey].event.eventName,
+            eventCtaUrl: cleanData[activeKey].event.eventCtaUrl,
+            eventChecklistItems: cleanData[activeKey].event.eventChecklistItems,
+            attendeeName: cleanData[activeKey].attendee.name,
+            attendeeEmail: cleanData[activeKey].attendee.email,
+          },
+          templates_data: {
+            interest: {
+              headerEmailUrl: cleanData.interest.event.headerEmailUrl,
+              eventName: cleanData.interest.event.eventName,
+              eventCtaUrl: cleanData.interest.event.eventCtaUrl,
+              eventChecklistItems: cleanData.interest.event.eventChecklistItems,
+              attendeeName: cleanData.interest.attendee.name,
+              attendeeEmail: cleanData.interest.attendee.email,
+            },
+            accepted: {
+              headerEmailUrl: cleanData.accepted.event.headerEmailUrl,
+              eventName: cleanData.accepted.event.eventName,
+              eventCtaUrl: cleanData.accepted.event.eventCtaUrl,
+              eventChecklistItems: cleanData.accepted.event.eventChecklistItems,
+              attendeeName: cleanData.accepted.attendee.name,
+              attendeeEmail: cleanData.accepted.attendee.email,
+              eventDate: cleanData.accepted.eventDate,
+              sessionTime: cleanData.accepted.sessionTime,
+              checkinDeadline: cleanData.accepted.checkinDeadline,
+              venueLocation: cleanData.accepted.venueLocation,
+              venueLocationUrl: cleanData.accepted.venueLocationUrl,
+              attendeeCode: cleanData.accepted.attendeeCode,
+            },
+            rejected_hybrid: {
+              headerEmailUrl: cleanData.rejected_hybrid.event.headerEmailUrl,
+              eventName: cleanData.rejected_hybrid.event.eventName,
+              eventCtaUrl: cleanData.rejected_hybrid.event.eventCtaUrl,
+              eventChecklistItems: cleanData.rejected_hybrid.event.eventChecklistItems,
+              attendeeName: cleanData.rejected_hybrid.attendee.name,
+              attendeeEmail: cleanData.rejected_hybrid.attendee.email,
+            },
+            rejected_non_hybrid: {
+              headerEmailUrl: cleanData.rejected_non_hybrid.event.headerEmailUrl,
+              eventName: cleanData.rejected_non_hybrid.event.eventName,
+              eventCtaUrl: cleanData.rejected_non_hybrid.event.eventCtaUrl,
+              eventChecklistItems: cleanData.rejected_non_hybrid.event.eventChecklistItems,
+              attendeeName: cleanData.rejected_non_hybrid.attendee.name,
+              attendeeEmail: cleanData.rejected_non_hybrid.attendee.email,
+            },
+          },
+        };
+        const res = await updateEventEmailTemplatesAction(String(event.id), payload);
+        if (res.success) {
+          setSavedTemplates(allDefaults);
+          setSavedTemplatesData(cleanData);
+          toast.success("All templates reset to defaults and saved to Firestore successfully!");
+        } else {
+          toast.error(res.error ?? "Failed to save default email templates.");
+        }
+      } catch (err) {
+        console.error("[EmailTemplatesTab] Save defaults error:", err);
+        toast.error("Failed to reset templates to default.");
+      }
+    });
+  };
+
+  const handleSaveCurrentAsDefaults = () => {
+    saveCustomDefaultTemplates(templates);
+    saveCustomDefaultTemplatesData(templatesData);
+
+    // Also persist changes to the current event in Firestore
+    handleSave();
+
+    toast.success("Saved current templates and configurations as new defaults!");
   };
 
   const handleCopyHtml = async () => {
@@ -546,7 +667,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
                   </p>
                 </div>
                 <div className="space-y-1 rounded-md border bg-background p-2.5">
-                  <div className="font-mono font-semibold text-primary">generate-qrcode</div>
+                  <div className="font-mono font-semibold text-primary">Generate QR Code</div>
                   <p className="text-[11px] text-muted-foreground">
                     Generates base64 PNG QR code string `qrCode` injected into the ticket card pass.
                   </p>
@@ -622,11 +743,36 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
               type="button"
               variant="outline"
               size="sm"
-              className="gap-1.5 text-muted-foreground text-xs hover:text-destructive"
+              className="gap-1.5 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10 text-xs shadow-xs"
+              onClick={() => setIsSaveAsDefaultsDialogOpen(true)}
+              title="Save current template changes as new defaults to replace defaults"
+            >
+              <BookmarkCheck className="size-3.5" />
+              Save as Defaults
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-muted-foreground text-xs hover:text-foreground"
               onClick={handleResetToDefault}
+              title={`Reset current "${activeMeta.name}" template`}
             >
               <RotateCcw className="size-3.5" />
-              Reset Default
+              Reset Tab
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-amber-600 dark:text-amber-400 border-amber-500/30 hover:bg-amber-500/10 text-xs shadow-xs"
+              onClick={() => setIsResetAllDialogOpen(true)}
+              title="Reset all 4 templates and configured data to defaults"
+            >
+              <RotateCcw className="size-3.5" />
+              Reset All to Defaults
             </Button>
           </div>
         </div>
@@ -865,6 +1011,105 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
         templatesData={templatesData}
         registrations={registrations}
       />
+
+      {/* ── Reset All Templates to Default Confirmation Dialog ─────── */}
+      <Dialog open={isResetAllDialogOpen} onOpenChange={setIsResetAllDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <RotateCcw className="size-4 text-amber-500" />
+              <span>Reset All to Defaults</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              This will reset all 4 email templates and their simulated configurations for this event to defaults
+              (including custom saved defaults or GDG factory defaults).
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground space-y-1.5">
+            <p className="font-semibold text-foreground">Templates to reset:</p>
+            <ul className="list-disc list-inside space-y-1 text-[11.5px]">
+              <li>Registration Interest: Clean notes &amp; checklist items</li>
+              <li>Ticket Confirmation: Official entry pass &amp; venue details</li>
+              <li>Application Regret (Hybrid &amp; In-Person): Clean community notes</li>
+              <li>Simulated data and checklist items reset to defaults</li>
+            </ul>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button type="button" variant="outline" size="sm" onClick={() => setIsResetAllDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                handleResetAllToDefault();
+                setIsResetAllDialogOpen(false);
+              }}
+            >
+              Reset in Editor Only
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+              disabled={isSaving}
+              onClick={() => {
+                handleResetAllAndSave();
+                setIsResetAllDialogOpen(false);
+              }}
+            >
+              {isSaving ? "Saving..." : "Reset & Save to Event"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Save Current as Defaults Confirmation Dialog ─────── */}
+      <Dialog open={isSaveAsDefaultsDialogOpen} onOpenChange={setIsSaveAsDefaultsDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
+              <BookmarkCheck className="size-4 text-emerald-500" />
+              <span>Save as Defaults</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              This will save the current HTML templates and simulated configurations as your new custom defaults. Any
+              future "Reset" actions will revert to these templates.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground space-y-1.5">
+            <p className="font-semibold text-foreground">What will be saved as new defaults:</p>
+            <ul className="list-disc list-inside space-y-1 text-[11.5px]">
+              <li>Current HTML markup for all 4 templates</li>
+              <li>Configured headers, links, notes, and checklist items</li>
+              <li>Simultaneously saved to this event in Firestore</li>
+            </ul>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button type="button" variant="outline" size="sm" onClick={() => setIsSaveAsDefaultsDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5"
+              disabled={isSaving}
+              onClick={() => {
+                handleSaveCurrentAsDefaults();
+                setIsSaveAsDefaultsDialogOpen(false);
+              }}
+            >
+              <BookmarkCheck className="size-3.5" />
+              {isSaving ? "Saving..." : "Save as Defaults"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

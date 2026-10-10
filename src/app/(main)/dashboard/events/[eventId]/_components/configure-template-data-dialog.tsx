@@ -35,6 +35,8 @@ import {
   DEFAULT_CHECKLIST_ITEMS_BY_TYPE,
   EMAIL_TEMPLATES_CONFIG,
   type EmailTemplateKey,
+  getAllCleanDefaultTemplatesData,
+  getCleanDefaultTemplateDataForType,
   getDefaultTemplateDataForType,
   type TemplateSimulatedData,
 } from "@/lib/events/email-templates";
@@ -137,7 +139,8 @@ export function ConfigureTemplateDataDialog({
   };
 
   const handleResetChecklistDefaults = () => {
-    const defaultItems = DEFAULT_CHECKLIST_ITEMS_BY_TYPE[currentKey] ?? [];
+    const defaultData = getCleanDefaultTemplateDataForType(currentKey, event);
+    const defaultItems = defaultData.event.eventChecklistItems ?? DEFAULT_CHECKLIST_ITEMS_BY_TYPE[currentKey] ?? [];
     handleUpdate((prev) => ({
       ...prev,
       event: {
@@ -149,9 +152,17 @@ export function ConfigureTemplateDataDialog({
   };
 
   const handleResetTemplateDefaults = () => {
-    const defaultData = getDefaultTemplateDataForType(currentKey, event);
+    const defaultData = getCleanDefaultTemplateDataForType(currentKey, event);
     onChangeData(currentKey, defaultData);
-    toast.info(`Reset all data for ${currentMeta.name} to event defaults`);
+    toast.info(`Reset ${currentMeta.name} to GDG event defaults`);
+  };
+
+  const handleResetAllTemplatesDefaults = () => {
+    const allDefaults = getAllCleanDefaultTemplatesData(event);
+    for (const [key, data] of Object.entries(allDefaults)) {
+      onChangeData(key as EmailTemplateKey, data);
+    }
+    toast.info("Reset all template configurations to GDG event defaults");
   };
 
   return (
@@ -571,17 +582,30 @@ export function ConfigureTemplateDataDialog({
         </div>
 
         {/* Modal Footer */}
-        <DialogFooter className="p-4 px-6 border-t bg-muted/20 flex sm:justify-between items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handleResetTemplateDefaults}
-            className="text-xs h-8 gap-1.5 text-muted-foreground hover:text-foreground"
-          >
-            <RotateCcwIcon className="h-3 w-3" />
-            <span>Reset {currentMeta.name} to Defaults</span>
-          </Button>
+        <DialogFooter className="m-0 border-t bg-muted/20 p-4 px-6 pb-6 pt-4 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleResetTemplateDefaults}
+              className="text-xs h-8 gap-1.5 text-muted-foreground hover:text-foreground"
+            >
+              <RotateCcwIcon className="h-3 w-3" />
+              <span>Reset {currentMeta.name}</span>
+            </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleResetAllTemplatesDefaults}
+              className="text-xs h-8 gap-1.5 text-amber-600 dark:text-amber-400 border-amber-500/30 hover:bg-amber-500/10"
+            >
+              <RotateCcwIcon className="h-3 w-3" />
+              <span>Reset All to Defaults</span>
+            </Button>
+          </div>
 
           <Button type="button" size="sm" onClick={() => onOpenChange(false)} className="h-8 text-xs px-4">
             <CheckCircle2Icon className="h-3.5 w-3.5 mr-1" />
