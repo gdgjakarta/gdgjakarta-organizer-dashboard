@@ -203,7 +203,7 @@ export function SendTemplateEmailDialog({
               <DialogTitle className="text-base sm:text-lg">Send Email via Request</DialogTitle>
               <DialogDescription className="text-xs">
                 Dispatches pre-constructed <code className="text-primary">subjectEmail</code> and{" "}
-                <code className="text-primary">bodyEmail</code> via API request to n8n / Bevy webhook.
+                <code className="text-primary">bodyEmail</code> via API webhook request.
               </DialogDescription>
             </div>
           </div>

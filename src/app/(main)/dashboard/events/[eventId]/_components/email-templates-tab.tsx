@@ -18,7 +18,6 @@ import {
   SlidersHorizontal,
   Smartphone,
   Sparkles,
-  Terminal,
   Wand2,
   Workflow,
   XCircle,
@@ -122,7 +121,6 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
 
   const [isSaving, startTransition] = useTransition();
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const [showN8nGuide, setShowN8nGuide] = useState(false);
 
   // Load event registrations for quick picker in Live Preview and Send Email dialog
   useEffect(() => {
@@ -237,7 +235,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
     const selection = editor?.getSelection();
     if (!selection || !editor) return;
 
-    editor.executeEdits("insert-n8n-tag", [
+    editor.executeEdits("insert-variable-tag", [
       {
         range: selection,
         text: tag,
@@ -374,7 +372,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
     try {
       await navigator.clipboard.writeText(currentCode);
       setCopiedKey(activeKey);
-      toast.success("HTML template copied to clipboard! Paste it into your n8n Email node.");
+      toast.success("HTML template copied to clipboard!");
       setTimeout(() => setCopiedKey(null), 2500);
     } catch {
       toast.error("Failed to copy HTML to clipboard.");
@@ -470,7 +468,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <Workflow className="size-5 text-primary" />
-                <CardTitle className="text-lg">Backend n8n Email Automation Flow</CardTitle>
+                <CardTitle className="text-lg">Event Email Automation Flow</CardTitle>
                 <Badge variant={isCurated ? "default" : "secondary"} className="gap-1 font-medium">
                   {isCurated ? (
                     <>
@@ -485,20 +483,10 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
               </div>
               <CardDescription className="text-xs sm:text-sm">
                 {isCurated
-                  ? "Because this event requires attendee curation (requires_approval = true), n8n triggers an Interest Receipt email first, followed by Accepted or Rejected emails upon review."
-                  : "Because this event does not require curation (requires_approval = false), n8n directly sends the Official Ticket email upon registration."}
+                  ? "Because this event requires attendee curation (requires_approval = true), the system sends an Interest Receipt email first, followed by Accepted or Rejected emails upon review."
+                  : "Because this event does not require curation (requires_approval = false), the system directly sends the Official Ticket email upon registration."}
               </CardDescription>
             </div>
-
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5 self-start text-xs sm:self-auto"
-              onClick={() => setShowN8nGuide((prev) => !prev)}
-            >
-              <Terminal className="size-3.5" />
-              {showN8nGuide ? "Hide n8n Specs" : "View n8n Architecture"}
-            </Button>
           </div>
         </CardHeader>
 
@@ -654,40 +642,6 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
               </div>
             )}
           </div>
-
-          {/* Collapsible n8n Node Specs & Webhook Architecture */}
-          {showN8nGuide && (
-            <div className="space-y-3 rounded-xl border border-border/80 border-dashed bg-muted/20 p-4">
-              <div className="flex items-center gap-2 font-semibold text-foreground text-xs uppercase tracking-wider">
-                <Terminal className="size-3.5 text-primary" /> n8n Node Reference & Expression Guide
-              </div>
-              <p className="text-muted-foreground text-xs leading-relaxed">
-                The n8n workflow executes when attendees register or when organizers change applicant status in the
-                dashboard. HTML templates below consume standard n8n expression items. Make sure your n8n workflow nodes
-                match these names:
-              </p>
-              <div className="grid grid-cols-1 gap-2.5 text-xs md:grid-cols-3">
-                <div className="space-y-1 rounded-md border bg-background p-2.5">
-                  <div className="font-mono font-semibold text-primary">event-params / bevy-config</div>
-                  <p className="text-[11px] text-muted-foreground">
-                    Provides `eventName`, `eventHeaderUrl`, `eventActionUrl`, `bevyEventDate`, `bevyEventLocation`.
-                  </p>
-                </div>
-                <div className="space-y-1 rounded-md border bg-background p-2.5">
-                  <div className="font-mono font-semibold text-primary">loop-send-email / rejected</div>
-                  <p className="text-[11px] text-muted-foreground">
-                    Iterates registrant records, injecting `Full Name` and recipient email into the mailer.
-                  </p>
-                </div>
-                <div className="space-y-1 rounded-md border bg-background p-2.5">
-                  <div className="font-mono font-semibold text-primary">Generate QR Code</div>
-                  <p className="text-[11px] text-muted-foreground">
-                    Generates base64 PNG QR code string `qrCode` injected into the ticket card pass.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
         </CardContent>
       </Card>
 
@@ -747,7 +701,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
               ) : (
                 <>
                   <Copy className="size-3.5" />
-                  Copy n8n HTML
+                  Copy HTML
                 </>
               )}
             </Button>
@@ -798,9 +752,6 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
               <Badge variant="outline" className="text-xs">
                 {activeMeta.badge}
               </Badge>
-              <Badge variant="secondary" className="font-mono text-[11px]">
-                node: {activeMeta.n8nNode}
-              </Badge>
             </div>
             <p className="text-muted-foreground text-xs">{activeMeta.description}</p>
           </div>
@@ -816,7 +767,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
           {/* Quick Insert Variables Toolbar */}
           <div className="flex flex-wrap items-center gap-1.5 rounded-lg border bg-muted/30 p-2.5">
             <span className="mr-1 flex items-center gap-1 font-semibold text-muted-foreground text-xs">
-              <Code2 className="size-3" /> Insert n8n Tag:
+              <Code2 className="size-3" /> Insert Variable Tag:
             </span>
             {activeMeta.variables.map((v) => (
               <Badge

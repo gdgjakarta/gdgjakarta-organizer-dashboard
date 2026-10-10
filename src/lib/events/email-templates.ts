@@ -134,7 +134,7 @@ export const EMAIL_TEMPLATE_VARIABLES: Record<EmailTemplateKey, TemplateVariable
     {
       tag: "{{ $('Add Bevy Attendee API').item.json.attendee_code }}",
       label: "Attendee Reference Code",
-      description: "Unique attendee reference code from Add Bevy Attendee API response in n8n",
+      description: "Unique attendee reference code from registration response",
       sampleValue: "GDG-JKT-89241",
     },
   ],
@@ -142,7 +142,7 @@ export const EMAIL_TEMPLATE_VARIABLES: Record<EmailTemplateKey, TemplateVariable
     {
       tag: "{{ $('email-config').item.json.eventName }}",
       label: "Event Name",
-      description: "Event name configured in n8n email-config node",
+      description: "Event name configured for the email",
       sampleValue: "Cloud Community Day Jakarta 2026",
     },
     {
@@ -174,7 +174,7 @@ export const EMAIL_TEMPLATE_VARIABLES: Record<EmailTemplateKey, TemplateVariable
     {
       tag: "{{ $('email-config').item.json.eventName }}",
       label: "Event Name",
-      description: "Event name configured in n8n email-config node",
+      description: "Event name configured for the email",
       sampleValue: "Cloud Community Day Jakarta 2026",
     },
     {

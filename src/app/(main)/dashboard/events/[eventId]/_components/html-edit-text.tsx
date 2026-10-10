@@ -254,7 +254,7 @@ export function HtmlEditText({
 
       {/* Footer Info Bar */}
       <div className="flex items-center justify-between border-border/40 border-t bg-muted/20 px-2.5 py-1 text-[10px] text-muted-foreground">
-        <span>HTML format for n8n email details (supports bold, italic, links, lists)</span>
+        <span>HTML format for email details (supports bold, italic, links, lists)</span>
         <span className="font-mono">{isCodeMode ? "HTML Mode" : "Visual Mode"}</span>
       </div>
     </div>

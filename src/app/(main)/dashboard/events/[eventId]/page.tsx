@@ -175,7 +175,7 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
             </TabsTrigger>
             <TabsTrigger value="emails" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
               <Mail className="size-4" />
-              Email Templates (n8n)
+              Email Templates
             </TabsTrigger>
           </TabsList>
         </div>
