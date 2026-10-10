@@ -102,7 +102,7 @@ export function resolveSessionInfo(
 /**
  * Builds the approved attendee webhook payload using the event and attendee registration objects.
  * Matches n8n webhook API specification:
- * POST /webhook/api/approved-attendee
+ * POST /webhook/api/add-bevy-attendee
  *
  * All actual data is interpolated into bodyEmail, with the QR Code and Attendee Ref Code preserved
  * so n8n's "Generate QR Code" and "Add Bevy Attendee API" nodes can replace them dynamically.
@@ -248,23 +248,30 @@ export function buildApprovedAttendeePayload(
 }
 
 /**
- * Resolves the approved attendee webhook URL from a base URL or fallback.
+ * Resolves the add bevy attendee webhook URL from a base URL or fallback.
  * Gracefully handles base URLs ending in /webhook/api, /api, /webhook, or bare domain.
  */
-export function resolveApprovedAttendeeWebhookUrl(baseUrl?: string): string {
+export function resolveAddBevyAttendeeWebhookUrl(baseUrl?: string): string {
   const raw = (baseUrl ?? "https://n8n.gdgjakarta.com").trim().replace(/\/+$/, "");
 
-  if (raw.endsWith("/webhook/api/approved-attendee") || raw.endsWith("/approved-attendee")) {
+  if (
+    raw.endsWith("/webhook/api/add-bevy-attendee") ||
+    raw.endsWith("/add-bevy-attendee") ||
+    raw.endsWith("/webhook/api/approved-attendee") ||
+    raw.endsWith("/approved-attendee")
+  ) {
     return raw;
   }
   if (raw.endsWith("/webhook/api")) {
-    return `${raw}/approved-attendee`;
+    return `${raw}/add-bevy-attendee`;
   }
   if (raw.endsWith("/webhook")) {
-    return `${raw}/api/approved-attendee`;
+    return `${raw}/api/add-bevy-attendee`;
   }
   if (raw.endsWith("/api")) {
-    return `${raw.slice(0, -4)}/webhook/api/approved-attendee`;
+    return `${raw.slice(0, -4)}/webhook/api/add-bevy-attendee`;
   }
-  return `${raw}/webhook/api/approved-attendee`;
+  return `${raw}/webhook/api/add-bevy-attendee`;
 }
+
+export const resolveApprovedAttendeeWebhookUrl = resolveAddBevyAttendeeWebhookUrl;

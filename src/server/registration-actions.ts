@@ -410,7 +410,7 @@ export async function testRegistrationWebhookAction(targetUrl: string): Promise<
 /**
  * Approved Attendee Webhook Payload
  * Matches standard n8n webhook API specification for GDG Jakarta:
- * POST /webhook/api/approved-attendee
+ * POST /webhook/api/add-bevy-attendee
  */
 import type {
   ApproveAttendeeWebhookResult,
@@ -424,7 +424,7 @@ export type { ApproveAttendeeWebhookResult, ApprovedAttendeeWebhookPayload };
  * Server Action: Dispatches approved attendee notification to the n8n webhook API.
  * Uses N8N_WEBHOOK_API_KEY like member import.
  *
- * Endpoint: POST https://n8n.gdgjakarta.com/webhook/api/approved-attendee
+ * Endpoint: POST https://n8n.gdgjakarta.com/webhook/api/add-bevy-attendee
  * Headers:
  *   Content-Type: application/json
  *   x-api-key: YOUR_API_KEY_HERE
@@ -449,7 +449,11 @@ export async function approveAttendeeWebhookAction(
   let webhookUrl = resolveApprovedAttendeeWebhookUrl(customBaseUrl);
 
   if (!customBaseUrl) {
-    const legacyUrl = process.env.N8N_APPROVED_ATTENDEE_WEBHOOK_URL ?? process.env.APPROVED_ATTENDEE_WEBHOOK_URL;
+    const legacyUrl =
+      process.env.N8N_ADD_BEVY_ATTENDEE_WEBHOOK_URL ??
+      process.env.ADD_BEVY_ATTENDEE_WEBHOOK_URL ??
+      process.env.N8N_APPROVED_ATTENDEE_WEBHOOK_URL ??
+      process.env.APPROVED_ATTENDEE_WEBHOOK_URL;
     if (legacyUrl) {
       webhookUrl = legacyUrl;
     }

@@ -196,7 +196,7 @@ export type SendTemplateEmailRequestInput = z.infer<typeof sendTemplateEmailRequ
 /**
  * Server Action: Dispatches constructed template email directly via request.
  * If template is 'interest', dispatches to /send-interest-email.
- * Otherwise dispatches to /approved-attendee or general webhook with subjectEmail and bodyEmail.
+ * Otherwise dispatches to /add-bevy-attendee or general webhook with subjectEmail and bodyEmail.
  */
 export async function sendTemplateEmailRequestAction(
   data: SendTemplateEmailRequestInput,
@@ -220,9 +220,9 @@ export async function sendTemplateEmailRequestAction(
     });
   }
 
-  // For accepted or other templates, dispatch to approved attendee or webhook API
+  // For accepted or other templates, dispatch to add bevy attendee webhook API
   const base = (process.env.N8N_WEBHOOK_BASE_URL ?? "https://n8n.gdgjakarta.com").trim().replace(/\/+$/, "");
-  const targetUrl = `${base}/webhook/api/approved-attendee`;
+  const targetUrl = `${base}/webhook/api/add-bevy-attendee`;
   const apiKey =
     process.env.N8N_WEBHOOK_API_KEY ||
     process.env.EVENT_REGISTRATION_WEBHOOK_API_KEY ||

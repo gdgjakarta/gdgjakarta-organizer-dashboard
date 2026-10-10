@@ -251,7 +251,7 @@ export function SendTemplateEmailDialog({
                 </Badge>
                 {selectedKey === "interest"
                   ? "https://n8n.gdgjakarta.com/webhook/api/send-interest-email"
-                  : "https://n8n.gdgjakarta.com/webhook/api/approved-attendee"}
+                  : "https://n8n.gdgjakarta.com/webhook/api/add-bevy-attendee"}
               </div>
               <Badge variant="secondary" className="text-[10px]">
                 X-API-Key Authorized
