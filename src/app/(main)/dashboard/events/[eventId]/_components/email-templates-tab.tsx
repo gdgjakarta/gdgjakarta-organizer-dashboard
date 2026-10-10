@@ -87,6 +87,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
       accepted: acceptedHtml,
       rejected_hybrid: event.email_templates?.rejected_hybrid ?? getDefaultTemplateByKey("rejected_hybrid"),
       rejected_non_hybrid: event.email_templates?.rejected_non_hybrid ?? getDefaultTemplateByKey("rejected_non_hybrid"),
+      rejected_virtual: event.email_templates?.rejected_virtual ?? getDefaultTemplateByKey("rejected_virtual"),
     };
   });
 
@@ -100,6 +101,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
       accepted: acceptedHtml,
       rejected_hybrid: event.email_templates?.rejected_hybrid ?? getDefaultTemplateByKey("rejected_hybrid"),
       rejected_non_hybrid: event.email_templates?.rejected_non_hybrid ?? getDefaultTemplateByKey("rejected_non_hybrid"),
+      rejected_virtual: event.email_templates?.rejected_virtual ?? getDefaultTemplateByKey("rejected_virtual"),
     };
   });
 
@@ -157,6 +159,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
               rejected_hybrid: docData.email_templates.rejected_hybrid ?? getDefaultTemplateByKey("rejected_hybrid"),
               rejected_non_hybrid:
                 docData.email_templates.rejected_non_hybrid ?? getDefaultTemplateByKey("rejected_non_hybrid"),
+              rejected_virtual: docData.email_templates.rejected_virtual ?? getDefaultTemplateByKey("rejected_virtual"),
             };
             setTemplates(loaded);
             setSavedTemplates(loaded);
@@ -179,7 +182,8 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
       templates.interest !== savedTemplates.interest ||
       templates.accepted !== savedTemplates.accepted ||
       templates.rejected_hybrid !== savedTemplates.rejected_hybrid ||
-      templates.rejected_non_hybrid !== savedTemplates.rejected_non_hybrid;
+      templates.rejected_non_hybrid !== savedTemplates.rejected_non_hybrid ||
+      templates.rejected_virtual !== savedTemplates.rejected_virtual;
 
     const dataChanged = JSON.stringify(templatesData) !== JSON.stringify(savedTemplatesData);
 
@@ -266,6 +270,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
       accepted: getDefaultTemplateByKey("accepted"),
       rejected_hybrid: getDefaultTemplateByKey("rejected_hybrid"),
       rejected_non_hybrid: getDefaultTemplateByKey("rejected_non_hybrid"),
+      rejected_virtual: getDefaultTemplateByKey("rejected_virtual"),
     };
     setTemplates(allDefaults);
 
@@ -281,6 +286,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
       accepted: getDefaultTemplateByKey("accepted"),
       rejected_hybrid: getDefaultTemplateByKey("rejected_hybrid"),
       rejected_non_hybrid: getDefaultTemplateByKey("rejected_non_hybrid"),
+      rejected_virtual: getDefaultTemplateByKey("rejected_virtual"),
     };
     const cleanData = getAllCleanDefaultTemplatesData(event);
     setTemplates(allDefaults);
@@ -293,6 +299,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
           accepted: allDefaults.accepted,
           rejected_hybrid: allDefaults.rejected_hybrid,
           rejected_non_hybrid: allDefaults.rejected_non_hybrid,
+          rejected_virtual: allDefaults.rejected_virtual,
           template_data: {
             headerEmailUrl: cleanData[activeKey].event.headerEmailUrl,
             eventName: cleanData[activeKey].event.eventName,
@@ -339,6 +346,14 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
               eventChecklistItems: cleanData.rejected_non_hybrid.event.eventChecklistItems,
               attendeeName: cleanData.rejected_non_hybrid.attendee.name,
               attendeeEmail: cleanData.rejected_non_hybrid.attendee.email,
+            },
+            rejected_virtual: {
+              headerEmailUrl: cleanData.rejected_virtual.event.headerEmailUrl,
+              eventName: cleanData.rejected_virtual.event.eventName,
+              eventCtaUrl: cleanData.rejected_virtual.event.eventCtaUrl,
+              eventChecklistItems: cleanData.rejected_virtual.event.eventChecklistItems,
+              attendeeName: cleanData.rejected_virtual.attendee.name,
+              attendeeEmail: cleanData.rejected_virtual.attendee.email,
             },
           },
         };
@@ -393,6 +408,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
           accepted: templates.accepted,
           rejected_hybrid: templates.rejected_hybrid,
           rejected_non_hybrid: templates.rejected_non_hybrid,
+          rejected_virtual: templates.rejected_virtual,
           // Legacy template_data fallback for existing listeners
           template_data: {
             headerEmailUrl: templatesData[activeKey].event.headerEmailUrl,
@@ -441,6 +457,14 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
               eventChecklistItems: templatesData.rejected_non_hybrid.event.eventChecklistItems,
               attendeeName: templatesData.rejected_non_hybrid.attendee.name,
               attendeeEmail: templatesData.rejected_non_hybrid.attendee.email,
+            },
+            rejected_virtual: {
+              headerEmailUrl: templatesData.rejected_virtual.event.headerEmailUrl,
+              eventName: templatesData.rejected_virtual.event.eventName,
+              eventCtaUrl: templatesData.rejected_virtual.event.eventCtaUrl,
+              eventChecklistItems: templatesData.rejected_virtual.event.eventChecklistItems,
+              attendeeName: templatesData.rejected_virtual.attendee.name,
+              attendeeEmail: templatesData.rejected_virtual.attendee.email,
             },
           },
         };

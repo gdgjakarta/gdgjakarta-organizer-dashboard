@@ -12,6 +12,7 @@ import {
   Filter,
   Layers,
   Loader2,
+  Mail,
   MoreHorizontal,
   Package,
   RefreshCw,
@@ -69,6 +70,7 @@ import type {
 } from "@/lib/firestore/types";
 import { cn, getInitials } from "@/lib/utils";
 import { checkInBevyAttendeeAction, fetchAllBevyEventAttendeesAction } from "@/server/bevy-actions";
+import { rejectAttendeeAction, resendInterestEmailAction } from "@/server/email-template-actions";
 import { approveAttendeeWebhookAction } from "@/server/registration-actions";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
@@ -356,6 +358,10 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const [isCheckingInId, setIsCheckingInId] = useState<string | null>(null);
   const [approvingRegistrationId, setApprovingRegistrationId] = useState<string | null>(null);
   const [isBatchApproving, setIsBatchApproving] = useState(false);
+  const [rejectingRegistrationId, setRejectingRegistrationId] = useState<string | null>(null);
+  const [isBatchRejecting, setIsBatchRejecting] = useState(false);
+  const [isResendingInterestId, setIsResendingInterestId] = useState<string | null>(null);
+  const [isBatchResendingInterest, setIsBatchResendingInterest] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -1023,6 +1029,11 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       return;
     }
 
+    if (newStatus === "rejected" && targetReg) {
+      void handleRejectAttendee(targetReg);
+      return;
+    }
+
     startTransition(async () => {
       try {
         const reviewerPayload = user ? { id: user.id, name: user.name, email: user.email } : undefined;
@@ -1126,6 +1137,103 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     }
   };
 
+  const handleRejectAttendee = async (registration: FirestoreRegistration) => {
+    if (registration.status === "approved") {
+      toast.error("This attendee is already approved. Their status cannot be changed except by removal.");
+      return;
+    }
+
+    setRejectingRegistrationId(registration.id);
+    try {
+      const reviewerPayload = user ? { id: user.id, name: user.name, email: user.email } : undefined;
+      const res = await rejectAttendeeAction({
+        registrationId: registration.id,
+        eventId,
+        attendeeName: registration.member_name,
+        attendeeEmail: registration.member_email,
+        reviewer: reviewerPayload,
+        eventData: event,
+      });
+
+      if (!res.success) {
+        console.error("[RegistrantsTab] Reject attendee error:", res.error, res.details);
+        toast.error(res.error ?? "Failed to reject applicant.", {
+          description: typeof res.details === "string" ? res.details : undefined,
+        });
+        return;
+      }
+
+      const now = new Date().toISOString();
+      setRegistrationsList((prev) =>
+        prev.map((r) =>
+          r.id === registration.id
+            ? {
+                ...r,
+                status: "rejected",
+                reviewed_at: now,
+                reviewed_by_id: user?.id ?? r.reviewed_by_id,
+                reviewed_by_name: user?.name ?? r.reviewed_by_name,
+                reviewed_by_email: user?.email ?? r.reviewed_by_email,
+              }
+            : r,
+        ),
+      );
+
+      setInspectRegistration((prev) =>
+        prev?.id === registration.id
+          ? {
+              ...prev,
+              status: "rejected",
+              reviewed_at: now,
+              reviewed_by_id: user?.id ?? prev.reviewed_by_id,
+              reviewed_by_name: user?.name ?? prev.reviewed_by_name,
+              reviewed_by_email: user?.email ?? prev.reviewed_by_email,
+            }
+          : prev,
+      );
+
+      toast.success(res.message ?? `${registration.member_name} marked as rejected and regret email sent.`);
+    } catch (err) {
+      console.error("[RegistrantsTab] Error rejecting attendee:", err);
+      const msg = err instanceof Error ? err.message : "Failed to reject applicant.";
+      toast.error(msg);
+    } finally {
+      setRejectingRegistrationId(null);
+    }
+  };
+
+  const handleResendInterestEmail = async (registration: FirestoreRegistration) => {
+    if (registration.status !== "pending") {
+      toast.info("Interest email can only be resent for attendees pending review.");
+      return;
+    }
+
+    setIsResendingInterestId(registration.id);
+    try {
+      const res = await resendInterestEmailAction({
+        registrationId: registration.id,
+        eventId,
+        attendeeName: registration.member_name,
+        attendeeEmail: registration.member_email,
+        eventData: event,
+      });
+
+      if (res.success) {
+        toast.success(res.message ?? `Interest email resent to ${registration.member_name}.`);
+      } else {
+        toast.error(res.error ?? "Failed to resend interest email.", {
+          description: typeof res.details === "string" ? res.details : undefined,
+        });
+      }
+    } catch (err) {
+      console.error("[RegistrantsTab] Error resending interest email:", err);
+      const msg = err instanceof Error ? err.message : "Failed to resend interest email.";
+      toast.error(msg);
+    } finally {
+      setIsResendingInterestId(null);
+    }
+  };
+
   const handleToggleCheckIn = async (registration: FirestoreRegistration, isCheckedIn: boolean) => {
     setIsCheckingInId(registration.id);
     try {
@@ -1206,6 +1314,13 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     });
   }, [selectedIds, registrationsList]);
 
+  const pendingSelectedCount = useMemo(() => {
+    return Array.from(selectedIds).filter((id) => {
+      const r = registrationsList.find((reg) => reg.id === id);
+      return r?.status === "pending";
+    }).length;
+  }, [selectedIds, registrationsList]);
+
   const handleBatchApprove = async () => {
     if (selectedIds.size === 0) return;
     const toApprove = registrationsList.filter((r) => selectedIds.has(r.id) && r.status !== "approved");
@@ -1263,10 +1378,127 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     }
   };
 
+  const handleBatchReject = async () => {
+    if (selectedIds.size === 0) return;
+    const toReject = registrationsList.filter(
+      (r) => selectedIds.has(r.id) && r.status !== "approved" && r.status !== "rejected",
+    );
+    if (toReject.length === 0) {
+      toast.info("All selected attendees are already approved or rejected.");
+      return;
+    }
+
+    setIsBatchRejecting(true);
+    try {
+      const reviewerPayload = user ? { id: user.id, name: user.name, email: user.email } : undefined;
+      let successCount = 0;
+      const failedErrors: string[] = [];
+
+      // Process one by one sequentially
+      for (const reg of toReject) {
+        const res = await rejectAttendeeAction({
+          registrationId: reg.id,
+          eventId,
+          attendeeName: reg.member_name,
+          attendeeEmail: reg.member_email,
+          reviewer: reviewerPayload,
+          eventData: event,
+        });
+
+        if (res.success) {
+          successCount++;
+          const now = new Date().toISOString();
+          setRegistrationsList((prev) =>
+            prev.map((r) =>
+              r.id === reg.id
+                ? {
+                    ...r,
+                    status: "rejected",
+                    reviewed_at: now,
+                    reviewed_by_id: user?.id ?? r.reviewed_by_id,
+                    reviewed_by_name: user?.name ?? r.reviewed_by_name,
+                    reviewed_by_email: user?.email ?? r.reviewed_by_email,
+                  }
+                : r,
+            ),
+          );
+        } else {
+          failedErrors.push(`${reg.member_name}: ${res.error ?? "Failed to reject"}`);
+        }
+      }
+
+      if (successCount > 0) {
+        toast.success(`Successfully rejected ${successCount} applicant(s) and sent regret emails.`);
+      }
+      if (failedErrors.length > 0) {
+        toast.error(`Rejection failed for ${failedErrors.length} applicant(s):`, {
+          description: failedErrors.slice(0, 3).join("\n"),
+        });
+      }
+      setSelectedIds(new Set());
+    } catch (err) {
+      console.error("[RegistrantsTab] Batch reject error:", err);
+      toast.error("Batch reject failed.");
+    } finally {
+      setIsBatchRejecting(false);
+    }
+  };
+
+  const handleBatchResendInterestEmail = async () => {
+    if (selectedIds.size === 0) return;
+    const toResend = registrationsList.filter((r) => selectedIds.has(r.id) && r.status === "pending");
+    if (toResend.length === 0) {
+      toast.info("No selected attendees are currently pending review.");
+      return;
+    }
+
+    setIsBatchResendingInterest(true);
+    try {
+      let successCount = 0;
+      const failedErrors: string[] = [];
+
+      // Process one by one sequentially
+      for (const reg of toResend) {
+        const res = await resendInterestEmailAction({
+          registrationId: reg.id,
+          eventId,
+          attendeeName: reg.member_name,
+          attendeeEmail: reg.member_email,
+          eventData: event,
+        });
+
+        if (res.success) {
+          successCount++;
+        } else {
+          failedErrors.push(`${reg.member_name}: ${res.error ?? "Failed to send"}`);
+        }
+      }
+
+      if (successCount > 0) {
+        toast.success(`Successfully resent interest email to ${successCount} applicant(s).`);
+      }
+      if (failedErrors.length > 0) {
+        toast.error(`Failed to resend interest email to ${failedErrors.length} applicant(s):`, {
+          description: failedErrors.slice(0, 3).join("\n"),
+        });
+      }
+      setSelectedIds(new Set());
+    } catch (err) {
+      console.error("[RegistrantsTab] Batch resend interest email error:", err);
+      toast.error("Batch resend interest email failed.");
+    } finally {
+      setIsBatchResendingInterest(false);
+    }
+  };
+
   const handleBatchAction = (newStatus: RegistrationStatus) => {
     if (selectedIds.size === 0) return;
     if (newStatus === "approved") {
       void handleBatchApprove();
+      return;
+    }
+    if (newStatus === "rejected") {
+      void handleBatchReject();
       return;
     }
 
@@ -1592,7 +1824,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 variant="outline"
                 className="gap-1 text-emerald-600 dark:text-emerald-400"
                 onClick={() => handleBatchAction("approved")}
-                disabled={isPending || isBatchApproving}
+                disabled={isPending || isBatchApproving || isBatchRejecting || isBatchResendingInterest}
               >
                 {isBatchApproving ? <Loader2 className="size-3.5 animate-spin" /> : <UserCheck className="size-3.5" />}
                 Approve Selected
@@ -1602,7 +1834,9 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 variant="outline"
                 className="gap-1 text-amber-600 dark:text-amber-400"
                 onClick={() => handleBatchAction("pending")}
-                disabled={isPending || isBatchApproving || hasApprovedSelected}
+                disabled={
+                  isPending || isBatchApproving || isBatchRejecting || isBatchResendingInterest || hasApprovedSelected
+                }
                 title={hasApprovedSelected ? "Cannot modify status of approved attendees" : undefined}
               >
                 <Clock className="size-3.5" />
@@ -1613,18 +1847,42 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 variant="outline"
                 className="gap-1 text-destructive"
                 onClick={() => handleBatchAction("rejected")}
-                disabled={isPending || isDeleting || isBatchApproving || hasApprovedSelected}
+                disabled={
+                  isPending ||
+                  isDeleting ||
+                  isBatchApproving ||
+                  isBatchRejecting ||
+                  isBatchResendingInterest ||
+                  hasApprovedSelected
+                }
                 title={hasApprovedSelected ? "Cannot modify status of approved attendees" : undefined}
               >
-                <UserX className="size-3.5" />
+                {isBatchRejecting ? <Loader2 className="size-3.5 animate-spin" /> : <UserX className="size-3.5" />}
                 Reject Selected
               </Button>
+              {pendingSelectedCount > 0 && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1 text-primary hover:bg-primary/10"
+                  onClick={() => void handleBatchResendInterestEmail()}
+                  disabled={isPending || isDeleting || isBatchApproving || isBatchRejecting || isBatchResendingInterest}
+                  title="Resend interest email to selected pending attendees"
+                >
+                  {isBatchResendingInterest ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <Mail className="size-3.5" />
+                  )}
+                  Resend Interest ({pendingSelectedCount})
+                </Button>
+              )}
               <Button
                 size="sm"
                 variant="outline"
                 className="gap-1 text-destructive hover:bg-destructive/10 hover:text-destructive"
                 onClick={() => setIsBatchDeleteConfirmOpen(true)}
-                disabled={isPending || isDeleting || isBatchApproving}
+                disabled={isPending || isDeleting || isBatchApproving || isBatchRejecting || isBatchResendingInterest}
               >
                 <Trash2 className="size-3.5" />
                 Remove Selected
@@ -2302,9 +2560,18 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                 )}
                                 title={rejectTitle}
                                 onClick={() => handleStatusChange(reg.id, "rejected")}
-                                disabled={isPending || approvingRegistrationId === reg.id || reg.status === "approved"}
+                                disabled={
+                                  isPending ||
+                                  approvingRegistrationId === reg.id ||
+                                  rejectingRegistrationId === reg.id ||
+                                  reg.status === "approved"
+                                }
                               >
-                                <X className="size-3.5" />
+                                {rejectingRegistrationId === reg.id ? (
+                                  <Loader2 className="size-3.5 animate-spin" />
+                                ) : (
+                                  <X className="size-3.5" />
+                                )}
                               </Button>
 
                               {/* 4. View Dossier / Details Button */}
@@ -2330,6 +2597,23 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                     <Eye className="mr-2 size-3.5" />
                                     View application dossier
                                   </DropdownMenuItem>
+                                  {reg.status === "pending" && (
+                                    <DropdownMenuItem
+                                      disabled={
+                                        isResendingInterestId === reg.id ||
+                                        isPending ||
+                                        rejectingRegistrationId === reg.id
+                                      }
+                                      onClick={() => void handleResendInterestEmail(reg)}
+                                    >
+                                      {isResendingInterestId === reg.id ? (
+                                        <Loader2 className="mr-2 size-3.5 animate-spin" />
+                                      ) : (
+                                        <Mail className="mr-2 size-3.5" />
+                                      )}
+                                      Resend Interest Email
+                                    </DropdownMenuItem>
+                                  )}
                                   <DropdownMenuItem
                                     disabled={
                                       reg.status === "approved" || isPending || approvingRegistrationId === reg.id
@@ -2378,6 +2662,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         onClose={() => setInspectRegistration(null)}
         onStatusChange={handleStatusChange}
         onApprove={handleApproveAttendee}
+        onReject={handleRejectAttendee}
+        onResendInterestEmail={handleResendInterestEmail}
         onToggleCheckIn={handleToggleCheckIn}
         onDelete={(reg) => {
           setInspectRegistration(null);
@@ -2386,6 +2672,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         customQuestions={customQuestions}
         isPending={isPending || isCheckingInId === inspectRegistration?.id}
         isApproving={approvingRegistrationId === inspectRegistration?.id}
+        isRejecting={rejectingRegistrationId === inspectRegistration?.id}
+        isResendingInterest={isResendingInterestId === inspectRegistration?.id}
       />
 
       {/* Confirmation Dialog: Single Attendee Removal */}

@@ -1,4 +1,7 @@
-import type { FirestoreEvent } from "@/lib/firestore/types";
+import { resolveEventAudience } from "@/lib/bevy/audience";
+import type { EmailTemplateKey, FirestoreEvent } from "@/lib/firestore/types";
+
+export type { EmailTemplateKey };
 
 export const SAMPLE_QR_CODE_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAMgAAADIAQMAAACXljzdAAAABlBMVEX///8AAABVwtN+AAAACXBIWXMAAA7EAAAOxAGVKw4bAAAA/UlEQVRYheWYwRGEIAxFv+OBoyVQypbmlkYplODRgyMmP+C4O9hAyIWBlwsh+YkCr7YWs4xwAp8c6v70R5JdOC87UBLCwX3wSKLcWAhjIEfHJPttTHJHxz0B9CiPSVotqINUfadKnJCmb8s+lb7yuScPYx6gZy6IxYCLdrOyz5obKgHeiDww5gLELdSM11CUsUh9dOlmckCx+814RyTafalviDafMQ/GIcyDOqlqRzfCwnBGmi18fnFT7y2MRNaa+89u9qWrO5JsyW1Ku7+9/JFY6kyuMbBuRiUfkoAScJtrIvrG2h6O2GJ5IKaCn/7+RvggT31jDLrK55q82gUvTG0vlaj95wAAAABJRU5ErkJggg==";
@@ -15,7 +18,8 @@ export const DEFAULT_REJECTED_HYBRID_EMAIL_HTML =
 export const DEFAULT_REJECTED_NON_HYBRID_EMAIL_HTML =
   '<!DOCTYPE html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n    <title>Update regarding: {{ $(\'email-config\').item.json.eventName }}</title>\n    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet" />\n    <style>\n      body {\n        margin: 0;\n        padding: 0;\n        font-family: \'Poppins\', sans-serif;\n        background-color: #f1f3f4;\n        color: #3c4043;\n      }\n\n      .container {\n        max-width: 510px;\n        margin: 0 auto;\n        background-color: #ffffff;\n        padding: 30px;\n        border-radius: 8px;\n      }\n\n      .header-img {\n        width: 100%;\n        height: auto;\n        border-radius: 8px 8px 0 0;\n        background-color: #4285f4;\n        min-height: 100px;\n      }\n\n      .center {\n        text-align: center;\n      }\n\n      .start {\n        text-align: start;\n      }\n\n      .btn {\n        display: block;\n        background-color: #4285f4;\n        color: #ffffff !important;\n        text-align: center;\n        border-radius: 50px;\n        padding: 12px 24px;\n        text-decoration: none;\n        width: 60%;\n        margin: 30px auto;\n        font-weight: 600;\n        font-size: 15px;\n        box-shadow: 0 4px 6px rgba(0,0,0,0.1);\n      }\n      \n      .btn:hover {\n        background-color: #3367d6;\n      }\n\n      .checklist-box {\n        background-color: #f8f9fa;\n        border: 1px solid #e0e0e0;\n        border-radius: 8px;\n        padding: 20px;\n        margin: 20px 0;\n      }\n\n      .checklist-item {\n        margin-bottom: 15px;\n        display: flex;\n        align-items: flex-start;\n      }\n\n      .checklist-item:last-child {\n        margin-bottom: 0;\n      }\n\n      .icon {\n        margin-right: 12px;\n        font-size: 1.2em;\n        min-width: 25px;\n      }\n\n      .text {\n        font-size: 0.95em;\n        line-height: 1.5;\n      }\n\n      .footer {\n        margin-top: 24pt;\n        padding: 18pt;\n        background-color: #f8f9fa;\n        border-radius: 0 0 8px 8px;\n        text-align: center;\n      }\n\n      .content {\n        padding: 0 15px;\n      }\n\n      /* Fixed Info Box with Symmetrical Spacing adjusted to 16px */\n      .info-box {\n        background-color: #fce8e6;\n        border: 1px solid #ea4335;\n        border-radius: 8px;\n        padding: 16px; \n        margin: 24px 0;\n        color: #b31412;\n      }\n\n      .info-box p {\n        margin-top: 0; \n        margin-bottom: 16px; \n        line-height: 1.6;\n      }\n\n      .info-box p:last-child {\n        margin-bottom: 0; \n      }\n\n      p {\n        line-height: 1.6;\n        margin-bottom: 15px;\n      }\n\n      strong {\n        color: #202124;\n      }\n    </style>\n  </head>\n  <body>\n    <div class="container">\n      <div class="center">\n        <!-- Header Image -->\n        <img src="{{ $(\'email-config\').item.json.eventHeaderEmailUrl }}" onerror="this.src=\'https://placehold.co/600x300?text=IWD+Jakarta+2026\'" alt="Event Header" class="header-img" />\n      </div>\n      \n      <div class="content">\n        <div class="start">\n          <h2>Hi {{ $(\'loop-send-rejected-email\').item.json[\'Full Name\'] }},</h2>\n        </div>\n        \n        <div class="start">\n          <p>Thank you for your interest in attending <strong>{{ $(\'email-config\').item.json.eventName }}</strong>.</p>\n          \n          <div class="info-box">\n            <p>\n              Due to overwhelming interest and strictly limited venue capacity, we are unfortunately unable to offer you a spot for this particular session.\n            </p>\n            <p>\n              Our selection process prioritizes applicants whose background, interests, and goals are most closely aligned with the focus and discussions planned for the event.\n            </p>\n          </div>\n\n          <!-- Important Notes Checklist -->\n          <div class="checklist-box">\n            <h3 style="margin-top: 0; color: #4285f4;">\ud83d\udccc Important Community Notes</h3>\n            {{ $(\'event-params\').item.json.eventChecklistItems }}\n          </div>\n\n          <p>We sincerely appreciate your interest in our event and hope to welcome you at future events and community initiatives.</p>\n          \n          <p>We encourage you to keep your professional profiles updated and stay connected for future technical workshops and community meetups.</p>\n\n          <a href="{{ $(\'email-config\').item.json.actionButtonUrl }}" class="btn">Follow Our Updates</a>\n\n          <p style="margin-top: 30px; font-size: 0.9em; color: #5f6368;">\n            Thank you for your understanding, and we hope to see you at another event soon!\n          </p>\n        </div>\n      </div>\n      \n      <div class="center">\n        <div class="footer">\n          <img alt="GDG Cloud Jakarta" src="https://assets.gdgjakarta.org/gdg-sign-bubble-transparent.png" style="width: 113px; height: auto;" />\n        </div>\n      </div>\n    </div>\n  </body>\n</html>';
 
-export type EmailTemplateKey = "interest" | "accepted" | "rejected_hybrid" | "rejected_non_hybrid";
+export const DEFAULT_REJECTED_VIRTUAL_EMAIL_HTML =
+  '<!DOCTYPE html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n    <title>Update regarding: {{ $(\'email-config\').item.json.eventName }}</title>\n    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet" />\n    <style>\n      body {\n        margin: 0;\n        padding: 0;\n        font-family: \'Poppins\', sans-serif;\n        background-color: #f1f3f4;\n        color: #3c4043;\n      }\n\n      .container {\n        max-width: 510px;\n        margin: 0 auto;\n        background-color: #ffffff;\n        padding: 30px;\n        border-radius: 8px;\n      }\n\n      .header-img {\n        width: 100%;\n        height: auto;\n        border-radius: 8px 8px 0 0;\n        background-color: #4285f4;\n        min-height: 100px;\n      }\n\n      .center {\n        text-align: center;\n      }\n\n      .start {\n        text-align: start;\n      }\n\n      .btn {\n        display: block;\n        background-color: #4285f4;\n        color: #ffffff !important;\n        text-align: center;\n        border-radius: 50px;\n        padding: 12px 24px;\n        text-decoration: none;\n        width: 60%;\n        margin: 30px auto;\n        font-weight: 600;\n        font-size: 15px;\n        box-shadow: 0 4px 6px rgba(0,0,0,0.1);\n      }\n      \n      .btn:hover {\n        background-color: #3367d6;\n      }\n\n      .checklist-box {\n        background-color: #f8f9fa;\n        border: 1px solid #e0e0e0;\n        border-radius: 8px;\n        padding: 20px;\n        margin: 20px 0;\n      }\n\n      .checklist-item {\n        margin-bottom: 15px;\n        display: flex;\n        align-items: flex-start;\n      }\n\n      .checklist-item:last-child {\n        margin-bottom: 0;\n      }\n\n      .icon {\n        margin-right: 12px;\n        font-size: 1.2em;\n        min-width: 25px;\n      }\n\n      .text {\n        font-size: 0.95em;\n        line-height: 1.5;\n      }\n\n      .footer {\n        margin-top: 24pt;\n        padding: 18pt;\n        background-color: #f8f9fa;\n        border-radius: 0 0 8px 8px;\n        text-align: center;\n      }\n\n      .content {\n        padding: 0 15px;\n      }\n\n      /* Fixed Info Box with Symmetrical Spacing adjusted to 16px */\n      .info-box {\n        background-color: #fce8e6;\n        border: 1px solid #ea4335;\n        border-radius: 8px;\n        padding: 16px; \n        margin: 24px 0;\n        color: #b31412;\n      }\n\n      .info-box p {\n        margin-top: 0; \n        margin-bottom: 16px; \n        line-height: 1.6;\n      }\n\n      .info-box p:last-child {\n        margin-bottom: 0; \n      }\n\n      p {\n        line-height: 1.6;\n        margin-bottom: 15px;\n      }\n\n      strong {\n        color: #202124;\n      }\n    </style>\n  </head>\n  <body>\n    <div class="container">\n      <div class="center">\n        <!-- Header Image -->\n        <img src="{{ $(\'email-config\').item.json.eventHeaderEmailUrl }}" onerror="this.src=\'https://placehold.co/600x300?text={{ $(\'email-config\').item.json.eventName }}\'" alt="Event Header" class="header-img" />\n      </div>\n      \n      <div class="content">\n        <div class="start">\n          <h2>Hi {{ $(\'loop-send-rejected-email\').item.json[\'Full Name\'] }},</h2>\n        </div>\n        \n        <div class="start">\n          <p>Thank you for your interest in attending <strong>{{ $(\'email-config\').item.json.eventName }}</strong>.</p>\n          \n          <div class="info-box">\n            <p>\n              Due to high registration interest and virtual workshop capacity limits, we are unfortunately unable to offer you an active participant spot for this virtual event.\n            </p>\n            <p>\n              Our selection process prioritizes applicants whose background, interests, and goals are most closely aligned with the interactive session topics and hands-on exercises.\n            </p>\n          </div>\n\n          <!-- Alternatives Checklist -->\n          <div class="checklist-box">\n            <h3 style="margin-top: 0; color: #4285f4;">\ud83d\udccc Next Steps &amp; Online Resources</h3>\n            {{ $(\'event-params\').item.json.eventChecklistItems }}\n          </div>\n\n          <p>We sincerely appreciate your interest and hope to welcome you at upcoming webinars, technical workshops, and virtual community initiatives.</p>\n          \n          <p>We encourage you to stay connected with the community and keep an eye on our event schedule for upcoming technical deep dives.</p>\n\n          <a href="{{ $(\'email-config\').item.json.actionButtonUrl }}" class="btn">Explore Community Events</a>\n\n          <p style="margin-top: 30px; font-size: 0.9em; color: #5f6368;">\n            Thank you for your understanding, and we look forward to seeing you at a future session!\n          </p>\n        </div>\n      </div>\n      \n      <div class="center">\n        <div class="footer">\n          <img alt="GDG Cloud Jakarta" src="https://assets.gdgjakarta.org/gdg-sign-bubble-transparent.png" style="width: 113px; height: auto;" />\n        </div>\n      </div>\n    </div>\n  </body>\n</html>';
 
 export interface TemplateVariableInfo {
   tag: string;
@@ -202,6 +206,38 @@ export const EMAIL_TEMPLATE_VARIABLES: Record<EmailTemplateKey, TemplateVariable
       sampleValue: "Important Community Notes",
     },
   ],
+  rejected_virtual: [
+    {
+      tag: "{{ $('email-config').item.json.eventName }}",
+      label: "Event Name",
+      description: "Event name configured for the email",
+      sampleValue: "Cloud Community Day Jakarta 2026",
+    },
+    {
+      tag: "{{ $('loop-send-rejected-email').item.json['Full Name'] }}",
+      label: "Attendee Full Name",
+      description: "Recipient full name from rejected list loop",
+      sampleValue: "Alex Pratama",
+    },
+    {
+      tag: "{{ $('email-config').item.json.eventHeaderEmailUrl }}",
+      label: "Header Banner URL",
+      description: "Email header image banner URL",
+      sampleValue: "https://assets.gdgjakarta.org/gdg-jakarta/banner-sample.png",
+    },
+    {
+      tag: "{{ $('email-config').item.json.actionButtonUrl }}",
+      label: "Community Events URL",
+      description: "Action button URL to explore community updates",
+      sampleValue: "https://gdg.community.dev/gdg-jakarta",
+    },
+    {
+      tag: "{{ $('event-params').item.json.eventChecklistItems }}",
+      label: "Checklist Items",
+      description: "Rendered HTML checklist items block configured on dashboard",
+      sampleValue: "Next Steps & Online Resources",
+    },
+  ],
 };
 
 export const EMAIL_TEMPLATES_CONFIG: EmailTemplateMeta[] = [
@@ -255,6 +291,19 @@ export const EMAIL_TEMPLATES_CONFIG: EmailTemplateMeta[] = [
     defaultHtml: DEFAULT_REJECTED_NON_HYBRID_EMAIL_HTML,
     isCuratedOnly: true,
     variables: EMAIL_TEMPLATE_VARIABLES.rejected_non_hybrid,
+  },
+  {
+    key: "rejected_virtual",
+    name: "Application Regret (Virtual Event)",
+    badge: "Curated Flow • Step 2 (Option C)",
+    subjectDefault: "Update regarding: {{ $('email-config').item.json.eventName }}",
+    description:
+      "Polite rejection notice for curated online/virtual events with limited interactive session or workshop slots.",
+    n8nNode: "loop-send-rejected-email",
+    triggerDescription: "Triggered when organizer marks attendee as Rejected (Virtual Event)",
+    defaultHtml: DEFAULT_REJECTED_VIRTUAL_EMAIL_HTML,
+    isCuratedOnly: true,
+    variables: EMAIL_TEMPLATE_VARIABLES.rejected_virtual,
   },
 ];
 
@@ -321,6 +370,8 @@ export function getFactoryDefaultTemplateByKey(key: EmailTemplateKey): string {
       return DEFAULT_REJECTED_HYBRID_EMAIL_HTML;
     case "rejected_non_hybrid":
       return DEFAULT_REJECTED_NON_HYBRID_EMAIL_HTML;
+    case "rejected_virtual":
+      return DEFAULT_REJECTED_VIRTUAL_EMAIL_HTML;
     default:
       return "";
   }
@@ -384,11 +435,18 @@ export const DEFAULT_REJECTED_NON_HYBRID_CHECKLIST_ITEMS: string[] = [
   "Upcoming Meetups: Keep an eye on our community page for announcements on upcoming in-person meetups.",
 ];
 
+export const DEFAULT_REJECTED_VIRTUAL_CHECKLIST_ITEMS: string[] = [
+  "Session Recordings: Keynote and workshop recordings will be published on our YouTube channel following the event.",
+  "Community Discussions: Join the open discussion channels on our Discord and WhatsApp community groups.",
+  "Upcoming Virtual Workshops: Keep an eye on GDG Community Dev for upcoming webinars and hands-on codelabs.",
+];
+
 export const DEFAULT_CHECKLIST_ITEMS_BY_TYPE: Record<EmailTemplateKey, string[]> = {
   interest: DEFAULT_INTEREST_CHECKLIST_ITEMS,
   accepted: DEFAULT_ACCEPTED_CHECKLIST_ITEMS,
   rejected_hybrid: DEFAULT_REJECTED_HYBRID_CHECKLIST_ITEMS,
   rejected_non_hybrid: DEFAULT_REJECTED_NON_HYBRID_CHECKLIST_ITEMS,
+  rejected_virtual: DEFAULT_REJECTED_VIRTUAL_CHECKLIST_ITEMS,
 };
 
 export const DEFAULT_CHECKLIST_ITEMS: string[] = DEFAULT_ACCEPTED_CHECKLIST_ITEMS;
@@ -565,6 +623,7 @@ export function getAllCleanDefaultTemplatesData(
     accepted: getCleanDefaultTemplateDataForType("accepted", event),
     rejected_hybrid: getCleanDefaultTemplateDataForType("rejected_hybrid", event),
     rejected_non_hybrid: getCleanDefaultTemplateDataForType("rejected_non_hybrid", event),
+    rejected_virtual: getCleanDefaultTemplateDataForType("rejected_virtual", event),
   };
 }
 
@@ -622,6 +681,7 @@ export function getAllDefaultTemplatesData(event: FirestoreEvent): Record<EmailT
     accepted: getDefaultTemplateDataForType("accepted", event),
     rejected_hybrid: getDefaultTemplateDataForType("rejected_hybrid", event),
     rejected_non_hybrid: getDefaultTemplateDataForType("rejected_non_hybrid", event),
+    rejected_virtual: getDefaultTemplateDataForType("rejected_virtual", event),
   };
 }
 
@@ -887,4 +947,113 @@ export function interpolateTemplatePreview(
   }
 
   return interpolateTemplateHtml(html, defaultData);
+}
+
+/**
+ * Validates the event type and determines which rejected email template to use:
+ * - "Hybrid" -> "rejected_hybrid"
+ * - "In-Person" -> "rejected_non_hybrid"
+ * - "Virtual" -> "rejected_virtual"
+ */
+export function resolveRejectedTemplateKeyForEvent(
+  event: Partial<FirestoreEvent>,
+): "rejected_hybrid" | "rejected_non_hybrid" | "rejected_virtual" {
+  const titleType = (event.event_type_title ?? "").toLowerCase();
+  if (titleType.includes("hybrid")) return "rejected_hybrid";
+  if (titleType.includes("virtual") || titleType.includes("online")) return "rejected_virtual";
+  if (
+    titleType.includes("in-person") ||
+    titleType.includes("in person") ||
+    titleType.includes("physical") ||
+    titleType.includes("onsite") ||
+    titleType.includes("on-site")
+  ) {
+    return "rejected_non_hybrid";
+  }
+
+  const { isHybrid, isVirtual } = resolveEventAudience(event.audience_type, event.is_virtual);
+  if (isHybrid) return "rejected_hybrid";
+  if (isVirtual) return "rejected_virtual";
+  return "rejected_non_hybrid";
+}
+
+/**
+ * Renders subject and body HTML for a given attendee, event, and template key.
+ * Guarantees non-empty firstName and lastName for strict n8n payload validation.
+ */
+export function buildRenderedEmailForAttendee({
+  templateKey,
+  attendee,
+  event,
+}: {
+  templateKey: EmailTemplateKey;
+  attendee: { name: string; email: string };
+  event: Partial<FirestoreEvent> | Record<string, unknown>;
+}): {
+  firstName: string;
+  lastName: string;
+  subjectEmail: string;
+  bodyEmail: string;
+} {
+  const { firstName, lastName } = splitFullName(attendee.name);
+  const safeFirstName = firstName || "Attendee";
+  const safeLastName = lastName || firstName || "-";
+
+  const eventRecord = event as Partial<FirestoreEvent>;
+  const fullEvent: FirestoreEvent = {
+    id: eventRecord.id ?? "event",
+    title: eventRecord.title ?? "GDG Jakarta Event",
+    status: (eventRecord.status as FirestoreEvent["status"]) ?? "Published",
+    start_date: eventRecord.start_date ?? "",
+    end_date: eventRecord.end_date ?? "",
+    requires_approval: eventRecord.requires_approval ?? false,
+    total_registrations: eventRecord.total_registrations ?? 0,
+    total_approved: eventRecord.total_approved ?? 0,
+    total_checked_in: eventRecord.total_checked_in ?? 0,
+    banner_url: eventRecord.banner_url,
+    picture_url: eventRecord.picture_url,
+    email_templates: eventRecord.email_templates,
+    created_at: eventRecord.created_at ?? "",
+    updated_at: eventRecord.updated_at ?? "",
+    audience_type: eventRecord.audience_type,
+    is_virtual: eventRecord.is_virtual,
+    event_type_title: eventRecord.event_type_title,
+    venue: eventRecord.venue,
+    url: eventRecord.url,
+    static_url: eventRecord.static_url,
+  };
+
+  const simulatedData = getDefaultTemplateDataForType(templateKey, fullEvent);
+  simulatedData.attendee = {
+    name: attendee.name || "Attendee",
+    email: attendee.email,
+  };
+  simulatedData.event.eventName = fullEvent.title;
+  const eventBanner = fullEvent.banner_url ?? fullEvent.picture_url;
+  if (eventBanner) {
+    simulatedData.event.headerEmailUrl = eventBanner;
+  }
+
+  // Get raw template HTML
+  const rawHtml =
+    (fullEvent.email_templates as Record<string, string | undefined> | undefined)?.[templateKey] ??
+    getDefaultTemplateByKey(templateKey);
+
+  // Get raw template subject
+  const meta = EMAIL_TEMPLATES_CONFIG.find((m) => m.key === templateKey);
+  const subjectKey = `${templateKey}_subject`;
+  const rawSubject =
+    (fullEvent.email_templates as Record<string, string | undefined> | undefined)?.[subjectKey] ??
+    meta?.subjectDefault ??
+    `Update regarding: ${fullEvent.title}`;
+
+  const bodyEmail = interpolateTemplateHtml(rawHtml, simulatedData);
+  const subjectEmail = interpolateTemplateSubject(rawSubject, simulatedData);
+
+  return {
+    firstName: safeFirstName,
+    lastName: safeLastName,
+    subjectEmail,
+    bodyEmail,
+  };
 }

@@ -1,6 +1,7 @@
 "use server";
 
 import {
+  buildRenderedEmailForAttendee,
   getDefaultTemplateByKey,
   getDefaultTemplateDataForType,
   interpolateTemplateHtml,
@@ -17,7 +18,7 @@ import {
 } from "@/lib/events/registration-defaults";
 import type { EventEmailTemplates } from "@/lib/firestore/types";
 
-import { sendInterestEmailWebhookAction } from "./email-template-actions";
+import { sendEmailWebhookAction } from "./email-template-actions";
 
 export interface RegistrationWebhookPayload {
   // Top-level compatibility fields for n8n workflows
@@ -166,55 +167,28 @@ export async function dispatchRegistrationWebhookAction(
 
   if (isCurationMode) {
     try {
-      const { firstName, lastName } = splitFullName(payload.member.name);
-      const emailTemplates = payload.event.email_templates as EventEmailTemplates | undefined;
-      const rawInterestHtml = emailTemplates?.interest ?? getDefaultTemplateByKey("interest");
-      const rawInterestSubject =
-        emailTemplates?.interest_subject ?? "Registration Received: {{ $('event-params').item.json.eventName }}";
-
-      const simulatedData = getDefaultTemplateDataForType("interest", {
-        id: payload.event.id,
-        title: payload.event.title,
-        status: payload.event.status as "Published" | "Draft" | "Completed" | "Canceled",
-        start_date: payload.event.start_date ?? "",
-        end_date: payload.event.end_date ?? "",
-        requires_approval: true,
-        total_registrations: 0,
-        total_approved: 0,
-        total_checked_in: 0,
-        banner_url: payload.event.banner_url,
-        picture_url: payload.event.picture_url,
-        email_templates: emailTemplates,
-        created_at: "",
-        updated_at: "",
+      const rendered = buildRenderedEmailForAttendee({
+        templateKey: "interest",
+        attendee: {
+          name: payload.member.name,
+          email: payload.member.email,
+        },
+        event: payload.event,
       });
 
-      simulatedData.attendee = {
-        name: payload.member.name,
+      const emailRes = await sendEmailWebhookAction({
+        first_name: rendered.firstName,
+        last_name: rendered.lastName,
         email: payload.member.email,
-      };
-      simulatedData.event.eventName = payload.event.title;
-      const eventBanner = payload.event.banner_url ?? payload.event.picture_url;
-      if (eventBanner) {
-        simulatedData.event.headerEmailUrl = eventBanner;
+        subjectEmail: rendered.subjectEmail,
+        bodyEmail: rendered.bodyEmail,
+      });
+
+      if (emailRes.success) {
+        console.log(`[Registration Curation Flow] Successfully sent interest email to ${payload.member.email}`);
+      } else {
+        console.warn(`[Registration Curation Flow] Failed to send interest email:`, emailRes.error);
       }
-
-      const bodyEmail = interpolateTemplateHtml(rawInterestHtml, simulatedData);
-      const subjectEmail = interpolateTemplateSubject(rawInterestSubject, simulatedData);
-
-      void sendInterestEmailWebhookAction({
-        first_name: firstName,
-        last_name: lastName,
-        email: payload.member.email,
-        subjectEmail,
-        bodyEmail,
-      }).then((res) => {
-        if (res.success) {
-          console.log(`[Registration Curation Flow] Successfully sent interest email to ${payload.member.email}`);
-        } else {
-          console.warn(`[Registration Curation Flow] Failed to send interest email:`, res.error);
-        }
-      });
     } catch (err) {
       console.warn("[Registration Curation Flow] Failed to dispatch interest email:", err);
     }

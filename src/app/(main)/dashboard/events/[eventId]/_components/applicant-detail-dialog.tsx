@@ -44,11 +44,15 @@ interface ApplicantDetailDialogProps {
   onClose: () => void;
   onStatusChange: (registrationId: string, newStatus: RegistrationStatus) => void;
   onApprove?: (registration: FirestoreRegistration) => void;
+  onReject?: (registration: FirestoreRegistration) => void;
+  onResendInterestEmail?: (registration: FirestoreRegistration) => void;
   onToggleCheckIn?: (registration: FirestoreRegistration, isCheckedIn: boolean) => void;
   onDelete?: (registration: FirestoreRegistration) => void;
   customQuestions?: CustomQuestion[];
   isPending?: boolean;
   isApproving?: boolean;
+  isRejecting?: boolean;
+  isResendingInterest?: boolean;
 }
 
 const STATUS_VARIANTS: Record<RegistrationStatus, { label: string; badgeClass: string; dotClass: string }> = {
@@ -150,11 +154,15 @@ export function ApplicantDetailDialog({
   onClose,
   onStatusChange,
   onApprove,
+  onReject,
+  onResendInterestEmail,
   onToggleCheckIn,
   onDelete,
   customQuestions = [],
   isPending = false,
   isApproving = false,
+  isRejecting = false,
+  isResendingInterest = false,
 }: ApplicantDetailDialogProps) {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [copiedProfile, setCopiedProfile] = useState(false);
@@ -820,7 +828,7 @@ export function ApplicantDetailDialog({
 
         {/* Footer Actions */}
         {(() => {
-          const isActionBlocked = isPending ? true : isApproving;
+          const isActionBlocked = [isPending, isApproving, isRejecting, isResendingInterest].some(Boolean);
           return (
             <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 border-t bg-muted/20 px-6 py-3.5">
               <div className="flex items-center gap-2">
@@ -855,6 +863,25 @@ export function ApplicantDetailDialog({
                   </Button>
                 )}
 
+                {registration.status === "pending" && onResendInterestEmail && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-primary text-xs"
+                    disabled={isActionBlocked}
+                    onClick={() => {
+                      onResendInterestEmail(registration);
+                    }}
+                  >
+                    {isResendingInterest ? (
+                      <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                    ) : (
+                      <Mail className="mr-1.5 size-3.5" />
+                    )}
+                    Resend Interest Email
+                  </Button>
+                )}
+
                 {onDelete && (
                   <Button
                     size="sm"
@@ -879,11 +906,19 @@ export function ApplicantDetailDialog({
                     className="text-destructive text-xs hover:bg-destructive/10"
                     disabled={isActionBlocked}
                     onClick={() => {
-                      onStatusChange(registration.id, "rejected");
+                      if (onReject) {
+                        onReject(registration);
+                      } else {
+                        onStatusChange(registration.id, "rejected");
+                      }
                       onClose();
                     }}
                   >
-                    <XCircle className="mr-1.5 size-3.5" />
+                    {isRejecting ? (
+                      <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                    ) : (
+                      <XCircle className="mr-1.5 size-3.5" />
+                    )}
                     Reject
                   </Button>
                 )}

@@ -774,7 +774,7 @@ export function EventRegistrationModal({
           member: {
             id: user.id,
             name: user.name,
-            email: user.email,
+            email: ((combinedAnswers as Record<string, unknown>).work_email as string) || user.email,
             role: user.role,
             avatar: user.avatar,
           },
