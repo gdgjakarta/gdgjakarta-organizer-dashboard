@@ -176,6 +176,8 @@ export function SendTemplateEmailDialog({
           bevyChapterId: chapterId,
           sessionName,
           sessionCapacity,
+          sessionTime: targetData.sessionTime,
+          checkinDeadline: targetData.checkinDeadline,
         });
 
         if (res.success) {

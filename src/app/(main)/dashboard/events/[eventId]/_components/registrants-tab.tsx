@@ -335,6 +335,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const [reviewerFilter, setReviewerFilter] = useState<string>("all");
   const [sessions, setSessions] = useState<EventSession[]>(event?.sessions ?? []);
   const [customQuestions, setCustomQuestions] = useState<CustomQuestion[]>(event?.custom_questions ?? []);
+  const [emailTemplates, setEmailTemplates] = useState(event?.email_templates);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [inspectRegistration, setInspectRegistration] = useState<FirestoreRegistration | null>(null);
   const [deleteConfirmRegistration, setDeleteConfirmRegistration] = useState<FirestoreRegistration | null>(null);
@@ -629,11 +630,15 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     if (event?.custom_questions && event.custom_questions.length > 0) {
       setCustomQuestions(event.custom_questions);
     }
+    if (event?.email_templates) {
+      setEmailTemplates(event.email_templates);
+    }
 
     const needsSessions = !event?.sessions || event.sessions.length === 0;
     const needsQuestions = !event?.custom_questions || event.custom_questions.length === 0;
+    const needsEmailTemplates = !event?.email_templates;
 
-    if (needsSessions || needsQuestions) {
+    if (needsSessions || needsQuestions || needsEmailTemplates) {
       async function fetchEventDetails() {
         try {
           const { getFirestoreEventById } = await import("@/lib/firestore/client");
@@ -644,13 +649,25 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
           if (docData?.custom_questions && docData.custom_questions.length > 0) {
             setCustomQuestions(docData.custom_questions);
           }
+          if (docData?.email_templates) {
+            setEmailTemplates(docData.email_templates);
+          }
         } catch (err) {
           console.warn("[RegistrantsTab] Failed to load event details:", err);
         }
       }
       void fetchEventDetails();
     }
-  }, [eventId, event?.sessions, event?.custom_questions]);
+  }, [eventId, event?.sessions, event?.custom_questions, event?.email_templates]);
+
+  const currentEvent = useMemo(() => {
+    return {
+      ...event,
+      sessions,
+      custom_questions: customQuestions,
+      ...(emailTemplates ? { email_templates: emailTemplates } : {}),
+    } as FirestoreEvent;
+  }, [event, sessions, customQuestions, emailTemplates]);
 
   // Compute email occurrences to detect duplicate registrant attempts
   const emailCounts = new Map<string, number>();
@@ -1089,7 +1106,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
 
     setApprovingRegistrationId(registration.id);
     try {
-      const payload = buildApprovedAttendeePayload(registration, event);
+      const payload = buildApprovedAttendeePayload(registration, currentEvent);
       const res = await approveAttendeeWebhookAction(payload);
 
       if (!res.success) {
@@ -1159,7 +1176,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         attendeeName: registration.member_name,
         attendeeEmail: registration.member_email,
         reviewer: reviewerPayload,
-        eventData: event,
+        eventData: currentEvent,
       });
 
       if (!res.success) {
@@ -1225,7 +1242,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         eventId,
         attendeeName: registration.member_name,
         attendeeEmail: registration.member_email,
-        eventData: event,
+        eventData: currentEvent,
       });
 
       if (res.success) {
@@ -1347,7 +1364,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       const failedErrors: string[] = [];
 
       for (const reg of toApprove) {
-        const payload = buildApprovedAttendeePayload(reg, event);
+        const payload = buildApprovedAttendeePayload(reg, currentEvent);
         const res = await approveAttendeeWebhookAction(payload);
         if (res.success) {
           await updateRegistrationStatusAction(reg.id, eventId, "approved", reviewerPayload);
@@ -1412,7 +1429,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
           attendeeName: reg.member_name,
           attendeeEmail: reg.member_email,
           reviewer: reviewerPayload,
-          eventData: event,
+          eventData: currentEvent,
         });
 
         if (res.success) {
@@ -1475,7 +1492,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
           eventId,
           attendeeName: reg.member_name,
           attendeeEmail: reg.member_email,
-          eventData: event,
+          eventData: currentEvent,
         });
 
         if (res.success) {
@@ -1680,7 +1697,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
           attendeeName: registration.member_name,
           attendeeEmail: registration.member_email,
           reviewer: reviewerPayload,
-          eventData: event,
+          eventData: currentEvent,
         });
 
         if (!emailRes.success) {
@@ -1732,9 +1749,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
 
   const handleBatchCancel = () => {
     if (selectedIds.size === 0) return;
-    const idsToCancel = Array.from(selectedIds);
     const regsToCancel = registrationsList.filter((r) => selectedIds.has(r.id));
-    const count = idsToCancel.length;
 
     startTransition(async () => {
       setIsCancelling(true);
@@ -1756,7 +1771,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
             attendeeName: reg.member_name,
             attendeeEmail: reg.member_email,
             reviewer: reviewerPayload,
-            eventData: event,
+            eventData: currentEvent,
           });
 
           if (!emailRes.success) {

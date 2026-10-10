@@ -199,6 +199,8 @@ const sendTemplateEmailRequestSchema = z.object({
   bevyChapterId: z.string().optional(),
   sessionName: z.string().optional(),
   sessionCapacity: z.number().optional(),
+  sessionTime: z.string().optional(),
+  checkinDeadline: z.string().optional(),
 });
 
 export type SendTemplateEmailRequestInput = z.infer<typeof sendTemplateEmailRequestSchema>;
@@ -278,6 +280,10 @@ export async function sendTemplateEmailRequestAction(
       bevyChapterId: parsed.data.bevyChapterId || process.env.BEVY_CHAPTER_ID || "642",
       sessionName,
       sessionCapacity,
+      sessionTime: parsed.data.sessionTime,
+      bevySessionTime: parsed.data.sessionTime,
+      checkinDeadline: parsed.data.checkinDeadline,
+      bevyCheckinDeadline: parsed.data.checkinDeadline,
       subjectEmail: parsed.data.subjectEmail,
       bodyEmail: bodyEmailToSend,
       // Optional backwards-compatible fields
