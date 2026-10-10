@@ -65,6 +65,7 @@ import type {
   EventSession,
   FirestoreEvent,
   FirestoreRegistration,
+  RegistrationStatus,
   SelectedMerchandiseOrder,
 } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
@@ -678,7 +679,7 @@ export function EventRegistrationModal({
 
     startTransition(async () => {
       try {
-        const initialStatus = eventConfig.requires_approval ? "pending" : "approved";
+        const initialStatus: RegistrationStatus = "pending";
 
         const sessionKey = selectedSession?.title ?? "Regular Ticket";
         const combinedAnswers = {
@@ -794,7 +795,7 @@ export function EventRegistrationModal({
           member_id: user?.id || "",
           member_name: user?.name || "Attendee",
           member_email: ((combinedAnswers as Record<string, unknown>).work_email as string) || user?.email || "",
-          status: eventConfig.requires_approval ? "pending" : "approved",
+          status: "pending",
           registered_at: new Date().toISOString(),
           answers: combinedAnswers,
           session_id: selectedSession?.id,
@@ -811,15 +812,9 @@ export function EventRegistrationModal({
         onSuccess?.(newReg);
         setTimeout(() => setIsTransitioning(false), 1500);
 
-        if (event.requires_approval) {
-          toast.success("Registration submitted! Your application is now pending organizer review.", {
-            duration: 5000,
-          });
-        } else {
-          toast.success("Successfully registered! We look forward to seeing you at the event.", {
-            duration: 5000,
-          });
-        }
+        toast.success("Registration submitted! Your application is now pending organizer review.", {
+          duration: 5000,
+        });
 
         setOpen(false);
         router.refresh();
@@ -892,7 +887,7 @@ export function EventRegistrationModal({
     if (isApproved) {
       statusLabel = eventConfig.requires_approval ? "Registered (Approved)" : "Registered";
     } else if (isPendingReview) {
-      statusLabel = "Pending Approval";
+      statusLabel = "Pending Review";
     }
 
     return (

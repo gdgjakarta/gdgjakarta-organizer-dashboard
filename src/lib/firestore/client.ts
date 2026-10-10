@@ -393,16 +393,9 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
     }
   }
 
-  // 3. Enforce curation mode rule:
-  // When curation mode for an event is active (requires_approval === true or curation_mode === true),
-  // after submitting, the attendee status must default to "pending" (Pending Review).
-  const isCurationActive =
-    eventData?.requires_approval === true ||
-    eventData?.curation_mode === true ||
-    (registration as unknown as Record<string, unknown>).requires_approval === true ||
-    (registration as unknown as Record<string, unknown>).curation_mode === true;
-
-  const resolvedStatus: RegistrationStatus = isCurationActive ? "pending" : registration.status;
+  // 3. Enforce default registration status:
+  // When anyone registers on the first time, their default status in the dashboard is "pending" (Pending Review).
+  const resolvedStatus: RegistrationStatus = "pending";
 
   const regId = `${eventIdStr}_${registration.member_id}`;
   const docRef = doc(db, "event_registrations", regId);
@@ -429,12 +422,9 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
   try {
     if (eventData) {
       const currentCount = typeof eventData.total_registrations === "number" ? eventData.total_registrations : 0;
-      const currentApproved = typeof eventData.total_approved === "number" ? eventData.total_approved : 0;
-      const isApprovedStatus = resolvedStatus === "approved" || resolvedStatus === "attended";
 
       const updateData: Record<string, unknown> = {
         total_registrations: currentCount + 1,
-        ...(isApprovedStatus ? { total_approved: currentApproved + 1 } : {}),
         updated_at: new Date().toISOString(),
       };
 
