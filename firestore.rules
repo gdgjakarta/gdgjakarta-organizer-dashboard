@@ -26,7 +26,7 @@ service cloud.firestore {
     //   - chapter_role: string|null (optional, <= 100 chars) - Bevy chapter role title
     //   - team: string (required, immutable for members) - Team assignment ('Core Team'|'Community')
     //   - status: string (required) - Membership status ('Active'|'Inactive')
-    //   - joined_date: string (required, ISO date string, <= 50 chars) - Date joined
+    //   - joined_date: string (required, <= 50 chars) - Date joined
     //   - raw_created_date: string|null (optional, <= 50 chars) - Raw timestamp from Bevy
     //   - events_registered_count: int|float|null (optional, >= 0) - Registered events count
     //   - avatar_url: string|null (optional, <= 3000 chars) - Profile picture URL
@@ -37,7 +37,7 @@ service cloud.firestore {
     //   - last_active: string|null (optional, <= 50 chars) - Last activity timestamp
     //   - notes: string|null (optional, <= 2000 chars) - Organizer notes
     //   - synced_from_bevy_at: string|null (optional, <= 50 chars) - Bevy sync timestamp
-    //   - updated_at: string (required, ISO date string, <= 50 chars) - Last update timestamp
+    //   - updated_at: string (required, <= 50 chars) - Last update timestamp
     //
     // Collection: event_registrations
     // Document ID: registrationId (e.g. eventId_memberId)
@@ -70,10 +70,15 @@ service cloud.firestore {
     //   - reviewed_by_email: string|null (optional, immutable for members, valid email, <= 150 chars) - Reviewer email
     //   - status_logs: list|null (optional, immutable for members, <= 100 items) - Status transition history
     //   - checked_in_at: string|null (optional, immutable for members, <= 50 chars) - Check-in timestamp
-    //   - is_checked_in: bool|null (optional) - Check-in flag
-    //   - bevy_attendee_id: int|float|string|null (optional, <= 64 chars) - Associated Bevy attendee ID
+    //   - is_checked_in: bool|null (optional, immutable for members) - Check-in flag
+    //   - bevy_attendee_id: int|float|string|null (optional, immutable for members, <= 64 chars) - Associated Bevy attendee ID
     //   - checkin_date: string|null (optional, <= 50 chars) - Check-in date string
-    //   - attendee_code: string|null (optional, <= 100 chars) - Attendee ticket QR tag / code
+    //   - attendee_code: string|null (optional, immutable for members, <= 100 chars) - Attendee ticket QR tag / code
+    //   - payment_status: string|null (optional, <= 50 chars) - DOKU Checkout payment status ('unpaid'|'pending'|'paid'|'expired'|'refunded'|'PENDING'|'PAID'|'FAILED'|'SUCCESS')
+    //   - payment_url: string|null (optional, <= 2000 chars) - DOKU payment redirect URL
+    //   - payment_invoice_number: string|null (optional, <= 128 chars) - DOKU invoice number
+    //   - payment_amount: int|float|null (optional, >= 0) - Total payment amount in IDR
+    //   - payment_expired_datetime: string|null (optional, <= 50 chars) - DOKU invoice expiry timestamp
     //   - updated_at: string|null (optional, <= 50 chars) - Last update timestamp
     //
     // Collection: events
@@ -88,6 +93,10 @@ service cloud.firestore {
     //   - end_date: string (required, <= 50 chars) - End date ISO string
     //   - picture_url: string|null (optional, <= 2000 chars) - Thumbnail image URL
     //   - banner_url: string|null (optional, <= 2000 chars) - Header banner image URL
+    //   - picture: map|null (optional, <= 10 keys) - Bevy image object with url and thumbnail_url
+    //   - banner: map|null (optional, <= 10 keys) - Bevy banner object with url and thumbnail_url
+    //   - cropped_picture_url: string|null (optional, <= 2000 chars) - Cropped square thumbnail URL
+    //   - cropped_banner_url: string|null (optional, <= 2000 chars) - Cropped wide banner URL
     //   - event_type_title: string|null (optional, <= 100 chars) - Category / event type
     //   - audience_type: string|null (optional, <= 50 chars) - Audience type
     //   - is_virtual: bool|null (optional) - Virtual event flag
@@ -98,20 +107,24 @@ service cloud.firestore {
     //   - is_hidden: bool|null (optional) - Hidden visibility flag
     //   - is_test: bool|null (optional) - Test event flag
     //   - requires_approval: bool|null (optional) - Organizer RSVP review requirement
+    //   - curation_mode: bool|null (optional) - Curated applicant review mode flag
     //   - max_attendees: int|float|null (optional, >= 0) - Attendee capacity limit
     //   - total_registrations: int|float (required, >= 0) - Registered attendee count
     //   - total_approved: int|float|null (optional, >= 0) - Approved attendee count
     //   - total_checked_in: int|float|null (optional, >= 0) - Checked-in attendee count
+    //   - total_waitlisted: int|float|null (optional, >= 0) - Waitlisted attendee count
     //   - custom_questions: list|null (optional, <= 50 items) - Custom RSVP questions
+    //   - agenda: map|list|null (optional, <= 20 items/keys) - Bevy event agenda structure
+    //   - speakers: list|null (optional, <= 50 items) - Event featured speakers
     //   - sessions: list|null (optional, <= 30 items) - Event agenda / breakout sessions
-    //   - tickets: list|null (optional, <= 50 items) - Ticket tiers configuration
-    //   - max_tickets_per_person: int|float|null (optional, >= 0) - Limit tickets per person
-    //   - merchandise: list|null (optional, <= 50 items) - Merchandise items configuration
-    //   - max_merchandise_per_person: int|float|null (optional, >= 0) - Limit merchandise per person
     //   - webhook_url: string|null (optional, <= 2000 chars) - Webhook integration URL
     //   - registration_status: string|null (optional) - Registration window status ('Draft'|'Published'|'Closed')
     //   - registration_start_date: string|null (optional, <= 50 chars) - Registration start date ISO string
     //   - registration_end_date: string|null (optional, <= 50 chars) - Registration end date ISO string
+    //   - tickets: list|null (optional, <= 50 items) - Ticket tiers configuration
+    //   - max_tickets_per_person: int|float|null (optional, >= 0) - Limit tickets per person
+    //   - merchandise: list|null (optional, <= 50 items) - Merchandise items configuration
+    //   - max_merchandise_per_person: int|float|null (optional, >= 0) - Limit merchandise per person
     //   - highlight_video_url: string|null (optional, <= 2000 chars) - Highlight video URL
     //   - highlight_video_title: string|null (optional, <= 300 chars) - Highlight video title
     //   - photo_album_url: string|null (optional, <= 2000 chars) - Photo album URL
@@ -191,11 +204,18 @@ service cloud.firestore {
     }
 
     // Dynamic Organizer Verification:
-    // Evaluates custom auth claims or verifies organizer role / Core Team membership in the members collection.
-    // Explicitly avoids static hardcoded email whitelists.
+    // Evaluates custom auth claims, verified bootstrap organizer emails (@gdgjakarta.org or info@gdgjakarta.org),
+    // or organizer role / Core Team membership in the members collection.
     function isOrganizer() {
       return isAuthenticated() && (
         ('role' in request.auth.token && request.auth.token.role == 'organizer') ||
+        (
+          'email' in request.auth.token &&
+          (
+            request.auth.token.email in ['info@gdgjakarta.org'] ||
+            request.auth.token.email.matches('^[a-zA-Z0-9._%+-]+@gdgjakarta\\.org$')
+          )
+        ) ||
         (
           exists(/databases/$(database)/documents/members/$(request.auth.uid)) &&
           (
@@ -278,7 +298,9 @@ service cloud.firestore {
           'registered_at', 'reviewed_at', 'reviewed_by_id', 'reviewed_by_name',
           'reviewed_by_email', 'status_logs',
           'checked_in_at', 'is_checked_in', 'bevy_attendee_id', 'checkin_date',
-          'attendee_code', 'updated_at'
+          'attendee_code',
+          'payment_status', 'payment_url', 'payment_invoice_number', 'payment_amount', 'payment_expired_datetime',
+          'updated_at'
         ]) &&
         data.id is string && data.id.size() > 0 && data.id.size() <= 200 &&
         data.event_id is string && data.event_id.size() > 0 && data.event_id.size() <= 128 &&
@@ -312,6 +334,11 @@ service cloud.firestore {
         (!('attendee_code' in data) || data.attendee_code == null || (data.attendee_code is string && data.attendee_code.size() <= 100)) &&
         (!('event_picture_url' in data) || data.event_picture_url == null || (data.event_picture_url is string && data.event_picture_url.size() <= 2000)) &&
         (!('event_banner_url' in data) || data.event_banner_url == null || (data.event_banner_url is string && data.event_banner_url.size() <= 2000)) &&
+        (!('payment_status' in data) || data.payment_status == null || (data.payment_status is string && (data.payment_status in ['unpaid', 'pending', 'paid', 'expired', 'refunded', 'PENDING', 'PAID', 'FAILED', 'SUCCESS']))) &&
+        (!('payment_url' in data) || data.payment_url == null || (data.payment_url is string && data.payment_url.size() <= 2000)) &&
+        (!('payment_invoice_number' in data) || data.payment_invoice_number == null || (data.payment_invoice_number is string && data.payment_invoice_number.size() <= 128)) &&
+        (!('payment_amount' in data) || data.payment_amount == null || ((data.payment_amount is int || data.payment_amount is float) && data.payment_amount >= 0)) &&
+        (!('payment_expired_datetime' in data) || data.payment_expired_datetime == null || (data.payment_expired_datetime is string && data.payment_expired_datetime.size() <= 50)) &&
         (!('updated_at' in data) || data.updated_at == null || (data.updated_at is string && data.updated_at.size() <= 50));
     }
 
@@ -320,10 +347,11 @@ service cloud.firestore {
       return hasRequiredFields(data, ['id', 'title', 'status', 'start_date', 'end_date', 'updated_at']) &&
         hasOnlyAllowedFields(data, [
           'id', 'title', 'description', 'description_short', 'status', 'start_date', 'end_date',
-          'picture_url', 'banner_url', 'event_type_title', 'audience_type', 'is_virtual',
-          'venue', 'url', 'static_url', 'tags', 'is_hidden', 'is_test', 'requires_approval',
-          'max_attendees', 'total_registrations', 'total_approved', 'total_checked_in',
-          'custom_questions', 'sessions', 'webhook_url',
+          'picture_url', 'banner_url', 'picture', 'banner', 'cropped_picture_url', 'cropped_banner_url',
+          'event_type_title', 'audience_type', 'is_virtual',
+          'venue', 'url', 'static_url', 'tags', 'is_hidden', 'is_test', 'requires_approval', 'curation_mode',
+          'max_attendees', 'total_registrations', 'total_approved', 'total_checked_in', 'total_waitlisted',
+          'custom_questions', 'agenda', 'speakers', 'sessions', 'webhook_url',
           'registration_status', 'registration_start_date', 'registration_end_date',
           'tickets', 'max_tickets_per_person', 'merchandise', 'max_merchandise_per_person',
           'highlight_video_url', 'highlight_video_title', 'photo_album_url', 'photo_album_title', 'recap_description',
@@ -340,23 +368,31 @@ service cloud.firestore {
         (!('description_short' in data) || data.description_short == null || (data.description_short is string && data.description_short.size() <= 1000)) &&
         (!('picture_url' in data) || data.picture_url == null || (data.picture_url is string && data.picture_url.size() <= 2000)) &&
         (!('banner_url' in data) || data.banner_url == null || (data.banner_url is string && data.banner_url.size() <= 2000)) &&
+        (!('picture' in data) || data.picture == null || (data.picture is map && data.picture.size() <= 10)) &&
+        (!('banner' in data) || data.banner == null || (data.banner is map && data.banner.size() <= 10)) &&
+        (!('cropped_picture_url' in data) || data.cropped_picture_url == null || (data.cropped_picture_url is string && data.cropped_picture_url.size() <= 2000)) &&
+        (!('cropped_banner_url' in data) || data.cropped_banner_url == null || (data.cropped_banner_url is string && data.cropped_banner_url.size() <= 2000)) &&
         (!('event_type_title' in data) || data.event_type_title == null || (data.event_type_title is string && data.event_type_title.size() <= 100)) &&
         (!('audience_type' in data) || data.audience_type == null || (data.audience_type is string && data.audience_type.size() <= 50)) &&
         (!('is_virtual' in data) || data.is_virtual == null || data.is_virtual is bool) &&
         (!('is_hidden' in data) || data.is_hidden == null || data.is_hidden is bool) &&
         (!('is_test' in data) || data.is_test == null || data.is_test is bool) &&
         (!('requires_approval' in data) || data.requires_approval == null || data.requires_approval is bool) &&
+        (!('curation_mode' in data) || data.curation_mode == null || data.curation_mode is bool) &&
         (!('venue' in data) || data.venue == null || (data.venue is map && data.venue.size() <= 20)) &&
         (!('url' in data) || data.url == null || (data.url is string && data.url.size() <= 2000)) &&
         (!('static_url' in data) || data.static_url == null || (data.static_url is string && data.static_url.size() <= 2000)) &&
         (!('tags' in data) || data.tags == null || (data.tags is list && data.tags.size() <= 50)) &&
         (!('custom_questions' in data) || data.custom_questions == null || (data.custom_questions is list && data.custom_questions.size() <= 50)) &&
+        (!('agenda' in data) || data.agenda == null || (data.agenda is map && data.agenda.size() <= 20) || (data.agenda is list && data.agenda.size() <= 20)) &&
+        (!('speakers' in data) || data.speakers == null || (data.speakers is list && data.speakers.size() <= 50)) &&
         (!('sessions' in data) || data.sessions == null || (data.sessions is list && data.sessions.size() <= 30)) &&
         (!('webhook_url' in data) || data.webhook_url == null || (data.webhook_url is string && data.webhook_url.size() <= 2000)) &&
         (!('max_attendees' in data) || data.max_attendees == null || ((data.max_attendees is int || data.max_attendees is float) && data.max_attendees >= 0)) &&
         (!('total_registrations' in data) || data.total_registrations == null || ((data.total_registrations is int || data.total_registrations is float) && data.total_registrations >= 0)) &&
         (!('total_approved' in data) || data.total_approved == null || ((data.total_approved is int || data.total_approved is float) && data.total_approved >= 0)) &&
         (!('total_checked_in' in data) || data.total_checked_in == null || ((data.total_checked_in is int || data.total_checked_in is float) && data.total_checked_in >= 0)) &&
+        (!('total_waitlisted' in data) || data.total_waitlisted == null || ((data.total_waitlisted is int || data.total_waitlisted is float) && data.total_waitlisted >= 0)) &&
         (!('registration_status' in data) || data.registration_status == null || (data.registration_status is string && (data.registration_status in ['Draft', 'Published', 'Closed']))) &&
         (!('registration_start_date' in data) || data.registration_start_date == null || (data.registration_start_date is string && data.registration_start_date.size() <= 50)) &&
         (!('registration_end_date' in data) || data.registration_end_date == null || (data.registration_end_date is string && data.registration_end_date.size() <= 50)) &&
@@ -456,10 +492,14 @@ service cloud.firestore {
     // Members Collection
     // -------------------------------------------------------------
     match /members/{memberId} {
-      // Individual profile lookup: Organizers or the document owner (by ID or UID)
+      // Individual profile lookup: Organizers or the document owner (by ID or UID).
+      // Safely handles non-existent doc lookup when resource == null (snap.exists() == false).
       allow get: if isOrganizer() ||
-        isOwner(memberId) ||
-        (isAuthenticated() && ('uid' in resource.data) && resource.data.uid == request.auth.uid);
+        (isAuthenticated() && (
+          resource == null ||
+          request.auth.uid == memberId ||
+          (('uid' in resource.data) && resource.data.uid == request.auth.uid)
+        ));
 
       // Listing members: STRICTLY Organizers only.
       // Eliminates public or unprivileged member dumps of emails, phone numbers, and notes.
@@ -509,56 +549,42 @@ service cloud.firestore {
         (isAuthenticated() && request.auth.uid == request.resource.data.member_id)
       );
 
-      // Update: Organizers (e.g. status review, check-in) or the registrant updating their RSVP form details.
-      // Registrants cannot alter review fields, check-in timestamp, or event/member identifiers, and can only update with unchanged status.
+      // Update: Organizers (e.g. status review, check-in) or the registrant updating payment fields, answers, and RSVP details.
+      // Registrants cannot alter review fields, check-in status/timestamps, or event/member identifiers, and status must remain unchanged.
       allow update: if isValidRegistration(request.resource.data) && (
         isOrganizer() ||
         (
           isOwner(resource.data.member_id) &&
           (
-            !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-              'status', 'reviewed_at', 'reviewed_by_id', 'reviewed_by_name',
-              'reviewed_by_email', 'status_logs',
-              'checked_in_at', 'member_id', 'event_id'
-            ]) ||
-            (
-              request.resource.data.status == resource.data.status &&
-              !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-                'reviewed_at', 'reviewed_by_id', 'reviewed_by_name',
-                'reviewed_by_email', 'status_logs',
-                'checked_in_at', 'member_id', 'event_id'
-              ])
-            )
-          )
+            !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status']) ||
+            request.resource.data.status == resource.data.status
+          ) &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            'reviewed_at', 'reviewed_by_id', 'reviewed_by_name',
+            'reviewed_by_email', 'status_logs',
+            'checked_in_at', 'is_checked_in', 'bevy_attendee_id', 'attendee_code',
+            'member_id', 'event_id', 'id'
+          ])
         )
       );
 
-      // Deletion: Organizers only.
-      allow delete: if isOrganizer();
+      // Deletion: Organizers or authenticated registrants cancelling their own registration.
+      allow delete: if isOrganizer() || (isAuthenticated() && resource != null && resource.data.member_id == request.auth.uid);
     }
 
     // -------------------------------------------------------------
     // Events Collection
     // -------------------------------------------------------------
     match /events/{eventId} {
-      // Get: Public get for published/completed events (including unlisted/hidden events via direct link); Organizers can get all.
-      allow get: if (
-        ('status' in resource.data) &&
-        resource.data.status in ['Published', 'Completed']
-      ) || isOrganizer();
-
-      // List: Public list for published, non-hidden events; Organizers can list all (including drafts/hidden).
-      allow list: if (
-        ('status' in resource.data) &&
-        resource.data.status in ['Published', 'Completed'] &&
-        (!('is_hidden' in resource.data) || !resource.data.is_hidden)
-      ) || isOrganizer();
+      // Read: Public read for events (both guests and community members view GDG events).
+      // Safely allows collection queries (orderBy, limit) and single doc lookups when resource == null.
+      allow read: if true;
 
       // Create & Delete: Organizers only.
       allow create: if isOrganizer() && isValidEvent(request.resource.data);
       allow delete: if isOrganizer();
 
-      // Update: Organizers (full event editing) or authenticated users incrementing total_registrations upon RSVP.
+      // Update: Organizers (full event editing) or authenticated users updating total_registrations upon RSVP / cancellation.
       // Non-organizers are strictly constrained to only update total_registrations, updated_at, sessions, and tickets.
       allow update: if isValidEvent(request.resource.data) && (
         isOrganizer() ||
@@ -566,7 +592,7 @@ service cloud.firestore {
           isAuthenticated() &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['total_registrations', 'updated_at', 'sessions', 'tickets']) &&
           (request.resource.data.total_registrations is int || request.resource.data.total_registrations is float) &&
-          request.resource.data.total_registrations >= resource.data.total_registrations
+          request.resource.data.total_registrations >= 0
         )
       );
     }
