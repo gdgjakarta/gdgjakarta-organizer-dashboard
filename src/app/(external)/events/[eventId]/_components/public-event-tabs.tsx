@@ -36,6 +36,26 @@ const VIDEO_PLATFORM_LABELS: Record<string, string> = {
   unknown: "Original",
 };
 
+function formatAudienceType(audienceType?: string): string {
+  if (!audienceType) return "";
+  return audienceType.replace(/_/g, "-").toUpperCase();
+}
+
+function getAudienceBadgeStyle(audienceType?: string): string {
+  const normalized = audienceType?.toUpperCase().replace(/-/g, "_");
+  switch (normalized) {
+    case "IN_PERSON":
+      return "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400";
+    case "HYBRID":
+      return "bg-purple-50 text-purple-600 dark:bg-purple-950/60 dark:text-purple-400";
+    case "VIRTUAL":
+    case "ONLINE":
+      return "bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400";
+    default:
+      return "bg-muted text-muted-foreground";
+  }
+}
+
 interface PublicEventTabsProps {
   event: BevyEvent;
   firestoreSessions?: EventSession[];
@@ -217,7 +237,7 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
                   Breakout Sessions & Specialized Tracks
                 </h3>
               </div>
-              <div className="space-y-3">
+              <div className="space-y-3.5 sm:space-y-4">
                 {firestoreSessions.map((sess, idx) => {
                   const capacity = sess.capacity ?? 0;
                   const totalRegistered = sess.total_registered ?? 0;
@@ -232,23 +252,41 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
                   }
 
                   return (
-                    <Card
+                    <div
                       key={sess.id}
-                      className="border-border/60 bg-card shadow-2xs transition-all hover:bg-muted/10"
+                      className="rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-card p-4 sm:p-5 shadow-2xs transition-all hover:border-zinc-300 dark:hover:border-zinc-700"
                     >
-                      <CardContent className="flex flex-col justify-between gap-3 p-4 sm:flex-row sm:items-center">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline" className="text-[10px]">
-                              Track #{idx + 1}
+                      <div className="flex items-center gap-4 sm:gap-5">
+                        {/* Time slot / Track pill */}
+                        <div className="shrink-0">
+                          <span className="inline-flex items-center justify-center rounded-full bg-blue-50 px-3.5 py-1.5 font-medium text-blue-600 text-xs sm:text-sm tracking-tight dark:bg-blue-950/60 dark:text-blue-400">
+                            {sess.time_slot ?? `Track #${idx + 1}`}
+                          </span>
+                        </div>
+
+                        {/* Content column */}
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            {sess.time_slot && (
+                              <Badge variant="outline" className="text-[10px]">
+                                Track #{idx + 1}
+                              </Badge>
+                            )}
+                            <Badge variant={available ? "secondary" : "destructive"} className="text-[10px]">
+                              {sessionBadgeText}
                             </Badge>
-                            <h4 className="font-semibold text-foreground text-sm">{sess.title}</h4>
                           </div>
+
+                          <h5 className="font-semibold text-foreground text-sm sm:text-base leading-snug">
+                            {sess.title}
+                          </h5>
+
                           {sess.speaker_name && (
-                            <p className="text-[11px] font-medium text-foreground/80">
-                              Speaker: <span className="text-foreground">{sess.speaker_name}</span>
+                            <p className="text-muted-foreground text-xs">
+                              Speaker: <span className="font-medium text-foreground">{sess.speaker_name}</span>
                             </p>
                           )}
+
                           {sess.description && (
                             <div
                               className="prose prose-xs dark:prose-invert max-w-none text-muted-foreground text-xs leading-relaxed [&_a]:text-primary [&_a]:underline [&_ol]:list-decimal [&_ol]:pl-4 [&_ul]:list-disc [&_ul]:pl-4"
@@ -256,12 +294,8 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
                               dangerouslySetInnerHTML={{ __html: sess.description }}
                             />
                           )}
+
                           <div className="flex flex-wrap items-center gap-3 pt-0.5 text-[11px] text-muted-foreground">
-                            {sess.time_slot && (
-                              <span className="flex items-center gap-1">
-                                <Clock className="size-3" /> {sess.time_slot}
-                              </span>
-                            )}
                             {(sess.location || sess.location_url) &&
                               (sess.location_url ? (
                                 <a
@@ -284,7 +318,7 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
 
                           {/* Speaker Presentation Slides & Related Links */}
                           {(sess.slides_url || (sess.related_links && sess.related_links.length > 0)) && (
-                            <div className="flex flex-wrap items-center gap-2 border-border/40 border-t pt-2">
+                            <div className="flex flex-wrap items-center gap-2 border-border/40 border-t pt-2 mt-2">
                               {sess.slides_url && (
                                 <Button
                                   asChild
@@ -315,14 +349,8 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
                             </div>
                           )}
                         </div>
-
-                        <div className="shrink-0 self-start sm:self-center">
-                          <Badge variant={available ? "secondary" : "destructive"} className="text-xs">
-                            {sessionBadgeText}
-                          </Badge>
-                        </div>
-                      </CardContent>
-                    </Card>
+                      </div>
+                    </div>
                   );
                 })}
               </div>
@@ -336,30 +364,45 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
                 const items = day.items ?? day.agenda ?? [];
                 if (items.length === 0) return null;
                 return (
-                  <div key={day.title ?? `day-${dIdx + 1}`} className="space-y-3">
-                    {day.title && <h4 className="font-bold text-base text-foreground tracking-tight">{day.title}</h4>}
-                    <div className="space-y-2.5">
+                  <div key={day.title ?? `day-${dIdx + 1}`} className="space-y-3.5">
+                    {day.title && (
+                      <div className="flex items-center gap-2 pt-1">
+                        <div className="h-4 w-1 rounded-full bg-primary" />
+                        <h4 className="font-bold text-base text-foreground tracking-tight">{day.title}</h4>
+                      </div>
+                    )}
+                    <div className="space-y-3 sm:space-y-3.5">
                       {items.map((item, itemIdx) => (
-                        <Card
+                        <div
                           key={`${item.time}-${item.activity}-${itemIdx}`}
-                          className="border-border/60 bg-card p-4 shadow-2xs"
+                          className="rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-card p-4 sm:p-5 shadow-2xs transition-all hover:border-zinc-300 dark:hover:border-zinc-700"
                         >
-                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                          <div className="flex items-center gap-4 sm:gap-5">
+                            {/* Time Pill Badge (matches KawalEvent app) */}
                             <div className="shrink-0">
-                              <Badge variant="secondary" className="font-mono text-xs">
-                                <Clock className="mr-1 size-3" />
+                              <span className="inline-flex items-center justify-center rounded-full bg-blue-50 px-3.5 py-1.5 font-medium text-blue-600 text-xs sm:text-sm tracking-tight dark:bg-blue-950/60 dark:text-blue-400">
                                 {item.time}
-                              </Badge>
+                              </span>
                             </div>
-                            <div className="flex-1 space-y-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <h5 className="font-semibold text-foreground text-sm">{item.activity}</h5>
-                                {item.audience_type && (
-                                  <Badge variant="outline" className="text-[10px]">
-                                    {item.audience_type}
-                                  </Badge>
-                                )}
-                              </div>
+
+                            {/* Content Column */}
+                            <div className="min-w-0 flex-1 space-y-1">
+                              {item.audience_type && (
+                                <div>
+                                  <span
+                                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 font-semibold text-[10px] sm:text-[11px] uppercase tracking-wider ${getAudienceBadgeStyle(
+                                      item.audience_type,
+                                    )}`}
+                                  >
+                                    {formatAudienceType(item.audience_type)}
+                                  </span>
+                                </div>
+                              )}
+
+                              <h5 className="font-semibold text-foreground text-sm sm:text-base leading-snug">
+                                {item.activity}
+                              </h5>
+
                               {item.description && (
                                 <p className="text-muted-foreground text-xs leading-relaxed whitespace-pre-line">
                                   {item.description}
@@ -368,7 +411,7 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
 
                               {/* Speaker Slides & Related Links if any */}
                               {(item.slides_url || (item.related_links && item.related_links.length > 0)) && (
-                                <div className="flex flex-wrap items-center gap-2 border-border/40 border-t pt-2">
+                                <div className="flex flex-wrap items-center gap-2 border-border/40 border-t pt-2 mt-2">
                                   {item.slides_url && (
                                     <Button
                                       asChild
@@ -402,7 +445,7 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
                               )}
                             </div>
                           </div>
-                        </Card>
+                        </div>
                       ))}
                     </div>
                   </div>
