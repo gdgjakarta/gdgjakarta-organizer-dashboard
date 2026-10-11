@@ -20,6 +20,7 @@ import {
   MapPin,
   Radio,
   RefreshCw,
+  TrendingDown,
   UserCheck,
   Users,
   XCircle,
@@ -53,39 +54,39 @@ interface EventDetailHeaderProps {
 export function EventDetailHeader({
   event,
   totalRegistrations,
-  totalApproved,
+  totalApproved: initialTotalApproved,
   totalRejected = 0,
   totalPending = 0,
   totalWaitlisted = 0,
-  totalCheckedIn = 0,
+  totalCheckedIn: initialTotalCheckedIn = 0,
 }: EventDetailHeaderProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [liveTotals, setLiveTotals] = useState({
     totalRegistrations,
-    totalApproved,
+    totalApproved: initialTotalApproved,
     totalRejected,
     totalPending,
     totalWaitlisted,
-    totalCheckedIn: totalCheckedIn ?? event.total_checked_in ?? 0,
+    totalCheckedIn: initialTotalCheckedIn ?? event.total_checked_in ?? 0,
   });
 
   useEffect(() => {
     setLiveTotals({
       totalRegistrations,
-      totalApproved,
+      totalApproved: initialTotalApproved,
       totalRejected,
       totalPending,
       totalWaitlisted,
-      totalCheckedIn: totalCheckedIn ?? event.total_checked_in ?? 0,
+      totalCheckedIn: initialTotalCheckedIn ?? event.total_checked_in ?? 0,
     });
   }, [
     totalRegistrations,
-    totalApproved,
+    initialTotalApproved,
     totalRejected,
     totalPending,
     totalWaitlisted,
-    totalCheckedIn,
+    initialTotalCheckedIn,
     event.total_checked_in,
   ]);
 
@@ -196,6 +197,12 @@ export function EventDetailHeader({
 
   const { isVirtual, isHybrid } = resolveEventAudience(event.audience_type, event.is_virtual);
   const liveBevyUrl = getBevyLiveEventUrl(event);
+
+  const totalApproved = liveTotals.totalApproved;
+  const totalCheckedIn = liveTotals.totalCheckedIn;
+  const droppedCount = Math.max(0, totalApproved - totalCheckedIn);
+  const dropRateNumber = totalApproved > 0 ? (droppedCount / totalApproved) * 100 : 0;
+  const formattedDropRate = `${dropRateNumber % 1 === 0 ? dropRateNumber.toFixed(0) : dropRateNumber.toFixed(1)}%`;
 
   const handleCopyLivePage = () => {
     if (!event.id) return;
@@ -320,6 +327,26 @@ export function EventDetailHeader({
               <UserCheck className="size-4" />
               <strong>{liveTotals.totalCheckedIn}</strong> Checked In
             </span>
+            {totalApproved > 0 && (
+              <>
+                <span>•</span>
+                <span
+                  className={cn(
+                    "flex items-center gap-1.5",
+                    dropRateNumber > 60
+                      ? "text-rose-600 dark:text-rose-400"
+                      : dropRateNumber > 35
+                        ? "text-amber-600 dark:text-amber-400"
+                        : "text-emerald-600 dark:text-emerald-400",
+                  )}
+                  title={`${droppedCount} approved attendee${droppedCount === 1 ? "" : "s"} not checked in`}
+                >
+                  <TrendingDown className="size-4" />
+                  <strong>{formattedDropRate}</strong> Drop Rate
+                  <span className="text-muted-foreground text-xs font-normal">({droppedCount} no-show)</span>
+                </span>
+              </>
+            )}
             <span>•</span>
             <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
               <Clock className="size-4" />

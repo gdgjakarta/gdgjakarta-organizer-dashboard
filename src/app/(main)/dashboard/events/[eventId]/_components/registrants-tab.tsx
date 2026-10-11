@@ -970,7 +970,15 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       // "all" matches ANY status without exception
       let matchesStatus = filterStatus === "all";
       if (!matchesStatus) {
-        if (filterStatus === "checked_in") {
+        if (filterStatus === "not_checked_in") {
+          const isApproved =
+            regStatus === "approved" ||
+            regStatus === "attended" ||
+            regStatus === "confirmed" ||
+            regStatus === "registered";
+          const isCheckedIn = Boolean(reg.is_checked_in) || regStatus === "attended";
+          matchesStatus = isApproved && !isCheckedIn;
+        } else if (filterStatus === "checked_in") {
           matchesStatus = Boolean(reg.is_checked_in) || regStatus === "attended";
         } else if (filterStatus === "approved") {
           matchesStatus =
@@ -1828,6 +1836,14 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     }
   };
 
+  const handleClearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+  }, []);
+
+  const handleSelectAllFiltered = useCallback(() => {
+    setSelectedIds(new Set(filtered.map((r) => r.id)));
+  }, [filtered]);
+
   const toggleSelectRow = (id: string) => {
     const next = new Set(selectedIds);
     if (next.has(id)) {
@@ -1968,130 +1984,198 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       />
 
       <Card>
-        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <CardTitle className="text-lg">
-              Registrants & Attendance Filtration ({isLoading ? "..." : filtered.length}
-              {!isLoading && registrationsList.length > 0 && filtered.length !== registrationsList.length
-                ? ` of ${registrationsList.length}`
-                : ""}
-              )
-            </CardTitle>
-            <CardDescription>
-              Review attendee applications, session tracks, and approve or reject participants.
-            </CardDescription>
+        <CardHeader className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle className="text-lg">
+                Registrants & Attendance Filtration ({isLoading ? "..." : filtered.length}
+                {!isLoading && registrationsList.length > 0 && filtered.length !== registrationsList.length
+                  ? ` of ${registrationsList.length}`
+                  : ""}
+                )
+              </CardTitle>
+              <CardDescription>
+                Review attendee applications, session tracks, and approve or reject participants.
+              </CardDescription>
+            </div>
           </div>
 
           {/* Batch Actions Toolbar */}
           {selectedIds.size > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="font-medium text-muted-foreground text-xs">{selectedIds.size} selected:</span>
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-1 text-emerald-600 dark:text-emerald-400"
-                onClick={() => handleBatchAction("approved")}
-                disabled={isPending || isBatchApproving || isBatchRejecting || isBatchResendingInterest}
-              >
-                {isBatchApproving ? <Loader2 className="size-3.5 animate-spin" /> : <UserCheck className="size-3.5" />}
-                Approve Selected
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-1 text-amber-600 dark:text-amber-400"
-                onClick={() => handleBatchAction("pending")}
-                disabled={
-                  isPending || isBatchApproving || isBatchRejecting || isBatchResendingInterest || hasApprovedSelected
-                }
-                title={hasApprovedSelected ? "Cannot modify status of approved attendees" : undefined}
-              >
-                <Clock className="size-3.5" />
-                Set Pending
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-1 text-blue-600 dark:text-blue-400"
-                onClick={() => handleBatchAction("waitlisted")}
-                disabled={
-                  isPending || isBatchApproving || isBatchRejecting || isBatchResendingInterest || hasApprovedSelected
-                }
-                title={hasApprovedSelected ? "Cannot modify status of approved attendees" : undefined}
-              >
-                <Hourglass className="size-3.5" />
-                Waitlist Selected
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-1 text-destructive"
-                onClick={() => handleBatchAction("rejected")}
-                disabled={
-                  isPending ||
-                  isDeleting ||
-                  isBatchApproving ||
-                  isBatchRejecting ||
-                  isBatchResendingInterest ||
-                  hasApprovedSelected
-                }
-                title={hasApprovedSelected ? "Cannot modify status of approved attendees" : undefined}
-              >
-                {isBatchRejecting ? <Loader2 className="size-3.5 animate-spin" /> : <UserX className="size-3.5" />}
-                Reject Selected
-              </Button>
-              {pendingSelectedCount > 0 && (
+            <div className="flex flex-col gap-2.5 rounded-lg border border-primary/20 bg-primary/5 p-2.5 sm:flex-row sm:items-center sm:justify-between dark:border-primary/20 dark:bg-primary/10">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge
+                  variant="outline"
+                  className="gap-1.5 border-primary/30 bg-background px-2.5 py-1 font-semibold text-foreground text-xs shadow-2xs"
+                >
+                  <span className="relative flex size-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+                    <span className="relative inline-flex size-2 rounded-full bg-primary" />
+                  </span>
+                  <span>
+                    {selectedIds.size} {selectedIds.size === 1 ? "attendee" : "attendees"} selected
+                  </span>
+                </Badge>
+
+                {selectedIds.size < filtered.length && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleSelectAllFiltered}
+                    className="h-7 text-muted-foreground text-xs hover:text-foreground"
+                  >
+                    Select all ({filtered.length})
+                  </Button>
+                )}
+
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={handleClearSelection}
+                  className="h-7 gap-1 text-muted-foreground text-xs hover:text-foreground"
+                >
+                  <X className="size-3.5" />
+                  Clear
+                </Button>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Button
+                  size="sm"
+                  className="h-8 gap-1.5 bg-emerald-600 font-medium text-white shadow-2xs hover:bg-emerald-700"
+                  onClick={() => handleBatchAction("approved")}
+                  disabled={isPending || isBatchApproving || isBatchRejecting || isBatchResendingInterest}
+                  title="Approve selected attendee registrations"
+                >
+                  {isBatchApproving ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <UserCheck className="size-3.5" />
+                  )}
+                  <span>Approve</span>
+                </Button>
+
                 <Button
                   size="sm"
                   variant="outline"
-                  className="gap-1 text-primary hover:bg-primary/10"
-                  onClick={() => void handleBatchResendInterestEmail()}
-                  disabled={isPending || isDeleting || isBatchApproving || isBatchRejecting || isBatchResendingInterest}
-                  title="Resend interest email to selected pending attendees"
+                  className="h-8 gap-1.5 border-blue-500/30 text-blue-600 hover:bg-blue-500/10 dark:text-blue-400"
+                  onClick={() => handleBatchAction("waitlisted")}
+                  disabled={
+                    isPending || isBatchApproving || isBatchRejecting || isBatchResendingInterest || hasApprovedSelected
+                  }
+                  title={
+                    hasApprovedSelected
+                      ? "Cannot modify status of approved attendees"
+                      : "Set selected attendees to Waitlisted"
+                  }
                 >
-                  {isBatchResendingInterest ? (
-                    <Loader2 className="size-3.5 animate-spin" />
-                  ) : (
-                    <Mail className="size-3.5" />
-                  )}
-                  Resend Interest ({pendingSelectedCount})
+                  <Hourglass className="size-3.5" />
+                  <span>Waitlist</span>
                 </Button>
-              )}
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-1 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                onClick={() => setIsBatchCancelConfirmOpen(true)}
-                disabled={
-                  isPending ||
-                  isDeleting ||
-                  isCancelling ||
-                  isBatchApproving ||
-                  isBatchRejecting ||
-                  isBatchResendingInterest
-                }
-                title="Cancel registrations and send notification emails to selected attendees"
-              >
-                {isCancelling ? <Loader2 className="size-3.5 animate-spin" /> : <UserX className="size-3.5" />}
-                Cancel Selected
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="gap-1 text-muted-foreground hover:bg-muted/50"
-                onClick={() => setIsBatchDeleteConfirmOpen(true)}
-                disabled={
-                  isPending ||
-                  isDeleting ||
-                  isCancelling ||
-                  isBatchApproving ||
-                  isBatchRejecting ||
-                  isBatchResendingInterest
-                }
-              >
-                <Trash2 className="size-3.5" />
-                Remove Selected
-              </Button>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 gap-1.5 border-amber-500/30 text-amber-600 hover:bg-amber-500/10 dark:text-amber-400"
+                  onClick={() => handleBatchAction("pending")}
+                  disabled={
+                    isPending || isBatchApproving || isBatchRejecting || isBatchResendingInterest || hasApprovedSelected
+                  }
+                  title={
+                    hasApprovedSelected
+                      ? "Cannot modify status of approved attendees"
+                      : "Set selected attendees back to Pending"
+                  }
+                >
+                  <Clock className="size-3.5" />
+                  <span>Pending</span>
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10"
+                  onClick={() => handleBatchAction("rejected")}
+                  disabled={
+                    isPending ||
+                    isDeleting ||
+                    isBatchApproving ||
+                    isBatchRejecting ||
+                    isBatchResendingInterest ||
+                    hasApprovedSelected
+                  }
+                  title={
+                    hasApprovedSelected
+                      ? "Cannot modify status of approved attendees"
+                      : "Reject selected attendee applications"
+                  }
+                >
+                  {isBatchRejecting ? <Loader2 className="size-3.5 animate-spin" /> : <UserX className="size-3.5" />}
+                  <span>Reject</span>
+                </Button>
+
+                {pendingSelectedCount > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 gap-1.5 border-primary/30 text-primary hover:bg-primary/10"
+                    onClick={() => void handleBatchResendInterestEmail()}
+                    disabled={
+                      isPending || isDeleting || isBatchApproving || isBatchRejecting || isBatchResendingInterest
+                    }
+                    title="Resend interest email to selected pending attendees"
+                  >
+                    {isBatchResendingInterest ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <Mail className="size-3.5" />
+                    )}
+                    <span>Resend Interest ({pendingSelectedCount})</span>
+                  </Button>
+                )}
+
+                <div className="mx-0.5 hidden h-4 w-px bg-border/80 sm:block" />
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  onClick={() => setIsBatchCancelConfirmOpen(true)}
+                  disabled={
+                    isPending ||
+                    isDeleting ||
+                    isCancelling ||
+                    isBatchApproving ||
+                    isBatchRejecting ||
+                    isBatchResendingInterest
+                  }
+                  title="Cancel registrations and send notification emails to selected attendees"
+                >
+                  {isCancelling ? <Loader2 className="size-3.5 animate-spin" /> : <UserX className="size-3.5" />}
+                  <span>Cancel</span>
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 gap-1.5 border-border/70 text-muted-foreground hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+                  onClick={() => setIsBatchDeleteConfirmOpen(true)}
+                  disabled={
+                    isPending ||
+                    isDeleting ||
+                    isCancelling ||
+                    isBatchApproving ||
+                    isBatchRejecting ||
+                    isBatchResendingInterest
+                  }
+                  title="Permanently remove selected attendee records"
+                >
+                  <Trash2 className="size-3.5" />
+                  <span>Remove</span>
+                </Button>
+              </div>
             </div>
           )}
         </CardHeader>
@@ -2123,6 +2207,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                     <SelectItem value="pending">Pending Review</SelectItem>
                     <SelectItem value="approved">Approved</SelectItem>
                     <SelectItem value="checked_in">Checked In</SelectItem>
+                    <SelectItem value="not_checked_in">Not Checked In (Drop)</SelectItem>
                     <SelectItem value="waitlisted">Waitlisted</SelectItem>
                     <SelectItem value="rejected">Rejected</SelectItem>
                   </SelectGroup>
@@ -2293,7 +2378,9 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                     Status:{" "}
                     {statusFilter === "checked_in"
                       ? "Checked In"
-                      : STATUS_VARIANTS[statusFilter as RegistrationStatus]?.label || statusFilter}
+                      : statusFilter === "not_checked_in"
+                        ? "Not Checked In (Drop)"
+                        : STATUS_VARIANTS[statusFilter as RegistrationStatus]?.label || statusFilter}
                   </span>
                   <button
                     type="button"
@@ -2460,7 +2547,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                           </p>
                           <p className="max-w-md text-muted-foreground text-xs leading-relaxed">
                             {statusFilter !== "all"
-                              ? `No applicants currently have status "${statusFilter === "checked_in" ? "Checked In" : STATUS_VARIANTS[statusFilter as RegistrationStatus]?.label || statusFilter}".`
+                              ? `No applicants currently have status "${statusFilter === "checked_in" ? "Checked In" : statusFilter === "not_checked_in" ? "Not Checked In (Drop)" : STATUS_VARIANTS[statusFilter as RegistrationStatus]?.label || statusFilter}".`
                               : "No applicants match your search criteria."}
                           </p>
                           <Button

@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 
-import { BarChart3, Clock, Hourglass, Layers, UserCheck, Users, UserX } from "lucide-react";
+import { BarChart3, Clock, Hourglass, Layers, TrendingDown, UserCheck, Users, UserX } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -77,8 +77,8 @@ export function RegistrantStatistics({
 }: RegistrantStatisticsProps) {
   // Primary selected field to analyze in detail
   const [selectedField, setSelectedField] = useState<string>("professional_background");
-  // Scope: analyze all registrants, approved only, or checked in only
-  const [analysisScope, setAnalysisScope] = useState<"all" | "approved" | "checked_in">("all");
+  // Scope: analyze all registrants, approved only, checked in only, or not checked in (drop)
+  const [analysisScope, setAnalysisScope] = useState<"all" | "approved" | "checked_in" | "not_checked_in">("all");
   // Organizer can pin multiple fields to display comparison overview cards
   const [pinnedFields, setPinnedFields] = useState<string[]>(["professional_background"]);
 
@@ -97,6 +97,13 @@ export function RegistrantStatistics({
       return Boolean(r.is_checked_in) || s === "attended";
     }).length;
   }, [registrations]);
+
+  const totalDropped = useMemo(() => {
+    return Math.max(0, totalApproved - totalCheckedIn);
+  }, [totalApproved, totalCheckedIn]);
+
+  const dropRateNumber = totalApproved > 0 ? (totalDropped / totalApproved) * 100 : 0;
+  const formattedDropRate = `${dropRateNumber % 1 === 0 ? dropRateNumber.toFixed(0) : dropRateNumber.toFixed(1)}%`;
 
   const totalRejected = useMemo(() => {
     return registrations.filter((r) => (r.status || "").toLowerCase().trim() === "rejected").length;
@@ -223,6 +230,14 @@ export function RegistrantStatistics({
       return registrations.filter((r) => {
         const s = (r.status ?? "").toLowerCase().trim();
         return Boolean(r.is_checked_in) || s === "attended";
+      });
+    }
+    if (analysisScope === "not_checked_in") {
+      return registrations.filter((r) => {
+        const s = (r.status ?? "").toLowerCase().trim();
+        const isApproved = s === "approved" || s === "attended" || s === "confirmed" || s === "registered";
+        const isCheckedIn = Boolean(r.is_checked_in) || s === "attended";
+        return isApproved && !isCheckedIn;
       });
     }
     return registrations;
@@ -621,17 +636,55 @@ export function RegistrantStatistics({
               <span className="font-medium">Checked In</span>
               <UserCheck className="size-4 text-purple-600 dark:text-purple-400" />
             </div>
-            <div className="mt-2 font-bold text-2xl tracking-tight text-purple-600 dark:text-purple-400 sm:text-3xl">
-              {totalCheckedIn}
+            <div className="mt-2 flex items-baseline justify-between">
+              <div className="font-bold text-2xl tracking-tight text-purple-600 dark:text-purple-400 sm:text-3xl">
+                {totalCheckedIn}
+              </div>
+              {totalApproved > 0 && (
+                <div
+                  className="flex items-center gap-0.5 text-xs"
+                  title={`${totalDropped} of ${totalApproved} approved attendees not checked in`}
+                >
+                  <TrendingDown
+                    className={cn(
+                      "size-3.5",
+                      dropRateNumber > 60
+                        ? "text-rose-500"
+                        : dropRateNumber > 35
+                          ? "text-amber-500"
+                          : "text-emerald-500",
+                    )}
+                  />
+                  <span
+                    className={cn(
+                      "font-semibold tabular-nums",
+                      dropRateNumber > 60
+                        ? "text-rose-600 dark:text-rose-400"
+                        : dropRateNumber > 35
+                          ? "text-amber-600 dark:text-amber-400"
+                          : "text-emerald-600 dark:text-emerald-400",
+                    )}
+                  >
+                    {formattedDropRate}
+                  </span>
+                  <span className="text-muted-foreground text-[10px]">drop</span>
+                </div>
+              )}
             </div>
-            <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
               <Badge
                 variant="outline"
                 className="border-purple-500/20 bg-purple-500/10 px-1.5 py-0 font-semibold text-[10px] text-purple-600 dark:text-purple-400"
               >
                 {checkedInPercent}%
               </Badge>
-              <span>{totalApproved > 0 ? "of approved" : "of total"}</span>
+              <span>turnout</span>
+              {totalApproved > 0 && (
+                <>
+                  <span>•</span>
+                  <span>{totalDropped} no-show</span>
+                </>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -773,6 +826,19 @@ export function RegistrantStatistics({
                   )}
                 >
                   Checked In ({totalCheckedIn})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAnalysisScope("not_checked_in")}
+                  className={cn(
+                    "rounded-md px-2.5 py-1 font-medium transition-colors",
+                    analysisScope === "not_checked_in"
+                      ? "bg-background text-foreground shadow-xs"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                  title="Approved attendees who have not checked in"
+                >
+                  Not Checked In ({totalDropped})
                 </button>
               </div>
 
