@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { CapacityFullDialog } from "@/components/capacity-full-dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -55,6 +56,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { BevyAttendee } from "@/lib/bevy/types";
 import { buildApprovedAttendeePayload } from "@/lib/events/approved-attendee-webhook";
+import { validateAttendeeApprovalCapacity, validateBatchApprovalCapacity } from "@/lib/events/capacity-validator";
 import { DEFAULT_COMBINED_QUESTIONS } from "@/lib/events/registration-defaults";
 import {
   deleteBatchEventRegistrationsAction,
@@ -345,6 +347,25 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const [cancelConfirmRegistration, setCancelConfirmRegistration] = useState<FirestoreRegistration | null>(null);
   const [isBatchCancelConfirmOpen, setIsBatchCancelConfirmOpen] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [capacityAlert, setCapacityAlert] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    reason?: "venue_full" | "session_full";
+    attendeeName?: string;
+    attendeeEmail?: string;
+    sessionTitle?: string;
+    currentCount?: number;
+    maxCapacity?: number;
+    batchOverreachedItems?: Array<{
+      type: "venue" | "session";
+      title: string;
+      currentApproved: number;
+      maxCapacity: number;
+      requestedToApprove: number;
+      exceededBy: number;
+    }>;
+  } | null>(null);
 
   // Dynamic table column customization and question filters
   const [selectedQuestionColumns, setSelectedQuestionColumns] = useState<string[]>([]);
@@ -1115,6 +1136,35 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       return;
     }
 
+    // 1. Validate Venue & Session Capacity before triggering approval
+    const validation = validateAttendeeApprovalCapacity({
+      event: currentEvent,
+      registration,
+      registrationsList,
+    });
+
+    if (!validation.allowed) {
+      setCapacityAlert({
+        open: true,
+        title: validation.title,
+        message: validation.message,
+        reason: validation.reason,
+        attendeeName: registration.member_name,
+        attendeeEmail: registration.member_email,
+        sessionTitle: validation.session?.title,
+        currentCount:
+          validation.reason === "venue_full"
+            ? validation.venue.currentCount
+            : (validation.session?.currentCount ?? validation.venue.currentCount),
+        maxCapacity:
+          validation.reason === "venue_full"
+            ? (validation.venue.capacity ?? undefined)
+            : (validation.session?.capacity ?? validation.venue.capacity ?? undefined),
+      });
+      toast.error(`Cannot approve applicant: ${validation.title}`);
+      return;
+    }
+
     setApprovingRegistrationId(registration.id);
     try {
       const payload = buildApprovedAttendeePayload(registration, currentEvent);
@@ -1364,6 +1414,26 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     const toApprove = registrationsList.filter((r) => selectedIds.has(r.id) && r.status !== "approved");
     if (toApprove.length === 0) {
       toast.info("All selected attendees are already approved.");
+      return;
+    }
+
+    // 1. Validate Venue & Session Capacity before triggering batch approval
+    const batchValidation = validateBatchApprovalCapacity({
+      event: currentEvent,
+      toApprove,
+      registrationsList,
+    });
+
+    if (!batchValidation.allowed) {
+      setCapacityAlert({
+        open: true,
+        title: batchValidation.title || "Capacity Exceeded for Selected Applicants",
+        message:
+          batchValidation.message || "Approving all selected applicants would exceed the configured capacity limit.",
+        reason: batchValidation.overreachedItems[0]?.type === "venue" ? "venue_full" : "session_full",
+        batchOverreachedItems: batchValidation.overreachedItems,
+      });
+      toast.error(batchValidation.title || "Cannot batch approve: capacity would be exceeded.");
       return;
     }
 
@@ -3145,6 +3215,31 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Capacity Limit Error Dialog */}
+      {capacityAlert && (
+        <CapacityFullDialog
+          open={capacityAlert.open}
+          onOpenChange={(open) => setCapacityAlert((prev) => (prev ? { ...prev, open } : null))}
+          mode="organizer"
+          title={capacityAlert.title}
+          message={capacityAlert.message}
+          reason={capacityAlert.reason}
+          attendeeName={capacityAlert.attendeeName}
+          attendeeEmail={capacityAlert.attendeeEmail}
+          sessionTitle={capacityAlert.sessionTitle}
+          currentCount={capacityAlert.currentCount}
+          maxCapacity={capacityAlert.maxCapacity}
+          venueName={currentEvent?.venue?.name}
+          batchOverreachedItems={capacityAlert.batchOverreachedItems}
+          onGoToSettings={() => {
+            const formTabTrigger = document.querySelector<HTMLButtonElement>(
+              '[data-slot="tabs-trigger"][value="form"], button[value="form"]',
+            );
+            formTabTrigger?.click();
+          }}
+        />
+      )}
     </div>
   );
 }

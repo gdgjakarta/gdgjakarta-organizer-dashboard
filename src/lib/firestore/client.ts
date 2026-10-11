@@ -394,15 +394,54 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
     console.warn("[Firestore] Could not load event document in registerMemberForEvent:", eventErr);
   }
 
-  // Validate session capacity if session_id is provided
-  if (registration.session_id && eventData) {
-    const matchingSession = eventData.sessions?.find((s) => s.id === registration.session_id);
-    if (matchingSession && matchingSession.capacity > 0) {
-      const currentCount = matchingSession.total_registered || 0;
-      if (currentCount >= matchingSession.capacity) {
-        throw new Error(
-          `The session "${matchingSession.title}" has reached its maximum capacity (${matchingSession.capacity} attendees). Please select an alternate session.`,
-        );
+  // Validate venue, session, and ticket capacity
+  if (eventData) {
+    // 1. Venue capacity check
+    const venueCapacity =
+      typeof eventData.max_attendees === "number" && eventData.max_attendees > 0
+        ? eventData.max_attendees
+        : Array.isArray(eventData.sessions) && eventData.sessions.length > 0
+          ? eventData.sessions.reduce((acc, s) => acc + (Number(s.capacity) || 0), 0)
+          : null;
+
+    if (venueCapacity !== null && venueCapacity > 0) {
+      const isCurated = Boolean(eventData.requires_approval || eventData.curation_mode);
+      if (isCurated) {
+        if ((eventData.total_approved ?? 0) >= venueCapacity) {
+          throw new Error(
+            `Registration is already full. The venue capacity (${venueCapacity} approved attendees) has been reached.`,
+          );
+        }
+      } else {
+        if ((eventData.total_registrations ?? 0) >= venueCapacity) {
+          throw new Error(
+            `Registration is already full. The maximum capacity of ${venueCapacity} attendees has been reached.`,
+          );
+        }
+      }
+    }
+
+    // 2. Session capacity check
+    if (registration.session_id) {
+      const matchingSession = eventData.sessions?.find((s) => s.id === registration.session_id);
+      if (matchingSession && matchingSession.capacity > 0) {
+        const currentCount = matchingSession.total_registered || 0;
+        if (currentCount >= matchingSession.capacity) {
+          throw new Error(
+            `The session "${matchingSession.title}" has reached its maximum capacity (${matchingSession.capacity} attendees). Please select an alternate session.`,
+          );
+        }
+      }
+    }
+
+    // 3. Ticket capacity check
+    if (registration.ticket_id && eventData.tickets) {
+      const matchingTicket = eventData.tickets.find((t) => t.id === registration.ticket_id);
+      if (matchingTicket && typeof matchingTicket.capacity === "number" && matchingTicket.capacity > 0) {
+        const currentTicketCount = matchingTicket.total_registered || 0;
+        if (currentTicketCount >= matchingTicket.capacity) {
+          throw new Error(`The ticket tier "${matchingTicket.name}" is sold out (${matchingTicket.capacity} tickets).`);
+        }
       }
     }
   }
