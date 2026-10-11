@@ -2,7 +2,20 @@
 
 import { useEffect, useState } from "react";
 
-import { Image as ImageIcon, Package, Plus, Trash2, X } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  Image as ImageIcon,
+  Package,
+  Plus,
+  Ruler,
+  SlidersHorizontal,
+  Sparkles,
+  Star,
+  Trash2,
+  X,
+} from "lucide-react";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,6 +32,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { VARIATION_TEMPLATES } from "@/lib/events/merchandise-templates";
 import type { EventMerchandiseItem, MerchandiseVariation } from "@/lib/firestore/types";
 
 interface MerchandiseItemDialogProps {
@@ -39,18 +53,65 @@ const COMMON_TAGS = [
   "Desk Accessory",
 ];
 
+const PRESET_GUIDELINE_TEMPLATES = {
+  tshirt: {
+    title: "T-Shirt Sizing Guideline (Unisex)",
+    text: `Size Chart (Chest Width x Body Length in cm):
+• S: 48 cm x 68 cm
+• M: 50 cm x 70 cm
+• L: 52 cm x 72 cm
+• XL: 54 cm x 74 cm
+• 2XL: 56 cm x 76 cm
+• 3XL: 58 cm x 78 cm
+
+Material: 100% Cotton Combed 24s. Soft, preshrunk fabric.
+Tolerance: ±1.5 cm due to sewing measurements.`,
+    imageUrl: "https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=800&auto=format&fit=crop&q=80",
+  },
+  hoodie: {
+    title: "Hoodie & Jacket Sizing Guideline",
+    text: `Measurements in cm (Chest Width x Body Length x Sleeve):
+• M: 52 cm x 68 cm x 60 cm
+• L: 55 cm x 71 cm x 62 cm
+• XL: 58 cm x 74 cm x 64 cm
+• 2XL: 61 cm x 77 cm x 66 cm
+
+Material: Heavyweight 330gsm Cotton Fleece with warm inner brushed lining.`,
+    imageUrl: "https://images.unsplash.com/photo-1556905055-8f358a7a47b2?w=800&auto=format&fit=crop&q=80",
+  },
+  care: {
+    title: "Apparel Washing & Fabric Care Guideline",
+    text: `Garment Care Instructions:
+1. Machine wash cold with similar colors inside-out.
+2. Do not use chlorine bleach or strong chemical detergents.
+3. Tumble dry low or line dry in the shade to preserve garment shape.
+4. Iron on medium heat; never iron directly over printed or rubber artwork.`,
+    imageUrl: "",
+  },
+};
+
 export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: MerchandiseItemDialogProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [isFree, setIsFree] = useState(true);
   const [price, setPrice] = useState<number>(0);
   const [tag, setTag] = useState("Free Perk");
-  const [imageUrl, setImageUrl] = useState("");
+
+  // Multiple product images
+  const [images, setImages] = useState<string[]>([]);
+  const [newImageInput, setNewImageInput] = useState("");
+
   const [hasStockLimit, setHasStockLimit] = useState(false);
   const [stock, setStock] = useState<number | null>(null);
   const [maxPerPerson, setMaxPerPerson] = useState<number | null>(null);
   const [variations, setVariations] = useState<MerchandiseVariation[]>([]);
+  const [expandedVarDetails, setExpandedVarDetails] = useState<Record<number, boolean>>({});
   const [status, setStatus] = useState<"active" | "draft" | "out_of_stock">("active");
+
+  // Product Guideline fields (Text and/or Image, e.g. T-Shirt Size Guideline)
+  const [guidelineTitle, setGuidelineTitle] = useState("");
+  const [guidelineText, setGuidelineText] = useState("");
+  const [guidelineImageUrl, setGuidelineImageUrl] = useState("");
 
   // Temporary input states for adding variation options
   const [newVarName, setNewVarName] = useState("");
@@ -64,34 +125,129 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
       setIsFree(Boolean(item.is_free));
       setPrice(item.price || 0);
       setTag(item.tag || "Free Perk");
-      setImageUrl(item.image_url || "");
+
+      // Multiple images support with backwards compatibility
+      if (item.images && item.images.length > 0) {
+        setImages([...item.images]);
+      } else if (item.image_url) {
+        setImages([item.image_url]);
+      } else {
+        setImages([]);
+      }
+
       setHasStockLimit(item.stock !== null && item.stock !== undefined);
       setStock(item.stock ?? null);
       setMaxPerPerson(item.max_per_person ?? null);
-      setVariations(JSON.parse(JSON.stringify(item.variations)));
+      setVariations(JSON.parse(JSON.stringify(item.variations || [])));
       setStatus(item.status);
+
+      // Product guideline
+      setGuidelineTitle(item.guideline?.title ?? "");
+      setGuidelineText(item.guideline?.text ?? "");
+      setGuidelineImageUrl(item.guideline?.image_url ?? "");
     } else {
       setName("");
       setDescription("");
       setIsFree(true);
       setPrice(0);
       setTag("Free Perk");
-      setImageUrl("");
+      setImages([]);
       setHasStockLimit(false);
       setStock(null);
       setMaxPerPerson(null);
-      setVariations([{ name: "Size", options: ["S", "M", "L", "XL", "XXL"] }]);
+      setVariations([
+        {
+          name: "Size",
+          options: ["S", "M", "L", "XL", "2XL", "3XL"],
+          option_details: {
+            "2XL": { stock: 25 },
+            "3XL": { stock: 15 },
+          },
+        },
+      ]);
       setStatus("active");
+      setGuidelineTitle("");
+      setGuidelineText("");
+      setGuidelineImageUrl("");
     }
+    setNewImageInput("");
     setNewVarName("");
     setNewOptionInput({});
+    setExpandedVarDetails({});
   }, [item, open]);
 
+  // Image handlers
+  const handleAddImage = () => {
+    const trimmed = newImageInput.trim();
+    if (!trimmed) return;
+    if (images.includes(trimmed)) {
+      toast.error("Image URL already added.");
+      return;
+    }
+    setImages((prev) => [...prev, trimmed]);
+    setNewImageInput("");
+  };
+
+  const handleRemoveImage = (index: number) => {
+    setImages((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSetPrimaryImage = (index: number) => {
+    if (index === 0) return;
+    setImages((prev) => {
+      const copy = [...prev];
+      const [selected] = copy.splice(index, 1);
+      return [selected, ...copy];
+    });
+  };
+
+  // Variation handlers
   const handleAddVariationType = () => {
     const trimmed = newVarName.trim();
     if (!trimmed) return;
+    if (variations.some((v) => v.name.toLowerCase() === trimmed.toLowerCase())) {
+      toast.error(`Variation "${trimmed}" already exists.`);
+      return;
+    }
     setVariations((prev) => [...prev, { name: trimmed, options: [] }]);
     setNewVarName("");
+  };
+
+  const handleApplyVariationTemplate = (templateId: string) => {
+    const template = VARIATION_TEMPLATES.find((t) => t.id === templateId);
+    if (!template) return;
+
+    setVariations((prev) => {
+      const existingIdx = prev.findIndex((v) => v.name.toLowerCase() === template.variation.name.toLowerCase());
+      if (existingIdx >= 0) {
+        // Merge options
+        const copy = [...prev];
+        const existing = copy[existingIdx];
+        const mergedOptions = Array.from(new Set([...existing.options, ...template.variation.options]));
+        copy[existingIdx] = {
+          ...existing,
+          options: mergedOptions,
+          option_details: {
+            ...existing.option_details,
+            ...template.variation.option_details,
+          },
+        };
+        return copy;
+      }
+      return [...prev, JSON.parse(JSON.stringify(template.variation))];
+    });
+
+    // If guideline is currently empty and template has a default guideline, auto-fill it
+    if (template.defaultGuideline && !guidelineTitle && !guidelineText) {
+      setGuidelineTitle(template.defaultGuideline.title || "");
+      setGuidelineText(template.defaultGuideline.text || "");
+      if (template.defaultGuideline.image_url && !guidelineImageUrl) {
+        setGuidelineImageUrl(template.defaultGuideline.image_url);
+      }
+      toast.success(`Applied "${template.name}" variation & pre-filled Sizing Guideline!`);
+    } else {
+      toast.success(`Applied "${template.name}" variation template.`);
+    }
   };
 
   const handleRemoveVariationType = (index: number) => {
@@ -118,14 +274,76 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
       const target = copy[varIndex];
       if (target) {
         target.options = target.options.filter((o) => o !== optionToRemove);
+        if (target.option_details && target.option_details[optionToRemove]) {
+          const newDetails = { ...target.option_details };
+          delete newDetails[optionToRemove];
+          target.option_details = newDetails;
+        }
       }
       return copy;
     });
   };
 
+  // Option overrides (price, quota/stock, image_url)
+  const handleUpdateOptionDetail = (
+    vIdx: number,
+    optionName: string,
+    field: "price" | "stock" | "image_url",
+    value: string | number | null,
+  ) => {
+    setVariations((prev) => {
+      const copy = [...prev];
+      const target = { ...copy[vIdx] };
+      const details = { ...(target.option_details || {}) };
+      const currentOpt = { ...(details[optionName] || {}) };
+
+      if (field === "price") {
+        currentOpt.price = value === "" || value === null ? null : Number(value);
+      } else if (field === "stock") {
+        currentOpt.stock = value === "" || value === null ? null : Number(value);
+      } else if (field === "image_url") {
+        currentOpt.image_url = typeof value === "string" && value.trim() ? value.trim() : null;
+      }
+
+      // Cleanup empty objects
+      if (
+        (currentOpt.price === null || currentOpt.price === undefined) &&
+        (currentOpt.stock === null || currentOpt.stock === undefined) &&
+        !currentOpt.image_url
+      ) {
+        delete details[optionName];
+      } else {
+        details[optionName] = currentOpt;
+      }
+
+      target.option_details = details;
+      copy[vIdx] = target;
+      return copy;
+    });
+  };
+
+  const handleApplyPresetGuideline = (key: keyof typeof PRESET_GUIDELINE_TEMPLATES) => {
+    const preset = PRESET_GUIDELINE_TEMPLATES[key];
+    setGuidelineTitle(preset.title);
+    setGuidelineText(preset.text);
+    if (preset.imageUrl) {
+      setGuidelineImageUrl(preset.imageUrl);
+    }
+    toast.success(`Inserted ${preset.title}`);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim()) {
+      toast.error("Please enter an item name.");
+      return;
+    }
+
+    const cleanedImages = images.map((img) => img.trim()).filter((img) => img.length > 0);
+    const primaryImage = cleanedImages[0] || "";
+
+    const hasGuidelineContent =
+      guidelineTitle.trim().length > 0 || guidelineText.trim().length > 0 || guidelineImageUrl.trim().length > 0;
 
     const savedItem: EventMerchandiseItem = {
       id: item?.id ?? `merch-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -134,11 +352,19 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
       is_free: isFree,
       price: isFree ? 0 : Number(price) || 0,
       tag: tag.trim() || "Free Perk",
-      image_url: imageUrl.trim(),
+      image_url: primaryImage,
+      images: cleanedImages,
       stock: hasStockLimit && stock !== null ? Number(stock) : null,
       max_per_person: maxPerPerson && maxPerPerson > 0 ? Number(maxPerPerson) : null,
       variations: variations.filter((v) => v.name.trim().length > 0),
       status,
+      guideline: hasGuidelineContent
+        ? {
+            title: guidelineTitle.trim() || "Product Guideline",
+            text: guidelineText.trim() || undefined,
+            image_url: guidelineImageUrl.trim() || undefined,
+          }
+        : undefined,
       created_at: item?.created_at ?? new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -149,7 +375,7 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl md:max-w-2xl">
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-xl md:max-w-2xl">
         <form onSubmit={handleSubmit} className="space-y-6">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -157,7 +383,8 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
               {item ? "Edit Merchandise Item" : "Create Merchandise Item"}
             </DialogTitle>
             <DialogDescription>
-              Configure attendee perk or merchandise details, variations, and marketplace pricing.
+              Configure attendee perks or merchandise items, multiple photos, variation pricing/stock, and sizing
+              guidelines.
             </DialogDescription>
           </DialogHeader>
 
@@ -202,7 +429,7 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
 
               {!isFree ? (
                 <div className="space-y-1.5">
-                  <Label htmlFor="merch-price">Price (IDR) *</Label>
+                  <Label htmlFor="merch-price">Base Price (IDR) *</Label>
                   <Input
                     id="merch-price"
                     type="number"
@@ -213,6 +440,9 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
                     onChange={(e) => setPrice(Number(e.target.value))}
                     required
                   />
+                  <p className="text-muted-foreground text-[11px]">
+                    Can be overridden per variation (e.g. 2XL size +IDR 15,000).
+                  </p>
                 </div>
               ) : (
                 <div className="flex items-center justify-center rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-2 text-center text-xs font-medium text-emerald-600 dark:text-emerald-400">
@@ -260,42 +490,111 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
               <Textarea
                 id="merch-desc"
                 rows={3}
-                placeholder="Product specs, materials, sizing guidelines, or pickup instructions..."
+                placeholder="Product specs, materials, pickup instructions..."
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
               />
             </div>
 
-            {/* Image URL & Instant Preview */}
-            <div className="space-y-2">
-              <Label htmlFor="merch-image">Image URL</Label>
+            {/* Product Images (Multiple Supported) */}
+            <div className="space-y-3 rounded-xl border p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-semibold text-sm">Product Images</div>
+                  <div className="text-muted-foreground text-xs">
+                    Add multiple photos (front, back, lifestyle). The first image will be the primary catalog cover.
+                  </div>
+                </div>
+                <Badge variant="outline" className="text-[11px]">
+                  {images.length} {images.length === 1 ? "photo" : "photos"}
+                </Badge>
+              </div>
+
+              {/* Add Image Input */}
               <div className="flex gap-2">
                 <Input
                   id="merch-image"
-                  placeholder="https://example.com/photo.jpg"
-                  value={imageUrl}
-                  onChange={(e) => setImageUrl(e.target.value)}
+                  placeholder="Paste image URL (e.g. https://example.com/front.jpg)"
+                  value={newImageInput}
+                  onChange={(e) => setNewImageInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddImage();
+                    }
+                  }}
+                  className="h-8 text-xs"
                 />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  className="h-8 gap-1 text-xs shrink-0"
+                  onClick={handleAddImage}
+                >
+                  <Plus className="size-3" /> Add Photo
+                </Button>
               </div>
 
-              {imageUrl ? (
-                <div className="relative mt-2 h-40 w-full overflow-hidden rounded-lg border bg-muted">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  {/* biome-ignore lint/performance/noImgElement: user image preview */}
-                  <img
-                    src={imageUrl}
-                    alt="Preview"
-                    className="size-full object-cover"
-                    onError={(e) => {
-                      (e.currentTarget as HTMLImageElement).src =
-                        "https://placehold.co/600x400/202124/ffffff?text=Invalid+Image+URL";
-                    }}
-                  />
+              {/* Photos Gallery */}
+              {images.length > 0 ? (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 pt-1">
+                  {images.map((imgUrl, imgIdx) => (
+                    <div
+                      key={`${imgUrl}-${imgIdx}`}
+                      className="group relative flex flex-col overflow-hidden rounded-lg border bg-muted shadow-2xs"
+                    >
+                      <div className="relative aspect-square w-full overflow-hidden bg-background">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        {/* biome-ignore lint/performance/noImgElement: photo preview */}
+                        <img
+                          src={imgUrl}
+                          alt={`Merchandise preview ${imgIdx + 1}`}
+                          className="size-full object-cover transition-transform group-hover:scale-105"
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).src =
+                              "https://placehold.co/400x400/202124/ffffff?text=Broken+Image";
+                          }}
+                        />
+
+                        {/* Primary Badge */}
+                        {imgIdx === 0 && (
+                          <div className="absolute top-1.5 left-1.5">
+                            <Badge className="bg-primary text-primary-foreground text-[10px] gap-1 px-1.5 py-0 shadow-xs">
+                              <Star className="size-2.5 fill-current" /> Cover
+                            </Badge>
+                          </div>
+                        )}
+
+                        {/* Actions overlay */}
+                        <div className="absolute top-1.5 right-1.5 flex gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveImage(imgIdx)}
+                            className="flex size-6 items-center justify-center rounded-md bg-background/90 text-destructive shadow-xs hover:bg-destructive hover:text-destructive-foreground transition-colors"
+                            title="Remove photo"
+                          >
+                            <Trash2 className="size-3" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {imgIdx > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => handleSetPrimaryImage(imgIdx)}
+                          className="border-t bg-card px-2 py-1 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors text-center font-medium"
+                        >
+                          Make Cover
+                        </button>
+                      )}
+                    </div>
+                  ))}
                 </div>
               ) : (
                 <div className="flex h-20 items-center justify-center gap-2 rounded-lg border border-dashed text-muted-foreground text-xs">
                   <ImageIcon className="size-4" />
-                  <span>Enter image URL to display thumbnail in marketplace catalog</span>
+                  <span>No product images added yet. Add at least one image URL above.</span>
                 </div>
               )}
             </div>
@@ -308,7 +607,7 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
                     Limited Inventory Quota
                   </Label>
                   <p className="text-muted-foreground text-[11px]">
-                    Limit available items or leave unlimited for on-demand perks.
+                    Limit overall available items or leave unlimited for on-demand perks.
                   </p>
                 </div>
                 <Switch
@@ -326,7 +625,7 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
                 {hasStockLimit ? (
                   <div className="space-y-1">
                     <Label htmlFor="item-stock-limit" className="text-xs">
-                      Total Stock Quota
+                      Default Total Quota
                     </Label>
                     <Input
                       id="item-stock-limit"
@@ -339,7 +638,7 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
                     />
                   </div>
                 ) : (
-                  <div className="flex items-center text-xs text-muted-foreground">Unlimited stock quota</div>
+                  <div className="flex items-center text-xs text-muted-foreground">Unlimited base stock quota</div>
                 )}
                 <div className="space-y-1">
                   <Label htmlFor="item-max-person" className="text-xs">
@@ -359,79 +658,252 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
               </div>
             </div>
 
-            {/* Variations Manager (Sizes, Colors, etc.) */}
+            {/* Product Variations Manager */}
             <div className="space-y-3 rounded-xl border p-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <div className="font-semibold text-sm">Product Variations</div>
                   <div className="text-muted-foreground text-xs">
-                    Configure options attendees can choose (e.g., Size, Color, Edition).
+                    Configure options attendees choose (Size, Color, etc.). Each variation can have custom pricing,
+                    quota, and photo.
                   </div>
+                </div>
+
+                {/* Preset Templates Selector */}
+                <div className="flex items-center gap-1.5 self-start sm:self-auto">
+                  <Select onValueChange={handleApplyVariationTemplate}>
+                    <SelectTrigger className="h-7 text-xs gap-1.5 border-dashed">
+                      <Sparkles className="size-3 text-amber-500" />
+                      <SelectValue placeholder="Add from Template..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {VARIATION_TEMPLATES.map((tmpl) => (
+                        <SelectItem key={tmpl.id} value={tmpl.id} className="text-xs">
+                          {tmpl.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
+              {/* Variations List */}
               <div className="space-y-3">
-                {variations.map((v, vIdx) => (
-                  <div key={v.name || `custom-var-${vIdx}`} className="space-y-2 rounded-lg border bg-muted/20 p-3">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-foreground text-xs uppercase tracking-wide">{v.name}</span>
-                      <Button
-                        type="button"
-                        size="icon-xs"
-                        variant="ghost"
-                        className="size-6 text-destructive hover:bg-destructive/10"
-                        onClick={() => handleRemoveVariationType(vIdx)}
-                        title="Remove variation type"
-                      >
-                        <Trash2 className="size-3" />
-                      </Button>
-                    </div>
+                {variations.map((v, vIdx) => {
+                  const isExpanded = Boolean(expandedVarDetails[vIdx]);
+                  const optionDetails = v.option_details || {};
 
-                    {/* Option Chips */}
-                    <div className="flex flex-wrap gap-1.5">
-                      {v.options.map((opt) => (
-                        <Badge key={opt} variant="secondary" className="gap-1 pr-1 font-medium text-xs shadow-2xs">
-                          <span>{opt}</span>
-                          <button
+                  return (
+                    <div key={v.name || `custom-var-${vIdx}`} className="space-y-3 rounded-lg border bg-muted/20 p-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-foreground text-xs uppercase tracking-wide">
+                            {v.name}
+                          </span>
+                          <Badge variant="outline" className="text-[10px] text-muted-foreground font-normal">
+                            {v.options.length} {v.options.length === 1 ? "option" : "options"}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Button
                             type="button"
-                            className="cursor-pointer rounded-xs p-0.5 hover:bg-muted-foreground/20"
-                            onClick={() => handleRemoveOption(vIdx, opt)}
+                            size="xs"
+                            variant="ghost"
+                            className="h-6 gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+                            onClick={() =>
+                              setExpandedVarDetails((prev) => ({
+                                ...prev,
+                                [vIdx]: !prev[vIdx],
+                              }))
+                            }
                           >
-                            <X className="size-3" />
-                          </button>
-                        </Badge>
-                      ))}
-                    </div>
+                            <SlidersHorizontal className="size-3" />
+                            {isExpanded ? "Hide Details" : "Configure Pricing/Quota"}
+                            {isExpanded ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
+                          </Button>
 
-                    {/* Add Option Input */}
-                    <div className="flex gap-2 pt-1">
-                      <Input
-                        size={undefined}
-                        placeholder={`Add ${v.name} option (e.g. XL, Navy)`}
-                        className="h-8 text-xs"
-                        value={newOptionInput[vIdx] || ""}
-                        onChange={(e) => setNewOptionInput((prev) => ({ ...prev, [vIdx]: e.target.value }))}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            handleAddOption(vIdx);
-                          }
-                        }}
-                      />
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="h-8 text-xs"
-                        onClick={() => handleAddOption(vIdx)}
-                      >
-                        Add
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                          <Button
+                            type="button"
+                            size="icon-xs"
+                            variant="ghost"
+                            className="size-6 text-destructive hover:bg-destructive/10"
+                            onClick={() => handleRemoveVariationType(vIdx)}
+                            title="Remove variation type"
+                          >
+                            <Trash2 className="size-3" />
+                          </Button>
+                        </div>
+                      </div>
 
-                {/* Add New Variation Type */}
+                      {/* Option Chips with badges for overrides */}
+                      <div className="flex flex-wrap gap-1.5">
+                        {v.options.map((opt) => {
+                          const detail = optionDetails[opt];
+                          const hasCustomPrice = detail?.price !== null && detail?.price !== undefined;
+                          const hasCustomStock = detail?.stock !== null && detail?.stock !== undefined;
+                          const hasCustomImage = Boolean(detail?.image_url);
+
+                          return (
+                            <Badge
+                              key={opt}
+                              variant="secondary"
+                              className="gap-1 pr-1 font-medium text-xs shadow-2xs items-center"
+                            >
+                              <span>{opt}</span>
+                              {hasCustomPrice && (
+                                <span className="rounded-xs bg-primary/10 px-1 text-[9px] font-mono text-primary">
+                                  Rp {detail?.price?.toLocaleString("id-ID")}
+                                </span>
+                              )}
+                              {hasCustomStock && (
+                                <span className="rounded-xs bg-amber-500/10 px-1 text-[9px] font-mono text-amber-600 dark:text-amber-400">
+                                  Q: {detail?.stock}
+                                </span>
+                              )}
+                              {hasCustomImage && (
+                                <span className="rounded-xs bg-blue-500/10 px-1 text-[9px] font-mono text-blue-600 dark:text-blue-400">
+                                  📷
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                className="cursor-pointer rounded-xs p-0.5 hover:bg-muted-foreground/20 ml-0.5"
+                                onClick={() => handleRemoveOption(vIdx, opt)}
+                                title="Remove option"
+                              >
+                                <X className="size-3" />
+                              </button>
+                            </Badge>
+                          );
+                        })}
+                      </div>
+
+                      {/* Add Option Input */}
+                      <div className="flex gap-2 pt-1">
+                        <Input
+                          placeholder={`Add ${v.name} option (e.g. XL, Charcoal)`}
+                          className="h-8 text-xs"
+                          value={newOptionInput[vIdx] || ""}
+                          onChange={(e) => setNewOptionInput((prev) => ({ ...prev, [vIdx]: e.target.value }))}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              handleAddOption(vIdx);
+                            }
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-8 text-xs shrink-0"
+                          onClick={() => handleAddOption(vIdx)}
+                        >
+                          Add
+                        </Button>
+                      </div>
+
+                      {/* Advanced Overrides Table (Price, Quota, Image URL) */}
+                      {isExpanded && v.options.length > 0 && (
+                        <div className="space-y-2 rounded-md border bg-background p-3 pt-2 text-xs">
+                          <div className="font-medium text-[11px] text-muted-foreground">
+                            Per-Option Custom Overrides (leave blank to inherit base price, quota, or photo):
+                          </div>
+
+                          <div className="space-y-2 pt-1">
+                            {v.options.map((opt) => {
+                              const detail = optionDetails[opt] || {};
+                              return (
+                                <div
+                                  key={`detail-${vIdx}-${opt}`}
+                                  className="grid grid-cols-1 gap-2 rounded-md border p-2.5 sm:grid-cols-12 sm:items-center bg-muted/10"
+                                >
+                                  {/* Option badge */}
+                                  <div className="sm:col-span-2 font-semibold text-xs text-foreground truncate">
+                                    {opt}
+                                  </div>
+
+                                  {/* Price override */}
+                                  <div className="sm:col-span-3 space-y-1">
+                                    <Label className="text-[10px] text-muted-foreground">Price (IDR)</Label>
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      step="1000"
+                                      placeholder={isFree ? "Free" : `Base (${price})`}
+                                      className="h-7 text-xs"
+                                      value={detail.price ?? ""}
+                                      onChange={(e) =>
+                                        handleUpdateOptionDetail(
+                                          vIdx,
+                                          opt,
+                                          "price",
+                                          e.target.value ? Number(e.target.value) : null,
+                                        )
+                                      }
+                                    />
+                                  </div>
+
+                                  {/* Quota override */}
+                                  <div className="sm:col-span-3 space-y-1">
+                                    <Label className="text-[10px] text-muted-foreground">Quota</Label>
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      placeholder={stock !== null ? `Base (${stock})` : "Unlimited"}
+                                      className="h-7 text-xs"
+                                      value={detail.stock ?? ""}
+                                      onChange={(e) =>
+                                        handleUpdateOptionDetail(
+                                          vIdx,
+                                          opt,
+                                          "stock",
+                                          e.target.value ? Number(e.target.value) : null,
+                                        )
+                                      }
+                                    />
+                                  </div>
+
+                                  {/* Image URL override */}
+                                  <div className="sm:col-span-4 space-y-1">
+                                    <Label className="text-[10px] text-muted-foreground">Specific Photo URL</Label>
+                                    <div className="flex items-center gap-1.5">
+                                      <Input
+                                        placeholder="https://...photo.jpg"
+                                        className="h-7 text-xs"
+                                        value={detail.image_url ?? ""}
+                                        onChange={(e) =>
+                                          handleUpdateOptionDetail(vIdx, opt, "image_url", e.target.value)
+                                        }
+                                      />
+                                      {detail.image_url && (
+                                        <div className="size-7 shrink-0 overflow-hidden rounded border bg-muted">
+                                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                                          {/* biome-ignore lint/performance/noImgElement: opt preview */}
+                                          <img
+                                            src={detail.image_url}
+                                            alt={opt}
+                                            className="size-full object-cover"
+                                            onError={(e) => {
+                                              (e.currentTarget as HTMLImageElement).src =
+                                                "https://placehold.co/100x100/202124/ffffff?text=!";
+                                            }}
+                                          />
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {/* Add New Custom Variation Type */}
                 <div className="flex gap-2 pt-1">
                   <Input
                     placeholder="New variation name (e.g. Size, Color, Material)"
@@ -449,7 +921,7 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
                     type="button"
                     size="sm"
                     variant="secondary"
-                    className="h-8 gap-1 text-xs"
+                    className="h-8 gap-1 text-xs shrink-0"
                     onClick={handleAddVariationType}
                   >
                     <Plus className="size-3" /> Add Variation Type
@@ -457,9 +929,125 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
                 </div>
               </div>
             </div>
+
+            {/* Dedicated Product Guidelines & Sizing Notes */}
+            <div className="space-y-4 rounded-xl border p-4">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2">
+                  <Ruler className="size-4 text-primary" />
+                  <div>
+                    <div className="font-semibold text-sm">Product Guideline & Sizing Notes</div>
+                    <div className="text-muted-foreground text-xs">
+                      Provide sizing chart diagrams, measurement tables, material specs, or care notes.
+                    </div>
+                  </div>
+                </div>
+
+                {/* Quick Presets for Guidelines */}
+                <div className="flex flex-wrap items-center gap-1 self-start sm:self-auto pt-1 sm:pt-0">
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="outline"
+                    className="h-6 text-[11px]"
+                    onClick={() => handleApplyPresetGuideline("tshirt")}
+                  >
+                    👕 T-Shirt Guide
+                  </Button>
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="outline"
+                    className="h-6 text-[11px]"
+                    onClick={() => handleApplyPresetGuideline("hoodie")}
+                  >
+                    🧥 Hoodie Guide
+                  </Button>
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="outline"
+                    className="h-6 text-[11px]"
+                    onClick={() => handleApplyPresetGuideline("care")}
+                  >
+                    🧼 Wash Care
+                  </Button>
+                </div>
+              </div>
+
+              {/* Guideline Title */}
+              <div className="space-y-1.5">
+                <Label htmlFor="guideline-title" className="text-xs">
+                  Guideline Title
+                </Label>
+                <Input
+                  id="guideline-title"
+                  placeholder="e.g. T-Shirt Size Guideline & Measurements"
+                  value={guidelineTitle}
+                  onChange={(e) => setGuidelineTitle(e.target.value)}
+                  className="h-8 text-xs"
+                />
+              </div>
+
+              {/* Guideline Text / Measurements Table */}
+              <div className="space-y-1.5">
+                <Label htmlFor="guideline-text" className="text-xs">
+                  Guideline Notes / Size Table (Text)
+                </Label>
+                <Textarea
+                  id="guideline-text"
+                  rows={4}
+                  placeholder="Enter size chart (e.g. Chest Width x Body Length in cm), fit advice, or care notes..."
+                  value={guidelineText}
+                  onChange={(e) => setGuidelineText(e.target.value)}
+                  className="text-xs font-mono"
+                />
+              </div>
+
+              {/* Guideline Image / Sizing Chart Diagram URL */}
+              <div className="space-y-2">
+                <Label htmlFor="guideline-image" className="text-xs">
+                  Guideline Image URL (e.g. Visual Size Chart Diagram)
+                </Label>
+                <Input
+                  id="guideline-image"
+                  placeholder="https://example.com/size-chart-diagram.png"
+                  value={guidelineImageUrl}
+                  onChange={(e) => setGuidelineImageUrl(e.target.value)}
+                  className="h-8 text-xs"
+                />
+
+                {guidelineImageUrl ? (
+                  <div className="relative mt-2 overflow-hidden rounded-lg border bg-muted p-3">
+                    <div className="flex items-center justify-between pb-2 text-[11px] font-medium text-muted-foreground">
+                      <span>Size Chart Graphic Preview:</span>
+                      <button
+                        type="button"
+                        onClick={() => setGuidelineImageUrl("")}
+                        className="text-destructive hover:underline text-[10px]"
+                      >
+                        Remove Image
+                      </button>
+                    </div>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    {/* biome-ignore lint/performance/noImgElement: size chart preview */}
+                    <img
+                      src={guidelineImageUrl}
+                      alt="Size chart graphic"
+                      className="max-h-56 w-auto rounded object-contain mx-auto"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).src =
+                          "https://placehold.co/600x300/202124/ffffff?text=Invalid+Guideline+Image+URL";
+                      }}
+                    />
+                  </div>
+                ) : null}
+              </div>
+            </div>
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-0">
+          {/* Adjusted Button Spacing */}
+          <DialogFooter className="gap-2 sm:gap-3">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>

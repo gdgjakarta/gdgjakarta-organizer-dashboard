@@ -114,6 +114,24 @@ export function GenerateMerchandisePaymentDialog({
         ]
       : [];
 
+    let effectivePrice = item.price || 0;
+    let effectiveImage = item.image_url;
+    if (item.variations) {
+      for (const v of item.variations) {
+        const selectedOpt = selectedVariations[v.name];
+        if (
+          selectedOpt &&
+          v.option_details?.[selectedOpt]?.price !== undefined &&
+          v.option_details[selectedOpt].price !== null
+        ) {
+          effectivePrice = v.option_details[selectedOpt].price;
+        }
+        if (selectedOpt && v.option_details?.[selectedOpt]?.image_url) {
+          effectiveImage = v.option_details[selectedOpt].image_url;
+        }
+      }
+    }
+
     startTransition(async () => {
       try {
         const res = await generatePaymentLinkAction({
@@ -133,8 +151,8 @@ export function GenerateMerchandisePaymentDialog({
               id: item.id,
               name: itemName,
               quantity: quantity,
-              price: item.price || 0,
-              imageUrl: item.image_url,
+              price: effectivePrice,
+              imageUrl: effectiveImage,
               description: item.description,
               type: "Merchandise",
             },
@@ -151,7 +169,7 @@ export function GenerateMerchandisePaymentDialog({
           setPaymentResult({
             paymentUrl: res.paymentUrl,
             invoiceNumber: res.invoiceNumber ?? "INV-NEW",
-            amount: res.amount ?? item.price * quantity + (includeCommitmentFee ? commitmentFeeAmount : 0),
+            amount: res.amount ?? effectivePrice * quantity + (includeCommitmentFee ? commitmentFeeAmount : 0),
             expiredDatetime: res.expiredDatetime,
           });
           toast.success("DOKU payment link generated successfully!");
@@ -373,7 +391,7 @@ export function GenerateMerchandisePaymentDialog({
           </div>
         )}
 
-        <DialogFooter className="gap-2 sm:gap-0">
+        <DialogFooter className="gap-2 sm:gap-3">
           {!paymentResult && (
             <>
               <Button variant="ghost" size="sm" onClick={handleClose} disabled={isPending} className="text-xs">

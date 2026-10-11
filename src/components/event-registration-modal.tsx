@@ -17,6 +17,7 @@ import {
   Minus,
   Package,
   Plus,
+  Ruler,
   ShieldCheck,
   ShoppingBag,
   Sparkles,
@@ -36,6 +37,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -102,10 +104,45 @@ function getTicketTypeBadge(type: string): string {
   return "Refundable Deposit";
 }
 
-function getMerchPriceDisplay(item: EventMerchandiseItem, quantity: number): string {
+function getMerchEffectivePrice(item: EventMerchandiseItem, selectedVariations?: Record<string, string>): number {
+  if (item.is_free) return 0;
+  let unitPrice = item.price || 0;
+  if (selectedVariations && item.variations) {
+    for (const v of item.variations) {
+      const selectedOpt = selectedVariations[v.name];
+      if (
+        selectedOpt &&
+        v.option_details?.[selectedOpt]?.price !== undefined &&
+        v.option_details[selectedOpt].price !== null
+      ) {
+        unitPrice = v.option_details[selectedOpt].price;
+      }
+    }
+  }
+  return unitPrice;
+}
+
+function getMerchEffectiveImage(item: EventMerchandiseItem, selectedVariations?: Record<string, string>): string {
+  if (selectedVariations && item.variations) {
+    for (const v of item.variations) {
+      const selectedOpt = selectedVariations[v.name];
+      if (selectedOpt && v.option_details?.[selectedOpt]?.image_url) {
+        return v.option_details[selectedOpt].image_url;
+      }
+    }
+  }
+  return item.image_url || (item.images?.[0] ?? "");
+}
+
+function getMerchPriceDisplay(
+  item: EventMerchandiseItem,
+  quantity: number,
+  selectedVariations?: Record<string, string>,
+): string {
   if (quantity <= 0) return "";
   if (item.is_free) return "Free";
-  return `Rp ${((item.price || 0) * quantity).toLocaleString("id-ID")}`;
+  const unitPrice = getMerchEffectivePrice(item, selectedVariations);
+  return `Rp ${(unitPrice * quantity).toLocaleString("id-ID")}`;
 }
 
 export function EventRegistrationModal({
@@ -136,6 +173,7 @@ export function EventRegistrationModal({
   );
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [viewingGuidelineItem, setViewingGuidelineItem] = useState<EventMerchandiseItem | null>(null);
   const [otherInputs, setOtherInputs] = useState<Record<string, string>>({});
   const otherInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const [capacityAlert, setCapacityAlert] = useState<{
@@ -283,7 +321,8 @@ export function EventRegistrationModal({
       if (order.quantity > 0) {
         const item = availableMerchandise.find((m) => m.id === itemId);
         if (item && !item.is_free) {
-          total += (item.price || 0) * order.quantity;
+          const unitPrice = getMerchEffectivePrice(item, order.selectedVariations);
+          total += unitPrice * order.quantity;
         }
       }
     }
@@ -316,9 +355,22 @@ export function EventRegistrationModal({
           toast.error(`Limit of ${itemMax} unit(s) per person for "${item.name}".`);
           return prev;
         }
-        // Stock quota check
-        if (item.stock !== null && item.stock !== undefined && current.quantity >= item.stock) {
-          toast.error(`Only ${item.stock} item(s) available in stock.`);
+        // Stock quota check (variation-specific quota or item-level quota)
+        let maxStock = item.stock ?? null;
+        if (current.selectedVariations && item.variations) {
+          for (const v of item.variations) {
+            const selectedOpt = current.selectedVariations[v.name];
+            if (
+              selectedOpt &&
+              v.option_details?.[selectedOpt]?.stock !== undefined &&
+              v.option_details[selectedOpt].stock !== null
+            ) {
+              maxStock = v.option_details[selectedOpt].stock;
+            }
+          }
+        }
+        if (maxStock !== null && current.quantity >= maxStock) {
+          toast.error(`Only ${maxStock} item(s) available in stock.`);
           return prev;
         }
       }
@@ -729,11 +781,12 @@ export function EventRegistrationModal({
           if (order.quantity > 0) {
             const item = availableMerchandise.find((m) => m.id === itemId);
             if (item) {
+              const unitPrice = getMerchEffectivePrice(item, order.selectedVariations);
               selectedMerchOrders.push({
                 id: item.id,
                 name: item.name,
                 quantity: order.quantity,
-                price: item.is_free ? 0 : item.price || 0,
+                price: item.is_free ? 0 : unitPrice,
                 selected_variations:
                   Object.keys(order.selectedVariations).length > 0 ? order.selectedVariations : undefined,
               });
@@ -1998,6 +2051,9 @@ export function EventRegistrationModal({
                           (itemMax !== null && order.quantity >= itemMax) ||
                           (maxMerchandiseAllowed !== null && totalMerchandiseItems >= maxMerchandiseAllowed);
 
+                        const effectiveImg = getMerchEffectiveImage(item, order.selectedVariations);
+                        const effectiveUnitPrice = getMerchEffectivePrice(item, order.selectedVariations);
+
                         return (
                           <div
                             key={item.id}
@@ -2010,10 +2066,10 @@ export function EventRegistrationModal({
                           >
                             <div className="flex items-start gap-3">
                               <div className="relative size-12 shrink-0 overflow-hidden rounded-md bg-muted">
-                                {item.image_url ? (
+                                {effectiveImg ? (
                                   // biome-ignore lint/performance/noImgElement: merchandise preview
                                   // biome-ignore lint/a11y/useAltText: thumbnail
-                                  <img src={item.image_url} className="size-full object-cover" />
+                                  <img src={effectiveImg} className="size-full object-cover" />
                                 ) : (
                                   <div className="flex size-full items-center justify-center text-muted-foreground">
                                     <Package className="size-5 opacity-40" />
@@ -2033,7 +2089,7 @@ export function EventRegistrationModal({
                                         : "bg-blue-500/10 text-blue-600 dark:text-blue-400",
                                     )}
                                   >
-                                    {item.is_free ? "Free Perk" : `Rp ${(item.price || 0).toLocaleString("id-ID")}`}
+                                    {item.is_free ? "Free Perk" : `Rp ${effectiveUnitPrice.toLocaleString("id-ID")}`}
                                   </Badge>
                                 </div>
 
@@ -2042,6 +2098,21 @@ export function EventRegistrationModal({
                                     {item.description}
                                   </p>
                                 )}
+
+                                {/* Product Guideline link if available */}
+                                {item.guideline &&
+                                  (item.guideline.title || item.guideline.text || item.guideline.image_url) && (
+                                    <div className="pt-0.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => setViewingGuidelineItem(item)}
+                                        className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline cursor-pointer"
+                                      >
+                                        <Ruler className="size-3" />
+                                        <span>{item.guideline.title || "View Sizing Guideline"}</span>
+                                      </button>
+                                    </div>
+                                  )}
 
                                 {/* Variations Selectors (e.g. Size, Color) */}
                                 {isAdded && item.variations && item.variations.length > 0 && (
@@ -2074,7 +2145,7 @@ export function EventRegistrationModal({
                             {/* Stepper Quantity Buttons */}
                             <div className="flex items-center justify-between gap-2 border-t pt-2 sm:justify-end sm:border-t-0 sm:pt-0">
                               <span className="font-semibold text-xs sm:hidden">
-                                {getMerchPriceDisplay(item, order.quantity)}
+                                {getMerchPriceDisplay(item, order.quantity, order.selectedVariations)}
                               </span>
 
                               <div className="flex items-center gap-1.5 self-end sm:self-auto">
@@ -2210,6 +2281,45 @@ export function EventRegistrationModal({
           }}
         />
       )}
+
+      {/* Sizing & Product Guideline Dialog */}
+      <Dialog open={Boolean(viewingGuidelineItem)} onOpenChange={(isOpen) => !isOpen && setViewingGuidelineItem(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Ruler className="size-5 text-primary" />
+              {viewingGuidelineItem?.guideline?.title || "Product Sizing Guideline"}
+            </DialogTitle>
+            <DialogDescription>Measurements, specs, and details for {viewingGuidelineItem?.name}</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 pt-2">
+            {viewingGuidelineItem?.guideline?.image_url && (
+              <div className="overflow-hidden rounded-lg border bg-muted p-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {/* biome-ignore lint/performance/noImgElement: size chart preview */}
+                <img
+                  src={viewingGuidelineItem.guideline.image_url}
+                  alt="Size Chart Graphic"
+                  className="max-h-60 w-auto rounded object-contain mx-auto"
+                />
+              </div>
+            )}
+
+            {viewingGuidelineItem?.guideline?.text && (
+              <div className="rounded-lg border bg-muted/30 p-3 font-mono text-xs whitespace-pre-wrap leading-relaxed">
+                {viewingGuidelineItem.guideline.text}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setViewingGuidelineItem(null)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

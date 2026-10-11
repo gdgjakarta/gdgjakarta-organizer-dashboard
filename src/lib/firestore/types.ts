@@ -56,9 +56,22 @@ export interface EventSession {
   related_links?: SessionRelatedLink[];
 }
 
+export interface MerchandiseVariationOptionDetail {
+  price?: number | null; // specific price override (IDR), null or undefined = use base item price
+  stock?: number | null; // specific quota/stock override, null or undefined = use base stock
+  image_url?: string | null; // specific image for this variation option
+}
+
 export interface MerchandiseVariation {
   name: string; // e.g. "Size", "Color", "Material"
   options: string[]; // e.g. ["S", "M", "L", "XL"]
+  option_details?: Record<string, MerchandiseVariationOptionDetail>; // option name -> details
+}
+
+export interface MerchandiseGuideline {
+  title?: string; // e.g. "T-Shirt Size Guideline & Measurements"
+  text?: string; // markdown or text sizing table / instructions
+  image_url?: string; // size chart / guideline illustration URL
 }
 
 export interface EventMerchandiseItem {
@@ -68,11 +81,13 @@ export interface EventMerchandiseItem {
   price: number; // In IDR (0 for free/included perk)
   is_free: boolean;
   tag: string; // e.g. "Free Perk", "Included with Ticket", "Exclusive", "Limited Edition"
-  image_url: string;
+  image_url: string; // Primary thumbnail URL
+  images?: string[]; // Multiple product photos
   stock?: number | null; // null or undefined means unlimited
   variations: MerchandiseVariation[];
   max_per_person?: number | null; // Limit items per person (null = unlimited or event-level limit)
   status: "active" | "draft" | "out_of_stock";
+  guideline?: MerchandiseGuideline; // Dedicated field notes / size chart
   created_at?: string;
   updated_at?: string;
 }

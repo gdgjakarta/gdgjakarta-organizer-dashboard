@@ -2,13 +2,21 @@
 
 import { useEffect, useState, useTransition } from "react";
 
-import { Copy, CreditCard, Edit2, Package, PackageOpen, Plus, Sparkles, Tag, Trash2 } from "lucide-react";
+import { Copy, CreditCard, Edit2, Package, PackageOpen, Plus, Ruler, Sparkles, Tag, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { FloatingSaveBar } from "@/app/(main)/dashboard/_components/floating-save-bar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { updateEventMerchandiseAction } from "@/lib/firestore/actions";
@@ -31,6 +39,7 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
   );
   const [editingItem, setEditingItem] = useState<EventMerchandiseItem | null>(null);
   const [paymentItem, setPaymentItem] = useState<EventMerchandiseItem | null>(null);
+  const [viewingGuidelineItem, setViewingGuidelineItem] = useState<EventMerchandiseItem | null>(null);
   const [isItemDialogOpen, setIsItemDialogOpen] = useState(false);
   const [isTemplateDialogOpen, setIsTemplateDialogOpen] = useState(false);
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
@@ -279,6 +288,18 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
                       </Badge>
                     </div>
 
+                    {/* Photos count pill if multiple */}
+                    {item.images && item.images.length > 1 && (
+                      <div className="absolute bottom-2.5 right-2.5">
+                        <Badge
+                          variant="secondary"
+                          className="bg-background/90 text-foreground text-[10px] backdrop-blur-md shadow-xs"
+                        >
+                          📷 {item.images.length} photos
+                        </Badge>
+                      </div>
+                    )}
+
                     {item.status && item.status !== "active" && (
                       <div className="absolute top-2.5 right-2.5">
                         <Badge
@@ -307,6 +328,20 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
                       {item.description || "No description provided."}
                     </p>
 
+                    {/* Product Guideline Pill if available */}
+                    {item.guideline && (item.guideline.title || item.guideline.text || item.guideline.image_url) && (
+                      <div className="mt-2.5">
+                        <button
+                          type="button"
+                          onClick={() => setViewingGuidelineItem(item)}
+                          className="inline-flex items-center gap-1.5 rounded-md border border-primary/20 bg-primary/5 px-2 py-1 text-[11px] font-medium text-primary hover:bg-primary/10 transition-colors"
+                        >
+                          <Ruler className="size-3" />
+                          <span>{item.guideline.title || "Size & Product Guideline"}</span>
+                        </button>
+                      </div>
+                    )}
+
                     {/* Variations Preview */}
                     {item.variations && item.variations.length > 0 && (
                       <div className="mt-3.5 space-y-1.5 rounded-lg border border-border/60 bg-muted/30 p-2.5 text-xs">
@@ -315,17 +350,23 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
                           <span>Variations:</span>
                         </div>
                         <div className="flex flex-wrap gap-1">
-                          {item.variations.map((v) => (
-                            <div key={v.name} className="flex items-center gap-1">
-                              <Badge
-                                variant="outline"
-                                className="border-border/70 bg-background font-normal text-[10px] text-foreground"
-                              >
-                                {v.name}: {v.options.slice(0, 3).join(", ")}
-                                {v.options.length > 3 ? ` +${v.options.length - 3}` : ""}
-                              </Badge>
-                            </div>
-                          ))}
+                          {item.variations.map((v) => {
+                            const optionCount = v.options.length;
+                            const hasOverrides = v.option_details && Object.keys(v.option_details).length > 0;
+
+                            return (
+                              <div key={v.name} className="flex items-center gap-1">
+                                <Badge
+                                  variant="outline"
+                                  className="border-border/70 bg-background font-normal text-[10px] text-foreground"
+                                >
+                                  {v.name}: {v.options.slice(0, 3).join(", ")}
+                                  {optionCount > 3 ? ` +${optionCount - 3}` : ""}
+                                  {hasOverrides && " ⚙️"}
+                                </Badge>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     )}
@@ -436,6 +477,45 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
         item={paymentItem}
         event={event}
       />
+
+      {/* Dialog for viewing product & sizing guidelines */}
+      <Dialog open={Boolean(viewingGuidelineItem)} onOpenChange={(open) => !open && setViewingGuidelineItem(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Ruler className="size-5 text-primary" />
+              {viewingGuidelineItem?.guideline?.title || "Product Guideline"}
+            </DialogTitle>
+            <DialogDescription>Sizing measurements and specs for {viewingGuidelineItem?.name}</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 pt-2">
+            {viewingGuidelineItem?.guideline?.image_url && (
+              <div className="overflow-hidden rounded-lg border bg-muted p-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {/* biome-ignore lint/performance/noImgElement: guideline preview */}
+                <img
+                  src={viewingGuidelineItem.guideline.image_url}
+                  alt="Size chart"
+                  className="max-h-60 w-auto rounded object-contain mx-auto"
+                />
+              </div>
+            )}
+
+            {viewingGuidelineItem?.guideline?.text && (
+              <div className="rounded-lg border bg-muted/30 p-3 font-mono text-xs whitespace-pre-wrap leading-relaxed">
+                {viewingGuidelineItem.guideline.text}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setViewingGuidelineItem(null)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Fixed Floating Bottom Save Bar ──────────────────────────── */}
       <FloatingSaveBar
