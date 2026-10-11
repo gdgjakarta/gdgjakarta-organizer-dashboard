@@ -10,6 +10,7 @@ import {
   Download,
   Eye,
   Filter,
+  Hourglass,
   Layers,
   Loader2,
   Mail,
@@ -2005,6 +2006,19 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
               >
                 <Clock className="size-3.5" />
                 Set Pending
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1 text-blue-600 dark:text-blue-400"
+                onClick={() => handleBatchAction("waitlisted")}
+                disabled={
+                  isPending || isBatchApproving || isBatchRejecting || isBatchResendingInterest || hasApprovedSelected
+                }
+                title={hasApprovedSelected ? "Cannot modify status of approved attendees" : undefined}
+              >
+                <Hourglass className="size-3.5" />
+                Waitlist Selected
               </Button>
               <Button
                 size="sm"

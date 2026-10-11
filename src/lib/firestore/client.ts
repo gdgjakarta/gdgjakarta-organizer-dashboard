@@ -594,17 +594,19 @@ export async function updateRegistrationStatus(
     console.warn("[updateRegistrationStatus] Failed to write audit log entry:", auditErr);
   }
 
-  // If approved or rejected, update event approved counter
+  // Recalculate event approved & waitlisted counters
   try {
     const allRegs = await getEventRegistrations(eventId);
     const approvedCount = allRegs.filter((r) => r.status === "approved" || r.status === "attended").length;
+    const waitlistedCount = allRegs.filter((r) => r.status === "waitlisted").length;
     const eventRef = doc(db, "events", eventId);
     await updateDoc(eventRef, {
       total_approved: approvedCount,
+      total_waitlisted: waitlistedCount,
       updated_at: new Date().toISOString(),
     });
   } catch (err) {
-    console.warn("[Firestore] Failed to recalculate approved counter:", err);
+    console.warn("[Firestore] Failed to recalculate approved/waitlisted counters:", err);
   }
 }
 
@@ -767,11 +769,13 @@ export async function deleteEventRegistration(registrationId: string, eventId: s
 
       const allRegs = await getEventRegistrations(eventIdStr);
       const approvedCount = allRegs.filter((r) => r.status === "approved" || r.status === "attended").length;
+      const waitlistedCount = allRegs.filter((r) => r.status === "waitlisted").length;
       const checkedInCount = allRegs.filter((r) => Boolean(r.is_checked_in)).length;
 
       const updateData: Record<string, unknown> = {
         total_registrations: Math.max(0, currentTotal - 1),
         total_approved: approvedCount,
+        total_waitlisted: waitlistedCount,
         total_checked_in: checkedInCount,
         updated_at: now,
       };
@@ -843,11 +847,13 @@ export async function deleteBatchEventRegistrations(registrationIds: string[], e
 
       const allRegs = await getEventRegistrations(eventIdStr);
       const approvedCount = allRegs.filter((r) => r.status === "approved" || r.status === "attended").length;
+      const waitlistedCount = allRegs.filter((r) => r.status === "waitlisted").length;
       const checkedInCount = allRegs.filter((r) => Boolean(r.is_checked_in)).length;
 
       const updateData: Record<string, unknown> = {
         total_registrations: Math.max(0, currentTotal - regsToDelete.length),
         total_approved: approvedCount,
+        total_waitlisted: waitlistedCount,
         total_checked_in: checkedInCount,
         updated_at: now,
       };

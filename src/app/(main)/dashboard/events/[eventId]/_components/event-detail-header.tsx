@@ -16,6 +16,7 @@ import {
   ExternalLink,
   Eye,
   Globe,
+  Hourglass,
   MapPin,
   Radio,
   RefreshCw,
@@ -44,6 +45,7 @@ interface EventDetailHeaderProps {
   totalApproved: number;
   totalRejected?: number;
   totalPending?: number;
+  totalWaitlisted?: number;
 }
 
 export function EventDetailHeader({
@@ -52,6 +54,7 @@ export function EventDetailHeader({
   totalApproved,
   totalRejected = 0,
   totalPending = 0,
+  totalWaitlisted = 0,
 }: EventDetailHeaderProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -60,6 +63,7 @@ export function EventDetailHeader({
     totalApproved,
     totalRejected,
     totalPending,
+    totalWaitlisted,
   });
 
   useEffect(() => {
@@ -68,8 +72,9 @@ export function EventDetailHeader({
       totalApproved,
       totalRejected,
       totalPending,
+      totalWaitlisted,
     });
-  }, [totalRegistrations, totalApproved, totalRejected, totalPending]);
+  }, [totalRegistrations, totalApproved, totalRejected, totalPending, totalWaitlisted]);
 
   useEffect(() => {
     const targetEventId = String(event.id || "");
@@ -90,6 +95,9 @@ export function EventDetailHeader({
             return s === "approved" || s === "attended" || s === "confirmed" || s === "registered";
           }).length;
           const rejectedCount = directList.filter((r) => (r.status || "").toLowerCase().trim() === "rejected").length;
+          const waitlistedCount = directList.filter(
+            (r) => (r.status || "").toLowerCase().trim() === "waitlisted",
+          ).length;
           const pendingCount = directList.filter((r) => {
             const s = (r.status || "").toLowerCase().trim();
             return s === "pending" || s === "applied" || s === "review" || !s;
@@ -100,6 +108,7 @@ export function EventDetailHeader({
             totalApproved: approvedCount,
             totalRejected: rejectedCount,
             totalPending: pendingCount,
+            totalWaitlisted: waitlistedCount,
           });
         }
 
@@ -111,6 +120,7 @@ export function EventDetailHeader({
               return s === "approved" || s === "attended" || s === "confirmed" || s === "registered";
             }).length;
             const rejectedCount = list.filter((r) => (r.status || "").toLowerCase().trim() === "rejected").length;
+            const waitlistedCount = list.filter((r) => (r.status || "").toLowerCase().trim() === "waitlisted").length;
             const pendingCount = list.filter((r) => {
               const s = (r.status || "").toLowerCase().trim();
               return s === "pending" || s === "applied" || s === "review" || !s;
@@ -121,6 +131,7 @@ export function EventDetailHeader({
               totalApproved: approvedCount,
               totalRejected: rejectedCount,
               totalPending: pendingCount,
+              totalWaitlisted: waitlistedCount,
             });
           }
         });
@@ -285,6 +296,11 @@ export function EventDetailHeader({
             <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
               <Clock className="size-4" />
               <strong>{liveTotals.totalPending}</strong> Pending
+            </span>
+            <span>•</span>
+            <span className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
+              <Hourglass className="size-4" />
+              <strong>{liveTotals.totalWaitlisted}</strong> Waitlisted
             </span>
             <span>•</span>
             <span className="flex items-center gap-1.5 text-destructive">

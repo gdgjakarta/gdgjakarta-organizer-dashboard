@@ -187,6 +187,7 @@ export interface FirestoreEvent {
   total_registrations: number;
   total_approved: number;
   total_checked_in: number;
+  total_waitlisted?: number;
   custom_questions?: CustomQuestion[];
   sessions?: EventSession[];
   tickets?: EventTicketTier[];

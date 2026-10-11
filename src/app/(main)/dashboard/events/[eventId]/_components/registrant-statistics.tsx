@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 
-import { BarChart3, Clock, Layers, UserCheck, Users, UserX } from "lucide-react";
+import { BarChart3, Clock, Hourglass, Layers, UserCheck, Users, UserX } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -95,6 +95,10 @@ export function RegistrantStatistics({
     return registrations.filter((r) => (r.status || "").toLowerCase().trim() === "rejected").length;
   }, [registrations]);
 
+  const totalWaitlisted = useMemo(() => {
+    return registrations.filter((r) => (r.status || "").toLowerCase().trim() === "waitlisted").length;
+  }, [registrations]);
+
   const totalPending = useMemo(() => {
     return registrations.filter((r) => {
       const s = (r.status || "").toLowerCase().trim();
@@ -104,6 +108,7 @@ export function RegistrantStatistics({
 
   const approvedPercent = totalRegistrations > 0 ? ((totalApproved / totalRegistrations) * 100).toFixed(1) : "0.0";
   const pendingPercent = totalRegistrations > 0 ? ((totalPending / totalRegistrations) * 100).toFixed(1) : "0.0";
+  const waitlistedPercent = totalRegistrations > 0 ? ((totalWaitlisted / totalRegistrations) * 100).toFixed(1) : "0.0";
   const rejectedPercent = totalRegistrations > 0 ? ((totalRejected / totalRegistrations) * 100).toFixed(1) : "0.0";
 
   // Build full dictionary of available fields from questions and registration answers
@@ -528,8 +533,8 @@ export function RegistrantStatistics({
 
   return (
     <div className="space-y-4">
-      {/* ── Top Level 4-Card Status Overview ──────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
+      {/* ── Top Level 5-Card Status Overview ──────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 sm:gap-4">
         {/* Total Registrants */}
         <Card
           onClick={() => onSelectStatusFilter?.("all")}
@@ -608,6 +613,34 @@ export function RegistrantStatistics({
                 {pendingPercent}%
               </Badge>
               <span>requires review</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Waitlisted */}
+        <Card
+          onClick={() => onSelectStatusFilter?.("waitlisted")}
+          className={cn(
+            "cursor-pointer transition-all hover:border-blue-500/50 hover:shadow-xs",
+            activeStatusFilter === "waitlisted" && "border-blue-500/50 bg-blue-500/5 ring-1 ring-blue-500/30",
+          )}
+        >
+          <CardContent className="p-4 sm:p-5">
+            <div className="flex items-center justify-between text-muted-foreground text-xs">
+              <span className="font-medium">Waitlisted</span>
+              <Hourglass className="size-4 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div className="mt-2 font-bold text-2xl tracking-tight text-blue-600 dark:text-blue-400 sm:text-3xl">
+              {totalWaitlisted}
+            </div>
+            <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <Badge
+                variant="outline"
+                className="border-blue-500/20 bg-blue-500/10 px-1.5 py-0 font-semibold text-[10px] text-blue-600 dark:text-blue-400"
+              >
+                {waitlistedPercent}%
+              </Badge>
+              <span>on waitlist</span>
             </div>
           </CardContent>
         </Card>
