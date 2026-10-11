@@ -57,6 +57,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import type { BevyAttendee } from "@/lib/bevy/types";
 import { buildApprovedAttendeePayload } from "@/lib/events/approved-attendee-webhook";
 import { validateAttendeeApprovalCapacity, validateBatchApprovalCapacity } from "@/lib/events/capacity-validator";
+import { buildRegistrationPaymentPayload, hasRegistrationPaymentRequirements } from "@/lib/events/doku-payment";
 import { DEFAULT_COMBINED_QUESTIONS } from "@/lib/events/registration-defaults";
 import {
   deleteBatchEventRegistrationsAction,
@@ -78,6 +79,7 @@ import {
   resendInterestEmailAction,
   sendCancelAttendeeEmailAction,
 } from "@/server/email-template-actions";
+import { generatePaymentLinkAction } from "@/server/payment-actions";
 import { approveAttendeeWebhookAction } from "@/server/registration-actions";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
@@ -1179,10 +1181,40 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         return;
       }
 
+      // Check if registration requires payment (paid ticket, commitment fee, or merchandise)
+      let paymentFields: Partial<FirestoreRegistration> = {};
+      if (hasRegistrationPaymentRequirements(registration)) {
+        try {
+          const paymentPayload = buildRegistrationPaymentPayload(registration, currentEvent, { sendEmail: true });
+          const payRes = await generatePaymentLinkAction(paymentPayload);
+          if (payRes.success && payRes.paymentUrl) {
+            paymentFields = {
+              payment_status: "unpaid",
+              payment_url: payRes.paymentUrl,
+              payment_invoice_number: payRes.invoiceNumber,
+              payment_amount: payRes.amount,
+              payment_expired_datetime: payRes.expiredDatetime,
+            };
+            toast.info(`Payment link generated and emailed to ${registration.member_name}`);
+          } else {
+            console.warn("[RegistrantsTab] Failed to generate payment link on approval:", payRes.error);
+          }
+        } catch (payErr) {
+          console.warn("[RegistrantsTab] Exception generating payment link on approval:", payErr);
+        }
+      }
+
       // Success: persist status to Firestore and update local state
       const reviewerPayload = user ? { id: user.id, name: user.name, email: user.email } : undefined;
       const now = new Date().toISOString();
-      await updateRegistrationStatusAction(registration.id, eventId, "approved", reviewerPayload);
+      await updateRegistrationStatusAction(
+        registration.id,
+        eventId,
+        "approved",
+        reviewerPayload,
+        undefined,
+        paymentFields,
+      );
 
       setRegistrationsList((prev) =>
         prev.map((r) =>
@@ -1194,6 +1226,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 reviewed_by_id: user?.id ?? r.reviewed_by_id,
                 reviewed_by_name: user?.name ?? r.reviewed_by_name,
                 reviewed_by_email: user?.email ?? r.reviewed_by_email,
+                ...paymentFields,
               }
             : r,
         ),
@@ -1208,6 +1241,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
               reviewed_by_id: user?.id ?? prev.reviewed_by_id,
               reviewed_by_name: user?.name ?? prev.reviewed_by_name,
               reviewed_by_email: user?.email ?? prev.reviewed_by_email,
+              ...paymentFields,
             }
           : prev,
       );
@@ -1427,13 +1461,13 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     if (!batchValidation.allowed) {
       setCapacityAlert({
         open: true,
-        title: batchValidation.title || "Capacity Exceeded for Selected Applicants",
+        title: batchValidation.title ?? "Capacity Exceeded for Selected Applicants",
         message:
-          batchValidation.message || "Approving all selected applicants would exceed the configured capacity limit.",
+          batchValidation.message ?? "Approving all selected applicants would exceed the configured capacity limit.",
         reason: batchValidation.overreachedItems[0]?.type === "venue" ? "venue_full" : "session_full",
         batchOverreachedItems: batchValidation.overreachedItems,
       });
-      toast.error(batchValidation.title || "Cannot batch approve: capacity would be exceeded.");
+      toast.error(batchValidation.title ?? "Cannot batch approve: capacity would be exceeded.");
       return;
     }
 
@@ -1448,7 +1482,26 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         const payload = buildApprovedAttendeePayload(reg, currentEvent);
         const res = await approveAttendeeWebhookAction(payload);
         if (res.success) {
-          await updateRegistrationStatusAction(reg.id, eventId, "approved", reviewerPayload);
+          let paymentFields: Partial<FirestoreRegistration> = {};
+          if (hasRegistrationPaymentRequirements(reg)) {
+            try {
+              const paymentPayload = buildRegistrationPaymentPayload(reg, currentEvent, { sendEmail: true });
+              const payRes = await generatePaymentLinkAction(paymentPayload);
+              if (payRes.success && payRes.paymentUrl) {
+                paymentFields = {
+                  payment_status: "unpaid",
+                  payment_url: payRes.paymentUrl,
+                  payment_invoice_number: payRes.invoiceNumber,
+                  payment_amount: payRes.amount,
+                  payment_expired_datetime: payRes.expiredDatetime,
+                };
+              }
+            } catch (payErr) {
+              console.warn("[handleBatchApprove] Payment link error:", payErr);
+            }
+          }
+
+          await updateRegistrationStatusAction(reg.id, eventId, "approved", reviewerPayload, undefined, paymentFields);
           successCount++;
           setRegistrationsList((prev) =>
             prev.map((r) =>
@@ -1460,6 +1513,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                     reviewed_by_id: user?.id ?? r.reviewed_by_id,
                     reviewed_by_name: user?.name ?? r.reviewed_by_name,
                     reviewed_by_email: user?.email ?? r.reviewed_by_email,
+                    ...paymentFields,
                   }
                 : r,
             ),

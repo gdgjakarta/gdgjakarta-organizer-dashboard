@@ -397,23 +397,23 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
   // Validate venue, session, and ticket capacity
   if (eventData) {
     // 1. Venue capacity check
-    const venueCapacity =
-      typeof eventData.max_attendees === "number" && eventData.max_attendees > 0
-        ? eventData.max_attendees
-        : Array.isArray(eventData.sessions) && eventData.sessions.length > 0
-          ? eventData.sessions.reduce((acc, s) => acc + (Number(s.capacity) || 0), 0)
-          : null;
+    let venueCapacity: number | null = null;
+    if (typeof eventData.max_attendees === "number" && eventData.max_attendees > 0) {
+      venueCapacity = eventData.max_attendees;
+    } else if (Array.isArray(eventData.sessions) && eventData.sessions.length > 0) {
+      venueCapacity = eventData.sessions.reduce((acc, s) => acc + (Number(s.capacity) || 0), 0);
+    }
 
     if (venueCapacity !== null && venueCapacity > 0) {
       const isCurated = Boolean(eventData.requires_approval || eventData.curation_mode);
       if (isCurated) {
-        if ((eventData.total_approved ?? 0) >= venueCapacity) {
+        if (Number(eventData.total_approved || 0) >= venueCapacity) {
           throw new Error(
             `Registration is already full. The venue capacity (${venueCapacity} approved attendees) has been reached.`,
           );
         }
       } else {
-        if ((eventData.total_registrations ?? 0) >= venueCapacity) {
+        if (Number(eventData.total_registrations || 0) >= venueCapacity) {
           throw new Error(
             `Registration is already full. The maximum capacity of ${venueCapacity} attendees has been reached.`,
           );
@@ -541,6 +541,7 @@ export async function updateRegistrationStatus(
   status: RegistrationStatus,
   reviewer?: { id: string; name: string; email?: string },
   notes?: string,
+  extraFields?: Partial<FirestoreRegistration>,
 ): Promise<void> {
   if (typeof window === "undefined") return;
   const docRef = doc(db, "event_registrations", registrationId);
@@ -601,6 +602,7 @@ export async function updateRegistrationStatus(
             : {}),
         }),
     ...(notes !== undefined ? { notes } : {}),
+    ...(extraFields ? extraFields : {}),
     status_logs: updatedLogs,
     updated_at: now,
   });

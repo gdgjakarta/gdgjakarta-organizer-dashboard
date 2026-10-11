@@ -320,6 +320,14 @@ export interface FirestoreRegistration {
   bevy_attendee_id?: number | null;
   checkin_date?: string | null;
   attendee_code?: string | null;
+
+  // Payment tracking (DOKU Checkout API)
+  payment_status?: "unpaid" | "pending" | "paid" | "expired" | "refunded";
+  payment_url?: string;
+  payment_invoice_number?: string;
+  payment_amount?: number;
+  payment_expired_datetime?: string;
+
   updated_at?: string;
 }
 

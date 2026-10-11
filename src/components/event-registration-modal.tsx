@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import {
   CheckCircle2,
   Clock,
+  CreditCard,
   ExternalLink,
   FileEdit,
   Layers,
@@ -35,7 +36,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -47,6 +47,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { resolveEventAudience } from "@/lib/bevy/audience";
 import { validateRegistrationSubmissionCapacity } from "@/lib/events/capacity-validator";
+import { buildRegistrationPaymentPayload, hasRegistrationPaymentRequirements } from "@/lib/events/doku-payment";
 import { extractEventImageUrl } from "@/lib/events/media-utils";
 import {
   formatOtherAnswer,
@@ -71,6 +72,7 @@ import type {
   SelectedMerchandiseOrder,
 } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
+import { generatePaymentLinkAction } from "@/server/payment-actions";
 import { dispatchRegistrationWebhookAction, type RegistrationWebhookPayload } from "@/server/registration-actions";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
@@ -743,6 +745,51 @@ export function EventRegistrationModal({
           extractEventImageUrl(eventConfig as unknown as Record<string, unknown>) ??
           extractEventImageUrl(event as unknown as Record<string, unknown>);
 
+        const attendeeEmail = ((combinedAnswers as Record<string, unknown>).work_email as string) || user.email;
+
+        // Check whether event requires organizer approval (curated) vs open registration
+        const isCurated = Boolean(eventConfig.requires_approval || eventConfig.curation_mode);
+
+        const regCandidate = {
+          event_id: String(event.id),
+          event_title: event.title,
+          member_name: user.name,
+          member_email: attendeeEmail,
+          ticket_id: selectedTicket?.id,
+          ticket_name: selectedTicket?.name,
+          ticket_price: selectedTicket?.price,
+          ticket_type: selectedTicket?.type,
+          selected_merchandise: selectedMerchOrders.length > 0 ? selectedMerchOrders : undefined,
+        };
+
+        const requiresPayment = grandTotal > 0 || hasRegistrationPaymentRequirements(regCandidate);
+
+        // For non-curated events with payable items, generate DOKU payment link immediately upon registration.
+        // For curated events, payment link generation is deferred until the organizer reviews and approves the attendee.
+        let generatedPaymentUrl: string | undefined;
+        let generatedInvoiceNumber: string | undefined;
+        let generatedPaymentAmount: number | undefined;
+        let generatedExpiredDatetime: string | undefined;
+
+        if (!isCurated && requiresPayment) {
+          try {
+            const paymentPayload = buildRegistrationPaymentPayload(regCandidate, eventConfig, {
+              sendEmail: true,
+            });
+            const payRes = await generatePaymentLinkAction(paymentPayload);
+            if (payRes.success && payRes.paymentUrl) {
+              generatedPaymentUrl = payRes.paymentUrl;
+              generatedInvoiceNumber = payRes.invoiceNumber;
+              generatedPaymentAmount = payRes.amount;
+              generatedExpiredDatetime = payRes.expiredDatetime;
+            } else {
+              console.warn("[Registration Modal] Failed to generate payment link:", payRes.error);
+            }
+          } catch (payErr) {
+            console.warn("[Registration Modal] Payment link generation error:", payErr);
+          }
+        }
+
         const registrationPayload: Omit<FirestoreRegistration, "id"> = {
           event_id: String(event.id),
           event_title: event.title,
@@ -763,6 +810,11 @@ export function EventRegistrationModal({
           ticket_price: selectedTicket?.price,
           selected_merchandise: selectedMerchOrders.length > 0 ? selectedMerchOrders : undefined,
           registered_at: new Date().toISOString(),
+          payment_status: requiresPayment ? "unpaid" : undefined,
+          payment_url: generatedPaymentUrl,
+          payment_invoice_number: generatedInvoiceNumber,
+          payment_amount: generatedPaymentAmount ?? (requiresPayment ? grandTotal : undefined),
+          payment_expired_datetime: generatedExpiredDatetime,
         };
 
         const result = await registerForEventAction(registrationPayload);
@@ -805,11 +857,13 @@ export function EventRegistrationModal({
             ticket_type: selectedTicket?.type,
             ticket_price: selectedTicket?.price,
             selected_merchandise: selectedMerchOrders.length > 0 ? selectedMerchOrders : undefined,
+            payment_url: generatedPaymentUrl,
+            payment_amount: generatedPaymentAmount ?? (requiresPayment ? grandTotal : undefined),
           },
           member: {
             id: user.id,
             name: user.name,
-            email: ((combinedAnswers as Record<string, unknown>).work_email as string) || user.email,
+            email: attendeeEmail,
             role: user.role,
             avatar: user.avatar,
           },
@@ -832,7 +886,7 @@ export function EventRegistrationModal({
           event_title: event.title,
           member_id: user?.id || "",
           member_name: user?.name || "Attendee",
-          member_email: ((combinedAnswers as Record<string, unknown>).work_email as string) || user?.email || "",
+          member_email: attendeeEmail,
           status: "pending",
           registered_at: new Date().toISOString(),
           answers: combinedAnswers,
@@ -843,6 +897,11 @@ export function EventRegistrationModal({
           ticket_type: selectedTicket?.type,
           ticket_price: selectedTicket?.price,
           selected_merchandise: selectedMerchOrders.length > 0 ? selectedMerchOrders : undefined,
+          payment_status: requiresPayment ? "unpaid" : undefined,
+          payment_url: generatedPaymentUrl,
+          payment_invoice_number: generatedInvoiceNumber,
+          payment_amount: generatedPaymentAmount ?? (requiresPayment ? grandTotal : undefined),
+          payment_expired_datetime: generatedExpiredDatetime,
         };
 
         setIsTransitioning(true);
@@ -850,9 +909,30 @@ export function EventRegistrationModal({
         onSuccess?.(newReg);
         setTimeout(() => setIsTransitioning(false), 1500);
 
-        toast.success("Registration submitted! Your application is now pending organizer review.", {
-          duration: 5000,
-        });
+        if (!isCurated && generatedPaymentUrl) {
+          toast.success("Registration submitted! Redirecting to secure DOKU payment checkout...", {
+            duration: 5000,
+          });
+          setOpen(false);
+          router.refresh();
+          window.location.href = generatedPaymentUrl;
+          return;
+        }
+
+        if (isCurated && requiresPayment) {
+          toast.success(
+            "Registration submitted! Your application is pending organizer review. Payment instructions will be sent upon approval.",
+            { duration: 6000 },
+          );
+        } else if (isCurated) {
+          toast.success("Registration submitted! Your application is now pending organizer review.", {
+            duration: 5000,
+          });
+        } else {
+          toast.success("Registration successful! See you at the event!", {
+            duration: 5000,
+          });
+        }
 
         setOpen(false);
         router.refresh();
@@ -916,6 +996,32 @@ export function EventRegistrationModal({
       if (childProps.size) {
         buttonSize = childProps.size;
       }
+    }
+
+    const isUnpaid = activeRegistration.payment_status === "unpaid" && Boolean(activeRegistration.payment_url);
+    if (isUnpaid) {
+      return (
+        <a
+          href={activeRegistration.payment_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={cn("inline-block", isFullWidth && "w-full")}
+        >
+          <Button
+            type="button"
+            variant="default"
+            size={buttonSize}
+            className={cn(
+              "gap-2 bg-amber-600 font-medium text-white shadow-xs hover:bg-amber-700",
+              isFullWidth && "w-full",
+              className,
+            )}
+          >
+            <CreditCard className={buttonSize === "lg" ? "size-4" : "size-3.5"} />
+            <span>Complete Payment</span>
+          </Button>
+        </a>
+      );
     }
 
     const statusLower = activeRegistration.status.toLowerCase();
@@ -1072,17 +1178,17 @@ export function EventRegistrationModal({
           </div>
 
           {!user ? (
-            <div className="flex flex-1 min-h-0 flex-col items-center overflow-y-auto px-6 py-6 text-center">
+            <div className="flex min-h-0 flex-1 flex-col items-center overflow-y-auto px-6 py-6 text-center">
               {/* Header / Avatar / GDG Branding */}
               <div className="relative mb-4 flex size-16 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 shadow-xs">
                 <GdgLogo size={36} className="h-9 w-auto" />
               </div>
 
-              <Badge variant="outline" className="mb-2 border-primary/30 text-[11px] font-medium text-primary">
+              <Badge variant="outline" className="mb-2 border-primary/30 font-medium text-[11px] text-primary">
                 Step 1 of 2: Join Chapter Community
               </Badge>
 
-              <h3 className="font-semibold text-xl tracking-tight text-foreground">Join GDG Jakarta to Register</h3>
+              <h3 className="font-semibold text-foreground text-xl tracking-tight">Join GDG Jakarta to Register</h3>
               <p className="mt-1.5 max-w-md text-muted-foreground text-sm leading-relaxed">
                 To attend <span className="font-medium text-foreground">&quot;{event.title}&quot;</span>, you need to be
                 a registered member of our Google Developer Groups Jakarta chapter. Sign in with Google to join our
@@ -1090,8 +1196,8 @@ export function EventRegistrationModal({
               </p>
 
               {/* Benefits box */}
-              <div className="mt-6 w-full max-w-md rounded-xl border bg-muted/40 p-4 text-left text-xs space-y-2.5">
-                <p className="font-semibold text-foreground text-[13px]">Why join GDG Jakarta first?</p>
+              <div className="mt-6 w-full max-w-md space-y-2.5 rounded-xl border bg-muted/40 p-4 text-left text-xs">
+                <p className="font-semibold text-[13px] text-foreground">Why join GDG Jakarta first?</p>
                 <ul className="space-y-2 text-muted-foreground">
                   <li className="flex items-start gap-2">
                     <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
@@ -1149,8 +1255,8 @@ export function EventRegistrationModal({
               </div>
             </div>
           ) : (
-            <form onSubmit={handleSubmit} className="flex flex-1 min-h-0 flex-col overflow-hidden">
-              <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5 space-y-6">
+            <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-6 py-5">
                 {/* Member Profile Banner */}
                 {user && (
                   <div className="flex items-center justify-between rounded-lg border bg-muted/40 p-3.5 text-xs">
@@ -1323,7 +1429,7 @@ export function EventRegistrationModal({
                                   <Badge
                                     variant="outline"
                                     className={cn(
-                                      "text-[10px] font-semibold",
+                                      "font-semibold text-[10px]",
                                       t.type === "free" &&
                                         "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
                                       t.type === "paid" &&
@@ -1921,7 +2027,7 @@ export function EventRegistrationModal({
                                   <Badge
                                     variant="secondary"
                                     className={cn(
-                                      "text-[10px] px-1.5 py-0",
+                                      "px-1.5 py-0 text-[10px]",
                                       item.is_free
                                         ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                                         : "bg-blue-500/10 text-blue-600 dark:text-blue-400",
@@ -1932,7 +2038,7 @@ export function EventRegistrationModal({
                                 </div>
 
                                 {item.description && (
-                                  <p className="line-clamp-2 text-muted-foreground text-[11px] leading-relaxed">
+                                  <p className="line-clamp-2 text-[11px] text-muted-foreground leading-relaxed">
                                     {item.description}
                                   </p>
                                 )}
@@ -1947,7 +2053,7 @@ export function EventRegistrationModal({
                                           value={order.selectedVariations[v.name] || v.options[0]}
                                           onValueChange={(val) => handleUpdateMerchVariation(item.id, v.name, val)}
                                         >
-                                          <SelectTrigger className="h-6 w-20 text-[10px] px-1.5 py-0">
+                                          <SelectTrigger className="h-6 w-20 px-1.5 py-0 text-[10px]">
                                             <SelectValue />
                                           </SelectTrigger>
                                           <SelectContent>
@@ -1966,8 +2072,8 @@ export function EventRegistrationModal({
                             </div>
 
                             {/* Stepper Quantity Buttons */}
-                            <div className="flex items-center justify-between sm:justify-end gap-2 border-t pt-2 sm:border-t-0 sm:pt-0">
-                              <span className="text-xs font-semibold sm:hidden">
+                            <div className="flex items-center justify-between gap-2 border-t pt-2 sm:justify-end sm:border-t-0 sm:pt-0">
+                              <span className="font-semibold text-xs sm:hidden">
                                 {getMerchPriceDisplay(item, order.quantity)}
                               </span>
 
@@ -1982,7 +2088,7 @@ export function EventRegistrationModal({
                                 >
                                   <Minus className="size-3" />
                                 </Button>
-                                <span className="w-6 text-center font-mono text-xs font-semibold">
+                                <span className="w-6 text-center font-mono font-semibold text-xs">
                                   {order.quantity}
                                 </span>
                                 <Button
@@ -2006,8 +2112,8 @@ export function EventRegistrationModal({
 
                 {/* ── REGISTRATION & ORDER SUMMARY ─────────────────────────── */}
                 {(hasTickets || (hasMerchandise && totalMerchandiseItems > 0)) && (
-                  <div className="rounded-xl border bg-muted/40 p-4 space-y-2.5">
-                    <div className="flex items-center justify-between text-xs text-muted-foreground font-medium">
+                  <div className="space-y-2.5 rounded-xl border bg-muted/40 p-4">
+                    <div className="flex items-center justify-between font-medium text-muted-foreground text-xs">
                       <span>Registration & Checkout Summary</span>
                       <span>Amount</span>
                     </div>
@@ -2031,7 +2137,7 @@ export function EventRegistrationModal({
                       if (!m) return null;
                       const varText = Object.values(order.selectedVariations).join(", ");
                       return (
-                        <div key={itemId} className="flex items-center justify-between text-xs text-muted-foreground">
+                        <div key={itemId} className="flex items-center justify-between text-muted-foreground text-xs">
                           <span>
                             {order.quantity}x {m.name} {varText ? `(${varText})` : ""}
                           </span>
@@ -2042,7 +2148,7 @@ export function EventRegistrationModal({
                       );
                     })}
 
-                    <div className="border-t pt-2 flex items-center justify-between font-bold text-sm text-foreground">
+                    <div className="flex items-center justify-between border-t pt-2 font-bold text-foreground text-sm">
                       <span>Total Amount</span>
                       <span className="font-mono text-primary">
                         {grandTotal === 0 ? "Free (Rp 0)" : `Rp ${grandTotal.toLocaleString("id-ID")}`}
@@ -2050,7 +2156,7 @@ export function EventRegistrationModal({
                     </div>
 
                     {selectedTicket?.type === "commitment_fee" && (
-                      <p className="text-[11px] text-amber-600 dark:text-amber-400 pt-1 leading-normal">
+                      <p className="pt-1 text-[11px] text-amber-600 leading-normal dark:text-amber-400">
                         💡 Note: Your commitment deposit will be handed back in full upon physical check-in at the
                         venue.
                       </p>
@@ -2059,7 +2165,7 @@ export function EventRegistrationModal({
                 )}
               </div>
 
-              <div className="shrink-0 flex items-center justify-between gap-3 border-t bg-muted/20 px-6 py-3.5">
+              <div className="flex shrink-0 items-center justify-between gap-3 border-t bg-muted/20 px-6 py-3.5">
                 <div className="flex items-center gap-2 text-xs">{footerSummaryBadge}</div>
 
                 <div className="flex items-center gap-2">

@@ -9,6 +9,7 @@ import {
   CheckCircle,
   Clock,
   Copy,
+  CreditCard,
   ExternalLink,
   FileText,
   Globe,
@@ -20,6 +21,7 @@ import {
   Mail,
   Package,
   Phone,
+  QrCode,
   RotateCcw,
   ShieldCheck,
   Sparkles,
@@ -39,6 +41,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { DEFAULT_COMBINED_QUESTIONS } from "@/lib/events/registration-defaults";
 import type { CustomQuestion, FirestoreRegistration, RegistrationStatus } from "@/lib/firestore/types";
 import { cn, getInitials } from "@/lib/utils";
+import { generatePaymentLinkAction } from "@/server/payment-actions";
 
 interface ApplicantDetailDialogProps {
   registration: FirestoreRegistration | null;
@@ -172,6 +175,8 @@ export function ApplicantDetailDialog({
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [copiedProfile, setCopiedProfile] = useState(false);
   const [loadedQuestions, setLoadedQuestions] = useState<CustomQuestion[]>([]);
+  const [isGeneratingPayment, setIsGeneratingPayment] = useState(false);
+  const [paymentLinkInfo, setPaymentLinkInfo] = useState<{ url: string; invoiceNumber: string } | null>(null);
 
   // Hydrate custom questions from Firestore if not provided
   useEffect(() => {
@@ -521,6 +526,107 @@ export function ApplicantDetailDialog({
     return <span className="font-medium text-foreground text-xs sm:text-sm">{strVal}</span>;
   };
 
+  const handleSendPaymentLink = async () => {
+    if (!registration) return;
+
+    const phoneStr =
+      (registration.answers?.whatsapp_number as string) ||
+      (registration.answers?.phone_number as string) ||
+      (registration.answers?.phone as string) ||
+      "";
+
+    const items = (registration.selected_merchandise ?? []).map((m) => ({
+      id: m.id,
+      name: m.name,
+      quantity: m.quantity || 1,
+      price: m.price || 0,
+      type: "Merchandise",
+    }));
+
+    if (registration.ticket_type === "paid" && (registration.ticket_price ?? 0) > 0) {
+      items.unshift({
+        id: registration.ticket_id ?? "ticket",
+        name: registration.ticket_name ?? "Event Ticket",
+        quantity: 1,
+        price: registration.ticket_price ?? 0,
+        type: "Ticket",
+      });
+    }
+
+    const fees =
+      registration.ticket_type === "commitment_fee" && (registration.ticket_price ?? 0) > 0
+        ? [
+            {
+              label: registration.ticket_name ?? "Commitment Fee",
+              type: "fixed" as const,
+              value: registration.ticket_price ?? 50000,
+              desc: "Refundable upon attendance.",
+            },
+          ]
+        : [];
+
+    if (items.length === 0 && fees.length === 0) {
+      toast.info("No paid merchandise or ticket fees detected for this registration.");
+      return;
+    }
+
+    setIsGeneratingPayment(true);
+    try {
+      const res = await generatePaymentLinkAction({
+        customer: {
+          name: registration.member_name,
+          email: registration.member_email,
+          phone: phoneStr,
+        },
+        event: {
+          id: registration.event_id,
+          title: registration.event_title,
+          headerEmailUrl: registration.event_picture_url ?? registration.event_banner_url,
+          paymentDeadlineMinutes: 1440,
+        },
+        items:
+          items.length > 0
+            ? items
+            : [
+                {
+                  name: "Commitment Fee",
+                  quantity: 1,
+                  price: fees[0].value,
+                  type: "Ticket",
+                },
+              ],
+        fees: items.length > 0 ? fees : [],
+        payment: {
+          paymentMethodTypes: ["QRIS"],
+          sendEmail: true,
+        },
+        referenceId: registration.id,
+      });
+
+      if (res.success && res.paymentUrl) {
+        setPaymentLinkInfo({
+          url: res.paymentUrl,
+          invoiceNumber: res.invoiceNumber ?? `INV-${Date.now()}`,
+        });
+        void navigator.clipboard.writeText(res.paymentUrl);
+        toast.success("DOKU payment link generated, emailed, and copied to clipboard!");
+      } else {
+        toast.error(res.error ?? "Failed to generate DOKU payment link.");
+      }
+    } catch (err) {
+      console.error("[ApplicantDetailDialog] Error generating payment link:", err);
+      toast.error("Failed to generate payment link via n8n.");
+    } finally {
+      setIsGeneratingPayment(false);
+    }
+  };
+
+  const hasPayableItems = Boolean(
+    registration?.selected_merchandise?.some((m) => (m.price ?? 0) > 0) ||
+      (registration?.ticket_type === "paid" && (registration.ticket_price ?? 0) > 0) ||
+      (registration?.ticket_type === "commitment_fee" && (registration.ticket_price ?? 0) > 0),
+  );
+
   return (
     <Dialog open={Boolean(registration)} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="flex max-h-[92vh] flex-col overflow-hidden p-0 sm:max-w-xl md:max-w-2xl lg:max-w-3xl">
@@ -552,7 +658,7 @@ export function ApplicantDetailDialog({
               </div>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex shrink-0 items-center gap-2">
               <Badge
                 variant="outline"
                 className={cn("gap-1.5 border px-2.5 py-1 font-semibold text-xs", statusMeta.badgeClass)}
@@ -585,7 +691,7 @@ export function ApplicantDetailDialog({
               <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
                 <div className="flex min-w-0 items-center gap-2">
                   <Layers className="size-3.5 shrink-0 text-primary" />
-                  <span className="shrink-0 text-muted-foreground text-[11px]">Track:</span>
+                  <span className="shrink-0 text-[11px] text-muted-foreground">Track:</span>
                   <span className="truncate font-semibold text-primary">
                     {registration.session_title ??
                       String(registration.answers?.session_title ?? "") ??
@@ -603,7 +709,7 @@ export function ApplicantDetailDialog({
               <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
                 <div className="flex min-w-0 items-center gap-2">
                   <Ticket className="size-3.5 shrink-0 text-primary" />
-                  <span className="shrink-0 text-muted-foreground text-[11px]">Ticket:</span>
+                  <span className="shrink-0 text-[11px] text-muted-foreground">Ticket:</span>
                   <span className="truncate font-semibold text-foreground">
                     {registration.ticket_name ?? "General Pass"}
                   </span>
@@ -628,7 +734,7 @@ export function ApplicantDetailDialog({
             {/* Bevy On-Site Check-In Status & Action */}
             <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-xs">
               <div className="flex min-w-0 items-center gap-1.5">
-                <span className="shrink-0 font-medium text-muted-foreground text-[11px]">Check-In:</span>
+                <span className="shrink-0 font-medium text-[11px] text-muted-foreground">Check-In:</span>
                 {registration.is_checked_in ? (
                   <Badge
                     variant="outline"
@@ -677,8 +783,8 @@ export function ApplicantDetailDialog({
               <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-xs">
                 <div className="flex min-w-0 items-center gap-1.5">
                   <Package className="size-3.5 shrink-0 text-primary" />
-                  <span className="shrink-0 text-muted-foreground text-[11px]">Merch:</span>
-                  <span className="truncate font-medium text-foreground text-[11px]">
+                  <span className="shrink-0 text-[11px] text-muted-foreground">Merch:</span>
+                  <span className="truncate font-medium text-[11px] text-foreground">
                     {registration.selected_merchandise?.map((item) => `${item.quantity}x ${item.name}`).join(", ")}
                   </span>
                 </div>
@@ -693,11 +799,11 @@ export function ApplicantDetailDialog({
               <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-xs">
                 <div className="flex min-w-0 items-center gap-1.5">
                   <UserCheck className="size-3.5 shrink-0 text-primary" />
-                  <span className="shrink-0 font-medium text-muted-foreground text-[11px]">Reviewed By:</span>
-                  <span className="truncate font-semibold text-foreground text-[11px]">
+                  <span className="shrink-0 font-medium text-[11px] text-muted-foreground">Reviewed By:</span>
+                  <span className="truncate font-semibold text-[11px] text-foreground">
                     {registration.reviewed_by_name}
                     {registration.reviewed_by_email && (
-                      <span className="ml-1 font-normal text-muted-foreground text-[10px]">
+                      <span className="ml-1 font-normal text-[10px] text-muted-foreground">
                         ({registration.reviewed_by_email})
                       </span>
                     )}
@@ -717,10 +823,49 @@ export function ApplicantDetailDialog({
               </div>
             )}
           </div>
+
+          {/* DOKU Payment Link Generated Banner */}
+          {paymentLinkInfo && (
+            <div className="mt-3 flex items-center justify-between rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs">
+              <div className="flex min-w-0 items-center gap-2">
+                <QrCode className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                <span className="truncate font-semibold text-emerald-800 dark:text-emerald-300">
+                  DOKU Link: {paymentLinkInfo.invoiceNumber}
+                </span>
+              </div>
+              <div className="flex shrink-0 items-center gap-1.5">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 px-2 text-[11px] text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(paymentLinkInfo.url);
+                    toast.success("Payment URL copied to clipboard!");
+                  }}
+                >
+                  <Copy className="mr-1 size-3" />
+                  Copy
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-6 border-emerald-500/40 px-2 text-[11px] text-emerald-700 dark:text-emerald-300"
+                  asChild
+                >
+                  <a href={paymentLinkInfo.url} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="mr-1 size-3" />
+                    Open
+                  </a>
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Scrollable Questions and Responses */}
-        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5">
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
           <div className="space-y-6">
             {groupedSections.length > 0 ? (
               groupedSections.map(([sectionTitle, items]) => {
@@ -814,7 +959,7 @@ export function ApplicantDetailDialog({
                           <span className="text-muted-foreground text-xs">
                             by <span className="font-semibold text-foreground">{log.changed_by_name}</span>
                             {log.changed_by_email && (
-                              <span className="text-muted-foreground text-[11px]"> ({log.changed_by_email})</span>
+                              <span className="text-[11px] text-muted-foreground"> ({log.changed_by_email})</span>
                             )}
                           </span>
                         </div>
@@ -837,7 +982,7 @@ export function ApplicantDetailDialog({
             Boolean,
           );
           return (
-            <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 border-t bg-muted/20 px-6 py-3.5">
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t bg-muted/20 px-6 py-3.5">
               <div className="flex items-center gap-2">
                 {registration.status !== "waitlisted" && registration.status !== "approved" && (
                   <Button
@@ -886,6 +1031,23 @@ export function ApplicantDetailDialog({
                       <Mail className="mr-1.5 size-3.5" />
                     )}
                     Resend Interest Email
+                  </Button>
+                )}
+
+                {hasPayableItems && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-primary/40 text-primary text-xs hover:bg-primary/5"
+                    disabled={isActionBlocked || isGeneratingPayment}
+                    onClick={handleSendPaymentLink}
+                  >
+                    {isGeneratingPayment ? (
+                      <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                    ) : (
+                      <CreditCard className="mr-1.5 size-3.5" />
+                    )}
+                    Send Payment Link
                   </Button>
                 )}
 
@@ -954,7 +1116,7 @@ export function ApplicantDetailDialog({
                     size="sm"
                     variant="outline"
                     disabled
-                    className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs cursor-default"
+                    className="cursor-default border-emerald-500/30 bg-emerald-500/10 text-emerald-600 text-xs dark:text-emerald-400"
                   >
                     <CheckCircle className="mr-1.5 size-3.5" />
                     Approved

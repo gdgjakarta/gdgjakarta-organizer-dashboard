@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 
-import { Copy, Edit2, Package, PackageOpen, Plus, Sparkles, Tag, Trash2 } from "lucide-react";
+import { Copy, CreditCard, Edit2, Package, PackageOpen, Plus, Sparkles, Tag, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { FloatingSaveBar } from "@/app/(main)/dashboard/_components/floating-save-bar";
@@ -15,6 +15,7 @@ import { updateEventMerchandiseAction } from "@/lib/firestore/actions";
 import type { EventMerchandiseItem, FirestoreEvent } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
+import { GenerateMerchandisePaymentDialog } from "./generate-merchandise-payment-dialog";
 import { MerchandiseItemDialog } from "./merchandise-item-dialog";
 import { MerchandiseTemplateDialog } from "./merchandise-template-dialog";
 
@@ -29,8 +30,10 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
     event.max_merchandise_per_person ?? null,
   );
   const [editingItem, setEditingItem] = useState<EventMerchandiseItem | null>(null);
+  const [paymentItem, setPaymentItem] = useState<EventMerchandiseItem | null>(null);
   const [isItemDialogOpen, setIsItemDialogOpen] = useState(false);
   const [isTemplateDialogOpen, setIsTemplateDialogOpen] = useState(false);
+  const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
   const [isSaving, startTransition] = useTransition();
   const [isDirty, setIsDirty] = useState(false);
 
@@ -170,10 +173,10 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
           <div className="grid grid-cols-1 gap-4 rounded-xl border bg-muted/20 p-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <Label htmlFor="max-merch-person" className="text-xs font-semibold">
+                <Label htmlFor="max-merch-person" className="font-semibold text-xs">
                   Global Limit: Max Merchandise Items per Attendee
                 </Label>
-                <Badge variant="outline" className="text-[10px] font-mono">
+                <Badge variant="outline" className="font-mono text-[10px]">
                   {maxMerchandisePerPerson ? `${maxMerchandisePerPerson} Items / Person` : "Unlimited"}
                 </Badge>
               </div>
@@ -188,7 +191,7 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
                   setMaxMerchandisePerPerson(e.target.value ? Number(e.target.value) : null);
                   setIsDirty(true);
                 }}
-                className="h-8 text-xs bg-background"
+                className="h-8 bg-background text-xs"
               />
               <p className="text-[11px] text-muted-foreground leading-normal">
                 Restricts the maximum total merchandise items that a single attendee can add during registration.
@@ -196,8 +199,8 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
             </div>
 
             <div className="space-y-1.5">
-              <span className="text-xs font-semibold">Configured Swag & Merchandise</span>
-              <div className="flex h-8 items-center gap-2 rounded-md border border-border/70 bg-background px-3 text-xs font-medium text-foreground">
+              <span className="font-semibold text-xs">Configured Swag & Merchandise</span>
+              <div className="flex h-8 items-center gap-2 rounded-md border border-border/70 bg-background px-3 font-medium text-foreground text-xs">
                 <Package className="size-3.5 text-primary" />
                 <span>
                   {items.length} item{items.length === 1 ? "" : "s"} ({items.filter((i) => i.is_free).length} Free,{" "}
@@ -212,11 +215,11 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
 
           {items.length === 0 ? (
             /* Empty State: No items pre-selected or forced */
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/80 bg-muted/20 px-6 py-14 text-center">
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-border/80 border-dashed bg-muted/20 px-6 py-14 text-center">
               <div className="rounded-full bg-primary/10 p-4 text-primary">
                 <PackageOpen className="size-8" />
               </div>
-              <h3 className="mt-4 font-semibold text-foreground text-base">No Merchandise Configured Yet</h3>
+              <h3 className="mt-4 font-semibold text-base text-foreground">No Merchandise Configured Yet</h3>
               <p className="mt-1.5 max-w-md text-muted-foreground text-xs leading-relaxed">
                 Provide attendee giveaways, conference swag (stickers, lanyards, shirts), or paid merchandise. Select
                 from pre-made GDG templates or add your own custom items.
@@ -240,7 +243,7 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
                   key={item.id}
                   className={cn(
                     "group flex flex-col justify-between overflow-hidden rounded-xl border bg-card text-card-foreground shadow-xs transition-all hover:border-primary/50 hover:shadow-md",
-                    item.status === "draft" && "opacity-75 border-dashed",
+                    item.status === "draft" && "border-dashed opacity-75",
                   )}
                 >
                   {/* Image & Price Header */}
@@ -282,8 +285,8 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
                           variant="outline"
                           className={cn(
                             "bg-background/95 font-medium text-[10px] backdrop-blur-md",
-                            item.status === "draft" && "text-amber-600 border-amber-500/30",
-                            item.status === "out_of_stock" && "text-destructive border-destructive/30",
+                            item.status === "draft" && "border-amber-500/30 text-amber-600",
+                            item.status === "out_of_stock" && "border-destructive/30 text-destructive",
                           )}
                         >
                           {item.status === "draft" ? "Draft" : "Out of Stock"}
@@ -295,7 +298,7 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
                   {/* Body Content */}
                   <div className="flex flex-1 flex-col p-4">
                     <div className="flex items-start justify-between gap-2">
-                      <h4 className="font-semibold text-foreground text-sm leading-snug group-hover:text-primary transition-colors">
+                      <h4 className="font-semibold text-foreground text-sm leading-snug transition-colors group-hover:text-primary">
                         {item.name}
                       </h4>
                     </div>
@@ -328,12 +331,26 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
                     )}
 
                     {/* Footer stock & quick actions */}
-                    <div className="mt-4 flex items-center justify-between border-t border-border/60 pt-3">
+                    <div className="mt-4 flex items-center justify-between border-border/60 border-t pt-3">
                       <span className="text-[11px] text-muted-foreground">
                         {item.stock !== null && item.stock !== undefined ? `Quota: ${item.stock} units` : "Unlimited"}
                       </span>
 
                       <div className="flex items-center gap-1">
+                        {!item.is_free && (
+                          <Button
+                            size="icon-xs"
+                            variant="ghost"
+                            onClick={() => {
+                              setPaymentItem(item);
+                              setIsPaymentDialogOpen(true);
+                            }}
+                            title="Generate DOKU payment link"
+                            className="text-muted-foreground hover:text-primary"
+                          >
+                            <CreditCard className="size-3.5" />
+                          </Button>
+                        )}
                         <Button
                           size="icon-xs"
                           variant="ghost"
@@ -410,6 +427,14 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
         onOpenChange={setIsTemplateDialogOpen}
         onSelectTemplate={handleSelectTemplate}
         existingNames={items.map((i) => i.name)}
+      />
+
+      {/* Dialog for generating DOKU payment link */}
+      <GenerateMerchandisePaymentDialog
+        open={isPaymentDialogOpen}
+        onOpenChange={setIsPaymentDialogOpen}
+        item={paymentItem}
+        event={event}
       />
 
       {/* ── Fixed Floating Bottom Save Bar ──────────────────────────── */}

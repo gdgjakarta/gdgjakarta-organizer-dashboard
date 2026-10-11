@@ -69,9 +69,10 @@ export async function updateRegistrationStatusAction(
   status: RegistrationStatus,
   reviewer?: { id: string; name: string; email?: string },
   notes?: string,
+  extraFields?: Partial<FirestoreRegistration>,
 ) {
   const { updateRegistrationStatus } = await import("./client");
-  await updateRegistrationStatus(registrationId, eventId, status, reviewer, notes);
+  await updateRegistrationStatus(registrationId, eventId, status, reviewer, notes, extraFields);
   await revalidateDashboardPath("/dashboard/events");
   await revalidateDashboardPath(`/dashboard/events/${eventId}`);
   return { success: true };
