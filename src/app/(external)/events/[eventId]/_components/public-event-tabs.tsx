@@ -1,17 +1,15 @@
 "use client";
 
+import { useMemo } from "react";
+
 import Image from "next/image";
 
 import {
-  Calendar,
   Camera,
-  Clock,
   ExternalLink,
   FileText,
   Images,
-  Layers,
   Link2,
-  MapPin,
   Play,
   Presentation,
   Sparkles,
@@ -26,8 +24,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { extractEventPartners, groupPartnersByTier } from "@/lib/bevy/partners";
 import type { BevyEvent, BevyPartner, BevySpeaker } from "@/lib/bevy/types";
+import { buildUnifiedAgenda } from "@/lib/events/agenda-unification";
 import { parsePhotoAlbum, parseVideoUrl } from "@/lib/events/media-utils";
 import type { EventSession, FirestoreEvent } from "@/lib/firestore/types";
+
+import { UnifiedAgendaTimeline } from "./unified-agenda-timeline";
 
 const VIDEO_PLATFORM_LABELS: Record<string, string> = {
   youtube: "YouTube",
@@ -36,12 +37,12 @@ const VIDEO_PLATFORM_LABELS: Record<string, string> = {
   unknown: "Original",
 };
 
-function formatAudienceType(audienceType?: string): string {
+function _formatAudienceType(audienceType?: string): string {
   if (!audienceType) return "";
   return audienceType.replace(/_/g, "-").toUpperCase();
 }
 
-function getAudienceBadgeStyle(audienceType?: string): string {
+function _getAudienceBadgeStyle(audienceType?: string): string {
   const normalized = audienceType?.toUpperCase().replace(/-/g, "_");
   switch (normalized) {
     case "IN_PERSON":
@@ -68,19 +69,12 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
     Array.isArray(event.partners) && event.partners.length > 0 ? event.partners : extractEventPartners(event);
   const hasPartners = partners.length > 0;
   const tierGroups = groupPartnersByTier(partners);
-  const hasBevyAgenda =
-    Array.isArray(event.agenda?.days) &&
-    event.agenda.days.some((day) => {
-      const items = day.items ?? day.agenda;
-      return Array.isArray(items) && items.length > 0;
-    });
-  const hasFirestoreSessions = Array.isArray(firestoreSessions) && firestoreSessions.length > 0;
-  const hasAgenda = hasBevyAgenda || hasFirestoreSessions;
-  const totalBevyAgendaItems =
-    event.agenda?.days?.reduce((acc, d) => acc + ((d.items ?? d.agenda)?.length ?? 0), 0) ?? 0;
-  const agendaBadgeCount = hasFirestoreSessions
-    ? firestoreSessions.length
-    : totalBevyAgendaItems || event.agenda?.days?.length || 0;
+  const unifiedAgenda = useMemo(
+    () => buildUnifiedAgenda(event.agenda, event.speakers, firestoreSessions),
+    [event.agenda, event.speakers, firestoreSessions],
+  );
+  const hasAgenda = unifiedAgenda.totalItemsCount > 0;
+  const agendaBadgeCount = unifiedAgenda.totalItemsCount;
 
   // Post-Event Recap & Media
   const highlightVideoUrl = firestoreEvent?.highlight_video_url ?? event.highlight_video_url ?? event.video_url;
@@ -228,243 +222,11 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
 
         {/* ── TAB 2: AGENDA ───────────────────────────────────────── */}
         <TabsContent value="agenda" className="space-y-6 pt-4">
-          {/* Firestore Breakout Sessions / Tracks if configured */}
-          {hasFirestoreSessions && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Layers className="size-4 text-primary" />
-                <h3 className="font-semibold text-foreground text-sm uppercase tracking-wider">
-                  Breakout Sessions & Specialized Tracks
-                </h3>
-              </div>
-              <div className="space-y-3.5 sm:space-y-4">
-                {firestoreSessions.map((sess, idx) => {
-                  const capacity = sess.capacity ?? 0;
-                  const totalRegistered = sess.total_registered ?? 0;
-                  const available = capacity - totalRegistered > 0;
-                  const remaining = Math.max(0, capacity - totalRegistered);
-
-                  let sessionBadgeText = "Open Capacity";
-                  if (capacity > 0) {
-                    sessionBadgeText = available
-                      ? `${totalRegistered}/${capacity} booked (${remaining} left)`
-                      : `Full (${capacity} max)`;
-                  }
-
-                  return (
-                    <div
-                      key={sess.id}
-                      className="rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-card p-4 sm:p-5 shadow-2xs transition-all hover:border-zinc-300 dark:hover:border-zinc-700"
-                    >
-                      <div className="flex items-center gap-4 sm:gap-5">
-                        {/* Time slot / Track pill */}
-                        <div className="shrink-0">
-                          <span className="inline-flex items-center justify-center rounded-full bg-blue-50 px-3.5 py-1.5 font-medium text-blue-600 text-xs sm:text-sm tracking-tight dark:bg-blue-950/60 dark:text-blue-400">
-                            {sess.time_slot ?? `Track #${idx + 1}`}
-                          </span>
-                        </div>
-
-                        {/* Content column */}
-                        <div className="min-w-0 flex-1 space-y-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            {sess.time_slot && (
-                              <Badge variant="outline" className="text-[10px]">
-                                Track #{idx + 1}
-                              </Badge>
-                            )}
-                            <Badge variant={available ? "secondary" : "destructive"} className="text-[10px]">
-                              {sessionBadgeText}
-                            </Badge>
-                          </div>
-
-                          <h5 className="font-semibold text-foreground text-sm sm:text-base leading-snug">
-                            {sess.title}
-                          </h5>
-
-                          {sess.speaker_name && (
-                            <p className="text-muted-foreground text-xs">
-                              Speaker: <span className="font-medium text-foreground">{sess.speaker_name}</span>
-                            </p>
-                          )}
-
-                          {sess.description && (
-                            <div
-                              className="prose prose-xs dark:prose-invert max-w-none text-muted-foreground text-xs leading-relaxed [&_a]:text-primary [&_a]:underline [&_ol]:list-decimal [&_ol]:pl-4 [&_ul]:list-disc [&_ul]:pl-4"
-                              // biome-ignore lint/security/noDangerouslySetInnerHtml: Event organizer session description
-                              dangerouslySetInnerHTML={{ __html: sess.description }}
-                            />
-                          )}
-
-                          <div className="flex flex-wrap items-center gap-3 pt-0.5 text-[11px] text-muted-foreground">
-                            {(sess.location || sess.location_url) &&
-                              (sess.location_url ? (
-                                <a
-                                  href={sess.location_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 text-primary transition-colors hover:text-primary/80 hover:underline"
-                                  title="Open Google Maps / Venue Location"
-                                >
-                                  <MapPin className="size-3" />
-                                  <span>{sess.location ?? "Google Maps"}</span>
-                                  <ExternalLink className="size-2.5" />
-                                </a>
-                              ) : (
-                                <span className="flex items-center gap-1">
-                                  <MapPin className="size-3" /> {sess.location}
-                                </span>
-                              ))}
-                          </div>
-
-                          {/* Speaker Presentation Slides & Related Links */}
-                          {(sess.slides_url || (sess.related_links && sess.related_links.length > 0)) && (
-                            <div className="flex flex-wrap items-center gap-2 border-border/40 border-t pt-2 mt-2">
-                              {sess.slides_url && (
-                                <Button
-                                  asChild
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-7 gap-1.5 border-primary/30 bg-primary/5 px-2.5 text-primary text-xs hover:bg-primary/10 hover:text-primary"
-                                >
-                                  <a href={sess.slides_url} target="_blank" rel="noopener noreferrer">
-                                    <Presentation className="size-3.5" />
-                                    <span>{sess.slides_title ?? "Speaker Slides"}</span>
-                                    <ExternalLink className="size-2.5" />
-                                  </a>
-                                </Button>
-                              )}
-                              {sess.related_links?.map((link) => (
-                                <a
-                                  key={link.url}
-                                  href={link.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:border-primary/40 hover:bg-muted/70 hover:text-foreground"
-                                >
-                                  <Link2 className="size-2.5 text-primary" />
-                                  <span className="max-w-[180px] truncate">{link.title ? link.title : link.url}</span>
-                                  <ExternalLink className="size-2" />
-                                </a>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Standard Bevy Agenda Days */}
-          {hasBevyAgenda && (
-            <div className="space-y-6">
-              {event.agenda?.days?.map((day, dIdx) => {
-                const items = day.items ?? day.agenda ?? [];
-                if (items.length === 0) return null;
-                return (
-                  <div key={day.title ?? `day-${dIdx + 1}`} className="space-y-3.5">
-                    {day.title && (
-                      <div className="flex items-center gap-2 pt-1">
-                        <div className="h-4 w-1 rounded-full bg-primary" />
-                        <h4 className="font-bold text-base text-foreground tracking-tight">{day.title}</h4>
-                      </div>
-                    )}
-                    <div className="space-y-3 sm:space-y-3.5">
-                      {items.map((item, itemIdx) => (
-                        <div
-                          key={`${item.time}-${item.activity}-${itemIdx}`}
-                          className="rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-card p-4 sm:p-5 shadow-2xs transition-all hover:border-zinc-300 dark:hover:border-zinc-700"
-                        >
-                          <div className="flex items-center gap-4 sm:gap-5">
-                            {/* Time Pill Badge (matches KawalEvent app) */}
-                            <div className="shrink-0">
-                              <span className="inline-flex items-center justify-center rounded-full bg-blue-50 px-3.5 py-1.5 font-medium text-blue-600 text-xs sm:text-sm tracking-tight dark:bg-blue-950/60 dark:text-blue-400">
-                                {item.time}
-                              </span>
-                            </div>
-
-                            {/* Content Column */}
-                            <div className="min-w-0 flex-1 space-y-1">
-                              {item.audience_type && (
-                                <div>
-                                  <span
-                                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 font-semibold text-[10px] sm:text-[11px] uppercase tracking-wider ${getAudienceBadgeStyle(
-                                      item.audience_type,
-                                    )}`}
-                                  >
-                                    {formatAudienceType(item.audience_type)}
-                                  </span>
-                                </div>
-                              )}
-
-                              <h5 className="font-semibold text-foreground text-sm sm:text-base leading-snug">
-                                {item.activity}
-                              </h5>
-
-                              {item.description && (
-                                <p className="text-muted-foreground text-xs leading-relaxed whitespace-pre-line">
-                                  {item.description}
-                                </p>
-                              )}
-
-                              {/* Speaker Slides & Related Links if any */}
-                              {(item.slides_url || (item.related_links && item.related_links.length > 0)) && (
-                                <div className="flex flex-wrap items-center gap-2 border-border/40 border-t pt-2 mt-2">
-                                  {item.slides_url && (
-                                    <Button
-                                      asChild
-                                      variant="outline"
-                                      size="sm"
-                                      className="h-7 gap-1.5 border-primary/30 bg-primary/5 px-2.5 text-primary text-xs hover:bg-primary/10 hover:text-primary"
-                                    >
-                                      <a href={item.slides_url} target="_blank" rel="noopener noreferrer">
-                                        <Presentation className="size-3.5" />
-                                        <span>{item.slides_title ?? "Session Slides"}</span>
-                                        <ExternalLink className="size-2.5" />
-                                      </a>
-                                    </Button>
-                                  )}
-                                  {item.related_links?.map((link) => (
-                                    <a
-                                      key={link.url}
-                                      href={link.url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:border-primary/40 hover:bg-muted/70 hover:text-foreground"
-                                    >
-                                      <Link2 className="size-2.5 text-primary" />
-                                      <span className="max-w-[180px] truncate">
-                                        {link.title ? link.title : link.url}
-                                      </span>
-                                      <ExternalLink className="size-2" />
-                                    </a>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {!hasBevyAgenda && !hasFirestoreSessions && (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-border/70 border-dashed p-10 text-center">
-              <div className="flex size-12 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400">
-                <Calendar className="size-6" />
-              </div>
-              <h3 className="mt-3 font-semibold text-base text-foreground">Agenda In Progress</h3>
-              <p className="mt-1 max-w-sm text-muted-foreground text-xs">
-                The session schedule and timeline are being finalized. Check back soon!
-              </p>
-            </div>
-          )}
+          <UnifiedAgendaTimeline
+            bevyAgenda={event.agenda}
+            speakers={event.speakers}
+            firestoreSessions={firestoreSessions}
+          />
         </TabsContent>
 
         {/* ── TAB 3: SPEAKERS ─────────────────────────────────────── */}
@@ -780,14 +542,8 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
                   </p>
                 </div>
                 <div className="rounded-xl border border-border/60 bg-card p-4 text-center">
-                  <span className="text-muted-foreground text-xs">
-                    {hasFirestoreSessions ? "Sessions / Tracks" : "Total Agenda"}
-                  </span>
-                  <p className="font-bold text-foreground text-lg sm:text-xl">
-                    {hasFirestoreSessions
-                      ? firestoreSessions.length
-                      : totalBevyAgendaItems || (event.agenda?.days?.length ? event.agenda.days.length : "-")}
-                  </p>
+                  <span className="text-muted-foreground text-xs">Total Agenda</span>
+                  <p className="font-bold text-foreground text-lg sm:text-xl">{agendaBadgeCount || "-"}</p>
                 </div>
                 <div className="rounded-xl border border-border/60 bg-card p-4 text-center">
                   <span className="text-muted-foreground text-xs">Speakers</span>
@@ -795,7 +551,7 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
                 </div>
                 <div className="rounded-xl border border-border/60 bg-card p-4 text-center">
                   <span className="text-muted-foreground text-xs">Status</span>
-                  <p className="font-bold text-emerald-600 dark:text-emerald-400 text-lg sm:text-xl">Completed</p>
+                  <p className="font-bold text-emerald-600 text-lg sm:text-xl dark:text-emerald-400">Completed</p>
                 </div>
               </div>
             )}

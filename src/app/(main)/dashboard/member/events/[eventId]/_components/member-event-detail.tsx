@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { UnifiedAgendaTimeline } from "@/app/(external)/events/[eventId]/_components/unified-agenda-timeline";
 import { CancelRegistrationDialog } from "@/components/cancel-registration-dialog";
 import { EditRegistrationModal } from "@/components/edit-registration-modal";
 import { EventCardImage } from "@/components/event-card-image";
@@ -307,14 +308,14 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
           {isPending ? (
             <Clock
               className={cn(
-                "relative z-10 size-4 transition-transform duration-500 text-amber-600 dark:text-amber-400",
+                "relative z-10 size-4 text-amber-600 transition-transform duration-500 dark:text-amber-400",
                 isTransitioning && "scale-110",
               )}
             />
           ) : (
             <CheckCircle2
               className={cn(
-                "relative z-10 size-4 transition-transform duration-500 text-emerald-600 dark:text-emerald-400",
+                "relative z-10 size-4 text-emerald-600 transition-transform duration-500 dark:text-emerald-400",
                 isTransitioning && "scale-110",
               )}
             />
@@ -365,7 +366,7 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
             variant="outline"
             size="sm"
             onClick={() => setIsCancelModalOpen(true)}
-            className="w-full gap-2 border-destructive/30 text-destructive text-xs hover:bg-destructive/10 hover:text-destructive shadow-xs"
+            className="w-full gap-2 border-destructive/30 text-destructive text-xs shadow-xs hover:bg-destructive/10 hover:text-destructive"
           >
             <UserX className="size-3.5" />
             Cancel Registration
@@ -530,87 +531,24 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
             </CardContent>
           </Card>
 
-          {/* Sessions / Breakout Tracks if configured */}
-          {currentEvent.sessions && currentEvent.sessions.length > 0 && (
+          {/* Unified Event Agenda & Sessions */}
+          {(currentEvent.agenda || (currentEvent.sessions && currentEvent.sessions.length > 0)) && (
             <Card>
               <CardHeader className="pb-3">
                 <div className="flex items-center gap-2">
-                  <Layers className="size-4 text-primary" />
-                  <CardTitle className="text-lg">Event Sessions & Tracks</CardTitle>
+                  <Calendar className="size-4 text-primary" />
+                  <CardTitle className="text-lg">Event Agenda & Sessions</CardTitle>
                 </div>
                 <CardDescription>
-                  This event features specialized breakout sessions with limited capacity.
+                  Full event schedule, breakout tracks, speaker sessions, and presentation slides.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-3">
-                {currentEvent.sessions.map((sess, idx) => {
-                  const capacity = sess.capacity ?? 0;
-                  const totalRegistered = sess.total_registered ?? 0;
-                  const available = capacity > 0 ? capacity - totalRegistered > 0 : true;
-                  const remaining = Math.max(0, capacity - totalRegistered);
-
-                  let capacityLabel = "Open Capacity";
-                  if (capacity > 0) {
-                    capacityLabel = available
-                      ? `${totalRegistered}/${capacity} booked (${remaining} left)`
-                      : `Full (${capacity} max)`;
-                  }
-
-                  return (
-                    <div
-                      key={sess.id}
-                      className="flex flex-col gap-2 rounded-lg border bg-muted/20 p-3.5 text-xs sm:flex-row sm:items-center sm:justify-between"
-                    >
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="text-[10px]">
-                            Track #{idx + 1}
-                          </Badge>
-                          <span className="font-semibold text-foreground text-sm">{sess.title}</span>
-                        </div>
-                        {sess.description && (
-                          <p className="text-muted-foreground text-xs leading-relaxed">{sess.description}</p>
-                        )}
-                        <div className="flex flex-wrap items-center gap-3 pt-0.5 text-[11px] text-muted-foreground">
-                          {sess.time_slot && (
-                            <span className="flex items-center gap-1">
-                              <Clock className="size-3" /> {sess.time_slot}
-                            </span>
-                          )}
-                          {sess.checkin_deadline && (
-                            <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
-                              <Clock className="size-3" /> Check-in by: {sess.checkin_deadline}
-                            </span>
-                          )}
-                          {(sess.location || sess.location_url) &&
-                            (sess.location_url ? (
-                              <a
-                                href={sess.location_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-primary transition-colors hover:text-primary/80 hover:underline"
-                                title="Open Google Maps / Venue Location"
-                              >
-                                <MapPin className="size-3" />
-                                <span>{sess.location || "Google Maps"}</span>
-                                <ExternalLink className="size-2.5" />
-                              </a>
-                            ) : (
-                              <span className="flex items-center gap-1">
-                                <MapPin className="size-3" /> {sess.location}
-                              </span>
-                            ))}
-                        </div>
-                      </div>
-
-                      <div className="shrink-0 self-start sm:self-center">
-                        <Badge variant={available ? "secondary" : "destructive"} className="text-xs">
-                          {capacityLabel}
-                        </Badge>
-                      </div>
-                    </div>
-                  );
-                })}
+              <CardContent>
+                <UnifiedAgendaTimeline
+                  bevyAgenda={currentEvent.agenda}
+                  speakers={currentEvent.speakers}
+                  firestoreSessions={currentEvent.sessions}
+                />
               </CardContent>
             </Card>
           )}

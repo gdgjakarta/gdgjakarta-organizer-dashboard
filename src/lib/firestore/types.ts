@@ -1,3 +1,5 @@
+import type { BevyAgenda, BevySpeaker } from "@/lib/bevy/types";
+
 export type RegistrationStatus = "pending" | "approved" | "registered" | "rejected" | "waitlisted" | "attended";
 
 export type QuestionValidationType =
@@ -204,6 +206,8 @@ export interface FirestoreEvent {
   total_checked_in: number;
   total_waitlisted?: number;
   custom_questions?: CustomQuestion[];
+  agenda?: BevyAgenda;
+  speakers?: BevySpeaker[];
   sessions?: EventSession[];
   tickets?: EventTicketTier[];
   max_tickets_per_person?: number | null; // Limit tickets per person (default 1)
