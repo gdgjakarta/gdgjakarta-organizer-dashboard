@@ -1,4 +1,4 @@
-export type RegistrationStatus = "pending" | "approved" | "rejected" | "waitlisted" | "attended";
+export type RegistrationStatus = "pending" | "approved" | "registered" | "rejected" | "waitlisted" | "attended";
 
 export type QuestionValidationType =
   | "none"

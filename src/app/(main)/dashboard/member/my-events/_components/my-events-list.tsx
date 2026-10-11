@@ -51,6 +51,10 @@ const STATUS_VARIANTS: Record<RegistrationStatus, { label: string; badgeClass: s
     label: "Confirmed / Approved",
     badgeClass: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
   },
+  registered: {
+    label: "Registered",
+    badgeClass: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+  },
   rejected: {
     label: "Not Selected",
     badgeClass: "border-destructive/30 bg-destructive/10 text-destructive",

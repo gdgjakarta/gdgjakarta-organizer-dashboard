@@ -52,7 +52,7 @@ service cloud.firestore {
     //   - member_email: string (required, valid email, <= 150 chars) - Member email
     //   - member_avatar: string|null (optional, <= 3000 chars) - Avatar URL
     //   - member_role: string|null (optional, <= 100 chars) - Member role
-    //   - status: string (required, immutable for members) - Registration status ('pending'|'approved'|'rejected'|'waitlisted'|'attended')
+    //   - status: string (required, immutable for members) - Registration status ('pending'|'approved'|'registered'|'rejected'|'waitlisted'|'attended')
     //   - answers: map|null (optional, <= 50 keys) - Custom question answers
     //   - notes: string|null (optional, <= 2000 chars) - Registration notes
     //   - ticket_tier: string|null (optional, <= 100 chars) - Ticket tier name
@@ -286,7 +286,7 @@ service cloud.firestore {
         data.member_id is string && data.member_id.size() > 0 && data.member_id.size() <= 128 &&
         data.member_name is string && data.member_name.size() > 0 && data.member_name.size() <= 150 &&
         data.member_email is string && isValidEmail(data.member_email) && data.member_email.size() <= 150 &&
-        data.status is string && (data.status in ['pending', 'approved', 'rejected', 'waitlisted', 'attended']) &&
+        data.status is string && (data.status in ['pending', 'approved', 'registered', 'rejected', 'waitlisted', 'attended']) &&
         data.registered_at is string && data.registered_at.size() <= 50 &&
         (!('member_avatar' in data) || data.member_avatar == null || (data.member_avatar is string && data.member_avatar.size() <= 3000)) &&
         (!('member_role' in data) || data.member_role == null || (data.member_role is string && data.member_role.size() <= 100)) &&

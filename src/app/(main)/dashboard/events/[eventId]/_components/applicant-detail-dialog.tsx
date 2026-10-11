@@ -72,6 +72,11 @@ const STATUS_VARIANTS: Record<RegistrationStatus, { label: string; badgeClass: s
     badgeClass: "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
     dotClass: "bg-emerald-500",
   },
+  registered: {
+    label: "Registered",
+    badgeClass: "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+    dotClass: "bg-emerald-500",
+  },
   rejected: {
     label: "Rejected",
     badgeClass: "border-destructive/20 bg-destructive/10 text-destructive",
@@ -604,9 +609,33 @@ export function ApplicantDetailDialog({
       });
 
       if (res.success && res.paymentUrl) {
+        const invoiceNum = res.invoiceNumber ?? `INV-${Date.now()}`;
+
+        // Persist invoice number and payment metadata to Firestore registration
+        try {
+          const { db, sanitizeFirestoreData } = await import("@/lib/firestore/client");
+          const { doc, updateDoc } = await import("firebase/firestore");
+          const regRef = doc(db, "event_registrations", registration.id);
+          await updateDoc(
+            regRef,
+            sanitizeFirestoreData({
+              answers: {
+                ...(registration.answers ?? {}),
+                invoice_number: invoiceNum,
+                payment_url: res.paymentUrl,
+                payment_status: "PENDING",
+                payment_amount: res.amount,
+              },
+              updated_at: new Date().toISOString(),
+            }),
+          );
+        } catch (saveErr) {
+          console.error("[ApplicantDetailDialog] Failed to persist invoice number to registration:", saveErr);
+        }
+
         setPaymentLinkInfo({
           url: res.paymentUrl,
-          invoiceNumber: res.invoiceNumber ?? `INV-${Date.now()}`,
+          invoiceNumber: invoiceNum,
         });
         void navigator.clipboard.writeText(res.paymentUrl);
         toast.success("DOKU payment link generated, emailed, and copied to clipboard!");

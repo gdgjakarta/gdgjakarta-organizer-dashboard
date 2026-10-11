@@ -106,6 +106,11 @@ const STATUS_VARIANTS: Record<RegistrationStatus, { label: string; badgeClass: s
     badgeClass: "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
     dotClass: "bg-emerald-500",
   },
+  registered: {
+    label: "Registered",
+    badgeClass: "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+    dotClass: "bg-emerald-500",
+  },
   rejected: {
     label: "Rejected",
     badgeClass: "border-destructive/20 bg-destructive/10 text-destructive",
