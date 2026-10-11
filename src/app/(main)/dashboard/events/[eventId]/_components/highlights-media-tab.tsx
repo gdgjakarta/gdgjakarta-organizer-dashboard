@@ -5,7 +5,9 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { Camera, ExternalLink, Link2, Play, Plus, Presentation, Sparkles, Trash2, User, Video } from "lucide-react";
+import { DragDropProvider, type DragEndEvent } from "@dnd-kit/react";
+import { isSortable } from "@dnd-kit/react/sortable";
+import { Camera, ExternalLink, Play, Plus, Presentation, Sparkles, Video } from "lucide-react";
 import { toast } from "sonner";
 
 import { FloatingSaveBar } from "@/app/(main)/dashboard/_components/floating-save-bar";
@@ -20,6 +22,15 @@ import type { EventSession, FirestoreEvent } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
 import { HtmlEditText } from "./html-edit-text";
+import { SortableSlideDeckCard } from "./sortable-slide-deck-card";
+
+function normalizeSessions(rawSessions?: EventSession[]): EventSession[] {
+  if (!rawSessions || !Array.isArray(rawSessions)) return [];
+  return rawSessions.map((s, idx) => ({
+    ...s,
+    id: s.id?.trim() ? s.id : `session-${idx}-${Date.now()}`,
+  }));
+}
 
 interface HighlightsMediaTabProps {
   event: FirestoreEvent;
@@ -34,7 +45,7 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
   const [photoAlbumUrl, setPhotoAlbumUrl] = useState(event.photo_album_url ?? "");
   const [photoAlbumTitle, setPhotoAlbumTitle] = useState(event.photo_album_title ?? "");
   const [recapDescription, setRecapDescription] = useState(event.recap_description ?? "");
-  const [sessions, setSessions] = useState<EventSession[]>(event.sessions ?? []);
+  const [sessions, setSessions] = useState<EventSession[]>(() => normalizeSessions(event.sessions));
 
   const [isSaving, setIsSaving] = useState(false);
   const initialSnapshotRef = useRef<string | null>(null);
@@ -55,7 +66,7 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
           const albumUrl = docData.photo_album_url ?? event.photo_album_url ?? "";
           const albumTitle = docData.photo_album_title ?? event.photo_album_title ?? "";
           const recap = docData.recap_description ?? event.recap_description ?? "";
-          const sessList = docData.sessions ?? event.sessions ?? [];
+          const sessList = normalizeSessions(docData.sessions ?? event.sessions ?? []);
 
           setHighlightVideoUrl(videoUrl);
           setHighlightVideoTitle(videoTitle);
@@ -84,7 +95,7 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
       photoAlbumUrl: event.photo_album_url ?? "",
       photoAlbumTitle: event.photo_album_title ?? "",
       recapDescription: event.recap_description ?? "",
-      sessions: event.sessions ?? [],
+      sessions: normalizeSessions(event.sessions),
     });
 
     void loadLatestData();
@@ -235,6 +246,53 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
     };
     setSessions((prev) => [...prev, newSession]);
     toast.success("Added presentation session deck.");
+  };
+
+  const handleRemoveSession = (sessionId: string) => {
+    const targetSession = sessions.find((s) => s.id === sessionId);
+    setSessions((prev) => prev.filter((item) => item.id !== sessionId));
+    toast.info(`Removed session "${targetSession?.title || "Slide Deck"}".`);
+  };
+
+  const handleMoveSessionUp = (index: number) => {
+    if (index <= 0) return;
+    setSessions((prev) => {
+      const next = [...prev];
+      const item = next[index];
+      const prevItem = next[index - 1];
+      if (!item || !prevItem) return prev;
+      next[index - 1] = item;
+      next[index] = prevItem;
+      return next;
+    });
+  };
+
+  const handleMoveSessionDown = (index: number) => {
+    if (index >= sessions.length - 1) return;
+    setSessions((prev) => {
+      const next = [...prev];
+      const item = next[index];
+      const nextItem = next[index + 1];
+      if (!item || !nextItem) return prev;
+      next[index] = nextItem;
+      next[index + 1] = item;
+      return next;
+    });
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { source } = event.operation;
+    if (event.canceled || !isSortable(source) || source.initialIndex === source.index) {
+      return;
+    }
+    setSessions((prev) => {
+      const next = [...prev];
+      const [movedItem] = next.splice(source.initialIndex, 1);
+      if (movedItem) {
+        next.splice(source.index, 0, movedItem);
+      }
+      return next;
+    });
   };
 
   return (
@@ -481,7 +539,7 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
             size="sm"
             variant="outline"
             onClick={handleAddNewSession}
-            className="gap-1.5 text-xs self-start sm:self-auto"
+            className="gap-1.5 self-start text-xs sm:self-auto"
           >
             <Plus className="size-3.5 text-primary" />
             Add Slide Deck Session
@@ -505,157 +563,25 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
               </Button>
             </div>
           ) : (
-            <div className="space-y-4">
-              {sessions.map((sess, sIdx) => {
-                const links = sess.related_links ?? [];
-                return (
-                  <Card key={sess.id} className="border-border/70 bg-card/60 p-4 shadow-2xs">
-                    <div className="space-y-4">
-                      {/* Session Header */}
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between border-b border-border/50 pb-3">
-                        <div className="flex items-center gap-2.5">
-                          <div className="flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary font-semibold text-xs">
-                            {sIdx + 1}
-                          </div>
-                          <div>
-                            <Input
-                              value={sess.title}
-                              onChange={(e) => handleUpdateSessionSlide(sess.id, { title: e.target.value })}
-                              placeholder="Session Title (e.g. Building Agents with Gemini)"
-                              className="h-8 font-semibold text-sm max-w-[320px]"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          {sess.slides_url && (
-                            <Badge variant="outline" className="gap-1 text-[10px] text-primary border-primary/30">
-                              <Presentation className="size-3" />
-                              Slides Attached
-                            </Badge>
-                          )}
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 size-7 p-0 text-muted-foreground hover:text-destructive"
-                            onClick={() => {
-                              setSessions((prev) => prev.filter((item) => item.id !== sess.id));
-                              toast.info(`Removed session "${sess.title}".`);
-                            }}
-                          >
-                            <Trash2 className="size-3.5" />
-                          </Button>
-                        </div>
-                      </div>
-
-                      {/* Speaker & Slides Form Inputs */}
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <Field>
-                          <FieldLabel className="text-xs">Speaker Name</FieldLabel>
-                          <div className="relative">
-                            <User className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-                            <Input
-                              value={sess.speaker_name ?? ""}
-                              onChange={(e) => handleUpdateSessionSlide(sess.id, { speaker_name: e.target.value })}
-                              placeholder="e.g. John Doe, Senior DevRel"
-                              className="h-8 pl-8 text-xs"
-                            />
-                          </div>
-                        </Field>
-
-                        <Field>
-                          <FieldLabel className="text-xs">Slides Display Title</FieldLabel>
-                          <Input
-                            value={sess.slides_title ?? ""}
-                            onChange={(e) => handleUpdateSessionSlide(sess.id, { slides_title: e.target.value })}
-                            placeholder="e.g. Download Slide Deck (Google Slides)"
-                            className="h-8 text-xs"
-                          />
-                        </Field>
-
-                        <Field className="sm:col-span-2">
-                          <FieldLabel className="text-xs">Presentation Slides URL</FieldLabel>
-                          <div className="flex gap-2">
-                            <div className="relative flex-1">
-                              <Presentation className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-                              <Input
-                                value={sess.slides_url ?? ""}
-                                onChange={(e) => handleUpdateSessionSlide(sess.id, { slides_url: e.target.value })}
-                                placeholder="https://docs.google.com/presentation/d/... or https://speakerdeck.com/..."
-                                className="h-8 pl-8 text-xs font-mono"
-                              />
-                            </div>
-                            {sess.slides_url && (
-                              <Button asChild size="sm" variant="outline" className="h-8 shrink-0 gap-1 text-xs">
-                                <a href={sess.slides_url} target="_blank" rel="noopener noreferrer">
-                                  <span>Test Link</span>
-                                  <ExternalLink className="size-3" />
-                                </a>
-                              </Button>
-                            )}
-                          </div>
-                        </Field>
-                      </div>
-
-                      {/* Related Resource Links Sub-List */}
-                      <div className="rounded-lg border border-border/50 bg-muted/20 p-3 space-y-2.5">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                            <Link2 className="size-3 text-primary" />
-                            <span>Additional Resource Links (Codelabs, Repositories, Documentation)</span>
-                          </div>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 gap-1 text-[11px] text-primary hover:bg-primary/5"
-                            onClick={() => handleAddSessionRelatedLink(sess.id)}
-                          >
-                            <Plus className="size-3" />
-                            Add Link
-                          </Button>
-                        </div>
-
-                        {links.length === 0 ? (
-                          <p className="text-[11px] text-muted-foreground italic">No extra links attached.</p>
-                        ) : (
-                          <div className="space-y-2">
-                            {links.map((link, lIdx) => (
-                              // biome-ignore lint/suspicious/noArrayIndexKey: order of inputs corresponds to array indices
-                              <div key={`${link.url}-${lIdx}`} className="flex items-center gap-2">
-                                <Input
-                                  value={link.title}
-                                  onChange={(e) =>
-                                    handleUpdateSessionRelatedLink(sess.id, lIdx, "title", e.target.value)
-                                  }
-                                  placeholder="Link Title (e.g. GitHub Repository)"
-                                  className="h-7 w-1/3 text-xs"
-                                />
-                                <Input
-                                  value={link.url}
-                                  onChange={(e) => handleUpdateSessionRelatedLink(sess.id, lIdx, "url", e.target.value)}
-                                  placeholder="https://github.com/..."
-                                  className="h-7 flex-1 text-xs font-mono"
-                                />
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 size-7 p-0 text-muted-foreground hover:text-destructive shrink-0"
-                                  onClick={() => handleRemoveSessionRelatedLink(sess.id, lIdx)}
-                                >
-                                  <Trash2 className="size-3" />
-                                </Button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </Card>
-                );
-              })}
-            </div>
+            <DragDropProvider onDragEnd={handleDragEnd}>
+              <div className="space-y-4">
+                {sessions.map((sess, sIdx) => (
+                  <SortableSlideDeckCard
+                    key={sess.id}
+                    session={sess}
+                    index={sIdx}
+                    totalSessions={sessions.length}
+                    onUpdate={handleUpdateSessionSlide}
+                    onRemove={handleRemoveSession}
+                    onMoveUp={handleMoveSessionUp}
+                    onMoveDown={handleMoveSessionDown}
+                    onAddRelatedLink={handleAddSessionRelatedLink}
+                    onUpdateRelatedLink={handleUpdateSessionRelatedLink}
+                    onRemoveRelatedLink={handleRemoveSessionRelatedLink}
+                  />
+                ))}
+              </div>
+            </DragDropProvider>
           )}
         </CardContent>
       </Card>
