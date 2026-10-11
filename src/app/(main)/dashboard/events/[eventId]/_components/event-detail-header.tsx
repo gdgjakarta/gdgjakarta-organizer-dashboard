@@ -20,6 +20,7 @@ import {
   MapPin,
   Radio,
   RefreshCw,
+  UserCheck,
   Users,
   XCircle,
 } from "lucide-react";
@@ -46,6 +47,7 @@ interface EventDetailHeaderProps {
   totalRejected?: number;
   totalPending?: number;
   totalWaitlisted?: number;
+  totalCheckedIn?: number;
 }
 
 export function EventDetailHeader({
@@ -55,6 +57,7 @@ export function EventDetailHeader({
   totalRejected = 0,
   totalPending = 0,
   totalWaitlisted = 0,
+  totalCheckedIn = 0,
 }: EventDetailHeaderProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -64,6 +67,7 @@ export function EventDetailHeader({
     totalRejected,
     totalPending,
     totalWaitlisted,
+    totalCheckedIn: totalCheckedIn ?? event.total_checked_in ?? 0,
   });
 
   useEffect(() => {
@@ -73,8 +77,17 @@ export function EventDetailHeader({
       totalRejected,
       totalPending,
       totalWaitlisted,
+      totalCheckedIn: totalCheckedIn ?? event.total_checked_in ?? 0,
     });
-  }, [totalRegistrations, totalApproved, totalRejected, totalPending, totalWaitlisted]);
+  }, [
+    totalRegistrations,
+    totalApproved,
+    totalRejected,
+    totalPending,
+    totalWaitlisted,
+    totalCheckedIn,
+    event.total_checked_in,
+  ]);
 
   useEffect(() => {
     const targetEventId = String(event.id || "");
@@ -102,6 +115,10 @@ export function EventDetailHeader({
             const s = (r.status || "").toLowerCase().trim();
             return s === "pending" || s === "applied" || s === "review" || !s;
           }).length;
+          const checkedInCount = directList.filter((r) => {
+            const s = (r.status || "").toLowerCase().trim();
+            return Boolean(r.is_checked_in) || s === "attended";
+          }).length;
 
           setLiveTotals({
             totalRegistrations: directList.length,
@@ -109,6 +126,7 @@ export function EventDetailHeader({
             totalRejected: rejectedCount,
             totalPending: pendingCount,
             totalWaitlisted: waitlistedCount,
+            totalCheckedIn: checkedInCount,
           });
         }
 
@@ -125,6 +143,10 @@ export function EventDetailHeader({
               const s = (r.status || "").toLowerCase().trim();
               return s === "pending" || s === "applied" || s === "review" || !s;
             }).length;
+            const checkedInCount = list.filter((r) => {
+              const s = (r.status || "").toLowerCase().trim();
+              return Boolean(r.is_checked_in) || s === "attended";
+            }).length;
 
             setLiveTotals({
               totalRegistrations: list.length,
@@ -132,6 +154,7 @@ export function EventDetailHeader({
               totalRejected: rejectedCount,
               totalPending: pendingCount,
               totalWaitlisted: waitlistedCount,
+              totalCheckedIn: checkedInCount,
             });
           }
         });
@@ -291,6 +314,11 @@ export function EventDetailHeader({
             <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
               <CheckCircle2 className="size-4" />
               <strong>{liveTotals.totalApproved}</strong> Approved
+            </span>
+            <span>•</span>
+            <span className="flex items-center gap-1.5 text-purple-600 dark:text-purple-400">
+              <UserCheck className="size-4" />
+              <strong>{liveTotals.totalCheckedIn}</strong> Checked In
             </span>
             <span>•</span>
             <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">

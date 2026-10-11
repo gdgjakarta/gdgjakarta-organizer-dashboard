@@ -970,7 +970,9 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       // "all" matches ANY status without exception
       let matchesStatus = filterStatus === "all";
       if (!matchesStatus) {
-        if (filterStatus === "approved") {
+        if (filterStatus === "checked_in") {
+          matchesStatus = Boolean(reg.is_checked_in) || regStatus === "attended";
+        } else if (filterStatus === "approved") {
           matchesStatus =
             regStatus === "approved" ||
             regStatus === "attended" ||
@@ -2120,6 +2122,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                     <SelectItem value="all">All Statuses</SelectItem>
                     <SelectItem value="pending">Pending Review</SelectItem>
                     <SelectItem value="approved">Approved</SelectItem>
+                    <SelectItem value="checked_in">Checked In</SelectItem>
                     <SelectItem value="waitlisted">Waitlisted</SelectItem>
                     <SelectItem value="rejected">Rejected</SelectItem>
                   </SelectGroup>
@@ -2286,7 +2289,12 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
               )}
               {statusFilter !== "all" && (
                 <Badge variant="secondary" className="gap-1 font-normal text-xs">
-                  <span>Status: {STATUS_VARIANTS[statusFilter as RegistrationStatus]?.label || statusFilter}</span>
+                  <span>
+                    Status:{" "}
+                    {statusFilter === "checked_in"
+                      ? "Checked In"
+                      : STATUS_VARIANTS[statusFilter as RegistrationStatus]?.label || statusFilter}
+                  </span>
                   <button
                     type="button"
                     onClick={() => handleStatusFilterChange("all")}
@@ -2452,7 +2460,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                           </p>
                           <p className="max-w-md text-muted-foreground text-xs leading-relaxed">
                             {statusFilter !== "all"
-                              ? `No applicants currently have status "${STATUS_VARIANTS[statusFilter as RegistrationStatus]?.label || statusFilter}".`
+                              ? `No applicants currently have status "${statusFilter === "checked_in" ? "Checked In" : STATUS_VARIANTS[statusFilter as RegistrationStatus]?.label || statusFilter}".`
                               : "No applicants match your search criteria."}
                           </p>
                           <Button

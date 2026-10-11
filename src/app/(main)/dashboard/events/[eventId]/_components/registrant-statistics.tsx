@@ -77,8 +77,8 @@ export function RegistrantStatistics({
 }: RegistrantStatisticsProps) {
   // Primary selected field to analyze in detail
   const [selectedField, setSelectedField] = useState<string>("professional_background");
-  // Scope: analyze all registrants or approved only
-  const [analysisScope, setAnalysisScope] = useState<"all" | "approved">("all");
+  // Scope: analyze all registrants, approved only, or checked in only
+  const [analysisScope, setAnalysisScope] = useState<"all" | "approved" | "checked_in">("all");
   // Organizer can pin multiple fields to display comparison overview cards
   const [pinnedFields, setPinnedFields] = useState<string[]>(["professional_background"]);
 
@@ -88,6 +88,13 @@ export function RegistrantStatistics({
     return registrations.filter((r) => {
       const s = (r.status || "").toLowerCase().trim();
       return s === "approved" || s === "attended" || s === "confirmed" || s === "registered";
+    }).length;
+  }, [registrations]);
+
+  const totalCheckedIn = useMemo(() => {
+    return registrations.filter((r) => {
+      const s = (r.status || "").toLowerCase().trim();
+      return Boolean(r.is_checked_in) || s === "attended";
     }).length;
   }, [registrations]);
 
@@ -107,6 +114,12 @@ export function RegistrantStatistics({
   }, [registrations]);
 
   const approvedPercent = totalRegistrations > 0 ? ((totalApproved / totalRegistrations) * 100).toFixed(1) : "0.0";
+  const checkedInPercent =
+    totalApproved > 0
+      ? ((totalCheckedIn / totalApproved) * 100).toFixed(1)
+      : totalRegistrations > 0
+        ? ((totalCheckedIn / totalRegistrations) * 100).toFixed(1)
+        : "0.0";
   const pendingPercent = totalRegistrations > 0 ? ((totalPending / totalRegistrations) * 100).toFixed(1) : "0.0";
   const waitlistedPercent = totalRegistrations > 0 ? ((totalWaitlisted / totalRegistrations) * 100).toFixed(1) : "0.0";
   const rejectedPercent = totalRegistrations > 0 ? ((totalRejected / totalRegistrations) * 100).toFixed(1) : "0.0";
@@ -204,6 +217,12 @@ export function RegistrantStatistics({
       return registrations.filter((r) => {
         const s = (r.status ?? "").toLowerCase().trim();
         return s === "approved" || s === "attended" || s === "confirmed" || s === "registered";
+      });
+    }
+    if (analysisScope === "checked_in") {
+      return registrations.filter((r) => {
+        const s = (r.status ?? "").toLowerCase().trim();
+        return Boolean(r.is_checked_in) || s === "attended";
       });
     }
     return registrations;
@@ -533,8 +552,8 @@ export function RegistrantStatistics({
 
   return (
     <div className="space-y-4">
-      {/* ── Top Level 5-Card Status Overview ──────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 sm:gap-4">
+      {/* ── Top Level 6-Card Status Overview ──────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6 sm:gap-4">
         {/* Total Registrants */}
         <Card
           onClick={() => onSelectStatusFilter?.("all")}
@@ -585,6 +604,34 @@ export function RegistrantStatistics({
                 {approvedPercent}%
               </Badge>
               <span>of total</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Checked In */}
+        <Card
+          onClick={() => onSelectStatusFilter?.(activeStatusFilter === "checked_in" ? "all" : "checked_in")}
+          className={cn(
+            "cursor-pointer transition-all hover:border-purple-500/50 hover:shadow-xs",
+            activeStatusFilter === "checked_in" && "border-purple-500/50 bg-purple-500/5 ring-1 ring-purple-500/30",
+          )}
+        >
+          <CardContent className="p-4 sm:p-5">
+            <div className="flex items-center justify-between text-muted-foreground text-xs">
+              <span className="font-medium">Checked In</span>
+              <UserCheck className="size-4 text-purple-600 dark:text-purple-400" />
+            </div>
+            <div className="mt-2 font-bold text-2xl tracking-tight text-purple-600 dark:text-purple-400 sm:text-3xl">
+              {totalCheckedIn}
+            </div>
+            <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <Badge
+                variant="outline"
+                className="border-purple-500/20 bg-purple-500/10 px-1.5 py-0 font-semibold text-[10px] text-purple-600 dark:text-purple-400"
+              >
+                {checkedInPercent}%
+              </Badge>
+              <span>{totalApproved > 0 ? "of approved" : "of total"}</span>
             </div>
           </CardContent>
         </Card>
@@ -714,6 +761,18 @@ export function RegistrantStatistics({
                   )}
                 >
                   Approved Only ({totalApproved})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAnalysisScope("checked_in")}
+                  className={cn(
+                    "rounded-md px-2.5 py-1 font-medium transition-colors",
+                    analysisScope === "checked_in"
+                      ? "bg-background text-foreground shadow-xs"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  Checked In ({totalCheckedIn})
                 </button>
               </div>
 

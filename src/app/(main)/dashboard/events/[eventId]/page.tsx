@@ -181,6 +181,7 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
         totalRegistrations={event.total_registrations || 0}
         totalApproved={event.total_approved || 0}
         totalWaitlisted={event.total_waitlisted || 0}
+        totalCheckedIn={event.total_checked_in || 0}
       />
 
       <Tabs defaultValue="registrants" className="space-y-6">
