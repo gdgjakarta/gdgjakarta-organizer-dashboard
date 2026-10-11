@@ -780,9 +780,13 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
                   </p>
                 </div>
                 <div className="rounded-xl border border-border/60 bg-card p-4 text-center">
-                  <span className="text-muted-foreground text-xs">Sessions / Tracks</span>
+                  <span className="text-muted-foreground text-xs">
+                    {hasFirestoreSessions ? "Sessions / Tracks" : "Total Agenda"}
+                  </span>
                   <p className="font-bold text-foreground text-lg sm:text-xl">
-                    {firestoreSessions?.length ?? (totalBevyAgendaItems || event.agenda?.days?.length || 1)}
+                    {hasFirestoreSessions
+                      ? firestoreSessions.length
+                      : totalBevyAgendaItems || (event.agenda?.days?.length ? event.agenda.days.length : "-")}
                   </p>
                 </div>
                 <div className="rounded-xl border border-border/60 bg-card p-4 text-center">
