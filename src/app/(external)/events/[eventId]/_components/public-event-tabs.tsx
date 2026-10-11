@@ -50,9 +50,17 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
   const tierGroups = groupPartnersByTier(partners);
   const hasBevyAgenda =
     Array.isArray(event.agenda?.days) &&
-    event.agenda.days.some((day) => Array.isArray(day.items) && day.items.length > 0);
+    event.agenda.days.some((day) => {
+      const items = day.items ?? day.agenda;
+      return Array.isArray(items) && items.length > 0;
+    });
   const hasFirestoreSessions = Array.isArray(firestoreSessions) && firestoreSessions.length > 0;
   const hasAgenda = hasBevyAgenda || hasFirestoreSessions;
+  const totalBevyAgendaItems =
+    event.agenda?.days?.reduce((acc, d) => acc + ((d.items ?? d.agenda)?.length ?? 0), 0) ?? 0;
+  const agendaBadgeCount = hasFirestoreSessions
+    ? firestoreSessions.length
+    : totalBevyAgendaItems || event.agenda?.days?.length || 0;
 
   // Post-Event Recap & Media
   const highlightVideoUrl = firestoreEvent?.highlight_video_url ?? event.highlight_video_url ?? event.video_url;
@@ -73,11 +81,12 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
     ) ?? []),
   ];
   const allBevyItemsWithSlides =
-    event.agenda?.days?.flatMap((d) =>
-      Array.isArray(d.items)
-        ? d.items.filter((i) => Boolean(i.slides_url) || Boolean(i.related_links && i.related_links.length > 0))
-        : [],
-    ) ?? [];
+    event.agenda?.days?.flatMap((d) => {
+      const items = d.items ?? d.agenda;
+      return Array.isArray(items)
+        ? items.filter((i) => Boolean(i.slides_url) || Boolean(i.related_links && i.related_links.length > 0))
+        : [];
+    }) ?? [];
   const hasAnySlides = allSessionsWithSlides.length > 0 || allBevyItemsWithSlides.length > 0;
 
   const hasHighlights =
@@ -103,7 +112,7 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
               Agenda
               {hasAgenda && (
                 <span className="ml-1.5 rounded-full bg-primary/10 px-1.5 py-0.2 text-[10px] text-primary">
-                  {hasFirestoreSessions ? firestoreSessions.length : event.agenda?.days?.length}
+                  {agendaBadgeCount}
                 </span>
               )}
             </TabsTrigger>
@@ -323,13 +332,18 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
           {/* Standard Bevy Agenda Days */}
           {hasBevyAgenda && (
             <div className="space-y-6">
-              {event.agenda?.days?.map((day, dIdx) => (
-                <div key={day.title ?? `day-${dIdx + 1}`} className="space-y-3">
-                  {day.title && <h4 className="font-bold text-base text-foreground tracking-tight">{day.title}</h4>}
-                  <div className="space-y-2.5">
-                    {Array.isArray(day.items) &&
-                      day.items.map((item) => (
-                        <Card key={`${item.time}-${item.activity}`} className="border-border/60 bg-card p-4 shadow-2xs">
+              {event.agenda?.days?.map((day, dIdx) => {
+                const items = day.items ?? day.agenda ?? [];
+                if (items.length === 0) return null;
+                return (
+                  <div key={day.title ?? `day-${dIdx + 1}`} className="space-y-3">
+                    {day.title && <h4 className="font-bold text-base text-foreground tracking-tight">{day.title}</h4>}
+                    <div className="space-y-2.5">
+                      {items.map((item, itemIdx) => (
+                        <Card
+                          key={`${item.time}-${item.activity}-${itemIdx}`}
+                          className="border-border/60 bg-card p-4 shadow-2xs"
+                        >
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
                             <div className="shrink-0">
                               <Badge variant="secondary" className="font-mono text-xs">
@@ -347,7 +361,9 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
                                 )}
                               </div>
                               {item.description && (
-                                <p className="text-muted-foreground text-xs leading-relaxed">{item.description}</p>
+                                <p className="text-muted-foreground text-xs leading-relaxed whitespace-pre-line">
+                                  {item.description}
+                                </p>
                               )}
 
                               {/* Speaker Slides & Related Links if any */}
@@ -388,9 +404,10 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
                           </div>
                         </Card>
                       ))}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
@@ -722,7 +739,7 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
                 <div className="rounded-xl border border-border/60 bg-card p-4 text-center">
                   <span className="text-muted-foreground text-xs">Sessions / Tracks</span>
                   <p className="font-bold text-foreground text-lg sm:text-xl">
-                    {firestoreSessions?.length ?? event.agenda?.days?.length ?? 1}
+                    {firestoreSessions?.length ?? (totalBevyAgendaItems || event.agenda?.days?.length || 1)}
                   </p>
                 </div>
                 <div className="rounded-xl border border-border/60 bg-card p-4 text-center">

@@ -130,13 +130,15 @@ export interface BevyAgendaItem {
 }
 
 export interface BevyAgendaDay {
-  title: string;
-  items: BevyAgendaItem[];
+  title?: string;
+  items?: BevyAgendaItem[];
+  agenda?: BevyAgendaItem[];
 }
 
 export interface BevyAgenda {
   multiday?: boolean;
   empty?: boolean;
+  any_descriptions?: boolean;
   days?: BevyAgendaDay[];
 }
 

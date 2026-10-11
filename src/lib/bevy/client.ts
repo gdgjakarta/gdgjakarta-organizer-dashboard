@@ -698,6 +698,17 @@ export async function getBevyEventById(
   const result = await bevyFetch<BevyEvent>(`/event/${eventId}/`, {}, chapterId);
   if (result) {
     result.partners = extractEventPartners(result);
+
+    // Normalize Bevy agenda structure: Bevy API delivers day items under day.agenda
+    if (result.agenda?.days && Array.isArray(result.agenda.days)) {
+      for (const day of result.agenda.days) {
+        if (!day.items && Array.isArray(day.agenda)) {
+          day.items = day.agenda;
+        } else if (!day.agenda && Array.isArray(day.items)) {
+          day.agenda = day.items;
+        }
+      }
+    }
   }
   return result;
 }
@@ -721,6 +732,10 @@ export async function getPublicEventById(
         String(e.id) === String(eventId) || e.url?.includes(String(eventId)) || e.static_url?.includes(String(eventId)),
     );
     if (matched) {
+      // Re-fetch full event detail by numeric ID so agenda, speakers, and sponsors are populated
+      const fullEvent = await getBevyEventById(matched.id, chapterId);
+      if (fullEvent) return fullEvent;
+
       matched.partners = extractEventPartners(matched);
       return matched;
     }
