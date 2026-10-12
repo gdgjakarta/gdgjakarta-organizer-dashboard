@@ -235,6 +235,21 @@ export function TicketsTab({ event }: TicketsTabProps) {
           <div>
             <div className="flex items-center gap-2">
               <CardTitle className="text-base sm:text-lg">Event Registration Tickets & Quotas</CardTitle>
+              {event.payment_environment === "sandbox" ? (
+                <Badge
+                  variant="outline"
+                  className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 text-xs"
+                >
+                  Sandbox
+                </Badge>
+              ) : (
+                <Badge
+                  variant="outline"
+                  className="border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-xs"
+                >
+                  Live Production
+                </Badge>
+              )}
               {isDirty && (
                 <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-600 text-xs">
                   Unsaved Changes

@@ -82,6 +82,8 @@ import type {
   FirestoreMember,
   FirestoreRegistration,
   FirestoreSyncMetadata,
+  MerchandiseDeliveryRequest,
+  MerchandiseDeliveryStatus,
   RegistrationStatus,
   RegistrationStatusLog,
 } from "./types";
@@ -1226,4 +1228,69 @@ export function subscribePartnershipContentDoc(
       onError?.(err);
     },
   );
+}
+
+// ── Merchandise Delivery Requests ──────────────────────────────────────────
+
+/**
+ * Saves or initiates a merchandise delivery request for a registration.
+ */
+export async function saveMerchandiseDeliveryRequest(
+  registrationId: string,
+  deliveryRequest: MerchandiseDeliveryRequest,
+): Promise<void> {
+  if (typeof window === "undefined") return;
+  const docRef = doc(db, "event_registrations", registrationId);
+  const now = new Date().toISOString();
+  const sanitized = sanitizeFirestoreData({
+    delivery_request: {
+      ...deliveryRequest,
+      updated_at: now,
+    },
+    updated_at: now,
+  });
+  await updateDoc(docRef, sanitized);
+}
+
+/**
+ * Updates the status and fulfillment details of a merchandise delivery request.
+ */
+export async function updateMerchandiseDeliveryStatus(
+  registrationId: string,
+  status: MerchandiseDeliveryStatus,
+  details?: Partial<MerchandiseDeliveryRequest>,
+): Promise<void> {
+  if (typeof window === "undefined") return;
+  const docRef = doc(db, "event_registrations", registrationId);
+  const snap = await getDoc(docRef);
+  if (!snap.exists()) {
+    throw new Error(`Registration ${registrationId} not found`);
+  }
+  const existing = snap.data() as FirestoreRegistration;
+  const existingRequest = existing.delivery_request;
+  if (!existingRequest) {
+    throw new Error(`Registration ${registrationId} does not have an active delivery request`);
+  }
+
+  const now = new Date().toISOString();
+  const mergedRequest: MerchandiseDeliveryRequest = {
+    ...existingRequest,
+    ...(details ?? {}),
+    status,
+    updated_at: now,
+  };
+
+  const sanitized = sanitizeFirestoreData({
+    delivery_request: mergedRequest,
+    updated_at: now,
+  });
+  await updateDoc(docRef, sanitized);
+}
+
+/**
+ * Fetches all registrations for an event that contain a merchandise delivery request.
+ */
+export async function getEventMerchandiseDeliveryRequests(eventId: string): Promise<FirestoreRegistration[]> {
+  const registrations = await getEventRegistrations(eventId);
+  return registrations.filter((r) => Boolean(r.delivery_request));
 }

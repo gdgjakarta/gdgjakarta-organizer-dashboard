@@ -19,12 +19,15 @@ import {
   Radio,
   Share2,
   Sparkles,
+  Truck,
   Users,
   UserX,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { UnifiedAgendaTimeline } from "@/app/(external)/events/[eventId]/_components/unified-agenda-timeline";
+import { MerchandiseDeliveryRequestDialog } from "@/app/(main)/dashboard/member/my-events/_components/merchandise-delivery-request-dialog";
+import { MerchandiseDeliveryStatusDialog } from "@/app/(main)/dashboard/member/my-events/_components/merchandise-delivery-status-dialog";
 import { CancelRegistrationDialog } from "@/components/cancel-registration-dialog";
 import { EditRegistrationModal } from "@/components/edit-registration-modal";
 import { EventCardImage } from "@/components/event-card-image";
@@ -79,6 +82,8 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
   );
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
+  const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false);
+  const [isDeliveryStatusOpen, setIsDeliveryStatusOpen] = useState(false);
   const { isVirtual, isHybrid } = resolveEventAudience(currentEvent.audience_type, currentEvent.is_virtual);
 
   const rawFrom = from ? decodeURIComponent(from) : undefined;
@@ -309,11 +314,12 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
     actionButton = (
       <div className="space-y-3">
         <div className="fade-in-50 animate-in rounded-lg bg-muted/60 p-3 text-center text-muted-foreground text-xs">
-          {isApproved
-            ? "✓ You are registered. Check your email for further event announcements."
-            : isWaitlisted
-              ? "⏳ You are on the waitlist. Organizers will notify you if capacity becomes available."
-              : "⏳ You have applied. Your registration is Pending Review by organizers."}
+          {(() => {
+            if (isApproved) return "✓ You are registered. Check your email for further event announcements.";
+            if (isWaitlisted)
+              return "⏳ You are on the waitlist. Organizers will notify you if capacity becomes available.";
+            return "⏳ You have applied. Your registration is Pending Review by organizers.";
+          })()}
         </div>
         <Button
           type="button"
@@ -331,28 +337,36 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
           )}
           size="lg"
         >
-          {isWaitlisted ? (
-            <Clock
-              className={cn(
-                "relative z-10 size-4 text-blue-600 transition-transform duration-500 dark:text-blue-400",
-                isTransitioning && "scale-110",
-              )}
-            />
-          ) : isPending ? (
-            <Clock
-              className={cn(
-                "relative z-10 size-4 text-amber-600 transition-transform duration-500 dark:text-amber-400",
-                isTransitioning && "scale-110",
-              )}
-            />
-          ) : (
-            <CheckCircle2
-              className={cn(
-                "relative z-10 size-4 text-emerald-600 transition-transform duration-500 dark:text-emerald-400",
-                isTransitioning && "scale-110",
-              )}
-            />
-          )}
+          {(() => {
+            if (isWaitlisted) {
+              return (
+                <Clock
+                  className={cn(
+                    "relative z-10 size-4 text-blue-600 transition-transform duration-500 dark:text-blue-400",
+                    isTransitioning && "scale-110",
+                  )}
+                />
+              );
+            }
+            if (isPending) {
+              return (
+                <Clock
+                  className={cn(
+                    "relative z-10 size-4 text-amber-600 transition-transform duration-500 dark:text-amber-400",
+                    isTransitioning && "scale-110",
+                  )}
+                />
+              );
+            }
+            return (
+              <CheckCircle2
+                className={cn(
+                  "relative z-10 size-4 text-emerald-600 transition-transform duration-500 dark:text-emerald-400",
+                  isTransitioning && "scale-110",
+                )}
+              />
+            );
+          })()}
           <span className="relative z-10 font-medium">{statusBadgeText}</span>
           <div className="shimmer-wave" aria-hidden="true" />
         </Button>
@@ -405,6 +419,54 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
             Cancel Registration
           </Button>
         )}
+
+        {/* Merchandise Delivery Claim for No-Show Attendees */}
+        {isPast &&
+          !registration.is_checked_in &&
+          registration.status !== "attended" &&
+          Boolean(registration.selected_merchandise && registration.selected_merchandise.length > 0) && (
+            <div className="space-y-2 pt-1">
+              {!registration.delivery_request ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsDeliveryModalOpen(true)}
+                  className="w-full gap-2 border-primary/40 bg-primary/5 text-primary text-xs shadow-xs hover:bg-primary/10"
+                >
+                  <Truck className="size-3.5" />
+                  Request Merchandise Delivery (Rp 50.000)
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsDeliveryStatusOpen(true)}
+                  className="w-full gap-2 text-xs shadow-xs"
+                >
+                  <Truck className="size-3.5" />
+                  View Delivery Status ({(() => {
+                    const st = registration.delivery_request.status;
+                    switch (st) {
+                      case "approved":
+                        return "In Transit";
+                      case "pending_review":
+                        return "Under Review";
+                      case "pending_payment":
+                        return "Pay Fee";
+                      case "delivered":
+                        return "Delivered";
+                      case "rejected":
+                        return "Rejected";
+                      default:
+                        return st;
+                    }
+                  })()})
+                </Button>
+              )}
+            </div>
+          )}
       </div>
     );
   } else if (isPast) {
@@ -691,6 +753,31 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
           onSuccess={() => {
             setRegistration(null);
             setIsCancelModalOpen(false);
+          }}
+        />
+      )}
+
+      {registration && isDeliveryModalOpen && (
+        <MerchandiseDeliveryRequestDialog
+          isOpen={isDeliveryModalOpen}
+          onOpenChange={setIsDeliveryModalOpen}
+          registration={registration}
+          event={currentEvent}
+          onSuccess={(updated: FirestoreRegistration) => {
+            setRegistration(updated);
+            setIsDeliveryModalOpen(false);
+          }}
+        />
+      )}
+
+      {registration && isDeliveryStatusOpen && registration.delivery_request && (
+        <MerchandiseDeliveryStatusDialog
+          isOpen={isDeliveryStatusOpen}
+          onOpenChange={setIsDeliveryStatusOpen}
+          registration={registration}
+          onOpenPayment={() => {
+            setIsDeliveryStatusOpen(false);
+            setIsDeliveryModalOpen(true);
           }}
         />
       )}

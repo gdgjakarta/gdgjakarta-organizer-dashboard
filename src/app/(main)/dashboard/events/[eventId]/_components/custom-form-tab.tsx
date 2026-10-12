@@ -11,6 +11,7 @@ import {
   CalendarClock,
   CheckCircle2,
   Clock,
+  CreditCard,
   ExternalLink,
   FileEdit,
   Globe,
@@ -37,6 +38,8 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -65,6 +68,7 @@ import {
   ROAD_TO_DEVFEST_TEMPLATE,
 } from "@/lib/events/registration-defaults";
 import type { CustomQuestion, EventSession, FirestoreEvent } from "@/lib/firestore/types";
+import { cn } from "@/lib/utils";
 
 import { HtmlEditText } from "./html-edit-text";
 import { SortableQuestionCard } from "./sortable-question-card";
@@ -148,7 +152,13 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
   );
   const [templateCategoryFilter, setTemplateCategoryFilter] = useState<"all" | "curated" | "standard">("all");
 
-  // 6. Form Snapshot & Dirty State Tracking
+  // 6. Payment Gateway & Environment Settings
+  const [paymentEnvironment, setPaymentEnvironment] = useState<"production" | "sandbox">(
+    event.payment_environment ?? (event.is_test ? "sandbox" : "production"),
+  );
+  const [paymentWebhookUrl, setPaymentWebhookUrl] = useState<string>(event.payment_webhook_url ?? "");
+
+  // 7. Form Snapshot & Dirty State Tracking
   const [isInitialLoaded, setIsInitialLoaded] = useState(false);
   const initialSnapshotRef = useRef<string | null>(null);
 
@@ -162,6 +172,8 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
       registrationStatus,
       registrationStartDate,
       registrationEndDate,
+      paymentEnvironment,
+      paymentWebhookUrl,
     });
   }, [
     requiresApproval,
@@ -172,6 +184,8 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
     registrationStatus,
     registrationStartDate,
     registrationEndDate,
+    paymentEnvironment,
+    paymentWebhookUrl,
   ]);
 
   const isDirty =
@@ -210,6 +224,10 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
           (event.status === "Draft" ? "Draft" : "Published")) as "Draft" | "Published" | "Closed";
         const loadedStartDate = toDateTimeLocal(docData?.registration_start_date ?? event.registration_start_date);
         const loadedEndDate = toDateTimeLocal(docData?.registration_end_date ?? event.registration_end_date);
+        const loadedPaymentEnv = (docData?.payment_environment ??
+          event.payment_environment ??
+          (event.is_test ? "sandbox" : "production")) as "production" | "sandbox";
+        const loadedPaymentWebhook = docData?.payment_webhook_url ?? event.payment_webhook_url ?? "";
 
         setRequiresApproval(loadedApproval);
         setAllowWaitlist(loadedAllowWaitlist);
@@ -219,6 +237,8 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
         setRegistrationStatus(loadedStatus);
         setRegistrationStartDate(loadedStartDate);
         setRegistrationEndDate(loadedEndDate);
+        setPaymentEnvironment(loadedPaymentEnv);
+        setPaymentWebhookUrl(loadedPaymentWebhook);
 
         initialSnapshotRef.current = JSON.stringify({
           requiresApproval: loadedApproval,
@@ -229,6 +249,8 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
           registrationStatus: loadedStatus,
           registrationStartDate: loadedStartDate,
           registrationEndDate: loadedEndDate,
+          paymentEnvironment: loadedPaymentEnv,
+          paymentWebhookUrl: loadedPaymentWebhook,
         });
       } catch (err) {
         console.warn("[CustomFormTab] Failed to load Firestore document:", err);
@@ -247,6 +269,8 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
             | "Closed",
           registrationStartDate: toDateTimeLocal(event.registration_start_date),
           registrationEndDate: toDateTimeLocal(event.registration_end_date),
+          paymentEnvironment: event.payment_environment ?? (event.is_test ? "sandbox" : "production"),
+          paymentWebhookUrl: event.payment_webhook_url ?? "",
         });
       } finally {
         setIsInitialLoaded(true);
@@ -568,20 +592,26 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
       try {
         const snap = JSON.parse(initialSnapshotRef.current) as {
           requiresApproval: boolean;
+          allowWaitlist?: boolean;
           maxAttendees: string;
           sessions: EventSession[];
           questions: CustomQuestion[];
           registrationStatus: "Draft" | "Published" | "Closed";
           registrationStartDate: string;
           registrationEndDate: string;
+          paymentEnvironment?: "production" | "sandbox";
+          paymentWebhookUrl?: string;
         };
         setRequiresApproval(snap.requiresApproval);
+        if (snap.allowWaitlist !== undefined) setAllowWaitlist(snap.allowWaitlist);
         setMaxAttendees(snap.maxAttendees);
         setSessions(snap.sessions);
         setQuestions(snap.questions);
         setRegistrationStatus(snap.registrationStatus);
         setRegistrationStartDate(snap.registrationStartDate);
         setRegistrationEndDate(snap.registrationEndDate);
+        if (snap.paymentEnvironment) setPaymentEnvironment(snap.paymentEnvironment);
+        if (snap.paymentWebhookUrl !== undefined) setPaymentWebhookUrl(snap.paymentWebhookUrl);
         toast.info("Unsaved changes discarded.");
       } catch (err) {
         console.error("[CustomFormTab] Failed to revert snapshot:", err);
@@ -618,6 +648,8 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
             allow_waitlist: allowWaitlist,
             max_attendees: resolvedMaxAttendees,
             webhook_url: event.webhook_url ? event.webhook_url : deleteField(),
+            payment_environment: paymentEnvironment,
+            payment_webhook_url: paymentWebhookUrl.trim() ? paymentWebhookUrl.trim() : deleteField(),
             sessions: sessions.length > 0 ? sessions : deleteField(),
             custom_questions: questions.filter((q) => q.label.trim().length > 0),
             updated_at: new Date().toISOString(),
@@ -639,6 +671,8 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
             registrationStatus: finalStatus,
             registrationStartDate,
             registrationEndDate,
+            paymentEnvironment,
+            paymentWebhookUrl,
           });
 
           if (finalStatus === "Draft") {
@@ -1097,7 +1131,113 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
         </CardContent>
       </Card>
 
-      {/* ── 2. EVENT SESSIONS & CAPACITY SPLIT ───────────────────────── */}
+      {/* ── 3. PAYMENT GATEWAY & API ENVIRONMENT ──────────────────────── */}
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2">
+              <CreditCard className="size-4 text-primary" />
+              <CardTitle className="text-lg">Payment Gateway & API Environment</CardTitle>
+            </div>
+            {paymentEnvironment === "production" ? (
+              <Badge className="w-fit border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
+                Live Production
+              </Badge>
+            ) : (
+              <Badge className="w-fit border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400">
+                Sandbox / Dev Mode
+              </Badge>
+            )}
+          </div>
+          <CardDescription>
+            Configure whether payment link generation (DOKU Checkout via n8n webhook) for this event points to the Live
+            Production API or the Development / Sandbox environment.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <RadioGroup
+            value={paymentEnvironment}
+            onValueChange={(val) => setPaymentEnvironment(val as "production" | "sandbox")}
+            className="grid grid-cols-1 gap-3 sm:grid-cols-2"
+          >
+            {/* Sandbox Option */}
+            <Label
+              htmlFor="env-sandbox"
+              className={cn(
+                "relative flex cursor-pointer flex-col gap-2 rounded-lg border p-4 transition-colors",
+                paymentEnvironment === "sandbox"
+                  ? "border-primary bg-primary/5 ring-1 ring-primary"
+                  : "border-border hover:bg-muted/50",
+              )}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="sandbox" id="env-sandbox" />
+                  <span className="font-semibold text-sm">Development / Sandbox</span>
+                </div>
+                <Badge variant="outline" className="border-amber-500/30 text-[10px] text-amber-600 dark:text-amber-400">
+                  Testing
+                </Badge>
+              </div>
+              <p className="font-normal text-xs leading-relaxed text-muted-foreground">
+                Generates test DOKU payment links and QRIS simulators (
+                <code className="rounded bg-muted px-1 text-[11px]">isProduction: false</code>). Safe for testing event
+                registration, tickets, and merchandise flows without real financial charges.
+              </p>
+            </Label>
+
+            {/* Production Option */}
+            <Label
+              htmlFor="env-production"
+              className={cn(
+                "relative flex cursor-pointer flex-col gap-2 rounded-lg border p-4 transition-colors",
+                paymentEnvironment === "production"
+                  ? "border-emerald-600 bg-emerald-500/5 ring-1 ring-emerald-600 dark:border-emerald-400 dark:ring-emerald-400"
+                  : "border-border hover:bg-muted/50",
+              )}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="production" id="env-production" />
+                  <span className="font-semibold text-sm">Live Production</span>
+                </div>
+                <Badge
+                  variant="outline"
+                  className="border-emerald-500/30 text-[10px] text-emerald-600 dark:text-emerald-400"
+                >
+                  Live Payments
+                </Badge>
+              </div>
+              <p className="font-normal text-xs leading-relaxed text-muted-foreground">
+                Connects to the live DOKU payment processor (
+                <code className="rounded bg-muted px-1 text-[11px]">isProduction: true</code>). Attendees will make real
+                payments via QRIS, Virtual Accounts, or credit cards.
+              </p>
+            </Label>
+          </RadioGroup>
+
+          {/* Webhook Endpoint Override (Optional) */}
+          <div className="pt-2">
+            <Field>
+              <FieldLabel htmlFor="payment-webhook-url">Custom Payment Link Webhook URL (Optional Override)</FieldLabel>
+              <Input
+                id="payment-webhook-url"
+                placeholder="Leave empty to use system default (https://n8n.gdgjakarta.com/webhook/api/generate-payment-link)"
+                value={paymentWebhookUrl}
+                onChange={(e) => setPaymentWebhookUrl(e.target.value)}
+                className="font-mono text-xs"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Override the n8n endpoint for this event if you are routing payments through a custom automation
+                workflow or staging webhook (e.g.{" "}
+                <code className="rounded bg-muted px-1 text-[10px]">/webhook-test/...</code>).
+              </p>
+            </Field>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── 4. EVENT SESSIONS & CAPACITY SPLIT ───────────────────────── */}
       <Card>
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>

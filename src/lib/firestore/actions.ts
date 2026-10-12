@@ -409,3 +409,267 @@ export async function deleteBatchEventRegistrationsAction(
     return { success: false, error: message };
   }
 }
+
+// ── Merchandise Delivery Actions ──────────────────────────────────────────
+
+export interface SubmitMerchandiseDeliveryInput {
+  registrationId: string;
+  eventId: string;
+  recipientName: string;
+  recipientPhone: string;
+  shippingAddress: string;
+  city: string;
+  postalCode: string;
+  notes?: string;
+  customerEmail: string;
+  eventTitle?: string;
+  eventPictureUrl?: string;
+}
+
+export async function submitMerchandiseDeliveryRequestAction(input: SubmitMerchandiseDeliveryInput) {
+  try {
+    const { generatePaymentLinkAction } = await import("@/server/payment-actions");
+    const { saveMerchandiseDeliveryRequest, getFirestoreEventById } = await import("./client");
+    const _typeModule = await import("./types");
+
+    let isProduction: boolean | undefined;
+    let paymentWebhookUrl: string | undefined;
+
+    try {
+      const eventDoc = await getFirestoreEventById(String(input.eventId));
+      if (eventDoc?.payment_environment === "production") {
+        isProduction = true;
+      } else if (eventDoc?.payment_environment === "sandbox") {
+        isProduction = false;
+      }
+      paymentWebhookUrl = eventDoc?.payment_webhook_url ?? undefined;
+    } catch {
+      // ignore fallback
+    }
+
+    // 1. Generate payment link for Rp 50.000 distribution & commitment cutting fee
+    const paymentPayload = {
+      customer: {
+        name: input.recipientName.trim(),
+        email: input.customerEmail.trim(),
+        phone: input.recipientPhone.trim(),
+      },
+      event: {
+        id: String(input.eventId),
+        title: input.eventTitle ?? "GDG Jakarta Event",
+        headerEmailUrl: input.eventPictureUrl,
+        paymentDeadlineMinutes: 1440,
+      },
+      items: [
+        {
+          name: "Merchandise Delivery Fee (No-Show Commitment Cutting Fee)",
+          quantity: 1,
+          price: 50000,
+          type: "Fee",
+          description: "Distribution delivery cost & non-commitment cutting fee for uncollected event merchandise.",
+        },
+      ],
+      fees: [],
+      payment: {
+        paymentMethodTypes: ["QRIS"],
+        sendEmail: true,
+      },
+      referenceId: `DELIV-${input.registrationId}-${Date.now().toString(36).toUpperCase()}`,
+      isProduction,
+      webhookUrl: paymentWebhookUrl,
+    };
+
+    let payResult: {
+      success: boolean;
+      paymentUrl?: string;
+      invoiceNumber?: string;
+      error?: string;
+    };
+
+    try {
+      payResult = await generatePaymentLinkAction(paymentPayload);
+    } catch (payErr) {
+      console.warn("[submitMerchandiseDeliveryRequestAction] Payment generation error:", payErr);
+      payResult = {
+        success: false,
+        error: payErr instanceof Error ? payErr.message : "Payment generation failed",
+      };
+    }
+
+    const now = new Date().toISOString();
+    const deliveryRequest: import("./types").MerchandiseDeliveryRequest = {
+      id: `del_${input.registrationId}_${Date.now()}`,
+      status: "pending_payment",
+      recipient_name: input.recipientName.trim(),
+      recipient_phone: input.recipientPhone.trim(),
+      shipping_address: input.shippingAddress.trim(),
+      city: input.city.trim(),
+      postal_code: input.postalCode.trim(),
+      notes: input.notes?.trim() ? input.notes.trim() : undefined,
+      requested_at: now,
+      fee_amount: 50000,
+      payment_status: payResult.success && payResult.paymentUrl ? "pending" : "unpaid",
+      payment_url: payResult.paymentUrl,
+      payment_invoice_number: payResult.invoiceNumber,
+      updated_at: now,
+    };
+
+    await saveMerchandiseDeliveryRequest(input.registrationId, deliveryRequest);
+
+    await revalidateDashboardPath("/dashboard/member/my-events");
+    await revalidateDashboardPath("/dashboard/my-events");
+    await revalidateDashboardPath(`/dashboard/events/${input.eventId}`);
+    await revalidateDashboardPath(`/dashboard/member/events/${input.eventId}`);
+
+    return {
+      success: true,
+      deliveryRequest,
+      paymentUrl: payResult.paymentUrl,
+      invoiceNumber: payResult.invoiceNumber,
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to submit merchandise delivery request.";
+    console.error("[submitMerchandiseDeliveryRequestAction] error:", message);
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * Confirms or simulates delivery fee payment, moving status to pending_review.
+ */
+export async function confirmMerchandiseDeliveryPaymentAction(registrationId: string, eventId: string) {
+  try {
+    const { updateMerchandiseDeliveryStatus } = await import("./client");
+    const now = new Date().toISOString();
+
+    await updateMerchandiseDeliveryStatus(registrationId, "pending_review", {
+      payment_status: "paid",
+      paid_at: now,
+    });
+
+    await revalidateDashboardPath("/dashboard/member/my-events");
+    await revalidateDashboardPath("/dashboard/my-events");
+    await revalidateDashboardPath(`/dashboard/events/${eventId}`);
+    await revalidateDashboardPath(`/dashboard/member/events/${eventId}`);
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to confirm payment.";
+    console.error("[confirmMerchandiseDeliveryPaymentAction] error:", message);
+    return { success: false, error: message };
+  }
+}
+
+export interface ApproveMerchandiseDeliveryInput {
+  registrationId: string;
+  eventId: string;
+  courierType: string;
+  trackingNumber: string;
+  trackingUrl?: string;
+  deliveryProofUrl?: string;
+  dispatchedAt?: string;
+  notes?: string;
+  reviewer: { id: string; name: string; email?: string };
+}
+
+/**
+ * Organizer approves merchandise delivery and submits courier fulfillment details.
+ */
+export async function approveMerchandiseDeliveryAction(input: ApproveMerchandiseDeliveryInput) {
+  try {
+    const { updateMerchandiseDeliveryStatus } = await import("./client");
+    const now = new Date().toISOString();
+
+    await updateMerchandiseDeliveryStatus(input.registrationId, "approved", {
+      courier_type: input.courierType.trim(),
+      tracking_number: input.trackingNumber.trim(),
+      tracking_url: input.trackingUrl?.trim() ? input.trackingUrl.trim() : undefined,
+      delivery_proof_url: input.deliveryProofUrl?.trim() ? input.deliveryProofUrl.trim() : undefined,
+      dispatched_at: input.dispatchedAt ?? now,
+      notes: input.notes?.trim() ? input.notes.trim() : undefined,
+      reviewed_by_id: input.reviewer.id,
+      reviewed_by_name: input.reviewer.name,
+      reviewed_at: now,
+    });
+
+    await revalidateDashboardPath(`/dashboard/events/${input.eventId}`);
+    await revalidateDashboardPath("/dashboard/member/my-events");
+    await revalidateDashboardPath("/dashboard/my-events");
+    await revalidateDashboardPath(`/dashboard/member/events/${input.eventId}`);
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to approve delivery request.";
+    console.error("[approveMerchandiseDeliveryAction] error:", message);
+    return { success: false, error: message };
+  }
+}
+
+export interface RejectMerchandiseDeliveryInput {
+  registrationId: string;
+  eventId: string;
+  reason: string;
+  reviewer: { id: string; name: string; email?: string };
+}
+
+/**
+ * Organizer rejects merchandise delivery request with a reason.
+ */
+export async function rejectMerchandiseDeliveryAction(input: RejectMerchandiseDeliveryInput) {
+  try {
+    const { updateMerchandiseDeliveryStatus } = await import("./client");
+    const now = new Date().toISOString();
+
+    await updateMerchandiseDeliveryStatus(input.registrationId, "rejected", {
+      rejection_reason: input.reason.trim(),
+      reviewed_by_id: input.reviewer.id,
+      reviewed_by_name: input.reviewer.name,
+      reviewed_at: now,
+    });
+
+    await revalidateDashboardPath(`/dashboard/events/${input.eventId}`);
+    await revalidateDashboardPath("/dashboard/member/my-events");
+    await revalidateDashboardPath("/dashboard/my-events");
+    await revalidateDashboardPath(`/dashboard/member/events/${input.eventId}`);
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to reject delivery request.";
+    console.error("[rejectMerchandiseDeliveryAction] error:", message);
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * Organizer marks merchandise as successfully delivered.
+ */
+export async function markMerchandiseDeliveredAction(registrationId: string, eventId: string) {
+  try {
+    const { updateMerchandiseDeliveryStatus } = await import("./client");
+    const now = new Date().toISOString();
+
+    await updateMerchandiseDeliveryStatus(registrationId, "delivered", {
+      delivered_at: now,
+    });
+
+    await revalidateDashboardPath(`/dashboard/events/${eventId}`);
+    await revalidateDashboardPath("/dashboard/member/my-events");
+    await revalidateDashboardPath("/dashboard/my-events");
+    await revalidateDashboardPath(`/dashboard/member/events/${eventId}`);
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to mark as delivered.";
+    console.error("[markMerchandiseDeliveredAction] error:", message);
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * Fetches all delivery requests for an event.
+ */
+export async function fetchEventMerchandiseDeliveryRequestsAction(eventId: string) {
+  try {
+    const { getEventMerchandiseDeliveryRequests } = await import("./client");
+    return await getEventMerchandiseDeliveryRequests(eventId);
+  } catch (err) {
+    console.error("[fetchEventMerchandiseDeliveryRequestsAction] error:", err);
+    return [];
+  }
+}

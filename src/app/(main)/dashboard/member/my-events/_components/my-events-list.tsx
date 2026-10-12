@@ -15,9 +15,11 @@ import {
   Globe,
   Layers,
   MapPin,
+  Package,
   Radio,
   Search,
   Sparkles,
+  Truck,
   UserX,
   X,
 } from "lucide-react";
@@ -37,6 +39,9 @@ import { fetchMemberRegistrationsAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent, FirestoreRegistration, RegistrationStatus } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth/auth-provider";
+
+import { MerchandiseDeliveryRequestDialog } from "./merchandise-delivery-request-dialog";
+import { MerchandiseDeliveryStatusDialog } from "./merchandise-delivery-status-dialog";
 
 interface MyEventsListProps {
   allEvents: FirestoreEvent[];
@@ -92,6 +97,8 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [cancellingRegistration, setCancellingRegistration] = useState<FirestoreRegistration | null>(null);
+  const [deliveryModalReg, setDeliveryModalReg] = useState<FirestoreRegistration | null>(null);
+  const [deliveryStatusReg, setDeliveryStatusReg] = useState<FirestoreRegistration | null>(null);
 
   useEffect(() => {
     async function loadRegistrations() {
@@ -429,6 +436,81 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
                     </div>
                   )}
 
+                  {/* Merchandise Delivery Info (No-Show Attendee) */}
+                  {(() => {
+                    const isPast = isEventPast(ev);
+                    const hasPurchasedMerch = Boolean(reg.selected_merchandise && reg.selected_merchandise.length > 0);
+                    const isNotCheckedIn = !reg.is_checked_in && reg.status !== "attended";
+                    const isEligibleForDelivery = isPast && isNotCheckedIn && hasPurchasedMerch;
+                    const deliveryReq = reg.delivery_request;
+
+                    if (isEligibleForDelivery && !deliveryReq) {
+                      return (
+                        <div className="rounded-md border border-primary/30 bg-primary/5 p-2.5 text-[11px]">
+                          <div className="flex items-center justify-between">
+                            <span className="flex items-center gap-1.5 font-semibold text-primary">
+                              <Package className="size-3.5" />
+                              Uncollected Merchandise
+                            </span>
+                            <Badge variant="outline" className="border-primary/30 text-[10px] text-primary">
+                              Delivery Available
+                            </Badge>
+                          </div>
+                          <p className="mt-1 text-[10px] text-muted-foreground leading-relaxed">
+                            Event concluded and check-in was missed. You can request package delivery to your address
+                            for Rp 50.000.
+                          </p>
+                        </div>
+                      );
+                    }
+
+                    if (deliveryReq) {
+                      return (
+                        <div className="flex items-center justify-between rounded-md border border-border/80 bg-muted/40 p-2 text-[11px]">
+                          <div className="flex items-center gap-1.5">
+                            <Truck className="size-3.5 text-primary" />
+                            <span className="font-medium text-foreground">Package Delivery</span>
+                          </div>
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "text-[10px] capitalize",
+                              deliveryReq.status === "approved" &&
+                                "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+                              deliveryReq.status === "pending_review" &&
+                                "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300",
+                              deliveryReq.status === "pending_payment" &&
+                                "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+                              deliveryReq.status === "delivered" &&
+                                "border-purple-500/30 bg-purple-500/10 text-purple-700 dark:text-purple-300",
+                              deliveryReq.status === "rejected" &&
+                                "border-destructive/30 bg-destructive/10 text-destructive",
+                            )}
+                          >
+                            {(() => {
+                              switch (deliveryReq.status) {
+                                case "pending_payment":
+                                  return "Pay Fee";
+                                case "pending_review":
+                                  return "Under Review";
+                                case "approved":
+                                  return "In Transit";
+                                case "delivered":
+                                  return "Delivered";
+                                case "rejected":
+                                  return "Rejected";
+                                default:
+                                  return deliveryReq.status;
+                              }
+                            })()}
+                          </Badge>
+                        </div>
+                      );
+                    }
+
+                    return null;
+                  })()}
+
                   <p className="line-clamp-2 text-muted-foreground text-xs leading-relaxed">
                     {ev?.description_short ||
                       ev?.description ||
@@ -439,7 +521,7 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
 
               {/* Action Buttons Row */}
               <CardFooter className="flex flex-wrap items-center justify-between gap-2 border-border/40 border-t bg-muted/20 p-3.5">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <EditRegistrationModal
                     registration={reg}
                     event={ev}
@@ -469,6 +551,45 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
                       )
                     }
                   />
+
+                  {/* Merchandise Delivery Request / Status Button */}
+                  {(() => {
+                    const isPast = isEventPast(ev);
+                    const hasPurchasedMerch = Boolean(reg.selected_merchandise && reg.selected_merchandise.length > 0);
+                    const isNotCheckedIn = !reg.is_checked_in && reg.status !== "attended";
+                    const isEligibleForDelivery = isPast && isNotCheckedIn && hasPurchasedMerch;
+                    const deliveryReq = reg.delivery_request;
+
+                    if (isEligibleForDelivery && !deliveryReq) {
+                      return (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 gap-1.5 border-primary/40 bg-primary/5 text-primary text-xs hover:bg-primary/10"
+                          onClick={() => setDeliveryModalReg(reg)}
+                        >
+                          <Truck className="size-3.5" />
+                          Request Delivery 📦
+                        </Button>
+                      );
+                    }
+
+                    if (deliveryReq) {
+                      return (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 gap-1.5 text-xs"
+                          onClick={() => setDeliveryStatusReg(reg)}
+                        >
+                          <Truck className="size-3.5" />
+                          Delivery Status 🚚
+                        </Button>
+                      );
+                    }
+
+                    return null;
+                  })()}
 
                   <Button
                     variant="ghost"
@@ -618,6 +739,32 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
             const cancelledId = cancellingRegistration.id;
             setRegistrations((prev) => prev.filter((r) => r.id !== cancelledId));
             setCancellingRegistration(null);
+          }}
+        />
+      )}
+
+      {deliveryModalReg && (
+        <MerchandiseDeliveryRequestDialog
+          isOpen={Boolean(deliveryModalReg)}
+          onOpenChange={(open) => !open && setDeliveryModalReg(null)}
+          registration={deliveryModalReg}
+          event={eventMap.get(String(deliveryModalReg.event_id))}
+          onSuccess={(updated) => {
+            handleRegistrationUpdated(updated);
+            setDeliveryModalReg(null);
+          }}
+        />
+      )}
+
+      {deliveryStatusReg && (
+        <MerchandiseDeliveryStatusDialog
+          isOpen={Boolean(deliveryStatusReg)}
+          onOpenChange={(open) => !open && setDeliveryStatusReg(null)}
+          registration={deliveryStatusReg}
+          onOpenPayment={() => {
+            const target = deliveryStatusReg;
+            setDeliveryStatusReg(null);
+            setDeliveryModalReg(target);
           }}
         />
       )}

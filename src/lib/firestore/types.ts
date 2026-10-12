@@ -249,6 +249,8 @@ export interface FirestoreEvent {
   max_merchandise_per_person?: number | null; // Limit merchandise items per person (null = unlimited)
   vouchers?: EventVoucher[];
   webhook_url?: string | null;
+  payment_environment?: "production" | "sandbox";
+  payment_webhook_url?: string | null;
   registration_status?: "Draft" | "Published" | "Closed";
   registration_start_date?: string | null;
   registration_end_date?: string | null;
@@ -309,6 +311,54 @@ export interface SelectedMerchandiseOrder {
   quantity: number;
   price: number;
   selected_variations?: Record<string, string>;
+}
+
+export type MerchandiseDeliveryStatus = "pending_payment" | "pending_review" | "approved" | "rejected" | "delivered";
+
+export type CourierType =
+  | "jne"
+  | "jnt"
+  | "sicepat"
+  | "paxel"
+  | "gojek"
+  | "grab"
+  | "anteraja"
+  | "pos"
+  | "lion_parcel"
+  | "other";
+
+export interface MerchandiseDeliveryRequest {
+  id: string; // e.g. `deliv_${registrationId}`
+  status: MerchandiseDeliveryStatus;
+  recipient_name: string;
+  recipient_phone: string;
+  shipping_address: string;
+  city: string;
+  postal_code: string;
+  notes?: string;
+  requested_at: string;
+
+  // Distribution & commitment cutting fee (Rp 50.000)
+  fee_amount: number; // 50000
+  payment_status: "unpaid" | "pending" | "paid" | "failed";
+  payment_url?: string;
+  payment_invoice_number?: string;
+  paid_at?: string;
+
+  // Courier fulfillment details (submitted by Organizer on approval)
+  courier_type?: CourierType | string;
+  tracking_number?: string; // Delivery ID / Resi
+  tracking_url?: string; // Package tracking URL
+  delivery_proof_url?: string; // Package dispatch photo or receipt URL
+  dispatched_at?: string; // When package was dispatched / shipped
+  delivered_at?: string; // When package was delivered
+
+  // Review / rejection info
+  rejection_reason?: string;
+  reviewed_by_id?: string;
+  reviewed_by_name?: string;
+  reviewed_at?: string;
+  updated_at: string;
 }
 
 export interface RegistrationStatusLog {
@@ -389,6 +439,9 @@ export interface FirestoreRegistration {
   voucher_discount_type?: VoucherDiscountType;
   voucher_discount_value?: number;
   voucher_applies_to?: VoucherAppliesTo;
+
+  // Merchandise delivery request (No-show uncollected merchandise claim)
+  delivery_request?: MerchandiseDeliveryRequest;
 
   updated_at?: string;
 }

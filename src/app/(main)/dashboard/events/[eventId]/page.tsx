@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 
-import { FileSpreadsheet, Mail, Package, Sparkles, Ticket, TicketPercent, Users } from "lucide-react";
+import { FileSpreadsheet, Mail, Package, Sparkles, Ticket, TicketPercent, Truck, Users } from "lucide-react";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getAllBevyChapterEvents, getBevyEventById, resolveEventAudience } from "@/lib/bevy/client";
@@ -10,6 +10,7 @@ import { CustomFormTab } from "./_components/custom-form-tab";
 import { EmailTemplatesTab } from "./_components/email-templates-tab";
 import { EventDetailHeader } from "./_components/event-detail-header";
 import { HighlightsMediaTab } from "./_components/highlights-media-tab";
+import { MerchandiseDeliveryTab } from "./_components/merchandise-delivery-tab";
 import { MerchandiseTab } from "./_components/merchandise-tab";
 import { RegistrantsTab } from "./_components/registrants-tab";
 import { TicketsTab } from "./_components/tickets-tab";
@@ -204,6 +205,10 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
               <Package className="size-4" />
               Merchandise
             </TabsTrigger>
+            <TabsTrigger value="delivery" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
+              <Truck className="size-4" />
+              Merchandise Delivery
+            </TabsTrigger>
             <TabsTrigger value="vouchers" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
               <TicketPercent className="size-4" />
               Vouchers
@@ -233,6 +238,10 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
 
         <TabsContent value="merch" className="space-y-4">
           <MerchandiseTab event={event} />
+        </TabsContent>
+
+        <TabsContent value="delivery" className="space-y-4">
+          <MerchandiseDeliveryTab event={event} eventId={eventId} />
         </TabsContent>
 
         <TabsContent value="vouchers" className="space-y-4">

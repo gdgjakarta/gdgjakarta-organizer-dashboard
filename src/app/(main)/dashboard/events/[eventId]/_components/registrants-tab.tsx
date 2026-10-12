@@ -21,6 +21,7 @@ import {
   Search,
   Ticket,
   Trash2,
+  Truck,
   UserCheck,
   Users,
   UserX,
@@ -2833,7 +2834,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                 {reg.voucher_code && (
                                   <Badge
                                     variant="outline"
-                                    className="w-fit border-primary/30 bg-primary/10 px-1.5 py-0 font-mono text-[9px] font-semibold text-primary"
+                                    className="w-fit border-primary/30 bg-primary/10 px-1.5 py-0 font-mono font-semibold text-[9px] text-primary"
                                   >
                                     Promo: {reg.voucher_code}
                                   </Badge>
@@ -2857,6 +2858,27 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                     </span>
                                   </Badge>
                                 ))}
+                                {reg.delivery_request && (
+                                  <Badge
+                                    variant="outline"
+                                    className={cn(
+                                      "w-fit gap-1 font-medium text-[9px] capitalize",
+                                      reg.delivery_request.status === "approved" &&
+                                        "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+                                      reg.delivery_request.status === "pending_review" &&
+                                        "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300",
+                                      reg.delivery_request.status === "delivered" &&
+                                        "border-purple-500/30 bg-purple-500/10 text-purple-700 dark:text-purple-300",
+                                      reg.delivery_request.status === "pending_payment" &&
+                                        "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+                                      reg.delivery_request.status === "rejected" &&
+                                        "border-destructive/30 bg-destructive/10 text-destructive",
+                                    )}
+                                  >
+                                    <Truck className="size-2.5" />
+                                    <span>Delivery: {reg.delivery_request.status.replace("_", " ")}</span>
+                                  </Badge>
+                                )}
                               </div>
                             ) : (
                               <span className="text-muted-foreground text-xs">—</span>
@@ -3105,6 +3127,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       {/* Redesigned Applicant Details Dossier Dialog */}
       <ApplicantDetailDialog
         registration={inspectRegistration}
+        event={currentEvent}
         onClose={() => setInspectRegistration(null)}
         onStatusChange={handleStatusChange}
         onApprove={handleApproveAttendee}

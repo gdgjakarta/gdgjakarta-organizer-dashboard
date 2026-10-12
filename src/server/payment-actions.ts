@@ -49,6 +49,7 @@ const dokuPaymentRequestSchema = z.object({
     .optional(),
   referenceId: z.string().optional(),
   isProduction: z.boolean().optional(),
+  webhookUrl: z.string().optional(),
 });
 
 export type DokuPaymentRequestInput = z.input<typeof dokuPaymentRequestSchema>;
@@ -64,11 +65,16 @@ export async function generatePaymentLinkAction(input: DokuPaymentRequestInput):
     return { success: false, error: errorMsg };
   }
 
-  const webhookUrl = resolvePaymentLinkWebhookUrl();
+  const isProduction =
+    parsed.data.isProduction !== undefined ? parsed.data.isProduction : process.env.NODE_ENV === "production";
+
+  const webhookUrl = resolvePaymentLinkWebhookUrl(parsed.data.webhookUrl, isProduction);
   const apiKey =
     process.env.N8N_PAYMENT_LINK_API_KEY || process.env.N8N_WEBHOOK_API_KEY || process.env.N8N_AUTH_SECRET || "";
 
-  console.log(`[DOKU Payment Action] POST ${webhookUrl} for ${parsed.data.customer.email}...`);
+  console.log(
+    `[DOKU Payment Action] POST ${webhookUrl} (mode: ${isProduction ? "production" : "sandbox"}) for ${parsed.data.customer.email}...`,
+  );
 
   try {
     const controller = new AbortController();
@@ -90,7 +96,7 @@ export async function generatePaymentLinkAction(input: DokuPaymentRequestInput):
       fees: parsed.data.fees,
       payment: parsed.data.payment,
       referenceId: parsed.data.referenceId,
-      isProduction: parsed.data.isProduction,
+      isProduction,
     };
 
     const response = await fetch(webhookUrl, {

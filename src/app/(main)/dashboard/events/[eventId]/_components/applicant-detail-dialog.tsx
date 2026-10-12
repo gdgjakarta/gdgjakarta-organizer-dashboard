@@ -40,12 +40,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { DEFAULT_COMBINED_QUESTIONS } from "@/lib/events/registration-defaults";
-import type { CustomQuestion, FirestoreRegistration, RegistrationStatus } from "@/lib/firestore/types";
+import type { CustomQuestion, FirestoreEvent, FirestoreRegistration, RegistrationStatus } from "@/lib/firestore/types";
 import { cn, getInitials } from "@/lib/utils";
 import { generatePaymentLinkAction } from "@/server/payment-actions";
 
 interface ApplicantDetailDialogProps {
   registration: FirestoreRegistration | null;
+  event?: FirestoreEvent;
   onClose: () => void;
   onStatusChange: (registrationId: string, newStatus: RegistrationStatus) => void;
   onApprove?: (registration: FirestoreRegistration) => void;
@@ -163,6 +164,7 @@ function getTicketTierLabel(type?: string, price?: number): string {
 
 export function ApplicantDetailDialog({
   registration,
+  event,
   onClose,
   onStatusChange,
   onApprove,
@@ -607,6 +609,13 @@ export function ApplicantDetailDialog({
           sendEmail: true,
         },
         referenceId: registration.id,
+        isProduction:
+          event?.payment_environment === "production"
+            ? true
+            : event?.payment_environment === "sandbox"
+              ? false
+              : undefined,
+        webhookUrl: event?.payment_webhook_url ?? undefined,
       });
 
       if (res.success && res.paymentUrl) {

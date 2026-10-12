@@ -79,6 +79,33 @@ service cloud.firestore {
     //   - payment_invoice_number: string|null (optional, <= 128 chars) - DOKU invoice number
     //   - payment_amount: int|float|null (optional, >= 0) - Total payment amount in IDR
     //   - payment_expired_datetime: string|null (optional, <= 50 chars) - DOKU invoice expiry timestamp
+    //   - delivery_request: map|null (optional) - Merchandise delivery request for no-show attendees
+    //     Fields in delivery_request:
+    //       - id: string (required, <= 200 chars) - Delivery request ID
+    //       - status: string (required) - Status ('pending_payment'|'pending_review'|'approved'|'rejected'|'delivered')
+    //       - recipient_name: string (required, <= 150 chars) - Recipient name
+    //       - recipient_phone: string (required, <= 50 chars) - Recipient phone number
+    //       - shipping_address: string (required, <= 1000 chars) - Shipping street address
+    //       - city: string (required, <= 150 chars) - City / region
+    //       - postal_code: string (required, <= 20 chars) - Postal code
+    //       - notes: string|null (optional, <= 1000 chars) - Delivery notes
+    //       - requested_at: string (required, <= 50 chars) - Request timestamp ISO string
+    //       - fee_amount: int|float (required, >= 0) - Delivery fee amount in IDR (Rp 50.000)
+    //       - payment_status: string (required) - Payment status ('unpaid'|'pending'|'paid'|'failed')
+    //       - payment_url: string|null (optional, <= 2000 chars) - Payment link
+    //       - payment_invoice_number: string|null (optional, <= 128 chars) - Payment invoice reference
+    //       - paid_at: string|null (optional, <= 50 chars) - Payment confirmation timestamp
+    //       - courier_type: string|null (optional, <= 50 chars) - Courier service code
+    //       - tracking_number: string|null (optional, <= 128 chars) - Package tracking number / resi
+    //       - tracking_url: string|null (optional, <= 2000 chars) - Courier tracking URL
+    //       - delivery_proof_url: string|null (optional, <= 2000 chars) - Proof of shipment or delivery URL
+    //       - dispatched_at: string|null (optional, <= 50 chars) - Package dispatch timestamp
+    //       - delivered_at: string|null (optional, <= 50 chars) - Package delivered timestamp
+    //       - rejection_reason: string|null (optional, <= 1000 chars) - Organizer rejection explanation
+    //       - reviewed_by_id: string|null (optional, <= 128 chars) - Reviewer UID
+    //       - reviewed_by_name: string|null (optional, <= 150 chars) - Reviewer display name
+    //       - reviewed_at: string|null (optional, <= 50 chars) - Review timestamp
+    //       - updated_at: string (required, <= 50 chars) - Last update timestamp
     //   - updated_at: string|null (optional, <= 50 chars) - Last update timestamp
     //
     // Collection: events
@@ -286,6 +313,73 @@ service cloud.firestore {
         (!('synced_from_bevy_at' in data) || data.synced_from_bevy_at == null || (data.synced_from_bevy_at is string && data.synced_from_bevy_at.size() <= 50));
     }
 
+    // Validates delivery_request map structure, data types, and bounds
+    function isValidDeliveryRequest(req) {
+      return req is map &&
+        req.keys().hasAll([
+          'id', 'status', 'recipient_name', 'recipient_phone', 'shipping_address',
+          'city', 'postal_code', 'requested_at', 'fee_amount', 'payment_status', 'updated_at'
+        ]) &&
+        req.keys().hasOnly([
+          'id', 'status', 'recipient_name', 'recipient_phone', 'shipping_address',
+          'city', 'postal_code', 'notes', 'requested_at', 'fee_amount',
+          'payment_status', 'payment_url', 'payment_invoice_number', 'paid_at',
+          'courier_type', 'tracking_number', 'tracking_url', 'delivery_proof_url',
+          'dispatched_at', 'delivered_at', 'rejection_reason',
+          'reviewed_by_id', 'reviewed_by_name', 'reviewed_at', 'updated_at'
+        ]) &&
+        req.id is string && req.id.size() > 0 && req.id.size() <= 200 &&
+        req.status is string && (req.status in ['pending_payment', 'pending_review', 'approved', 'rejected', 'delivered']) &&
+        req.recipient_name is string && req.recipient_name.size() > 0 && req.recipient_name.size() <= 150 &&
+        req.recipient_phone is string && req.recipient_phone.size() > 0 && req.recipient_phone.size() <= 50 &&
+        req.shipping_address is string && req.shipping_address.size() > 0 && req.shipping_address.size() <= 1000 &&
+        req.city is string && req.city.size() > 0 && req.city.size() <= 150 &&
+        req.postal_code is string && req.postal_code.size() > 0 && req.postal_code.size() <= 20 &&
+        req.requested_at is string && req.requested_at.size() <= 50 &&
+        (req.fee_amount is int || req.fee_amount is float) && req.fee_amount >= 0 &&
+        req.payment_status is string && (req.payment_status in ['unpaid', 'pending', 'paid', 'failed']) &&
+        req.updated_at is string && req.updated_at.size() <= 50 &&
+        (!('notes' in req) || req.notes == null || (req.notes is string && req.notes.size() <= 1000)) &&
+        (!('payment_url' in req) || req.payment_url == null || (req.payment_url is string && req.payment_url.size() <= 2000)) &&
+        (!('payment_invoice_number' in req) || req.payment_invoice_number == null || (req.payment_invoice_number is string && req.payment_invoice_number.size() <= 128)) &&
+        (!('paid_at' in req) || req.paid_at == null || (req.paid_at is string && req.paid_at.size() <= 50)) &&
+        (!('courier_type' in req) || req.courier_type == null || (req.courier_type is string && req.courier_type.size() <= 50)) &&
+        (!('tracking_number' in req) || req.tracking_number == null || (req.tracking_number is string && req.tracking_number.size() <= 128)) &&
+        (!('tracking_url' in req) || req.tracking_url == null || (req.tracking_url is string && req.tracking_url.size() <= 2000)) &&
+        (!('delivery_proof_url' in req) || req.delivery_proof_url == null || (req.delivery_proof_url is string && req.delivery_proof_url.size() <= 2000)) &&
+        (!('dispatched_at' in req) || req.dispatched_at == null || (req.dispatched_at is string && req.dispatched_at.size() <= 50)) &&
+        (!('delivered_at' in req) || req.delivered_at == null || (req.delivered_at is string && req.delivered_at.size() <= 50)) &&
+        (!('rejection_reason' in req) || req.rejection_reason == null || (req.rejection_reason is string && req.rejection_reason.size() <= 1000)) &&
+        (!('reviewed_by_id' in req) || req.reviewed_by_id == null || (req.reviewed_by_id is string && req.reviewed_by_id.size() <= 128)) &&
+        (!('reviewed_by_name' in req) || req.reviewed_by_name == null || (req.reviewed_by_name is string && req.reviewed_by_name.size() <= 150)) &&
+        (!('reviewed_at' in req) || req.reviewed_at == null || (req.reviewed_at is string && req.reviewed_at.size() <= 50));
+    }
+
+    // Ensures member (registrant) updates to delivery_request are strictly constrained to submission & payment
+    function isValidMemberDeliveryUpdate(prevData, newData) {
+      return !newData.diff(prevData).affectedKeys().hasAny(['delivery_request']) ||
+        (
+          ('delivery_request' in newData) &&
+          newData.delivery_request is map &&
+          (newData.delivery_request.status in ['pending_payment', 'pending_review']) &&
+          !newData.delivery_request.keys().hasAny([
+            'courier_type', 'tracking_number', 'tracking_url', 'delivery_proof_url',
+            'dispatched_at', 'delivered_at', 'rejection_reason',
+            'reviewed_by_id', 'reviewed_by_name', 'reviewed_at'
+          ]) &&
+          (
+            !('delivery_request' in prevData) ||
+            prevData.delivery_request == null ||
+            (
+              prevData.delivery_request is map &&
+              (prevData.delivery_request.status in ['pending_payment', 'pending_review']) &&
+              newData.delivery_request.id == prevData.delivery_request.id &&
+              newData.delivery_request.requested_at == prevData.delivery_request.requested_at
+            )
+          )
+        );
+    }
+
     // Validates event_registrations document structure, data types, and bounds
     function isValidRegistration(data) {
       return hasRequiredFields(data, ['id', 'event_id', 'event_title', 'member_id', 'member_name', 'member_email', 'status', 'registered_at']) &&
@@ -300,6 +394,7 @@ service cloud.firestore {
           'checked_in_at', 'is_checked_in', 'bevy_attendee_id', 'checkin_date',
           'attendee_code',
           'payment_status', 'payment_url', 'payment_invoice_number', 'payment_amount', 'payment_expired_datetime',
+          'delivery_request',
           'updated_at'
         ]) &&
         data.id is string && data.id.size() > 0 && data.id.size() <= 200 &&
@@ -339,6 +434,7 @@ service cloud.firestore {
         (!('payment_invoice_number' in data) || data.payment_invoice_number == null || (data.payment_invoice_number is string && data.payment_invoice_number.size() <= 128)) &&
         (!('payment_amount' in data) || data.payment_amount == null || ((data.payment_amount is int || data.payment_amount is float) && data.payment_amount >= 0)) &&
         (!('payment_expired_datetime' in data) || data.payment_expired_datetime == null || (data.payment_expired_datetime is string && data.payment_expired_datetime.size() <= 50)) &&
+        (!('delivery_request' in data) || data.delivery_request == null || isValidDeliveryRequest(data.delivery_request)) &&
         (!('updated_at' in data) || data.updated_at == null || (data.updated_at is string && data.updated_at.size() <= 50));
     }
 
@@ -549,8 +645,9 @@ service cloud.firestore {
         (isAuthenticated() && request.auth.uid == request.resource.data.member_id)
       );
 
-      // Update: Organizers (e.g. status review, check-in) or the registrant updating payment fields, answers, and RSVP details.
-      // Registrants cannot alter review fields, check-in status/timestamps, or event/member identifiers, and status must remain unchanged.
+      // Update: Organizers (e.g. status review, check-in, delivery fulfillment) or the registrant updating payment fields, answers, delivery request, and RSVP details.
+      // Registrants cannot alter review fields, check-in status/timestamps, or event/member identifiers, and registration status must remain unchanged.
+      // For merchandise delivery requests, registrants can submit delivery address & fee payment (pending_payment / pending_review), while organizers handle review, approval, rejection, and fulfillment.
       allow update: if isValidRegistration(request.resource.data) && (
         isOrganizer() ||
         (
@@ -564,7 +661,8 @@ service cloud.firestore {
             'reviewed_by_email', 'status_logs',
             'checked_in_at', 'is_checked_in', 'bevy_attendee_id', 'attendee_code',
             'member_id', 'event_id', 'id'
-          ])
+          ]) &&
+          isValidMemberDeliveryUpdate(resource.data, request.resource.data)
         )
       );
 

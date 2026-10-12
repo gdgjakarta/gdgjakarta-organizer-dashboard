@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { Check, Copy, CreditCard, ExternalLink, Loader2, QrCode, Sparkles, Tag } from "lucide-react";
 import { toast } from "sonner";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -182,6 +183,13 @@ export function GenerateMerchandisePaymentDialog({
             sendEmail,
           },
           referenceId: `MERCH-${Date.now().toString(36).toUpperCase()}`,
+          isProduction:
+            event.payment_environment === "production"
+              ? true
+              : event.payment_environment === "sandbox"
+                ? false
+                : undefined,
+          webhookUrl: event.payment_webhook_url ?? undefined,
         });
 
         if (res.success && res.paymentUrl) {
@@ -226,7 +234,24 @@ export function GenerateMerchandisePaymentDialog({
               <CreditCard className="size-5" />
             </div>
             <div>
-              <DialogTitle className="font-semibold text-base">Generate DOKU Payment Link</DialogTitle>
+              <div className="flex items-center gap-2">
+                <DialogTitle className="font-semibold text-base">Generate DOKU Payment Link</DialogTitle>
+                {event.payment_environment === "sandbox" ? (
+                  <Badge
+                    variant="outline"
+                    className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 text-[10px]"
+                  >
+                    Sandbox
+                  </Badge>
+                ) : (
+                  <Badge
+                    variant="outline"
+                    className="border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-[10px]"
+                  >
+                    Live Production
+                  </Badge>
+                )}
+              </div>
               <DialogDescription className="text-xs">
                 Create a dynamic QRIS / Virtual Account checkout link for this merchandise item.
               </DialogDescription>

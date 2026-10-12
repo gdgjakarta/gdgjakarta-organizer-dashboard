@@ -48,6 +48,7 @@ export interface DokuPaymentLinkRequest {
   payment?: PaymentOptions;
   referenceId?: string;
   isProduction?: boolean;
+  webhookUrl?: string;
 }
 
 export interface DokuPaymentLinkResponse {
@@ -74,12 +75,24 @@ export interface PaymentDispatchResult {
 /**
  * Resolves the webhook URL for the DOKU payment link generator in n8n.
  */
-export function resolvePaymentLinkWebhookUrl(customBaseUrl?: string): string {
+export function resolvePaymentLinkWebhookUrl(customBaseUrl?: string, isProduction?: boolean): string {
+  if (customBaseUrl && customBaseUrl.trim().length > 0) {
+    return customBaseUrl.trim();
+  }
+
+  if (isProduction === false && process.env.N8N_PAYMENT_LINK_DEV_WEBHOOK_URL) {
+    return process.env.N8N_PAYMENT_LINK_DEV_WEBHOOK_URL.trim();
+  }
+
+  if (isProduction === true && process.env.N8N_PAYMENT_LINK_PROD_WEBHOOK_URL) {
+    return process.env.N8N_PAYMENT_LINK_PROD_WEBHOOK_URL.trim();
+  }
+
   if (process.env.N8N_PAYMENT_LINK_WEBHOOK_URL) {
     return process.env.N8N_PAYMENT_LINK_WEBHOOK_URL.trim();
   }
 
-  const base = (customBaseUrl ?? process.env.N8N_WEBHOOK_BASE_URL ?? "https://n8n.gdgjakarta.com/webhook/api")
+  const base = (process.env.N8N_WEBHOOK_BASE_URL ?? "https://n8n.gdgjakarta.com/webhook/api")
     .trim()
     .replace(/\/+$/, "");
 
@@ -171,6 +184,13 @@ export function buildRegistrationPaymentPayload(
         ]
       : [];
 
+  let isProduction: boolean | undefined;
+  if (event.payment_environment === "production") {
+    isProduction = true;
+  } else if (event.payment_environment === "sandbox") {
+    isProduction = false;
+  }
+
   return {
     customer: {
       name: registration.member_name ?? "Community Member",
@@ -201,5 +221,7 @@ export function buildRegistrationPaymentPayload(
       sendEmail: options?.sendEmail ?? true,
     },
     referenceId: registration.id ?? `REG-${Date.now()}`,
+    isProduction,
+    webhookUrl: event.payment_webhook_url ?? undefined,
   };
 }
