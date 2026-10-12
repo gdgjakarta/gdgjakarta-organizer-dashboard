@@ -106,10 +106,20 @@ export function MerchandiseDeliveryStatusDialog({
               <Truck className="size-5" />
               <DialogTitle className="text-lg">Package Delivery Status</DialogTitle>
             </div>
-            <Badge variant="outline" className={cn("px-2.5 py-0.5 font-medium text-xs", statusConfig.badgeClass)}>
-              <StatusIcon className="mr-1 size-3.5" />
-              {statusConfig.label}
-            </Badge>
+            <div className="flex items-center gap-1.5">
+              <Badge variant="outline" className={cn("px-2.5 py-0.5 font-medium text-xs", statusConfig.badgeClass)}>
+                <StatusIcon className="mr-1 size-3.5" />
+                {statusConfig.label}
+              </Badge>
+              {req.payment_environment === "sandbox" && (
+                <Badge
+                  variant="outline"
+                  className="border-amber-500/30 bg-amber-500/10 text-[10px] text-amber-700 dark:text-amber-300"
+                >
+                  Sandbox
+                </Badge>
+              )}
+            </div>
           </div>
           <DialogDescription className="text-xs">
             Tracking information for your uncollected GDG Jakarta merchandise order.

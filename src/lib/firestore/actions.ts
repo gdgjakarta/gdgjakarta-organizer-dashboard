@@ -701,3 +701,28 @@ export async function updateEventMerchandiseDeliveryConfigAction(
     return { success: false, error: message };
   }
 }
+
+/**
+ * Updates the event's payment gateway environment and webhook URL override.
+ */
+export async function updateEventPaymentConfigAction(
+  eventId: string,
+  config: {
+    payment_environment: "production" | "sandbox";
+    payment_webhook_url?: string | null;
+  },
+) {
+  try {
+    const { updateEventPaymentConfig } = await import("./client");
+    await updateEventPaymentConfig(eventId, config);
+    await revalidateDashboardPath(`/dashboard/events/${eventId}`);
+    await revalidateDashboardPath("/dashboard/events");
+    await revalidateDashboardPath("/dashboard/member/my-events");
+    await revalidateDashboardPath(`/dashboard/member/events/${eventId}`);
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to update payment settings.";
+    console.error("[updateEventPaymentConfigAction] error:", message);
+    return { success: false, error: message };
+  }
+}

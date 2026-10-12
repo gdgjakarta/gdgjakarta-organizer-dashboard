@@ -1310,4 +1310,26 @@ export async function updateEventMerchandiseDeliveryConfig(
   };
   const sanitized = sanitizeFirestoreData(updatePayload);
   await setDoc(eventRef, sanitized, { merge: true });
+} /**
+ * Updates the payment gateway environment and webhook URL override on the event document.
+ */
+export async function updateEventPaymentConfig(
+  eventId: string,
+  config: {
+    payment_environment: "production" | "sandbox";
+    payment_webhook_url?: string | null;
+  },
+): Promise<void> {
+  if (typeof window === "undefined") return;
+  const eventRef = doc(db, "events", String(eventId));
+  const updatePayload: Record<string, unknown> = {
+    payment_environment: config.payment_environment,
+    payment_webhook_url:
+      config.payment_webhook_url && config.payment_webhook_url.trim().length > 0
+        ? config.payment_webhook_url.trim()
+        : deleteField(),
+    updated_at: new Date().toISOString(),
+  };
+  const sanitized = sanitizeFirestoreData(updatePayload);
+  await setDoc(eventRef, sanitized, { merge: true });
 }
