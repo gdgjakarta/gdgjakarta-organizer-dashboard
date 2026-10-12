@@ -55,6 +55,7 @@ service cloud.firestore {
     //   - member_id: string (required, immutable, <= 128 chars) - Member UID
     //   - member_name: string (required, <= 150 chars) - Member display name
     //   - member_email: string (required, valid email, <= 150 chars) - Member email
+    //   - member_phone: string|null (optional, <= 50 chars) - Member phone number
     //   - member_avatar: string|null (optional, <= 3000 chars) - Avatar URL
     //   - member_role: string|null (optional, <= 100 chars) - Member role
     //   - status: string (required, immutable for members) - Registration status ('pending'|'approved'|'registered'|'rejected'|'waitlisted'|'attended')
@@ -82,11 +83,17 @@ service cloud.firestore {
     //   - bevy_attendee_id: int|float|string|null (optional, immutable for members, <= 64 chars) - Associated Bevy attendee ID
     //   - checkin_date: string|null (optional, <= 50 chars) - Check-in date string
     //   - attendee_code: string|null (optional, immutable for members, <= 100 chars) - Attendee ticket QR tag / code
-    //   - payment_status: string|null (optional, <= 50 chars) - DOKU Checkout payment status ('unpaid'|'pending'|'paid'|'expired'|'refunded'|'PENDING'|'PAID'|'FAILED'|'SUCCESS')
+    //   - payment_status: string|null (optional, <= 50 chars) - DOKU Checkout payment status ('unpaid'|'pending'|'paid'|'expired'|'failed'|'canceled'|'cancelled'|'refunded'|'PENDING'|'PAID'|'FAILED'|'EXPIRED'|'REFUNDED'|'SUCCESS')
     //   - payment_url: string|null (optional, <= 2000 chars) - DOKU payment redirect URL
     //   - payment_invoice_number: string|null (optional, <= 128 chars) - DOKU invoice number
     //   - payment_amount: int|float|null (optional, >= 0) - Total payment amount in IDR
     //   - payment_expired_datetime: string|null (optional, <= 50 chars) - DOKU invoice expiry timestamp
+    //   - voucher_id: string|null (optional, <= 128 chars) - Applied discount voucher ID
+    //   - voucher_code: string|null (optional, <= 64 chars) - Applied discount voucher code
+    //   - voucher_discount_amount: int|float|null (optional, >= 0) - Calculated voucher discount amount
+    //   - voucher_discount_type: string|null (optional) - Voucher calculation type ('percentage'|'fixed')
+    //   - voucher_discount_value: int|float|null (optional, >= 0) - Voucher discount face value
+    //   - voucher_applies_to: string|null (optional) - Voucher application scope ('ticket'|'bundle'|'merchandise'|'all')
     //   - referral_code: string|null (optional, <= 64 chars) - Referral code used during registration
     //   - referrer_member_id: string|null (optional, <= 128 chars) - Member UID of referrer
     //   - referrer_name: string|null (optional, <= 150 chars) - Display name of referrer
@@ -529,7 +536,7 @@ service cloud.firestore {
       return hasRequiredFields(data, ['id', 'event_id', 'event_title', 'member_id', 'member_name', 'member_email', 'status', 'registered_at']) &&
         hasOnlyAllowedFields(data, [
           'id', 'event_id', 'event_title', 'event_picture_url', 'event_banner_url',
-          'member_id', 'member_name', 'member_email', 'member_avatar', 'member_role',
+          'member_id', 'member_name', 'member_email', 'member_phone', 'member_avatar', 'member_role',
           'status', 'answers', 'notes', 'ticket_tier',
           'ticket_id', 'ticket_name', 'ticket_type', 'ticket_price',
           'bundle_id', 'bundle_name', 'bundle_price',
@@ -539,6 +546,7 @@ service cloud.firestore {
           'checked_in_at', 'is_checked_in', 'bevy_attendee_id', 'checkin_date',
           'attendee_code',
           'payment_status', 'payment_url', 'payment_invoice_number', 'payment_amount', 'payment_expired_datetime',
+          'voucher_id', 'voucher_code', 'voucher_discount_amount', 'voucher_discount_type', 'voucher_discount_value', 'voucher_applies_to',
           'referral_code', 'referrer_member_id', 'referrer_name', 'referral_discount_percent', 'referral_discount_type', 'referral_discount_amount',
           'delivery_request',
           'updated_at'
@@ -551,6 +559,7 @@ service cloud.firestore {
         data.member_email is string && isValidEmail(data.member_email) && data.member_email.size() <= 150 &&
         data.status is string && (data.status in ['pending', 'approved', 'registered', 'rejected', 'waitlisted', 'attended']) &&
         data.registered_at is string && data.registered_at.size() <= 50 &&
+        (!('member_phone' in data) || data.member_phone == null || (data.member_phone is string && data.member_phone.size() <= 50)) &&
         (!('member_avatar' in data) || data.member_avatar == null || (data.member_avatar is string && data.member_avatar.size() <= 3000)) &&
         (!('member_role' in data) || data.member_role == null || (data.member_role is string && data.member_role.size() <= 100)) &&
         (!('answers' in data) || data.answers == null || (data.answers is map && data.answers.size() <= 50)) &&
@@ -578,11 +587,17 @@ service cloud.firestore {
         (!('attendee_code' in data) || data.attendee_code == null || (data.attendee_code is string && data.attendee_code.size() <= 100)) &&
         (!('event_picture_url' in data) || data.event_picture_url == null || (data.event_picture_url is string && data.event_picture_url.size() <= 2000)) &&
         (!('event_banner_url' in data) || data.event_banner_url == null || (data.event_banner_url is string && data.event_banner_url.size() <= 2000)) &&
-        (!('payment_status' in data) || data.payment_status == null || (data.payment_status is string && (data.payment_status in ['unpaid', 'pending', 'paid', 'expired', 'refunded', 'PENDING', 'PAID', 'FAILED', 'SUCCESS']))) &&
+        (!('payment_status' in data) || data.payment_status == null || (data.payment_status is string && (data.payment_status in ['unpaid', 'pending', 'paid', 'expired', 'failed', 'canceled', 'cancelled', 'refunded', 'PENDING', 'PAID', 'FAILED', 'EXPIRED', 'REFUNDED', 'SUCCESS']))) &&
         (!('payment_url' in data) || data.payment_url == null || (data.payment_url is string && data.payment_url.size() <= 2000)) &&
         (!('payment_invoice_number' in data) || data.payment_invoice_number == null || (data.payment_invoice_number is string && data.payment_invoice_number.size() <= 128)) &&
         (!('payment_amount' in data) || data.payment_amount == null || ((data.payment_amount is int || data.payment_amount is float) && data.payment_amount >= 0)) &&
         (!('payment_expired_datetime' in data) || data.payment_expired_datetime == null || (data.payment_expired_datetime is string && data.payment_expired_datetime.size() <= 50)) &&
+        (!('voucher_id' in data) || data.voucher_id == null || (data.voucher_id is string && data.voucher_id.size() <= 128)) &&
+        (!('voucher_code' in data) || data.voucher_code == null || (data.voucher_code is string && data.voucher_code.size() <= 64)) &&
+        (!('voucher_discount_amount' in data) || data.voucher_discount_amount == null || ((data.voucher_discount_amount is int || data.voucher_discount_amount is float) && data.voucher_discount_amount >= 0)) &&
+        (!('voucher_discount_type' in data) || data.voucher_discount_type == null || (data.voucher_discount_type is string && (data.voucher_discount_type in ['percentage', 'fixed']))) &&
+        (!('voucher_discount_value' in data) || data.voucher_discount_value == null || ((data.voucher_discount_value is int || data.voucher_discount_value is float) && data.voucher_discount_value >= 0)) &&
+        (!('voucher_applies_to' in data) || data.voucher_applies_to == null || (data.voucher_applies_to is string && (data.voucher_applies_to in ['ticket', 'bundle', 'merchandise', 'all']))) &&
         (!('referral_code' in data) || data.referral_code == null || (data.referral_code is string && data.referral_code.size() <= 64)) &&
         (!('referrer_member_id' in data) || data.referrer_member_id == null || (data.referrer_member_id is string && data.referrer_member_id.size() <= 128)) &&
         (!('referrer_name' in data) || data.referrer_name == null || (data.referrer_name is string && data.referrer_name.size() <= 150)) &&
@@ -915,16 +930,21 @@ service cloud.firestore {
       allow create: if isOrganizer();
       allow delete: if isOrganizer();
 
-      // Update: Organizers (full event editing), team members updating wrap-up media, sessions & counters, or authenticated users updating total_registrations upon RSVP / cancellation.
-      // Non-organizers are strictly constrained to only update total_registrations, updated_at, sessions, tickets, and bundles, or wrap-up media/sessions and operational counters for team members.
+      // Update: Organizers (full event editing), team members updating wrap-up media, sessions & counters, or authenticated users updating event registration/session/voucher counters upon RSVP or cancellation.
+      // Non-organizers are strictly constrained to only update total_registrations, total_approved, total_waitlisted, total_checked_in, vouchers, updated_at, sessions, tickets, and bundles, or wrap-up media/sessions and operational counters for team members.
       allow update: if isOrganizer() || (
         isAuthenticated() &&
         isValidEvent(request.resource.data) &&
         (
           (
-            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['total_registrations', 'updated_at', 'sessions', 'tickets', 'bundles']) &&
-            (request.resource.data.total_registrations is int || request.resource.data.total_registrations is float) &&
-            request.resource.data.total_registrations >= 0
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'total_registrations', 'total_approved', 'total_waitlisted', 'total_checked_in',
+              'vouchers', 'updated_at', 'sessions', 'tickets', 'bundles'
+            ]) &&
+            (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['total_registrations']) || ((request.resource.data.total_registrations is int || request.resource.data.total_registrations is float) && request.resource.data.total_registrations >= 0)) &&
+            (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['total_approved']) || request.resource.data.total_approved == null || ((request.resource.data.total_approved is int || request.resource.data.total_approved is float) && request.resource.data.total_approved >= 0)) &&
+            (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['total_waitlisted']) || request.resource.data.total_waitlisted == null || ((request.resource.data.total_waitlisted is int || request.resource.data.total_waitlisted is float) && request.resource.data.total_waitlisted >= 0)) &&
+            (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['total_checked_in']) || request.resource.data.total_checked_in == null || ((request.resource.data.total_checked_in is int || request.resource.data.total_checked_in is float) && request.resource.data.total_checked_in >= 0))
           ) ||
           (
             hasTeamAccess() &&
