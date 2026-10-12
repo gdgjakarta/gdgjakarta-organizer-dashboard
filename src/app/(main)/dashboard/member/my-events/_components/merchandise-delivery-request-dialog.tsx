@@ -58,6 +58,12 @@ export function MerchandiseDeliveryRequestDialog({
   const [isConfirmingPayment, startPaymentTransition] = useTransition();
   const [generatedPaymentUrl, setGeneratedPaymentUrl] = useState<string | null>(existingDelivery?.payment_url ?? null);
   const [invoiceNumber, setInvoiceNumber] = useState<string | null>(existingDelivery?.payment_invoice_number ?? null);
+  const [paymentEnvironment, setPaymentEnvironment] = useState<"production" | "sandbox">(
+    existingDelivery?.payment_environment ??
+      event?.merchandise_delivery_payment_environment ??
+      event?.payment_environment ??
+      (event?.is_test ? "sandbox" : "production"),
+  );
   const [step, setStep] = useState<"form" | "payment">(isPendingPayment ? "payment" : "form");
 
   const merchandiseItems = registration.selected_merchandise ?? [];
@@ -104,6 +110,9 @@ export function MerchandiseDeliveryRequestDialog({
       if (res.success && res.deliveryRequest) {
         setGeneratedPaymentUrl(res.paymentUrl ?? null);
         setInvoiceNumber(res.invoiceNumber ?? null);
+        if (res.paymentEnvironment) {
+          setPaymentEnvironment(res.paymentEnvironment);
+        }
         setStep("payment");
         toast.success("Delivery request created! Please complete payment to proceed.");
 
@@ -338,6 +347,13 @@ export function MerchandiseDeliveryRequestDialog({
                 <div className="mt-2 font-mono text-[11px] text-muted-foreground">Invoice: {invoiceNumber}</div>
               )}
             </div>
+
+            {paymentEnvironment === "sandbox" && (
+              <div className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-amber-800 text-xs dark:text-amber-200">
+                <span className="font-semibold">🧪 Sandbox / Dev Mode:</span>
+                <span>Testing environment is active. You can simulate instant payment confirmation below.</span>
+              </div>
+            )}
 
             {generatedPaymentUrl ? (
               <div className="space-y-3">
