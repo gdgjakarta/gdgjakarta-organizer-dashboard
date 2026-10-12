@@ -3,6 +3,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { isCoreTeamOrStaff, isExecutiveOrganizer } from "@/lib/auth-roles";
 import { getUserById, importMemberToBevy, validateBevyOrganizer } from "@/lib/bevy/client";
 import { type BevyUser, ChapterRole, type OrganizerValidationResult } from "@/lib/bevy/types";
 import { splitFullName } from "@/lib/utils";
@@ -250,10 +251,25 @@ export async function handleUserPostLoginAction(params: UserAuthSyncParams): Pro
       console.error("[Auth Step 2 - Server] Validation error:", valErr);
     }
 
-    const isOrganizer = validation.isValidOrganizer;
-    const role = isOrganizer ? "organizer" : "member";
-    const chapterRole = isOrganizer ? (validation.chapterRole ?? "Organizer") : "Member";
-    const team = isOrganizer ? "Core Team" : "Community";
+    const isExecutive = isExecutiveOrganizer({
+      role: validation.role,
+      chapterRole: validation.chapterRole,
+      chapterRoleType: validation.chapterRoleType,
+      roleId: validation.roleId,
+    });
+    const isCoreStaff = isCoreTeamOrStaff({
+      role: validation.role,
+      chapterRole: validation.chapterRole,
+      chapterRoleType: validation.chapterRoleType,
+      roleId: validation.roleId,
+    });
+
+    const isAuthorizedTeam = validation.isValidOrganizer || isExecutive || isCoreStaff;
+    const role = isExecutive ? "organizer" : isCoreStaff ? "core_team" : "member";
+    const chapterRole = isAuthorizedTeam
+      ? (validation.chapterRole ?? (isExecutive ? "Organizer" : "Core Team"))
+      : "Member";
+    const team = isAuthorizedTeam ? "Core Team" : "Community";
     console.log(
       `[Auth Step 2 - Server] Role resolved for ${verifiedEmail} -> role: "${role}", chapterRole: "${chapterRole}", team: "${team}"`,
     );
@@ -269,11 +285,13 @@ export async function handleUserPostLoginAction(params: UserAuthSyncParams): Pro
     console.log(`[Auth Step 4 - Server] Completed post-login sync for ${verifiedEmail}`);
     // 3. Return ONLY a plain, cleanly serializable object to prevent RSC flight serialization failures
     return {
-      isValidOrganizer: isOrganizer,
+      isValidOrganizer: isAuthorizedTeam,
       role: role,
       bevyUserId: validation.bevyUserId ? String(validation.bevyUserId) : null,
       chapterRole: chapterRole,
-      chapterRoleType: validation.chapterRoleType ?? (isOrganizer ? ChapterRole.ORGANIZER : ChapterRole.MEMBER),
+      chapterRoleType:
+        validation.chapterRoleType ??
+        (isExecutive ? ChapterRole.ORGANIZER : isCoreStaff ? ChapterRole.CORE_TEAM : ChapterRole.MEMBER),
       roleId: validation.roleId ?? null,
       roleTitle: validation.roleTitle ?? chapterRole,
       wasImported: Boolean(validation.wasImported),

@@ -9,6 +9,7 @@ import { ArrowRight, Sparkles } from "lucide-react";
 
 import { GoogleButton } from "@/app/(main)/auth/_components/social-auth/google-button";
 import { Button } from "@/components/ui/button";
+import { getDashboardHomeUrl } from "@/lib/auth-roles";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
 export function CommunityCtaBanner() {
@@ -43,10 +44,7 @@ export function CommunityCtaBanner() {
             color: "var(--theme-primary-foreground)",
           }}
         >
-          <Link
-            href={user.role === "organizer" ? "/dashboard/organizer" : "/dashboard/member"}
-            onClick={() => setIsNavigating(true)}
-          >
+          <Link href={getDashboardHomeUrl(user)} onClick={() => setIsNavigating(true)}>
             <span>Open Your Dashboard</span>
             <ArrowRight className="ml-2 size-4" />
             {isNavigating && <div className="shimmer-wave" aria-hidden="true" />}

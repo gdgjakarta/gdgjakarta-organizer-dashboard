@@ -19,7 +19,8 @@ import {
 } from "@/components/ui/sidebar";
 import { APP_CONFIG } from "@/config/app-config";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
-import { memberSidebarItems, organizerSidebarItems } from "@/navigation/sidebar/sidebar-items";
+import { isCoreTeamOrStaff, isExecutiveOrganizer } from "@/lib/auth-roles";
+import { coreTeamSidebarItems, memberSidebarItems, organizerSidebarItems } from "@/navigation/sidebar/sidebar-items";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 import { usePreferencesStore } from "@/stores/preferences/preferences-provider";
 
@@ -39,8 +40,20 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   const { filterNavItems } = useFeatureFlags();
   const user = useAuthStore((s) => s.user);
-  const isMember = user ? user.role.toLowerCase() === "member" : pathname.startsWith("/dashboard/member");
-  const rawSidebarItems = isMember ? memberSidebarItems : organizerSidebarItems;
+
+  const rawSidebarItems = useMemo(() => {
+    if (user) {
+      if (isExecutiveOrganizer(user)) {
+        return organizerSidebarItems;
+      }
+      if (isCoreTeamOrStaff(user)) {
+        return coreTeamSidebarItems;
+      }
+      return memberSidebarItems;
+    }
+    return pathname.startsWith("/dashboard/member") ? memberSidebarItems : organizerSidebarItems;
+  }, [user, pathname]);
+
   const sidebarItems = useMemo(() => filterNavItems(rawSidebarItems), [filterNavItems, rawSidebarItems]);
 
   const variant = isSynced ? sidebarVariant : props.variant;

@@ -7,6 +7,7 @@ import { ArrowLeft, ArrowUpRight, Calendar, Compass, Handshake, HelpCircle, Hous
 
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { getDashboardHomeUrl } from "@/lib/auth-roles";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
 interface QuickLinkItem {
@@ -54,7 +55,7 @@ export function NotFoundContent() {
 
   let homeHref = "/";
   if (user) {
-    homeHref = user.role === "organizer" ? "/dashboard/organizer" : "/dashboard/member";
+    homeHref = getDashboardHomeUrl(user);
   }
   const homeLabel = user ? "Go to Dashboard" : "Back to Home";
 

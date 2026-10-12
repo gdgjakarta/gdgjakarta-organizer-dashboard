@@ -8,6 +8,7 @@ import { GdgLogo } from "@/components/gdg-logo";
 import { useNavigationProgress } from "@/components/navigation-progress-bar";
 import { Button } from "@/components/ui/button";
 import { APP_CONFIG } from "@/config/app-config";
+import { getDashboardHomeUrl } from "@/lib/auth-roles";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
 import { PublicMobileNav } from "./public-mobile-nav";
@@ -38,7 +39,7 @@ export function PublicHeader() {
             color: "var(--theme-primary-foreground)",
           }}
         >
-          <Link href={user.role === "organizer" ? "/dashboard/organizer" : "/dashboard/member"}>
+          <Link href={getDashboardHomeUrl(user)}>
             <span>Dashboard</span>
             {isNavigating && <div className="shimmer-wave" aria-hidden="true" />}
           </Link>

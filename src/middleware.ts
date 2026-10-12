@@ -1,6 +1,8 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
+import { hasTeamOperationalAccess, isExecutiveOrganizer } from "@/lib/auth-roles";
+
 const AUTH_COOKIE = "auth_token";
 const ROLE_COOKIE = "auth_role";
 const LOGIN_PATH = "/auth/login";
@@ -18,16 +20,24 @@ const PROTECTED_PREFIXES = ["/dashboard", "/chat", "/mail"];
 const AUTH_PREFIXES = ["/auth"];
 
 /**
- * Routes that strictly require the organizer role.
+ * Routes strictly restricted to Executive Organizers (Lead / Co-Organizer / Googler).
+ * Core Team, Check-in Staff, and Members are redirected to /dashboard/member.
  */
-const ORGANIZER_ONLY_PREFIXES = [
+const EXECUTIVE_ORGANIZER_ONLY_PREFIXES = [
   "/dashboard/organizer",
-  "/dashboard/events",
   "/dashboard/email-manager",
   "/dashboard/members",
+  "/dashboard/referrals",
+  "/dashboard/partnership",
   "/dashboard/crm",
   "/dashboard/roles",
 ];
+
+/**
+ * Operational routes accessible by Executive Organizers, Core Team, and Staff.
+ * Community Members are redirected to /dashboard/member.
+ */
+const TEAM_OPERATIONAL_PREFIXES = ["/dashboard/events"];
 
 function isProtected(pathname: string): boolean {
   return PROTECTED_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
@@ -37,8 +47,12 @@ function isAuthPage(pathname: string): boolean {
   return AUTH_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 }
 
-function isOrganizerOnly(pathname: string): boolean {
-  return ORGANIZER_ONLY_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+function isExecutiveOrganizerOnly(pathname: string): boolean {
+  return EXECUTIVE_ORGANIZER_ONLY_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+}
+
+function isTeamOperational(pathname: string): boolean {
+  return TEAM_OPERATIONAL_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 }
 
 export function middleware(request: NextRequest) {
@@ -52,7 +66,8 @@ export function middleware(request: NextRequest) {
   const token = request.cookies.get(AUTH_COOKIE)?.value;
   const role = request.cookies.get(ROLE_COOKIE)?.value;
   const isAuthenticated = Boolean(token);
-  const isOrganizer = role === "organizer" || role === "core_team" || role === "googler";
+  const isExecutive = isExecutiveOrganizer(role);
+  const isTeam = hasTeamOperationalAccess(role);
 
   // Protected route: not authenticated → redirect to unified login with callbackUrl
   if (isProtected(pathname) && !isAuthenticated) {
@@ -64,16 +79,23 @@ export function middleware(request: NextRequest) {
 
   // Handle root /dashboard redirect based on role
   if (pathname === "/dashboard" || pathname === "/dashboard/") {
-    const target = isOrganizer ? "/dashboard/organizer" : "/dashboard/member";
+    const target = isExecutive ? "/dashboard/organizer" : "/dashboard/member";
     console.log(`[Middleware] Root /dashboard accessed. Redirecting (role="${role}") to ${target}`);
     return NextResponse.redirect(new URL(target, request.url));
   }
 
-  // RBAC for protected organizer-only routes
+  // RBAC for protected organizer and team routes
   if (isProtected(pathname) && isAuthenticated) {
-    if (isOrganizerOnly(pathname) && !isOrganizer) {
+    if (isExecutiveOrganizerOnly(pathname) && !isExecutive) {
       console.warn(
-        `[Middleware] RBAC Guard: Member (role="${role}") attempted access to organizer-only route "${pathname}". Redirecting to /dashboard/member`,
+        `[Middleware] RBAC Guard: Non-organizer (role="${role}") attempted access to executive-only route "${pathname}". Redirecting to /dashboard/member`,
+      );
+      return NextResponse.redirect(new URL("/dashboard/member", request.url));
+    }
+
+    if (isTeamOperational(pathname) && !isTeam) {
+      console.warn(
+        `[Middleware] RBAC Guard: Member (role="${role}") attempted access to operational route "${pathname}". Redirecting to /dashboard/member`,
       );
       return NextResponse.redirect(new URL("/dashboard/member", request.url));
     }
@@ -81,7 +103,7 @@ export function middleware(request: NextRequest) {
 
   // Auth page: already authenticated → redirect to appropriate dashboard
   if (isAuthPage(pathname) && isAuthenticated) {
-    const target = isOrganizer ? "/dashboard/organizer" : "/dashboard/member";
+    const target = isExecutive ? "/dashboard/organizer" : "/dashboard/member";
     console.log(`[Middleware] Authenticated user on auth page "${pathname}". Redirecting to ${target}`);
     return NextResponse.redirect(new URL(target, request.url));
   }

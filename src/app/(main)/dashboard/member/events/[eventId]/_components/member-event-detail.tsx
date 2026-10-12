@@ -36,6 +36,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { getDashboardHomeUrl } from "@/lib/auth-roles";
 import { resolveEventAudience } from "@/lib/bevy/audience";
 import { extractEventImageUrl } from "@/lib/events/media-utils";
 import { getRegistrationWindowStatus } from "@/lib/events/registration-defaults";
@@ -103,7 +104,7 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
     }
   }, [validFrom]);
 
-  const defaultBackUrl = user?.role === "organizer" ? "/dashboard/organizer" : "/dashboard/member";
+  const defaultBackUrl = getDashboardHomeUrl(user);
   const targetBackUrl = validFrom || referrerPath || defaultBackUrl;
   const isFromMyEvents = targetBackUrl.includes("my-events");
   const backLabel = isFromMyEvents ? "Back to My Events" : "Back to Events";

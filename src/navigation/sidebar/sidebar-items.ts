@@ -157,6 +157,39 @@ export const organizerSidebarItems: NavGroup[] = [
   },
 ];
 
+export const coreTeamSidebarItems: NavGroup[] = [
+  {
+    id: 1,
+    label: "Dashboards",
+    items: [
+      {
+        id: "default",
+        title: "Home",
+        url: "/dashboard/member",
+        icon: House,
+      },
+    ],
+  },
+  {
+    id: 2,
+    label: "Pages",
+    items: [
+      {
+        id: "events",
+        title: "Events",
+        url: "/dashboard/events",
+        icon: Calendar,
+      },
+      {
+        id: "my-events",
+        title: "My Events",
+        url: "/dashboard/my-events",
+        icon: CalendarCheck,
+      },
+    ],
+  },
+];
+
 export const memberSidebarItems: NavGroup[] = [
   {
     id: 1,

@@ -7,14 +7,15 @@ import { ArrowLeft, Calendar, FileQuestion, House } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { getDashboardHomeUrl, hasTeamOperationalAccess } from "@/lib/auth-roles";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
 export default function DashboardNotFound() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
 
-  const homeHref = user?.role === "organizer" ? "/dashboard/organizer" : "/dashboard/member";
-  const eventsHref = user?.role === "organizer" ? "/dashboard/events" : "/dashboard/member/my-events";
+  const homeHref = getDashboardHomeUrl(user);
+  const eventsHref = hasTeamOperationalAccess(user) ? "/dashboard/events" : "/dashboard/member/my-events";
 
   const handleGoBack = () => {
     if (typeof window !== "undefined" && window.history.length > 1) {

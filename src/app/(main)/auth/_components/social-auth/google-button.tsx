@@ -9,6 +9,7 @@ import { toast } from "sonner";
 
 import googleFavicon from "@/app/Google_Favicon.webp";
 import { Button } from "@/components/ui/button";
+import { getDashboardHomeUrl, isCoreTeamOrStaff, isExecutiveOrganizer } from "@/lib/auth-roles";
 import { cn } from "@/lib/utils";
 import { signInWithGoogle } from "@/stores/auth/auth-provider";
 import type { AuthOrganizer } from "@/stores/auth/auth-store";
@@ -61,10 +62,27 @@ export function GoogleButton({
         callbackUrl,
       );
 
-      if (isAllowed) {
+      const isExecutive = isExecutiveOrganizer(organizer);
+      const isStaff = isCoreTeamOrStaff(organizer);
+
+      if (isExecutive) {
         toast.success(`Welcome back, ${organizer.name}! (${organizer.chapterRole ?? "Organizer"})`);
         const targetUrl = callbackUrl?.startsWith("/") ? callbackUrl : "/dashboard/organizer";
         console.log(`[Google Button] Navigating organizer (${organizer.email}) to: ${targetUrl}`);
+        window.location.assign(targetUrl);
+      } else if (isStaff) {
+        toast.success(`Welcome back, ${organizer.name}! (${organizer.chapterRole ?? "Core Team"})`);
+        const isRestrictedForStaff =
+          callbackUrl?.startsWith("/dashboard/organizer") ||
+          callbackUrl?.startsWith("/dashboard/email-manager") ||
+          callbackUrl?.startsWith("/dashboard/members") ||
+          callbackUrl?.startsWith("/dashboard/referrals") ||
+          callbackUrl?.startsWith("/dashboard/partnership") ||
+          callbackUrl?.startsWith("/dashboard/crm") ||
+          callbackUrl?.startsWith("/dashboard/roles");
+
+        const targetUrl = callbackUrl?.startsWith("/") && !isRestrictedForStaff ? callbackUrl : "/dashboard/member";
+        console.log(`[Google Button] Navigating core team/staff (${organizer.email}) to: ${targetUrl}`);
         window.location.assign(targetUrl);
       } else {
         toast.success(`Welcome, ${organizer.name}!`);
@@ -72,7 +90,8 @@ export function GoogleButton({
           callbackUrl?.startsWith("/dashboard/organizer") ||
           callbackUrl?.startsWith("/dashboard/events") ||
           callbackUrl?.startsWith("/dashboard/email-manager") ||
-          callbackUrl?.startsWith("/dashboard/members");
+          callbackUrl?.startsWith("/dashboard/members") ||
+          callbackUrl?.startsWith("/dashboard/referrals");
 
         const targetUrl = callbackUrl?.startsWith("/") && !isOrganizerOnlyCallback ? callbackUrl : "/dashboard/member";
         console.log(`[Google Button] Navigating member (${organizer.email}) to: ${targetUrl}`);

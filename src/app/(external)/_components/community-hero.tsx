@@ -9,6 +9,7 @@ import { ArrowRight, Calendar, Code, Heart, Sparkles, Users } from "lucide-react
 
 import { GoogleButton } from "@/app/(main)/auth/_components/social-auth/google-button";
 import { Button } from "@/components/ui/button";
+import { getDashboardHomeUrl } from "@/lib/auth-roles";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
 export function CommunityHero() {
@@ -40,10 +41,7 @@ export function CommunityHero() {
           size="lg"
           className="relative h-12 overflow-hidden rounded-full border-[var(--theme-border)] bg-background/80 px-8 font-medium text-[14px] backdrop-blur-xs transition-all duration-300 hover:border-[var(--theme-primary)] hover:bg-background hover:text-[var(--theme-text)]"
         >
-          <Link
-            href={user.role === "organizer" ? "/dashboard/organizer" : "/dashboard/member"}
-            onClick={() => setIsNavigating(true)}
-          >
+          <Link href={getDashboardHomeUrl(user)} onClick={() => setIsNavigating(true)}>
             <span>Go to Dashboard</span>
             {isNavigating && <div className="shimmer-wave" aria-hidden="true" />}
           </Link>

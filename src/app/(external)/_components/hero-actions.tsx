@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 
 import { GoogleButton } from "@/app/(main)/auth/_components/social-auth/google-button";
 import { Button } from "@/components/ui/button";
+import { getDashboardHomeUrl } from "@/lib/auth-roles";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
@@ -43,10 +44,7 @@ export function HeroActions({ className }: HeroActionsProps) {
           asChild
           className="relative overflow-hidden border-[var(--theme-border)] text-[14px] font-medium transition-colors hover:border-[var(--theme-primary)] hover:text-[var(--theme-text)]"
         >
-          <Link
-            href={user.role === "organizer" ? "/dashboard/organizer" : "/dashboard/member"}
-            onClick={() => setIsNavigating(true)}
-          >
+          <Link href={getDashboardHomeUrl(user)} onClick={() => setIsNavigating(true)}>
             <span>Go to Dashboard</span>
             {isNavigating && <div className="shimmer-wave" aria-hidden="true" />}
           </Link>
