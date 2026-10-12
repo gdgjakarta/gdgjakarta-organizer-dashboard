@@ -429,19 +429,28 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
 
               {!isFree ? (
                 <div className="space-y-1.5">
-                  <Label htmlFor="merch-price">Base Price (IDR) *</Label>
-                  <Input
-                    id="merch-price"
-                    type="number"
-                    min="0"
-                    step="1000"
-                    placeholder="e.g. 125000"
-                    value={price || ""}
-                    onChange={(e) => setPrice(Number(e.target.value))}
-                    required
-                  />
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="merch-price">Base Price (IDR) *</Label>
+                    <Badge variant="outline" className="font-mono text-xs">
+                      Rp {price.toLocaleString("id-ID")}
+                    </Badge>
+                  </div>
+                  <div className="relative">
+                    <span className="absolute top-2.5 left-3 font-mono text-muted-foreground text-xs">Rp</span>
+                    <Input
+                      id="merch-price"
+                      type="number"
+                      min="0"
+                      step="1000"
+                      placeholder="e.g. 125000"
+                      value={price || ""}
+                      onChange={(e) => setPrice(Math.max(0, Number(e.target.value) || 0))}
+                      className="h-9 pl-9 text-xs"
+                      required
+                    />
+                  </div>
                   <p className="text-muted-foreground text-[11px]">
-                    Can be overridden per variation (e.g. 2XL size +IDR 15,000).
+                    Can be overridden per variation in the variation settings below.
                   </p>
                 </div>
               ) : (

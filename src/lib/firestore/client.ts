@@ -65,6 +65,12 @@ export function sanitizeFirestoreData<T>(data: T): T {
   return data;
 }
 
+import {
+  DEFAULT_REGULAR_TICKET_ID,
+  DEFAULT_REGULAR_TICKET_NAME,
+  ensureEventTickets,
+} from "@/lib/events/ticket-templates";
+
 import type {
   AuditLogEntry,
   EventEmailTemplates,
@@ -89,10 +95,14 @@ export async function getFirestoreEvents(maxResults = 100): Promise<FirestoreEve
     const snapshot = await getDocs(q);
 
     return (
-      snapshot.docs.map((docSnap) => ({
-        id: docSnap.id,
-        ...docSnap.data(),
-      })) as FirestoreEvent[]
+      snapshot.docs.map((docSnap) => {
+        const data = docSnap.data() as FirestoreEvent;
+        return {
+          ...data,
+          id: docSnap.id,
+          tickets: ensureEventTickets(data.tickets),
+        };
+      }) as FirestoreEvent[]
     ).filter((e) => !e.is_hidden && !(e as { hidden?: boolean }).hidden);
   } catch (error) {
     console.error("[Firestore] getFirestoreEvents error:", error);
@@ -106,7 +116,12 @@ export async function getFirestoreEventById(eventId: string): Promise<FirestoreE
     const docRef = doc(db, "events", eventId);
     const snap = await getDoc(docRef);
     if (!snap.exists()) return null;
-    return { id: snap.id, ...snap.data() } as FirestoreEvent;
+    const data = snap.data() as FirestoreEvent;
+    return {
+      ...data,
+      id: snap.id,
+      tickets: ensureEventTickets(data.tickets),
+    };
   } catch (error) {
     console.error(`[Firestore] getFirestoreEventById error for ${eventId}:`, error);
     return null;
@@ -469,7 +484,7 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
 
   // 3. Enforce registration status:
   // If waitlisted, status is "waitlisted". Otherwise default is "pending".
-  const resolvedStatus: RegistrationStatus = isWaitlisted ? "waitlisted" : (registration.status ?? "pending");
+  const resolvedStatus: RegistrationStatus = isWaitlisted ? "waitlisted" : registration.status;
 
   const regId = `${eventIdStr}_${registration.member_id}`;
   const docRef = doc(db, "event_registrations", regId);
@@ -492,6 +507,10 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
 
   const cleanPayload = sanitizeFirestoreData<FirestoreRegistration>({
     ...registration,
+    ticket_id: registration.ticket_id ?? DEFAULT_REGULAR_TICKET_ID,
+    ticket_name: registration.ticket_name ?? DEFAULT_REGULAR_TICKET_NAME,
+    ticket_type: registration.ticket_type ?? "free",
+    ticket_price: registration.ticket_price ?? 0,
     status: resolvedStatus,
     answers: updatedAnswers,
     event_id: eventIdStr,

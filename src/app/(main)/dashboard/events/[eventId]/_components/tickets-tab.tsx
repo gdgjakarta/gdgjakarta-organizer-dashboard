@@ -34,6 +34,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   deleteCustomTicketTemplate,
+  ensureEventTickets,
   getAllTicketTemplates,
   saveTicketAsTemplate,
   type TicketTemplate,
@@ -81,7 +82,7 @@ function getStatusLabel(status?: "active" | "sold_out" | "hidden"): string {
 }
 
 export function TicketsTab({ event }: TicketsTabProps) {
-  const [tickets, setTickets] = useState<EventTicketTier[]>(event.tickets ?? []);
+  const [tickets, setTickets] = useState<EventTicketTier[]>(() => ensureEventTickets(event.tickets));
   const [maxTicketsPerPerson, setMaxTicketsPerPerson] = useState<number>(event.max_tickets_per_person ?? 1);
   const [editingTicket, setEditingTicket] = useState<EventTicketTier | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -103,7 +104,7 @@ export function TicketsTab({ event }: TicketsTabProps) {
         const { getFirestoreEventById } = await import("@/lib/firestore/client");
         const docData = await getFirestoreEventById(String(event.id));
         if (docData?.tickets && Array.isArray(docData.tickets)) {
-          setTickets(docData.tickets);
+          setTickets(ensureEventTickets(docData.tickets));
         }
         if (typeof docData?.max_tickets_per_person === "number") {
           setMaxTicketsPerPerson(docData.max_tickets_per_person);
@@ -140,6 +141,10 @@ export function TicketsTab({ event }: TicketsTabProps) {
   };
 
   const handleDelete = (ticketId: string, ticketName: string) => {
+    if (tickets.length <= 1) {
+      toast.error("Every event must have at least 1 ticket tier. You cannot remove the only remaining ticket tier.");
+      return;
+    }
     setTickets((prev) => prev.filter((t) => t.id !== ticketId));
     setIsDirty(true);
     toast.success(`Removed "${ticketName}"`);
@@ -197,10 +202,13 @@ export function TicketsTab({ event }: TicketsTabProps) {
       return;
     }
 
+    const finalTickets = ensureEventTickets(tickets);
+
     startTransition(async () => {
       try {
-        const res = await updateEventTicketsAction(String(event.id), tickets, maxTicketsPerPerson);
+        const res = await updateEventTicketsAction(String(event.id), finalTickets, maxTicketsPerPerson);
         if (res.success) {
+          setTickets(finalTickets);
           setIsDirty(false);
           toast.success("Event registration tickets saved successfully!");
         } else {
@@ -213,7 +221,7 @@ export function TicketsTab({ event }: TicketsTabProps) {
   };
 
   const handleDiscard = () => {
-    setTickets(event.tickets ?? []);
+    setTickets(ensureEventTickets(event.tickets));
     setMaxTicketsPerPerson(event.max_tickets_per_person ?? 1);
     setIsDirty(false);
     toast.info("Unsaved ticket changes discarded.");

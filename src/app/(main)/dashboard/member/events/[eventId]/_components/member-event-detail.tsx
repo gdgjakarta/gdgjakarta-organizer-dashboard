@@ -35,6 +35,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Separator } from "@/components/ui/separator";
 import { resolveEventAudience } from "@/lib/bevy/audience";
 import { extractEventImageUrl } from "@/lib/events/media-utils";
+import { getRegistrationWindowStatus } from "@/lib/events/registration-defaults";
 import { checkEventRegistrationAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
@@ -174,26 +175,31 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
   };
 
   const isApproved = registration?.status === "approved" || registration?.status === "attended";
+  const isWaitlisted = registration?.status === "waitlisted";
   const isPending =
-    registration?.status === "pending" ||
-    registration?.status === "waitlisted" ||
-    Boolean(
-      registration &&
-        !isApproved &&
-        (currentEvent.requires_approval || (currentEvent as unknown as Record<string, unknown>).curation_mode),
-    );
+    !isWaitlisted &&
+    (registration?.status === "pending" ||
+      Boolean(
+        registration &&
+          !isApproved &&
+          (currentEvent.requires_approval || (currentEvent as unknown as Record<string, unknown>).curation_mode),
+      ));
 
   let statusBadgeClass = "";
   let statusBadgeText = "Registered";
   if (isApproved) {
     statusBadgeClass = "bg-emerald-600 text-white";
     statusBadgeText = "Approved";
+  } else if (isWaitlisted) {
+    statusBadgeClass = "border border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400";
+    statusBadgeText = "Waitlisted";
   } else if (isPending) {
     statusBadgeClass = "border border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400";
     statusBadgeText = "Pending Review";
   }
 
   const isChecking = !registration && (isCheckingRegistration || (isAuthLoading && initialRegistration === null));
+  const windowStatus = getRegistrationWindowStatus(currentEvent);
 
   let registrationStatusDescription = "Open registration. Reserve your spot today.";
   if (isChecking) {
@@ -201,12 +207,18 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
   } else if (registration) {
     if (isApproved) {
       registrationStatusDescription = "Your spot is confirmed! See you at the session.";
+    } else if (isWaitlisted) {
+      registrationStatusDescription =
+        "Your registration is on the Waitlist. Organizers will review and notify you if capacity becomes available.";
     } else {
       registrationStatusDescription =
         "Your application has been received and is currently Pending Review by organizers.";
     }
-  } else if (isPast) {
+  } else if (isPast || windowStatus.status === "completed") {
     registrationStatusDescription = "This event has already concluded. Registrations are closed.";
+  } else if (windowStatus.isWaitlist) {
+    registrationStatusDescription =
+      "This event has reached full capacity. Direct registration is closed, but waitlist registration is open.";
   } else if (currentEvent.requires_approval || (currentEvent as unknown as Record<string, unknown>).curation_mode) {
     registrationStatusDescription =
       "This event is in curation mode. New registrations are Pending Review until approved.";
@@ -265,8 +277,17 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
       }}
     >
       <Button className="w-full gap-2 font-medium" size="lg">
-        <Sparkles className="size-4" />
-        Register for Event
+        {windowStatus.isWaitlist ? (
+          <>
+            <Clock className="size-4" />
+            Join Waitlist
+          </>
+        ) : (
+          <>
+            <Sparkles className="size-4" />
+            Register for Event
+          </>
+        )}
       </Button>
     </EventRegistrationModal>
   );
@@ -290,7 +311,9 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
         <div className="fade-in-50 animate-in rounded-lg bg-muted/60 p-3 text-center text-muted-foreground text-xs">
           {isApproved
             ? "✓ You are registered. Check your email for further event announcements."
-            : "⏳ You have applied. Your registration is Pending Review by organizers."}
+            : isWaitlisted
+              ? "⏳ You are on the waitlist. Organizers will notify you if capacity becomes available."
+              : "⏳ You have applied. Your registration is Pending Review by organizers."}
         </div>
         <Button
           type="button"
@@ -298,14 +321,24 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
           variant={isApproved ? "outline" : "secondary"}
           className={cn(
             "relative w-full cursor-default gap-2 overflow-hidden font-medium transition-all duration-500",
-            isApproved
-              ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-300"
-              : "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-300",
+            isApproved &&
+              "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-300",
+            isWaitlisted &&
+              "border-blue-500/40 bg-blue-500/10 text-blue-700 dark:border-blue-500/30 dark:bg-blue-950/40 dark:text-blue-300",
+            isPending &&
+              "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-300",
             isTransitioning && "fade-in-50 zoom-in-95 scale-[1.01] animate-in ring-2 ring-emerald-500/40",
           )}
           size="lg"
         >
-          {isPending ? (
+          {isWaitlisted ? (
+            <Clock
+              className={cn(
+                "relative z-10 size-4 text-blue-600 transition-transform duration-500 dark:text-blue-400",
+                isTransitioning && "scale-110",
+              )}
+            />
+          ) : isPending ? (
             <Clock
               className={cn(
                 "relative z-10 size-4 text-amber-600 transition-transform duration-500 dark:text-amber-400",

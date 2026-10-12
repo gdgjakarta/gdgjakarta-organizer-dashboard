@@ -94,8 +94,8 @@ export function checkEventCapacityStatus(event?: FirestoreEvent | null): EventCa
 
   const venueCapacity = getEventVenueCapacity(event);
   const isCurated = Boolean(event.requires_approval || event.curation_mode);
-  const totalApproved = event.total_approved ?? 0;
-  const totalRegistered = event.total_registrations ?? 0;
+  const totalApproved = event.total_approved;
+  const totalRegistered = event.total_registrations;
   const currentCount = isCurated ? totalApproved : totalRegistered;
   const totalWaitlisted = event.total_waitlisted ?? 0;
   const allowWaitlist = event.allow_waitlist !== false;

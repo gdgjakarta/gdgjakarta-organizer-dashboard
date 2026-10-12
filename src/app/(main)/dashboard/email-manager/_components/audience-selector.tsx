@@ -30,12 +30,8 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
-import {
-  AUDIENCE_OPTIONS,
-  type AudienceType,
-  type ResolvedRecipient,
-  resolveAudienceRecipientsAction,
-} from "../_actions/resolve-audience-recipients";
+import { type ResolvedRecipient, resolveAudienceRecipientsAction } from "../_actions/resolve-audience-recipients";
+import { AUDIENCE_OPTIONS, type AudienceType } from "../_types/audience";
 
 interface AudienceSelectorProps {
   eventId?: string;
@@ -204,12 +200,13 @@ export function AudienceSelector({
         {/* Recipient Status & Preview Button */}
         {selectedAudience && (
           <div className="flex shrink-0 items-center gap-2">
-            {isResolving ? (
+            {isResolving && (
               <Badge variant="outline" className="gap-1.5 px-2.5 py-1 text-xs">
                 <Loader2 className="size-3 animate-spin text-primary" />
                 <span>Resolving recipients...</span>
               </Badge>
-            ) : recipientCount !== null ? (
+            )}
+            {!isResolving && recipientCount !== null && (
               <>
                 <Badge
                   variant={recipientCount > 0 ? "secondary" : "outline"}
@@ -233,7 +230,7 @@ export function AudienceSelector({
                   </Button>
                 )}
               </>
-            ) : null}
+            )}
           </div>
         )}
       </div>
@@ -252,11 +249,8 @@ export function AudienceSelector({
           </DialogHeader>
 
           <div className="max-h-80 space-y-2 overflow-y-auto pr-1 text-xs">
-            {sampleRecipients.map((r, index) => (
-              <div
-                key={`${r.email}-${index}`}
-                className="flex items-center justify-between rounded-md border bg-muted/30 p-2.5"
-              >
+            {sampleRecipients.map((r) => (
+              <div key={r.email} className="flex items-center justify-between rounded-md border bg-muted/30 p-2.5">
                 <div className="flex flex-col">
                   <span className="font-semibold text-foreground">{r.name}</span>
                   <span className="text-muted-foreground">{r.email}</span>

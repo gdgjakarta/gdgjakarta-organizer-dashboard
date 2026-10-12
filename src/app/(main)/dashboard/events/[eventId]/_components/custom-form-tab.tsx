@@ -107,6 +107,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
 
   // 1. Policy & Capacity
   const [requiresApproval, setRequiresApproval] = useState(Boolean(event.requires_approval));
+  const [allowWaitlist, setAllowWaitlist] = useState(event.allow_waitlist !== false);
   const [maxAttendees, setMaxAttendees] = useState(event.max_attendees ? String(event.max_attendees) : "");
 
   // 2. Registration Schedule & Publishing Status
@@ -154,6 +155,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
   const currentSnapshot = useMemo(() => {
     return JSON.stringify({
       requiresApproval,
+      allowWaitlist,
       maxAttendees,
       sessions,
       questions,
@@ -163,6 +165,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
     });
   }, [
     requiresApproval,
+    allowWaitlist,
     maxAttendees,
     sessions,
     questions,
@@ -187,6 +190,8 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
 
         const loadedApproval =
           docData?.requires_approval !== undefined ? docData.requires_approval : Boolean(event.requires_approval);
+        const loadedAllowWaitlist =
+          docData?.allow_waitlist !== undefined ? docData.allow_waitlist : event.allow_waitlist !== false;
         const loadedMaxAttendees =
           docData?.max_attendees !== undefined && docData.max_attendees !== null
             ? String(docData.max_attendees)
@@ -207,6 +212,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
         const loadedEndDate = toDateTimeLocal(docData?.registration_end_date ?? event.registration_end_date);
 
         setRequiresApproval(loadedApproval);
+        setAllowWaitlist(loadedAllowWaitlist);
         setMaxAttendees(loadedMaxAttendees);
         setSessions(loadedSessions);
         setQuestions(loadedQuestions);
@@ -216,6 +222,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
 
         initialSnapshotRef.current = JSON.stringify({
           requiresApproval: loadedApproval,
+          allowWaitlist: loadedAllowWaitlist,
           maxAttendees: loadedMaxAttendees,
           sessions: loadedSessions,
           questions: loadedQuestions,
@@ -227,6 +234,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
         console.warn("[CustomFormTab] Failed to load Firestore document:", err);
         initialSnapshotRef.current ??= JSON.stringify({
           requiresApproval: Boolean(event.requires_approval),
+          allowWaitlist: event.allow_waitlist !== false,
           maxAttendees: event.max_attendees ? String(event.max_attendees) : "",
           sessions: event.sessions ?? [],
           questions:
@@ -607,6 +615,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
             registration_start_date: startDateIso ? startDateIso : deleteField(),
             registration_end_date: endDateIso ? endDateIso : deleteField(),
             requires_approval: requiresApproval,
+            allow_waitlist: allowWaitlist,
             max_attendees: resolvedMaxAttendees,
             webhook_url: event.webhook_url ? event.webhook_url : deleteField(),
             sessions: sessions.length > 0 ? sessions : deleteField(),
@@ -623,6 +632,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
           // Update initialSnapshotRef so isDirty becomes false
           initialSnapshotRef.current = JSON.stringify({
             requiresApproval,
+            allowWaitlist,
             maxAttendees,
             sessions,
             questions,
@@ -842,6 +852,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
           {(() => {
             const previewWindowStatus = getRegistrationWindowStatus({
               ...event,
+              allow_waitlist: allowWaitlist,
               registration_status: registrationStatus,
               registration_start_date: fromDateTimeLocal(registrationStartDate),
               registration_end_date: fromDateTimeLocal(registrationEndDate),
@@ -856,6 +867,21 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
                     <p className="text-[11px] text-amber-800/90 dark:text-amber-300/90">
                       Attendees will see a disabled badge: <em>&ldquo;Registration Not Open Yet&rdquo;</em>. You can
                       safely build your questions and sessions before publishing.
+                    </p>
+                  </div>
+                </div>
+              );
+            }
+
+            if (previewWindowStatus.isWaitlist) {
+              return (
+                <div className="flex items-start gap-3 rounded-lg border border-blue-500/30 bg-blue-500/10 p-3 text-xs text-blue-900 dark:text-blue-200">
+                  <Clock className="mt-0.5 size-4 shrink-0 text-blue-600 dark:text-blue-400" />
+                  <div className="space-y-0.5">
+                    <span className="font-semibold">Event Capacity Reached — Waitlist Active</span>
+                    <p className="text-[11px] text-blue-800/90 dark:text-blue-300/90">
+                      Attendee display: <em>&ldquo;Waitlist Open&rdquo;</em>. Direct registration is closed to prevent
+                      exceeding limits, but attendees can still submit to join the waitlist.
                     </p>
                   </div>
                 </div>
@@ -1018,6 +1044,24 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
                   review and verify their experience.
                 </div>
               )}
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3 rounded-lg border bg-muted/20 p-4">
+            <Checkbox
+              id="allow-waitlist"
+              checked={allowWaitlist}
+              onCheckedChange={(checked) => setAllowWaitlist(Boolean(checked))}
+            />
+            <div className="space-y-1">
+              <label htmlFor="allow-waitlist" className="cursor-pointer font-medium text-sm leading-none">
+                Allow Waitlist Registration when Capacity is Full
+              </label>
+              <p className="text-muted-foreground text-xs leading-relaxed">
+                When enabled, once event or session capacity is reached, registration automatically closes for direct
+                admission but allows attendees to register for the <strong>Waitlist</strong>. If disabled, registration
+                is strictly closed with no waitlist option.
+              </p>
             </div>
           </div>
 

@@ -45,7 +45,7 @@ export async function fetchPublishedEventsAction(): Promise<{
     const firestoreMap = new Map(firestoreEvents.map((e) => [String(e.id), e]));
 
     // 3. Filter strictly for published events
-    const publishedBevy = (bevyEvents || []).filter((e) => {
+    const publishedBevy = bevyEvents.filter((e) => {
       const status = (e.status || "").toLowerCase();
       // An event is published if status is "published" or not draft/canceled
       return (

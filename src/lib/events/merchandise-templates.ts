@@ -20,8 +20,8 @@ export const VARIATION_TEMPLATES: VariationTemplatePreset[] = [
       name: "Size",
       options: ["S", "M", "L", "XL", "2XL", "3XL"],
       option_details: {
-        "2XL": { price: 15000, stock: 25 },
-        "3XL": { price: 20000, stock: 15 },
+        "2XL": { stock: 25 },
+        "3XL": { stock: 15 },
       },
     },
     defaultGuideline: {
@@ -38,7 +38,7 @@ export const VARIATION_TEMPLATES: VariationTemplatePreset[] = [
       name: "Size",
       options: ["M", "L", "XL", "2XL"],
       option_details: {
-        "2XL": { price: 25000, stock: 20 },
+        "2XL": { stock: 20 },
       },
     },
     defaultGuideline: {
@@ -235,7 +235,7 @@ export const GDG_MERCHANDISE_TEMPLATES: EventMerchandiseItem[] = [
         name: "Size",
         options: ["M", "L", "XL", "2XL"],
         option_details: {
-          "2XL": { price: 275000, stock: 15 },
+          "2XL": { stock: 15 },
         },
       },
       {

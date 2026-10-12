@@ -99,7 +99,7 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
 
   const handleSaveItem = (savedItem: EventMerchandiseItem) => {
     setItems((prev) => {
-      const index = prev.findIndex((i) => i.id === savedItem.id);
+      const index = prev.findIndex((i) => String(i.id) === String(savedItem.id));
       if (index >= 0) {
         const updated = [...prev];
         updated[index] = savedItem;

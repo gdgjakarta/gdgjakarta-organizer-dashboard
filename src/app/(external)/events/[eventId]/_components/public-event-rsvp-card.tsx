@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 import Image from "next/image";
 
-import { Camera, Check, Copy, ExternalLink, Share2, Sparkles, Users, Video } from "lucide-react";
+import { Camera, Check, Clock, Copy, ExternalLink, Share2, Sparkles, Users, Video } from "lucide-react";
 import { toast } from "sonner";
 
 import googleFavicon from "@/app/Google_Favicon.webp";
@@ -16,6 +16,7 @@ import { getBevyLiveEventUrl } from "@/config/remote-config-utils";
 import type { BevyEvent } from "@/lib/bevy/types";
 import { parsePhotoAlbum } from "@/lib/events/media-utils";
 import { getRegistrationWindowStatus } from "@/lib/events/registration-defaults";
+import { ensureEventTickets } from "@/lib/events/ticket-templates";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
@@ -99,7 +100,7 @@ export function PublicEventRsvpCard({
     total_checked_in: firestoreEvent?.total_checked_in ?? event.checkin_count ?? 0,
     custom_questions: firestoreEvent?.custom_questions,
     sessions: firestoreEvent?.sessions,
-    tickets: firestoreEvent?.tickets,
+    tickets: ensureEventTickets(firestoreEvent?.tickets),
     max_tickets_per_person: firestoreEvent?.max_tickets_per_person,
     merchandise: firestoreEvent?.merchandise,
     max_merchandise_per_person: firestoreEvent?.max_merchandise_per_person,
@@ -124,12 +125,16 @@ export function PublicEventRsvpCard({
   const windowStatus = getRegistrationWindowStatus(registrationEvent);
 
   let registrationBadgeLabel = windowStatus.badgeLabel;
-  if (windowStatus.isOpen) {
+  if (windowStatus.isWaitlist) {
+    registrationBadgeLabel = "Waitlist Open";
+  } else if (windowStatus.isOpen) {
     registrationBadgeLabel = registrationEvent.requires_approval ? "Approval Required" : "Open for RSVPs";
   }
 
   let badgeColorClass = "text-xs";
-  if (windowStatus.isOpen) {
+  if (windowStatus.isWaitlist) {
+    badgeColorClass = "border-blue-500/30 bg-blue-500/10 text-blue-600 text-xs dark:text-blue-400";
+  } else if (windowStatus.isOpen) {
     badgeColorClass = "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 text-xs dark:text-emerald-400";
   } else if (windowStatus.status === "draft") {
     badgeColorClass =
@@ -141,6 +146,9 @@ export function PublicEventRsvpCard({
   let registrationDescription = "Reserve your spot today to receive updates and access.";
   if (isPast || windowStatus.status === "completed") {
     registrationDescription = "This event has already ended. Registrations are closed.";
+  } else if (windowStatus.isWaitlist) {
+    registrationDescription =
+      "This event has reached full capacity. Direct registration is closed, but you can still join the waitlist.";
   } else if (windowStatus.status === "draft") {
     registrationDescription = "Registration has not opened yet. Check back soon for announcements.";
   } else if (windowStatus.status === "upcoming") {
@@ -248,7 +256,12 @@ export function PublicEventRsvpCard({
                         height={18}
                         className="size-4 object-contain"
                       />
-                      Join Community to Register
+                      {windowStatus.isWaitlist ? "Join Community to Join Waitlist" : "Join Community to Register"}
+                    </>
+                  ) : windowStatus.isWaitlist ? (
+                    <>
+                      <Clock className="size-4" />
+                      Join Waitlist
                     </>
                   ) : (
                     <>
@@ -338,7 +351,12 @@ export function PublicEventRsvpCard({
                             height={16}
                             className="size-3.5 object-contain"
                           />
-                          Join &amp; RSVP
+                          {windowStatus.isWaitlist ? "Join & Waitlist" : "Join & RSVP"}
+                        </>
+                      ) : windowStatus.isWaitlist ? (
+                        <>
+                          <Clock className="size-3.5" />
+                          Join Waitlist
                         </>
                       ) : (
                         <>

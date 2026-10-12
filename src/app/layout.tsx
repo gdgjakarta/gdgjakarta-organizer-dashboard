@@ -138,7 +138,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
             <PreferencesStoreProvider initialValues={PREFERENCE_DEFAULTS}>
               <NavigationProgressProvider>
                 {children}
-                <Toaster />
+                <Toaster closeButton />
               </NavigationProgressProvider>
             </PreferencesStoreProvider>
           </AuthStoreProvider>
