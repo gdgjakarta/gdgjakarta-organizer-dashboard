@@ -67,11 +67,7 @@ import {
   getSessionRemainingSeats,
   isSessionAvailable,
 } from "@/lib/events/registration-defaults";
-import {
-  createDefaultRegularTicket,
-  ensureEventTickets,
-  getTicketSalesStatus,
-} from "@/lib/events/ticket-templates";
+import { createDefaultRegularTicket, ensureEventTickets, getTicketSalesStatus } from "@/lib/events/ticket-templates";
 import { calculateVoucherDiscount, validateVoucherForCart } from "@/lib/events/voucher-utils";
 import { checkEventRegistrationAction, registerForEventAction } from "@/lib/firestore/actions";
 import type {
@@ -812,7 +808,7 @@ export function EventRegistrationModal({
       const ticketSales = getTicketSalesStatus(selectedTicket);
       if (!ticketSales.isOpen) {
         toast.error(
-          ticketSales.message ||
+          ticketSales.message ??
             `The ticket tier "${selectedTicket.name}" is currently not available for selection (${ticketSales.badgeLabel}).`,
         );
         return;
@@ -891,7 +887,7 @@ export function EventRegistrationModal({
       const ticketSales = getTicketSalesStatus(selectedTicket);
       if (!ticketSales.isOpen) {
         toast.error(
-          ticketSales.message ||
+          ticketSales.message ??
             `The ticket tier "${selectedTicket.name}" is currently not available for selection (${ticketSales.badgeLabel}).`,
         );
         setRegistrationStep("tickets");
@@ -1816,17 +1812,19 @@ export function EventRegistrationModal({
                           Select your preferred pass type. Free RSVP, Commitment Deposit, and Paid tiers are supported.
                         </p>
 
-                        {availableTickets.length > 0 && availableTickets.every((t) => !getTicketSalesStatus(t).isOpen) && (
-                          <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-300">
-                            <Clock className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
-                            <div>
-                              <p className="font-semibold">Ticket Sales Currently Closed</p>
-                              <p className="mt-0.5 text-[11px] text-amber-700/90 dark:text-amber-400/90 leading-relaxed">
-                                None of the ticket tiers are currently open for registration. Please review the sales window dates below.
-                              </p>
+                        {availableTickets.length > 0 &&
+                          availableTickets.every((t) => !getTicketSalesStatus(t).isOpen) && (
+                            <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-300">
+                              <Clock className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                              <div>
+                                <p className="font-semibold">Ticket Sales Currently Closed</p>
+                                <p className="mt-0.5 text-[11px] text-amber-700/90 dark:text-amber-400/90 leading-relaxed">
+                                  None of the ticket tiers are currently open for registration. Please review the sales
+                                  window dates below.
+                                </p>
+                              </div>
                             </div>
-                          </div>
-                        )}
+                          )}
 
                         <RadioGroup
                           value={selectedTicketId}
@@ -1850,6 +1848,15 @@ export function EventRegistrationModal({
                                 htmlFor={`ticket-opt-${t.id}`}
                                 onClick={(e) => {
                                   if (isDisabled) {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    if (salesStatus.message) {
+                                      toast.info(salesStatus.message);
+                                    }
+                                  }
+                                }}
+                                onKeyDown={(e) => {
+                                  if ((e.key === "Enter" || e.key === " ") && isDisabled) {
                                     e.preventDefault();
                                     e.stopPropagation();
                                     if (salesStatus.message) {

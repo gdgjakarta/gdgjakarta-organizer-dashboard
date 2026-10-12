@@ -571,8 +571,7 @@ export function TicketsTab({ event }: TicketsTabProps) {
                               "flex items-center gap-1 rounded px-2 py-0.5 text-[10px]",
                               salesStatus.state === "available" &&
                                 "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
-                              salesStatus.state === "upcoming" &&
-                                "bg-blue-500/10 text-blue-700 dark:text-blue-400",
+                              salesStatus.state === "upcoming" && "bg-blue-500/10 text-blue-700 dark:text-blue-400",
                               salesStatus.state === "ended" && "bg-muted/80 text-muted-foreground",
                             )}
                           >
