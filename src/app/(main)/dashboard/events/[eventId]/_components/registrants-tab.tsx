@@ -62,6 +62,7 @@ import { buildRegistrationPaymentPayload, hasRegistrationPaymentRequirements } f
 import {
   getEffectiveRegistrationStatus,
   getRegistrationPaymentDeadline,
+  isEventCurationMode,
   isPaidRegistration,
   isRegistrationPaymentOverdue,
 } from "@/lib/events/payment-deadline";
@@ -264,12 +265,14 @@ function RegistrantsTableSkeleton({
   hasMerchandise = false,
   visibleStandardColumns = {},
   questionColumnCount = 0,
+  isCurationMode = true,
 }: {
   hasSessions: boolean;
   hasTickets?: boolean;
   hasMerchandise?: boolean;
   visibleStandardColumns?: Record<string, boolean>;
   questionColumnCount?: number;
+  isCurationMode?: boolean;
 }) {
   return (
     <>
@@ -302,7 +305,7 @@ function RegistrantsTableSkeleton({
               </div>
             </TableCell>
           )}
-          {visibleStandardColumns.reviewed_by !== false && (
+          {isCurationMode && visibleStandardColumns.reviewed_by !== false && (
             <TableCell>
               <div className="relative h-4 w-24 overflow-hidden rounded bg-muted">
                 <div className="shimmer-wave" aria-hidden="true" />
@@ -384,6 +387,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const [sessions, setSessions] = useState<EventSession[]>(event?.sessions ?? []);
   const [customQuestions, setCustomQuestions] = useState<CustomQuestion[]>(event?.custom_questions ?? []);
   const [emailTemplates, setEmailTemplates] = useState(event?.email_templates);
+  const [firestoreEventDoc, setFirestoreEventDoc] = useState<FirestoreEvent | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [inspectRegistration, setInspectRegistration] = useState<FirestoreRegistration | null>(null);
   const [deleteConfirmRegistration, setDeleteConfirmRegistration] = useState<FirestoreRegistration | null>(null);
@@ -486,6 +490,23 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     return () => {
       unsubscribe();
     };
+  }, [eventId]);
+
+  useEffect(() => {
+    let unsub = () => {
+      // cleanup
+    };
+    void (async () => {
+      try {
+        const { subscribeFirestoreEventDoc } = await import("@/lib/firestore/client");
+        unsub = subscribeFirestoreEventDoc(eventId, (doc) => {
+          if (doc) setFirestoreEventDoc(doc);
+        });
+      } catch (err) {
+        console.warn("[RegistrantsTab] Failed to subscribe to event doc:", err);
+      }
+    })();
+    return () => unsub();
   }, [eventId]);
 
   const syncBevyAttendees = useCallback(
@@ -731,11 +752,28 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const currentEvent = useMemo(() => {
     return {
       ...event,
+      ...firestoreEventDoc,
       sessions,
       custom_questions: customQuestions,
       ...(emailTemplates ? { email_templates: emailTemplates } : {}),
     } as FirestoreEvent;
-  }, [event, sessions, customQuestions, emailTemplates]);
+  }, [event, firestoreEventDoc, sessions, customQuestions, emailTemplates]);
+
+  const isCurationMode = useMemo(() => {
+    return isEventCurationMode(currentEvent);
+  }, [currentEvent]);
+
+  // If curation mode is disabled, reset any active curation-only filters to 'all'
+  useEffect(() => {
+    if (!isCurationMode) {
+      if (["pending", "approved", "rejected", "waitlisted"].includes(statusFilter)) {
+        setStatusFilter("all");
+      }
+      if (reviewerFilter !== "all") {
+        setReviewerFilter("all");
+      }
+    }
+  }, [isCurationMode, statusFilter, reviewerFilter]);
 
   // Auto-sync overdue registrations to 'expired' in Firestore
   useEffect(() => {
@@ -2222,8 +2260,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       "Name",
       "Email",
       "Status",
-      "Reviewed By",
-      "Reviewed At",
+      ...(isCurationMode ? ["Reviewed By", "Reviewed At"] : []),
       ...(hasTickets ? ["Ticket Pass", "Ticket Type", "Ticket Price", "Bundle Package", "Bundle Price"] : []),
       ...(hasMerchandise ? ["Merchandise Orders"] : []),
       "Voucher Code",
@@ -2268,8 +2305,9 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         `"${(r.member_name || "").replace(/"/g, '""')}"`,
         `"${(r.member_email || "").replace(/"/g, '""')}"`,
         `"${(r.status || "").replace(/"/g, '""')}"`,
-        `"${(r.reviewed_by_name || "").replace(/"/g, '""')}"`,
-        `"${(r.reviewed_at || "").replace(/"/g, '""')}"`,
+        ...(isCurationMode
+          ? [`"${(r.reviewed_by_name || "").replace(/"/g, '""')}"`, `"${(r.reviewed_at || "").replace(/"/g, '""')}"`]
+          : []),
         ...(hasTickets
           ? [
               `"${(r.ticket_name || "General RSVP").replace(/"/g, '""')}"`,
@@ -2308,7 +2346,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const totalColumnCount = useMemo(() => {
     let count = 2; // Checkbox + Applicant
     if (visibleStandardColumns.status !== false) count += 1;
-    if (visibleStandardColumns.reviewed_by !== false) count += 1;
+    if (isCurationMode && visibleStandardColumns.reviewed_by !== false) count += 1;
     if (hasTickets && visibleStandardColumns.ticket !== false) count += 1;
     if (hasMerchandise && visibleStandardColumns.merchandise !== false) count += 1;
     if (hasSessions && visibleStandardColumns.session !== false) count += 1;
@@ -2318,7 +2356,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     if (visibleStandardColumns.registered_at !== false) count += 1;
     if (visibleStandardColumns.actions !== false) count += 1;
     return count;
-  }, [visibleStandardColumns, hasSessions, hasTickets, hasMerchandise, selectedQuestionColumns.length]);
+  }, [visibleStandardColumns, hasSessions, hasTickets, hasMerchandise, selectedQuestionColumns.length, isCurationMode]);
 
   const activeQuestionFilterCount = useMemo(() => {
     return Object.values(questionFilters).filter((v) => Boolean(v) && v !== "all").length;
@@ -2359,7 +2397,9 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 )
               </CardTitle>
               <CardDescription>
-                Review attendee applications, session tracks, and approve or reject participants.
+                {isCurationMode
+                  ? "Review attendee applications, session tracks, and approve or reject participants."
+                  : "Manage registered attendees, track payment deadlines, and verify Bevy check-ins."}
               </CardDescription>
             </div>
           </div>
@@ -2406,98 +2446,114 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
               </div>
 
               <div className="flex flex-wrap items-center gap-1.5">
-                <Button
-                  size="sm"
-                  className="h-8 gap-1.5 bg-emerald-600 font-medium text-white shadow-2xs hover:bg-emerald-700"
-                  onClick={() => handleBatchAction("approved")}
-                  disabled={isPending || isBatchApproving || isBatchRejecting || isBatchResendingInterest}
-                  title="Approve selected attendee registrations"
-                >
-                  {isBatchApproving ? (
-                    <Loader2 className="size-3.5 animate-spin" />
-                  ) : (
-                    <UserCheck className="size-3.5" />
-                  )}
-                  <span>Approve</span>
-                </Button>
+                {isCurationMode && (
+                  <>
+                    <Button
+                      size="sm"
+                      className="h-8 gap-1.5 bg-emerald-600 font-medium text-white shadow-2xs hover:bg-emerald-700"
+                      onClick={() => handleBatchAction("approved")}
+                      disabled={isPending || isBatchApproving || isBatchRejecting || isBatchResendingInterest}
+                      title="Approve selected attendee registrations"
+                    >
+                      {isBatchApproving ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <UserCheck className="size-3.5" />
+                      )}
+                      <span>Approve</span>
+                    </Button>
 
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-8 gap-1.5 border-blue-500/30 text-blue-600 hover:bg-blue-500/10 dark:text-blue-400"
-                  onClick={() => handleBatchAction("waitlisted")}
-                  disabled={
-                    isPending || isBatchApproving || isBatchRejecting || isBatchResendingInterest || hasApprovedSelected
-                  }
-                  title={
-                    hasApprovedSelected
-                      ? "Cannot modify status of approved attendees"
-                      : "Set selected attendees to Waitlisted"
-                  }
-                >
-                  <Hourglass className="size-3.5" />
-                  <span>Waitlist</span>
-                </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 gap-1.5 border-blue-500/30 text-blue-600 hover:bg-blue-500/10 dark:text-blue-400"
+                      onClick={() => handleBatchAction("waitlisted")}
+                      disabled={
+                        isPending ||
+                        isBatchApproving ||
+                        isBatchRejecting ||
+                        isBatchResendingInterest ||
+                        hasApprovedSelected
+                      }
+                      title={
+                        hasApprovedSelected
+                          ? "Cannot modify status of approved attendees"
+                          : "Set selected attendees to Waitlisted"
+                      }
+                    >
+                      <Hourglass className="size-3.5" />
+                      <span>Waitlist</span>
+                    </Button>
 
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-8 gap-1.5 border-amber-500/30 text-amber-600 hover:bg-amber-500/10 dark:text-amber-400"
-                  onClick={() => handleBatchAction("pending")}
-                  disabled={
-                    isPending || isBatchApproving || isBatchRejecting || isBatchResendingInterest || hasApprovedSelected
-                  }
-                  title={
-                    hasApprovedSelected
-                      ? "Cannot modify status of approved attendees"
-                      : "Set selected attendees back to Pending"
-                  }
-                >
-                  <Clock className="size-3.5" />
-                  <span>Pending</span>
-                </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 gap-1.5 border-amber-500/30 text-amber-600 hover:bg-amber-500/10 dark:text-amber-400"
+                      onClick={() => handleBatchAction("pending")}
+                      disabled={
+                        isPending ||
+                        isBatchApproving ||
+                        isBatchRejecting ||
+                        isBatchResendingInterest ||
+                        hasApprovedSelected
+                      }
+                      title={
+                        hasApprovedSelected
+                          ? "Cannot modify status of approved attendees"
+                          : "Set selected attendees back to Pending"
+                      }
+                    >
+                      <Clock className="size-3.5" />
+                      <span>Pending</span>
+                    </Button>
 
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-8 gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10"
-                  onClick={() => handleBatchAction("rejected")}
-                  disabled={
-                    isPending ||
-                    isDeleting ||
-                    isBatchApproving ||
-                    isBatchRejecting ||
-                    isBatchResendingInterest ||
-                    hasApprovedSelected
-                  }
-                  title={
-                    hasApprovedSelected
-                      ? "Cannot modify status of approved attendees"
-                      : "Reject selected attendee applications"
-                  }
-                >
-                  {isBatchRejecting ? <Loader2 className="size-3.5 animate-spin" /> : <UserX className="size-3.5" />}
-                  <span>Reject</span>
-                </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10"
+                      onClick={() => handleBatchAction("rejected")}
+                      disabled={
+                        isPending ||
+                        isDeleting ||
+                        isBatchApproving ||
+                        isBatchRejecting ||
+                        isBatchResendingInterest ||
+                        hasApprovedSelected
+                      }
+                      title={
+                        hasApprovedSelected
+                          ? "Cannot modify status of approved attendees"
+                          : "Reject selected attendee applications"
+                      }
+                    >
+                      {isBatchRejecting ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <UserX className="size-3.5" />
+                      )}
+                      <span>Reject</span>
+                    </Button>
 
-                {pendingSelectedCount > 0 && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-8 gap-1.5 border-primary/30 text-primary hover:bg-primary/10"
-                    onClick={() => void handleBatchResendInterestEmail()}
-                    disabled={
-                      isPending || isDeleting || isBatchApproving || isBatchRejecting || isBatchResendingInterest
-                    }
-                    title="Resend interest email to selected pending attendees"
-                  >
-                    {isBatchResendingInterest ? (
-                      <Loader2 className="size-3.5 animate-spin" />
-                    ) : (
-                      <Mail className="size-3.5" />
+                    {pendingSelectedCount > 0 && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 gap-1.5 border-primary/30 text-primary hover:bg-primary/10"
+                        onClick={() => void handleBatchResendInterestEmail()}
+                        disabled={
+                          isPending || isDeleting || isBatchApproving || isBatchRejecting || isBatchResendingInterest
+                        }
+                        title="Resend interest email to selected pending attendees"
+                      >
+                        {isBatchResendingInterest ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : (
+                          <Mail className="size-3.5" />
+                        )}
+                        <span>Resend Interest ({pendingSelectedCount})</span>
+                      </Button>
                     )}
-                    <span>Resend Interest ({pendingSelectedCount})</span>
-                  </Button>
+                  </>
                 )}
 
                 <div className="mx-0.5 hidden h-4 w-px bg-border/80 sm:block" />
@@ -2568,7 +2624,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 <SelectContent>
                   <SelectGroup>
                     <SelectItem value="all">All Statuses ({statusCounts.all})</SelectItem>
-                    <SelectItem value="pending">Pending Review ({statusCounts.pending})</SelectItem>
+                    {isCurationMode && <SelectItem value="pending">Pending Review ({statusCounts.pending})</SelectItem>}
                     <SelectItem value="waiting_for_payment">
                       Waiting for Payment ({statusCounts.waiting_for_payment})
                     </SelectItem>
@@ -2578,13 +2634,15 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                     <SelectItem value="expired">Expired ({statusCounts.expired})</SelectItem>
                     <SelectItem value="failed">Failed ({statusCounts.failed})</SelectItem>
                     <SelectItem value="canceled">Canceled ({statusCounts.canceled})</SelectItem>
-                    <SelectItem value="approved">Approved ({statusCounts.approved})</SelectItem>
+                    {isCurationMode && <SelectItem value="approved">Approved ({statusCounts.approved})</SelectItem>}
                     <SelectItem value="checked_in">Checked In ({statusCounts.checked_in})</SelectItem>
                     <SelectItem value="not_checked_in">
                       Not Checked In (Drop) ({statusCounts.not_checked_in})
                     </SelectItem>
-                    <SelectItem value="waitlisted">Waitlisted ({statusCounts.waitlisted})</SelectItem>
-                    <SelectItem value="rejected">Rejected ({statusCounts.rejected})</SelectItem>
+                    {isCurationMode && (
+                      <SelectItem value="waitlisted">Waitlisted ({statusCounts.waitlisted})</SelectItem>
+                    )}
+                    {isCurationMode && <SelectItem value="rejected">Rejected ({statusCounts.rejected})</SelectItem>}
                   </SelectGroup>
                 </SelectContent>
               </Select>
@@ -2628,7 +2686,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 </Select>
               )}
 
-              {availableReviewers.length > 0 && (
+              {isCurationMode && availableReviewers.length > 0 && (
                 <Select value={reviewerFilter} onValueChange={handleReviewerFilterChange}>
                   <SelectTrigger size="sm" className="h-8 text-xs">
                     <UserCheck className="mr-1 size-3 shrink-0 text-muted-foreground" />
@@ -2696,6 +2754,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 hasSessions={hasSessions}
                 hasTickets={hasTickets}
                 hasMerchandise={hasMerchandise}
+                isCurationMode={isCurationMode}
                 onResetDefaults={handleResetColumnDefaults}
               />
 
@@ -2739,12 +2798,16 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 count: statusCounts.all,
                 activeClass: "border-primary/50 bg-primary/10 text-primary font-medium",
               },
-              {
-                key: "pending",
-                label: "Pending",
-                count: statusCounts.pending,
-                activeClass: "border-amber-500/50 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium",
-              },
+              ...(isCurationMode
+                ? [
+                    {
+                      key: "pending",
+                      label: "Pending",
+                      count: statusCounts.pending,
+                      activeClass: "border-amber-500/50 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium",
+                    },
+                  ]
+                : []),
               {
                 key: "waiting_for_payment",
                 label: "Waiting for Payment",
@@ -2776,31 +2839,39 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 count: statusCounts.canceled,
                 activeClass: "border-slate-500/50 bg-slate-500/10 text-slate-700 dark:text-slate-300 font-medium",
               },
-              {
-                key: "approved",
-                label: "Approved",
-                count: statusCounts.approved,
-                activeClass:
-                  "border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium",
-              },
+              ...(isCurationMode
+                ? [
+                    {
+                      key: "approved",
+                      label: "Approved",
+                      count: statusCounts.approved,
+                      activeClass:
+                        "border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium",
+                    },
+                  ]
+                : []),
               {
                 key: "checked_in",
                 label: "Checked In",
                 count: statusCounts.checked_in,
                 activeClass: "border-purple-500/50 bg-purple-500/10 text-purple-600 dark:text-purple-400 font-medium",
               },
-              {
-                key: "waitlisted",
-                label: "Waitlisted",
-                count: statusCounts.waitlisted,
-                activeClass: "border-blue-500/50 bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium",
-              },
-              {
-                key: "rejected",
-                label: "Rejected",
-                count: statusCounts.rejected,
-                activeClass: "border-destructive/50 bg-destructive/10 text-destructive font-medium",
-              },
+              ...(isCurationMode
+                ? [
+                    {
+                      key: "waitlisted",
+                      label: "Waitlisted",
+                      count: statusCounts.waitlisted,
+                      activeClass: "border-blue-500/50 bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium",
+                    },
+                    {
+                      key: "rejected",
+                      label: "Rejected",
+                      count: statusCounts.rejected,
+                      activeClass: "border-destructive/50 bg-destructive/10 text-destructive font-medium",
+                    },
+                  ]
+                : []),
             ]
               .filter(
                 (item) =>
@@ -2900,7 +2971,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                   </button>
                 </Badge>
               )}
-              {reviewerFilter !== "all" && (
+              {isCurationMode && reviewerFilter !== "all" && (
                 <Badge variant="secondary" className="gap-1 font-normal text-xs">
                   <UserCheck className="size-3 text-primary" />
                   <span>Reviewer: {reviewerFilter === "unreviewed" ? "Not Reviewed" : reviewerFilter}</span>
@@ -2960,7 +3031,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                   </TableHead>
                   <TableHead>Applicant</TableHead>
                   {visibleStandardColumns.status !== false && <TableHead>Status</TableHead>}
-                  {visibleStandardColumns.reviewed_by !== false && <TableHead>Reviewed By</TableHead>}
+                  {isCurationMode && visibleStandardColumns.reviewed_by !== false && <TableHead>Reviewed By</TableHead>}
                   {hasTickets && visibleStandardColumns.ticket !== false && <TableHead>Ticket Pass</TableHead>}
                   {hasMerchandise && visibleStandardColumns.merchandise !== false && <TableHead>Merchandise</TableHead>}
                   {hasSessions && visibleStandardColumns.session !== false && <TableHead>Session Track</TableHead>}
@@ -3001,6 +3072,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                     hasMerchandise={hasMerchandise}
                     visibleStandardColumns={visibleStandardColumns}
                     questionColumnCount={selectedQuestionColumns.length}
+                    isCurationMode={isCurationMode}
                   />
                 )}
 
@@ -3151,7 +3223,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                           </TableCell>
                         )}
 
-                        {visibleStandardColumns.reviewed_by !== false && (
+                        {isCurationMode && visibleStandardColumns.reviewed_by !== false && (
                           <TableCell onClick={() => setInspectRegistration(reg)} className="max-w-[180px]">
                             {reg.reviewed_by_name ? (
                               <div className="flex flex-col gap-0.5">
@@ -3344,82 +3416,89 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                         {visibleStandardColumns.actions !== false && (
                           <TableCell className="whitespace-nowrap text-right" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-end gap-1">
-                              {/* 1. Approve Button */}
-                              <Button
-                                size="icon-xs"
-                                variant={
-                                  rawStatus === "approved" || rawStatus === "paid_and_registered" ? "default" : "ghost"
-                                }
-                                className={cn(
-                                  "size-7 transition-colors",
-                                  rawStatus === "approved" || rawStatus === "paid_and_registered"
-                                    ? "cursor-default bg-emerald-600 text-white opacity-90 shadow-xs hover:bg-emerald-600"
-                                    : "text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700",
-                                )}
-                                title={approveTitle}
-                                onClick={() => handleApproveAttendee(reg)}
-                                disabled={
-                                  isPending ||
-                                  approvingRegistrationId === reg.id ||
-                                  rawStatus === "approved" ||
-                                  rawStatus === "paid_and_registered"
-                                }
-                              >
-                                {approvingRegistrationId === reg.id ? (
-                                  <Loader2 className="size-3.5 animate-spin" />
-                                ) : (
-                                  <Check className="size-3.5" />
-                                )}
-                              </Button>
+                              {/* Curation Action Buttons: Approve, Pending, Reject */}
+                              {isCurationMode && (
+                                <>
+                                  {/* 1. Approve Button */}
+                                  <Button
+                                    size="icon-xs"
+                                    variant={
+                                      rawStatus === "approved" || rawStatus === "paid_and_registered"
+                                        ? "default"
+                                        : "ghost"
+                                    }
+                                    className={cn(
+                                      "size-7 transition-colors",
+                                      rawStatus === "approved" || rawStatus === "paid_and_registered"
+                                        ? "cursor-default bg-emerald-600 text-white opacity-90 shadow-xs hover:bg-emerald-600"
+                                        : "text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700",
+                                    )}
+                                    title={approveTitle}
+                                    onClick={() => handleApproveAttendee(reg)}
+                                    disabled={
+                                      isPending ||
+                                      approvingRegistrationId === reg.id ||
+                                      rawStatus === "approved" ||
+                                      rawStatus === "paid_and_registered"
+                                    }
+                                  >
+                                    {approvingRegistrationId === reg.id ? (
+                                      <Loader2 className="size-3.5 animate-spin" />
+                                    ) : (
+                                      <Check className="size-3.5" />
+                                    )}
+                                  </Button>
 
-                              {/* 2. Pending Button */}
-                              <Button
-                                size="icon-xs"
-                                variant={reg.status === "pending" ? "default" : "ghost"}
-                                className={cn(
-                                  "size-7 transition-colors",
-                                  reg.status === "pending"
-                                    ? "bg-amber-600 text-white shadow-xs hover:bg-amber-700"
-                                    : "text-amber-600 hover:bg-amber-500/10 hover:text-amber-700",
-                                )}
-                                title={pendingTitle}
-                                onClick={() => handleStatusChange(reg.id, "pending")}
-                                disabled={
-                                  isPending ||
-                                  approvingRegistrationId === reg.id ||
-                                  rawStatus === "approved" ||
-                                  rawStatus === "paid_and_registered"
-                                }
-                              >
-                                <Clock className="size-3.5" />
-                              </Button>
+                                  {/* 2. Pending Button */}
+                                  <Button
+                                    size="icon-xs"
+                                    variant={reg.status === "pending" ? "default" : "ghost"}
+                                    className={cn(
+                                      "size-7 transition-colors",
+                                      reg.status === "pending"
+                                        ? "bg-amber-600 text-white shadow-xs hover:bg-amber-700"
+                                        : "text-amber-600 hover:bg-amber-500/10 hover:text-amber-700",
+                                    )}
+                                    title={pendingTitle}
+                                    onClick={() => handleStatusChange(reg.id, "pending")}
+                                    disabled={
+                                      isPending ||
+                                      approvingRegistrationId === reg.id ||
+                                      rawStatus === "approved" ||
+                                      rawStatus === "paid_and_registered"
+                                    }
+                                  >
+                                    <Clock className="size-3.5" />
+                                  </Button>
 
-                              {/* 3. Reject Button */}
-                              <Button
-                                size="icon-xs"
-                                variant={reg.status === "rejected" ? "default" : "ghost"}
-                                className={cn(
-                                  "size-7 transition-colors",
-                                  reg.status === "rejected"
-                                    ? "bg-destructive text-white shadow-xs hover:bg-destructive/90"
-                                    : "text-destructive hover:bg-destructive/10 hover:text-destructive",
-                                )}
-                                title={rejectTitle}
-                                onClick={() => handleStatusChange(reg.id, "rejected")}
-                                disabled={
-                                  isPending ||
-                                  approvingRegistrationId === reg.id ||
-                                  rejectingRegistrationId === reg.id ||
-                                  rawStatus === "approved" ||
-                                  rawStatus === "paid_and_registered"
-                                }
-                              >
-                                {rejectingRegistrationId === reg.id ? (
-                                  <Loader2 className="size-3.5 animate-spin" />
-                                ) : (
-                                  <X className={cn("size-3.5", reg.status === "rejected" && "text-white")} />
-                                )}
-                              </Button>
+                                  {/* 3. Reject Button */}
+                                  <Button
+                                    size="icon-xs"
+                                    variant={reg.status === "rejected" ? "default" : "ghost"}
+                                    className={cn(
+                                      "size-7 transition-colors",
+                                      reg.status === "rejected"
+                                        ? "bg-destructive text-white shadow-xs hover:bg-destructive/90"
+                                        : "text-destructive hover:bg-destructive/10 hover:text-destructive",
+                                    )}
+                                    title={rejectTitle}
+                                    onClick={() => handleStatusChange(reg.id, "rejected")}
+                                    disabled={
+                                      isPending ||
+                                      approvingRegistrationId === reg.id ||
+                                      rejectingRegistrationId === reg.id ||
+                                      rawStatus === "approved" ||
+                                      rawStatus === "paid_and_registered"
+                                    }
+                                  >
+                                    {rejectingRegistrationId === reg.id ? (
+                                      <Loader2 className="size-3.5 animate-spin" />
+                                    ) : (
+                                      <X className={cn("size-3.5", reg.status === "rejected" && "text-white")} />
+                                    )}
+                                  </Button>
+                                </>
+                              )}
 
                               {/* Quick Resend Payment Link Button */}
                               {(rawStatus === "expired" || rawStatus === "waiting_for_payment") &&
@@ -3465,7 +3544,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                         Resend Payment Link
                                       </DropdownMenuItem>
                                     )}
-                                  {reg.status === "pending" && (
+                                  {isCurationMode && reg.status === "pending" && (
                                     <DropdownMenuItem
                                       disabled={
                                         isResendingInterestId === reg.id ||
@@ -3482,18 +3561,20 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                       Resend Interest Email
                                     </DropdownMenuItem>
                                   )}
-                                  <DropdownMenuItem
-                                    disabled={
-                                      rawStatus === "approved" ||
-                                      rawStatus === "paid_and_registered" ||
-                                      isPending ||
-                                      approvingRegistrationId === reg.id
-                                    }
-                                    onClick={() => handleStatusChange(reg.id, "waitlisted")}
-                                  >
-                                    <Layers className="mr-2 size-3.5" />
-                                    Move to Waitlist
-                                  </DropdownMenuItem>
+                                  {isCurationMode && (
+                                    <DropdownMenuItem
+                                      disabled={
+                                        rawStatus === "approved" ||
+                                        rawStatus === "paid_and_registered" ||
+                                        isPending ||
+                                        approvingRegistrationId === reg.id
+                                      }
+                                      onClick={() => handleStatusChange(reg.id, "waitlisted")}
+                                    >
+                                      <Layers className="mr-2 size-3.5" />
+                                      Move to Waitlist
+                                    </DropdownMenuItem>
+                                  )}
                                   {reg.member_email && (
                                     <DropdownMenuItem
                                       onClick={() => {

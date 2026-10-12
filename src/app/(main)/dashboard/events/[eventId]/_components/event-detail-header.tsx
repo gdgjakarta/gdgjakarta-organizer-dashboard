@@ -42,6 +42,7 @@ import {
 import { getBevyLiveEventUrl, getBevyManageEventUrl } from "@/config/remote-config-utils";
 import { isExecutiveOrganizer } from "@/lib/auth-roles";
 import { resolveEventAudience } from "@/lib/bevy/audience";
+import { isEventCurationMode } from "@/lib/events/payment-deadline";
 import { triggerEventsSyncAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
@@ -79,6 +80,35 @@ export function EventDetailHeader({
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const [isPending, startTransition] = useTransition();
+
+  const [eventData, setEventData] = useState<FirestoreEvent>(event);
+
+  useEffect(() => {
+    setEventData(event);
+  }, [event]);
+
+  useEffect(() => {
+    const targetEventId = String(event.id || "");
+    if (!targetEventId) return;
+    let unsubEvent: () => void = () => {
+      // cleanup
+    };
+    void (async () => {
+      try {
+        const { subscribeFirestoreEventDoc } = await import("@/lib/firestore/client");
+        unsubEvent = subscribeFirestoreEventDoc(targetEventId, (doc) => {
+          if (doc) {
+            setEventData((prev) => ({ ...prev, ...doc }));
+          }
+        });
+      } catch (err) {
+        console.warn("[EventDetailHeader] Could not subscribe to event doc:", err);
+      }
+    })();
+    return () => unsubEvent();
+  }, [event.id]);
+
+  const isCurationMode = isEventCurationMode(eventData);
 
   const isOrganizer = useMemo(() => {
     if (user) {
@@ -341,17 +371,21 @@ export function EventDetailHeader({
               <Users className="size-4" />
               <strong className="text-foreground">{liveTotals.totalRegistrations}</strong> Registrants
             </span>
-            <span>•</span>
-            <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
-              <CheckCircle2 className="size-4" />
-              <strong>{liveTotals.totalApproved}</strong> Approved
-            </span>
+            {isCurationMode && (
+              <>
+                <span>•</span>
+                <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle2 className="size-4" />
+                  <strong>{liveTotals.totalApproved}</strong> Approved
+                </span>
+              </>
+            )}
             <span>•</span>
             <span className="flex items-center gap-1.5 text-purple-600 dark:text-purple-400">
               <UserCheck className="size-4" />
               <strong>{liveTotals.totalCheckedIn}</strong> Checked In
             </span>
-            {totalApproved > 0 && (
+            {isCurationMode && totalApproved > 0 && (
               <>
                 <span>•</span>
                 <span
@@ -364,21 +398,25 @@ export function EventDetailHeader({
                 </span>
               </>
             )}
-            <span>•</span>
-            <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
-              <Clock className="size-4" />
-              <strong>{liveTotals.totalPending}</strong> Pending
-            </span>
-            <span>•</span>
-            <span className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
-              <Hourglass className="size-4" />
-              <strong>{liveTotals.totalWaitlisted}</strong> Waitlisted
-            </span>
-            <span>•</span>
-            <span className="flex items-center gap-1.5 text-destructive">
-              <XCircle className="size-4" />
-              <strong>{liveTotals.totalRejected}</strong> Rejected
-            </span>
+            {isCurationMode && (
+              <>
+                <span>•</span>
+                <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                  <Clock className="size-4" />
+                  <strong>{liveTotals.totalPending}</strong> Pending
+                </span>
+                <span>•</span>
+                <span className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
+                  <Hourglass className="size-4" />
+                  <strong>{liveTotals.totalWaitlisted}</strong> Waitlisted
+                </span>
+                <span>•</span>
+                <span className="flex items-center gap-1.5 text-destructive">
+                  <XCircle className="size-4" />
+                  <strong>{liveTotals.totalRejected}</strong> Rejected
+                </span>
+              </>
+            )}
           </div>
         </div>
 

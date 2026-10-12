@@ -3,6 +3,22 @@ import { format, parseISO } from "date-fns";
 import type { FirestoreEvent, FirestoreRegistration, RegistrationStatus } from "@/lib/firestore/types";
 
 /**
+ * Evaluates whether an event has curation mode active.
+ * An explicit `curation_mode` boolean takes priority over `requires_approval`.
+ */
+export function isEventCurationMode(event?: Partial<FirestoreEvent> | null): boolean {
+  if (!event) return false;
+  const raw = event as unknown as Record<string, unknown>;
+  if (typeof raw.curation_mode === "boolean") {
+    return raw.curation_mode;
+  }
+  if (typeof raw.requires_approval === "boolean") {
+    return raw.requires_approval;
+  }
+  return false;
+}
+
+/**
  * Checks if an event registration has payable elements (paid ticket tier, merchandise, or bundle).
  */
 export function isPaidRegistration(reg: Partial<FirestoreRegistration>): boolean {

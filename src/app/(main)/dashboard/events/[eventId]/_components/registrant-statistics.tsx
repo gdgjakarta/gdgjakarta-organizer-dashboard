@@ -31,7 +31,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { getEffectiveRegistrationStatus, isPaidRegistration } from "@/lib/events/payment-deadline";
+import { getEffectiveRegistrationStatus, isEventCurationMode, isPaidRegistration } from "@/lib/events/payment-deadline";
 import { DEFAULT_COMBINED_QUESTIONS } from "@/lib/events/registration-defaults";
 import type { CustomQuestion, EventSession, FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
@@ -98,6 +98,8 @@ export function RegistrantStatistics({
   const [analysisScope, setAnalysisScope] = useState<"all" | "approved" | "checked_in" | "not_checked_in">("all");
   // Organizer can pin multiple fields to display comparison overview cards
   const [pinnedFields, setPinnedFields] = useState<string[]>(["professional_background"]);
+
+  const isCurationMode = isEventCurationMode(event);
 
   // Calculate totals
   const totalRegistrations = registrations.length;
@@ -637,8 +639,13 @@ export function RegistrantStatistics({
 
   return (
     <div className="space-y-4">
-      {/* ── Top Level 6-Card Status Overview ──────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6 sm:gap-4">
+      {/* ── Top Level Status Overview ──────────────────────────────── */}
+      <div
+        className={cn(
+          "grid gap-3 sm:gap-4",
+          isCurationMode ? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-6" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-2",
+        )}
+      >
         {/* Total Registrants */}
         <Card
           onClick={() => onSelectStatusFilter?.("all")}
@@ -665,33 +672,35 @@ export function RegistrantStatistics({
           </CardContent>
         </Card>
 
-        {/* Total Approved */}
-        <Card
-          onClick={() => onSelectStatusFilter?.("approved")}
-          className={cn(
-            "cursor-pointer transition-all hover:border-emerald-500/50 hover:shadow-xs",
-            activeStatusFilter === "approved" && "border-emerald-500/50 bg-emerald-500/5 ring-1 ring-emerald-500/30",
-          )}
-        >
-          <CardContent className="p-4 sm:p-5">
-            <div className="flex items-center justify-between text-muted-foreground text-xs">
-              <span className="font-medium">Approved</span>
-              <UserCheck className="size-4 text-emerald-600 dark:text-emerald-400" />
-            </div>
-            <div className="mt-2 font-bold text-2xl tracking-tight text-emerald-600 dark:text-emerald-400 sm:text-3xl">
-              {totalApproved}
-            </div>
-            <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-              <Badge
-                variant="outline"
-                className="border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0 font-semibold text-[10px] text-emerald-600 dark:text-emerald-400"
-              >
-                {approvedPercent}%
-              </Badge>
-              <span>of total</span>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Total Approved - only when curation mode is on */}
+        {isCurationMode && (
+          <Card
+            onClick={() => onSelectStatusFilter?.("approved")}
+            className={cn(
+              "cursor-pointer transition-all hover:border-emerald-500/50 hover:shadow-xs",
+              activeStatusFilter === "approved" && "border-emerald-500/50 bg-emerald-500/5 ring-1 ring-emerald-500/30",
+            )}
+          >
+            <CardContent className="p-4 sm:p-5">
+              <div className="flex items-center justify-between text-muted-foreground text-xs">
+                <span className="font-medium">Approved</span>
+                <UserCheck className="size-4 text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <div className="mt-2 font-bold text-2xl tracking-tight text-emerald-600 dark:text-emerald-400 sm:text-3xl">
+                {totalApproved}
+              </div>
+              <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <Badge
+                  variant="outline"
+                  className="border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0 font-semibold text-[10px] text-emerald-600 dark:text-emerald-400"
+                >
+                  {approvedPercent}%
+                </Badge>
+                <span>of total</span>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Checked In */}
         <Card
@@ -759,87 +768,93 @@ export function RegistrantStatistics({
           </CardContent>
         </Card>
 
-        {/* Pending Review */}
-        <Card
-          onClick={() => onSelectStatusFilter?.("pending")}
-          className={cn(
-            "cursor-pointer transition-all hover:border-amber-500/50 hover:shadow-xs",
-            activeStatusFilter === "pending" && "border-amber-500/50 bg-amber-500/5 ring-1 ring-amber-500/30",
-          )}
-        >
-          <CardContent className="p-4 sm:p-5">
-            <div className="flex items-center justify-between text-muted-foreground text-xs">
-              <span className="font-medium">Pending Review</span>
-              <Clock className="size-4 text-amber-600 dark:text-amber-400" />
-            </div>
-            <div className="mt-2 font-bold text-2xl tracking-tight text-amber-600 dark:text-amber-400 sm:text-3xl">
-              {totalPending}
-            </div>
-            <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-              <Badge
-                variant="outline"
-                className="border-amber-500/20 bg-amber-500/10 px-1.5 py-0 font-semibold text-[10px] text-amber-600 dark:text-amber-400"
-              >
-                {pendingPercent}%
-              </Badge>
-              <span>requires review</span>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Pending Review - only when curation mode is on */}
+        {isCurationMode && (
+          <Card
+            onClick={() => onSelectStatusFilter?.("pending")}
+            className={cn(
+              "cursor-pointer transition-all hover:border-amber-500/50 hover:shadow-xs",
+              activeStatusFilter === "pending" && "border-amber-500/50 bg-amber-500/5 ring-1 ring-amber-500/30",
+            )}
+          >
+            <CardContent className="p-4 sm:p-5">
+              <div className="flex items-center justify-between text-muted-foreground text-xs">
+                <span className="font-medium">Pending Review</span>
+                <Clock className="size-4 text-amber-600 dark:text-amber-400" />
+              </div>
+              <div className="mt-2 font-bold text-2xl tracking-tight text-amber-600 dark:text-amber-400 sm:text-3xl">
+                {totalPending}
+              </div>
+              <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <Badge
+                  variant="outline"
+                  className="border-amber-500/20 bg-amber-500/10 px-1.5 py-0 font-semibold text-[10px] text-amber-600 dark:text-amber-400"
+                >
+                  {pendingPercent}%
+                </Badge>
+                <span>requires review</span>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
-        {/* Waitlisted */}
-        <Card
-          onClick={() => onSelectStatusFilter?.("waitlisted")}
-          className={cn(
-            "cursor-pointer transition-all hover:border-blue-500/50 hover:shadow-xs",
-            activeStatusFilter === "waitlisted" && "border-blue-500/50 bg-blue-500/5 ring-1 ring-blue-500/30",
-          )}
-        >
-          <CardContent className="p-4 sm:p-5">
-            <div className="flex items-center justify-between text-muted-foreground text-xs">
-              <span className="font-medium">Waitlisted</span>
-              <Hourglass className="size-4 text-blue-600 dark:text-blue-400" />
-            </div>
-            <div className="mt-2 font-bold text-2xl tracking-tight text-blue-600 dark:text-blue-400 sm:text-3xl">
-              {totalWaitlisted}
-            </div>
-            <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-              <Badge
-                variant="outline"
-                className="border-blue-500/20 bg-blue-500/10 px-1.5 py-0 font-semibold text-[10px] text-blue-600 dark:text-blue-400"
-              >
-                {waitlistedPercent}%
-              </Badge>
-              <span>on waitlist</span>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Waitlisted - only when curation mode is on */}
+        {isCurationMode && (
+          <Card
+            onClick={() => onSelectStatusFilter?.("waitlisted")}
+            className={cn(
+              "cursor-pointer transition-all hover:border-blue-500/50 hover:shadow-xs",
+              activeStatusFilter === "waitlisted" && "border-blue-500/50 bg-blue-500/5 ring-1 ring-blue-500/30",
+            )}
+          >
+            <CardContent className="p-4 sm:p-5">
+              <div className="flex items-center justify-between text-muted-foreground text-xs">
+                <span className="font-medium">Waitlisted</span>
+                <Hourglass className="size-4 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div className="mt-2 font-bold text-2xl tracking-tight text-blue-600 dark:text-blue-400 sm:text-3xl">
+                {totalWaitlisted}
+              </div>
+              <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <Badge
+                  variant="outline"
+                  className="border-blue-500/20 bg-blue-500/10 px-1.5 py-0 font-semibold text-[10px] text-blue-600 dark:text-blue-400"
+                >
+                  {waitlistedPercent}%
+                </Badge>
+                <span>on waitlist</span>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
-        {/* Rejected */}
-        <Card
-          onClick={() => onSelectStatusFilter?.("rejected")}
-          className={cn(
-            "cursor-pointer transition-all hover:border-destructive/50 hover:shadow-xs",
-            activeStatusFilter === "rejected" && "border-destructive/50 bg-destructive/5 ring-1 ring-destructive/30",
-          )}
-        >
-          <CardContent className="p-4 sm:p-5">
-            <div className="flex items-center justify-between text-muted-foreground text-xs">
-              <span className="font-medium">Rejected</span>
-              <UserX className="size-4 text-destructive" />
-            </div>
-            <div className="mt-2 font-bold text-2xl tracking-tight text-destructive sm:text-3xl">{totalRejected}</div>
-            <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-              <Badge
-                variant="outline"
-                className="border-destructive/20 bg-destructive/10 px-1.5 py-0 font-semibold text-[10px] text-destructive"
-              >
-                {rejectedPercent}%
-              </Badge>
-              <span>declined</span>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Rejected - only when curation mode is on */}
+        {isCurationMode && (
+          <Card
+            onClick={() => onSelectStatusFilter?.("rejected")}
+            className={cn(
+              "cursor-pointer transition-all hover:border-destructive/50 hover:shadow-xs",
+              activeStatusFilter === "rejected" && "border-destructive/50 bg-destructive/5 ring-1 ring-destructive/30",
+            )}
+          >
+            <CardContent className="p-4 sm:p-5">
+              <div className="flex items-center justify-between text-muted-foreground text-xs">
+                <span className="font-medium">Rejected</span>
+                <UserX className="size-4 text-destructive" />
+              </div>
+              <div className="mt-2 font-bold text-2xl tracking-tight text-destructive sm:text-3xl">{totalRejected}</div>
+              <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <Badge
+                  variant="outline"
+                  className="border-destructive/20 bg-destructive/10 px-1.5 py-0 font-semibold text-[10px] text-destructive"
+                >
+                  {rejectedPercent}%
+                </Badge>
+                <span>declined</span>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* ── Paid Registration Flow 5-Card Status Counter ────────────────────────── */}
@@ -1031,18 +1046,20 @@ export function RegistrantStatistics({
                 >
                   All ({totalRegistrations})
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setAnalysisScope("approved")}
-                  className={cn(
-                    "rounded-md px-2.5 py-1 font-medium transition-colors",
-                    analysisScope === "approved"
-                      ? "bg-background text-foreground shadow-xs"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  Approved Only ({totalApproved})
-                </button>
+                {isCurationMode && (
+                  <button
+                    type="button"
+                    onClick={() => setAnalysisScope("approved")}
+                    className={cn(
+                      "rounded-md px-2.5 py-1 font-medium transition-colors",
+                      analysisScope === "approved"
+                        ? "bg-background text-foreground shadow-xs"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    Approved Only ({totalApproved})
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setAnalysisScope("checked_in")}

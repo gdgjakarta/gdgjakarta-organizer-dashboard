@@ -39,6 +39,7 @@ interface ColumnCustomizerProps {
   hasSessions: boolean;
   hasTickets?: boolean;
   hasMerchandise?: boolean;
+  isCurationMode?: boolean;
   onResetDefaults: () => void;
 }
 
@@ -53,6 +54,7 @@ export function ColumnCustomizer({
   hasSessions,
   hasTickets = false,
   hasMerchandise = false,
+  isCurationMode = true,
   onResetDefaults,
 }: ColumnCustomizerProps) {
   const [open, setOpen] = useState(false);
@@ -62,9 +64,20 @@ export function ColumnCustomizer({
   const standardColumnDefs: StandardColumnOption[] = useMemo(() => {
     const list: StandardColumnOption[] = [
       { id: "applicant", label: "Applicant", description: "Name, email, and avatar", locked: true },
-      { id: "status", label: "Status", description: "Approved, Pending, or Rejected badge" },
-      { id: "reviewed_by", label: "Reviewed By", description: "Organizer who approved, rejected, or waitlisted" },
+      {
+        id: "status",
+        label: "Status",
+        description: isCurationMode ? "Curation & payment status badge" : "Registration & payment status badge",
+      },
     ];
+
+    if (isCurationMode) {
+      list.push({
+        id: "reviewed_by",
+        label: "Reviewed By",
+        description: "Organizer who approved, rejected, or waitlisted",
+      });
+    }
 
     if (hasTickets) {
       list.push({ id: "ticket", label: "Ticket Pass", description: "Selected ticket tier, price, or free status" });
@@ -82,11 +95,17 @@ export function ColumnCustomizer({
       { id: "checkin", label: "Check-In (Bevy)", description: "On-site check-in toggle and Bevy state" },
       { id: "all_responses", label: "Responses Summary", description: "Combined preview of all form answers" },
       { id: "registered_at", label: "Registered At", description: "Submission date and timestamp" },
-      { id: "actions", label: "Actions", description: "Approve, Reject, and detail review actions" },
+      {
+        id: "actions",
+        label: "Actions",
+        description: isCurationMode
+          ? "Approve, Reject, and detail review actions"
+          : "View details and payment link actions",
+      },
     );
 
     return list;
-  }, [hasSessions, hasTickets, hasMerchandise]);
+  }, [hasSessions, hasTickets, hasMerchandise, isCurationMode]);
 
   // Filtered lists based on search
   const filteredQuestions = useMemo(() => {

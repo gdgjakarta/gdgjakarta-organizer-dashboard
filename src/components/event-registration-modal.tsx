@@ -62,6 +62,7 @@ import {
   hasRegistrationPaymentRequirements,
 } from "@/lib/events/doku-payment";
 import { extractEventImageUrl } from "@/lib/events/media-utils";
+import { isEventCurationMode } from "@/lib/events/payment-deadline";
 import {
   formatOtherAnswer,
   isOtherOption,
@@ -1215,7 +1216,7 @@ export function EventRegistrationModal({
           capacityValidation.isWaitlist ??
             (eventConfig.allow_waitlist !== false && checkEventCapacityStatus(eventConfig).isFull),
         );
-        const isCurated = Boolean(eventConfig.requires_approval || eventConfig.curation_mode);
+        const isCurated = isEventCurationMode(eventConfig);
 
         const sessionKey = selectedSession?.title ?? "Regular Ticket";
         const combinedAnswers = {
@@ -1640,7 +1641,7 @@ export function EventRegistrationModal({
     const isWaitlisted = statusLower === "waitlisted";
     let statusLabel = "Registered";
     if (isApproved) {
-      statusLabel = eventConfig.requires_approval || eventConfig.curation_mode ? "Registered (Approved)" : "Registered";
+      statusLabel = isEventCurationMode(eventConfig) ? "Registered (Approved)" : "Registered";
     } else if (isWaitlisted) {
       statusLabel = "Waitlisted";
     } else if (isWaitingPayment) {
