@@ -12,6 +12,7 @@ import {
   MapPin,
   RefreshCw,
   Search,
+  ShieldCheck,
   Truck,
   XCircle,
 } from "lucide-react";
@@ -24,7 +25,11 @@ import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/ca
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { fetchEventMerchandiseDeliveryRequestsAction, markMerchandiseDeliveredAction } from "@/lib/firestore/actions";
+import {
+  fetchEventMerchandiseDeliveryRequestsAction,
+  markMerchandiseDeliveredAction,
+  updateEventMerchandiseDeliveryConfigAction,
+} from "@/lib/firestore/actions";
 import type { FirestoreEvent, FirestoreRegistration, MerchandiseDeliveryStatus } from "@/lib/firestore/types";
 import { cn, getInitials } from "@/lib/utils";
 
@@ -67,10 +72,17 @@ const STATUS_CONFIG: Record<
   },
 };
 
-export function MerchandiseDeliveryTab({ event: _event, eventId }: MerchandiseDeliveryTabProps) {
+export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTabProps) {
   const [registrations, setRegistrations] = useState<FirestoreRegistration[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, startRefresh] = useTransition();
+
+  const initialEnv: "production" | "sandbox" =
+    event?.merchandise_delivery_payment_environment ??
+    event?.payment_environment ??
+    (event?.is_test ? "sandbox" : "production");
+  const [currentEnv, setCurrentEnv] = useState<"production" | "sandbox">(initialEnv);
+  const [isSavingEnv, setIsSavingEnv] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -101,6 +113,27 @@ export function MerchandiseDeliveryTab({ event: _event, eventId }: MerchandiseDe
       await loadRequests();
       toast.success("Refreshed delivery requests.");
     });
+  };
+
+  const handleUpdateEnvironment = async (newEnv: "production" | "sandbox") => {
+    try {
+      setIsSavingEnv(true);
+      setCurrentEnv(newEnv);
+      const res = await updateEventMerchandiseDeliveryConfigAction(eventId, newEnv);
+      if (res.success) {
+        toast.success(
+          `Merchandise delivery environment updated to ${newEnv === "production" ? "Live Production" : "Sandbox / Dev"}.`,
+        );
+      } else {
+        toast.error(res.error ?? "Failed to update environment.");
+        setCurrentEnv(initialEnv);
+      }
+    } catch {
+      toast.error("Failed to update environment.");
+      setCurrentEnv(initialEnv);
+    } finally {
+      setIsSavingEnv(false);
+    }
   };
 
   const handleRegistrationUpdated = (updated: FirestoreRegistration) => {
@@ -171,6 +204,82 @@ export function MerchandiseDeliveryTab({ event: _event, eventId }: MerchandiseDe
 
   return (
     <div className="space-y-6">
+      {/* ── Environment Configuration Banner ─────────────────────────────────── */}
+      <Card className="border border-border/70 bg-card/60 p-4 shadow-2xs backdrop-blur-xs">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div
+              className={cn(
+                "flex size-9 shrink-0 items-center justify-center rounded-lg border",
+                currentEnv === "production"
+                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                  : "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400",
+              )}
+            >
+              <ShieldCheck className="size-5" />
+            </div>
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-foreground text-sm">Delivery Fee Payment Environment</span>
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "font-semibold text-[10px]",
+                    currentEnv === "production"
+                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                      : "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+                  )}
+                >
+                  {currentEnv === "production" ? "Live Production" : "Sandbox / Dev"}
+                </Badge>
+              </div>
+              <p className="text-muted-foreground text-xs leading-relaxed">
+                {currentEnv === "production"
+                  ? "Real payments will be generated and processed via DOKU QRIS Production for Rp 50.000 delivery fee."
+                  : "Test mode enabled. Delivery fee requests will generate DOKU Sandbox payment links with mock QRIS testing."}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex shrink-0 items-center gap-2">
+            <Select
+              value={currentEnv}
+              disabled={isSavingEnv}
+              onValueChange={(val: "production" | "sandbox") => void handleUpdateEnvironment(val)}
+            >
+              <SelectTrigger className="h-8 w-[160px] text-xs">
+                <SelectValue placeholder="Select Environment" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="production" className="text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="size-2 rounded-full bg-emerald-500" />
+                    <span>Live Production</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="sandbox" className="text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="size-2 rounded-full bg-amber-500" />
+                    <span>Sandbox / Dev</span>
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className="h-8 gap-1.5 px-3 text-xs"
+            >
+              <RefreshCw className={cn("size-3.5", isRefreshing && "animate-spin")} />
+              Refresh
+            </Button>
+          </div>
+        </div>
+      </Card>
+
       {/* ── Metric Cards ─────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
         <Card className="p-3 shadow-2xs">
@@ -390,7 +499,7 @@ export function MerchandiseDeliveryTab({ event: _event, eventId }: MerchandiseDe
                         <span className="font-medium font-mono text-foreground">
                           Rp {(req.fee_amount || 50000).toLocaleString("id-ID")}
                         </span>
-                        <div>
+                        <div className="flex flex-wrap items-center gap-1">
                           <Badge
                             variant="outline"
                             className={cn(
@@ -402,6 +511,21 @@ export function MerchandiseDeliveryTab({ event: _event, eventId }: MerchandiseDe
                           >
                             {req.payment_status === "paid" ? "Paid ✓" : "Unpaid"}
                           </Badge>
+                          {req.payment_environment === "sandbox" ? (
+                            <Badge
+                              variant="outline"
+                              className="border-amber-500/30 bg-amber-500/10 px-1 py-0 text-[9px] text-amber-700 dark:text-amber-300"
+                            >
+                              Sandbox
+                            </Badge>
+                          ) : req.payment_environment === "production" ? (
+                            <Badge
+                              variant="outline"
+                              className="border-emerald-500/30 bg-emerald-500/10 px-1 py-0 text-[9px] text-emerald-700 dark:text-emerald-300"
+                            >
+                              Live
+                            </Badge>
+                          ) : null}
                         </div>
                       </div>
                     </TableCell>

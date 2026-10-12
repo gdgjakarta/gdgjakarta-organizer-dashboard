@@ -250,6 +250,7 @@ export interface FirestoreEvent {
   vouchers?: EventVoucher[];
   webhook_url?: string | null;
   payment_environment?: "production" | "sandbox";
+  merchandise_delivery_payment_environment?: "production" | "sandbox";
   payment_webhook_url?: string | null;
   registration_status?: "Draft" | "Published" | "Closed";
   registration_start_date?: string | null;
@@ -341,6 +342,7 @@ export interface MerchandiseDeliveryRequest {
   // Distribution & commitment cutting fee (Rp 50.000)
   fee_amount: number; // 50000
   payment_status: "unpaid" | "pending" | "paid" | "failed";
+  payment_environment?: "production" | "sandbox";
   payment_url?: string;
   payment_invoice_number?: string;
   paid_at?: string;

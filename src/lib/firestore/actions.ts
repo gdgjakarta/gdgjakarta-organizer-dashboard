@@ -434,13 +434,17 @@ export async function submitMerchandiseDeliveryRequestAction(input: SubmitMercha
 
     let isProduction: boolean | undefined;
     let paymentWebhookUrl: string | undefined;
+    let deliveryPaymentEnv: "production" | "sandbox" = "production";
 
     try {
       const eventDoc = await getFirestoreEventById(String(input.eventId));
-      if (eventDoc?.payment_environment === "production") {
-        isProduction = true;
-      } else if (eventDoc?.payment_environment === "sandbox") {
+      const configuredEnv = eventDoc?.merchandise_delivery_payment_environment ?? eventDoc?.payment_environment;
+      if (configuredEnv === "sandbox" || (!configuredEnv && eventDoc?.is_test)) {
+        deliveryPaymentEnv = "sandbox";
         isProduction = false;
+      } else {
+        deliveryPaymentEnv = "production";
+        isProduction = true;
       }
       paymentWebhookUrl = eventDoc?.payment_webhook_url ?? undefined;
     } catch {
@@ -509,6 +513,7 @@ export async function submitMerchandiseDeliveryRequestAction(input: SubmitMercha
       requested_at: now,
       fee_amount: 50000,
       payment_status: payResult.success && payResult.paymentUrl ? "pending" : "unpaid",
+      payment_environment: deliveryPaymentEnv,
       payment_url: payResult.paymentUrl,
       payment_invoice_number: payResult.invoiceNumber,
       updated_at: now,
@@ -526,6 +531,7 @@ export async function submitMerchandiseDeliveryRequestAction(input: SubmitMercha
       deliveryRequest,
       paymentUrl: payResult.paymentUrl,
       invoiceNumber: payResult.invoiceNumber,
+      paymentEnvironment: deliveryPaymentEnv,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to submit merchandise delivery request.";
@@ -671,5 +677,27 @@ export async function fetchEventMerchandiseDeliveryRequestsAction(eventId: strin
   } catch (err) {
     console.error("[fetchEventMerchandiseDeliveryRequestsAction] error:", err);
     return [];
+  }
+}
+
+/**
+ * Updates the event's merchandise delivery payment environment (production vs sandbox).
+ */
+export async function updateEventMerchandiseDeliveryConfigAction(
+  eventId: string,
+  environment: "production" | "sandbox",
+) {
+  try {
+    const { updateEventMerchandiseDeliveryConfig } = await import("./client");
+    await updateEventMerchandiseDeliveryConfig(eventId, environment);
+    await revalidateDashboardPath(`/dashboard/events/${eventId}`);
+    await revalidateDashboardPath("/dashboard/events");
+    await revalidateDashboardPath("/dashboard/member/my-events");
+    await revalidateDashboardPath(`/dashboard/member/events/${eventId}`);
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to update delivery environment.";
+    console.error("[updateEventMerchandiseDeliveryConfigAction] error:", message);
+    return { success: false, error: message };
   }
 }

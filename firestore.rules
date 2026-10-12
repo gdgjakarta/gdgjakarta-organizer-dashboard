@@ -94,6 +94,7 @@ service cloud.firestore {
     //       - payment_status: string (required) - Payment status ('unpaid'|'pending'|'paid'|'failed')
     //       - payment_url: string|null (optional, <= 2000 chars) - Payment link
     //       - payment_invoice_number: string|null (optional, <= 128 chars) - Payment invoice reference
+    //       - payment_environment: string|null (optional) - Payment environment ('production'|'sandbox')
     //       - paid_at: string|null (optional, <= 50 chars) - Payment confirmation timestamp
     //       - courier_type: string|null (optional, <= 50 chars) - Courier service code
     //       - tracking_number: string|null (optional, <= 128 chars) - Package tracking number / resi
@@ -145,6 +146,9 @@ service cloud.firestore {
     //   - speakers: list|null (optional, <= 50 items) - Event featured speakers
     //   - sessions: list|null (optional, <= 30 items) - Event agenda / breakout sessions
     //   - webhook_url: string|null (optional, <= 2000 chars) - Webhook integration URL
+    //   - payment_webhook_url: string|null (optional, <= 2000 chars) - Payment webhook URL
+    //   - payment_environment: string|null (optional) - Payment environment ('production'|'sandbox')
+    //   - merchandise_delivery_payment_environment: string|null (optional) - Delivery fee payment environment ('production'|'sandbox')
     //   - registration_status: string|null (optional) - Registration window status ('Draft'|'Published'|'Closed')
     //   - registration_start_date: string|null (optional, <= 50 chars) - Registration start date ISO string
     //   - registration_end_date: string|null (optional, <= 50 chars) - Registration end date ISO string
@@ -323,7 +327,7 @@ service cloud.firestore {
         req.keys().hasOnly([
           'id', 'status', 'recipient_name', 'recipient_phone', 'shipping_address',
           'city', 'postal_code', 'notes', 'requested_at', 'fee_amount',
-          'payment_status', 'payment_url', 'payment_invoice_number', 'paid_at',
+          'payment_status', 'payment_url', 'payment_invoice_number', 'payment_environment', 'paid_at',
           'courier_type', 'tracking_number', 'tracking_url', 'delivery_proof_url',
           'dispatched_at', 'delivered_at', 'rejection_reason',
           'reviewed_by_id', 'reviewed_by_name', 'reviewed_at', 'updated_at'
@@ -342,6 +346,7 @@ service cloud.firestore {
         (!('notes' in req) || req.notes == null || (req.notes is string && req.notes.size() <= 1000)) &&
         (!('payment_url' in req) || req.payment_url == null || (req.payment_url is string && req.payment_url.size() <= 2000)) &&
         (!('payment_invoice_number' in req) || req.payment_invoice_number == null || (req.payment_invoice_number is string && req.payment_invoice_number.size() <= 128)) &&
+        (!('payment_environment' in req) || req.payment_environment == null || (req.payment_environment is string && (req.payment_environment in ['production', 'sandbox']))) &&
         (!('paid_at' in req) || req.paid_at == null || (req.paid_at is string && req.paid_at.size() <= 50)) &&
         (!('courier_type' in req) || req.courier_type == null || (req.courier_type is string && req.courier_type.size() <= 50)) &&
         (!('tracking_number' in req) || req.tracking_number == null || (req.tracking_number is string && req.tracking_number.size() <= 128)) &&
@@ -448,6 +453,7 @@ service cloud.firestore {
           'venue', 'url', 'static_url', 'tags', 'is_hidden', 'is_test', 'requires_approval', 'curation_mode',
           'max_attendees', 'total_registrations', 'total_approved', 'total_checked_in', 'total_waitlisted',
           'custom_questions', 'agenda', 'speakers', 'sessions', 'webhook_url',
+          'payment_webhook_url', 'payment_environment', 'merchandise_delivery_payment_environment',
           'registration_status', 'registration_start_date', 'registration_end_date',
           'tickets', 'max_tickets_per_person', 'merchandise', 'max_merchandise_per_person',
           'highlight_video_url', 'highlight_video_title', 'photo_album_url', 'photo_album_title', 'recap_description',
@@ -484,6 +490,9 @@ service cloud.firestore {
         (!('speakers' in data) || data.speakers == null || (data.speakers is list && data.speakers.size() <= 50)) &&
         (!('sessions' in data) || data.sessions == null || (data.sessions is list && data.sessions.size() <= 30)) &&
         (!('webhook_url' in data) || data.webhook_url == null || (data.webhook_url is string && data.webhook_url.size() <= 2000)) &&
+        (!('payment_webhook_url' in data) || data.payment_webhook_url == null || (data.payment_webhook_url is string && data.payment_webhook_url.size() <= 2000)) &&
+        (!('payment_environment' in data) || data.payment_environment == null || (data.payment_environment is string && (data.payment_environment in ['production', 'sandbox']))) &&
+        (!('merchandise_delivery_payment_environment' in data) || data.merchandise_delivery_payment_environment == null || (data.merchandise_delivery_payment_environment is string && (data.merchandise_delivery_payment_environment in ['production', 'sandbox']))) &&
         (!('max_attendees' in data) || data.max_attendees == null || ((data.max_attendees is int || data.max_attendees is float) && data.max_attendees >= 0)) &&
         (!('total_registrations' in data) || data.total_registrations == null || ((data.total_registrations is int || data.total_registrations is float) && data.total_registrations >= 0)) &&
         (!('total_approved' in data) || data.total_approved == null || ((data.total_approved is int || data.total_approved is float) && data.total_approved >= 0)) &&

@@ -1294,3 +1294,20 @@ export async function getEventMerchandiseDeliveryRequests(eventId: string): Prom
   const registrations = await getEventRegistrations(eventId);
   return registrations.filter((r) => Boolean(r.delivery_request));
 }
+
+/**
+ * Updates the merchandise delivery payment environment configuration on the event document.
+ */
+export async function updateEventMerchandiseDeliveryConfig(
+  eventId: string,
+  environment: "production" | "sandbox",
+): Promise<void> {
+  if (typeof window === "undefined") return;
+  const eventRef = doc(db, "events", String(eventId));
+  const updatePayload: Record<string, unknown> = {
+    merchandise_delivery_payment_environment: environment,
+    updated_at: new Date().toISOString(),
+  };
+  const sanitized = sanitizeFirestoreData(updatePayload);
+  await setDoc(eventRef, sanitized, { merge: true });
+}
