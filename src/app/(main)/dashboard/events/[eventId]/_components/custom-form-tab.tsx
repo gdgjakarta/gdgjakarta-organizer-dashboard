@@ -57,9 +57,12 @@ import {
   CURATED_MULTI_PAID_TEMPLATE,
   DEFAULT_COMBINED_QUESTIONS,
   DEFAULT_GDG_SESSIONS,
+  DEFAULT_PAYMENT_DETAILS_QUESTIONS,
+  detectDuplicateRegistrationFields,
   EVENT_FORMAT_TEMPLATES,
   FREE_REGISTRATION_TEMPLATE,
   getRegistrationWindowStatus,
+  hasPaidTicketOrMerchandise,
   MULTI_TRACK_TEMPLATE,
   PAID_REGISTRATION_TEMPLATE,
   QUICK_RSVP_TEMPLATE,
@@ -154,9 +157,87 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
   // 6. Event Tickets (Configured via Ticket Tiers or Format Template Presets)
   const [tickets, setTickets] = useState<EventTicketTier[]>(() => event.tickets ?? []);
 
+  // Payment detection (paid tickets, commitment fees, or paid merchandise)
+  const isPaymentRequired = useMemo(() => {
+    return hasPaidTicketOrMerchandise({
+      tickets,
+      merchandise: event.merchandise,
+      bundles: event.bundles,
+    });
+  }, [tickets, event.merchandise, event.bundles]);
+
+  // Duplicate registration fields report
+  const duplicateReport = useMemo(() => {
+    return detectDuplicateRegistrationFields(questions);
+  }, [questions]);
+
   // 7. Form Snapshot & Dirty State Tracking
   const [isInitialLoaded, setIsInitialLoaded] = useState(false);
   const initialSnapshotRef = useRef<string | null>(null);
+
+  // Auto-inject locked Payment Details questions when payment is detected
+  useEffect(() => {
+    if (!isInitialLoaded) return;
+    if (isPaymentRequired) {
+      setQuestions((prev) => {
+        const hasPaymentDetails = prev.some((q) => q.section === "Payment Details" || q.is_payment_required_field);
+        if (hasPaymentDetails) return prev;
+
+        // Automatically inject locked Payment Details questions at the beginning
+        // and remove duplicate non-payment questions for full_name, email, whatsapp to keep it clean
+        const otherQuestions = prev.filter(
+          (q) =>
+            q.id !== "full_name" &&
+            q.id !== "email" &&
+            q.id !== "whatsapp" &&
+            q.label.toLowerCase() !== "full name" &&
+            q.label.toLowerCase() !== "email address" &&
+            q.label.toLowerCase() !== "whatsapp phone number",
+        );
+        return [...DEFAULT_PAYMENT_DETAILS_QUESTIONS, ...otherQuestions];
+      });
+    }
+  }, [isPaymentRequired, isInitialLoaded]);
+
+  const handleRemoveDuplicateQuestions = () => {
+    setQuestions((prev) => {
+      const paymentQuestions = prev.filter((q) => q.section === "Payment Details" || q.is_payment_required_field);
+      if (paymentQuestions.length === 0) return prev;
+
+      const hasPaymentName = paymentQuestions.some(
+        (q) => q.id === "full_name" || q.label.toLowerCase().includes("full name"),
+      );
+      const hasPaymentEmail = paymentQuestions.some(
+        (q) => q.id === "email" || q.label.toLowerCase() === "email" || q.label.toLowerCase() === "email address",
+      );
+      const hasPaymentPhone = paymentQuestions.some(
+        (q) =>
+          q.id === "whatsapp" || q.label.toLowerCase().includes("whatsapp") || q.label.toLowerCase().includes("phone"),
+      );
+
+      const filtered = prev.filter((q) => {
+        if (q.section === "Payment Details" || q.is_payment_required_field) return true;
+        // Keep work_email intact
+        if (q.id === "work_email" || q.label.toLowerCase().includes("work email")) return true;
+
+        const lower = q.label.toLowerCase();
+        if (
+          hasPaymentName &&
+          (q.id === "full_name" ||
+            (lower.includes("full name") && !lower.includes("billing") && !lower.includes("receipt")))
+        ) {
+          return false;
+        }
+        if (hasPaymentEmail && (q.id === "email" || lower === "email" || lower === "email address")) return false;
+        if (hasPaymentPhone && (q.id === "whatsapp" || lower.includes("whatsapp"))) return false;
+
+        return true;
+      });
+
+      toast.success("Removed duplicate questions from other sections.");
+      return filtered;
+    });
+  };
 
   const currentSnapshot = useMemo(() => {
     return JSON.stringify({
@@ -617,6 +698,13 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
     return new Promise((resolve) => {
       startTransition(async () => {
         try {
+          if (duplicateReport.hasDuplicates) {
+            toast.warning(
+              `Duplicate registration fields detected (${duplicateReport.duplicateLabels.join(", ")}). Consider removing duplicates from other sections.`,
+              { duration: 6000 },
+            );
+          }
+
           const { deleteField, saveFirestoreEvent } = await import("@/lib/firestore/client");
 
           let resolvedMaxAttendees: number | ReturnType<typeof deleteField>;
@@ -1617,6 +1705,37 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
         </CardHeader>
 
         <CardContent className="space-y-4">
+          {duplicateReport.hasDuplicates && (
+            <div className="flex flex-col gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-amber-900 dark:text-amber-200">
+              <div className="flex items-center gap-2 font-medium text-xs">
+                <AlertTriangle className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                <span>Duplicate registration fields detected ({duplicateReport.duplicateLabels.join(", ")})</span>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Payment Details already collects the required Full Name, Email Address, and WhatsApp Phone Number.
+                Having duplicate fields in other sections may confuse attendees.
+              </p>
+              {duplicateReport.duplicateDetails.length > 0 && (
+                <ul className="list-disc pl-5 text-[11px] text-muted-foreground space-y-0.5">
+                  {duplicateReport.duplicateDetails.map((detail, idx) => (
+                    <li key={idx}>{detail}</li>
+                  ))}
+                </ul>
+              )}
+              <div className="pt-1">
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="outline"
+                  className="h-7 text-xs border-amber-500/40 hover:bg-amber-500/20"
+                  onClick={handleRemoveDuplicateQuestions}
+                >
+                  Remove Duplicates from Other Sections
+                </Button>
+              </div>
+            </div>
+          )}
+
           {questions.length === 0 ? (
             <div className="rounded-lg border border-dashed py-8 text-center text-muted-foreground text-sm">
               No custom questions configured. Registrants will only submit their member profile.

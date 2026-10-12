@@ -1,4 +1,10 @@
-import type { CustomQuestion, EventSession, EventTicketTier, FirestoreEvent } from "@/lib/firestore/types";
+import type {
+  CustomQuestion,
+  EventMerchandiseItem,
+  EventSession,
+  EventTicketTier,
+  FirestoreEvent,
+} from "@/lib/firestore/types";
 
 import { getRecommendedTicketsForFormat } from "./ticket-templates";
 
@@ -6,6 +12,7 @@ import { getRecommendedTicketsForFormat } from "./ticket-templates";
  * Section definitions for structuring the combined registration form.
  */
 export const REGISTRATION_SECTIONS = [
+  "Payment Details",
   "Payment & Ticket Details",
   "Commitment Fee & Attendance",
   "Personal & Contact Information",
@@ -14,6 +21,160 @@ export const REGISTRATION_SECTIONS = [
   "Expectations & Community",
   "Consent & Code of Conduct",
 ] as const;
+
+/**
+ * Standard locked payment details questions required for paid passes, commitment fees, or merchandise.
+ * These cannot be modified or deleted by organizers to preserve ticketing and invoice delivery integrity.
+ */
+export const DEFAULT_PAYMENT_DETAILS_QUESTIONS: CustomQuestion[] = [
+  {
+    id: "full_name",
+    label: "Full Name",
+    type: "text",
+    required: true,
+    placeholder: "e.g. John Doe",
+    description: "Official attendee name for payment receipt, ticket pass issuance, and badge printing.",
+    section: "Payment Details",
+    locked: true,
+    is_payment_required_field: true,
+  },
+  {
+    id: "email",
+    label: "Email Address",
+    type: "text",
+    required: true,
+    placeholder: "e.g. name@example.com",
+    description: "Payment confirmation invoice, DOKU payment link, and e-ticket pass will be delivered here.",
+    section: "Payment Details",
+    validation_type: "isEmail",
+    locked: true,
+    is_payment_required_field: true,
+  },
+  {
+    id: "whatsapp",
+    label: "WhatsApp Phone Number",
+    type: "text",
+    required: true,
+    placeholder: "e.g. 628123444555",
+    description: "Required for payment link dispatch, check-in QR coordination, and checkpoint updates.",
+    section: "Payment Details",
+    validation_type: "isWhatsappNumber",
+    locked: true,
+    is_payment_required_field: true,
+  },
+];
+
+/**
+ * Checks whether an event configuration requires payment details (paid tickets, commitment fees, or paid merchandise).
+ */
+export function hasPaidTicketOrMerchandise(eventOrConfig: {
+  tickets?: EventTicketTier[] | null;
+  merchandise?: EventMerchandiseItem[] | null;
+  bundles?: { price?: number }[] | null;
+}): boolean {
+  const hasPaidTicket = (eventOrConfig.tickets ?? []).some(
+    (t) => t.type === "paid" || t.type === "commitment_fee" || (t.price ?? 0) > 0,
+  );
+  const hasPaidBundle = (eventOrConfig.bundles ?? []).some((b) => (b.price ?? 0) > 0);
+  const hasPaidMerch = (eventOrConfig.merchandise ?? []).some((m) => !m.is_free && (m.price ?? 0) > 0);
+  return hasPaidTicket || hasPaidBundle || hasPaidMerch;
+}
+
+export interface DuplicateFieldReport {
+  hasDuplicates: boolean;
+  duplicateLabels: string[];
+  duplicateDetails: string[];
+}
+
+/**
+ * Detects duplicate registration questions (such as duplicate Full Name, Email, or WhatsApp questions)
+ * across sections to warn organizers when saving changes.
+ */
+export function detectDuplicateRegistrationFields(questions: CustomQuestion[]): DuplicateFieldReport {
+  const duplicateLabels: string[] = [];
+  const duplicateDetails: string[] = [];
+
+  // Check 1: Duplicate labels
+  const labelCounts = new Map<string, number>();
+  for (const q of questions) {
+    const norm = q.label.trim().toLowerCase();
+    if (norm) {
+      labelCounts.set(norm, (labelCounts.get(norm) ?? 0) + 1);
+    }
+  }
+  for (const [norm, count] of labelCounts.entries()) {
+    if (count > 1) {
+      const original = questions.find((q) => q.label.trim().toLowerCase() === norm)?.label || norm;
+      if (!duplicateLabels.includes(original)) {
+        duplicateLabels.push(original);
+        duplicateDetails.push(`Multiple questions (${count}) share the label "${original}".`);
+      }
+    }
+  }
+
+  // Check 2: If Payment Details exists, check if other sections duplicate Name, primary Email, or WhatsApp
+  const paymentQuestions = questions.filter((q) => q.section === "Payment Details" || q.is_payment_required_field);
+  const otherQuestions = questions.filter((q) => q.section !== "Payment Details" && !q.is_payment_required_field);
+
+  if (paymentQuestions.length > 0) {
+    const hasPaymentName = paymentQuestions.some(
+      (q) => q.id === "full_name" || q.label.toLowerCase().includes("full name"),
+    );
+    const hasPaymentEmail = paymentQuestions.some(
+      (q) => q.id === "email" || q.label.toLowerCase() === "email" || q.label.toLowerCase() === "email address",
+    );
+    const hasPaymentPhone = paymentQuestions.some(
+      (q) =>
+        q.id === "whatsapp" || q.label.toLowerCase().includes("whatsapp") || q.label.toLowerCase().includes("phone"),
+    );
+
+    for (const other of otherQuestions) {
+      const lower = other.label.toLowerCase();
+      // Duplicate name check
+      if (
+        hasPaymentName &&
+        (other.id === "full_name" ||
+          (lower.includes("full name") && !lower.includes("billing") && !lower.includes("receipt")))
+      ) {
+        if (!duplicateLabels.includes(other.label)) {
+          duplicateLabels.push(other.label);
+          duplicateDetails.push(
+            `"${other.label}" in section "${other.section || "General"}" duplicates the required Full Name in Payment Details.`,
+          );
+        }
+      }
+      // Duplicate primary email check (do not flag work email)
+      if (
+        hasPaymentEmail &&
+        (other.id === "email" || lower === "email" || lower === "email address") &&
+        other.id !== "work_email" &&
+        !lower.includes("work email")
+      ) {
+        if (!duplicateLabels.includes(other.label)) {
+          duplicateLabels.push(other.label);
+          duplicateDetails.push(
+            `"${other.label}" in section "${other.section || "General"}" duplicates Email Address in Payment Details.`,
+          );
+        }
+      }
+      // Duplicate whatsapp check
+      if (hasPaymentPhone && (other.id === "whatsapp" || lower.includes("whatsapp"))) {
+        if (!duplicateLabels.includes(other.label)) {
+          duplicateLabels.push(other.label);
+          duplicateDetails.push(
+            `"${other.label}" in section "${other.section || "General"}" duplicates WhatsApp Phone Number in Payment Details.`,
+          );
+        }
+      }
+    }
+  }
+
+  return {
+    hasDuplicates: duplicateLabels.length > 0,
+    duplicateLabels,
+    duplicateDetails,
+  };
+}
 
 /**
  * Elaborated Default Registration Questionnaire combining Road to DevFest and Common Event forms.
@@ -465,35 +626,7 @@ export const FREE_REGISTRATION_TEMPLATE: CustomQuestion[] = [
  * Note: Ticket tier selection is handled in Step 1 of registration. Payment is processed via DOKU payment link.
  */
 export const PAID_REGISTRATION_TEMPLATE: CustomQuestion[] = [
-  {
-    id: "full_name",
-    label: "Full Name",
-    type: "text",
-    required: true,
-    placeholder: "e.g. John Doe",
-    description: "Official attendee name for pass issuance, event check-in, and badge printing.",
-    section: "Personal & Contact Information",
-  },
-  {
-    id: "email",
-    label: "Email Address",
-    type: "text",
-    required: true,
-    placeholder: "e.g. name@example.com",
-    description: "DOKU payment link, e-ticket, and invoice receipt will be delivered to this email address.",
-    section: "Personal & Contact Information",
-    validation_type: "isEmail",
-  },
-  {
-    id: "whatsapp",
-    label: "WhatsApp Phone Number",
-    type: "text",
-    required: true,
-    placeholder: "e.g. 628123444555",
-    description: "For payment confirmation, e-ticket dispatch, emergency updates, and check-in QR coordination.",
-    section: "Personal & Contact Information",
-    validation_type: "isWhatsappNumber",
-  },
+  ...DEFAULT_PAYMENT_DETAILS_QUESTIONS,
   {
     id: "role_or_title",
     label: "Current Role / Occupation",
@@ -562,35 +695,7 @@ export const PAID_REGISTRATION_TEMPLATE: CustomQuestion[] = [
  * Deposit pass is paid via payment link; 100% refunded in cash upon physical on-site check-in at venue desk.
  */
 export const COMMITMENT_FEE_TEMPLATE: CustomQuestion[] = [
-  {
-    id: "full_name",
-    label: "Full Name",
-    type: "text",
-    required: true,
-    placeholder: "e.g. John Doe",
-    description: "Official attendee name for registration check-in desk and commitment refund.",
-    section: "Personal & Contact Information",
-  },
-  {
-    id: "email",
-    label: "Email Address",
-    type: "text",
-    required: true,
-    placeholder: "e.g. name@example.com",
-    description: "Commitment fee payment invoice and check-in barcode will be sent to this email.",
-    section: "Personal & Contact Information",
-    validation_type: "isEmail",
-  },
-  {
-    id: "whatsapp",
-    label: "WhatsApp Phone Number",
-    type: "text",
-    required: true,
-    placeholder: "e.g. 628123444555",
-    description: "For check-in verification and commitment fee cash return desk.",
-    section: "Personal & Contact Information",
-    validation_type: "isWhatsappNumber",
-  },
+  ...DEFAULT_PAYMENT_DETAILS_QUESTIONS,
   {
     id: "role_or_title",
     label: "Current Role / Occupation",
@@ -876,15 +981,7 @@ export const CURATED_REGISTRATION_TEMPLATE: CustomQuestion[] = CURATED_FREE_TEMP
  * Combines organizer curation review (Work Email + LinkedIn Profile) with refundable commitment fee.
  */
 export const CURATED_COMMITMENT_FEE_TEMPLATE: CustomQuestion[] = [
-  {
-    id: "full_name",
-    label: "Full Name",
-    type: "text",
-    required: true,
-    placeholder: "e.g. John Doe",
-    description: "Official attendee name for curation review, check-in, and commitment fee refund.",
-    section: "Personal & Contact Information",
-  },
+  ...DEFAULT_PAYMENT_DETAILS_QUESTIONS,
   {
     id: "work_email",
     label: "Work Email (Mandatory for Curation)",
@@ -905,16 +1002,6 @@ export const CURATED_COMMITMENT_FEE_TEMPLATE: CustomQuestion[] = [
       "Public LinkedIn profile for organizing committee review. Note: Profile must not be a private account so organizers can review and verify your background.",
     section: "Personal & Contact Information",
     validation_type: "isLinkedInProfileUrl",
-  },
-  {
-    id: "whatsapp",
-    label: "WhatsApp Phone Number",
-    type: "text",
-    required: true,
-    placeholder: "e.g. 628123444555",
-    description: "For check-in coordination and commitment fee refund desk.",
-    section: "Personal & Contact Information",
-    validation_type: "isWhatsappNumber",
   },
   {
     id: "portfolio_github_url",
@@ -1136,15 +1223,7 @@ export const CURATED_COMBINED_SESSIONS_TEMPLATE: CustomQuestion[] = CURATED_MULT
  * Combines multi-track capacity split, mandatory Work Email & LinkedIn curation, and refundable commitment fee.
  */
 export const CURATED_MULTI_COMMITMENT_TEMPLATE: CustomQuestion[] = [
-  {
-    id: "full_name",
-    label: "Full Name",
-    type: "text",
-    required: true,
-    placeholder: "e.g. John Doe",
-    description: "Official attendee name for session track curation, badges, and commitment fee refund.",
-    section: "Personal & Contact Information",
-  },
+  ...DEFAULT_PAYMENT_DETAILS_QUESTIONS,
   {
     id: "work_email",
     label: "Work Email (Mandatory for Curation)",
@@ -1165,16 +1244,6 @@ export const CURATED_MULTI_COMMITMENT_TEMPLATE: CustomQuestion[] = [
       "Public LinkedIn profile for organizing committee review. Note: Profile must not be a private account so organizers can review and verify your background.",
     section: "Personal & Contact Information",
     validation_type: "isLinkedInProfileUrl",
-  },
-  {
-    id: "whatsapp",
-    label: "WhatsApp Phone Number",
-    type: "text",
-    required: true,
-    placeholder: "e.g. 628123444555",
-    description: "For session track checkpoint coordination and commitment fee return desk.",
-    section: "Personal & Contact Information",
-    validation_type: "isWhatsappNumber",
   },
   {
     id: "portfolio_github_url",
@@ -1259,15 +1328,7 @@ export const CURATED_MULTI_COMMITMENT_TEMPLATE: CustomQuestion[] = [
  * Note: Ticket tier selection is performed in Step 1. Payment is processed upon organizer approval.
  */
 export const CURATED_MULTI_PAID_TEMPLATE: CustomQuestion[] = [
-  {
-    id: "full_name",
-    label: "Full Name",
-    type: "text",
-    required: true,
-    placeholder: "e.g. John Doe",
-    description: "Official attendee name for pass issuance, event check-in, and badge printing.",
-    section: "Personal & Contact Information",
-  },
+  ...DEFAULT_PAYMENT_DETAILS_QUESTIONS,
   {
     id: "work_email",
     label: "Work Email (Mandatory for Curation)",
@@ -1288,16 +1349,6 @@ export const CURATED_MULTI_PAID_TEMPLATE: CustomQuestion[] = [
       "Public LinkedIn profile for organizing committee review. Note: Profile must not be a private account so organizers can review and verify your background.",
     section: "Personal & Contact Information",
     validation_type: "isLinkedInProfileUrl",
-  },
-  {
-    id: "whatsapp",
-    label: "WhatsApp Phone Number",
-    type: "text",
-    required: true,
-    placeholder: "e.g. 628123444555",
-    description: "For e-ticket dispatch and check-in QR coordination.",
-    section: "Personal & Contact Information",
-    validation_type: "isWhatsappNumber",
   },
   {
     id: "portfolio_github_url",

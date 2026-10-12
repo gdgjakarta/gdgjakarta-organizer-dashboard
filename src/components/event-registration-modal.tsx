@@ -262,13 +262,29 @@ export function EventRegistrationModal({
   // Pre-fill user profile fields when modal opens
   useEffect(() => {
     if (open && user) {
-      setAnswers((prev) => ({
-        ...prev,
-        full_name: (prev.full_name as string) || (prev.name as string) || user.name || "",
-        name: (prev.name as string) || (prev.full_name as string) || user.name || "",
-        work_email: (prev.work_email as string) || (prev.email as string) || user.email || "",
-        email: (prev.email as string) || (prev.work_email as string) || user.email || "",
-      }));
+      const currentUser = user;
+      async function prefillMemberData() {
+        let memberPhone = "";
+        try {
+          const { getFirestoreMemberById } = await import("@/lib/firestore/client");
+          const memberDoc = await getFirestoreMemberById(currentUser.id);
+          if (memberDoc?.phone) {
+            memberPhone = memberDoc.phone;
+          }
+        } catch (err) {
+          console.warn("[EventRegistrationModal] Failed to load member profile:", err);
+        }
+
+        setAnswers((prev) => ({
+          ...prev,
+          full_name: (prev.full_name as string) || (prev.name as string) || currentUser.name || "",
+          name: (prev.name as string) || (prev.full_name as string) || currentUser.name || "",
+          email: (prev.email as string) || currentUser.email || "",
+          ...(memberPhone && !prev.whatsapp ? { whatsapp: memberPhone } : {}),
+          // Keep work_email untouched by personal user.email
+        }));
+      }
+      void prefillMemberData();
     }
   }, [open, user]);
 
@@ -425,90 +441,98 @@ export function EventRegistrationModal({
         ? [...eventConfig.custom_questions]
         : [...DEFAULT_COMBINED_QUESTIONS];
 
-    // On Paid Pass ticket or any merchandise purchase, ensure that name, email, and phone are required
+    // For Paid Pass, Paid Event, Commitment Fee Ticket, or Free Event with Merchandise:
+    // Add default questions with section "Payment Details" that cannot be changed or removed by organizers.
+    // NEVER override existing custom questions (like work_email or custom questions containing "email").
     if (isPaymentRequired) {
-      const hasPhone = base.some(
-        (q) =>
-          q.id === "whatsapp" ||
-          q.id === "phone" ||
-          q.id === "whatsapp_number" ||
-          q.id === "phone_number" ||
-          q.label.toLowerCase().includes("whatsapp") ||
-          q.label.toLowerCase().includes("phone"),
-      );
+      const hasPaymentSection = base.some((q) => q.section === "Payment Details");
 
-      if (!hasPhone) {
-        base.unshift({
-          id: "whatsapp",
-          label: "WhatsApp Phone Number",
-          type: "text",
-          required: true,
-          placeholder: "e.g. 628123444555",
-          description: "Required for DOKU payment link dispatch, e-ticket issuance, and check-in QR coordination.",
-          section: "Personal & Contact Information",
-          validation_type: "isWhatsappNumber",
-        });
-      } else {
-        base = base.map((q) => {
-          if (
+      if (!hasPaymentSection) {
+        // Find if base had full_name, email, or whatsapp in another section
+        const existingName = base.find((q) => q.id === "full_name");
+        const existingEmail = base.find((q) => q.id === "email");
+        const existingPhone = base.find(
+          (q) =>
             q.id === "whatsapp" ||
             q.id === "phone" ||
             q.id === "whatsapp_number" ||
             q.id === "phone_number" ||
-            q.label.toLowerCase().includes("whatsapp") ||
-            q.label.toLowerCase().includes("phone")
+            q.label.toLowerCase().includes("whatsapp"),
+        );
+
+        const paymentQuestions: CustomQuestion[] = [
+          {
+            id: "full_name",
+            label: existingName?.label || "Full Name",
+            type: "text",
+            required: true,
+            placeholder: existingName?.placeholder || "e.g. John Doe",
+            description: "Official attendee name for payment receipt, ticket pass issuance, and badge printing.",
+            section: "Payment Details",
+            locked: true,
+            is_payment_required_field: true,
+          },
+          {
+            id: "email",
+            label: existingEmail?.label || "Email Address",
+            type: "text",
+            required: true,
+            placeholder: existingEmail?.placeholder || "e.g. name@example.com",
+            description: "Payment confirmation invoice, DOKU payment link, and e-ticket pass will be delivered here.",
+            section: "Payment Details",
+            validation_type: "isEmail",
+            locked: true,
+            is_payment_required_field: true,
+          },
+          {
+            id: "whatsapp",
+            label: existingPhone?.label || "WhatsApp Phone Number",
+            type: "text",
+            required: true,
+            placeholder: existingPhone?.placeholder || "e.g. 628123444555",
+            description: "Required for DOKU payment link dispatch, e-ticket issuance, and check-in QR coordination.",
+            section: "Payment Details",
+            validation_type: "isWhatsappNumber",
+            locked: true,
+            is_payment_required_field: true,
+          },
+        ];
+
+        // Filter out redundant/duplicate full_name, primary email, or phone from other sections
+        // while preserving work_email and other custom questions intact!
+        const remaining = base.filter((q) => {
+          if (q.id === "work_email") return true; // KEEP work_email untouched!
+          if (
+            q.id === "full_name" ||
+            q.id === "email" ||
+            q.id === "whatsapp" ||
+            q.id === "phone" ||
+            q.id === "whatsapp_number" ||
+            q.id === "phone_number"
           ) {
+            return false;
+          }
+          const lower = q.label.toLowerCase();
+          if (lower === "full name" || lower === "email address" || lower === "email") {
+            return false;
+          }
+          if (lower.includes("whatsapp")) {
+            return false;
+          }
+          return true;
+        });
+
+        base = [...paymentQuestions, ...remaining];
+      } else {
+        // Ensure the Payment Details questions have locked: true and required: true
+        base = base.map((q) => {
+          if (q.section === "Payment Details") {
             return {
               ...q,
               required: true,
-              validation_type:
-                q.validation_type && q.validation_type !== "none" ? q.validation_type : "isWhatsappNumber",
+              locked: true,
+              is_payment_required_field: true,
             };
-          }
-          return q;
-        });
-      }
-
-      const hasName = base.some(
-        (q) => q.id === "full_name" || q.id === "name" || q.label.toLowerCase().includes("full name"),
-      );
-      if (!hasName) {
-        base.unshift({
-          id: "full_name",
-          label: "Full Name",
-          type: "text",
-          required: true,
-          placeholder: "e.g. John Doe",
-          description: "Required for ticket pass issuance, badge printing, and invoice receipt.",
-          section: "Personal & Contact Information",
-        });
-      } else {
-        base = base.map((q) => {
-          if (q.id === "full_name" || q.id === "name" || q.label.toLowerCase().includes("full name")) {
-            return { ...q, required: true };
-          }
-          return q;
-        });
-      }
-
-      const hasEmail = base.some(
-        (q) => q.id === "email" || q.id === "work_email" || q.label.toLowerCase().includes("email"),
-      );
-      if (!hasEmail) {
-        base.splice(1, 0, {
-          id: "email",
-          label: "Email Address",
-          type: "text",
-          required: true,
-          placeholder: "e.g. name@example.com",
-          description: "Required for DOKU payment invoice link and ticket delivery.",
-          section: "Personal & Contact Information",
-          validation_type: "isEmail",
-        });
-      } else {
-        base = base.map((q) => {
-          if (q.id === "email" || q.id === "work_email" || q.label.toLowerCase().includes("email")) {
-            return { ...q, required: true };
           }
           return q;
         });

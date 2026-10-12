@@ -45,6 +45,10 @@ export interface CustomQuestion {
   // Other option with custom text input (Google Forms style)
   allow_other?: boolean;
   other_placeholder?: string;
+
+  // System locked question (cannot be removed or altered by organizers)
+  locked?: boolean;
+  is_payment_required_field?: boolean;
 }
 
 export interface SessionRelatedLink {

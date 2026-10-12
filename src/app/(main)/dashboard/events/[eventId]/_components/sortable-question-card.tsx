@@ -56,6 +56,8 @@ export function SortableQuestionCard({
     modifiers: [RestrictToVerticalAxis],
   });
 
+  const isLocked = Boolean(q.locked) || Boolean(q.is_payment_required_field) || q.section === "Payment Details";
+
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [optionsDraft, setOptionsDraft] = useState("");
 
@@ -107,13 +109,22 @@ export function SortableQuestionCard({
 
           <span className="font-semibold text-muted-foreground text-xs uppercase">Question #{index + 1}</span>
 
-          {q.section && (
-            <Badge variant="outline" className="text-[10px]">
-              {q.section}
+          {isLocked ? (
+            <Badge
+              variant="outline"
+              className="border-amber-300 bg-amber-50 text-[10px] text-amber-700 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-400"
+            >
+              Payment Details (Locked)
             </Badge>
+          ) : (
+            q.section && (
+              <Badge variant="outline" className="text-[10px]">
+                {q.section}
+              </Badge>
+            )
           )}
 
-          {q.required && (
+          {q.required && !isLocked && (
             <Badge variant="secondary" className="h-4 px-1 font-medium text-[9px] text-amber-600 dark:text-amber-400">
               Required
             </Badge>
@@ -152,9 +163,10 @@ export function SortableQuestionCard({
             type="button"
             size="icon-sm"
             variant="ghost"
-            className="size-7 text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="size-7 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"
             onClick={() => onDuplicate(q.id)}
-            title="Duplicate question"
+            disabled={isLocked}
+            title={isLocked ? "Payment Details fields cannot be duplicated" : "Duplicate question"}
             aria-label="Duplicate question"
           >
             <Copy className="size-3.5" />
@@ -164,15 +176,22 @@ export function SortableQuestionCard({
             type="button"
             size="icon-sm"
             variant="ghost"
-            className="size-7 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+            className="size-7 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-30"
             onClick={() => onRemove(q.id)}
-            title="Delete question"
+            disabled={isLocked}
+            title={isLocked ? "Payment Details fields cannot be removed" : "Delete question"}
             aria-label="Delete question"
           >
             <Trash2 className="size-3.5" />
           </Button>
         </div>
       </div>
+
+      {isLocked && (
+        <div className="rounded border border-amber-300/40 bg-amber-500/10 px-2.5 py-1 text-[11px] text-amber-800 dark:text-amber-300">
+          Required Payment Details question for attendee ticketing and DOKU invoicing. Cannot be changed or removed.
+        </div>
+      )}
 
       {/* Main Question Fields */}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
@@ -182,6 +201,7 @@ export function SortableQuestionCard({
             <Input
               placeholder="e.g. Primary Tech Stack or Project Idea"
               value={q.label}
+              disabled={isLocked}
               onChange={(e) => onUpdate(q.id, { label: e.target.value })}
             />
           </Field>
@@ -191,7 +211,8 @@ export function SortableQuestionCard({
           <Field>
             <FieldLabel className="text-xs">Section Group</FieldLabel>
             <Select
-              value={q.section ?? "Additional Information"}
+              value={q.section ?? "Payment Details"}
+              disabled={isLocked}
               onValueChange={(val) => onUpdate(q.id, { section: val })}
             >
               <SelectTrigger className="h-9 text-xs">
@@ -212,7 +233,11 @@ export function SortableQuestionCard({
         <div className="md:col-span-2">
           <Field>
             <FieldLabel className="text-xs">Input Type</FieldLabel>
-            <Select value={q.type} onValueChange={(val: CustomQuestion["type"]) => onUpdate(q.id, { type: val })}>
+            <Select
+              value={q.type}
+              disabled={isLocked}
+              onValueChange={(val: CustomQuestion["type"]) => onUpdate(q.id, { type: val })}
+            >
               <SelectTrigger className="h-9 text-xs">
                 <SelectValue />
               </SelectTrigger>
@@ -229,10 +254,17 @@ export function SortableQuestionCard({
         </div>
 
         <div className="flex items-end pb-2 md:col-span-2">
-          <label htmlFor={`required-${q.id}`} className="flex cursor-pointer items-center gap-2 font-medium text-xs">
+          <label
+            htmlFor={`required-${q.id}`}
+            className={cn(
+              "flex items-center gap-2 font-medium text-xs",
+              isLocked ? "cursor-not-allowed opacity-80" : "cursor-pointer",
+            )}
+          >
             <Checkbox
               id={`required-${q.id}`}
-              checked={q.required}
+              checked={isLocked ? true : q.required}
+              disabled={isLocked}
               onCheckedChange={(checked) => onUpdate(q.id, { required: Boolean(checked) })}
             />
             Required
@@ -246,6 +278,7 @@ export function SortableQuestionCard({
           <Input
             placeholder="Guidance shown beneath the question"
             value={q.description ?? ""}
+            disabled={isLocked}
             onChange={(e) => onUpdate(q.id, { description: e.target.value })}
           />
         </Field>
