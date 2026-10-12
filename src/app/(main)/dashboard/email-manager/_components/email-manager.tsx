@@ -4,16 +4,17 @@ import { useState } from "react";
 
 import {
   Activity,
+  Calendar,
   CheckCircle2,
   Code2,
   Copy,
   ExternalLink,
-  FileSpreadsheet,
   Info,
   Layers,
   Send,
   ShieldCheck,
   Sparkles,
+  Users,
   Zap,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -25,29 +26,55 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getBevyDashboardUrl } from "@/config/remote-config-utils";
 
 import { EmailBlastDialog } from "./email-blast-dialog";
+import { EmailBlastForm } from "./email-blast-form";
 
-const standardTags = [
-  { tag: "[[Name]]", description: "Recipient's full name from Google Sheets", example: "Budi Santoso" },
-  { tag: "[[Email]]", description: "Recipient's email address", example: "budi.santoso@example.com" },
+const standardEventTags = [
   {
     tag: "[[EventName]]",
     description: "Auto-populated title of the selected target event",
-    example: "Google I/O Extended Jakarta 2026",
+    example: "Road to DevFest Jakarta 2026",
+  },
+  { tag: "[[EventDate]]", description: "Formatted event date in uppercase", example: "FRIDAY, OCT 23, 2026" },
+  { tag: "[[EventTime]]", description: "Formatted event start time", example: "10:00 AM" },
+  { tag: "[[EventVenue]]", description: "Event venue name and location city", example: "Jakarta Convention Center" },
+  {
+    tag: "[[EventAddress]]",
+    description: "Full street address of the venue",
+    example: "Jl. Jend. Gatot Subroto, Jakarta",
   },
   {
-    tag: "[[AnyColumnHeader]]",
-    description: "Any column name present in your sheet tab",
-    example: "[[TicketType]], [[SeatNumber]], [[Company]]",
+    tag: "[[EventUrl]]",
+    description: "Public landing page link to the event details",
+    example: "https://gdg.community.dev/events/...",
+  },
+  {
+    tag: "[[EventBannerUrl]]",
+    description: "Direct URL of the event hero image",
+    example: "https://assets.gdgjakarta.org/...",
+  },
+  {
+    tag: "[[EventDescription]]",
+    description: "Short overview description of the event",
+    example: "Join the annual flagship GDG Jakarta conference...",
   },
 ];
 
+const standardAttendeeTags = [
+  { tag: "[[Name]]", description: "Recipient's full name from Bevy or Google Sheets", example: "Budi Santoso" },
+  { tag: "[[FirstName]]", description: "Recipient's first given name", example: "Budi" },
+  { tag: "[[LastName]]", description: "Recipient's surname or family name", example: "Santoso" },
+  { tag: "[[Email]]", description: "Recipient's verified email address", example: "budi.santoso@example.com" },
+  { tag: "[[TicketType]]", description: "Registered ticket tier or category", example: "In-Person Pass (Free)" },
+  { tag: "[[CheckinStatus]]", description: "Whether the attendee has checked in", example: "Checked In" },
+];
+
 export function EmailManager() {
-  const [activeTab, setActiveTab] = useState("placeholders");
+  const [activeTab, setActiveTab] = useState("composer");
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     toast.success("Copied to Clipboard", {
-      description: `${text} copied. You can paste it directly into your HTML template.`,
+      description: `${text} copied. You can drag or paste it directly into your HTML template.`,
     });
   };
 
@@ -58,13 +85,13 @@ export function EmailManager() {
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
             <h1 className="font-bold text-3xl tracking-tight">Emails</h1>
-            <Badge variant="secondary" className="gap-1 px-2 py-0.5 text-xs font-semibold">
+            <Badge variant="secondary" className="gap-1 px-2 py-0.5 font-semibold text-xs">
               <Sparkles className="size-3 text-amber-500" />
               Campaign Hub
             </Badge>
           </div>
           <p className="text-muted-foreground text-sm">
-            Manage email communications, subscriber campaigns, and dispatch personalized bulk email blasts.
+            Select published events, filter Bevy attendee audiences, and compose drag-and-drop bulk HTML emails.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -78,7 +105,7 @@ export function EmailManager() {
             trigger={
               <Button size="default" className="gap-2 shadow-xs">
                 <Send className="size-4" />
-                Email Blast
+                Quick Blast Modal
               </Button>
             }
           />
@@ -87,64 +114,66 @@ export function EmailManager() {
 
       {/* Overview Stat Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="bg-linear-to-br from-card to-muted/20 shadow-xs">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="font-medium text-sm text-muted-foreground">Blast Engine</CardTitle>
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <Zap className="size-4" />
+        <Card className="bg-gradient-to-br from-card to-muted/20 shadow-xs">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="font-medium text-muted-foreground text-sm">Target Engine</CardTitle>
+            <div className="flex size-8 items-center justify-center rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400">
+              <Calendar className="size-4" />
             </div>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-2">
-              <span className="font-bold text-2xl tracking-tight">n8n Workflow</span>
-              <Badge
-                variant="outline"
-                className="border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px]"
-              >
-                <span className="mr-1 inline-block size-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                Ready
-              </Badge>
+              <span className="font-bold text-2xl tracking-tight">Published Events</span>
             </div>
-            <p className="mt-1 text-muted-foreground text-xs">Automated delivery pipeline</p>
+            <p className="mt-1 text-muted-foreground text-xs">Live Bevy chapter sync</p>
           </CardContent>
         </Card>
 
         <Card className="bg-gradient-to-br from-card to-muted/20 shadow-xs">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="font-medium text-sm text-muted-foreground">Recipient Sync</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="font-medium text-muted-foreground text-sm">Audience Segments</CardTitle>
             <div className="flex size-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-              <FileSpreadsheet className="size-4" />
+              <Users className="size-4" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="font-bold text-2xl tracking-tight">Google Sheets</div>
-            <p className="mt-1 text-muted-foreground text-xs">Dynamic column header ingestion</p>
+            <div className="font-bold text-2xl tracking-tight">11 Bevy Audiences</div>
+            <p className="mt-1 text-muted-foreground text-xs">Attendees, check-ins, &amp; members</p>
           </CardContent>
         </Card>
 
         <Card className="bg-gradient-to-br from-card to-muted/20 shadow-xs">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="font-medium text-sm text-muted-foreground">Template Engine</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="font-medium text-muted-foreground text-sm">HTML Composer</CardTitle>
             <div className="flex size-8 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
               <Code2 className="size-4" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="font-bold text-2xl tracking-tight">Monaco HTML</div>
-            <p className="mt-1 text-muted-foreground text-xs">Real-time desktop & mobile preview</p>
+            <div className="font-bold text-2xl tracking-tight">Drag &amp; Drop Monaco</div>
+            <p className="mt-1 text-muted-foreground text-xs">Event tokens &amp; live preview</p>
           </CardContent>
         </Card>
 
         <Card className="bg-gradient-to-br from-card to-muted/20 shadow-xs">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="font-medium text-sm text-muted-foreground">Security & Limits</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="font-medium text-muted-foreground text-sm">Delivery Pipeline</CardTitle>
             <div className="flex size-8 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
-              <ShieldCheck className="size-4" />
+              <Zap className="size-4" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="font-bold text-2xl tracking-tight">Encrypted API</div>
-            <p className="mt-1 text-muted-foreground text-xs">Server-side authenticated key storage</p>
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-2xl tracking-tight">n8n Bulk API</span>
+              <Badge
+                variant="outline"
+                className="border-emerald-500/30 bg-emerald-500/10 text-[10px] text-emerald-600 dark:text-emerald-400"
+              >
+                <span className="mr-1 inline-block size-1.5 animate-pulse rounded-full bg-emerald-500" />
+                Active
+              </Badge>
+            </div>
+            <p className="mt-1 text-muted-foreground text-xs">Throttled spam-safe batch queue</p>
           </CardContent>
         </Card>
       </div>
@@ -153,117 +182,166 @@ export function EmailManager() {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <div className="flex items-center justify-between border-b pb-2">
           <TabsList className="h-9">
+            <TabsTrigger value="composer" className="gap-2 text-xs">
+              <Send className="size-3.5" />
+              Bulk Email Composer
+            </TabsTrigger>
             <TabsTrigger value="placeholders" className="gap-2 text-xs">
               <Layers className="size-3.5" />
               Dynamic Placeholders
             </TabsTrigger>
             <TabsTrigger value="documentation" className="gap-2 text-xs">
               <Info className="size-3.5" />
-              Integration & Guide
+              Integration &amp; Guide
             </TabsTrigger>
           </TabsList>
         </div>
 
-        {/* Tab 1: Dynamic Placeholders Guide */}
+        {/* Tab 1: Full-Screen Bulk Email Composer */}
+        <TabsContent value="composer" className="space-y-4 pt-2">
+          <EmailBlastForm />
+        </TabsContent>
+
+        {/* Tab 2: Dynamic Placeholders Guide */}
         <TabsContent value="placeholders" className="space-y-4 pt-2">
           <Card>
             <CardHeader>
               <CardTitle>Supported Dynamic Variables</CardTitle>
               <CardDescription>
-                Use these placeholders in your HTML subject or body. They will be automatically replaced with recipient
-                details when dispatched.
+                Drag and drop these placeholders or click Copy to use them in your HTML subject or body. They are
+                automatically replaced with real event and recipient data when dispatched.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                {standardTags.map((item) => (
-                  <div
-                    key={item.tag}
-                    className="flex flex-col justify-between rounded-lg border p-4 transition-colors hover:bg-muted/40"
-                  >
-                    <div>
-                      <div className="flex items-center justify-between">
-                        <Badge variant="outline" className="font-mono text-xs font-bold text-primary">
-                          {item.tag}
-                        </Badge>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
-                          onClick={() => copyToClipboard(item.tag)}
-                        >
-                          <Copy className="size-3 mr-1" />
-                          Copy
-                        </Button>
+              {/* Event Placeholders */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Calendar className="size-4 text-sky-500" />
+                  <h3 className="font-semibold text-foreground text-sm">Event Data Placeholders</h3>
+                </div>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {standardEventTags.map((item) => (
+                    <div
+                      key={item.tag}
+                      className="flex flex-col justify-between rounded-lg border p-3.5 transition-colors hover:bg-muted/40"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <Badge
+                            variant="outline"
+                            className="font-bold font-mono text-sky-600 text-xs dark:text-sky-400"
+                          >
+                            {item.tag}
+                          </Badge>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-muted-foreground text-xs hover:text-foreground"
+                            onClick={() => copyToClipboard(item.tag)}
+                          >
+                            <Copy className="mr-1 size-3" />
+                            Copy
+                          </Button>
+                        </div>
+                        <p className="mt-2 text-foreground text-sm">{item.description}</p>
                       </div>
-                      <p className="mt-2 text-sm text-foreground">{item.description}</p>
+                      <div className="mt-2.5 rounded-md bg-muted/60 px-2.5 py-1 text-muted-foreground text-xs">
+                        <span className="font-semibold text-foreground/80">Example: </span>
+                        {item.example}
+                      </div>
                     </div>
-                    <div className="mt-3 rounded-md bg-muted/60 px-2.5 py-1.5 text-xs text-muted-foreground">
-                      <span className="font-semibold text-foreground/80">Example Output: </span>
-                      {item.example}
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
 
-              <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-4 text-sm text-blue-700 dark:text-blue-300">
-                <div className="flex items-start gap-2.5">
-                  <Info className="size-5 shrink-0 mt-0.5" />
-                  <div className="space-y-1">
-                    <span className="font-semibold">Automatic Column Tag Detection</span>
-                    <p className="text-xs text-blue-600/90 dark:text-blue-300/90">
-                      When you enter a Google Spreadsheet URL in the Email Blast form and click{" "}
-                      <strong>Fetch Sheets</strong>, all column headers in row 1 are parsed automatically. Click on any
-                      badge above the code editor to insert the tag instantly at your cursor location.
-                    </p>
-                  </div>
+              {/* Attendee Placeholders */}
+              <div className="space-y-3 border-t pt-5">
+                <div className="flex items-center gap-2">
+                  <Users className="size-4 text-emerald-500" />
+                  <h3 className="font-semibold text-foreground text-sm">Attendee Data Placeholders</h3>
+                </div>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {standardAttendeeTags.map((item) => (
+                    <div
+                      key={item.tag}
+                      className="flex flex-col justify-between rounded-lg border p-3.5 transition-colors hover:bg-muted/40"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <Badge
+                            variant="outline"
+                            className="font-bold font-mono text-emerald-600 text-xs dark:text-emerald-400"
+                          >
+                            {item.tag}
+                          </Badge>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-2 text-muted-foreground text-xs hover:text-foreground"
+                            onClick={() => copyToClipboard(item.tag)}
+                          >
+                            <Copy className="mr-1 size-3" />
+                            Copy
+                          </Button>
+                        </div>
+                        <p className="mt-2 text-foreground text-sm">{item.description}</p>
+                      </div>
+                      <div className="mt-2.5 rounded-md bg-muted/60 px-2.5 py-1 text-muted-foreground text-xs">
+                        <span className="font-semibold text-foreground/80">Example: </span>
+                        {item.example}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* Tab 2: Documentation & Integration Guide */}
+        {/* Tab 3: Documentation & Integration Guide */}
         <TabsContent value="documentation" className="space-y-4 pt-2">
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             <Card>
               <CardHeader>
                 <div className="flex items-center gap-2">
-                  <FileSpreadsheet className="size-5 text-emerald-500" />
-                  <CardTitle className="text-lg">Google Sheets Setup</CardTitle>
+                  <Users className="size-5 text-emerald-500" />
+                  <CardTitle className="text-lg">Bevy Audience Segments</CardTitle>
                 </div>
-                <CardDescription>How to prepare your recipient spreadsheet for optimal delivery.</CardDescription>
+                <CardDescription>How attendee data is resolved from Bevy for bulk campaigns.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4 text-sm">
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 font-medium">
                     <CheckCircle2 className="size-4 text-emerald-500" />
-                    <span>1. Column Headers in Row 1</span>
+                    <span>1. Real-Time Attendee Roster</span>
                   </div>
-                  <p className="text-muted-foreground text-xs pl-6">
-                    Ensure the first row of your sheet contains clean column names such as <code>Email</code>,{" "}
-                    <code>Name</code>, <code>TicketType</code>, etc.
+                  <p className="pl-6 text-muted-foreground text-xs">
+                    When you select a published event and choose an audience segment (such as confirmed ticket holders,
+                    checked-in guests, or waitlisted users), the dashboard queries Bevy directly and resolves
+                    deduplicated verified recipient records.
                   </p>
                 </div>
 
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 font-medium">
                     <CheckCircle2 className="size-4 text-emerald-500" />
-                    <span>2. Share Permissions</span>
+                    <span>2. Drag &amp; Drop Tokens</span>
                   </div>
-                  <p className="text-muted-foreground text-xs pl-6">
-                    Set Google Sheet sharing permission to <strong>&quot;Anyone with the link can view&quot;</strong> or
-                    ensure your configured Google API Service Account has Read access.
+                  <p className="pl-6 text-muted-foreground text-xs">
+                    In the HTML editor, drag any variable badge (e.g. <code>[[EventName]]</code>,{" "}
+                    <code>[[EventDate]]</code>, <code>[[Name]]</code>) or pre-built HTML component card directly onto
+                    the code editor.
                   </p>
                 </div>
 
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 font-medium">
                     <CheckCircle2 className="size-4 text-emerald-500" />
-                    <span>3. Valid Email Formats</span>
+                    <span>3. Sample Data Live Preview</span>
                   </div>
-                  <p className="text-muted-foreground text-xs pl-6">
-                    Verify that email entries do not contain leading or trailing spaces to avoid bounced messages.
+                  <p className="pl-6 text-muted-foreground text-xs">
+                    Use the Live Preview panel on desktop or mobile view with Sample Data toggled to inspect exactly how
+                    the rendered email will appear in recipient inboxes.
                   </p>
                 </div>
               </CardContent>
@@ -281,33 +359,33 @@ export function EmailManager() {
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 font-medium">
                     <Activity className="size-4 text-blue-500" />
-                    <span>1. Instant Webhook Ingestion</span>
+                    <span>1. Webhook Ingestion</span>
                   </div>
-                  <p className="text-muted-foreground text-xs pl-6">
-                    When you submit an email blast, the dashboard forwards the request securely to{" "}
-                    <code>https://n8n.gdgjakarta.com/webhook/api/send-bulk-email</code>.
+                  <p className="pl-6 text-muted-foreground text-xs">
+                    Submitting the email blast dispatches the payload to{" "}
+                    <code>https://n8n.gdgjakarta.com/webhook/api/send-bulk-email</code> with the full verified recipient
+                    array.
                   </p>
                 </div>
 
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 font-medium">
                     <Layers className="size-4 text-blue-500" />
-                    <span>2. Batch Queuing & Throttling</span>
+                    <span>2. Batch Queuing &amp; Throttling</span>
                   </div>
-                  <p className="text-muted-foreground text-xs pl-6">
-                    The n8n workflow reads rows from your sheet, renders template variables, and throttles delivery to
-                    prevent spam classification.
+                  <p className="pl-6 text-muted-foreground text-xs">
+                    The n8n workflow processes the recipients list, replaces all template placeholders per individual,
+                    and throttles delivery to maintain high deliverability and avoid spam triggers.
                   </p>
                 </div>
 
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 font-medium">
                     <ShieldCheck className="size-4 text-blue-500" />
-                    <span>3. Authentication Secret</span>
+                    <span>3. Secure Server Authorization</span>
                   </div>
-                  <p className="text-muted-foreground text-xs pl-6">
-                    Authentication headers are passed via the server environment variable{" "}
-                    <code>N8N_WEBHOOK_API_KEY</code>.
+                  <p className="pl-6 text-muted-foreground text-xs">
+                    Authorization headers are attached securely on the server via <code>N8N_WEBHOOK_API_KEY</code>.
                   </p>
                 </div>
               </CardContent>

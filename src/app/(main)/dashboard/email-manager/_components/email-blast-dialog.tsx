@@ -39,11 +39,11 @@ export function EmailBlastDialog({ trigger }: EmailBlastDialogProps) {
         className={cn(
           "overflow-y-auto p-0 transition-all duration-200",
           isExpanded
-            ? "max-w-[95vw] sm:max-w-[95vw] w-[95vw] max-h-[95vh] h-[95vh]"
-            : "max-w-5xl sm:max-w-5xl max-h-[90vh]",
+            ? "h-[95vh] max-h-[95vh] w-[95vw] max-w-[95vw] sm:max-w-[95vw]"
+            : "max-h-[90vh] max-w-5xl sm:max-w-5xl",
         )}
       >
-        <div className="p-6 border-b bg-muted/30">
+        <div className="border-b bg-muted/30 p-6">
           <DialogHeader className="pr-8">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-3">
@@ -53,7 +53,7 @@ export function EmailBlastDialog({ trigger }: EmailBlastDialogProps) {
                 <div>
                   <DialogTitle className="text-xl">Email Blast Campaign</DialogTitle>
                   <DialogDescription className="text-xs">
-                    Compose and dispatch personalized bulk emails using Google Sheets and n8n workflow.
+                    Compose and dispatch personalized bulk emails using Bevy event audiences or Google Sheets.
                   </DialogDescription>
                 </div>
               </div>
@@ -62,7 +62,7 @@ export function EmailBlastDialog({ trigger }: EmailBlastDialogProps) {
                 variant="ghost"
                 size="icon-sm"
                 onClick={() => setIsExpanded(!isExpanded)}
-                className="text-muted-foreground hover:text-foreground shrink-0 mr-2"
+                className="mr-2 shrink-0 text-muted-foreground hover:text-foreground"
                 title={isExpanded ? "Collapse modal size" : "Expand modal size"}
               >
                 {isExpanded ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}

@@ -2,7 +2,20 @@
 
 import { useEffect, useState, useTransition } from "react";
 
-import { Banknote, CheckCircle2, Copy, Edit2, Plus, ShieldCheck, Sparkles, Ticket, Trash2, Users } from "lucide-react";
+import {
+  Banknote,
+  Bookmark,
+  BookmarkPlus,
+  CheckCircle2,
+  Copy,
+  Edit2,
+  Plus,
+  ShieldCheck,
+  Sparkles,
+  Ticket,
+  Trash2,
+  Users,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { FloatingSaveBar } from "@/app/(main)/dashboard/_components/floating-save-bar";
@@ -19,6 +32,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  deleteCustomTicketTemplate,
+  getAllTicketTemplates,
+  saveTicketAsTemplate,
+  type TicketTemplate,
+} from "@/lib/events/ticket-templates";
 import { updateEventTicketsAction } from "@/lib/firestore/actions";
 import type { EventTicketTier, FirestoreEvent, TicketType } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
@@ -50,44 +69,6 @@ const TICKET_TYPE_META: Record<TicketType, { label: string; badge: string; color
   },
 };
 
-const DEFAULT_TEMPLATES: Array<{
-  name: string;
-  type: TicketType;
-  price: number;
-  description: string;
-  maxPerPerson: number;
-}> = [
-  {
-    name: "General Admission (Free)",
-    type: "free",
-    price: 0,
-    description: "Complimentary admission with full access to speaker tracks, community networking, and swag.",
-    maxPerPerson: 1,
-  },
-  {
-    name: "Commitment Deposit Pass (Refundable)",
-    type: "commitment_fee",
-    price: 50000,
-    description:
-      "Deposit of Rp 50,000 returned 100% in cash upon on-site physical check-in; forfeited in case of no-show.",
-    maxPerPerson: 1,
-  },
-  {
-    name: "Standard Conference Pass",
-    type: "paid",
-    price: 100000,
-    description: "Full-day conference entry including catering, conference badge, and all workshop materials.",
-    maxPerPerson: 2,
-  },
-  {
-    name: "VIP & Hands-on Workshop Pass",
-    type: "paid",
-    price: 250000,
-    description: "Priority front-row seating, dedicated lab mentoring, and exclusive speaker lounge access.",
-    maxPerPerson: 1,
-  },
-];
-
 function formatPriceDisplay(type: TicketType, price: number): string {
   if (type === "free") return "Free (Rp 0)";
   return `Rp ${price.toLocaleString("id-ID")}`;
@@ -106,6 +87,12 @@ export function TicketsTab({ event }: TicketsTabProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSaving, startTransition] = useTransition();
   const [isDirty, setIsDirty] = useState(false);
+  const [templatesData, setTemplatesData] = useState(() => getAllTicketTemplates());
+
+  // Refresh templates from localStorage
+  const refreshTemplates = () => {
+    setTemplatesData(getAllTicketTemplates());
+  };
 
   // Load latest tickets and limits from Firestore document
   useEffect(() => {
@@ -158,7 +145,20 @@ export function TicketsTab({ event }: TicketsTabProps) {
     toast.success(`Removed "${ticketName}"`);
   };
 
-  const handleApplyTemplate = (tmpl: (typeof DEFAULT_TEMPLATES)[number]) => {
+  const handleSaveCardAsTemplate = (ticket: EventTicketTier) => {
+    saveTicketAsTemplate(ticket);
+    refreshTemplates();
+    toast.success(`Saved "${ticket.name}" as reusable template!`);
+  };
+
+  const handleDeleteCustomTemplate = (e: React.MouseEvent, templateId: string, templateName: string) => {
+    e.stopPropagation();
+    deleteCustomTicketTemplate(templateId);
+    refreshTemplates();
+    toast.success(`Deleted template "${templateName}"`);
+  };
+
+  const handleApplyTemplate = (tmpl: TicketTemplate) => {
     const newTicket: EventTicketTier = {
       id: `ticket-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       name: tmpl.name,
@@ -166,8 +166,9 @@ export function TicketsTab({ event }: TicketsTabProps) {
       price: tmpl.price,
       description: tmpl.description,
       max_per_person: tmpl.maxPerPerson,
-      capacity: null,
+      capacity: tmpl.capacity ?? null,
       status: "active",
+      perks: tmpl.perks ? JSON.parse(JSON.stringify(tmpl.perks)) : undefined,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -186,6 +187,7 @@ export function TicketsTab({ event }: TicketsTabProps) {
       }
       return [...prev, saved];
     });
+    refreshTemplates();
     setIsDirty(true);
   };
 
@@ -238,21 +240,20 @@ export function TicketsTab({ event }: TicketsTabProps) {
           </div>
 
           <div className="flex flex-wrap items-center gap-2 self-start">
-            <DropdownMenu>
+            <DropdownMenu onOpenChange={(open) => open && refreshTemplates()}>
               <DropdownMenuTrigger asChild>
                 <Button size="sm" variant="outline" className="gap-1.5">
                   <Sparkles className="size-3.5 text-amber-500" />
                   Quick Templates
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-64">
-                <DropdownMenuLabel className="text-xs">Select Ticket Template</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {DEFAULT_TEMPLATES.map((tmpl) => (
+              <DropdownMenuContent align="end" className="w-72 max-h-96 overflow-y-auto">
+                <DropdownMenuLabel className="text-xs">GDG Standard Templates</DropdownMenuLabel>
+                {templatesData.defaultTemplates.map((tmpl) => (
                   <DropdownMenuItem
-                    key={tmpl.name}
+                    key={tmpl.id}
                     onClick={() => handleApplyTemplate(tmpl)}
-                    className="flex flex-col items-start gap-0.5 py-2 cursor-pointer"
+                    className="flex flex-col items-start gap-1 py-2 cursor-pointer"
                   >
                     <div className="flex items-center gap-1.5 w-full justify-between">
                       <span className="font-semibold text-xs">{tmpl.name}</span>
@@ -261,8 +262,65 @@ export function TicketsTab({ event }: TicketsTabProps) {
                       </Badge>
                     </div>
                     <span className="text-[11px] text-muted-foreground line-clamp-1">{tmpl.description}</span>
+                    {tmpl.perks && tmpl.perks.length > 0 && (
+                      <div className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400">
+                        <Sparkles className="size-2.5" />
+                        <span>{tmpl.perks.length} perks included</span>
+                      </div>
+                    )}
                   </DropdownMenuItem>
                 ))}
+
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="flex items-center justify-between text-xs">
+                  <span>My Saved Templates</span>
+                  <Badge variant="secondary" className="text-[9px] px-1 py-0 font-normal">
+                    {templatesData.customTemplates.length}
+                  </Badge>
+                </DropdownMenuLabel>
+
+                {templatesData.customTemplates.length > 0 ? (
+                  templatesData.customTemplates.map((tmpl) => (
+                    <DropdownMenuItem
+                      key={tmpl.id}
+                      onClick={() => handleApplyTemplate(tmpl)}
+                      className="group flex flex-col items-start gap-1 py-2 cursor-pointer"
+                    >
+                      <div className="flex items-center gap-1.5 w-full justify-between">
+                        <div className="flex items-center gap-1.5 truncate">
+                          <Bookmark className="size-3 text-amber-500 shrink-0" />
+                          <span className="font-semibold text-xs truncate">{tmpl.name}</span>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Badge variant="secondary" className="text-[10px] px-1 py-0 font-normal">
+                            {tmpl.type === "free" ? "Free" : `Rp ${tmpl.price.toLocaleString("id-ID")}`}
+                          </Badge>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-xs"
+                            onClick={(e) => handleDeleteCustomTemplate(e, tmpl.id, tmpl.name)}
+                            className="size-5 p-0 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                            title="Delete custom template"
+                          >
+                            <Trash2 className="size-3" />
+                          </Button>
+                        </div>
+                      </div>
+                      <span className="text-[11px] text-muted-foreground line-clamp-1">{tmpl.description}</span>
+                      {tmpl.perks && tmpl.perks.length > 0 && (
+                        <div className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400">
+                          <Sparkles className="size-2.5" />
+                          <span>{tmpl.perks.length} perks included</span>
+                        </div>
+                      )}
+                    </DropdownMenuItem>
+                  ))
+                ) : (
+                  <div className="p-2.5 text-center text-[11px] text-muted-foreground">
+                    No custom templates yet. Click the bookmark button on any ticket card to save it.
+                  </div>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
 
@@ -341,19 +399,27 @@ export function TicketsTab({ event }: TicketsTabProps) {
                 tiers to distinguish Free, Paid, or Commitment Fee passes.
               </p>
               <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-                <Button size="sm" onClick={() => handleApplyTemplate(DEFAULT_TEMPLATES[0])} className="gap-1.5">
-                  <Plus className="size-3.5" />
-                  Add Free General Ticket
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleApplyTemplate(DEFAULT_TEMPLATES[1])}
-                  className="gap-1.5"
-                >
-                  <Banknote className="size-3.5 text-amber-500" />
-                  Add Commitment Fee Ticket
-                </Button>
+                {templatesData.defaultTemplates[0] && (
+                  <Button
+                    size="sm"
+                    onClick={() => handleApplyTemplate(templatesData.defaultTemplates[0])}
+                    className="gap-1.5"
+                  >
+                    <Plus className="size-3.5" />
+                    Add Free General Ticket
+                  </Button>
+                )}
+                {templatesData.defaultTemplates[1] && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleApplyTemplate(templatesData.defaultTemplates[1])}
+                    className="gap-1.5"
+                  >
+                    <Banknote className="size-3.5 text-amber-500" />
+                    Add Commitment Fee Ticket
+                  </Button>
+                )}
                 <Button size="sm" variant="outline" onClick={handleCreateNew} className="gap-1.5">
                   <Plus className="size-3.5" />
                   Create Custom Tier
@@ -413,6 +479,33 @@ export function TicketsTab({ event }: TicketsTabProps) {
                         {t.description || meta.desc}
                       </p>
 
+                      {/* Included Perks Preview */}
+                      {t.perks && t.perks.length > 0 && (
+                        <div className="mt-2.5 rounded-lg border border-primary/20 bg-primary/[0.03] p-2.5">
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="flex items-center gap-1 font-semibold text-foreground">
+                              <Sparkles className="size-3 text-amber-500" />
+                              <span>{t.perks.length} Perks Included</span>
+                            </span>
+                          </div>
+                          <div className="mt-1.5 flex flex-wrap gap-1">
+                            {t.perks.slice(0, 3).map((p) => (
+                              <Badge key={p.id} variant="secondary" className="px-1.5 py-0 text-[10px] font-normal">
+                                {p.name}
+                              </Badge>
+                            ))}
+                            {t.perks.length > 3 && (
+                              <Badge
+                                variant="outline"
+                                className="px-1.5 py-0 text-[10px] font-normal text-muted-foreground"
+                              >
+                                +{t.perks.length - 3} more
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Badges for Capacity and Limits */}
                       <div className="mt-3 flex flex-wrap gap-1.5 border-t border-border/50 pt-2.5">
                         <div className="flex items-center gap-1 rounded bg-muted/60 px-2 py-0.5 text-[10px] text-muted-foreground">
@@ -431,6 +524,15 @@ export function TicketsTab({ event }: TicketsTabProps) {
                       <span className="text-[10px] text-muted-foreground">ID: {t.id.slice(-6)}</span>
 
                       <div className="flex items-center gap-1">
+                        <Button
+                          size="icon-xs"
+                          variant="ghost"
+                          onClick={() => handleSaveCardAsTemplate(t)}
+                          title="Save as reusable template"
+                          className="text-muted-foreground hover:text-amber-600 dark:hover:text-amber-400"
+                        >
+                          <BookmarkPlus className="size-3.5" />
+                        </Button>
                         <Button
                           size="icon-xs"
                           variant="ghost"
@@ -491,6 +593,7 @@ export function TicketsTab({ event }: TicketsTabProps) {
         open={isDialogOpen}
         onOpenChange={setIsDialogOpen}
         ticket={editingTicket}
+        eventMerchandise={event.merchandise ?? []}
         onSave={handleSaveTicket}
       />
 

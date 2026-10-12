@@ -48,7 +48,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { resolveEventAudience } from "@/lib/bevy/audience";
-import { validateRegistrationSubmissionCapacity } from "@/lib/events/capacity-validator";
+import { checkEventCapacityStatus, validateRegistrationSubmissionCapacity } from "@/lib/events/capacity-validator";
 import { buildRegistrationPaymentPayload, hasRegistrationPaymentRequirements } from "@/lib/events/doku-payment";
 import { extractEventImageUrl } from "@/lib/events/media-utils";
 import {
@@ -138,9 +138,10 @@ function getMerchPriceDisplay(
   item: EventMerchandiseItem,
   quantity: number,
   selectedVariations?: Record<string, string>,
+  isIncludedInTicket?: boolean,
 ): string {
   if (quantity <= 0) return "";
-  if (item.is_free) return "Free";
+  if (item.is_free || isIncludedInTicket) return "Free (Included)";
   const unitPrice = getMerchEffectivePrice(item, selectedVariations);
   return `Rp ${(unitPrice * quantity).toLocaleString("id-ID")}`;
 }
@@ -320,14 +321,15 @@ export function EventRegistrationModal({
     for (const [itemId, order] of Object.entries(selectedMerch)) {
       if (order.quantity > 0) {
         const item = availableMerchandise.find((m) => m.id === itemId);
-        if (item && !item.is_free) {
+        const isIncludedInTicket = Boolean(selectedTicket?.perks?.some((p) => p.merchandise_id === item?.id));
+        if (item && !item.is_free && !isIncludedInTicket) {
           const unitPrice = getMerchEffectivePrice(item, order.selectedVariations);
           total += unitPrice * order.quantity;
         }
       }
     }
     return total;
-  }, [selectedMerch, availableMerchandise]);
+  }, [selectedMerch, availableMerchandise, selectedTicket]);
 
   const grandTotal = ticketPrice + merchandiseTotalPrice;
 
@@ -768,7 +770,11 @@ export function EventRegistrationModal({
 
     startTransition(async () => {
       try {
-        const initialStatus: RegistrationStatus = "pending";
+        const isWaitlistMode = Boolean(
+          capacityValidation.isWaitlist ??
+            (eventConfig.allow_waitlist !== false && checkEventCapacityStatus(eventConfig).isFull),
+        );
+        const initialStatus: RegistrationStatus = isWaitlistMode ? "waitlisted" : "pending";
 
         const sessionKey = selectedSession?.title ?? "Regular Ticket";
         const combinedAnswers = {
@@ -782,11 +788,12 @@ export function EventRegistrationModal({
             const item = availableMerchandise.find((m) => m.id === itemId);
             if (item) {
               const unitPrice = getMerchEffectivePrice(item, order.selectedVariations);
+              const isIncludedInTicket = Boolean(selectedTicket?.perks?.some((p) => p.merchandise_id === item.id));
               selectedMerchOrders.push({
                 id: item.id,
                 name: item.name,
                 quantity: order.quantity,
-                price: item.is_free ? 0 : unitPrice,
+                price: item.is_free || isIncludedInTicket ? 0 : unitPrice,
                 selected_variations:
                   Object.keys(order.selectedVariations).length > 0 ? order.selectedVariations : undefined,
               });
@@ -818,13 +825,13 @@ export function EventRegistrationModal({
         const requiresPayment = grandTotal > 0 || hasRegistrationPaymentRequirements(regCandidate);
 
         // For non-curated events with payable items, generate DOKU payment link immediately upon registration.
-        // For curated events, payment link generation is deferred until the organizer reviews and approves the attendee.
+        // For curated events and waitlisted applicants, payment link generation is deferred until organizer approval.
         let generatedPaymentUrl: string | undefined;
         let generatedInvoiceNumber: string | undefined;
         let generatedPaymentAmount: number | undefined;
         let generatedExpiredDatetime: string | undefined;
 
-        if (!isCurated && requiresPayment) {
+        if (!isWaitlistMode && !isCurated && requiresPayment) {
           try {
             const paymentPayload = buildRegistrationPaymentPayload(regCandidate, eventConfig, {
               sendEmail: true,
@@ -863,11 +870,13 @@ export function EventRegistrationModal({
           ticket_price: selectedTicket?.price,
           selected_merchandise: selectedMerchOrders.length > 0 ? selectedMerchOrders : undefined,
           registered_at: new Date().toISOString(),
-          payment_status: requiresPayment ? "unpaid" : undefined,
-          payment_url: generatedPaymentUrl,
-          payment_invoice_number: generatedInvoiceNumber,
-          payment_amount: generatedPaymentAmount ?? (requiresPayment ? grandTotal : undefined),
-          payment_expired_datetime: generatedExpiredDatetime,
+          payment_status: isWaitlistMode ? undefined : requiresPayment ? "unpaid" : undefined,
+          payment_url: isWaitlistMode ? undefined : generatedPaymentUrl,
+          payment_invoice_number: isWaitlistMode ? undefined : generatedInvoiceNumber,
+          payment_amount: isWaitlistMode
+            ? undefined
+            : (generatedPaymentAmount ?? (requiresPayment ? grandTotal : undefined)),
+          payment_expired_datetime: isWaitlistMode ? undefined : generatedExpiredDatetime,
         };
 
         const result = await registerForEventAction(registrationPayload);
@@ -875,6 +884,12 @@ export function EventRegistrationModal({
         if (!result.success) {
           toast.error(result.error || "Failed to register. Please try again.");
           return;
+        }
+
+        if (isWaitlistMode) {
+          toast.success("Added to waitlist! Organizers will review and notify you if a spot opens up.");
+        } else {
+          toast.success("Registration submitted successfully!");
         }
 
         // Dispatch Webhook in background
@@ -1080,9 +1095,12 @@ export function EventRegistrationModal({
     const statusLower = activeRegistration.status.toLowerCase();
     const isApproved = statusLower === "approved" || statusLower === "attended";
     const isPendingReview = statusLower === "pending";
+    const isWaitlisted = statusLower === "waitlisted";
     let statusLabel = "Registered";
     if (isApproved) {
       statusLabel = eventConfig.requires_approval ? "Registered (Approved)" : "Registered";
+    } else if (isWaitlisted) {
+      statusLabel = "Waitlisted";
     } else if (isPendingReview) {
       statusLabel = "Pending Review";
     }
@@ -1095,22 +1113,35 @@ export function EventRegistrationModal({
         aria-disabled="true"
         className={cn(
           "relative cursor-default gap-2 overflow-hidden font-medium transition-all duration-500",
-          isApproved
-            ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-300"
-            : "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-300",
+          isApproved &&
+            "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-300",
+          isWaitlisted &&
+            "border-blue-500/40 bg-blue-500/10 text-blue-700 dark:border-blue-500/30 dark:bg-blue-950/40 dark:text-blue-300",
+          isPendingReview &&
+            "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-300",
           isTransitioning && "fade-in-50 zoom-in-95 scale-[1.01] animate-in ring-2 ring-emerald-500/40",
           isFullWidth && "w-full",
           className,
         )}
       >
-        <CheckCircle2
-          className={cn(
-            "relative z-10 shrink-0 transition-transform duration-500",
-            buttonSize === "lg" ? "size-4" : "size-3.5",
-            isApproved ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400",
-            isTransitioning && "scale-110",
-          )}
-        />
+        {isWaitlisted ? (
+          <Clock
+            className={cn(
+              "relative z-10 shrink-0 transition-transform duration-500 text-blue-600 dark:text-blue-400",
+              buttonSize === "lg" ? "size-4" : "size-3.5",
+              isTransitioning && "scale-110",
+            )}
+          />
+        ) : (
+          <CheckCircle2
+            className={cn(
+              "relative z-10 shrink-0 transition-transform duration-500",
+              buttonSize === "lg" ? "size-4" : "size-3.5",
+              isApproved ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400",
+              isTransitioning && "scale-110",
+            )}
+          />
+        )}
         <span className="relative z-10 font-medium">{statusLabel}</span>
         <div className="shimmer-wave" aria-hidden="true" />
       </Button>
@@ -1147,10 +1178,39 @@ export function EventRegistrationModal({
     );
   }
 
+  // Plain computations (not hooks): this code runs after conditional early returns above,
+  // so hooks here would violate the Rules of Hooks.
+  const selectedSessionForCapacity = selectedSessionId
+    ? eventConfig.sessions?.find((s) => s.id === selectedSessionId)
+    : undefined;
+  const isSelectedSessionFull = Boolean(
+    selectedSessionForCapacity &&
+      selectedSessionForCapacity.capacity > 0 &&
+      (selectedSessionForCapacity.total_registered ?? 0) >= selectedSessionForCapacity.capacity,
+  );
+
+  const selectedTicketForCapacity = selectedTicketId
+    ? eventConfig.tickets?.find((tick) => tick.id === selectedTicketId)
+    : undefined;
+  const isSelectedTicketFull = Boolean(
+    selectedTicketForCapacity &&
+      typeof selectedTicketForCapacity.capacity === "number" &&
+      selectedTicketForCapacity.capacity > 0 &&
+      (selectedTicketForCapacity.total_registered ?? 0) >= selectedTicketForCapacity.capacity,
+  );
+
+  const isWaitlistActive = Boolean(
+    windowStatus.isWaitlist ??
+      ((isSelectedSessionFull || isSelectedTicketFull) && eventConfig.allow_waitlist !== false),
+  );
+
   let modalDescription = "Complete the registration questionnaire to confirm your RSVP and reserve your spot.";
   if (!user) {
     modalDescription =
       "GDG Jakarta events are open to our chapter members. Please join the community first by signing in with your Google account.";
+  } else if (isWaitlistActive) {
+    modalDescription =
+      "This event has reached capacity. Complete this questionnaire to join the waitlist. You will be notified if a spot opens up.";
   } else if (eventConfig.requires_approval || event.requires_approval) {
     modalDescription =
       "This event is curated. Please complete your registration details for organizer review. After submitting, your attendee status will be Pending Review until approved.";
@@ -1184,7 +1244,12 @@ export function EventRegistrationModal({
               {!user ? (
                 <>
                   <Image src={googleFavicon} alt="Google" width={16} height={16} className="size-3.5 object-contain" />
-                  Join Community to Register
+                  {windowStatus.isWaitlist ? "Join Community to Join Waitlist" : "Join Community to Register"}
+                </>
+              ) : windowStatus.isWaitlist ? (
+                <>
+                  <Clock className="size-3.5" />
+                  Join Waitlist
                 </>
               ) : (
                 <>
@@ -1203,6 +1268,14 @@ export function EventRegistrationModal({
                 <Badge variant="outline" className="text-[10px]">
                   {resolveEventAudience(event.audience_type, event.is_virtual).label}
                 </Badge>
+                {isWaitlistActive && (
+                  <Badge
+                    variant="secondary"
+                    className="border-blue-500/30 bg-blue-500/10 text-[10px] text-blue-700 dark:text-blue-300"
+                  >
+                    Waitlist Registration
+                  </Badge>
+                )}
                 {!user && (
                   <Badge
                     variant="secondary"
@@ -1320,6 +1393,24 @@ export function EventRegistrationModal({
                       </div>
                     </div>
                     <RoleBadge role={user.chapterRole || user.role} />
+                  </div>
+                )}
+
+                {/* Waitlist Notice Banner */}
+                {isWaitlistActive && (
+                  <div className="flex items-start gap-3 rounded-lg border border-blue-500/30 bg-blue-500/10 p-3.5 text-xs text-blue-900 dark:text-blue-200">
+                    <Clock className="mt-0.5 size-4 shrink-0 text-blue-600 dark:text-blue-400" />
+                    <div className="space-y-1">
+                      <p className="font-semibold text-blue-800 dark:text-blue-300">
+                        Event is at Full Capacity — Waitlist Registration
+                      </p>
+                      <p className="text-[11px] text-blue-800/90 leading-relaxed dark:text-blue-300/90">
+                        Direct admission is closed because capacity has been reached. By submitting this form, you will
+                        be placed on the <strong>Waitlist</strong>. Organizers will review and notify you if a spot
+                        opens up.
+                        {grandTotal > 0 && " Payment is deferred and not required while on the waitlist."}
+                      </p>
+                    </div>
                   </div>
                 )}
 
@@ -1516,6 +1607,27 @@ export function EventRegistrationModal({
                                   <span>
                                     Deposit will be returned 100% in cash upon physical check-in at the venue.
                                   </span>
+                                </div>
+                              )}
+
+                              {t.perks && t.perks.length > 0 && (
+                                <div className="mt-2 rounded-md border border-primary/20 bg-primary/[0.04] p-2 text-xs">
+                                  <div className="flex items-center gap-1 font-semibold text-[11px] text-foreground">
+                                    <Sparkles className="size-3 text-amber-500" />
+                                    <span>Perks Included with this Pass:</span>
+                                  </div>
+                                  <div className="mt-1 flex flex-wrap gap-1">
+                                    {t.perks.map((p) => (
+                                      <Badge
+                                        key={p.id}
+                                        variant="secondary"
+                                        className="gap-1 px-1.5 py-0 font-normal text-[10px]"
+                                      >
+                                        <CheckCircle2 className="size-2.5 text-emerald-600 dark:text-emerald-400" />
+                                        <span>{p.name}</span>
+                                      </Badge>
+                                    ))}
+                                  </div>
                                 </div>
                               )}
                             </div>
@@ -2046,13 +2158,18 @@ export function EventRegistrationModal({
                       {availableMerchandise.map((item) => {
                         const order = selectedMerch[item.id] ?? { quantity: 0, selectedVariations: {} };
                         const isAdded = order.quantity > 0;
+                        const isIncludedInTicket = Boolean(
+                          selectedTicket?.perks?.some((p) => p.merchandise_id === item.id),
+                        );
                         const itemMax = item.max_per_person ?? maxMerchandiseAllowed ?? null;
                         const reachedLimit =
                           (itemMax !== null && order.quantity >= itemMax) ||
                           (maxMerchandiseAllowed !== null && totalMerchandiseItems >= maxMerchandiseAllowed);
 
                         const effectiveImg = getMerchEffectiveImage(item, order.selectedVariations);
-                        const effectiveUnitPrice = getMerchEffectivePrice(item, order.selectedVariations);
+                        const effectiveUnitPrice = isIncludedInTicket
+                          ? 0
+                          : getMerchEffectivePrice(item, order.selectedVariations);
 
                         return (
                           <div
@@ -2080,17 +2197,27 @@ export function EventRegistrationModal({
                               <div className="space-y-1">
                                 <div className="flex flex-wrap items-center gap-1.5">
                                   <span className="font-medium text-foreground text-xs sm:text-sm">{item.name}</span>
-                                  <Badge
-                                    variant="secondary"
-                                    className={cn(
-                                      "px-1.5 py-0 text-[10px]",
-                                      item.is_free
-                                        ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                                        : "bg-blue-500/10 text-blue-600 dark:text-blue-400",
-                                    )}
-                                  >
-                                    {item.is_free ? "Free Perk" : `Rp ${effectiveUnitPrice.toLocaleString("id-ID")}`}
-                                  </Badge>
+                                  {isIncludedInTicket ? (
+                                    <Badge
+                                      variant="secondary"
+                                      className="gap-1 border border-amber-500/30 bg-amber-500/10 px-1.5 py-0 text-[10px] font-semibold text-amber-700 dark:text-amber-400"
+                                    >
+                                      <Sparkles className="size-2.5 text-amber-500" />
+                                      Included with Ticket (Free)
+                                    </Badge>
+                                  ) : (
+                                    <Badge
+                                      variant="secondary"
+                                      className={cn(
+                                        "px-1.5 py-0 text-[10px]",
+                                        item.is_free
+                                          ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                                          : "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+                                      )}
+                                    >
+                                      {item.is_free ? "Free Perk" : `Rp ${effectiveUnitPrice.toLocaleString("id-ID")}`}
+                                    </Badge>
+                                  )}
                                 </div>
 
                                 {item.description && (
@@ -2145,7 +2272,12 @@ export function EventRegistrationModal({
                             {/* Stepper Quantity Buttons */}
                             <div className="flex items-center justify-between gap-2 border-t pt-2 sm:justify-end sm:border-t-0 sm:pt-0">
                               <span className="font-semibold text-xs sm:hidden">
-                                {getMerchPriceDisplay(item, order.quantity, order.selectedVariations)}
+                                {getMerchPriceDisplay(
+                                  item,
+                                  order.quantity,
+                                  order.selectedVariations,
+                                  isIncludedInTicket,
+                                )}
                               </span>
 
                               <div className="flex items-center gap-1.5 self-end sm:self-auto">
@@ -2248,6 +2380,11 @@ export function EventRegistrationModal({
                       <>
                         <Loader2 className="size-3.5 animate-spin" />
                         Submitting...
+                      </>
+                    ) : isWaitlistActive ? (
+                      <>
+                        <Clock className="size-3.5" />
+                        Join Waitlist
                       </>
                     ) : (
                       <>

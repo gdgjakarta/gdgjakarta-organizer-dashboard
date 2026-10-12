@@ -1552,7 +1552,8 @@ export function getSessionRemainingSeats(session: EventSession, registeredCount 
 
 export interface RegistrationWindowStatus {
   isOpen: boolean;
-  status: "draft" | "upcoming" | "open" | "ended" | "completed";
+  isWaitlist?: boolean;
+  status: "draft" | "upcoming" | "open" | "waitlist" | "ended" | "completed";
   message: string;
   badgeLabel: string;
   opensAt?: string;
@@ -1561,13 +1562,14 @@ export interface RegistrationWindowStatus {
 
 /**
  * Calculates real-time registration status based on event draft status,
- * custom registration window (start/end dates), and event start/end dates.
+ * custom registration window (start/end dates), capacity limits, and event start/end dates.
  */
 export function getRegistrationWindowStatus(event: FirestoreEvent): RegistrationWindowStatus {
   // 1. Event completed
   if (event.status === "Completed") {
     return {
       isOpen: false,
+      isWaitlist: false,
       status: "completed",
       message: "Event Concluded",
       badgeLabel: "Event Concluded",
@@ -1579,6 +1581,7 @@ export function getRegistrationWindowStatus(event: FirestoreEvent): Registration
   if (isDraft) {
     return {
       isOpen: false,
+      isWaitlist: false,
       status: "draft",
       message: "Registration Not Open Yet",
       badgeLabel: "Draft — Not Open",
@@ -1589,6 +1592,7 @@ export function getRegistrationWindowStatus(event: FirestoreEvent): Registration
   if (event.registration_status === "Closed") {
     return {
       isOpen: false,
+      isWaitlist: false,
       status: "ended",
       message: "Registration Closed",
       badgeLabel: "Registration Closed",
@@ -1604,6 +1608,7 @@ export function getRegistrationWindowStatus(event: FirestoreEvent): Registration
       if (!Number.isNaN(openTime) && now < openTime) {
         return {
           isOpen: false,
+          isWaitlist: false,
           status: "upcoming",
           message: "Registration Opens Soon",
           badgeLabel: "Opens Soon",
@@ -1622,6 +1627,7 @@ export function getRegistrationWindowStatus(event: FirestoreEvent): Registration
       if (!Number.isNaN(closeTime) && now > closeTime) {
         return {
           isOpen: false,
+          isWaitlist: false,
           status: "ended",
           message: "Registration Closed",
           badgeLabel: "Registration Closed",
@@ -1640,6 +1646,7 @@ export function getRegistrationWindowStatus(event: FirestoreEvent): Registration
       if (new Date(targetDate).getTime() < now) {
         return {
           isOpen: false,
+          isWaitlist: false,
           status: "ended",
           message: "Registration Closed",
           badgeLabel: "Event Concluded",
@@ -1650,8 +1657,75 @@ export function getRegistrationWindowStatus(event: FirestoreEvent): Registration
     }
   }
 
+  // 7. Event capacity check (auto-close direct admission & engage waitlist if allowed)
+  const isCurated = Boolean(event.requires_approval || (event as unknown as Record<string, unknown>).curation_mode);
+  let venueCapacity: number | null = null;
+  if (typeof event.max_attendees === "number" && event.max_attendees > 0) {
+    venueCapacity = event.max_attendees;
+  } else if (Array.isArray(event.sessions) && event.sessions.length > 0) {
+    const totalSessionCap = event.sessions.reduce((acc, s) => acc + (Number(s.capacity) || 0), 0);
+    if (totalSessionCap > 0) {
+      venueCapacity = totalSessionCap;
+    }
+  }
+
+  let isFull = false;
+  if (venueCapacity !== null && venueCapacity > 0) {
+    if (isCurated) {
+      if (Number(event.total_approved || 0) >= venueCapacity) {
+        isFull = true;
+      } else if (
+        typeof event.max_attendees === "number" &&
+        event.max_attendees > 0 &&
+        Number(event.total_registrations || 0) >= event.max_attendees
+      ) {
+        isFull = true;
+      }
+    } else {
+      if (Number(event.total_registrations || 0) >= venueCapacity) {
+        isFull = true;
+      }
+    }
+  }
+
+  // Check if all sessions are full
+  if (!isFull && Array.isArray(event.sessions) && event.sessions.length > 0) {
+    const sessionsWithCap = event.sessions.filter((s) => typeof s.capacity === "number" && s.capacity > 0);
+    if (sessionsWithCap.length > 0) {
+      const allSessionsFull = sessionsWithCap.every((s) => (s.total_registered ?? 0) >= s.capacity);
+      if (allSessionsFull) {
+        isFull = true;
+      }
+    }
+  }
+
+  const allowWaitlist = event.allow_waitlist !== false;
+
+  if (isFull) {
+    if (allowWaitlist) {
+      return {
+        isOpen: true,
+        isWaitlist: true,
+        status: "waitlist",
+        message: "Join Waitlist",
+        badgeLabel: "Waitlist Open",
+        opensAt: event.registration_start_date ?? undefined,
+        closesAt: event.registration_end_date ?? undefined,
+      };
+    }
+    return {
+      isOpen: false,
+      isWaitlist: false,
+      status: "ended",
+      message: "Registration Closed (Full)",
+      badgeLabel: "Registration Full",
+      closesAt: event.registration_end_date ?? undefined,
+    };
+  }
+
   return {
     isOpen: true,
+    isWaitlist: false,
     status: "open",
     message: "Register for Event",
     badgeLabel: event.requires_approval ? "Approval Required" : "Open for RSVPs",

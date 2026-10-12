@@ -2,7 +2,21 @@
 
 import { useEffect, useState } from "react";
 
-import { ShieldCheck, Ticket } from "lucide-react";
+import {
+  Award,
+  Bookmark,
+  Coffee,
+  Gift,
+  Package,
+  Plus,
+  ShieldCheck,
+  Shirt,
+  Sparkles,
+  Star,
+  Ticket,
+  Trash2,
+} from "lucide-react";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,13 +33,21 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import type { EventTicketTier, TicketType } from "@/lib/firestore/types";
+import { saveTicketAsTemplate } from "@/lib/events/ticket-templates";
+import type {
+  EventMerchandiseItem,
+  EventTicketTier,
+  TicketPerk,
+  TicketPerkIcon,
+  TicketType,
+} from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
 interface TicketTierDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   ticket: EventTicketTier | null;
+  eventMerchandise?: EventMerchandiseItem[];
   onSave: (ticket: EventTicketTier) => void;
 }
 
@@ -50,6 +72,53 @@ const TICKET_TYPE_INFO: Record<TicketType, { label: string; badge: string; defau
   },
 };
 
+const PRESET_PERKS: Array<{ name: string; description: string; icon: TicketPerkIcon }> = [
+  { name: "Official Event T-Shirt", description: "High-grade 100% cotton conference attendee shirt", icon: "shirt" },
+  {
+    name: "Buffet Lunch & Coffee",
+    description: "Full catering lunch box and coffee break refreshments",
+    icon: "coffee",
+  },
+  {
+    name: "Certificate of Attendance",
+    description: "Verified digital certificate signed by GDG Jakarta",
+    icon: "award",
+  },
+  { name: "Swag Kit & Laptop Stickers", description: "Conference lanyard, stickers, and badge kit", icon: "gift" },
+  { name: "VIP Lounge & Front Row", description: "Reserved front-row seating and VIP networking lounge", icon: "star" },
+];
+
+function renderPerkIcon(icon?: TicketPerkIcon) {
+  switch (icon) {
+    case "shirt":
+      return <Shirt className="size-3.5 text-blue-500" />;
+    case "coffee":
+      return <Coffee className="size-3.5 text-amber-500" />;
+    case "award":
+      return <Award className="size-3.5 text-emerald-500" />;
+    case "gift":
+      return <Gift className="size-3.5 text-purple-500" />;
+    case "star":
+      return <Star className="size-3.5 text-amber-500" />;
+    case "ticket":
+      return <Ticket className="size-3.5 text-indigo-500" />;
+    default:
+      return <Sparkles className="size-3.5 text-amber-500" />;
+  }
+}
+
+/**
+ * Converts a stored ISO timestamp (UTC) into the local `YYYY-MM-DDTHH:mm` format
+ * expected by `<input type="datetime-local">`.
+ */
+function toDateTimeLocalValue(iso?: string | null): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 function getTicketSubtitle(t: TicketType): string {
   if (t === "free") return "Free Admission";
   if (t === "paid") return "Paid Pass";
@@ -62,7 +131,7 @@ function getPriceLabel(t: TicketType): string {
   return "Commitment Deposit Amount (IDR)";
 }
 
-export function TicketTierDialog({ open, onOpenChange, ticket, onSave }: TicketTierDialogProps) {
+export function TicketTierDialog({ open, onOpenChange, ticket, eventMerchandise = [], onSave }: TicketTierDialogProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [type, setType] = useState<TicketType>("free");
@@ -73,6 +142,16 @@ export function TicketTierDialog({ open, onOpenChange, ticket, onSave }: TicketT
   const [status, setStatus] = useState<"active" | "sold_out" | "hidden">("active");
   const [salesStartDate, setSalesStartDate] = useState("");
   const [salesEndDate, setSalesEndDate] = useState("");
+
+  // Perks Included state
+  const [perks, setPerks] = useState<TicketPerk[]>([]);
+  const [newPerkName, setNewPerkName] = useState("");
+  const [newPerkDesc, setNewPerkDesc] = useState("");
+  const [newPerkIcon, setNewPerkIcon] = useState<TicketPerkIcon>("sparkles");
+  const [selectedMerchId, setSelectedMerchId] = useState("");
+
+  // Template saving option
+  const [saveAsTemplateChecked, setSaveAsTemplateChecked] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -85,8 +164,9 @@ export function TicketTierDialog({ open, onOpenChange, ticket, onSave }: TicketT
       setCapacity(ticket.capacity ?? null);
       setMaxPerPerson(ticket.max_per_person ?? 1);
       setStatus(ticket.status);
-      setSalesStartDate(ticket.sales_start_date ? ticket.sales_start_date.slice(0, 16) : "");
-      setSalesEndDate(ticket.sales_end_date ? ticket.sales_end_date.slice(0, 16) : "");
+      setSalesStartDate(toDateTimeLocalValue(ticket.sales_start_date));
+      setSalesEndDate(toDateTimeLocalValue(ticket.sales_end_date));
+      setPerks(ticket.perks ? JSON.parse(JSON.stringify(ticket.perks)) : []);
     } else {
       setName("");
       setDescription(TICKET_TYPE_INFO.free.defaultDesc);
@@ -98,7 +178,12 @@ export function TicketTierDialog({ open, onOpenChange, ticket, onSave }: TicketT
       setStatus("active");
       setSalesStartDate("");
       setSalesEndDate("");
+      setPerks([]);
     }
+    setSaveAsTemplateChecked(false);
+    setNewPerkName("");
+    setNewPerkDesc("");
+    setSelectedMerchId("");
   }, [ticket, open]);
 
   const handleTypeChange = (newType: TicketType) => {
@@ -115,6 +200,62 @@ export function TicketTierDialog({ open, onOpenChange, ticket, onSave }: TicketT
     }
   };
 
+  const handleAddPresetPerk = (preset: (typeof PRESET_PERKS)[number]) => {
+    // Avoid exact duplicate names
+    if (perks.some((p) => p.name.toLowerCase() === preset.name.toLowerCase())) {
+      toast.info(`"${preset.name}" is already included.`);
+      return;
+    }
+    const newPerk: TicketPerk = {
+      id: `perk-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      name: preset.name,
+      description: preset.description,
+      icon: preset.icon,
+    };
+    setPerks((prev) => [...prev, newPerk]);
+    toast.success(`Added perk "${preset.name}"`);
+  };
+
+  const handleAddMerchPerk = (merchId: string) => {
+    const merch = eventMerchandise.find((m) => m.id === merchId);
+    if (!merch) return;
+
+    if (perks.some((p) => p.merchandise_id === merch.id)) {
+      toast.info(`"${merch.name}" is already linked as a ticket perk.`);
+      return;
+    }
+
+    const newPerk: TicketPerk = {
+      id: `perk-merch-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      name: merch.name,
+      description: merch.description || `Complimentary ${merch.name} included with this ticket`,
+      merchandise_id: merch.id,
+      icon: "gift",
+    };
+    setPerks((prev) => [...prev, newPerk]);
+    setSelectedMerchId("");
+    toast.success(`Linked "${merch.name}" from event merchandise!`);
+  };
+
+  const handleAddCustomPerk = () => {
+    if (!newPerkName.trim()) return;
+
+    const newPerk: TicketPerk = {
+      id: `perk-custom-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      name: newPerkName.trim(),
+      description: newPerkDesc.trim() || undefined,
+      icon: newPerkIcon,
+    };
+    setPerks((prev) => [...prev, newPerk]);
+    setNewPerkName("");
+    setNewPerkDesc("");
+    toast.success(`Added perk "${newPerk.name}"`);
+  };
+
+  const handleRemovePerk = (perkId: string) => {
+    setPerks((prev) => prev.filter((p) => p.id !== perkId));
+  };
+
   const handleSave = () => {
     if (!name.trim()) return;
 
@@ -129,9 +270,15 @@ export function TicketTierDialog({ open, onOpenChange, ticket, onSave }: TicketT
       status,
       sales_start_date: salesStartDate ? new Date(salesStartDate).toISOString() : null,
       sales_end_date: salesEndDate ? new Date(salesEndDate).toISOString() : null,
+      perks: perks.length > 0 ? perks : undefined,
       created_at: ticket?.created_at ?? new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
+
+    if (saveAsTemplateChecked) {
+      saveTicketAsTemplate(payload);
+      toast.success(`Saved "${payload.name}" as reusable ticket template!`);
+    }
 
     onSave(payload);
     onOpenChange(false);
@@ -139,7 +286,7 @@ export function TicketTierDialog({ open, onOpenChange, ticket, onSave }: TicketT
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[580px]">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[620px]">
         <DialogHeader>
           <div className="flex items-center gap-2">
             <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -255,6 +402,196 @@ export function TicketTierDialog({ open, onOpenChange, ticket, onSave }: TicketT
             />
           </div>
 
+          {/* ── PERKS & MERCHANDISE INCLUDED ────────────────────────── */}
+          <div className="space-y-3 rounded-lg border border-primary/20 bg-primary/[0.02] p-3.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sparkles className="size-4 text-amber-500" />
+                <span className="font-semibold text-xs text-foreground">Perks Included with Ticket</span>
+              </div>
+              <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
+                {perks.length} perk{perks.length === 1 ? "" : "s"}
+              </Badge>
+            </div>
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              Attach conference merchandise, catering, swag, or exclusive benefits included with this ticket tier.
+            </p>
+
+            {/* Quick Add Preset Perks */}
+            <div className="space-y-1.5">
+              <span className="font-medium text-[10px] uppercase tracking-wider text-muted-foreground">
+                Quick Add Presets:
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {PRESET_PERKS.map((preset) => (
+                  <button
+                    key={preset.name}
+                    type="button"
+                    onClick={() => handleAddPresetPerk(preset)}
+                    className="inline-flex items-center gap-1 rounded-md border border-border/80 bg-background px-2 py-1 text-[11px] font-normal text-foreground transition-colors hover:border-primary/50 hover:bg-muted/50 cursor-pointer"
+                  >
+                    {renderPerkIcon(preset.icon)}
+                    <span>{preset.name}</span>
+                    <Plus className="size-3 text-muted-foreground" />
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Link from Event Merchandise */}
+            {eventMerchandise.length > 0 && (
+              <div className="space-y-1.5 pt-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium text-[10px] uppercase tracking-wider text-muted-foreground">
+                    Link from Event Merchandise Catalog:
+                  </span>
+                  <Badge
+                    variant="outline"
+                    className="text-[9px] px-1 py-0 border-blue-500/30 text-blue-600 dark:text-blue-400"
+                  >
+                    {eventMerchandise.length} Items Available
+                  </Badge>
+                </div>
+                <div className="flex gap-2">
+                  <Select value={selectedMerchId} onValueChange={(val) => handleAddMerchPerk(val)}>
+                    <SelectTrigger className="h-8 flex-1 text-xs">
+                      <SelectValue placeholder="Select merchandise to include..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {eventMerchandise.map((item) => (
+                        <SelectItem key={item.id} value={item.id} className="text-xs">
+                          <div className="flex items-center gap-2">
+                            <Package className="size-3.5 text-muted-foreground" />
+                            <span>{item.name}</span>
+                            <span className="text-[10px] text-muted-foreground">
+                              ({item.is_free ? "Free Perk" : `Rp ${item.price.toLocaleString("id-ID")}`})
+                            </span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+
+            {/* Custom Perk Input */}
+            <div className="space-y-2 pt-1 border-t border-border/40">
+              <span className="font-medium text-[10px] uppercase tracking-wider text-muted-foreground">
+                Or Add Custom Perk:
+              </span>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="flex flex-1 gap-2">
+                  <Select value={newPerkIcon} onValueChange={(val: TicketPerkIcon) => setNewPerkIcon(val)}>
+                    <SelectTrigger className="h-8 w-28 shrink-0 text-xs" aria-label="Perk icon">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(["sparkles", "shirt", "coffee", "award", "gift", "star", "ticket"] as TicketPerkIcon[]).map(
+                        (ic) => (
+                          <SelectItem key={ic} value={ic} className="text-xs">
+                            <div className="flex items-center gap-1.5">
+                              {renderPerkIcon(ic)}
+                              <span className="capitalize">{ic}</span>
+                            </div>
+                          </SelectItem>
+                        ),
+                      )}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    placeholder="Perk name (e.g. Attraction Pass, Networking Dinner)..."
+                    value={newPerkName}
+                    onChange={(e) => setNewPerkName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleAddCustomPerk();
+                      }
+                    }}
+                    className="h-8 text-xs flex-1"
+                  />
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleAddCustomPerk}
+                  disabled={!newPerkName.trim()}
+                  className="h-8 gap-1 text-xs shrink-0"
+                >
+                  <Plus className="size-3.5" />
+                  Add Perk
+                </Button>
+              </div>
+            </div>
+
+            {/* Configured Perks List */}
+            {perks.length > 0 ? (
+              <div className="space-y-1.5 pt-2 border-t border-border/40">
+                <span className="font-medium text-[10px] uppercase tracking-wider text-muted-foreground">
+                  Included Perks on this Ticket ({perks.length}):
+                </span>
+                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                  {perks.map((p) => {
+                    const linkedMerch = p.merchandise_id
+                      ? eventMerchandise.find((m) => m.id === p.merchandise_id)
+                      : null;
+
+                    return (
+                      <div
+                        key={p.id}
+                        className="flex items-center justify-between gap-2 rounded-md border border-border/70 bg-card p-2 text-xs shadow-2xs"
+                      >
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <div className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-muted">
+                            {linkedMerch?.image_url ? (
+                              // biome-ignore lint/performance/noImgElement: thumbnail
+                              // biome-ignore lint/a11y/useAltText: preview
+                              <img src={linkedMerch.image_url} className="size-5 rounded object-cover" />
+                            ) : (
+                              renderPerkIcon(p.icon)
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-medium text-foreground truncate">{p.name}</span>
+                              {p.merchandise_id && (
+                                <Badge
+                                  variant="secondary"
+                                  className="px-1 py-0 text-[9px] bg-blue-500/10 text-blue-600 dark:text-blue-400"
+                                >
+                                  Merchandise
+                                </Badge>
+                              )}
+                            </div>
+                            {p.description && (
+                              <p className="text-[10px] text-muted-foreground truncate">{p.description}</p>
+                            )}
+                          </div>
+                        </div>
+
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-xs"
+                          onClick={() => handleRemovePerk(p.id)}
+                          className="text-muted-foreground hover:text-destructive shrink-0"
+                          title="Remove perk"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-md border border-dashed border-border/70 p-2.5 text-center text-[11px] text-muted-foreground">
+                No perks included yet. Add merchandise or benefits that attendees receive with this ticket.
+              </div>
+            )}
+          </div>
+
           {/* Capacity and Limit Per Person */}
           <div className="grid grid-cols-1 gap-4 rounded-lg border p-3 sm:grid-cols-2">
             {/* Limit Per Person */}
@@ -351,6 +688,22 @@ export function TicketTierDialog({ open, onOpenChange, ticket, onSave }: TicketT
                 <SelectItem value="hidden">Hidden (Internal / Inactive)</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          {/* Save as Reusable Template Checkbox */}
+          <div className="flex items-center justify-between rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
+            <div className="flex items-center gap-2">
+              <Bookmark className="size-4 text-amber-500" />
+              <div>
+                <Label htmlFor="save-as-template" className="cursor-pointer font-medium text-xs">
+                  Save as Reusable Template
+                </Label>
+                <p className="text-[10px] text-muted-foreground">
+                  Make this ticket configuration available in &quot;Quick Templates&quot; for future events.
+                </p>
+              </div>
+            </div>
+            <Switch id="save-as-template" checked={saveAsTemplateChecked} onCheckedChange={setSaveAsTemplateChecked} />
           </div>
         </div>
 

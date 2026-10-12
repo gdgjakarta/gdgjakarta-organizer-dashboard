@@ -1,46 +1,90 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import Editor, { type OnMount } from "@monaco-editor/react";
-import { Laptop, Smartphone, Wand2 } from "lucide-react";
+import { Eye, Laptop, Smartphone, Wand2 } from "lucide-react";
 import { useTheme } from "next-themes";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+
+import type { PublishedEventOption } from "../_actions/fetch-published-events";
+import { DraggableTokensPanel } from "./draggable-tokens-panel";
 
 type EditorInstance = Parameters<OnMount>[0];
 
 interface HtmlEditorPreviewProps {
   value: string;
   onChange: (value: string) => void;
-  availableTags: string[];
+  selectedEvent?: PublishedEventOption;
+  availableTags?: string[];
 }
 
-export function HtmlEditorPreview({ value, onChange, availableTags }: HtmlEditorPreviewProps) {
+export function HtmlEditorPreview({
+  value,
+  onChange,
+  selectedEvent,
+  availableTags: _availableTags = [],
+}: HtmlEditorPreviewProps) {
   const editorRef = useRef<EditorInstance | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const { theme } = useTheme();
   const [previewDevice, setPreviewDevice] = useState<"desktop" | "mobile">("desktop");
+  const [interpolatePreview, setInterpolatePreview] = useState<boolean>(true);
 
   const handleEditorDidMount: OnMount = (editor) => {
     editorRef.current = editor;
+
+    // Attach drop event listener on Monaco DOM node to handle HTML5 drop seamlessly
+    const domNode = editor.getDomNode();
+    if (domNode) {
+      domNode.addEventListener("dragover", (e: DragEvent) => {
+        e.preventDefault();
+        if (e.dataTransfer) {
+          e.dataTransfer.dropEffect = "copy";
+        }
+      });
+
+      domNode.addEventListener("drop", (e: DragEvent) => {
+        e.preventDefault();
+        const text = e.dataTransfer?.getData("text/plain");
+        if (!text) return;
+
+        const target = editor.getTargetAtClientPoint(e.clientX, e.clientY);
+        if (target?.position) {
+          editor.executeEdits("drop-token", [
+            {
+              range: {
+                startLineNumber: target.position.lineNumber,
+                startColumn: target.position.column,
+                endLineNumber: target.position.lineNumber,
+                endColumn: target.position.column,
+              },
+              text,
+              forceMoveMarkers: true,
+            },
+          ]);
+          editor.focus();
+        } else {
+          insertContent(text);
+        }
+      });
+    }
   };
 
-  const insertTag = (tag: string) => {
+  const insertContent = (content: string) => {
     const selection = editorRef.current?.getSelection();
     if (!selection) return;
 
-    const tagString = `[[${tag}]]`;
     const op = {
       range: selection,
-      text: tagString,
+      text: content,
       forceMoveMarkers: true,
     };
 
-    // Execute the edit to insert the tag
-    editorRef.current?.executeEdits("insert-tag", [op]);
+    editorRef.current?.executeEdits("insert-token", [op]);
     editorRef.current?.focus();
   };
 
@@ -48,43 +92,73 @@ export function HtmlEditorPreview({ value, onChange, availableTags }: HtmlEditor
     editorRef.current?.getAction("editor.action.formatDocument")?.run();
   };
 
+  // Live rendered HTML with simulated or real event values
+  const renderedHtml = useMemo(() => {
+    if (!interpolatePreview) return value;
+
+    const eventName = selectedEvent?.title ?? "DevFest Jakarta 2026";
+    const eventDate = selectedEvent?.formattedDate ?? "FRIDAY, OCT 23, 2026";
+    const eventTime = selectedEvent?.formattedTime ?? "10:00 AM - 05:00 PM";
+    const eventVenue = selectedEvent?.venueName ?? "Jakarta Convention Center";
+    const eventAddress = selectedEvent?.venueAddress ?? "Jl. Gatot Subroto, Jakarta";
+    const eventUrl = selectedEvent?.url ?? "https://gdg.community.dev/gdg-jakarta/";
+    const eventBannerUrl =
+      selectedEvent?.bannerUrl ??
+      "https://assets.gdgjakarta.org/gdg-jakarta/gdg-jakarta-emailheaders-1244x388-blue.png";
+    const eventDesc =
+      selectedEvent?.descriptionShort ?? "Join the largest Google developer community conference in Jakarta!";
+
+    return (
+      value
+        .replace(/\[\[EventName\]\]/g, eventName)
+        .replace(/\[\[EventDate\]\]/g, eventDate)
+        .replace(/\[\[EventTime\]\]/g, eventTime)
+        .replace(/\[\[EventVenue\]\]/g, eventVenue)
+        .replace(/\[\[EventAddress\]\]/g, eventAddress)
+        .replace(/\[\[EventUrl\]\]/g, eventUrl)
+        .replace(/\[\[EventBannerUrl\]\]/g, eventBannerUrl)
+        .replace(/\[\[EventDescription\]\]/g, eventDesc)
+        // Attendee placeholders simulation
+        .replace(/\[\[Name\]\]/g, "Budi Santoso")
+        .replace(/\[\[FirstName\]\]/g, "Budi")
+        .replace(/\[\[LastName\]\]/g, "Santoso")
+        .replace(/\[\[Email\]\]/g, "budi.santoso@example.com")
+        .replace(/\[\[TicketType\]\]/g, "In-Person Pass")
+        .replace(/\[\[CheckinStatus\]\]/g, "Confirmed")
+    );
+  }, [value, interpolatePreview, selectedEvent]);
+
   return (
     <div className="flex w-full flex-col space-y-4">
-      {availableTags.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-muted-foreground text-sm font-medium">Insert Tag:</span>
-          {availableTags.map((tag) => (
-            <Badge
-              key={tag}
-              variant="secondary"
-              className="cursor-pointer transition-colors hover:bg-secondary/80 hover:text-foreground active:scale-95"
-              onClick={() => insertTag(tag)}
-            >
-              [[{tag}]]
-            </Badge>
-          ))}
-        </div>
-      )}
+      {/* Draggable Template Tokens & Component Blocks */}
+      <DraggableTokensPanel onInsertToken={insertContent} />
 
-      <div className="grid min-h-150 grid-cols-1 gap-4 xl:grid-cols-2">
-        {/* Code Editor */}
-        <div className="flex h-full flex-col overflow-hidden rounded-md border focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
+      {/* Editor & Preview Grid */}
+      <div className="grid min-h-160 grid-cols-1 gap-4 xl:grid-cols-2">
+        {/* Monaco Code Editor */}
+        <div
+          ref={containerRef}
+          className="flex h-full flex-col overflow-hidden rounded-md border focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2"
+        >
           <div className="flex items-center justify-between border-b bg-muted/50 px-3 py-2">
-            <Label className="font-semibold text-muted-foreground text-xs uppercase tracking-wider">
-              HTML Source Code
-            </Label>
+            <div className="flex items-center gap-2">
+              <Label className="font-semibold text-muted-foreground text-xs uppercase tracking-wider">
+                HTML Source Code
+              </Label>
+              <span className="text-[10px] text-muted-foreground">(Drop tokens anywhere)</span>
+            </div>
             <Button
               type="button"
               variant="outline"
               size="sm"
-              className="h-7 px-2 text-xs gap-1.5"
+              className="h-7 gap-1.5 px-2 text-xs"
               onClick={formatDocument}
             >
               <Wand2 className="size-3.5" />
               Format Code
             </Button>
           </div>
-          <div className="relative h-full min-h-150 flex-1">
+          <div className="relative h-full min-h-160 flex-1">
             <Editor
               height="100%"
               defaultLanguage="html"
@@ -103,21 +177,37 @@ export function HtmlEditorPreview({ value, onChange, availableTags }: HtmlEditor
                 fontSize: 13,
                 padding: { top: 16 },
                 scrollBeyondLastLine: false,
+                dragAndDrop: true,
               }}
             />
           </div>
         </div>
 
-        {/* Live Preview */}
+        {/* Live Preview Panel */}
         <div className="flex h-full flex-col overflow-hidden rounded-md border bg-muted/20">
           <div className="flex items-center justify-between border-b bg-muted/50 px-3 py-2">
-            <Label className="font-semibold text-muted-foreground text-xs uppercase tracking-wider">Live Preview</Label>
+            <div className="flex items-center gap-2">
+              <Label className="font-semibold text-muted-foreground text-xs uppercase tracking-wider">
+                Live Preview
+              </Label>
+              <Button
+                type="button"
+                variant={interpolatePreview ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setInterpolatePreview(!interpolatePreview)}
+                className="h-6 gap-1 px-2 text-[11px]"
+                title="Toggle real interpolated values versus raw placeholder tags"
+              >
+                <Eye className="size-3" />
+                <span>{interpolatePreview ? "Sample Data" : "Raw Tags"}</span>
+              </Button>
+            </div>
             <div className="flex items-center gap-1 rounded-md border bg-background/50 p-0.5">
               <Button
                 type="button"
                 variant={previewDevice === "desktop" ? "secondary" : "ghost"}
                 size="sm"
-                className="h-6 px-2 text-xs gap-1"
+                className="h-6 gap-1 px-2 text-xs"
                 onClick={() => setPreviewDevice("desktop")}
               >
                 <Laptop className="size-3" />
@@ -127,7 +217,7 @@ export function HtmlEditorPreview({ value, onChange, availableTags }: HtmlEditor
                 type="button"
                 variant={previewDevice === "mobile" ? "secondary" : "ghost"}
                 size="sm"
-                className="h-6 px-2 text-xs gap-1"
+                className="h-6 gap-1 px-2 text-xs"
                 onClick={() => setPreviewDevice("mobile")}
               >
                 <Smartphone className="size-3" />
@@ -138,12 +228,12 @@ export function HtmlEditorPreview({ value, onChange, availableTags }: HtmlEditor
           <div className="relative flex h-full flex-1 items-center justify-center overflow-auto bg-muted/10 p-4">
             <div
               className={cn(
-                "relative h-full min-h-150 w-full overflow-hidden rounded-md border bg-white shadow-sm transition-all duration-200",
-                previewDevice === "mobile" && "max-w-95 border-2 shadow-md rounded-2xl",
+                "relative h-full min-h-160 w-full overflow-hidden rounded-md border bg-white shadow-xs transition-all duration-200",
+                previewDevice === "mobile" && "max-w-95 rounded-2xl border-2 shadow-md",
               )}
             >
               <iframe
-                srcDoc={value}
+                srcDoc={renderedHtml}
                 className="absolute inset-0 h-full w-full border-0 bg-white"
                 title="Email Preview"
               />

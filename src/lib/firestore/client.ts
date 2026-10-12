@@ -395,7 +395,10 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
   }
 
   // Validate venue, session, and ticket capacity
-  if (eventData) {
+  let isWaitlisted = registration.status === "waitlisted";
+  const allowWaitlist = eventData ? eventData.allow_waitlist !== false : true;
+
+  if (eventData && !isWaitlisted) {
     // 1. Venue capacity check
     let venueCapacity: number | null = null;
     if (typeof eventData.max_attendees === "number" && eventData.max_attendees > 0) {
@@ -408,47 +411,65 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
       const isCurated = Boolean(eventData.requires_approval || eventData.curation_mode);
       if (isCurated) {
         if (Number(eventData.total_approved || 0) >= venueCapacity) {
-          throw new Error(
-            `Registration is already full. The venue capacity (${venueCapacity} approved attendees) has been reached.`,
-          );
+          if (allowWaitlist) {
+            isWaitlisted = true;
+          } else {
+            throw new Error(
+              `Registration is already full. The venue capacity (${venueCapacity} approved attendees) has been reached.`,
+            );
+          }
         }
       } else {
         if (Number(eventData.total_registrations || 0) >= venueCapacity) {
-          throw new Error(
-            `Registration is already full. The maximum capacity of ${venueCapacity} attendees has been reached.`,
-          );
+          if (allowWaitlist) {
+            isWaitlisted = true;
+          } else {
+            throw new Error(
+              `Registration is already full. The maximum capacity of ${venueCapacity} attendees has been reached.`,
+            );
+          }
         }
       }
     }
 
     // 2. Session capacity check
-    if (registration.session_id) {
+    if (!isWaitlisted && registration.session_id) {
       const matchingSession = eventData.sessions?.find((s) => s.id === registration.session_id);
       if (matchingSession && matchingSession.capacity > 0) {
         const currentCount = matchingSession.total_registered || 0;
         if (currentCount >= matchingSession.capacity) {
-          throw new Error(
-            `The session "${matchingSession.title}" has reached its maximum capacity (${matchingSession.capacity} attendees). Please select an alternate session.`,
-          );
+          if (allowWaitlist) {
+            isWaitlisted = true;
+          } else {
+            throw new Error(
+              `The session "${matchingSession.title}" has reached its maximum capacity (${matchingSession.capacity} attendees). Please select an alternate session.`,
+            );
+          }
         }
       }
     }
 
     // 3. Ticket capacity check
-    if (registration.ticket_id && eventData.tickets) {
+    if (!isWaitlisted && registration.ticket_id && eventData.tickets) {
       const matchingTicket = eventData.tickets.find((t) => t.id === registration.ticket_id);
       if (matchingTicket && typeof matchingTicket.capacity === "number" && matchingTicket.capacity > 0) {
         const currentTicketCount = matchingTicket.total_registered || 0;
         if (currentTicketCount >= matchingTicket.capacity) {
-          throw new Error(`The ticket tier "${matchingTicket.name}" is sold out (${matchingTicket.capacity} tickets).`);
+          if (allowWaitlist) {
+            isWaitlisted = true;
+          } else {
+            throw new Error(
+              `The ticket tier "${matchingTicket.name}" is sold out (${matchingTicket.capacity} tickets).`,
+            );
+          }
         }
       }
     }
   }
 
-  // 3. Enforce default registration status:
-  // When anyone registers on the first time, their default status in the dashboard is "pending" (Pending Review).
-  const resolvedStatus: RegistrationStatus = "pending";
+  // 3. Enforce registration status:
+  // If waitlisted, status is "waitlisted". Otherwise default is "pending".
+  const resolvedStatus: RegistrationStatus = isWaitlisted ? "waitlisted" : (registration.status ?? "pending");
 
   const regId = `${eventIdStr}_${registration.member_id}`;
   const docRef = doc(db, "event_registrations", regId);
@@ -460,6 +481,15 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
     ...(registration.session_title ? { session_title: registration.session_title } : {}),
   };
 
+  const initialStatusLog: RegistrationStatusLog = {
+    id: `log_${Date.now()}_initial`,
+    status: resolvedStatus,
+    changed_at: new Date().toISOString(),
+    changed_by_id: registration.member_id,
+    changed_by_name: registration.member_name || "Applicant",
+    notes: isWaitlisted ? "Registered on waitlist as event capacity was reached." : "Initial registration submitted.",
+  };
+
   const cleanPayload = sanitizeFirestoreData<FirestoreRegistration>({
     ...registration,
     status: resolvedStatus,
@@ -467,17 +497,20 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
     event_id: eventIdStr,
     member_email: normalizedEmail,
     id: regId,
+    status_logs: [initialStatusLog],
   });
 
   await setDoc(docRef, cleanPayload, { merge: true });
 
-  // Update event registration counter & session total if available
+  // Update event registration counter, waitlisted counter & session total if available
   try {
     if (eventData) {
       const currentCount = typeof eventData.total_registrations === "number" ? eventData.total_registrations : 0;
+      const currentWaitlistCount = typeof eventData.total_waitlisted === "number" ? eventData.total_waitlisted : 0;
 
       const updateData: Record<string, unknown> = {
         total_registrations: currentCount + 1,
+        ...(isWaitlisted ? { total_waitlisted: currentWaitlistCount + 1 } : {}),
         updated_at: new Date().toISOString(),
       };
 

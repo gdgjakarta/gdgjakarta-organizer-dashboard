@@ -11,6 +11,7 @@ export interface CapacityCheckDetails {
 
 export interface CapacityValidationResult {
   allowed: boolean;
+  isWaitlist?: boolean;
   reason?: "venue_full" | "session_full";
   title: string;
   message: string;
@@ -63,6 +64,83 @@ export function getEventVenueCapacity(event?: FirestoreEvent | null): number | n
   }
 
   return null;
+}
+
+export interface EventCapacityStatus {
+  isFull: boolean;
+  venueCapacity: number | null;
+  currentCount: number;
+  remainingSeats: number;
+  isCurated: boolean;
+  allowWaitlist: boolean;
+  totalWaitlisted: number;
+}
+
+/**
+ * Checks overall event capacity status (venue and sessions).
+ */
+export function checkEventCapacityStatus(event?: FirestoreEvent | null): EventCapacityStatus {
+  if (!event) {
+    return {
+      isFull: false,
+      venueCapacity: null,
+      currentCount: 0,
+      remainingSeats: Number.POSITIVE_INFINITY,
+      isCurated: false,
+      allowWaitlist: true,
+      totalWaitlisted: 0,
+    };
+  }
+
+  const venueCapacity = getEventVenueCapacity(event);
+  const isCurated = Boolean(event.requires_approval || event.curation_mode);
+  const totalApproved = event.total_approved ?? 0;
+  const totalRegistered = event.total_registrations ?? 0;
+  const currentCount = isCurated ? totalApproved : totalRegistered;
+  const totalWaitlisted = event.total_waitlisted ?? 0;
+  const allowWaitlist = event.allow_waitlist !== false;
+
+  let isFull = false;
+  if (venueCapacity !== null && venueCapacity > 0) {
+    if (isCurated) {
+      if (totalApproved >= venueCapacity) {
+        isFull = true;
+      } else if (
+        typeof event.max_attendees === "number" &&
+        event.max_attendees > 0 &&
+        totalRegistered >= event.max_attendees
+      ) {
+        isFull = true;
+      }
+    } else {
+      if (totalRegistered >= venueCapacity) {
+        isFull = true;
+      }
+    }
+  }
+
+  // Also check if all sessions or tickets are full (if multiple sessions or tickets defined)
+  if (!isFull && Array.isArray(event.sessions) && event.sessions.length > 0) {
+    const sessionsWithCap = event.sessions.filter((s) => typeof s.capacity === "number" && s.capacity > 0);
+    if (sessionsWithCap.length > 0) {
+      const allSessionsFull = sessionsWithCap.every((s) => (s.total_registered ?? 0) >= s.capacity);
+      if (allSessionsFull) {
+        isFull = true;
+      }
+    }
+  }
+
+  const remainingSeats = venueCapacity === null ? Number.POSITIVE_INFINITY : Math.max(0, venueCapacity - currentCount);
+
+  return {
+    isFull,
+    venueCapacity,
+    currentCount,
+    remainingSeats,
+    isCurated,
+    allowWaitlist,
+    totalWaitlisted,
+  };
 }
 
 /**
@@ -419,9 +497,23 @@ export function validateRegistrationSubmissionCapacity(params: {
     }
   }
 
+  const allowWaitlist = event.allow_waitlist !== false;
+
   if (isVenueFull) {
+    if (allowWaitlist) {
+      return {
+        allowed: true,
+        isWaitlist: true,
+        reason: "venue_full",
+        title: "Event Registration Full — Joining Waitlist",
+        message: `This event has reached its maximum capacity of ${venueCapacity} attendees. By submitting, you will be placed on the waitlist.`,
+        venue: venueDetails,
+        session: sessionDetails,
+      };
+    }
     return {
       allowed: false,
+      isWaitlist: false,
       reason: "venue_full",
       title: "Event Registration Already Full",
       message: `This event has reached its maximum capacity of ${venueCapacity} attendees. Registration is currently closed to prevent exceeding venue limits.`,
@@ -431,8 +523,20 @@ export function validateRegistrationSubmissionCapacity(params: {
   }
 
   if (sessionDetails?.isFull) {
+    if (allowWaitlist) {
+      return {
+        allowed: true,
+        isWaitlist: true,
+        reason: "session_full",
+        title: "Session Track Full — Joining Waitlist",
+        message: `The selected track "${sessionDetails.title}" has reached maximum capacity (${sessionDetails.capacity} attendees). By submitting, you will be placed on the waitlist.`,
+        venue: venueDetails,
+        session: sessionDetails,
+      };
+    }
     return {
       allowed: false,
+      isWaitlist: false,
       reason: "session_full",
       title: "Session Track Already Full",
       message: `The selected session track "${sessionDetails.title}" has reached its maximum capacity of ${sessionDetails.capacity} attendees. Please choose another session track to continue your registration.`,
@@ -443,6 +547,7 @@ export function validateRegistrationSubmissionCapacity(params: {
 
   return {
     allowed: true,
+    isWaitlist: false,
     title: "Capacity Available",
     message: "Spots are available for this registration.",
     venue: venueDetails,

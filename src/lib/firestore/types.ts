@@ -96,6 +96,16 @@ export interface EventMerchandiseItem {
 
 export type TicketType = "free" | "paid" | "commitment_fee";
 
+export type TicketPerkIcon = "gift" | "shirt" | "coffee" | "award" | "star" | "ticket" | "sparkles";
+
+export interface TicketPerk {
+  id: string;
+  name: string; // e.g. "Official DevFest T-Shirt", "Lunch & Coffee Break"
+  description?: string; // e.g. "Unisex 100% Cotton combed 24s"
+  merchandise_id?: string; // Optional link to an EventMerchandiseItem.id
+  icon?: TicketPerkIcon;
+}
+
 export interface EventTicketTier {
   id: string;
   name: string; // e.g. "General Admission (Free)", "VIP Community Pass", "Commitment Deposit"
@@ -108,6 +118,7 @@ export interface EventTicketTier {
   status: "active" | "sold_out" | "hidden";
   sales_start_date?: string | null;
   sales_end_date?: string | null;
+  perks?: TicketPerk[];
   created_at?: string;
   updated_at?: string;
 }
@@ -200,6 +211,7 @@ export interface FirestoreEvent {
   // Dashboard & Registration Extensions
   requires_approval: boolean;
   curation_mode?: boolean;
+  allow_waitlist?: boolean;
   max_attendees?: number | null;
   total_registrations: number;
   total_approved: number;
