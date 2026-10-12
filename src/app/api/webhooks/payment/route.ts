@@ -28,7 +28,22 @@ function isAuthorized(req: Request): boolean {
 
 const updatePaymentSchema = z.object({
   invoiceNumber: z.string().min(1, "invoiceNumber is required"),
-  status: z.enum(["pending", "approved", "registered", "rejected", "waitlisted", "attended"]).optional(),
+  status: z
+    .enum([
+      "pending",
+      "approved",
+      "registered",
+      "rejected",
+      "waitlisted",
+      "attended",
+      "waiting_for_payment",
+      "paid_and_registered",
+      "expired",
+      "failed",
+      "canceled",
+      "cancelled",
+    ])
+    .optional(),
   bevyAttendeeId: z
     .union([z.number(), z.string()])
     .transform((val) => Number(val) || null)

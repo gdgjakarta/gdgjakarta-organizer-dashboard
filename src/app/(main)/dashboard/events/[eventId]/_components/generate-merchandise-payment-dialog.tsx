@@ -102,6 +102,15 @@ export function GenerateMerchandisePaymentDialog({
       return;
     }
 
+    if (!customerPhone.trim()) {
+      toast.error("Please enter the customer's WhatsApp phone number.");
+      return;
+    }
+
+    let formattedPhone = customerPhone.trim().replace(/[\s-]/g, "");
+    if (formattedPhone.startsWith("+")) formattedPhone = formattedPhone.slice(1);
+    if (formattedPhone.startsWith("0")) formattedPhone = `62${formattedPhone.slice(1)}`;
+
     // Compose formatted item label including variations
     const variationSuffix = Object.entries(selectedVariations)
       .map(([k, v]) => `${k}: ${v}`)
@@ -158,13 +167,14 @@ export function GenerateMerchandisePaymentDialog({
           customer: {
             name: customerName.trim(),
             email: customerEmail.trim(),
-            phone: customerPhone.trim(),
+            phone: formattedPhone,
           },
           event: {
             id: event.id,
             title: event.title,
-            headerEmailUrl: event.picture_url ?? event.banner_url,
-            paymentDeadlineMinutes: 1440,
+            headerEmailUrl: event.headerEmailUrl ?? event.header_email_url ?? event.picture_url ?? event.banner_url,
+            paymentDeadlineMinutes:
+              event.paymentDeadlinesInMinutes ?? event.paymentDeadlineMinutes ?? event.payment_deadline_minutes ?? 1440,
           },
           items: [
             {

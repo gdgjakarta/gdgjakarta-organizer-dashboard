@@ -8,7 +8,7 @@ import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/type
 export interface PaymentCustomer {
   name: string;
   email: string;
-  phone?: string;
+  phone: string;
 }
 
 export interface PaymentEventData {
@@ -127,16 +127,115 @@ export function hasRegistrationPaymentRequirements(registration?: Partial<Firest
 }
 
 /**
+ * Extracts and sanitizes the customer's WhatsApp phone number from answers and registration metadata.
+ * Normalizes leading '08...' to '628...' and '+62...' to '62...'.
+ */
+export function extractCustomerPhone(
+  registration: Partial<FirestoreRegistration>,
+  answersOverride?: Record<string, unknown>,
+): string {
+  const ans = answersOverride ?? ((registration.answers ?? {}) as Record<string, unknown>);
+
+  // Direct key lookup
+  const candidate =
+    ans.whatsapp ??
+    ans.whatsapp_number ??
+    ans["WhatsApp Phone Number"] ??
+    ans["whatsapp phone number"] ??
+    ans.phone ??
+    ans.phone_number ??
+    ans["Phone Number"] ??
+    ans.recipientPhone ??
+    ans.recipient_phone ??
+    registration.member_phone ??
+    (registration as unknown as Record<string, unknown>).phone ??
+    "";
+
+  let raw = typeof candidate === "string" ? candidate.trim() : "";
+
+  // Fallback: search any answer key matching whatsapp or phone
+  if (!raw) {
+    for (const [key, val] of Object.entries(ans)) {
+      if (typeof val === "string" && val.trim().length > 0) {
+        const lowerKey = key.toLowerCase();
+        if (
+          lowerKey.includes("whatsapp") ||
+          lowerKey.includes("phone") ||
+          lowerKey.includes("telepon") ||
+          lowerKey.includes("hp")
+        ) {
+          raw = val.trim();
+          break;
+        }
+      }
+    }
+  }
+
+  if (!raw) return "";
+
+  let clean = raw.replace(/[\s-]/g, "");
+  if (clean.startsWith("+")) {
+    clean = clean.slice(1);
+  }
+  if (clean.startsWith("0")) {
+    clean = `62${clean.slice(1)}`;
+  }
+  return clean;
+}
+
+/**
+ * Extracts the attendee/customer full name, checking custom question responses, member metadata, and auth fallback.
+ */
+export function extractCustomerName(
+  registration: Partial<FirestoreRegistration>,
+  answersOverride?: Record<string, unknown>,
+  fallbackUser?: { name?: string | null },
+): string {
+  const ans = answersOverride ?? ((registration.answers ?? {}) as Record<string, unknown>);
+  const candidate =
+    ans.full_name ??
+    ans.name ??
+    ans["Full Name"] ??
+    ans["full name"] ??
+    registration.member_name ??
+    fallbackUser?.name ??
+    "";
+  return typeof candidate === "string" && candidate.trim().length > 0 ? candidate.trim() : "Community Member";
+}
+
+/**
+ * Extracts the attendee/customer email, checking custom questionnaire answers, work_email, and auth fallback.
+ */
+export function extractCustomerEmail(
+  registration: Partial<FirestoreRegistration>,
+  answersOverride?: Record<string, unknown>,
+  fallbackUser?: { email?: string | null },
+): string {
+  const ans = answersOverride ?? ((registration.answers ?? {}) as Record<string, unknown>);
+  const candidate =
+    ans.email ??
+    ans.work_email ??
+    ans["Work Email"] ??
+    ans["Email Address"] ??
+    ans["email"] ??
+    registration.member_email ??
+    fallbackUser?.email ??
+    "";
+  return typeof candidate === "string" ? candidate.trim() : "";
+}
+
+/**
  * Builds the standardized DOKU payment request payload from registration and event models.
  */
 export function buildRegistrationPaymentPayload(
   registration: Partial<FirestoreRegistration>,
   event: Partial<FirestoreEvent>,
-  options?: { sendEmail?: boolean; paymentMethodTypes?: string[] },
+  options?: { sendEmail?: boolean; paymentMethodTypes?: string[]; paymentDeadlineMinutes?: number },
 ): DokuPaymentLinkRequest {
   const answers = (registration.answers ?? {}) as Record<string, unknown>;
-  const rawPhone = answers.whatsapp_number ?? answers.phone_number ?? answers.phone;
-  const phoneStr = typeof rawPhone === "string" ? rawPhone : "";
+  const phoneStr = extractCustomerPhone(registration, answers);
+  const nameStr = extractCustomerName(registration, answers);
+  const emailStr = extractCustomerEmail(registration, answers);
 
   const items: PaymentItem[] = (registration.selected_merchandise ?? []).map((m) => ({
     id: m.id,
@@ -204,16 +303,27 @@ export function buildRegistrationPaymentPayload(
 
   return {
     customer: {
-      name: registration.member_name ?? "Community Member",
-      email: registration.member_email ?? "",
+      name: nameStr,
+      email: emailStr,
       phone: phoneStr,
     },
     event: {
       id: event.id ? String(event.id) : undefined,
       title: event.title ?? registration.event_title ?? "GDG Jakarta Event",
       headerEmailUrl:
-        event.picture_url ?? event.banner_url ?? registration.event_picture_url ?? registration.event_banner_url,
-      paymentDeadlineMinutes: 1440,
+        event.headerEmailUrl ??
+        event.header_email_url ??
+        event.picture_url ??
+        event.banner_url ??
+        registration.event_picture_url ??
+        registration.event_banner_url ??
+        "",
+      paymentDeadlineMinutes:
+        options?.paymentDeadlineMinutes ??
+        event.paymentDeadlinesInMinutes ??
+        event.paymentDeadlineMinutes ??
+        event.payment_deadline_minutes ??
+        1440,
     },
     items:
       items.length > 0

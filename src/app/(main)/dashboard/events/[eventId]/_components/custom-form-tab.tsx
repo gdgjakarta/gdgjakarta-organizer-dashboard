@@ -107,8 +107,9 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
-  // 1. Policy & Capacity
-  const [requiresApproval, setRequiresApproval] = useState(Boolean(event.requires_approval));
+  const [requiresApproval, setRequiresApproval] = useState(
+    Boolean(event.requires_approval || (event as unknown as Record<string, unknown>).curation_mode),
+  );
   const [allowWaitlist, setAllowWaitlist] = useState(event.allow_waitlist !== false);
   const [maxAttendees, setMaxAttendees] = useState(event.max_attendees ? String(event.max_attendees) : "");
 
@@ -195,8 +196,13 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
         const { getFirestoreEventById } = await import("@/lib/firestore/client");
         const docData = await getFirestoreEventById(String(event.id));
 
+        const docRecord = docData as unknown as Record<string, unknown> | null;
         const loadedApproval =
-          docData?.requires_approval !== undefined ? docData.requires_approval : Boolean(event.requires_approval);
+          docData?.requires_approval !== undefined
+            ? docData.requires_approval
+            : docRecord?.curation_mode !== undefined
+              ? Boolean(docRecord.curation_mode)
+              : Boolean(event.requires_approval || (event as unknown as Record<string, unknown>).curation_mode);
         const loadedAllowWaitlist =
           docData?.allow_waitlist !== undefined ? docData.allow_waitlist : event.allow_waitlist !== false;
         const loadedMaxAttendees =
@@ -242,7 +248,9 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
       } catch (err) {
         console.warn("[CustomFormTab] Failed to load Firestore document:", err);
         initialSnapshotRef.current ??= JSON.stringify({
-          requiresApproval: Boolean(event.requires_approval),
+          requiresApproval: Boolean(
+            event.requires_approval || (event as unknown as Record<string, unknown>).curation_mode,
+          ),
           allowWaitlist: event.allow_waitlist !== false,
           maxAttendees: event.max_attendees ? String(event.max_attendees) : "",
           sessions: event.sessions ?? [],
@@ -630,6 +638,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
             registration_start_date: startDateIso ? startDateIso : deleteField(),
             registration_end_date: endDateIso ? endDateIso : deleteField(),
             requires_approval: requiresApproval,
+            curation_mode: requiresApproval,
             allow_waitlist: allowWaitlist,
             max_attendees: resolvedMaxAttendees,
             webhook_url: event.webhook_url ? event.webhook_url : deleteField(),

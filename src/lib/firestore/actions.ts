@@ -492,9 +492,10 @@ export async function submitMerchandiseDeliveryRequestAction(input: SubmitMercha
     let paymentWebhookUrl: string | undefined;
     let deliveryPaymentEnv: "production" | "sandbox" = "production";
     let deliveryFee = 50000;
+    let eventDoc: Awaited<ReturnType<typeof getFirestoreEventById>> = null;
 
     try {
-      const eventDoc = await getFirestoreEventById(String(input.eventId));
+      eventDoc = await getFirestoreEventById(String(input.eventId));
       const configuredEnv = eventDoc?.merchandise_delivery_payment_environment ?? eventDoc?.payment_environment;
       if (configuredEnv === "sandbox" || (!configuredEnv && eventDoc?.is_test)) {
         deliveryPaymentEnv = "sandbox";
@@ -521,8 +522,12 @@ export async function submitMerchandiseDeliveryRequestAction(input: SubmitMercha
       event: {
         id: String(input.eventId),
         title: input.eventTitle ?? "GDG Jakarta Event",
-        headerEmailUrl: input.eventPictureUrl,
-        paymentDeadlineMinutes: 1440,
+        headerEmailUrl: eventDoc?.headerEmailUrl ?? eventDoc?.header_email_url ?? input.eventPictureUrl,
+        paymentDeadlineMinutes:
+          eventDoc?.paymentDeadlinesInMinutes ??
+          eventDoc?.paymentDeadlineMinutes ??
+          eventDoc?.payment_deadline_minutes ??
+          1440,
       },
       items: [
         {
@@ -773,6 +778,11 @@ export async function updateEventPaymentConfigAction(
     merchandise_delivery_payment_environment?: "production" | "sandbox";
     merchandise_delivery_fee?: number;
     payment_webhook_url?: string | null;
+    headerEmailUrl?: string | null;
+    header_email_url?: string | null;
+    paymentDeadlinesInMinutes?: number | null;
+    paymentDeadlineMinutes?: number | null;
+    payment_deadline_minutes?: number | null;
   },
   baseEvent?: Partial<FirestoreEvent>,
 ) {

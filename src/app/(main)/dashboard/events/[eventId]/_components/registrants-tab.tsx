@@ -59,6 +59,12 @@ import type { BevyAttendee } from "@/lib/bevy/types";
 import { buildApprovedAttendeePayload } from "@/lib/events/approved-attendee-webhook";
 import { validateAttendeeApprovalCapacity, validateBatchApprovalCapacity } from "@/lib/events/capacity-validator";
 import { buildRegistrationPaymentPayload, hasRegistrationPaymentRequirements } from "@/lib/events/doku-payment";
+import {
+  getEffectiveRegistrationStatus,
+  getRegistrationPaymentDeadline,
+  isPaidRegistration,
+  isRegistrationPaymentOverdue,
+} from "@/lib/events/payment-deadline";
 import { DEFAULT_COMBINED_QUESTIONS } from "@/lib/events/registration-defaults";
 import {
   deleteBatchEventRegistrationsAction,
@@ -89,6 +95,7 @@ import { type AvailableQuestionField, ColumnCustomizer } from "./column-customiz
 import { QuestionColumnValueCell } from "./question-column-value-cell";
 import { QuestionResponsesCell } from "./question-responses-cell";
 import { RegistrantStatistics } from "./registrant-statistics";
+import { ResendPaymentLinkDialog } from "./resend-payment-link-dialog";
 
 interface RegistrantsTabProps {
   eventId: string;
@@ -101,6 +108,36 @@ const STATUS_VARIANTS: Record<RegistrationStatus, { label: string; badgeClass: s
     label: "Pending Review",
     badgeClass: "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400",
     dotClass: "bg-amber-500",
+  },
+  waiting_for_payment: {
+    label: "Waiting for Payment",
+    badgeClass: "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400",
+    dotClass: "bg-amber-500",
+  },
+  paid_and_registered: {
+    label: "Paid & Registered",
+    badgeClass: "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+    dotClass: "bg-emerald-500",
+  },
+  expired: {
+    label: "Expired",
+    badgeClass: "border-zinc-500/20 bg-zinc-500/10 text-zinc-600 dark:text-zinc-400",
+    dotClass: "bg-zinc-500",
+  },
+  failed: {
+    label: "Failed",
+    badgeClass: "border-rose-500/20 bg-rose-500/10 text-rose-600 dark:text-rose-400",
+    dotClass: "bg-rose-500",
+  },
+  canceled: {
+    label: "Canceled",
+    badgeClass: "border-slate-500/20 bg-slate-500/10 text-slate-600 dark:text-slate-400",
+    dotClass: "bg-slate-500",
+  },
+  cancelled: {
+    label: "Canceled",
+    badgeClass: "border-slate-500/20 bg-slate-500/10 text-slate-600 dark:text-slate-400",
+    dotClass: "bg-slate-500",
   },
   approved: {
     label: "Approved",
@@ -400,6 +437,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const [isBatchRejecting, setIsBatchRejecting] = useState(false);
   const [isResendingInterestId, setIsResendingInterestId] = useState<string | null>(null);
   const [isBatchResendingInterest, setIsBatchResendingInterest] = useState(false);
+  const [resendPaymentRegistration, setResendPaymentRegistration] = useState<FirestoreRegistration | null>(null);
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -699,6 +737,112 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     } as FirestoreEvent;
   }, [event, sessions, customQuestions, emailTemplates]);
 
+  // Auto-sync overdue registrations to 'expired' in Firestore
+  useEffect(() => {
+    if (!currentEvent || registrationsList.length === 0) return;
+
+    const overdueRegistrations = registrationsList.filter(
+      (r) => r.status === "waiting_for_payment" && isRegistrationPaymentOverdue(r, currentEvent),
+    );
+
+    if (overdueRegistrations.length === 0) return;
+
+    let isCancelled = false;
+    void (async () => {
+      try {
+        for (const reg of overdueRegistrations) {
+          if (isCancelled) break;
+          await updateRegistrationStatusAction(
+            reg.id,
+            eventId,
+            "expired",
+            undefined,
+            "Payment deadline overdue by payment deadline minutes (auto-expired).",
+            { payment_status: "expired" },
+          );
+        }
+      } catch (err) {
+        console.warn("[RegistrantsTab] Background expired status sync:", err);
+      }
+    })();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [registrationsList, currentEvent, eventId]);
+
+  // Status Counters for Filters & Badges
+  const statusCounts = useMemo(() => {
+    let pending = 0;
+    let waitingPayment = 0;
+    let paidRegistered = 0;
+    let expired = 0;
+    let failed = 0;
+    let canceled = 0;
+    let approved = 0;
+    let checkedIn = 0;
+    let notCheckedIn = 0;
+    let waitlisted = 0;
+    let rejected = 0;
+
+    for (const reg of registrationsList) {
+      const eff = getEffectiveRegistrationStatus(reg, currentEvent);
+      const s = (eff ?? "").toLowerCase().trim();
+      const ps = (reg.payment_status ?? "").toLowerCase().trim();
+
+      if (s === "pending" || s === "applied" || s === "review" || !s) {
+        pending++;
+      } else if (s === "waiting_for_payment") {
+        waitingPayment++;
+      } else if (s === "expired") {
+        expired++;
+      } else if (s === "failed" || ps === "failed") {
+        failed++;
+      } else if (s === "canceled" || s === "cancelled") {
+        canceled++;
+      } else if (s === "waitlisted") {
+        waitlisted++;
+      } else if (s === "rejected") {
+        rejected++;
+      }
+
+      if (
+        s === "paid_and_registered" ||
+        ((s === "approved" || s === "registered" || s === "attended") && (isPaidRegistration(reg) || ps === "paid"))
+      ) {
+        paidRegistered++;
+      }
+
+      const isAppr =
+        s === "approved" || s === "paid_and_registered" || s === "attended" || s === "confirmed" || s === "registered";
+      if (isAppr) {
+        approved++;
+        if (reg.is_checked_in || s === "attended") {
+          checkedIn++;
+        } else {
+          notCheckedIn++;
+        }
+      } else if (reg.is_checked_in || s === "attended") {
+        checkedIn++;
+      }
+    }
+
+    return {
+      all: registrationsList.length,
+      pending,
+      waiting_for_payment: waitingPayment,
+      paid_and_registered: paidRegistered,
+      expired,
+      failed,
+      canceled,
+      approved,
+      checked_in: checkedIn,
+      not_checked_in: notCheckedIn,
+      waitlisted,
+      rejected,
+    };
+  }, [registrationsList, currentEvent]);
+
   // Compute email occurrences to detect duplicate registrant attempts
   const emailCounts = new Map<string, number>();
   for (const r of registrationsList) {
@@ -994,7 +1138,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         Boolean(reg.bundle_name?.toLowerCase().includes(searchLower)) ||
         (reg.answers && JSON.stringify(reg.answers).toLowerCase().includes(searchLower));
 
-      const regStatus = (reg.status ?? "").toLowerCase().trim();
+      const effectiveStatus = getEffectiveRegistrationStatus(reg, currentEvent);
+      const regStatus = (effectiveStatus ?? "").toLowerCase().trim();
       const filterStatus = (statusFilter ?? "all").toLowerCase().trim();
 
       // "all" matches ANY status without exception
@@ -1003,6 +1148,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         if (filterStatus === "not_checked_in") {
           const isApproved =
             regStatus === "approved" ||
+            regStatus === "paid_and_registered" ||
             regStatus === "attended" ||
             regStatus === "confirmed" ||
             regStatus === "registered";
@@ -1016,6 +1162,19 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
             regStatus === "attended" ||
             regStatus === "confirmed" ||
             regStatus === "registered";
+        } else if (filterStatus === "paid_and_registered") {
+          matchesStatus =
+            regStatus === "paid_and_registered" ||
+            ((regStatus === "approved" || regStatus === "registered" || regStatus === "attended") &&
+              (isPaidRegistration(reg) || reg.payment_status === "paid"));
+        } else if (filterStatus === "waiting_for_payment") {
+          matchesStatus = regStatus === "waiting_for_payment";
+        } else if (filterStatus === "expired") {
+          matchesStatus = regStatus === "expired";
+        } else if (filterStatus === "failed") {
+          matchesStatus = regStatus === "failed" || reg.payment_status === "failed";
+        } else if (filterStatus === "canceled") {
+          matchesStatus = regStatus === "canceled" || regStatus === "cancelled";
         } else if (filterStatus === "pending") {
           matchesStatus = regStatus === "pending" || regStatus === "applied" || regStatus === "review";
         } else {
@@ -1079,6 +1238,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     selectedQuestionColumns,
     questionFilters,
     questionLabelMap,
+    currentEvent,
   ]);
 
   const handleStatusChange = (registrationId: string, newStatus: RegistrationStatus) => {
@@ -1176,21 +1336,14 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
 
     setApprovingRegistrationId(registration.id);
     try {
-      const payload = buildApprovedAttendeePayload(registration, currentEvent);
-      const res = await approveAttendeeWebhookAction(payload);
+      const reviewerPayload = user ? { id: user.id, name: user.name, email: user.email } : undefined;
+      const now = new Date().toISOString();
+      const requiresPayment = hasRegistrationPaymentRequirements(registration);
 
-      if (!res.success) {
-        console.error("[RegistrantsTab] Approved attendee webhook error:", res.error, res.details);
-        toast.error(res.error ?? "Approval webhook returned status false.", {
-          description: typeof res.details === "string" ? res.details : undefined,
-        });
-        // API still under development, keep error without updating status to approved
-        return;
-      }
-
-      // Check if registration requires payment (paid ticket, commitment fee, or merchandise)
-      let paymentFields: Partial<FirestoreRegistration> = {};
-      if (hasRegistrationPaymentRequirements(registration)) {
+      if (requiresPayment) {
+        // If event ticket is paid or free with merchandise:
+        // Curation accepted -> Call API Payment Link -> Attendee Status Waiting for Payment
+        let paymentFields: Partial<FirestoreRegistration> = {};
         try {
           const paymentPayload = buildRegistrationPaymentPayload(registration, currentEvent, { sendEmail: true });
           const payRes = await generatePaymentLinkAction(paymentPayload);
@@ -1205,23 +1358,73 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
             toast.info(`Payment link generated and emailed to ${registration.member_name}`);
           } else {
             console.warn("[RegistrantsTab] Failed to generate payment link on approval:", payRes.error);
+            toast.error(payRes.error ?? "Failed to generate payment link via DOKU.");
+            return;
           }
         } catch (payErr) {
           console.warn("[RegistrantsTab] Exception generating payment link on approval:", payErr);
+          toast.error("Network error while generating payment link.");
+          return;
         }
+
+        await updateRegistrationStatusAction(
+          registration.id,
+          eventId,
+          "waiting_for_payment",
+          reviewerPayload,
+          "Application approved by organizer. Payment link sent to attendee.",
+          paymentFields,
+        );
+
+        setRegistrationsList((prev) =>
+          prev.map((r) =>
+            r.id === registration.id
+              ? {
+                  ...r,
+                  status: "waiting_for_payment",
+                  reviewed_at: now,
+                  reviewed_by_id: user?.id ?? r.reviewed_by_id,
+                  reviewed_by_name: user?.name ?? r.reviewed_by_name,
+                  reviewed_by_email: user?.email ?? r.reviewed_by_email,
+                  ...paymentFields,
+                }
+              : r,
+          ),
+        );
+
+        setInspectRegistration((prev) =>
+          prev?.id === registration.id
+            ? {
+                ...prev,
+                status: "waiting_for_payment",
+                reviewed_at: now,
+                reviewed_by_id: user?.id ?? prev.reviewed_by_id,
+                reviewed_by_name: user?.name ?? prev.reviewed_by_name,
+                reviewed_by_email: user?.email ?? prev.reviewed_by_email,
+                ...paymentFields,
+              }
+            : prev,
+        );
+
+        toast.success(`Approved ${registration.member_name}. Status updated to Waiting for Payment.`);
+        return;
+      }
+
+      // If event ticket is free (no merchandise to sell):
+      // Curation accepted -> Call Add Bevy Attendee API -> Attendee Status Approved
+      const payload = buildApprovedAttendeePayload(registration, currentEvent);
+      const res = await approveAttendeeWebhookAction(payload);
+
+      if (!res.success) {
+        console.error("[RegistrantsTab] Approved attendee webhook error:", res.error, res.details);
+        toast.error(res.error ?? "Approval webhook returned status false.", {
+          description: typeof res.details === "string" ? res.details : undefined,
+        });
+        return;
       }
 
       // Success: persist status to Firestore and update local state
-      const reviewerPayload = user ? { id: user.id, name: user.name, email: user.email } : undefined;
-      const now = new Date().toISOString();
-      await updateRegistrationStatusAction(
-        registration.id,
-        eventId,
-        "approved",
-        reviewerPayload,
-        undefined,
-        paymentFields,
-      );
+      await updateRegistrationStatusAction(registration.id, eventId, "approved", reviewerPayload);
 
       setRegistrationsList((prev) =>
         prev.map((r) =>
@@ -1233,7 +1436,6 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 reviewed_by_id: user?.id ?? r.reviewed_by_id,
                 reviewed_by_name: user?.name ?? r.reviewed_by_name,
                 reviewed_by_email: user?.email ?? r.reviewed_by_email,
-                ...paymentFields,
               }
             : r,
         ),
@@ -1248,7 +1450,6 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
               reviewed_by_id: user?.id ?? prev.reviewed_by_id,
               reviewed_by_name: user?.name ?? prev.reviewed_by_name,
               reviewed_by_email: user?.email ?? prev.reviewed_by_email,
-              ...paymentFields,
             }
           : prev,
       );
@@ -1486,47 +1687,72 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       const failedErrors: string[] = [];
 
       for (const reg of toApprove) {
-        const payload = buildApprovedAttendeePayload(reg, currentEvent);
-        const res = await approveAttendeeWebhookAction(payload);
-        if (res.success) {
-          let paymentFields: Partial<FirestoreRegistration> = {};
-          if (hasRegistrationPaymentRequirements(reg)) {
-            try {
-              const paymentPayload = buildRegistrationPaymentPayload(reg, currentEvent, { sendEmail: true });
-              const payRes = await generatePaymentLinkAction(paymentPayload);
-              if (payRes.success && payRes.paymentUrl) {
-                paymentFields = {
-                  payment_status: "unpaid",
-                  payment_url: payRes.paymentUrl,
-                  payment_invoice_number: payRes.invoiceNumber,
-                  payment_amount: payRes.amount,
-                  payment_expired_datetime: payRes.expiredDatetime,
-                };
-              }
-            } catch (payErr) {
-              console.warn("[handleBatchApprove] Payment link error:", payErr);
+        const requiresPayment = hasRegistrationPaymentRequirements(reg);
+        if (requiresPayment) {
+          try {
+            const paymentPayload = buildRegistrationPaymentPayload(reg, currentEvent, { sendEmail: true });
+            const payRes = await generatePaymentLinkAction(paymentPayload);
+            if (payRes.success && payRes.paymentUrl) {
+              const paymentFields: Partial<FirestoreRegistration> = {
+                payment_status: "unpaid",
+                payment_url: payRes.paymentUrl,
+                payment_invoice_number: payRes.invoiceNumber,
+                payment_amount: payRes.amount,
+                payment_expired_datetime: payRes.expiredDatetime,
+              };
+              await updateRegistrationStatusAction(
+                reg.id,
+                eventId,
+                "waiting_for_payment",
+                reviewerPayload,
+                "Batch approved: payment link issued.",
+                paymentFields,
+              );
+              successCount++;
+              setRegistrationsList((prev) =>
+                prev.map((r) =>
+                  r.id === reg.id
+                    ? {
+                        ...r,
+                        status: "waiting_for_payment",
+                        reviewed_at: now,
+                        reviewed_by_id: user?.id ?? r.reviewed_by_id,
+                        reviewed_by_name: user?.name ?? r.reviewed_by_name,
+                        reviewed_by_email: user?.email ?? r.reviewed_by_email,
+                        ...paymentFields,
+                      }
+                    : r,
+                ),
+              );
+            } else {
+              failedErrors.push(`${reg.member_name}: ${payRes.error ?? "Failed to generate payment link"}`);
             }
+          } catch {
+            failedErrors.push(`${reg.member_name}: Failed to generate payment link`);
           }
-
-          await updateRegistrationStatusAction(reg.id, eventId, "approved", reviewerPayload, undefined, paymentFields);
-          successCount++;
-          setRegistrationsList((prev) =>
-            prev.map((r) =>
-              r.id === reg.id
-                ? {
-                    ...r,
-                    status: "approved",
-                    reviewed_at: now,
-                    reviewed_by_id: user?.id ?? r.reviewed_by_id,
-                    reviewed_by_name: user?.name ?? r.reviewed_by_name,
-                    reviewed_by_email: user?.email ?? r.reviewed_by_email,
-                    ...paymentFields,
-                  }
-                : r,
-            ),
-          );
         } else {
-          failedErrors.push(`${reg.member_name}: ${res.error ?? "Webhook returned false"}`);
+          const payload = buildApprovedAttendeePayload(reg, currentEvent);
+          const res = await approveAttendeeWebhookAction(payload);
+          if (res.success) {
+            await updateRegistrationStatusAction(reg.id, eventId, "approved", reviewerPayload);
+            successCount++;
+            setRegistrationsList((prev) =>
+              prev.map((r) =>
+                r.id === reg.id
+                  ? {
+                      ...r,
+                      status: "approved",
+                      reviewed_at: now,
+                      reviewed_by_id: user?.id ?? r.reviewed_by_id,
+                      reviewed_by_name: user?.name ?? r.reviewed_by_name,
+                      reviewed_by_email: user?.email ?? r.reviewed_by_email,
+                    }
+                  : r,
+              ),
+            );
+          } else {
+            failedErrors.push(`${reg.member_name}: ${res.error ?? "Webhook returned false"}`);
+          }
         }
       }
 
@@ -2115,6 +2341,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         sessions={sessions}
         maxAttendees={event?.max_attendees}
         activeStatusFilter={statusFilter}
+        event={currentEvent}
         onSelectStatusFilter={handleStatusFilterChange}
         onSelectSearchFilter={handleSearchChange}
         onSelectSessionFilter={handleSessionFilterChange}
@@ -2340,13 +2567,24 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
-                    <SelectItem value="all">All Statuses</SelectItem>
-                    <SelectItem value="pending">Pending Review</SelectItem>
-                    <SelectItem value="approved">Approved</SelectItem>
-                    <SelectItem value="checked_in">Checked In</SelectItem>
-                    <SelectItem value="not_checked_in">Not Checked In (Drop)</SelectItem>
-                    <SelectItem value="waitlisted">Waitlisted</SelectItem>
-                    <SelectItem value="rejected">Rejected</SelectItem>
+                    <SelectItem value="all">All Statuses ({statusCounts.all})</SelectItem>
+                    <SelectItem value="pending">Pending Review ({statusCounts.pending})</SelectItem>
+                    <SelectItem value="waiting_for_payment">
+                      Waiting for Payment ({statusCounts.waiting_for_payment})
+                    </SelectItem>
+                    <SelectItem value="paid_and_registered">
+                      Paid & Registered ({statusCounts.paid_and_registered})
+                    </SelectItem>
+                    <SelectItem value="expired">Expired ({statusCounts.expired})</SelectItem>
+                    <SelectItem value="failed">Failed ({statusCounts.failed})</SelectItem>
+                    <SelectItem value="canceled">Canceled ({statusCounts.canceled})</SelectItem>
+                    <SelectItem value="approved">Approved ({statusCounts.approved})</SelectItem>
+                    <SelectItem value="checked_in">Checked In ({statusCounts.checked_in})</SelectItem>
+                    <SelectItem value="not_checked_in">
+                      Not Checked In (Drop) ({statusCounts.not_checked_in})
+                    </SelectItem>
+                    <SelectItem value="waitlisted">Waitlisted ({statusCounts.waitlisted})</SelectItem>
+                    <SelectItem value="rejected">Rejected ({statusCounts.rejected})</SelectItem>
                   </SelectGroup>
                 </SelectContent>
               </Select>
@@ -2490,6 +2728,112 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 Export CSV
               </Button>
             </div>
+          </div>
+
+          {/* Quick Status Filter Pills & Counters */}
+          <div className="flex flex-wrap items-center gap-1.5 pt-1">
+            {[
+              {
+                key: "all",
+                label: "All",
+                count: statusCounts.all,
+                activeClass: "border-primary/50 bg-primary/10 text-primary font-medium",
+              },
+              {
+                key: "pending",
+                label: "Pending",
+                count: statusCounts.pending,
+                activeClass: "border-amber-500/50 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium",
+              },
+              {
+                key: "waiting_for_payment",
+                label: "Waiting for Payment",
+                count: statusCounts.waiting_for_payment,
+                activeClass: "border-amber-500/50 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium",
+              },
+              {
+                key: "paid_and_registered",
+                label: "Paid & Registered",
+                count: statusCounts.paid_and_registered,
+                activeClass:
+                  "border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium",
+              },
+              {
+                key: "expired",
+                label: "Expired",
+                count: statusCounts.expired,
+                activeClass: "border-zinc-500/50 bg-zinc-500/10 text-zinc-700 dark:text-zinc-300 font-medium",
+              },
+              {
+                key: "failed",
+                label: "Failed",
+                count: statusCounts.failed,
+                activeClass: "border-rose-500/50 bg-rose-500/10 text-rose-600 dark:text-rose-400 font-medium",
+              },
+              {
+                key: "canceled",
+                label: "Canceled",
+                count: statusCounts.canceled,
+                activeClass: "border-slate-500/50 bg-slate-500/10 text-slate-700 dark:text-slate-300 font-medium",
+              },
+              {
+                key: "approved",
+                label: "Approved",
+                count: statusCounts.approved,
+                activeClass:
+                  "border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium",
+              },
+              {
+                key: "checked_in",
+                label: "Checked In",
+                count: statusCounts.checked_in,
+                activeClass: "border-purple-500/50 bg-purple-500/10 text-purple-600 dark:text-purple-400 font-medium",
+              },
+              {
+                key: "waitlisted",
+                label: "Waitlisted",
+                count: statusCounts.waitlisted,
+                activeClass: "border-blue-500/50 bg-blue-500/10 text-blue-600 dark:text-blue-400 font-medium",
+              },
+              {
+                key: "rejected",
+                label: "Rejected",
+                count: statusCounts.rejected,
+                activeClass: "border-destructive/50 bg-destructive/10 text-destructive font-medium",
+              },
+            ]
+              .filter(
+                (item) =>
+                  item.key === "all" ||
+                  item.count > 0 ||
+                  ["waiting_for_payment", "paid_and_registered", "expired"].includes(item.key),
+              )
+              .map((item) => {
+                const isActive = statusFilter === item.key;
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => handleStatusFilterChange(item.key)}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs transition-colors",
+                      isActive
+                        ? item.activeClass
+                        : "border-border/60 bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                    )}
+                  >
+                    <span>{item.label}</span>
+                    <span
+                      className={cn(
+                        "rounded-full px-1.5 py-0 text-[10px] font-semibold tabular-nums",
+                        isActive ? "bg-background/80" : "bg-muted text-foreground",
+                      )}
+                    >
+                      {item.count}
+                    </span>
+                  </button>
+                );
+              })}
           </div>
 
           {/* Active Filter Indicators */}
@@ -2704,12 +3048,14 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 {!isLoading &&
                   !isFiltering &&
                   filtered.map((reg) => {
-                    const rawStatus = ((reg.status as string) || "").toLowerCase().trim();
+                    const effectiveStatus = getEffectiveRegistrationStatus(reg, currentEvent);
+                    const rawStatus = ((effectiveStatus as string) || "").toLowerCase().trim();
                     const statusMeta =
                       STATUS_VARIANTS[rawStatus as RegistrationStatus] ||
                       (rawStatus === "confirmed" || rawStatus === "registered"
                         ? STATUS_VARIANTS.approved
                         : STATUS_VARIANTS.pending);
+                    const deadlineInfo = getRegistrationPaymentDeadline(reg, currentEvent);
                     const sessionTitle =
                       reg.session_title ||
                       (reg.answers?.session_title as string) ||
@@ -2723,10 +3069,14 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                     }
 
                     let approveTitle = "Approve application";
-                    if (reg.status === "approved") {
-                      approveTitle = "Approved";
+                    if (rawStatus === "approved" || rawStatus === "paid_and_registered") {
+                      approveTitle = rawStatus === "paid_and_registered" ? "Paid & Registered" : "Approved";
+                    } else if (rawStatus === "waiting_for_payment") {
+                      approveTitle = "Waiting for Payment";
+                    } else if (rawStatus === "expired") {
+                      approveTitle = "Payment Expired (Click to resend payment link)";
                     } else if (approvingRegistrationId === reg.id) {
-                      approveTitle = "Approving via webhook...";
+                      approveTitle = "Approving...";
                     }
 
                     let pendingTitle = reg.status === "pending" ? "Pending Review" : "Mark as Pending";
@@ -2779,13 +3129,25 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
 
                         {visibleStandardColumns.status !== false && (
                           <TableCell onClick={() => setInspectRegistration(reg)}>
-                            <Badge
-                              variant="outline"
-                              className={cn("gap-1.5 border px-2 py-0.5 font-medium text-xs", statusMeta.badgeClass)}
-                            >
-                              <span className={cn("size-1.5 rounded-full", statusMeta.dotClass)} />
-                              {statusMeta.label}
-                            </Badge>
+                            <div className="flex flex-col items-start gap-1">
+                              <Badge
+                                variant="outline"
+                                className={cn("gap-1.5 border px-2 py-0.5 font-medium text-xs", statusMeta.badgeClass)}
+                              >
+                                <span className={cn("size-1.5 rounded-full", statusMeta.dotClass)} />
+                                {statusMeta.label}
+                              </Badge>
+                              {rawStatus === "expired" && deadlineInfo.timeStatusText && (
+                                <span className="text-[10px] font-medium text-rose-500">
+                                  {deadlineInfo.timeStatusText}
+                                </span>
+                              )}
+                              {rawStatus === "waiting_for_payment" && deadlineInfo.timeStatusText && (
+                                <span className="text-[10px] font-normal text-amber-600 dark:text-amber-400">
+                                  {deadlineInfo.timeStatusText}
+                                </span>
+                              )}
+                            </div>
                           </TableCell>
                         )}
 
@@ -2985,16 +3347,23 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                               {/* 1. Approve Button */}
                               <Button
                                 size="icon-xs"
-                                variant={reg.status === "approved" ? "default" : "ghost"}
+                                variant={
+                                  rawStatus === "approved" || rawStatus === "paid_and_registered" ? "default" : "ghost"
+                                }
                                 className={cn(
                                   "size-7 transition-colors",
-                                  reg.status === "approved"
+                                  rawStatus === "approved" || rawStatus === "paid_and_registered"
                                     ? "cursor-default bg-emerald-600 text-white opacity-90 shadow-xs hover:bg-emerald-600"
                                     : "text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700",
                                 )}
                                 title={approveTitle}
                                 onClick={() => handleApproveAttendee(reg)}
-                                disabled={isPending || approvingRegistrationId === reg.id || reg.status === "approved"}
+                                disabled={
+                                  isPending ||
+                                  approvingRegistrationId === reg.id ||
+                                  rawStatus === "approved" ||
+                                  rawStatus === "paid_and_registered"
+                                }
                               >
                                 {approvingRegistrationId === reg.id ? (
                                   <Loader2 className="size-3.5 animate-spin" />
@@ -3015,7 +3384,12 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                 )}
                                 title={pendingTitle}
                                 onClick={() => handleStatusChange(reg.id, "pending")}
-                                disabled={isPending || approvingRegistrationId === reg.id || reg.status === "approved"}
+                                disabled={
+                                  isPending ||
+                                  approvingRegistrationId === reg.id ||
+                                  rawStatus === "approved" ||
+                                  rawStatus === "paid_and_registered"
+                                }
                               >
                                 <Clock className="size-3.5" />
                               </Button>
@@ -3036,7 +3410,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                   isPending ||
                                   approvingRegistrationId === reg.id ||
                                   rejectingRegistrationId === reg.id ||
-                                  reg.status === "approved"
+                                  rawStatus === "approved" ||
+                                  rawStatus === "paid_and_registered"
                                 }
                               >
                                 {rejectingRegistrationId === reg.id ? (
@@ -3045,6 +3420,20 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                   <X className={cn("size-3.5", reg.status === "rejected" && "text-white")} />
                                 )}
                               </Button>
+
+                              {/* Quick Resend Payment Link Button */}
+                              {(rawStatus === "expired" || rawStatus === "waiting_for_payment") &&
+                                hasRegistrationPaymentRequirements(reg) && (
+                                  <Button
+                                    size="icon-xs"
+                                    variant="ghost"
+                                    className="size-7 text-amber-600 hover:bg-amber-500/10 hover:text-amber-700"
+                                    title="Resend Payment Link with new deadline"
+                                    onClick={() => setResendPaymentRegistration(reg)}
+                                  >
+                                    <RefreshCw className="size-3.5" />
+                                  </Button>
+                                )}
 
                               {/* 4. View Dossier / Details Button */}
                               <Button
@@ -3069,6 +3458,13 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                     <Eye className="mr-2 size-3.5" />
                                     View application dossier
                                   </DropdownMenuItem>
+                                  {(rawStatus === "expired" || rawStatus === "waiting_for_payment") &&
+                                    hasRegistrationPaymentRequirements(reg) && (
+                                      <DropdownMenuItem onClick={() => setResendPaymentRegistration(reg)}>
+                                        <RefreshCw className="mr-2 size-3.5" />
+                                        Resend Payment Link
+                                      </DropdownMenuItem>
+                                    )}
                                   {reg.status === "pending" && (
                                     <DropdownMenuItem
                                       disabled={
@@ -3088,7 +3484,10 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                   )}
                                   <DropdownMenuItem
                                     disabled={
-                                      reg.status === "approved" || isPending || approvingRegistrationId === reg.id
+                                      rawStatus === "approved" ||
+                                      rawStatus === "paid_and_registered" ||
+                                      isPending ||
+                                      approvingRegistrationId === reg.id
                                     }
                                     onClick={() => handleStatusChange(reg.id, "waitlisted")}
                                   >
@@ -3345,6 +3744,17 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
           }}
         />
       )}
+
+      {/* Resend Payment Link Dialog */}
+      <ResendPaymentLinkDialog
+        open={Boolean(resendPaymentRegistration)}
+        onOpenChange={(open) => !open && setResendPaymentRegistration(null)}
+        registration={resendPaymentRegistration}
+        event={currentEvent}
+        onSuccess={(updatedReg) => {
+          setRegistrationsList((prev) => prev.map((r) => (r.id === updatedReg.id ? updatedReg : r)));
+        }}
+      />
     </div>
   );
 }

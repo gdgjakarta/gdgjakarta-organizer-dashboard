@@ -21,6 +21,15 @@ export const REGISTRATION_SECTIONS = [
 export const DEFAULT_COMBINED_QUESTIONS: CustomQuestion[] = [
   // ── Section 1: Personal & Contact Information ─────────────────────────────
   {
+    id: "full_name",
+    label: "Full Name",
+    type: "text",
+    required: true,
+    placeholder: "e.g. John Doe",
+    description: "Your official name for badges, ticketing, certification, and invoice receipt.",
+    section: "Personal & Contact Information",
+  },
+  {
     id: "work_email",
     label: "Work Email (Validation Purpose)",
     type: "text",
@@ -250,6 +259,7 @@ export const DEFAULT_COMBINED_QUESTIONS: CustomQuestion[] = [
  */
 export const ROAD_TO_DEVFEST_TEMPLATE: CustomQuestion[] = DEFAULT_COMBINED_QUESTIONS.filter((q) =>
   [
+    "full_name",
     "work_email",
     "whatsapp",
     "gender",
@@ -274,6 +284,7 @@ export const ROAD_TO_DEVFEST_TEMPLATE: CustomQuestion[] = DEFAULT_COMBINED_QUEST
  */
 export const COMMON_MEETUP_TEMPLATE: CustomQuestion[] = DEFAULT_COMBINED_QUESTIONS.filter((q) =>
   [
+    "full_name",
     "work_email",
     "whatsapp",
     "gender",
@@ -295,6 +306,23 @@ export const COMMON_MEETUP_TEMPLATE: CustomQuestion[] = DEFAULT_COMBINED_QUESTIO
  * Fast RSVP Lightweight template (Low friction for open community meetups).
  */
 export const QUICK_RSVP_TEMPLATE: CustomQuestion[] = [
+  {
+    id: "full_name",
+    label: "Full Name",
+    type: "text",
+    required: true,
+    placeholder: "e.g. John Doe",
+    section: "Personal & Contact Information",
+  },
+  {
+    id: "email",
+    label: "Email Address",
+    type: "text",
+    required: true,
+    placeholder: "e.g. name@example.com",
+    section: "Personal & Contact Information",
+    validation_type: "isEmail",
+  },
   {
     id: "role_or_title",
     label: "Current Role / Occupation",
@@ -335,6 +363,25 @@ export const QUICK_RSVP_TEMPLATE: CustomQuestion[] = [
  * Low friction, open community admission.
  */
 export const FREE_REGISTRATION_TEMPLATE: CustomQuestion[] = [
+  {
+    id: "full_name",
+    label: "Full Name",
+    type: "text",
+    required: true,
+    placeholder: "e.g. John Doe",
+    description: "Official name for check-in and community participation.",
+    section: "Personal & Contact Information",
+  },
+  {
+    id: "email",
+    label: "Email Address",
+    type: "text",
+    required: true,
+    placeholder: "e.g. name@example.com",
+    description: "Event updates and digital ticket check-in barcode will be sent here.",
+    section: "Personal & Contact Information",
+    validation_type: "isEmail",
+  },
   {
     id: "whatsapp",
     label: "WhatsApp Phone Number",
@@ -419,12 +466,31 @@ export const FREE_REGISTRATION_TEMPLATE: CustomQuestion[] = [
  */
 export const PAID_REGISTRATION_TEMPLATE: CustomQuestion[] = [
   {
+    id: "full_name",
+    label: "Full Name",
+    type: "text",
+    required: true,
+    placeholder: "e.g. John Doe",
+    description: "Official attendee name for pass issuance, event check-in, and badge printing.",
+    section: "Personal & Contact Information",
+  },
+  {
+    id: "email",
+    label: "Email Address",
+    type: "text",
+    required: true,
+    placeholder: "e.g. name@example.com",
+    description: "DOKU payment link, e-ticket, and invoice receipt will be delivered to this email address.",
+    section: "Personal & Contact Information",
+    validation_type: "isEmail",
+  },
+  {
     id: "whatsapp",
     label: "WhatsApp Phone Number",
     type: "text",
     required: true,
     placeholder: "e.g. 628123444555",
-    description: "For e-ticket dispatch, emergency updates, and check-in QR coordination.",
+    description: "For payment confirmation, e-ticket dispatch, emergency updates, and check-in QR coordination.",
     section: "Personal & Contact Information",
     validation_type: "isWhatsappNumber",
   },
@@ -497,6 +563,25 @@ export const PAID_REGISTRATION_TEMPLATE: CustomQuestion[] = [
  */
 export const COMMITMENT_FEE_TEMPLATE: CustomQuestion[] = [
   {
+    id: "full_name",
+    label: "Full Name",
+    type: "text",
+    required: true,
+    placeholder: "e.g. John Doe",
+    description: "Official attendee name for registration check-in desk and commitment refund.",
+    section: "Personal & Contact Information",
+  },
+  {
+    id: "email",
+    label: "Email Address",
+    type: "text",
+    required: true,
+    placeholder: "e.g. name@example.com",
+    description: "Commitment fee payment invoice and check-in barcode will be sent to this email.",
+    section: "Personal & Contact Information",
+    validation_type: "isEmail",
+  },
+  {
     id: "whatsapp",
     label: "WhatsApp Phone Number",
     type: "text",
@@ -557,6 +642,25 @@ export const COMMITMENT_FEE_TEMPLATE: CustomQuestion[] = [
  * Tailored for multi-track agendas (e.g. Morning Keynote vs Afternoon Codelabs vs Regular Ticket).
  */
 export const MULTI_TRACK_TEMPLATE: CustomQuestion[] = [
+  {
+    id: "full_name",
+    label: "Full Name",
+    type: "text",
+    required: true,
+    placeholder: "e.g. John Doe",
+    description: "Official attendee name for multi-track pass issuance and check-in.",
+    section: "Personal & Contact Information",
+  },
+  {
+    id: "email",
+    label: "Email Address",
+    type: "text",
+    required: true,
+    placeholder: "e.g. name@example.com",
+    description: "Confirmation, agenda updates, and barcode will be sent to this email.",
+    section: "Personal & Contact Information",
+    validation_type: "isEmail",
+  },
   {
     id: "whatsapp",
     label: "WhatsApp Phone Number",
@@ -649,6 +753,15 @@ export const MULTI_TRACK_TEMPLATE: CustomQuestion[] = [
  * Enforces Curation Mode (requires_approval = true) with MANDATORY LinkedIn Profile and Work Email.
  */
 export const CURATED_FREE_TEMPLATE: CustomQuestion[] = [
+  {
+    id: "full_name",
+    label: "Full Name",
+    type: "text",
+    required: true,
+    placeholder: "e.g. John Doe",
+    description: "Official attendee name for curation review, badge printing, and event check-in.",
+    section: "Personal & Contact Information",
+  },
   {
     id: "work_email",
     label: "Work Email (Mandatory for Curation)",
@@ -764,6 +877,15 @@ export const CURATED_REGISTRATION_TEMPLATE: CustomQuestion[] = CURATED_FREE_TEMP
  */
 export const CURATED_COMMITMENT_FEE_TEMPLATE: CustomQuestion[] = [
   {
+    id: "full_name",
+    label: "Full Name",
+    type: "text",
+    required: true,
+    placeholder: "e.g. John Doe",
+    description: "Official attendee name for curation review, check-in, and commitment fee refund.",
+    section: "Personal & Contact Information",
+  },
+  {
     id: "work_email",
     label: "Work Email (Mandatory for Curation)",
     type: "text",
@@ -876,6 +998,15 @@ export const CURATED_COMMITMENT_FEE_TEMPLATE: CustomQuestion[] = [
  * Combines Multi-Track session breakdown with mandatory LinkedIn Profile and Work Email curation.
  */
 export const CURATED_MULTI_FREE_TEMPLATE: CustomQuestion[] = [
+  {
+    id: "full_name",
+    label: "Full Name",
+    type: "text",
+    required: true,
+    placeholder: "e.g. John Doe",
+    description: "Official attendee name for session track curation, badges, and check-in.",
+    section: "Personal & Contact Information",
+  },
   {
     id: "work_email",
     label: "Work Email (Mandatory for Curated Combined Sessions)",
@@ -1006,6 +1137,15 @@ export const CURATED_COMBINED_SESSIONS_TEMPLATE: CustomQuestion[] = CURATED_MULT
  */
 export const CURATED_MULTI_COMMITMENT_TEMPLATE: CustomQuestion[] = [
   {
+    id: "full_name",
+    label: "Full Name",
+    type: "text",
+    required: true,
+    placeholder: "e.g. John Doe",
+    description: "Official attendee name for session track curation, badges, and commitment fee refund.",
+    section: "Personal & Contact Information",
+  },
+  {
     id: "work_email",
     label: "Work Email (Mandatory for Curation)",
     type: "text",
@@ -1119,6 +1259,15 @@ export const CURATED_MULTI_COMMITMENT_TEMPLATE: CustomQuestion[] = [
  * Note: Ticket tier selection is performed in Step 1. Payment is processed upon organizer approval.
  */
 export const CURATED_MULTI_PAID_TEMPLATE: CustomQuestion[] = [
+  {
+    id: "full_name",
+    label: "Full Name",
+    type: "text",
+    required: true,
+    placeholder: "e.g. John Doe",
+    description: "Official attendee name for pass issuance, event check-in, and badge printing.",
+    section: "Personal & Contact Information",
+  },
   {
     id: "work_email",
     label: "Work Email (Mandatory for Curation)",

@@ -2,7 +2,21 @@
 
 import { useCallback, useMemo, useState } from "react";
 
-import { BarChart3, Clock, Hourglass, Layers, TrendingDown, UserCheck, Users, UserX } from "lucide-react";
+import {
+  AlertTriangle,
+  Ban,
+  BarChart3,
+  CalendarX,
+  CheckCircle2,
+  Clock,
+  CreditCard,
+  Hourglass,
+  Layers,
+  TrendingDown,
+  UserCheck,
+  Users,
+  UserX,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,8 +31,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { getEffectiveRegistrationStatus, isPaidRegistration } from "@/lib/events/payment-deadline";
 import { DEFAULT_COMBINED_QUESTIONS } from "@/lib/events/registration-defaults";
-import type { CustomQuestion, EventSession, FirestoreRegistration } from "@/lib/firestore/types";
+import type { CustomQuestion, EventSession, FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
 interface RegistrantStatisticsProps {
@@ -27,6 +42,7 @@ interface RegistrantStatisticsProps {
   sessions?: EventSession[];
   maxAttendees?: number | null;
   activeStatusFilter?: string;
+  event?: FirestoreEvent;
   onSelectStatusFilter?: (status: string) => void;
   onSelectSearchFilter?: (term: string) => void;
   onSelectSessionFilter?: (sessionId: string) => void;
@@ -71,6 +87,7 @@ export function RegistrantStatistics({
   sessions = [],
   maxAttendees,
   activeStatusFilter = "all",
+  event,
   onSelectStatusFilter,
   onSelectSearchFilter,
   onSelectSessionFilter,
@@ -120,13 +137,66 @@ export function RegistrantStatistics({
     }).length;
   }, [registrations]);
 
+  // Paid Registration Flow Counters
+  const totalWaitingForPayment = useMemo(() => {
+    return registrations.filter((r) => {
+      const s = getEffectiveRegistrationStatus(r, event);
+      return s === "waiting_for_payment";
+    }).length;
+  }, [registrations, event]);
+
+  const totalPaidAndRegistered = useMemo(() => {
+    return registrations.filter((r) => {
+      const s = (r.status || "").toLowerCase().trim();
+      const ps = (r.payment_status || "").toLowerCase().trim();
+      return (
+        s === "paid_and_registered" ||
+        ((s === "approved" || s === "registered" || s === "attended") && (isPaidRegistration(r) || ps === "paid"))
+      );
+    }).length;
+  }, [registrations]);
+
+  const totalExpired = useMemo(() => {
+    return registrations.filter((r) => {
+      return getEffectiveRegistrationStatus(r, event) === "expired";
+    }).length;
+  }, [registrations, event]);
+
+  const totalFailed = useMemo(() => {
+    return registrations.filter((r) => {
+      const s = (r.status || "").toLowerCase().trim();
+      const ps = (r.payment_status || "").toLowerCase().trim();
+      return s === "failed" || ps === "failed";
+    }).length;
+  }, [registrations]);
+
+  const totalCanceled = useMemo(() => {
+    return registrations.filter((r) => {
+      const s = (r.status || "").toLowerCase().trim();
+      return s === "canceled" || s === "cancelled";
+    }).length;
+  }, [registrations]);
+
+  const totalPaidFlow = useMemo(() => {
+    return totalWaitingForPayment + totalPaidAndRegistered + totalExpired + totalFailed + totalCanceled;
+  }, [totalWaitingForPayment, totalPaidAndRegistered, totalExpired, totalFailed, totalCanceled]);
+
+  const hasPaidFlow = useMemo(() => {
+    if (event?.tickets?.some((t) => t.type === "paid" || t.type === "commitment_fee" || (t.price && t.price > 0))) {
+      return true;
+    }
+    if (event?.merchandise && event.merchandise.length > 0) return true;
+    if (event?.bundles && event.bundles.length > 0) return true;
+    return totalPaidFlow > 0 || registrations.some((r) => isPaidRegistration(r));
+  }, [event, totalPaidFlow, registrations]);
+
   const approvedPercent = totalRegistrations > 0 ? ((totalApproved / totalRegistrations) * 100).toFixed(1) : "0.0";
-  const checkedInPercent =
-    totalApproved > 0
-      ? ((totalCheckedIn / totalApproved) * 100).toFixed(1)
-      : totalRegistrations > 0
-        ? ((totalCheckedIn / totalRegistrations) * 100).toFixed(1)
-        : "0.0";
+  let checkedInPercent = "0.0";
+  if (totalApproved > 0) {
+    checkedInPercent = ((totalCheckedIn / totalApproved) * 100).toFixed(1);
+  } else if (totalRegistrations > 0) {
+    checkedInPercent = ((totalCheckedIn / totalRegistrations) * 100).toFixed(1);
+  }
   const pendingPercent = totalRegistrations > 0 ? ((totalPending / totalRegistrations) * 100).toFixed(1) : "0.0";
   const waitlistedPercent = totalRegistrations > 0 ? ((totalWaitlisted / totalRegistrations) * 100).toFixed(1) : "0.0";
   const rejectedPercent = totalRegistrations > 0 ? ((totalRejected / totalRegistrations) * 100).toFixed(1) : "0.0";
@@ -771,6 +841,164 @@ export function RegistrantStatistics({
           </CardContent>
         </Card>
       </div>
+
+      {/* ── Paid Registration Flow 5-Card Status Counter ────────────────────────── */}
+      {hasPaidFlow && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <CreditCard className="size-3.5 text-primary" />
+              <span>Paid Registration Flow</span>
+              <Badge variant="outline" className="ml-1 text-[10px] font-medium border-primary/30 text-primary">
+                {totalPaidFlow} total
+              </Badge>
+            </div>
+            {activeStatusFilter !== "all" &&
+              ["waiting_for_payment", "paid_and_registered", "expired", "failed", "canceled"].includes(
+                activeStatusFilter,
+              ) && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => onSelectStatusFilter?.("all")}
+                  className="h-6 text-[10px] text-muted-foreground hover:text-foreground"
+                >
+                  Clear filter
+                </Button>
+              )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 sm:gap-4">
+            {/* 1. Waiting for Payment */}
+            <Card
+              onClick={() =>
+                onSelectStatusFilter?.(activeStatusFilter === "waiting_for_payment" ? "all" : "waiting_for_payment")
+              }
+              className={cn(
+                "cursor-pointer transition-all hover:border-amber-500/50 hover:shadow-xs",
+                activeStatusFilter === "waiting_for_payment" &&
+                  "border-amber-500/50 bg-amber-500/5 ring-1 ring-amber-500/30",
+              )}
+            >
+              <CardContent className="p-3.5 sm:p-4">
+                <div className="flex items-center justify-between text-muted-foreground text-xs">
+                  <span className="font-medium">Waiting for Payment</span>
+                  <Clock className="size-4 text-amber-600 dark:text-amber-400" />
+                </div>
+                <div className="mt-2 font-bold text-2xl tracking-tight text-amber-600 dark:text-amber-400 sm:text-3xl">
+                  {totalWaitingForPayment}
+                </div>
+                <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <Badge
+                    variant="outline"
+                    className="border-amber-500/20 bg-amber-500/10 px-1.5 py-0 font-semibold text-[10px] text-amber-600 dark:text-amber-400"
+                  >
+                    {totalPaidFlow > 0 ? ((totalWaitingForPayment / totalPaidFlow) * 100).toFixed(0) : 0}%
+                  </Badge>
+                  <span>pending checkout</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 2. Paid & Registered */}
+            <Card
+              onClick={() =>
+                onSelectStatusFilter?.(activeStatusFilter === "paid_and_registered" ? "all" : "paid_and_registered")
+              }
+              className={cn(
+                "cursor-pointer transition-all hover:border-emerald-500/50 hover:shadow-xs",
+                activeStatusFilter === "paid_and_registered" &&
+                  "border-emerald-500/50 bg-emerald-500/5 ring-1 ring-emerald-500/30",
+              )}
+            >
+              <CardContent className="p-3.5 sm:p-4">
+                <div className="flex items-center justify-between text-muted-foreground text-xs">
+                  <span className="font-medium">Paid & Registered</span>
+                  <CheckCircle2 className="size-4 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <div className="mt-2 font-bold text-2xl tracking-tight text-emerald-600 dark:text-emerald-400 sm:text-3xl">
+                  {totalPaidAndRegistered}
+                </div>
+                <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <Badge
+                    variant="outline"
+                    className="border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0 font-semibold text-[10px] text-emerald-600 dark:text-emerald-400"
+                  >
+                    {totalPaidFlow > 0 ? ((totalPaidAndRegistered / totalPaidFlow) * 100).toFixed(0) : 0}%
+                  </Badge>
+                  <span>confirmed</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 3. Expired */}
+            <Card
+              onClick={() => onSelectStatusFilter?.(activeStatusFilter === "expired" ? "all" : "expired")}
+              className={cn(
+                "cursor-pointer transition-all hover:border-zinc-500/50 hover:shadow-xs",
+                activeStatusFilter === "expired" && "border-zinc-500/50 bg-zinc-500/5 ring-1 ring-zinc-500/30",
+              )}
+            >
+              <CardContent className="p-3.5 sm:p-4">
+                <div className="flex items-center justify-between text-muted-foreground text-xs">
+                  <span className="font-medium">Expired</span>
+                  <CalendarX className="size-4 text-zinc-600 dark:text-zinc-400" />
+                </div>
+                <div className="mt-2 font-bold text-2xl tracking-tight text-zinc-700 dark:text-zinc-300 sm:text-3xl">
+                  {totalExpired}
+                </div>
+                <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <span className="text-[10px]">deadline overdue</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 4. Failed */}
+            <Card
+              onClick={() => onSelectStatusFilter?.(activeStatusFilter === "failed" ? "all" : "failed")}
+              className={cn(
+                "cursor-pointer transition-all hover:border-rose-500/50 hover:shadow-xs",
+                activeStatusFilter === "failed" && "border-rose-500/50 bg-rose-500/5 ring-1 ring-rose-500/30",
+              )}
+            >
+              <CardContent className="p-3.5 sm:p-4">
+                <div className="flex items-center justify-between text-muted-foreground text-xs">
+                  <span className="font-medium">Failed</span>
+                  <AlertTriangle className="size-4 text-rose-600 dark:text-rose-400" />
+                </div>
+                <div className="mt-2 font-bold text-2xl tracking-tight text-rose-600 dark:text-rose-400 sm:text-3xl">
+                  {totalFailed}
+                </div>
+                <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <span className="text-[10px]">payment error</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 5. Canceled */}
+            <Card
+              onClick={() => onSelectStatusFilter?.(activeStatusFilter === "canceled" ? "all" : "canceled")}
+              className={cn(
+                "cursor-pointer transition-all hover:border-slate-500/50 hover:shadow-xs",
+                activeStatusFilter === "canceled" && "border-slate-500/50 bg-slate-500/5 ring-1 ring-slate-500/30",
+              )}
+            >
+              <CardContent className="p-3.5 sm:p-4">
+                <div className="flex items-center justify-between text-muted-foreground text-xs">
+                  <span className="font-medium">Canceled</span>
+                  <Ban className="size-4 text-slate-600 dark:text-slate-400" />
+                </div>
+                <div className="mt-2 font-bold text-2xl tracking-tight text-slate-700 dark:text-slate-300 sm:text-3xl">
+                  {totalCanceled}
+                </div>
+                <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <span className="text-[10px]">cancelled orders</span>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
 
       {/* ── Attendee Form Field Analytics (Customizable by Organizer) ────── */}
       <Card>

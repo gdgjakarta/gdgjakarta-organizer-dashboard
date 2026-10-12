@@ -162,9 +162,8 @@ export async function dispatchRegistrationWebhookAction(
 
   // 4. If event requires curation, automatically dispatch pre-constructed interest email to attendee
   const isCurationMode =
-    payload.registration.status === "pending" ||
-    Boolean(payload.event.requires_approval) ||
-    Boolean(payload.event.curation_mode);
+    (Boolean(payload.event.requires_approval) || Boolean(payload.event.curation_mode)) &&
+    payload.registration.status === "pending";
 
   let emailDispatched = false;
   let emailError: string | undefined;

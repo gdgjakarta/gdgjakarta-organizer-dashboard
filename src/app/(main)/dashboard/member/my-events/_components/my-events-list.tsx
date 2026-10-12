@@ -9,6 +9,7 @@ import { format, parseISO } from "date-fns";
 import {
   CalendarCheck,
   Clock,
+  CreditCard,
   Edit3,
   FileText,
   Filter,
@@ -52,6 +53,30 @@ const STATUS_VARIANTS: Record<RegistrationStatus, { label: string; badgeClass: s
   pending: {
     label: "Pending Review",
     badgeClass: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  },
+  waiting_for_payment: {
+    label: "Waiting for Payment",
+    badgeClass: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  },
+  paid_and_registered: {
+    label: "Paid & Registered",
+    badgeClass: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+  },
+  expired: {
+    label: "Expired",
+    badgeClass: "border-zinc-500/30 bg-zinc-500/10 text-zinc-700 dark:text-zinc-300",
+  },
+  failed: {
+    label: "Payment Failed",
+    badgeClass: "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300",
+  },
+  canceled: {
+    label: "Canceled",
+    badgeClass: "border-slate-500/30 bg-slate-500/10 text-slate-700 dark:text-slate-300",
+  },
+  cancelled: {
+    label: "Canceled",
+    badgeClass: "border-slate-500/30 bg-slate-500/10 text-slate-700 dark:text-slate-300",
   },
   approved: {
     label: "Confirmed / Approved",
@@ -562,6 +587,19 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
                       )
                     }
                   />
+
+                  {/* Complete Payment Button if awaiting payment */}
+                  {(reg.status === "waiting_for_payment" || reg.payment_status === "unpaid") && reg.payment_url && (
+                    <a href={reg.payment_url} target="_blank" rel="noopener noreferrer">
+                      <Button
+                        size="sm"
+                        className="h-8 gap-1.5 bg-amber-600 font-medium text-white text-xs shadow-xs hover:bg-amber-700"
+                      >
+                        <CreditCard className="size-3.5" />
+                        Complete Payment
+                      </Button>
+                    </a>
+                  )}
 
                   {/* Merchandise Delivery Request / Status Button */}
                   {(() => {

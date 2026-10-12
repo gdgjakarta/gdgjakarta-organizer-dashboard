@@ -39,7 +39,7 @@ export interface AttendeeLookupResult {
   firstName?: string;
   lastName?: string;
   status?: RegistrationStatus;
-  targetStatus?: "approved" | "registered";
+  targetStatus?: "approved" | "registered" | "waiting_for_payment";
   curationMode?: boolean;
   bevyEventId?: string;
   bevyChapterId?: string;
@@ -216,7 +216,7 @@ export async function updateRegistrationFromPayment(input: UpdateRegistrationFro
 
   // 3. Resolve status
   const resolvedStatus: RegistrationStatus =
-    input.status ?? (isCurated ? ("approved" as const) : ("registered" as const));
+    input.status ?? (input.errorReason ? ("failed" as const) : ("paid_and_registered" as const));
 
   const now = new Date().toISOString();
   const existingLogs = Array.isArray(regData.status_logs) ? regData.status_logs : [];
@@ -230,12 +230,14 @@ export async function updateRegistrationFromPayment(input: UpdateRegistrationFro
     changed_by_name: "DOKU & Bevy Automation (n8n)",
     notes: input.errorReason
       ? `Payment notification: ${input.errorReason}`
-      : `Payment confirmed (${invoiceNumber}). Synced to Bevy.`,
+      : `Payment confirmed (${invoiceNumber}). Status: ${resolvedStatus}. Synced to Bevy.`,
   };
 
   // 4. Update registration document
   const updatePayload = sanitizePayload<Record<string, unknown>>({
     status: resolvedStatus,
+    payment_status: input.errorReason ? "failed" : "paid",
+    ...(input.amount !== undefined ? { payment_amount: input.amount } : {}),
     reviewed_at: now,
     reviewed_by_name: "DOKU Payment Automation",
     ...(input.bevyAttendeeId ? { bevy_attendee_id: input.bevyAttendeeId } : {}),
@@ -243,7 +245,7 @@ export async function updateRegistrationFromPayment(input: UpdateRegistrationFro
     answers: {
       ...(regData.answers ?? {}),
       invoice_number: invoiceNumber,
-      payment_status: "PAID",
+      payment_status: input.errorReason ? "FAILED" : "PAID",
       ...(input.paymentChannel ? { payment_channel: input.paymentChannel } : {}),
       ...(input.paidAt ? { paid_at: input.paidAt } : { paid_at: now }),
       ...(input.amount !== undefined ? { payment_amount: input.amount } : {}),
@@ -255,8 +257,13 @@ export async function updateRegistrationFromPayment(input: UpdateRegistrationFro
 
   await updateDoc(regRef, updatePayload);
 
-  // 5. Increment event approved counter if transitioning to approved
-  if (resolvedStatus === "approved" && regData.status !== "approved") {
+  // 5. Increment event approved counter if transitioning to approved or paid_and_registered
+  const isNowApproved =
+    resolvedStatus === "approved" || resolvedStatus === "paid_and_registered" || resolvedStatus === "registered";
+  const wasApproved =
+    regData.status === "approved" || regData.status === "paid_and_registered" || regData.status === "registered";
+
+  if (isNowApproved && !wasApproved) {
     try {
       const eventRef = doc(db, "events", eventIdStr);
       await updateDoc(eventRef, {

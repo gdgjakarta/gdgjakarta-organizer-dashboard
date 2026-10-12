@@ -1,6 +1,18 @@
 import type { BevyAgenda, BevySpeaker } from "@/lib/bevy/types";
 
-export type RegistrationStatus = "pending" | "approved" | "registered" | "rejected" | "waitlisted" | "attended";
+export type RegistrationStatus =
+  | "pending"
+  | "approved"
+  | "registered"
+  | "rejected"
+  | "waitlisted"
+  | "attended"
+  | "waiting_for_payment"
+  | "paid_and_registered"
+  | "expired"
+  | "failed"
+  | "canceled"
+  | "cancelled";
 
 export type QuestionValidationType =
   | "none"
@@ -282,6 +294,11 @@ export interface FirestoreEvent {
   merchandise_delivery_payment_environment?: "production" | "sandbox";
   merchandise_delivery_fee?: number;
   payment_webhook_url?: string | null;
+  headerEmailUrl?: string | null;
+  header_email_url?: string | null;
+  paymentDeadlinesInMinutes?: number | null;
+  paymentDeadlineMinutes?: number | null;
+  payment_deadline_minutes?: number | null;
   registration_status?: "Draft" | "Published" | "Closed";
   registration_start_date?: string | null;
   registration_end_date?: string | null;
@@ -439,6 +456,7 @@ export interface FirestoreRegistration {
   member_id: string;
   member_name: string;
   member_email: string;
+  member_phone?: string;
   member_avatar?: string;
   member_role?: string;
   status: RegistrationStatus;
@@ -468,7 +486,7 @@ export interface FirestoreRegistration {
   attendee_code?: string | null;
 
   // Payment tracking (DOKU Checkout API)
-  payment_status?: "unpaid" | "pending" | "paid" | "expired" | "refunded";
+  payment_status?: "unpaid" | "pending" | "paid" | "expired" | "failed" | "canceled" | "cancelled" | "refunded";
   payment_url?: string;
   payment_invoice_number?: string;
   payment_amount?: number;

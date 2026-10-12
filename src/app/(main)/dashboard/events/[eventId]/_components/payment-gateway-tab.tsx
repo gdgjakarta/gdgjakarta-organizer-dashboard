@@ -2,9 +2,22 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 
-import { AlertTriangle, CheckCircle2, CreditCard, ExternalLink, Info, QrCode, ShieldCheck, Truck } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Clock,
+  CreditCard,
+  ExternalLink,
+  Info,
+  Mail,
+  QrCode,
+  RotateCcw,
+  ShieldCheck,
+  Truck,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { FloatingSaveBar } from "@/app/(main)/dashboard/_components/floating-save-bar";
@@ -45,6 +58,12 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
       (event.is_test ? "sandbox" : "production"),
   );
   const [merchandiseDeliveryFee, setMerchandiseDeliveryFee] = useState<number>(event.merchandise_delivery_fee ?? 50000);
+  const [headerEmailUrl, setHeaderEmailUrl] = useState<string>(
+    event.headerEmailUrl ?? event.header_email_url ?? event.picture_url ?? event.banner_url ?? "",
+  );
+  const [paymentDeadlinesInMinutes, setPaymentDeadlinesInMinutes] = useState<number>(
+    event.paymentDeadlinesInMinutes ?? event.paymentDeadlineMinutes ?? event.payment_deadline_minutes ?? 1440,
+  );
 
   const [isInitialLoaded, setIsInitialLoaded] = useState(false);
   const initialSnapshotRef = useRef<string | null>(null);
@@ -54,8 +73,10 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
       paymentEnvironment,
       merchandiseDeliveryEnv,
       merchandiseDeliveryFee,
+      headerEmailUrl,
+      paymentDeadlinesInMinutes,
     });
-  }, [paymentEnvironment, merchandiseDeliveryEnv, merchandiseDeliveryFee]);
+  }, [paymentEnvironment, merchandiseDeliveryEnv, merchandiseDeliveryFee, headerEmailUrl, paymentDeadlinesInMinutes]);
 
   const isDirty =
     isInitialLoaded && initialSnapshotRef.current !== null && initialSnapshotRef.current !== currentSnapshot;
@@ -82,25 +103,51 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
         } else if (typeof event.merchandise_delivery_fee === "number") {
           loadedDeliveryFee = event.merchandise_delivery_fee;
         }
+        const loadedHeaderEmail =
+          docData?.headerEmailUrl ??
+          docData?.header_email_url ??
+          event.headerEmailUrl ??
+          event.header_email_url ??
+          event.picture_url ??
+          event.banner_url ??
+          "";
+        const loadedPaymentDeadlines =
+          docData?.paymentDeadlinesInMinutes ??
+          docData?.paymentDeadlineMinutes ??
+          docData?.payment_deadline_minutes ??
+          event.paymentDeadlinesInMinutes ??
+          event.paymentDeadlineMinutes ??
+          event.payment_deadline_minutes ??
+          1440;
 
         setPaymentEnvironment(loadedEnv);
         setMerchandiseDeliveryEnv(loadedDeliveryEnv);
         setMerchandiseDeliveryFee(loadedDeliveryFee);
+        setHeaderEmailUrl(loadedHeaderEmail);
+        setPaymentDeadlinesInMinutes(loadedPaymentDeadlines);
 
         initialSnapshotRef.current = JSON.stringify({
           paymentEnvironment: loadedEnv,
           merchandiseDeliveryEnv: loadedDeliveryEnv,
           merchandiseDeliveryFee: loadedDeliveryFee,
+          headerEmailUrl: loadedHeaderEmail,
+          paymentDeadlinesInMinutes: loadedPaymentDeadlines,
         });
       } catch (err) {
         console.warn("[PaymentGatewayTab] Failed to fetch latest Firestore config:", err);
         const fallbackEnv = event.payment_environment ?? (event.is_test ? "sandbox" : "production");
         const fallbackDeliveryEnv = event.merchandise_delivery_payment_environment ?? fallbackEnv;
         const fallbackDeliveryFee = event.merchandise_delivery_fee ?? 50000;
+        const fallbackHeaderEmail =
+          event.headerEmailUrl ?? event.header_email_url ?? event.picture_url ?? event.banner_url ?? "";
+        const fallbackPaymentDeadlines =
+          event.paymentDeadlinesInMinutes ?? event.paymentDeadlineMinutes ?? event.payment_deadline_minutes ?? 1440;
         initialSnapshotRef.current ??= JSON.stringify({
           paymentEnvironment: fallbackEnv,
           merchandiseDeliveryEnv: fallbackDeliveryEnv,
           merchandiseDeliveryFee: fallbackDeliveryFee,
+          headerEmailUrl: fallbackHeaderEmail,
+          paymentDeadlinesInMinutes: fallbackPaymentDeadlines,
         });
       } finally {
         setIsInitialLoaded(true);
@@ -149,6 +196,15 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
           if (typeof docData.merchandise_delivery_fee === "number") {
             setMerchandiseDeliveryFee(docData.merchandise_delivery_fee);
           }
+          const incomingHeaderEmail = docData.headerEmailUrl ?? docData.header_email_url;
+          if (incomingHeaderEmail !== undefined && incomingHeaderEmail !== null) {
+            setHeaderEmailUrl(incomingHeaderEmail);
+          }
+          const incomingDeadline =
+            docData.paymentDeadlinesInMinutes ?? docData.paymentDeadlineMinutes ?? docData.payment_deadline_minutes;
+          if (typeof incomingDeadline === "number") {
+            setPaymentDeadlinesInMinutes(incomingDeadline);
+          }
           if (initialSnapshotRef.current) {
             try {
               const parsed = JSON.parse(initialSnapshotRef.current);
@@ -160,6 +216,12 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
               }
               if (typeof docData.merchandise_delivery_fee === "number") {
                 parsed.merchandiseDeliveryFee = docData.merchandise_delivery_fee;
+              }
+              if (incomingHeaderEmail !== undefined) {
+                parsed.headerEmailUrl = incomingHeaderEmail;
+              }
+              if (typeof incomingDeadline === "number") {
+                parsed.paymentDeadlinesInMinutes = incomingDeadline;
               }
               initialSnapshotRef.current = JSON.stringify(parsed);
             } catch {
@@ -311,6 +373,11 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
             payment_environment: paymentEnvironment,
             merchandise_delivery_payment_environment: merchandiseDeliveryEnv,
             merchandise_delivery_fee: merchandiseDeliveryFee,
+            headerEmailUrl: headerEmailUrl.trim(),
+            header_email_url: headerEmailUrl.trim(),
+            paymentDeadlinesInMinutes,
+            paymentDeadlineMinutes: paymentDeadlinesInMinutes,
+            payment_deadline_minutes: paymentDeadlinesInMinutes,
           },
           event,
         );
@@ -327,6 +394,8 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
             paymentEnvironment,
             merchandiseDeliveryEnv,
             merchandiseDeliveryFee,
+            headerEmailUrl,
+            paymentDeadlinesInMinutes,
           });
           toast.success("Payment gateway settings saved successfully!");
           router.refresh();
@@ -348,10 +417,27 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
         paymentEnvironment: "production" | "sandbox";
         merchandiseDeliveryEnv?: "production" | "sandbox";
         merchandiseDeliveryFee?: number;
+        headerEmailUrl?: string;
+        paymentDeadlinesInMinutes?: number;
       };
       setPaymentEnvironment(parsed.paymentEnvironment);
       setMerchandiseDeliveryEnv(parsed.merchandiseDeliveryEnv ?? parsed.paymentEnvironment);
       setMerchandiseDeliveryFee(parsed.merchandiseDeliveryFee ?? 50000);
+      setHeaderEmailUrl(
+        parsed.headerEmailUrl ??
+          event.headerEmailUrl ??
+          event.header_email_url ??
+          event.picture_url ??
+          event.banner_url ??
+          "",
+      );
+      setPaymentDeadlinesInMinutes(
+        parsed.paymentDeadlinesInMinutes ??
+          event.paymentDeadlinesInMinutes ??
+          event.paymentDeadlineMinutes ??
+          event.payment_deadline_minutes ??
+          1440,
+      );
       toast.info("Unsaved payment settings discarded.");
     } catch {
       setPaymentEnvironment(event.payment_environment ?? (event.is_test ? "sandbox" : "production"));
@@ -361,6 +447,10 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
           (event.is_test ? "sandbox" : "production"),
       );
       setMerchandiseDeliveryFee(event.merchandise_delivery_fee ?? 50000);
+      setHeaderEmailUrl(event.headerEmailUrl ?? event.header_email_url ?? event.picture_url ?? event.banner_url ?? "");
+      setPaymentDeadlinesInMinutes(
+        event.paymentDeadlinesInMinutes ?? event.paymentDeadlineMinutes ?? event.payment_deadline_minutes ?? 1440,
+      );
     }
   };
 
@@ -686,6 +776,133 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
         </CardContent>
       </Card>
 
+      {/* ── 1. EMAIL INVOICE & PAYMENT EXPIRATION ─────────────────────── */}
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2">
+              <Mail className="size-4 text-primary" />
+              <CardTitle className="text-lg">Email Invoice & Payment Expiration</CardTitle>
+            </div>
+          </div>
+          <CardDescription>
+            Configure the email banner and invoice expiration window applied to all generated DOKU payment links
+            (registration passes, tickets, merchandise, and delivery fees).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            {/* headerEmailUrl Field */}
+            <Field className="space-y-2">
+              <div className="flex items-center justify-between">
+                <FieldLabel htmlFor="header-email-url" className="font-semibold text-xs">
+                  Header Email Image URL (Banner)
+                </FieldLabel>
+                {(event.picture_url ?? event.banner_url) && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setHeaderEmailUrl(event.picture_url ?? event.banner_url ?? "")}
+                    className="h-6 gap-1 px-2 text-[10px] text-muted-foreground hover:text-foreground"
+                  >
+                    <RotateCcw className="size-2.5" />
+                    Reset to Event Banner
+                  </Button>
+                )}
+              </div>
+              <Input
+                id="header-email-url"
+                type="url"
+                value={headerEmailUrl}
+                onChange={(e) => setHeaderEmailUrl(e.target.value)}
+                placeholder="https://res.cloudinary.com/... or image URL"
+                className="text-xs"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Embedded at the top of invoice emails sent by DOKU / n8n. If empty, falls back to the event picture or
+                GDG banner.
+              </p>
+
+              {headerEmailUrl ? (
+                <div className="mt-2 overflow-hidden rounded-md border bg-muted/20 p-2">
+                  <span className="text-[10px] font-medium text-muted-foreground">Banner Preview:</span>
+                  <div className="relative mt-1 h-24 w-full overflow-hidden rounded bg-background">
+                    <Image src={headerEmailUrl} alt="Email Header Preview" fill unoptimized className="object-cover" />
+                  </div>
+                </div>
+              ) : null}
+            </Field>
+
+            {/* paymentDeadlinesInMinutes Field */}
+            <Field className="space-y-2">
+              <FieldLabel htmlFor="payment-deadline" className="font-semibold text-xs">
+                Payment Deadline / Expiration (Minutes)
+              </FieldLabel>
+              <div className="relative">
+                <span className="absolute inset-y-0 left-0 flex items-center pl-3 font-semibold text-muted-foreground text-xs">
+                  <Clock className="size-3.5" />
+                </span>
+                <Input
+                  id="payment-deadline"
+                  type="number"
+                  min={5}
+                  step={15}
+                  value={paymentDeadlinesInMinutes}
+                  onChange={(e) => {
+                    const val = Number.parseInt(e.target.value, 10);
+                    setPaymentDeadlinesInMinutes(Number.isNaN(val) ? 60 : Math.max(5, val));
+                  }}
+                  className="pl-9 font-semibold text-xs"
+                  placeholder="1440"
+                />
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                <span className="mr-1 text-[10px] text-muted-foreground">Presets:</span>
+                {[
+                  { label: "1h", value: 60 },
+                  { label: "2h", value: 120 },
+                  { label: "6h", value: 360 },
+                  { label: "12h", value: 720 },
+                  { label: "24h (1d)", value: 1440 },
+                  { label: "48h (2d)", value: 2880 },
+                ].map((preset) => (
+                  <Button
+                    key={preset.value}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPaymentDeadlinesInMinutes(preset.value)}
+                    className={cn(
+                      "h-6 px-2 text-[10px]",
+                      paymentDeadlinesInMinutes === preset.value &&
+                        "border-primary bg-primary/10 font-semibold text-primary",
+                    )}
+                  >
+                    {preset.label}
+                  </Button>
+                ))}
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Current deadline:{" "}
+                <strong className="text-foreground">
+                  {(() => {
+                    if (paymentDeadlinesInMinutes >= 1440) {
+                      return `${(paymentDeadlinesInMinutes / 1440).toFixed(1).replace(/\.0$/, "")} day(s) (${paymentDeadlinesInMinutes} mins)`;
+                    }
+                    if (paymentDeadlinesInMinutes >= 60) {
+                      return `${(paymentDeadlinesInMinutes / 60).toFixed(1).replace(/\.0$/, "")} hour(s) (${paymentDeadlinesInMinutes} mins)`;
+                    }
+                    return `${paymentDeadlinesInMinutes} minutes`;
+                  })()}
+                </strong>
+                . Attendees must scan QRIS and pay before this duration elapses.
+              </p>
+            </Field>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* ── 2. PAYMENT METHODS & TESTING OVERVIEW ─────────────────────── */}
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         <Card>
@@ -862,8 +1079,8 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
         saveLabel="Save Payment Settings"
         savingLabel="Saving Settings..."
         savedLabel="Settings Saved"
-        statusInfo={`Environment: ${paymentEnvironment === "production" ? "Live Production" : "Development / Sandbox"} | Delivery Fee: Rp ${merchandiseDeliveryFee.toLocaleString("id-ID")}`}
-        helperText="Payment environment and merchandise delivery pricing settings will take effect immediately for new payment links."
+        statusInfo={`Env: ${paymentEnvironment === "production" ? "Production" : "Sandbox"} | Deadline: ${paymentDeadlinesInMinutes}m | Merch Fee: Rp ${merchandiseDeliveryFee.toLocaleString("id-ID")}`}
+        helperText="Payment environment, email invoice banner, expiration deadline, and delivery fees take effect immediately for new payment links."
       />
     </div>
   );

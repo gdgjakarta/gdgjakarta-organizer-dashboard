@@ -53,9 +53,14 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { resolveEventAudience } from "@/lib/bevy/audience";
+import { buildApprovedAttendeePayload } from "@/lib/events/approved-attendee-webhook";
 import { calculateBundlePricing, getBundleSalesStatus } from "@/lib/events/bundle-templates";
 import { checkEventCapacityStatus, validateRegistrationSubmissionCapacity } from "@/lib/events/capacity-validator";
-import { buildRegistrationPaymentPayload, hasRegistrationPaymentRequirements } from "@/lib/events/doku-payment";
+import {
+  buildRegistrationPaymentPayload,
+  extractCustomerPhone,
+  hasRegistrationPaymentRequirements,
+} from "@/lib/events/doku-payment";
 import { extractEventImageUrl } from "@/lib/events/media-utils";
 import {
   formatOtherAnswer,
@@ -84,7 +89,11 @@ import type {
 } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 import { generatePaymentLinkAction } from "@/server/payment-actions";
-import { dispatchRegistrationWebhookAction, type RegistrationWebhookPayload } from "@/server/registration-actions";
+import {
+  approveAttendeeWebhookAction,
+  dispatchRegistrationWebhookAction,
+  type RegistrationWebhookPayload,
+} from "@/server/registration-actions";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
 interface EventRegistrationModalProps {
@@ -254,7 +263,10 @@ export function EventRegistrationModal({
     if (open && user) {
       setAnswers((prev) => ({
         ...prev,
-        work_email: (prev.work_email as string) || user.email || "",
+        full_name: (prev.full_name as string) || (prev.name as string) || user.name || "",
+        name: (prev.name as string) || (prev.full_name as string) || user.name || "",
+        work_email: (prev.work_email as string) || (prev.email as string) || user.email || "",
+        email: (prev.email as string) || (prev.work_email as string) || user.email || "",
       }));
     }
   }, [open, user]);
@@ -302,11 +314,6 @@ export function EventRegistrationModal({
     }
   }, [activeRegistration]);
   const isPast = isEventPast(eventConfig);
-
-  const questions: CustomQuestion[] =
-    eventConfig.custom_questions && eventConfig.custom_questions.length > 0
-      ? eventConfig.custom_questions
-      : DEFAULT_COMBINED_QUESTIONS;
 
   const hasSessions = Array.isArray(eventConfig.sessions) && eventConfig.sessions.length > 0;
 
@@ -400,6 +407,115 @@ export function EventRegistrationModal({
 
   const ticketPrice = selectedTicket ? selectedTicket.price || 0 : 0;
   const effectiveBasePrice = selectedBundle ? selectedBundle.price : ticketPrice;
+
+  const isPaymentRequired = useMemo(() => {
+    const isTicketPaid =
+      selectedTicket?.type === "paid" ||
+      selectedTicket?.type === "commitment_fee" ||
+      Boolean(selectedBundle && (selectedBundle.price ?? 0) > 0) ||
+      (selectedTicket?.price ?? 0) > 0;
+    const hasMerchToSell = Object.values(selectedMerch).some((m) => m.quantity > 0);
+    return isTicketPaid || hasMerchToSell;
+  }, [selectedTicket, selectedBundle, selectedMerch]);
+
+  const questions: CustomQuestion[] = useMemo(() => {
+    let base =
+      eventConfig.custom_questions && eventConfig.custom_questions.length > 0
+        ? [...eventConfig.custom_questions]
+        : [...DEFAULT_COMBINED_QUESTIONS];
+
+    // On Paid Pass ticket or any merchandise purchase, ensure that name, email, and phone are required
+    if (isPaymentRequired) {
+      const hasPhone = base.some(
+        (q) =>
+          q.id === "whatsapp" ||
+          q.id === "phone" ||
+          q.id === "whatsapp_number" ||
+          q.id === "phone_number" ||
+          q.label.toLowerCase().includes("whatsapp") ||
+          q.label.toLowerCase().includes("phone"),
+      );
+
+      if (!hasPhone) {
+        base.unshift({
+          id: "whatsapp",
+          label: "WhatsApp Phone Number",
+          type: "text",
+          required: true,
+          placeholder: "e.g. 628123444555",
+          description: "Required for DOKU payment link dispatch, e-ticket issuance, and check-in QR coordination.",
+          section: "Personal & Contact Information",
+          validation_type: "isWhatsappNumber",
+        });
+      } else {
+        base = base.map((q) => {
+          if (
+            q.id === "whatsapp" ||
+            q.id === "phone" ||
+            q.id === "whatsapp_number" ||
+            q.id === "phone_number" ||
+            q.label.toLowerCase().includes("whatsapp") ||
+            q.label.toLowerCase().includes("phone")
+          ) {
+            return {
+              ...q,
+              required: true,
+              validation_type:
+                q.validation_type && q.validation_type !== "none" ? q.validation_type : "isWhatsappNumber",
+            };
+          }
+          return q;
+        });
+      }
+
+      const hasName = base.some(
+        (q) => q.id === "full_name" || q.id === "name" || q.label.toLowerCase().includes("full name"),
+      );
+      if (!hasName) {
+        base.unshift({
+          id: "full_name",
+          label: "Full Name",
+          type: "text",
+          required: true,
+          placeholder: "e.g. John Doe",
+          description: "Required for ticket pass issuance, badge printing, and invoice receipt.",
+          section: "Personal & Contact Information",
+        });
+      } else {
+        base = base.map((q) => {
+          if (q.id === "full_name" || q.id === "name" || q.label.toLowerCase().includes("full name")) {
+            return { ...q, required: true };
+          }
+          return q;
+        });
+      }
+
+      const hasEmail = base.some(
+        (q) => q.id === "email" || q.id === "work_email" || q.label.toLowerCase().includes("email"),
+      );
+      if (!hasEmail) {
+        base.splice(1, 0, {
+          id: "email",
+          label: "Email Address",
+          type: "text",
+          required: true,
+          placeholder: "e.g. name@example.com",
+          description: "Required for DOKU payment invoice link and ticket delivery.",
+          section: "Personal & Contact Information",
+          validation_type: "isEmail",
+        });
+      } else {
+        base = base.map((q) => {
+          if (q.id === "email" || q.id === "work_email" || q.label.toLowerCase().includes("email")) {
+            return { ...q, required: true };
+          }
+          return q;
+        });
+      }
+    }
+
+    return base;
+  }, [eventConfig.custom_questions, isPaymentRequired]);
 
   // Voucher state
   const [voucherInput, setVoucherInput] = useState("");
@@ -1099,7 +1215,7 @@ export function EventRegistrationModal({
           capacityValidation.isWaitlist ??
             (eventConfig.allow_waitlist !== false && checkEventCapacityStatus(eventConfig).isFull),
         );
-        const initialStatus: RegistrationStatus = isWaitlistMode ? "waitlisted" : "pending";
+        const isCurated = Boolean(eventConfig.requires_approval || eventConfig.curation_mode);
 
         const sessionKey = selectedSession?.title ?? "Regular Ticket";
         const combinedAnswers = {
@@ -1132,16 +1248,23 @@ export function EventRegistrationModal({
           extractEventImageUrl(eventConfig as unknown as Record<string, unknown>) ??
           extractEventImageUrl(event as unknown as Record<string, unknown>);
 
-        const attendeeEmail = ((combinedAnswers as Record<string, unknown>).work_email as string) || user.email;
-
-        // Check whether event requires organizer approval (curated) vs open registration
-        const isCurated = Boolean(eventConfig.requires_approval || eventConfig.curation_mode);
+        const attendeeEmail =
+          ((combinedAnswers as Record<string, unknown>).email as string) ||
+          ((combinedAnswers as Record<string, unknown>).work_email as string) ||
+          user.email;
+        const attendeeName =
+          ((combinedAnswers as Record<string, unknown>).full_name as string) ||
+          ((combinedAnswers as Record<string, unknown>).name as string) ||
+          user.name;
+        const attendeePhone = extractCustomerPhone({}, combinedAnswers);
 
         const regCandidate: Partial<FirestoreRegistration> = {
           event_id: String(event.id),
           event_title: event.title,
-          member_name: user.name,
+          member_name: attendeeName,
           member_email: attendeeEmail,
+          member_phone: attendeePhone,
+          answers: combinedAnswers,
           ticket_id: selectedTicket?.id,
           ticket_name: selectedTicket?.name,
           ticket_price: selectedBundle ? selectedBundle.price : selectedTicket?.price,
@@ -1165,7 +1288,46 @@ export function EventRegistrationModal({
           referral_discount_amount: referralDiscount > 0 ? referralDiscount : undefined,
         };
 
-        const requiresPayment = grandTotal > 0 && hasRegistrationPaymentRequirements(regCandidate);
+        const isTicketPaid =
+          selectedTicket?.type === "paid" ||
+          selectedTicket?.type === "commitment_fee" ||
+          Boolean(selectedBundle && (selectedBundle.price ?? 0) > 0) ||
+          (selectedTicket?.price ?? 0) > 0;
+        const hasMerchandiseToSell = selectedMerchOrders.some((m) => (m.price ?? 0) > 0);
+        const requiresPayment =
+          grandTotal > 0 && (isTicketPaid || hasMerchandiseToSell || hasRegistrationPaymentRequirements(regCandidate));
+
+        // On Paid Pass ticket or any merchandise purchase, ensure that name, email, and phone are required
+        if (requiresPayment) {
+          if (!attendeePhone || attendeePhone.trim().length === 0) {
+            toast.error("WhatsApp Phone Number is required to generate payment link.");
+            return;
+          }
+          if (!attendeeName || attendeeName.trim().length === 0) {
+            toast.error("Full Name is required for pass and payment issuance.");
+            return;
+          }
+          if (!attendeeEmail || attendeeEmail.trim().length === 0) {
+            toast.error("Email Address is required to dispatch the payment link.");
+            return;
+          }
+        }
+
+        // Enforce conditions on form submission:
+        // - If event ticket is free:
+        //   -- If curation active: pending review (send interest email via webhook)
+        //   -- If no curation: approved (call Add Bevy Attendee API directly)
+        // - If event ticket is paid or free but has merch to sell:
+        //   -- If curation active: pending review (send interest email via webhook, defer payment link until approval)
+        //   -- If no curation: waiting_for_payment (call API Payment Link immediately)
+        let initialStatus: RegistrationStatus = "pending";
+        if (isWaitlistMode) {
+          initialStatus = "waitlisted";
+        } else if (requiresPayment) {
+          initialStatus = isCurated ? "pending" : "waiting_for_payment";
+        } else {
+          initialStatus = isCurated ? "pending" : "approved";
+        }
 
         // For non-curated events with payable items, generate DOKU payment link immediately upon registration.
         // For curated events and waitlisted applicants, payment link generation is deferred until organizer approval.
@@ -1199,8 +1361,9 @@ export function EventRegistrationModal({
           event_picture_url: cachedImg ?? undefined,
           event_banner_url: eventConfig.banner_url ?? event.banner_url ?? cachedImg ?? undefined,
           member_id: user.id,
-          member_name: user.name,
-          member_email: user.email,
+          member_name: attendeeName,
+          member_email: attendeeEmail,
+          member_phone: attendeePhone,
           member_avatar: user.avatar,
           member_role: user.role,
           status: initialStatus,
@@ -1241,10 +1404,44 @@ export function EventRegistrationModal({
           return;
         }
 
+        // If the event ticket is free and no curation: call Add Bevy Attendee API directly!
+        if (!isWaitlistMode && !isCurated && !requiresPayment) {
+          try {
+            const approvePayload = buildApprovedAttendeePayload(
+              {
+                ...registrationPayload,
+                id: result.registrationId || `${event.id}_${user.id}`,
+              } as FirestoreRegistration,
+              eventConfig,
+            );
+            const approveRes = await approveAttendeeWebhookAction(approvePayload);
+            if (!approveRes.success) {
+              console.warn("[Registration Modal] Add Bevy Attendee API warning:", approveRes.error);
+            }
+          } catch (approveErr) {
+            console.warn("[Registration Modal] Add Bevy Attendee API error:", approveErr);
+          }
+        }
+
         if (isWaitlistMode) {
           toast.success("Added to waitlist! Organizers will review and notify you if a spot opens up.");
+        } else if (!isCurated && requiresPayment) {
+          if (!generatedPaymentUrl) {
+            toast.success("Registration submitted! Status: Waiting for Payment.");
+          }
+        } else if (isCurated && requiresPayment) {
+          toast.success(
+            "Registration submitted! Your application is pending organizer review. Payment instructions will be sent upon approval.",
+            { duration: 6000 },
+          );
+        } else if (isCurated) {
+          toast.success("Registration submitted! Your application is now pending organizer review.", {
+            duration: 5000,
+          });
         } else {
-          toast.success("Registration submitted successfully!");
+          toast.success("Registration confirmed! See you at the event!", {
+            duration: 5000,
+          });
         }
 
         // Dispatch Webhook in background
@@ -1312,7 +1509,7 @@ export function EventRegistrationModal({
           member_id: user?.id || "",
           member_name: user?.name || "Attendee",
           member_email: attendeeEmail,
-          status: "pending",
+          status: initialStatus,
           registered_at: new Date().toISOString(),
           answers: combinedAnswers,
           session_id: selectedSession?.id,
@@ -1342,21 +1539,6 @@ export function EventRegistrationModal({
           router.refresh();
           window.location.href = generatedPaymentUrl;
           return;
-        }
-
-        if (isCurated && requiresPayment) {
-          toast.success(
-            "Registration submitted! Your application is pending organizer review. Payment instructions will be sent upon approval.",
-            { duration: 6000 },
-          );
-        } else if (isCurated) {
-          toast.success("Registration submitted! Your application is now pending organizer review.", {
-            duration: 5000,
-          });
-        } else {
-          toast.success("Registration successful! See you at the event!", {
-            duration: 5000,
-          });
         }
 
         setOpen(false);
@@ -1423,7 +1605,9 @@ export function EventRegistrationModal({
       }
     }
 
-    const isUnpaid = activeRegistration.payment_status === "unpaid" && Boolean(activeRegistration.payment_url);
+    const isUnpaid =
+      (activeRegistration.payment_status === "unpaid" || activeRegistration.status === "waiting_for_payment") &&
+      Boolean(activeRegistration.payment_url);
     if (isUnpaid) {
       return (
         <a
@@ -1450,14 +1634,17 @@ export function EventRegistrationModal({
     }
 
     const statusLower = activeRegistration.status.toLowerCase();
-    const isApproved = statusLower === "approved" || statusLower === "attended";
+    const isApproved = statusLower === "approved" || statusLower === "registered" || statusLower === "attended";
     const isPendingReview = statusLower === "pending";
+    const isWaitingPayment = statusLower === "waiting_for_payment";
     const isWaitlisted = statusLower === "waitlisted";
     let statusLabel = "Registered";
     if (isApproved) {
-      statusLabel = eventConfig.requires_approval ? "Registered (Approved)" : "Registered";
+      statusLabel = eventConfig.requires_approval || eventConfig.curation_mode ? "Registered (Approved)" : "Registered";
     } else if (isWaitlisted) {
       statusLabel = "Waitlisted";
+    } else if (isWaitingPayment) {
+      statusLabel = "Waiting for Payment";
     } else if (isPendingReview) {
       statusLabel = "Pending Review";
     }
@@ -1474,7 +1661,7 @@ export function EventRegistrationModal({
             "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-300",
           isWaitlisted &&
             "border-blue-500/40 bg-blue-500/10 text-blue-700 dark:border-blue-500/30 dark:bg-blue-950/40 dark:text-blue-300",
-          isPendingReview &&
+          (isPendingReview || isWaitingPayment) &&
             "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-300",
           isTransitioning && "fade-in-50 zoom-in-95 scale-[1.01] animate-in ring-2 ring-emerald-500/40",
           isFullWidth && "w-full",
@@ -1485,6 +1672,14 @@ export function EventRegistrationModal({
           <Clock
             className={cn(
               "relative z-10 shrink-0 transition-transform duration-500 text-blue-600 dark:text-blue-400",
+              buttonSize === "lg" ? "size-4" : "size-3.5",
+              isTransitioning && "scale-110",
+            )}
+          />
+        ) : isWaitingPayment ? (
+          <CreditCard
+            className={cn(
+              "relative z-10 shrink-0 transition-transform duration-500 text-amber-600 dark:text-amber-400",
               buttonSize === "lg" ? "size-4" : "size-3.5",
               isTransitioning && "scale-110",
             )}

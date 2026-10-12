@@ -180,10 +180,15 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
     }
   };
 
-  const isApproved = registration?.status === "approved" || registration?.status === "attended";
+  const isApproved =
+    registration?.status === "approved" || registration?.status === "registered" || registration?.status === "attended";
   const isWaitlisted = registration?.status === "waitlisted";
+  const isWaitingPayment =
+    registration?.status === "waiting_for_payment" ||
+    (registration?.payment_status === "unpaid" && Boolean(registration?.payment_url));
   const isPending =
     !isWaitlisted &&
+    !isWaitingPayment &&
     (registration?.status === "pending" ||
       Boolean(
         registration &&
@@ -199,6 +204,9 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
   } else if (isWaitlisted) {
     statusBadgeClass = "border border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400";
     statusBadgeText = "Waitlisted";
+  } else if (isWaitingPayment) {
+    statusBadgeClass = "border border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400";
+    statusBadgeText = "Waiting for Payment";
   } else if (isPending) {
     statusBadgeClass = "border border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400";
     statusBadgeText = "Pending Review";
@@ -216,6 +224,9 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
     } else if (isWaitlisted) {
       registrationStatusDescription =
         "Your registration is on the Waitlist. Organizers will review and notify you if capacity becomes available.";
+    } else if (isWaitingPayment) {
+      registrationStatusDescription =
+        "Your registration is waiting for payment. Please complete your payment to confirm your ticket.";
     } else {
       registrationStatusDescription =
         "Your application has been received and is currently Pending Review by organizers.";

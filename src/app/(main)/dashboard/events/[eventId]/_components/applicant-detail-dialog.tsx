@@ -23,6 +23,7 @@ import {
   PackageCheck,
   Phone,
   QrCode,
+  RefreshCw,
   RotateCcw,
   ShieldCheck,
   Sparkles,
@@ -40,10 +41,14 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { extractCustomerPhone } from "@/lib/events/doku-payment";
+import { getRegistrationPaymentDeadline, isRegistrationPaymentOverdue } from "@/lib/events/payment-deadline";
 import { DEFAULT_COMBINED_QUESTIONS } from "@/lib/events/registration-defaults";
 import type { CustomQuestion, FirestoreEvent, FirestoreRegistration, RegistrationStatus } from "@/lib/firestore/types";
 import { cn, getInitials } from "@/lib/utils";
 import { generatePaymentLinkAction } from "@/server/payment-actions";
+
+import { ResendPaymentLinkDialog } from "./resend-payment-link-dialog";
 
 interface ApplicantDetailDialogProps {
   registration: FirestoreRegistration | null;
@@ -69,6 +74,36 @@ const STATUS_VARIANTS: Record<RegistrationStatus, { label: string; badgeClass: s
     label: "Pending Review",
     badgeClass: "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400",
     dotClass: "bg-amber-500",
+  },
+  waiting_for_payment: {
+    label: "Waiting for Payment",
+    badgeClass: "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400",
+    dotClass: "bg-amber-500",
+  },
+  paid_and_registered: {
+    label: "Paid & Registered",
+    badgeClass: "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+    dotClass: "bg-emerald-500",
+  },
+  expired: {
+    label: "Expired",
+    badgeClass: "border-zinc-500/20 bg-zinc-500/10 text-zinc-600 dark:text-zinc-400",
+    dotClass: "bg-zinc-500",
+  },
+  failed: {
+    label: "Failed",
+    badgeClass: "border-rose-500/20 bg-rose-500/10 text-rose-600 dark:text-rose-400",
+    dotClass: "bg-rose-500",
+  },
+  canceled: {
+    label: "Canceled",
+    badgeClass: "border-slate-500/20 bg-slate-500/10 text-slate-600 dark:text-slate-400",
+    dotClass: "bg-slate-500",
+  },
+  cancelled: {
+    label: "Canceled",
+    badgeClass: "border-slate-500/20 bg-slate-500/10 text-slate-600 dark:text-slate-400",
+    dotClass: "bg-slate-500",
   },
   approved: {
     label: "Approved",
@@ -186,6 +221,7 @@ export function ApplicantDetailDialog({
   const [loadedQuestions, setLoadedQuestions] = useState<CustomQuestion[]>([]);
   const [isGeneratingPayment, setIsGeneratingPayment] = useState(false);
   const [paymentLinkInfo, setPaymentLinkInfo] = useState<{ url: string; invoiceNumber: string } | null>(null);
+  const [isResendPaymentOpen, setIsResendPaymentOpen] = useState(false);
 
   // Hydrate custom questions from Firestore if not provided
   useEffect(() => {
@@ -307,6 +343,7 @@ export function ApplicantDetailDialog({
 
   if (!registration) return null;
 
+  const deadlineInfo = getRegistrationPaymentDeadline(registration, event);
   const rawStatus = (registration.status as string).toLowerCase().trim();
   const statusMeta =
     STATUS_VARIANTS[rawStatus as RegistrationStatus] ||
@@ -538,11 +575,11 @@ export function ApplicantDetailDialog({
   const handleSendPaymentLink = async () => {
     if (!registration) return;
 
-    const phoneStr =
-      (registration.answers?.whatsapp_number as string) ||
-      (registration.answers?.phone_number as string) ||
-      (registration.answers?.phone as string) ||
-      "";
+    const phoneStr = extractCustomerPhone(registration);
+    if (!phoneStr) {
+      toast.error("Cannot generate payment link: Attendee WhatsApp Phone Number is missing.");
+      return;
+    }
 
     const items = (registration.selected_merchandise ?? []).map((m) => ({
       id: m.id,
@@ -598,8 +635,18 @@ export function ApplicantDetailDialog({
         event: {
           id: registration.event_id,
           title: registration.event_title,
-          headerEmailUrl: registration.event_picture_url ?? registration.event_banner_url,
-          paymentDeadlineMinutes: 1440,
+          headerEmailUrl:
+            event?.headerEmailUrl ??
+            event?.header_email_url ??
+            event?.picture_url ??
+            event?.banner_url ??
+            registration.event_picture_url ??
+            registration.event_banner_url,
+          paymentDeadlineMinutes:
+            event?.paymentDeadlinesInMinutes ??
+            event?.paymentDeadlineMinutes ??
+            event?.payment_deadline_minutes ??
+            1440,
         },
         items:
           items.length > 0
@@ -676,570 +723,629 @@ export function ApplicantDetailDialog({
   );
 
   return (
-    <Dialog open={Boolean(registration)} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="flex max-h-[92vh] flex-col overflow-hidden p-0 sm:max-w-xl md:max-w-2xl lg:max-w-3xl">
-        {/* Header Bar */}
-        <div className="shrink-0 border-b bg-muted/20 px-6 pt-5 pb-4">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:pr-8">
-            <div className="flex items-start gap-3.5 pr-8 sm:pr-0">
-              <Avatar className="size-12 shrink-0 rounded-full border border-border shadow-xs">
-                <AvatarImage src={registration.member_avatar} alt={registration.member_name} />
-                <AvatarFallback className="font-semibold text-sm">
-                  {getInitials(registration.member_name)}
-                </AvatarFallback>
-              </Avatar>
-              <div className="space-y-1">
-                <DialogTitle className="font-bold text-foreground text-lg tracking-tight">
-                  {registration.member_name}
-                </DialogTitle>
-                <div className="flex flex-wrap items-center gap-2 text-muted-foreground text-xs">
-                  <span className="flex items-center gap-1">
-                    <Mail className="size-3.5" />
-                    {registration.member_email}
-                  </span>
-                  <span>•</span>
-                  <span className="flex items-center gap-1">
-                    <Clock className="size-3.5" />
-                    {formattedDate}
-                  </span>
+    <>
+      <Dialog open={Boolean(registration)} onOpenChange={(open) => !open && onClose()}>
+        <DialogContent className="flex max-h-[92vh] flex-col overflow-hidden p-0 sm:max-w-xl md:max-w-2xl lg:max-w-3xl">
+          {/* Header Bar */}
+          <div className="shrink-0 border-b bg-muted/20 px-6 pt-5 pb-4">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:pr-8">
+              <div className="flex items-start gap-3.5 pr-8 sm:pr-0">
+                <Avatar className="size-12 shrink-0 rounded-full border border-border shadow-xs">
+                  <AvatarImage src={registration.member_avatar} alt={registration.member_name} />
+                  <AvatarFallback className="font-semibold text-sm">
+                    {getInitials(registration.member_name)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="space-y-1">
+                  <DialogTitle className="font-bold text-foreground text-lg tracking-tight">
+                    {registration.member_name}
+                  </DialogTitle>
+                  <div className="flex flex-wrap items-center gap-2 text-muted-foreground text-xs">
+                    <span className="flex items-center gap-1">
+                      <Mail className="size-3.5" />
+                      {registration.member_email}
+                    </span>
+                    <span>•</span>
+                    <span className="flex items-center gap-1">
+                      <Clock className="size-3.5" />
+                      {formattedDate}
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="flex shrink-0 items-center gap-2">
-              <Badge
-                variant="outline"
-                className={cn("gap-1.5 border px-2.5 py-1 font-semibold text-xs", statusMeta.badgeClass)}
-              >
-                <span className={cn("size-1.5 rounded-full", statusMeta.dotClass)} />
-                {statusMeta.label}
-              </Badge>
-
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 gap-1.5 px-2.5 text-xs"
-                onClick={handleCopyFullProfile}
-                title="Copy attendee dossier"
-              >
-                {copiedProfile ? <Check className="size-3 text-emerald-600" /> : <Copy className="size-3" />}
-                <span>{copiedProfile ? "Copied" : "Copy Profile"}</span>
-              </Button>
-            </div>
-          </div>
-
-          <DialogDescription className="sr-only">
-            Detailed applicant dossier with submitted questions, track selection, and contact details.
-          </DialogDescription>
-
-          {/* Compact Metadata Attributes Strip */}
-          <div className="mt-3.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {/* Session Track Banner if present */}
-            {Boolean(registration.session_title ?? registration.session_id ?? registration.answers?.session_title) && (
-              <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
-                <div className="flex min-w-0 items-center gap-2">
-                  <Layers className="size-3.5 shrink-0 text-primary" />
-                  <span className="shrink-0 text-[11px] text-muted-foreground">Track:</span>
-                  <span className="truncate font-semibold text-primary">
-                    {registration.session_title ??
-                      String(registration.answers?.session_title ?? "") ??
-                      `Track ID: ${registration.session_id}`}
-                  </span>
-                </div>
-                <Badge variant="secondary" className="shrink-0 font-medium text-[10px]">
-                  Assigned
-                </Badge>
-              </div>
-            )}
-
-            {/* Ticket Pass Details if present */}
-            {Boolean(registration.ticket_name ?? registration.ticket_type) && (
-              <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
-                <div className="flex min-w-0 items-center gap-2">
-                  <Ticket className="size-3.5 shrink-0 text-primary" />
-                  <span className="shrink-0 text-[11px] text-muted-foreground">Ticket:</span>
-                  <span className="truncate font-semibold text-foreground">
-                    {registration.ticket_name ?? "General Pass"}
-                  </span>
-                </div>
+              <div className="flex shrink-0 items-center gap-2">
                 <Badge
                   variant="outline"
-                  className={cn(
-                    "shrink-0 px-1.5 py-0 font-semibold text-[10px]",
-                    registration.ticket_type === "free" &&
-                      "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
-                    registration.ticket_type === "paid" &&
-                      "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-400",
-                    registration.ticket_type === "commitment_fee" &&
-                      "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400",
-                  )}
+                  className={cn("gap-1.5 border px-2.5 py-1 font-semibold text-xs", statusMeta.badgeClass)}
                 >
-                  {getTicketTierLabel(registration.ticket_type, registration.ticket_price)}
+                  <span className={cn("size-1.5 rounded-full", statusMeta.dotClass)} />
+                  {statusMeta.label}
                 </Badge>
-              </div>
-            )}
 
-            {/* Bevy On-Site Check-In Status & Action */}
-            <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-xs">
-              <div className="flex min-w-0 items-center gap-1.5">
-                <span className="shrink-0 font-medium text-[11px] text-muted-foreground">Check-In:</span>
-                {registration.is_checked_in ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1.5 px-2.5 text-xs"
+                  onClick={handleCopyFullProfile}
+                  title="Copy attendee dossier"
+                >
+                  {copiedProfile ? <Check className="size-3 text-emerald-600" /> : <Copy className="size-3" />}
+                  <span>{copiedProfile ? "Copied" : "Copy Profile"}</span>
+                </Button>
+              </div>
+            </div>
+
+            <DialogDescription className="sr-only">
+              Detailed applicant dossier with submitted questions, track selection, and contact details.
+            </DialogDescription>
+
+            {/* Compact Metadata Attributes Strip */}
+            <div className="mt-3.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {/* Session Track Banner if present */}
+              {Boolean(
+                registration.session_title ?? registration.session_id ?? registration.answers?.session_title,
+              ) && (
+                <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Layers className="size-3.5 shrink-0 text-primary" />
+                    <span className="shrink-0 text-[11px] text-muted-foreground">Track:</span>
+                    <span className="truncate font-semibold text-primary">
+                      {registration.session_title ??
+                        String(registration.answers?.session_title ?? "") ??
+                        `Track ID: ${registration.session_id}`}
+                    </span>
+                  </div>
+                  <Badge variant="secondary" className="shrink-0 font-medium text-[10px]">
+                    Assigned
+                  </Badge>
+                </div>
+              )}
+
+              {/* Ticket Pass Details if present */}
+              {Boolean(registration.ticket_name ?? registration.ticket_type) && (
+                <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Ticket className="size-3.5 shrink-0 text-primary" />
+                    <span className="shrink-0 text-[11px] text-muted-foreground">Ticket:</span>
+                    <span className="truncate font-semibold text-foreground">
+                      {registration.ticket_name ?? "General Pass"}
+                    </span>
+                  </div>
                   <Badge
                     variant="outline"
-                    className="gap-1 border-emerald-500/30 bg-emerald-500/10 font-medium text-[10px] text-emerald-600 dark:text-emerald-400"
+                    className={cn(
+                      "shrink-0 px-1.5 py-0 font-semibold text-[10px]",
+                      registration.ticket_type === "free" &&
+                        "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+                      registration.ticket_type === "paid" &&
+                        "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-400",
+                      registration.ticket_type === "commitment_fee" &&
+                        "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400",
+                    )}
                   >
-                    <UserCheck className="size-3" /> Checked In
-                    {registration.checked_in_at && ` • ${registration.checked_in_at}`}
+                    {getTicketTierLabel(registration.ticket_type, registration.ticket_price)}
                   </Badge>
-                ) : (
-                  <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                    Not Checked In
-                  </Badge>
+                </div>
+              )}
+
+              {/* Bevy On-Site Check-In Status & Action */}
+              <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-xs">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <span className="shrink-0 font-medium text-[11px] text-muted-foreground">Check-In:</span>
+                  {registration.is_checked_in ? (
+                    <Badge
+                      variant="outline"
+                      className="gap-1 border-emerald-500/30 bg-emerald-500/10 font-medium text-[10px] text-emerald-600 dark:text-emerald-400"
+                    >
+                      <UserCheck className="size-3" /> Checked In
+                      {registration.checked_in_at && ` • ${registration.checked_in_at}`}
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                      Not Checked In
+                    </Badge>
+                  )}
+                </div>
+
+                {onToggleCheckIn && (
+                  <Button
+                    size="sm"
+                    variant={registration.is_checked_in ? "ghost" : "outline"}
+                    className={cn(
+                      "h-6 px-2 text-[11px]",
+                      registration.is_checked_in
+                        ? "text-muted-foreground hover:text-destructive"
+                        : "border-primary/30 text-primary hover:bg-primary/5",
+                    )}
+                    disabled={isPending}
+                    onClick={() => onToggleCheckIn(registration, !registration.is_checked_in)}
+                  >
+                    {registration.is_checked_in ? (
+                      <>
+                        <RotateCcw className="mr-1 size-2.5" />
+                        Undo
+                      </>
+                    ) : (
+                      <>
+                        <UserCheck className="mr-1 size-2.5" />
+                        Check In
+                      </>
+                    )}
+                  </Button>
                 )}
               </div>
 
-              {onToggleCheckIn && (
-                <Button
-                  size="sm"
-                  variant={registration.is_checked_in ? "ghost" : "outline"}
-                  className={cn(
-                    "h-6 px-2 text-[11px]",
-                    registration.is_checked_in
-                      ? "text-muted-foreground hover:text-destructive"
-                      : "border-primary/30 text-primary hover:bg-primary/5",
+              {/* Bundling Package Details if registered via bundle */}
+              {Boolean(registration.bundle_name) && (
+                <div className="flex items-center justify-between rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-xs">
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <PackageCheck className="size-3.5 shrink-0 text-primary" />
+                    <span className="shrink-0 font-medium text-[11px] text-muted-foreground">Package:</span>
+                    <span className="truncate font-semibold text-[11px] text-foreground">
+                      {registration.bundle_name}
+                    </span>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className="shrink-0 border-primary/30 bg-primary/10 text-[10px] font-semibold text-primary"
+                  >
+                    {registration.bundle_price !== undefined && registration.bundle_price !== null
+                      ? registration.bundle_price === 0
+                        ? "Free Bundle"
+                        : `Rp ${registration.bundle_price.toLocaleString("id-ID")}`
+                      : "Combo Package"}
+                  </Badge>
+                </div>
+              )}
+
+              {/* Merchandise Add-on Details if present */}
+              {Boolean(registration.selected_merchandise && registration.selected_merchandise.length > 0) && (
+                <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-xs">
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <Package className="size-3.5 shrink-0 text-primary" />
+                    <span className="shrink-0 text-[11px] text-muted-foreground">Merch:</span>
+                    <span className="truncate font-medium text-[11px] text-foreground">
+                      {registration.selected_merchandise?.map((item) => `${item.quantity}x ${item.name}`).join(", ")}
+                    </span>
+                  </div>
+                  <Badge variant="secondary" className="shrink-0 text-[10px]">
+                    {registration.selected_merchandise?.length} items
+                  </Badge>
+                </div>
+              )}
+
+              {/* Voucher Discount Details if applied */}
+              {Boolean(registration.voucher_code) && (
+                <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <Tag className="size-3.5 shrink-0 text-primary" />
+                    <span className="shrink-0 text-[11px] text-muted-foreground">Voucher:</span>
+                    <span className="truncate font-mono font-semibold text-[11px] text-foreground">
+                      {registration.voucher_code}
+                    </span>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className="shrink-0 border-primary/30 bg-primary/10 text-[10px] font-semibold text-primary"
+                  >
+                    -Rp {(registration.voucher_discount_amount ?? 0).toLocaleString("id-ID")}
+                  </Badge>
+                </div>
+              )}
+
+              {/* Reviewed By Decision Maker Banner if reviewed */}
+              {Boolean(registration.reviewed_by_name) && (
+                <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-xs">
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <UserCheck className="size-3.5 shrink-0 text-primary" />
+                    <span className="shrink-0 font-medium text-[11px] text-muted-foreground">Reviewed By:</span>
+                    <span className="truncate font-semibold text-[11px] text-foreground">
+                      {registration.reviewed_by_name}
+                      {registration.reviewed_by_email && (
+                        <span className="ml-1 font-normal text-[10px] text-muted-foreground">
+                          ({registration.reviewed_by_email})
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                  {registration.reviewed_at && (
+                    <span className="shrink-0 text-[10px] text-muted-foreground">
+                      {(() => {
+                        try {
+                          return format(parseISO(registration.reviewed_at), "dd MMM, HH:mm");
+                        } catch {
+                          return registration.reviewed_at;
+                        }
+                      })()}
+                    </span>
                   )}
-                  disabled={isPending}
-                  onClick={() => onToggleCheckIn(registration, !registration.is_checked_in)}
-                >
-                  {registration.is_checked_in ? (
-                    <>
-                      <RotateCcw className="mr-1 size-2.5" />
-                      Undo
-                    </>
-                  ) : (
-                    <>
-                      <UserCheck className="mr-1 size-2.5" />
-                      Check In
-                    </>
-                  )}
-                </Button>
+                </div>
               )}
             </div>
 
-            {/* Bundling Package Details if registered via bundle */}
-            {Boolean(registration.bundle_name) && (
-              <div className="flex items-center justify-between rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-xs">
-                <div className="flex min-w-0 items-center gap-1.5">
-                  <PackageCheck className="size-3.5 shrink-0 text-primary" />
-                  <span className="shrink-0 font-medium text-[11px] text-muted-foreground">Package:</span>
-                  <span className="truncate font-semibold text-[11px] text-foreground">{registration.bundle_name}</span>
-                </div>
-                <Badge
-                  variant="outline"
-                  className="shrink-0 border-primary/30 bg-primary/10 text-[10px] font-semibold text-primary"
-                >
-                  {registration.bundle_price !== undefined && registration.bundle_price !== null
-                    ? registration.bundle_price === 0
-                      ? "Free Bundle"
-                      : `Rp ${registration.bundle_price.toLocaleString("id-ID")}`
-                    : "Combo Package"}
-                </Badge>
-              </div>
-            )}
-
-            {/* Merchandise Add-on Details if present */}
-            {Boolean(registration.selected_merchandise && registration.selected_merchandise.length > 0) && (
-              <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-xs">
-                <div className="flex min-w-0 items-center gap-1.5">
-                  <Package className="size-3.5 shrink-0 text-primary" />
-                  <span className="shrink-0 text-[11px] text-muted-foreground">Merch:</span>
-                  <span className="truncate font-medium text-[11px] text-foreground">
-                    {registration.selected_merchandise?.map((item) => `${item.quantity}x ${item.name}`).join(", ")}
-                  </span>
-                </div>
-                <Badge variant="secondary" className="shrink-0 text-[10px]">
-                  {registration.selected_merchandise?.length} items
-                </Badge>
-              </div>
-            )}
-
-            {/* Voucher Discount Details if applied */}
-            {Boolean(registration.voucher_code) && (
-              <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
-                <div className="flex min-w-0 items-center gap-1.5">
-                  <Tag className="size-3.5 shrink-0 text-primary" />
-                  <span className="shrink-0 text-[11px] text-muted-foreground">Voucher:</span>
-                  <span className="truncate font-mono font-semibold text-[11px] text-foreground">
-                    {registration.voucher_code}
-                  </span>
-                </div>
-                <Badge
-                  variant="outline"
-                  className="shrink-0 border-primary/30 bg-primary/10 text-[10px] font-semibold text-primary"
-                >
-                  -Rp {(registration.voucher_discount_amount ?? 0).toLocaleString("id-ID")}
-                </Badge>
-              </div>
-            )}
-
-            {/* Reviewed By Decision Maker Banner if reviewed */}
-            {Boolean(registration.reviewed_by_name) && (
-              <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-xs">
-                <div className="flex min-w-0 items-center gap-1.5">
-                  <UserCheck className="size-3.5 shrink-0 text-primary" />
-                  <span className="shrink-0 font-medium text-[11px] text-muted-foreground">Reviewed By:</span>
-                  <span className="truncate font-semibold text-[11px] text-foreground">
-                    {registration.reviewed_by_name}
-                    {registration.reviewed_by_email && (
-                      <span className="ml-1 font-normal text-[10px] text-muted-foreground">
-                        ({registration.reviewed_by_email})
-                      </span>
-                    )}
-                  </span>
-                </div>
-                {registration.reviewed_at && (
-                  <span className="shrink-0 text-[10px] text-muted-foreground">
-                    {(() => {
-                      try {
-                        return format(parseISO(registration.reviewed_at), "dd MMM, HH:mm");
-                      } catch {
-                        return registration.reviewed_at;
-                      }
-                    })()}
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* DOKU Payment Link Generated Banner */}
-          {paymentLinkInfo && (
-            <div className="mt-3 flex items-center justify-between rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs">
-              <div className="flex min-w-0 items-center gap-2">
-                <QrCode className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                <span className="truncate font-semibold text-emerald-800 dark:text-emerald-300">
-                  DOKU Link: {paymentLinkInfo.invoiceNumber}
-                </span>
-              </div>
-              <div className="flex shrink-0 items-center gap-1.5">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 px-2 text-[11px] text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300"
-                  onClick={() => {
-                    void navigator.clipboard.writeText(paymentLinkInfo.url);
-                    toast.success("Payment URL copied to clipboard!");
-                  }}
-                >
-                  <Copy className="mr-1 size-3" />
-                  Copy
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="h-6 border-emerald-500/40 px-2 text-[11px] text-emerald-700 dark:text-emerald-300"
-                  asChild
-                >
-                  <a href={paymentLinkInfo.url} target="_blank" rel="noopener noreferrer">
-                    <ExternalLink className="mr-1 size-3" />
-                    Open
-                  </a>
-                </Button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Scrollable Questions and Responses */}
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-          <div className="space-y-6">
-            {groupedSections.length > 0 ? (
-              groupedSections.map(([sectionTitle, items]) => {
-                const SectionIcon = SECTION_ICONS[sectionTitle] || HelpCircle;
-
-                return (
-                  <div key={sectionTitle} className="space-y-3">
-                    <div className="flex items-center gap-2 border-border/40 border-b pb-1.5 font-semibold text-muted-foreground text-xs uppercase tracking-wider">
-                      <SectionIcon className="size-3.5 text-primary" />
-                      <span>{sectionTitle}</span>
-                      <span className="font-normal text-[11px] text-muted-foreground/70">
-                        ({items.length} {items.length === 1 ? "response" : "responses"})
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                      {items.map((item) => {
-                        const isWide =
-                          String(item.value).length > 60 ||
-                          String(item.value).includes("\n") ||
-                          Array.isArray(item.value) ||
-                          item.key.toLowerCase().includes("portfolio") ||
-                          item.key.toLowerCase().includes("linkedin") ||
-                          item.key.toLowerCase().includes("github");
-
-                        return (
-                          <div
-                            key={item.key}
-                            className={cn(
-                              "flex flex-col justify-between rounded-lg border border-border/60 bg-card p-3 shadow-2xs transition-colors hover:border-border",
-                              isWide && "sm:col-span-2",
-                            )}
-                          >
-                            <div className="mb-1 font-medium text-muted-foreground text-xs">{item.label}</div>
-                            <div className="pt-0.5">{renderResponseValue(item.key, item.value)}</div>
-                          </div>
-                        );
-                      })}
-                    </div>
+            {/* Expired Payment Notice Banner */}
+            {(rawStatus === "expired" || deadlineInfo.isOverdue) && hasPayableItems && (
+              <div className="mt-3 flex items-center justify-between rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">
+                <div className="flex min-w-0 items-center gap-2">
+                  <Clock className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                  <div>
+                    <span className="font-semibold text-amber-800 dark:text-amber-300">
+                      Payment Deadline Expired {deadlineInfo.timeStatusText ? `(${deadlineInfo.timeStatusText})` : ""}
+                    </span>
+                    <p className="text-[11px] text-amber-700/90 dark:text-amber-400/90">
+                      The payment link deadline has lapsed. You can resend a renewed checkout link.
+                    </p>
                   </div>
-                );
-              })
-            ) : (
-              <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
-                <FileText className="mb-2 size-8 opacity-40" />
-                <p className="font-medium text-sm">No custom questionnaire responses recorded.</p>
-                <p className="text-muted-foreground/80 text-xs">
-                  This attendee registered via Standard RSVP without additional custom questions.
-                </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 shrink-0 border-amber-500/40 bg-background text-amber-700 hover:bg-amber-500/20 text-xs dark:text-amber-300"
+                  onClick={() => setIsResendPaymentOpen(true)}
+                >
+                  <RefreshCw className="mr-1.5 size-3" />
+                  Resend Link
+                </Button>
               </div>
             )}
 
-            {/* Audit & Review History Timeline */}
-            {Boolean(registration.status_logs && registration.status_logs.length > 0) && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 border-border/40 border-b pb-1.5 font-semibold text-muted-foreground text-xs uppercase tracking-wider">
-                  <ShieldCheck className="size-3.5 text-primary" />
-                  <span>Review & Status Audit History</span>
-                  <span className="font-normal text-[11px] text-muted-foreground/70">
-                    ({registration.status_logs?.length} {registration.status_logs?.length === 1 ? "entry" : "entries"})
+            {/* DOKU Payment Link Generated Banner */}
+            {paymentLinkInfo && (
+              <div className="mt-3 flex items-center justify-between rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs">
+                <div className="flex min-w-0 items-center gap-2">
+                  <QrCode className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                  <span className="truncate font-semibold text-emerald-800 dark:text-emerald-300">
+                    DOKU Link: {paymentLinkInfo.invoiceNumber}
                   </span>
                 </div>
-
-                <div className="space-y-2 rounded-lg border border-border/60 bg-muted/20 p-3">
-                  {registration.status_logs?.map((log, idx) => {
-                    const logStatusMeta = STATUS_VARIANTS[log.status] || {
-                      label: log.status,
-                      badgeClass: "border-muted bg-muted",
-                      dotClass: "bg-muted-foreground",
-                    };
-                    let logTime = log.changed_at;
-                    try {
-                      logTime = format(parseISO(log.changed_at), "dd MMM yyyy, HH:mm");
-                    } catch {
-                      // Keep raw
-                    }
-
-                    return (
-                      <div
-                        key={log.id || `log-${idx}`}
-                        className="flex flex-wrap items-center justify-between gap-2 border-border/40 border-b pb-2 last:border-b-0 last:pb-0"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Badge
-                            variant="outline"
-                            className={cn("gap-1 border px-2 py-0.5 font-medium text-[11px]", logStatusMeta.badgeClass)}
-                          >
-                            <span className={cn("size-1.5 rounded-full", logStatusMeta.dotClass)} />
-                            {logStatusMeta.label}
-                          </Badge>
-                          <span className="text-muted-foreground text-xs">
-                            by <span className="font-semibold text-foreground">{log.changed_by_name}</span>
-                            {log.changed_by_email && (
-                              <span className="text-[11px] text-muted-foreground"> ({log.changed_by_email})</span>
-                            )}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                          <Clock className="size-3" />
-                          <span>{logTime}</span>
-                        </div>
-                      </div>
-                    );
-                  })}
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-2 text-[11px] text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(paymentLinkInfo.url);
+                      toast.success("Payment URL copied to clipboard!");
+                    }}
+                  >
+                    <Copy className="mr-1 size-3" />
+                    Copy
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-6 border-emerald-500/40 px-2 text-[11px] text-emerald-700 dark:text-emerald-300"
+                    asChild
+                  >
+                    <a href={paymentLinkInfo.url} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="mr-1 size-3" />
+                      Open
+                    </a>
+                  </Button>
                 </div>
               </div>
             )}
           </div>
-        </div>
 
-        {/* Footer Actions */}
-        {(() => {
-          const isActionBlocked = [isPending, isApproving, isRejecting, isResendingInterest, isCancelling].some(
-            Boolean,
-          );
-          return (
-            <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t bg-muted/20 px-6 py-3.5">
-              <div className="flex items-center gap-2">
-                {registration.status !== "waitlisted" && registration.status !== "approved" && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-xs"
-                    disabled={isActionBlocked}
-                    onClick={() => {
-                      onStatusChange(registration.id, "waitlisted");
-                      onClose();
-                    }}
-                  >
-                    Waitlist
-                  </Button>
-                )}
+          {/* Scrollable Questions and Responses */}
+          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+            <div className="space-y-6">
+              {groupedSections.length > 0 ? (
+                groupedSections.map(([sectionTitle, items]) => {
+                  const SectionIcon = SECTION_ICONS[sectionTitle] || HelpCircle;
 
-                {registration.status !== "pending" && registration.status !== "approved" && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="border-amber-500/30 text-amber-600 text-xs hover:bg-amber-500/10"
-                    disabled={isActionBlocked}
-                    onClick={() => {
-                      onStatusChange(registration.id, "pending");
-                      onClose();
-                    }}
-                  >
-                    <Clock className="mr-1.5 size-3.5" />
-                    Set Pending
-                  </Button>
-                )}
+                  return (
+                    <div key={sectionTitle} className="space-y-3">
+                      <div className="flex items-center gap-2 border-border/40 border-b pb-1.5 font-semibold text-muted-foreground text-xs uppercase tracking-wider">
+                        <SectionIcon className="size-3.5 text-primary" />
+                        <span>{sectionTitle}</span>
+                        <span className="font-normal text-[11px] text-muted-foreground/70">
+                          ({items.length} {items.length === 1 ? "response" : "responses"})
+                        </span>
+                      </div>
 
-                {registration.status === "pending" && onResendInterestEmail && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-primary text-xs"
-                    disabled={isActionBlocked}
-                    onClick={() => {
-                      onResendInterestEmail(registration);
-                    }}
-                  >
-                    {isResendingInterest ? (
-                      <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                    ) : (
-                      <Mail className="mr-1.5 size-3.5" />
-                    )}
-                    Resend Interest Email
-                  </Button>
-                )}
+                      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                        {items.map((item) => {
+                          const isWide =
+                            String(item.value).length > 60 ||
+                            String(item.value).includes("\n") ||
+                            Array.isArray(item.value) ||
+                            item.key.toLowerCase().includes("portfolio") ||
+                            item.key.toLowerCase().includes("linkedin") ||
+                            item.key.toLowerCase().includes("github");
 
-                {hasPayableItems && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="border-primary/40 text-primary text-xs hover:bg-primary/5"
-                    disabled={isActionBlocked || isGeneratingPayment}
-                    onClick={handleSendPaymentLink}
-                  >
-                    {isGeneratingPayment ? (
-                      <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                    ) : (
-                      <CreditCard className="mr-1.5 size-3.5" />
-                    )}
-                    Send Payment Link
-                  </Button>
-                )}
+                          return (
+                            <div
+                              key={item.key}
+                              className={cn(
+                                "flex flex-col justify-between rounded-lg border border-border/60 bg-card p-3 shadow-2xs transition-colors hover:border-border",
+                                isWide && "sm:col-span-2",
+                              )}
+                            >
+                              <div className="mb-1 font-medium text-muted-foreground text-xs">{item.label}</div>
+                              <div className="pt-0.5">{renderResponseValue(item.key, item.value)}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
+                  <FileText className="mb-2 size-8 opacity-40" />
+                  <p className="font-medium text-sm">No custom questionnaire responses recorded.</p>
+                  <p className="text-muted-foreground/80 text-xs">
+                    This attendee registered via Standard RSVP without additional custom questions.
+                  </p>
+                </div>
+              )}
 
-                {onCancelRegistration && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="border-destructive/30 text-destructive text-xs hover:bg-destructive/10 hover:text-destructive"
-                    disabled={isActionBlocked}
-                    onClick={() => {
-                      onCancelRegistration(registration);
-                    }}
-                  >
-                    {isCancelling ? (
-                      <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                    ) : (
-                      <UserX className="mr-1.5 size-3.5" />
-                    )}
-                    Cancel Registration
-                  </Button>
-                )}
+              {/* Audit & Review History Timeline */}
+              {Boolean(registration.status_logs && registration.status_logs.length > 0) && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 border-border/40 border-b pb-1.5 font-semibold text-muted-foreground text-xs uppercase tracking-wider">
+                    <ShieldCheck className="size-3.5 text-primary" />
+                    <span>Review & Status Audit History</span>
+                    <span className="font-normal text-[11px] text-muted-foreground/70">
+                      ({registration.status_logs?.length} {registration.status_logs?.length === 1 ? "entry" : "entries"}
+                      )
+                    </span>
+                  </div>
 
-                {onDelete && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="border-muted-foreground/30 text-muted-foreground text-xs hover:bg-muted/50"
-                    disabled={isActionBlocked}
-                    onClick={() => {
-                      onDelete(registration);
-                    }}
-                  >
-                    <Trash2 className="mr-1.5 size-3.5" />
-                    Remove Attendee
-                  </Button>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2">
-                {registration.status !== "rejected" && registration.status !== "approved" && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-destructive text-xs hover:bg-destructive/10"
-                    disabled={isActionBlocked}
-                    onClick={() => {
-                      if (onReject) {
-                        onReject(registration);
-                      } else {
-                        onStatusChange(registration.id, "rejected");
+                  <div className="space-y-2 rounded-lg border border-border/60 bg-muted/20 p-3">
+                    {registration.status_logs?.map((log, idx) => {
+                      const logStatusMeta = STATUS_VARIANTS[log.status] || {
+                        label: log.status,
+                        badgeClass: "border-muted bg-muted",
+                        dotClass: "bg-muted-foreground",
+                      };
+                      let logTime = log.changed_at;
+                      try {
+                        logTime = format(parseISO(log.changed_at), "dd MMM yyyy, HH:mm");
+                      } catch {
+                        // Keep raw
                       }
-                      onClose();
-                    }}
-                  >
-                    {isRejecting ? (
-                      <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                    ) : (
-                      <XCircle className="mr-1.5 size-3.5" />
-                    )}
-                    Reject
-                  </Button>
-                )}
 
-                {registration.status === "approved" ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled
-                    className="cursor-default border-emerald-500/30 bg-emerald-500/10 text-emerald-600 text-xs dark:text-emerald-400"
-                  >
-                    <CheckCircle className="mr-1.5 size-3.5" />
-                    Approved
-                  </Button>
-                ) : (
-                  <Button
-                    size="sm"
-                    className="bg-emerald-600 text-white text-xs shadow-xs hover:bg-emerald-700"
-                    disabled={isActionBlocked}
-                    onClick={() => {
-                      if (onApprove) {
-                        onApprove(registration);
-                      } else {
-                        onStatusChange(registration.id, "approved");
-                        onClose();
-                      }
-                    }}
-                  >
-                    {isApproving ? (
-                      <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                    ) : (
-                      <CheckCircle className="mr-1.5 size-3.5" />
-                    )}
-                    {isApproving ? "Approving..." : "Approve Applicant"}
-                  </Button>
-                )}
-
-                <Button size="sm" variant="secondary" className="text-xs" onClick={onClose}>
-                  Close
-                </Button>
-              </div>
+                      return (
+                        <div
+                          key={log.id || `log-${idx}`}
+                          className="flex flex-wrap items-center justify-between gap-2 border-border/40 border-b pb-2 last:border-b-0 last:pb-0"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "gap-1 border px-2 py-0.5 font-medium text-[11px]",
+                                logStatusMeta.badgeClass,
+                              )}
+                            >
+                              <span className={cn("size-1.5 rounded-full", logStatusMeta.dotClass)} />
+                              {logStatusMeta.label}
+                            </Badge>
+                            <span className="text-muted-foreground text-xs">
+                              by <span className="font-semibold text-foreground">{log.changed_by_name}</span>
+                              {log.changed_by_email && (
+                                <span className="text-[11px] text-muted-foreground"> ({log.changed_by_email})</span>
+                              )}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                            <Clock className="size-3" />
+                            <span>{logTime}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
-          );
-        })()}
-      </DialogContent>
-    </Dialog>
+          </div>
+
+          {/* Footer Actions */}
+          {(() => {
+            const isActionBlocked = [isPending, isApproving, isRejecting, isResendingInterest, isCancelling].some(
+              Boolean,
+            );
+            return (
+              <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t bg-muted/20 px-6 py-3.5">
+                <div className="flex items-center gap-2">
+                  {registration.status !== "waitlisted" && registration.status !== "approved" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-xs"
+                      disabled={isActionBlocked}
+                      onClick={() => {
+                        onStatusChange(registration.id, "waitlisted");
+                        onClose();
+                      }}
+                    >
+                      Waitlist
+                    </Button>
+                  )}
+
+                  {registration.status !== "pending" && registration.status !== "approved" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-amber-500/30 text-amber-600 text-xs hover:bg-amber-500/10"
+                      disabled={isActionBlocked}
+                      onClick={() => {
+                        onStatusChange(registration.id, "pending");
+                        onClose();
+                      }}
+                    >
+                      <Clock className="mr-1.5 size-3.5" />
+                      Set Pending
+                    </Button>
+                  )}
+
+                  {registration.status === "pending" && onResendInterestEmail && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-primary text-xs"
+                      disabled={isActionBlocked}
+                      onClick={() => {
+                        onResendInterestEmail(registration);
+                      }}
+                    >
+                      {isResendingInterest ? (
+                        <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                      ) : (
+                        <Mail className="mr-1.5 size-3.5" />
+                      )}
+                      Resend Interest Email
+                    </Button>
+                  )}
+
+                  {(rawStatus === "expired" || deadlineInfo.isOverdue) && hasPayableItems ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-amber-500/40 text-amber-600 text-xs hover:bg-amber-500/10"
+                      disabled={isActionBlocked}
+                      onClick={() => setIsResendPaymentOpen(true)}
+                    >
+                      <RefreshCw className="mr-1.5 size-3.5" />
+                      Resend Payment Link
+                    </Button>
+                  ) : hasPayableItems ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-primary/40 text-primary text-xs hover:bg-primary/5"
+                      disabled={isActionBlocked || isGeneratingPayment}
+                      onClick={handleSendPaymentLink}
+                    >
+                      {isGeneratingPayment ? (
+                        <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                      ) : (
+                        <CreditCard className="mr-1.5 size-3.5" />
+                      )}
+                      Send Payment Link
+                    </Button>
+                  ) : null}
+
+                  {onCancelRegistration && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-destructive/30 text-destructive text-xs hover:bg-destructive/10 hover:text-destructive"
+                      disabled={isActionBlocked}
+                      onClick={() => {
+                        onCancelRegistration(registration);
+                      }}
+                    >
+                      {isCancelling ? (
+                        <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                      ) : (
+                        <UserX className="mr-1.5 size-3.5" />
+                      )}
+                      Cancel Registration
+                    </Button>
+                  )}
+
+                  {onDelete && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-muted-foreground/30 text-muted-foreground text-xs hover:bg-muted/50"
+                      disabled={isActionBlocked}
+                      onClick={() => {
+                        onDelete(registration);
+                      }}
+                    >
+                      <Trash2 className="mr-1.5 size-3.5" />
+                      Remove Attendee
+                    </Button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {registration.status !== "rejected" && registration.status !== "approved" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-destructive text-xs hover:bg-destructive/10"
+                      disabled={isActionBlocked}
+                      onClick={() => {
+                        if (onReject) {
+                          onReject(registration);
+                        } else {
+                          onStatusChange(registration.id, "rejected");
+                        }
+                        onClose();
+                      }}
+                    >
+                      {isRejecting ? (
+                        <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                      ) : (
+                        <XCircle className="mr-1.5 size-3.5" />
+                      )}
+                      Reject
+                    </Button>
+                  )}
+
+                  {registration.status === "approved" ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled
+                      className="cursor-default border-emerald-500/30 bg-emerald-500/10 text-emerald-600 text-xs dark:text-emerald-400"
+                    >
+                      <CheckCircle className="mr-1.5 size-3.5" />
+                      Approved
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      className="bg-emerald-600 text-white text-xs shadow-xs hover:bg-emerald-700"
+                      disabled={isActionBlocked}
+                      onClick={() => {
+                        if (onApprove) {
+                          onApprove(registration);
+                        } else {
+                          onStatusChange(registration.id, "approved");
+                          onClose();
+                        }
+                      }}
+                    >
+                      {isApproving ? (
+                        <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                      ) : (
+                        <CheckCircle className="mr-1.5 size-3.5" />
+                      )}
+                      {isApproving ? "Approving..." : "Approve Applicant"}
+                    </Button>
+                  )}
+
+                  <Button size="sm" variant="secondary" className="text-xs" onClick={onClose}>
+                    Close
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+
+      <ResendPaymentLinkDialog
+        open={isResendPaymentOpen}
+        onOpenChange={setIsResendPaymentOpen}
+        registration={registration}
+        event={event}
+        onSuccess={(updatedReg) => {
+          onStatusChange(updatedReg.id, "waiting_for_payment");
+          onClose();
+        }}
+      />
+    </>
   );
 }

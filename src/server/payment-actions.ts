@@ -31,7 +31,7 @@ const dokuPaymentRequestSchema = z.object({
   customer: z.object({
     name: z.string().min(1, "Customer name is required"),
     email: z.string().email("Valid customer email is required"),
-    phone: z.string().optional(),
+    phone: z.string().min(1, "Customer phone number is required"),
   }),
   event: z.object({
     id: z.string().optional(),

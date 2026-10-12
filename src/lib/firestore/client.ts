@@ -1052,6 +1052,7 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
 
       const updateData: Record<string, unknown> = {
         total_registrations: currentCount + 1,
+        ...(resolvedStatus === "approved" ? { total_approved: (eventData.total_approved ?? 0) + 1 } : {}),
         ...(isWaitlisted ? { total_waitlisted: currentWaitlistCount + 1 } : {}),
         updated_at: new Date().toISOString(),
       };
@@ -1662,6 +1663,11 @@ const ALLOWED_EVENT_DOC_KEYS = new Set<string>([
   "payment_environment",
   "merchandise_delivery_payment_environment",
   "merchandise_delivery_fee",
+  "headerEmailUrl",
+  "header_email_url",
+  "paymentDeadlinesInMinutes",
+  "paymentDeadlineMinutes",
+  "payment_deadline_minutes",
   "registration_status",
   "registration_start_date",
   "registration_end_date",
@@ -2128,11 +2134,20 @@ export async function updateEventPaymentConfig(
     merchandise_delivery_payment_environment?: "production" | "sandbox";
     merchandise_delivery_fee?: number;
     payment_webhook_url?: string | null;
+    headerEmailUrl?: string | null;
+    header_email_url?: string | null;
+    paymentDeadlinesInMinutes?: number | null;
+    paymentDeadlineMinutes?: number | null;
+    payment_deadline_minutes?: number | null;
   },
   baseEvent?: Partial<FirestoreEvent>,
 ): Promise<void> {
   if (typeof window === "undefined") return;
   const eventRef = doc(db, "events", String(eventId));
+  const resolvedHeaderUrl = config.headerEmailUrl ?? config.header_email_url;
+  const resolvedDeadline =
+    config.paymentDeadlinesInMinutes ?? config.paymentDeadlineMinutes ?? config.payment_deadline_minutes;
+
   const updatePayload: Record<string, unknown> = {
     payment_environment: config.payment_environment,
     ...(config.merchandise_delivery_payment_environment
@@ -2147,6 +2162,24 @@ export async function updateEventPaymentConfig(
             config.payment_webhook_url && config.payment_webhook_url.trim().length > 0
               ? config.payment_webhook_url.trim()
               : deleteField(),
+        }
+      : {}),
+    ...(resolvedHeaderUrl !== undefined
+      ? {
+          headerEmailUrl:
+            resolvedHeaderUrl && resolvedHeaderUrl.trim().length > 0 ? resolvedHeaderUrl.trim() : deleteField(),
+          header_email_url:
+            resolvedHeaderUrl && resolvedHeaderUrl.trim().length > 0 ? resolvedHeaderUrl.trim() : deleteField(),
+        }
+      : {}),
+    ...(resolvedDeadline !== undefined
+      ? {
+          paymentDeadlinesInMinutes:
+            typeof resolvedDeadline === "number" && resolvedDeadline > 0 ? resolvedDeadline : deleteField(),
+          paymentDeadlineMinutes:
+            typeof resolvedDeadline === "number" && resolvedDeadline > 0 ? resolvedDeadline : deleteField(),
+          payment_deadline_minutes:
+            typeof resolvedDeadline === "number" && resolvedDeadline > 0 ? resolvedDeadline : deleteField(),
         }
       : {}),
     updated_at: new Date().toISOString(),
