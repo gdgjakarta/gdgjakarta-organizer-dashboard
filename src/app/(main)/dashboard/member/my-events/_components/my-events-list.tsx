@@ -8,6 +8,7 @@ import { usePathname } from "next/navigation";
 import { format, parseISO } from "date-fns";
 import {
   CalendarCheck,
+  CheckCircle2,
   Clock,
   CreditCard,
   Edit3,
@@ -21,6 +22,7 @@ import {
   Radio,
   Search,
   Sparkles,
+  Ticket,
   Truck,
   UserX,
   X,
@@ -37,6 +39,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { resolveEventAudience } from "@/lib/bevy/audience";
 import { extractEventImageUrl } from "@/lib/events/media-utils";
+import {
+  getEffectiveRegistrationStatus,
+  getRegistrationPaymentDeadline,
+  isPaidRegistration,
+} from "@/lib/events/payment-deadline";
 import { fetchMemberRegistrationsAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent, FirestoreRegistration, RegistrationStatus } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
@@ -56,19 +63,19 @@ const STATUS_VARIANTS: Record<RegistrationStatus, { label: string; badgeClass: s
   },
   waiting_for_payment: {
     label: "Waiting for Payment",
-    badgeClass: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+    badgeClass: "border-amber-500/40 bg-amber-500/15 text-amber-700 dark:text-amber-300 font-semibold",
   },
   paid_and_registered: {
     label: "Paid & Registered",
-    badgeClass: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+    badgeClass: "border-emerald-500/40 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-semibold",
   },
   expired: {
-    label: "Expired",
-    badgeClass: "border-zinc-500/30 bg-zinc-500/10 text-zinc-700 dark:text-zinc-300",
+    label: "Payment Expired",
+    badgeClass: "border-zinc-500/30 bg-zinc-500/15 text-zinc-700 dark:text-zinc-400",
   },
   failed: {
     label: "Payment Failed",
-    badgeClass: "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300",
+    badgeClass: "border-rose-500/30 bg-rose-500/15 text-rose-700 dark:text-rose-400",
   },
   canceled: {
     label: "Canceled",
@@ -99,6 +106,14 @@ const STATUS_VARIANTS: Record<RegistrationStatus, { label: string; badgeClass: s
     badgeClass: "border-purple-500/30 bg-purple-500/10 text-purple-700 dark:text-purple-300",
   },
 };
+
+function formatRupiah(amount: number): string {
+  return new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
 
 function isEventPast(event?: FirestoreEvent): boolean {
   if (!event) return false;
@@ -240,40 +255,103 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
 
   // Metrics summary
   const totalCount = registrations.length;
-  const pendingCount = registrations.filter((r) => r.status === "pending" || r.status === "waitlisted").length;
-  const approvedCount = registrations.filter((r) => r.status === "approved").length;
-  const attendedCount = registrations.filter((r) => r.status === "attended").length;
+  const pendingCount = registrations.filter((r) => {
+    const s = getEffectiveRegistrationStatus(r, eventMap.get(String(r.event_id)));
+    return s === "pending" || s === "waitlisted";
+  }).length;
+  const waitingPaymentCount = registrations.filter((r) => {
+    const s = getEffectiveRegistrationStatus(r, eventMap.get(String(r.event_id)));
+    return s === "waiting_for_payment";
+  }).length;
+  const paidCount = registrations.filter((r) => {
+    const s = getEffectiveRegistrationStatus(r, eventMap.get(String(r.event_id)));
+    return s === "paid_and_registered";
+  }).length;
+  const approvedCount = registrations.filter((r) => {
+    const s = getEffectiveRegistrationStatus(r, eventMap.get(String(r.event_id)));
+    return s === "approved" || s === "paid_and_registered" || s === "registered";
+  }).length;
+  const attendedCount = registrations.filter((r) => {
+    const s = getEffectiveRegistrationStatus(r, eventMap.get(String(r.event_id)));
+    return s === "attended" || Boolean(r.is_checked_in);
+  }).length;
+  const expiredCount = registrations.filter((r) => {
+    const s = getEffectiveRegistrationStatus(r, eventMap.get(String(r.event_id)));
+    return s === "expired" || s === "failed" || s === "canceled" || s === "cancelled";
+  }).length;
 
   // Filter registrations by search and status
   const filteredRegistrations = useMemo(() => {
     return registrations.filter((reg) => {
-      if (statusFilter !== "all" && reg.status !== statusFilter) {
-        return false;
+      const ev = eventMap.get(String(reg.event_id));
+      const effectiveStatus = getEffectiveRegistrationStatus(reg, ev);
+
+      if (statusFilter !== "all") {
+        if (statusFilter === "approved") {
+          if (
+            effectiveStatus !== "approved" &&
+            effectiveStatus !== "paid_and_registered" &&
+            effectiveStatus !== "registered"
+          ) {
+            return false;
+          }
+        } else if (statusFilter === "pending") {
+          if (effectiveStatus !== "pending" && effectiveStatus !== "waitlisted") {
+            return false;
+          }
+        } else if (statusFilter === "waiting_for_payment") {
+          if (effectiveStatus !== "waiting_for_payment") {
+            return false;
+          }
+        } else if (statusFilter === "paid_and_registered") {
+          if (effectiveStatus !== "paid_and_registered") {
+            return false;
+          }
+        } else if (statusFilter === "attended") {
+          if (effectiveStatus !== "attended" && !reg.is_checked_in) {
+            return false;
+          }
+        } else if (statusFilter === "expired") {
+          if (
+            effectiveStatus !== "expired" &&
+            effectiveStatus !== "failed" &&
+            effectiveStatus !== "canceled" &&
+            effectiveStatus !== "cancelled"
+          ) {
+            return false;
+          }
+        } else if (effectiveStatus !== statusFilter) {
+          return false;
+        }
       }
+
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
         const titleMatch = reg.event_title.toLowerCase().includes(query);
         const trackMatch = reg.session_title?.toLowerCase().includes(query);
-        if (!titleMatch && !trackMatch) {
+        const invoiceMatch = reg.payment_invoice_number?.toLowerCase().includes(query);
+        const ticketMatch =
+          reg.ticket_tier?.toLowerCase().includes(query) || reg.ticket_name?.toLowerCase().includes(query);
+        if (!titleMatch && !trackMatch && !invoiceMatch && !ticketMatch) {
           return false;
         }
       }
       return true;
     });
-  }, [registrations, statusFilter, searchQuery]);
+  }, [registrations, statusFilter, searchQuery, eventMap]);
 
   // Segment registrations
   const upcomingRegs = useMemo(() => {
     return filteredRegistrations.filter((reg) => {
       const ev = eventMap.get(String(reg.event_id));
-      return !isEventPast(ev) && reg.status !== "attended";
+      return !isEventPast(ev) && reg.status !== "attended" && !reg.is_checked_in;
     });
   }, [filteredRegistrations, eventMap]);
 
   const pastRegs = useMemo(() => {
     return filteredRegistrations.filter((reg) => {
       const ev = eventMap.get(String(reg.event_id));
-      return isEventPast(ev) || reg.status === "attended";
+      return isEventPast(ev) || reg.status === "attended" || Boolean(reg.is_checked_in);
     });
   }, [filteredRegistrations, eventMap]);
 
@@ -339,9 +417,17 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
         {items.map((reg) => {
           const ev = eventMap.get(String(reg.event_id));
-          const statusMeta = STATUS_VARIANTS[reg.status] || STATUS_VARIANTS.pending;
-          const isPending = reg.status === "pending" || reg.status === "waitlisted";
-          const isApproved = reg.status === "approved" || reg.status === "attended";
+          const effectiveStatus = getEffectiveRegistrationStatus(reg, ev);
+          const deadlineInfo = getRegistrationPaymentDeadline(reg, ev);
+          const statusMeta = STATUS_VARIANTS[effectiveStatus] || STATUS_VARIANTS[reg.status] || STATUS_VARIANTS.pending;
+
+          const isPending = effectiveStatus === "pending" || effectiveStatus === "waitlisted";
+          const isWaitingPayment = effectiveStatus === "waiting_for_payment";
+          const isPaidAndRegistered = effectiveStatus === "paid_and_registered";
+          const isApproved = effectiveStatus === "approved" || effectiveStatus === "registered";
+          const isExpired = effectiveStatus === "expired";
+          const isFailed = effectiveStatus === "failed";
+
           const selectedTrack =
             reg.session_title ||
             (reg.answers?.session_title as string | undefined) ||
@@ -370,6 +456,8 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
               key={reg.id}
               className={cn(
                 "group flex flex-col justify-between overflow-hidden shadow-xs transition-all hover:shadow-md",
+                isWaitingPayment && "border-amber-500/50 dark:border-amber-500/40 ring-1 ring-amber-500/20",
+                isPaidAndRegistered && "border-emerald-500/30",
                 isPending && "border-amber-500/30",
               )}
             >
@@ -460,12 +548,100 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
                     </div>
                   )}
 
-                  {/* Status Helper Message */}
+                  {/* Ticket Tier / Price Tag */}
+                  {(() => {
+                    const isPaid = isPaidRegistration(reg);
+                    const ticketTier = reg.ticket_tier || reg.ticket_name;
+                    const price = reg.payment_amount ?? reg.ticket_price ?? reg.bundle_price;
+
+                    if (!isPaid && !ticketTier && !price) return null;
+
+                    return (
+                      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                        {ticketTier && (
+                          <Badge
+                            variant="secondary"
+                            className="gap-1 border border-primary/20 bg-primary/5 text-[10px] text-primary"
+                          >
+                            <Ticket className="size-3" />
+                            {ticketTier}
+                          </Badge>
+                        )}
+                        {price && price > 0 ? (
+                          <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                            {formatRupiah(price)}
+                          </Badge>
+                        ) : null}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Status Helper Callout */}
+                  {isWaitingPayment && (
+                    <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs">
+                      <div className="flex items-center justify-between font-semibold text-amber-800 dark:text-amber-200">
+                        <span className="flex items-center gap-1.5 text-xs">
+                          <CreditCard className="size-3.5 text-amber-600 dark:text-amber-400" />
+                          Payment Required
+                        </span>
+                        {reg.payment_amount ? (
+                          <span className="font-bold text-amber-700 dark:text-amber-300">
+                            {formatRupiah(reg.payment_amount)}
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="mt-1 flex items-center justify-between text-[11px] text-amber-700/90 dark:text-amber-300/90">
+                        <span>
+                          {deadlineInfo.timeStatusText
+                            ? `⏰ ${deadlineInfo.timeStatusText}`
+                            : "Complete payment to secure your ticket."}
+                        </span>
+                        {deadlineInfo.formattedDeadline && (
+                          <span className="text-[10px] opacity-75">Due {deadlineInfo.formattedDeadline}</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {isPaidAndRegistered && (
+                    <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-xs">
+                      <div className="flex items-center justify-between font-medium text-emerald-800 dark:text-emerald-200">
+                        <span className="flex items-center gap-1.5 text-[11px]">
+                          <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />✓ Payment
+                          Confirmed • Ticket Secured
+                        </span>
+                        {reg.payment_amount ? (
+                          <span className="font-semibold text-[11px] text-emerald-700 dark:text-emerald-300">
+                            {formatRupiah(reg.payment_amount)}
+                          </span>
+                        ) : null}
+                      </div>
+                      {reg.payment_invoice_number && (
+                        <p className="mt-0.5 text-[10px] text-emerald-700/80 dark:text-emerald-300/80">
+                          Invoice: #{reg.payment_invoice_number}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {isExpired && (
+                    <div className="rounded-md border border-zinc-500/30 bg-zinc-500/10 p-2.5 text-[11px] text-zinc-700 dark:text-zinc-300">
+                      ⏰ Payment deadline has expired. This reservation has been released.
+                    </div>
+                  )}
+
+                  {isFailed && (
+                    <div className="rounded-md border border-rose-500/30 bg-rose-500/10 p-2.5 text-[11px] text-rose-700 dark:text-rose-300">
+                      ⚠️ Payment failed or incomplete.
+                    </div>
+                  )}
+
                   {isPending && (
                     <div className="rounded-md border border-amber-500/20 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-800 dark:text-amber-300">
                       ✏️ Form responses can be edited while pending review.
                     </div>
                   )}
+
                   {isApproved && (
                     <div className="rounded-md border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1.5 text-[11px] text-emerald-800 dark:text-emerald-300">
                       ✓ Confirmed attendee. Responses locked.
@@ -558,6 +734,19 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
               {/* Action Buttons Row */}
               <CardFooter className="flex flex-wrap items-center justify-between gap-2 border-border/40 border-t bg-muted/20 p-3.5">
                 <div className="flex flex-wrap items-center gap-2">
+                  {/* Complete Payment Button if awaiting payment */}
+                  {isWaitingPayment && reg.payment_url && (
+                    <a href={reg.payment_url} target="_blank" rel="noopener noreferrer">
+                      <Button
+                        size="sm"
+                        className="h-8 gap-1.5 bg-amber-600 font-semibold text-white text-xs shadow-xs hover:bg-amber-700"
+                      >
+                        <CreditCard className="size-3.5" />
+                        Pay Now {reg.payment_amount ? `(${formatRupiah(reg.payment_amount)})` : ""}
+                      </Button>
+                    </a>
+                  )}
+
                   <EditRegistrationModal
                     registration={reg}
                     event={ev}
@@ -587,19 +776,6 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
                       )
                     }
                   />
-
-                  {/* Complete Payment Button if awaiting payment */}
-                  {(reg.status === "waiting_for_payment" || reg.payment_status === "unpaid") && reg.payment_url && (
-                    <a href={reg.payment_url} target="_blank" rel="noopener noreferrer">
-                      <Button
-                        size="sm"
-                        className="h-8 gap-1.5 bg-amber-600 font-medium text-white text-xs shadow-xs hover:bg-amber-700"
-                      >
-                        <CreditCard className="size-3.5" />
-                        Complete Payment
-                      </Button>
-                    </a>
-                  )}
 
                   {/* Merchandise Delivery Request / Status Button */}
                   {(() => {
@@ -649,7 +825,7 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
                     <Link href={detailsHref}>Details →</Link>
                   </Button>
 
-                  {!isEventPast(ev) && reg.status !== "attended" && (
+                  {!isEventPast(ev) && !isPaidAndRegistered && reg.status !== "attended" && (
                     <Button
                       variant="ghost"
                       size="sm"
@@ -689,28 +865,103 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
       </div>
 
       {/* ── Summary Stats Row ─────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="rounded-xl border border-border/60 bg-card p-3 shadow-2xs">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <button
+          type="button"
+          onClick={() => setStatusFilter("all")}
+          className={cn(
+            "rounded-xl border p-3 text-left shadow-2xs transition-all hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+            statusFilter === "all" ? "border-primary bg-primary/5 ring-1 ring-primary/30" : "border-border/60 bg-card",
+          )}
+        >
           <p className="text-[11px] text-muted-foreground">Total Applications</p>
           <p className="font-bold text-foreground text-xl">{totalCount}</p>
-        </div>
-        <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 shadow-2xs">
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setStatusFilter("pending")}
+          className={cn(
+            "rounded-xl border p-3 text-left shadow-2xs transition-all hover:border-amber-500/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500",
+            statusFilter === "pending"
+              ? "border-amber-500 bg-amber-500/15 ring-1 ring-amber-500/40"
+              : "border-amber-500/30 bg-amber-500/5",
+          )}
+        >
           <div className="flex items-center justify-between">
             <p className="text-[11px] text-amber-700 dark:text-amber-300">Pending Review</p>
-            <Badge variant="outline" className="h-4 border-amber-500/40 px-1 font-normal text-[9px] text-amber-600">
+            <Badge
+              variant="outline"
+              className="h-4 border-amber-500/40 px-1 font-normal text-[9px] text-amber-600 dark:text-amber-400"
+            >
               Editable
             </Badge>
           </div>
           <p className="font-bold text-amber-700 text-xl dark:text-amber-300">{pendingCount}</p>
-        </div>
-        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3 shadow-2xs">
-          <p className="text-[11px] text-emerald-700 dark:text-emerald-300">Confirmed / Approved</p>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setStatusFilter("waiting_for_payment")}
+          className={cn(
+            "rounded-xl border p-3 text-left shadow-2xs transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600",
+            waitingPaymentCount > 0
+              ? "border-amber-600/50 bg-amber-500/10 hover:bg-amber-500/15 dark:bg-amber-950/20"
+              : "border-border/60 bg-card hover:bg-muted/30",
+            statusFilter === "waiting_for_payment" && "border-amber-600 bg-amber-500/20 ring-1 ring-amber-600/40",
+          )}
+        >
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] text-amber-800 dark:text-amber-200">Waiting Payment</p>
+            {waitingPaymentCount > 0 && (
+              <Badge
+                variant="outline"
+                className="h-4 animate-pulse border-amber-600/50 bg-amber-600/20 px-1 font-semibold text-[9px] text-amber-700 dark:text-amber-300"
+              >
+                Pay Now
+              </Badge>
+            )}
+          </div>
+          <p className="font-bold text-amber-800 text-xl dark:text-amber-200">{waitingPaymentCount}</p>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setStatusFilter("approved")}
+          className={cn(
+            "rounded-xl border p-3 text-left shadow-2xs transition-all hover:border-emerald-500/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500",
+            statusFilter === "approved"
+              ? "border-emerald-500 bg-emerald-500/15 ring-1 ring-emerald-500/40"
+              : "border-emerald-500/30 bg-emerald-500/5",
+          )}
+        >
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] text-emerald-700 dark:text-emerald-300">Confirmed / Paid</p>
+            {paidCount > 0 && (
+              <Badge
+                variant="outline"
+                className="h-4 border-emerald-500/40 px-1 font-normal text-[9px] text-emerald-600 dark:text-emerald-400"
+              >
+                {paidCount} Paid
+              </Badge>
+            )}
+          </div>
           <p className="font-bold text-emerald-700 text-xl dark:text-emerald-300">{approvedCount}</p>
-        </div>
-        <div className="rounded-xl border border-purple-500/30 bg-purple-500/5 p-3 shadow-2xs">
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setStatusFilter("attended")}
+          className={cn(
+            "rounded-xl border p-3 text-left shadow-2xs transition-all hover:border-purple-500/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500",
+            statusFilter === "attended"
+              ? "border-purple-500 bg-purple-500/15 ring-1 ring-purple-500/40"
+              : "border-purple-500/30 bg-purple-500/5",
+          )}
+        >
           <p className="text-[11px] text-purple-700 dark:text-purple-300">Attended</p>
           <p className="font-bold text-purple-700 text-xl dark:text-purple-300">{attendedCount}</p>
-        </div>
+        </button>
       </div>
 
       {/* ── Search & Filter Controls ──────────────────────────────────── */}
@@ -718,7 +969,7 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
         <div className="relative max-w-sm flex-1">
           <Search className="absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search by event title or track..."
+            placeholder="Search by event title, track, or ticket..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="h-9 pl-9 text-xs"
@@ -737,15 +988,17 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
         <div className="flex items-center gap-2">
           <Filter className="size-3.5 text-muted-foreground" />
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="h-9 w-[170px] text-xs">
+            <SelectTrigger className="h-9 w-[190px] text-xs">
               <SelectValue placeholder="Filter by status" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Statuses ({totalCount})</SelectItem>
+              <SelectItem value="waiting_for_payment">Waiting for Payment ({waitingPaymentCount})</SelectItem>
               <SelectItem value="pending">Pending Review ({pendingCount})</SelectItem>
-              <SelectItem value="approved">Approved ({approvedCount})</SelectItem>
+              <SelectItem value="approved">Confirmed / Approved ({approvedCount})</SelectItem>
+              <SelectItem value="paid_and_registered">Paid & Registered ({paidCount})</SelectItem>
               <SelectItem value="attended">Attended ({attendedCount})</SelectItem>
-              <SelectItem value="rejected">Not Selected</SelectItem>
+              {expiredCount > 0 && <SelectItem value="expired">Expired / Cancelled ({expiredCount})</SelectItem>}
             </SelectContent>
           </Select>
         </div>

@@ -15,8 +15,10 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { resolveEventAudience } from "@/lib/bevy/audience";
 import { extractEventImageUrl } from "@/lib/events/media-utils";
+import { getEffectiveRegistrationStatus } from "@/lib/events/payment-deadline";
 import { fetchMemberRegistrationsAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
+import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
 interface MemberEventsListProps {
@@ -86,6 +88,7 @@ export function MemberEventsList({ events, myRegistrations = [] }: MemberEventsL
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
         {items.map((event) => {
           const existingReg = registrationMap.get(String(event.id));
+          const effectiveRegStatus = existingReg ? getEffectiveRegistrationStatus(existingReg, event) : null;
           const isPast = isEventPast(event);
 
           let formattedDate = event.start_date;
@@ -98,7 +101,12 @@ export function MemberEventsList({ events, myRegistrations = [] }: MemberEventsL
           return (
             <Card
               key={event.id}
-              className="group flex flex-col justify-between overflow-hidden shadow-xs transition-all hover:shadow-md"
+              className={cn(
+                "group flex flex-col justify-between overflow-hidden shadow-xs transition-all hover:shadow-md",
+                effectiveRegStatus === "waiting_for_payment" &&
+                  "border-amber-500/50 ring-1 ring-amber-500/20 dark:border-amber-500/40",
+                effectiveRegStatus === "paid_and_registered" && "border-emerald-500/30",
+              )}
             >
               <div>
                 {/* Event Thumbnail with Dynamic Link */}
@@ -149,14 +157,56 @@ export function MemberEventsList({ events, myRegistrations = [] }: MemberEventsL
                 </Link>
 
                 <CardHeader className="space-y-2 p-4 pb-2">
-                  <CardTitle className="line-clamp-2 font-semibold text-base leading-snug">
-                    <Link
-                      href={`/dashboard/member/events/${event.id}`}
-                      className="transition-colors hover:text-primary hover:underline"
-                    >
-                      {event.title}
-                    </Link>
-                  </CardTitle>
+                  <div className="flex items-start justify-between gap-2">
+                    <CardTitle className="line-clamp-2 font-semibold text-base leading-snug">
+                      <Link
+                        href={`/dashboard/member/events/${event.id}`}
+                        className="transition-colors hover:text-primary hover:underline"
+                      >
+                        {event.title}
+                      </Link>
+                    </CardTitle>
+                    {effectiveRegStatus && (
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          "shrink-0 px-2 py-0.5 text-[10px] font-semibold",
+                          effectiveRegStatus === "waiting_for_payment" &&
+                            "border-amber-500/40 bg-amber-500/15 text-amber-700 dark:text-amber-300",
+                          effectiveRegStatus === "paid_and_registered" &&
+                            "border-emerald-500/40 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+                          (effectiveRegStatus === "approved" || effectiveRegStatus === "registered") &&
+                            "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+                          effectiveRegStatus === "pending" &&
+                            "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+                          effectiveRegStatus === "waitlisted" &&
+                            "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300",
+                          effectiveRegStatus === "expired" &&
+                            "border-zinc-500/30 bg-zinc-500/10 text-zinc-700 dark:text-zinc-400",
+                        )}
+                      >
+                        {(() => {
+                          switch (effectiveRegStatus) {
+                            case "waiting_for_payment":
+                              return "Waiting Payment";
+                            case "paid_and_registered":
+                              return "Paid & Registered";
+                            case "approved":
+                            case "registered":
+                              return "Confirmed";
+                            case "pending":
+                              return "Pending Review";
+                            case "waitlisted":
+                              return "Waitlisted";
+                            case "expired":
+                              return "Expired";
+                            default:
+                              return effectiveRegStatus;
+                          }
+                        })()}
+                      </Badge>
+                    )}
+                  </div>
                   <CardDescription className="flex items-center gap-1.5 text-xs">
                     <Clock className="size-3.5 text-muted-foreground" />
                     {formattedDate}

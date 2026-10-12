@@ -10,6 +10,7 @@ import {
   Calendar,
   CheckCircle2,
   Clock,
+  CreditCard,
   Edit3,
   ExternalLink,
   FileText,
@@ -19,6 +20,7 @@ import {
   Radio,
   Share2,
   Sparkles,
+  Ticket,
   Truck,
   Users,
   UserX,
@@ -39,6 +41,11 @@ import { Separator } from "@/components/ui/separator";
 import { getDashboardHomeUrl } from "@/lib/auth-roles";
 import { resolveEventAudience } from "@/lib/bevy/audience";
 import { extractEventImageUrl } from "@/lib/events/media-utils";
+import {
+  getEffectiveRegistrationStatus,
+  getRegistrationPaymentDeadline,
+  isPaidRegistration,
+} from "@/lib/events/payment-deadline";
 import { getRegistrationWindowStatus } from "@/lib/events/registration-defaults";
 import { checkEventRegistrationAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
@@ -180,16 +187,25 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
     }
   };
 
+  const effectiveStatus = registration ? getEffectiveRegistrationStatus(registration, currentEvent) : null;
+  const deadlineInfo = registration ? getRegistrationPaymentDeadline(registration, currentEvent) : null;
+
+  const isPaidAndRegistered = effectiveStatus === "paid_and_registered";
   const isApproved =
-    registration?.status === "approved" || registration?.status === "registered" || registration?.status === "attended";
-  const isWaitlisted = registration?.status === "waitlisted";
-  const isWaitingPayment =
-    registration?.status === "waiting_for_payment" ||
-    (registration?.payment_status === "unpaid" && Boolean(registration?.payment_url));
+    effectiveStatus === "approved" ||
+    effectiveStatus === "registered" ||
+    effectiveStatus === "attended" ||
+    isPaidAndRegistered;
+  const isWaitlisted = effectiveStatus === "waitlisted";
+  const isWaitingPayment = effectiveStatus === "waiting_for_payment";
+  const isExpired = effectiveStatus === "expired";
+  const isFailed = effectiveStatus === "failed";
   const isPending =
     !isWaitlisted &&
     !isWaitingPayment &&
-    (registration?.status === "pending" ||
+    !isExpired &&
+    !isFailed &&
+    (effectiveStatus === "pending" ||
       Boolean(
         registration &&
           !isApproved &&
@@ -198,15 +214,25 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
 
   let statusBadgeClass = "";
   let statusBadgeText = "Registered";
-  if (isApproved) {
-    statusBadgeClass = "bg-emerald-600 text-white";
+  if (isPaidAndRegistered) {
+    statusBadgeClass =
+      "border border-emerald-500/40 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-semibold";
+    statusBadgeText = "Paid & Registered";
+  } else if (isApproved) {
+    statusBadgeClass = "bg-emerald-600 text-white font-medium";
     statusBadgeText = "Approved";
+  } else if (isWaitingPayment) {
+    statusBadgeClass = "border border-amber-500/40 bg-amber-500/15 text-amber-700 dark:text-amber-300 font-semibold";
+    statusBadgeText = "Waiting for Payment";
+  } else if (isExpired) {
+    statusBadgeClass = "border border-zinc-500/40 bg-zinc-500/15 text-zinc-700 dark:text-zinc-400 font-medium";
+    statusBadgeText = "Payment Expired";
+  } else if (isFailed) {
+    statusBadgeClass = "border border-rose-500/40 bg-rose-500/15 text-rose-700 dark:text-rose-400 font-medium";
+    statusBadgeText = "Payment Failed";
   } else if (isWaitlisted) {
     statusBadgeClass = "border border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400";
     statusBadgeText = "Waitlisted";
-  } else if (isWaitingPayment) {
-    statusBadgeClass = "border border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400";
-    statusBadgeText = "Waiting for Payment";
   } else if (isPending) {
     statusBadgeClass = "border border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400";
     statusBadgeText = "Pending Review";
@@ -219,14 +245,21 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
   if (isChecking) {
     registrationStatusDescription = "Verifying your registration status...";
   } else if (registration) {
-    if (isApproved) {
+    if (isPaidAndRegistered) {
+      registrationStatusDescription = "Payment confirmed and ticket secured! See you at the session.";
+    } else if (isApproved) {
       registrationStatusDescription = "Your spot is confirmed! See you at the session.";
+    } else if (isWaitingPayment) {
+      registrationStatusDescription = deadlineInfo?.timeStatusText
+        ? `Application accepted! Please complete payment (${deadlineInfo.timeStatusText}) to confirm your ticket.`
+        : "Application accepted! Please complete payment to confirm your ticket.";
+    } else if (isExpired) {
+      registrationStatusDescription = "Payment deadline has expired. This reservation has been released.";
+    } else if (isFailed) {
+      registrationStatusDescription = "Payment attempt failed. Please contact organizers or retry.";
     } else if (isWaitlisted) {
       registrationStatusDescription =
         "Your registration is on the Waitlist. Organizers will review and notify you if capacity becomes available.";
-    } else if (isWaitingPayment) {
-      registrationStatusDescription =
-        "Your registration is waiting for payment. Please complete your payment to confirm your ticket.";
     } else {
       registrationStatusDescription =
         "Your application has been received and is currently Pending Review by organizers.";
@@ -323,16 +356,76 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
       </Button>
     );
   } else if (registration) {
+    const formattedAmount = registration.payment_amount
+      ? new Intl.NumberFormat("id-ID", {
+          style: "currency",
+          currency: "IDR",
+          maximumFractionDigits: 0,
+        }).format(registration.payment_amount)
+      : null;
+
     actionButton = (
       <div className="space-y-3">
         <div className="fade-in-50 animate-in rounded-lg bg-muted/60 p-3 text-center text-muted-foreground text-xs">
           {(() => {
+            if (isPaidAndRegistered) return "✓ Payment received & spot confirmed! See you at the session.";
             if (isApproved) return "✓ You are registered. Check your email for further event announcements.";
+            if (isWaitingPayment)
+              return deadlineInfo?.timeStatusText
+                ? `⏳ Application approved! Please complete payment (${deadlineInfo.timeStatusText}).`
+                : "⏳ Application approved! Please complete payment to secure your ticket.";
+            if (isExpired) return "⚠️ Payment deadline expired. This ticket reservation has been released.";
             if (isWaitlisted)
               return "⏳ You are on the waitlist. Organizers will notify you if capacity becomes available.";
             return "⏳ You have applied. Your registration is Pending Review by organizers.";
           })()}
         </div>
+
+        {/* Complete Payment Button if waiting for payment */}
+        {isWaitingPayment && registration.payment_url && (
+          <a href={registration.payment_url} target="_blank" rel="noopener noreferrer" className="block w-full">
+            <Button
+              size="lg"
+              className="w-full gap-2 bg-amber-600 font-semibold text-white shadow-xs hover:bg-amber-700"
+            >
+              <CreditCard className="size-4" />
+              Complete Payment {formattedAmount ? `(${formattedAmount})` : ""}
+            </Button>
+          </a>
+        )}
+
+        {/* Payment window notice */}
+        {isWaitingPayment && deadlineInfo && (
+          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-200">
+            <div className="flex items-center justify-between font-semibold">
+              <span className="flex items-center gap-1.5">
+                <Clock className="size-3.5 text-amber-600 dark:text-amber-400" />
+                Payment Window
+              </span>
+              <span>{deadlineInfo.timeStatusText || "Pending"}</span>
+            </div>
+            {deadlineInfo.formattedDeadline && (
+              <p className="mt-1 text-[11px] opacity-85">Due: {deadlineInfo.formattedDeadline}</p>
+            )}
+          </div>
+        )}
+
+        {/* Paid & Registered receipt callout */}
+        {isPaidAndRegistered && (
+          <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-800 dark:text-emerald-200">
+            <div className="flex items-center justify-between font-semibold">
+              <span className="flex items-center gap-1.5">
+                <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                Payment Confirmed
+              </span>
+              {formattedAmount && <span>{formattedAmount}</span>}
+            </div>
+            {registration.payment_invoice_number && (
+              <p className="mt-1 text-[11px] opacity-85">Invoice Number: #{registration.payment_invoice_number}</p>
+            )}
+          </div>
+        )}
+
         <Button
           type="button"
           aria-disabled="true"
@@ -343,6 +436,10 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
               "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-300",
             isWaitlisted &&
               "border-blue-500/40 bg-blue-500/10 text-blue-700 dark:border-blue-500/30 dark:bg-blue-950/40 dark:text-blue-300",
+            isWaitingPayment &&
+              "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-300",
+            isExpired &&
+              "border-zinc-500/40 bg-zinc-500/10 text-zinc-700 dark:border-zinc-500/30 dark:bg-zinc-950/40 dark:text-zinc-300",
             isPending &&
               "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-300",
             isTransitioning && "fade-in-50 zoom-in-95 scale-[1.01] animate-in ring-2 ring-emerald-500/40",
@@ -360,11 +457,21 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
                 />
               );
             }
-            if (isPending) {
+            if (isWaitingPayment || isPending) {
               return (
                 <Clock
                   className={cn(
                     "relative z-10 size-4 text-amber-600 transition-transform duration-500 dark:text-amber-400",
+                    isTransitioning && "scale-110",
+                  )}
+                />
+              );
+            }
+            if (isExpired) {
+              return (
+                <Clock
+                  className={cn(
+                    "relative z-10 size-4 text-zinc-600 transition-transform duration-500 dark:text-zinc-400",
                     isTransitioning && "scale-110",
                   )}
                 />
@@ -399,11 +506,10 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
               size="sm"
               className={cn(
                 "w-full gap-2 font-medium text-xs shadow-xs",
-                !isApproved &&
-                  "border-amber-500/30 hover:bg-amber-500/10 hover:text-amber-700 dark:hover:text-amber-300",
+                isPending && "border-amber-500/30 hover:bg-amber-500/10 hover:text-amber-700 dark:hover:text-amber-300",
               )}
             >
-              {!isApproved ? (
+              {isPending ? (
                 <>
                   <Edit3 className="size-3.5 text-amber-500" />
                   Edit Form Responses
@@ -418,8 +524,8 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
           }
         />
 
-        {/* Cancel Registration Button (only if event is not concluded and registration is not attended) */}
-        {!isPast && registration.status !== "attended" && (
+        {/* Cancel Registration Button (only if event is not concluded and registration is not attended and not paid) */}
+        {!isPast && registration.status !== "attended" && !isPaidAndRegistered && (
           <Button
             type="button"
             variant="outline"

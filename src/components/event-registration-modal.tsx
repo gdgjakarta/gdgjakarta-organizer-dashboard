@@ -1662,12 +1662,16 @@ export function EventRegistrationModal({
     }
 
     const statusLower = activeRegistration.status.toLowerCase();
-    const isApproved = statusLower === "approved" || statusLower === "registered" || statusLower === "attended";
+    const isPaid = statusLower === "paid_and_registered";
+    const isApproved =
+      statusLower === "approved" || statusLower === "registered" || statusLower === "attended" || isPaid;
     const isPendingReview = statusLower === "pending";
     const isWaitingPayment = statusLower === "waiting_for_payment";
     const isWaitlisted = statusLower === "waitlisted";
     let statusLabel = "Registered";
-    if (isApproved) {
+    if (isPaid) {
+      statusLabel = "Paid & Registered";
+    } else if (isApproved) {
       statusLabel = isEventCurationMode(eventConfig) ? "Registered (Approved)" : "Registered";
     } else if (isWaitlisted) {
       statusLabel = "Waitlisted";
