@@ -22,7 +22,7 @@ import {
 
 export { deleteField };
 
-import { app } from "@/config/firebase";
+import { app, auth } from "@/config/firebase";
 import type { FaqContent, PartnershipContent } from "@/lib/content/types";
 
 export const db: Firestore = typeof window !== "undefined" ? getFirestore(app) : (null as unknown as Firestore);
@@ -857,14 +857,22 @@ export async function getRegistrationById(registrationId: string): Promise<Fires
 
 export async function registerMemberForEvent(registration: Omit<FirestoreRegistration, "id">): Promise<string> {
   if (typeof window === "undefined") throw new Error("Registration must be performed from client");
-  if (!registration.member_id || !registration.member_email.trim()) {
+
+  // Ensure Firebase Auth state is fully restored on client before making Firestore calls
+  if (typeof auth.authStateReady === "function") {
+    await auth.authStateReady();
+  }
+  const currentAuthUser = auth.currentUser;
+  const effectiveMemberId = currentAuthUser?.uid ?? registration.member_id;
+
+  if (!effectiveMemberId || !registration.member_email.trim()) {
     throw new Error("You must join the community by signing in with Google before registering.");
   }
   const normalizedEmail = registration.member_email.trim().toLowerCase();
   const eventIdStr = String(registration.event_id);
 
   // 1. Check if member / email already registered for this event
-  const existing = await checkExistingRegistration(eventIdStr, registration.member_id, normalizedEmail);
+  const existing = await checkExistingRegistration(eventIdStr, effectiveMemberId, normalizedEmail);
   if (existing) {
     throw new Error(`Email ${normalizedEmail} is already registered for this event.`);
   }
@@ -1009,7 +1017,7 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
   // If waitlisted, status is "waitlisted". Otherwise default is "pending".
   const resolvedStatus: RegistrationStatus = isWaitlisted ? "waitlisted" : registration.status;
 
-  const regId = `${eventIdStr}_${registration.member_id}`;
+  const regId = `${eventIdStr}_${effectiveMemberId}`;
   const docRef = doc(db, "event_registrations", regId);
 
   // Include session_id and session_title inside answers for backward compatibility
@@ -1023,13 +1031,26 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
     id: `log_${Date.now()}_initial`,
     status: resolvedStatus,
     changed_at: new Date().toISOString(),
-    changed_by_id: registration.member_id,
+    changed_by_id: effectiveMemberId,
     changed_by_name: registration.member_name || "Applicant",
     notes: isWaitlisted ? "Registered on waitlist as event capacity was reached." : "Initial registration submitted.",
   };
 
+  // Guard against oversized base64 data URIs exceeding Firestore constraints
+  const safePictureUrl =
+    registration.event_picture_url && registration.event_picture_url.length <= 50000
+      ? registration.event_picture_url
+      : undefined;
+  const safeBannerUrl =
+    registration.event_banner_url && registration.event_banner_url.length <= 50000
+      ? registration.event_banner_url
+      : undefined;
+
   const cleanPayload = sanitizeFirestoreData<FirestoreRegistration>({
     ...registration,
+    member_id: effectiveMemberId,
+    event_picture_url: safePictureUrl,
+    event_banner_url: safeBannerUrl,
     ticket_id: registration.ticket_id ?? DEFAULT_REGULAR_TICKET_ID,
     ticket_name: registration.ticket_name ?? DEFAULT_REGULAR_TICKET_NAME,
     ticket_type: registration.ticket_type ?? "free",

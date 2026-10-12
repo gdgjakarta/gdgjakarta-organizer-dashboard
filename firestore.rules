@@ -50,15 +50,15 @@ service cloud.firestore {
     //   - id: string (required, immutable, <= 200 chars) - Registration ID
     //   - event_id: string (required, immutable, <= 128 chars) - Event ID
     //   - event_title: string (required, <= 300 chars) - Event title
-    //   - event_picture_url: string|null (optional, <= 2000 chars) - Event thumbnail image URL
-    //   - event_banner_url: string|null (optional, <= 2000 chars) - Event banner image URL
+    //   - event_picture_url: string|null (optional, <= 50000 chars) - Event thumbnail image URL or base64 data URI
+    //   - event_banner_url: string|null (optional, <= 50000 chars) - Event banner image URL or base64 data URI
     //   - member_id: string (required, immutable, <= 128 chars) - Member UID
     //   - member_name: string (required, <= 150 chars) - Member display name
     //   - member_email: string (required, valid email, <= 150 chars) - Member email
     //   - member_phone: string|null (optional, <= 50 chars) - Member phone number
     //   - member_avatar: string|null (optional, <= 3000 chars) - Avatar URL
     //   - member_role: string|null (optional, <= 100 chars) - Member role
-    //   - status: string (required, immutable for members) - Registration status ('pending'|'approved'|'registered'|'rejected'|'waitlisted'|'attended')
+    //   - status: string (required) - Registration status ('pending'|'approved'|'registered'|'rejected'|'waitlisted'|'attended'|'waiting_for_payment'|'paid_and_registered'|'expired'|'failed'|'canceled'|'cancelled')
     //   - answers: map|null (optional, <= 50 keys) - Custom question answers
     //   - notes: string|null (optional, <= 2000 chars) - Registration notes
     //   - ticket_tier: string|null (optional, <= 100 chars) - Ticket tier name
@@ -77,7 +77,7 @@ service cloud.firestore {
     //   - reviewed_by_id: string|null (optional, immutable for members, <= 128 chars) - Reviewer UID
     //   - reviewed_by_name: string|null (optional, immutable for members, <= 150 chars) - Reviewer name
     //   - reviewed_by_email: string|null (optional, immutable for members, valid email, <= 150 chars) - Reviewer email
-    //   - status_logs: list|null (optional, immutable for members, <= 100 items) - Status transition history
+    //   - status_logs: list|null (optional, <= 100 items) - Status transition history
     //   - checked_in_at: string|null (optional, immutable for members, <= 50 chars) - Check-in timestamp
     //   - is_checked_in: bool|null (optional, immutable for members) - Check-in flag
     //   - bevy_attendee_id: int|float|string|null (optional, immutable for members, <= 64 chars) - Associated Bevy attendee ID
@@ -557,7 +557,7 @@ service cloud.firestore {
         data.member_id is string && data.member_id.size() > 0 && data.member_id.size() <= 128 &&
         data.member_name is string && data.member_name.size() > 0 && data.member_name.size() <= 150 &&
         data.member_email is string && isValidEmail(data.member_email) && data.member_email.size() <= 150 &&
-        data.status is string && (data.status in ['pending', 'approved', 'registered', 'rejected', 'waitlisted', 'attended']) &&
+        data.status is string && (data.status in ['pending', 'approved', 'registered', 'rejected', 'waitlisted', 'attended', 'waiting_for_payment', 'paid_and_registered', 'expired', 'failed', 'canceled', 'cancelled']) &&
         data.registered_at is string && data.registered_at.size() <= 50 &&
         (!('member_phone' in data) || data.member_phone == null || (data.member_phone is string && data.member_phone.size() <= 50)) &&
         (!('member_avatar' in data) || data.member_avatar == null || (data.member_avatar is string && data.member_avatar.size() <= 3000)) &&
@@ -585,8 +585,8 @@ service cloud.firestore {
         (!('bevy_attendee_id' in data) || data.bevy_attendee_id == null || data.bevy_attendee_id is int || data.bevy_attendee_id is float || (data.bevy_attendee_id is string && data.bevy_attendee_id.size() <= 64)) &&
         (!('checkin_date' in data) || data.checkin_date == null || (data.checkin_date is string && data.checkin_date.size() <= 50)) &&
         (!('attendee_code' in data) || data.attendee_code == null || (data.attendee_code is string && data.attendee_code.size() <= 100)) &&
-        (!('event_picture_url' in data) || data.event_picture_url == null || (data.event_picture_url is string && data.event_picture_url.size() <= 2000)) &&
-        (!('event_banner_url' in data) || data.event_banner_url == null || (data.event_banner_url is string && data.event_banner_url.size() <= 2000)) &&
+        (!('event_picture_url' in data) || data.event_picture_url == null || (data.event_picture_url is string && data.event_picture_url.size() <= 50000)) &&
+        (!('event_banner_url' in data) || data.event_banner_url == null || (data.event_banner_url is string && data.event_banner_url.size() <= 50000)) &&
         (!('payment_status' in data) || data.payment_status == null || (data.payment_status is string && (data.payment_status in ['unpaid', 'pending', 'paid', 'expired', 'failed', 'canceled', 'cancelled', 'refunded', 'PENDING', 'PAID', 'FAILED', 'EXPIRED', 'REFUNDED', 'SUCCESS']))) &&
         (!('payment_url' in data) || data.payment_url == null || (data.payment_url is string && data.payment_url.size() <= 2000)) &&
         (!('payment_invoice_number' in data) || data.payment_invoice_number == null || (data.payment_invoice_number is string && data.payment_invoice_number.size() <= 128)) &&
@@ -893,8 +893,8 @@ service cloud.firestore {
         (isAuthenticated() && request.auth.uid == request.resource.data.member_id)
       );
 
-      // Update: Team access (Organizers & Staff for attendee curation, status review, check-in, delivery fulfillment) or the registrant updating payment fields, answers, delivery request, and RSVP details.
-      // Registrants cannot alter review fields, check-in status/timestamps, or event/member identifiers, and registration status must remain unchanged.
+      // Update: Team access (Organizers & Staff for attendee curation, status review, check-in, delivery fulfillment) or the registrant updating payment fields, answers, delivery request, status logs, and RSVP details.
+      // Registrants cannot alter review fields, check-in status/timestamps, or event/member identifiers. Registrants can cancel their registration by setting status to 'canceled' or 'cancelled'.
       // For merchandise delivery requests, registrants can submit delivery address & fee payment (pending_payment / pending_review), while organizers/staff handle review, approval, rejection, and fulfillment.
       allow update: if isValidRegistration(request.resource.data) && (
         hasTeamAccess() ||
@@ -902,11 +902,12 @@ service cloud.firestore {
           isOwner(resource.data.member_id) &&
           (
             !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status']) ||
-            request.resource.data.status == resource.data.status
+            request.resource.data.status == resource.data.status ||
+            (request.resource.data.status in ['canceled', 'cancelled'])
           ) &&
           !request.resource.data.diff(resource.data).affectedKeys().hasAny([
             'reviewed_at', 'reviewed_by_id', 'reviewed_by_name',
-            'reviewed_by_email', 'status_logs',
+            'reviewed_by_email',
             'checked_in_at', 'is_checked_in', 'bevy_attendee_id', 'attendee_code',
             'member_id', 'event_id', 'id'
           ]) &&

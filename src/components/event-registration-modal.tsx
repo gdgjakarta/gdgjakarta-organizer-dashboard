@@ -1054,7 +1054,12 @@ export function EventRegistrationModal({
     });
   };
 
-  const handleProceedToForm = () => {
+  const handleProceedToForm = (e?: React.SyntheticEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
     if (!user) {
       toast.error("Please join the community by signing in with Google before registering.");
       return;
@@ -1132,6 +1137,10 @@ export function EventRegistrationModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (registrationStep !== "form") {
+      return;
+    }
 
     if (!user) {
       toast.error("Please join the community by signing in with Google before registering.");
@@ -1416,7 +1425,7 @@ export function EventRegistrationModal({
           referral_discount_percent: appliedReferral?.discountPercentage,
           referral_discount_amount: referralDiscount > 0 ? referralDiscount : undefined,
           registered_at: new Date().toISOString(),
-          payment_status: isWaitlistMode ? undefined : requiresPayment ? "unpaid" : undefined,
+          payment_status: !isWaitlistMode && requiresPayment ? "unpaid" : undefined,
           payment_url: isWaitlistMode ? undefined : generatedPaymentUrl,
           payment_invoice_number: isWaitlistMode ? undefined : generatedInvoiceNumber,
           payment_amount: isWaitlistMode
@@ -1700,32 +1709,40 @@ export function EventRegistrationModal({
           className,
         )}
       >
-        {isWaitlisted ? (
-          <Clock
-            className={cn(
-              "relative z-10 shrink-0 transition-transform duration-500 text-blue-600 dark:text-blue-400",
-              buttonSize === "lg" ? "size-4" : "size-3.5",
-              isTransitioning && "scale-110",
-            )}
-          />
-        ) : isWaitingPayment ? (
-          <CreditCard
-            className={cn(
-              "relative z-10 shrink-0 transition-transform duration-500 text-amber-600 dark:text-amber-400",
-              buttonSize === "lg" ? "size-4" : "size-3.5",
-              isTransitioning && "scale-110",
-            )}
-          />
-        ) : (
-          <CheckCircle2
-            className={cn(
-              "relative z-10 shrink-0 transition-transform duration-500",
-              buttonSize === "lg" ? "size-4" : "size-3.5",
-              isApproved ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400",
-              isTransitioning && "scale-110",
-            )}
-          />
-        )}
+        {(() => {
+          if (isWaitlisted) {
+            return (
+              <Clock
+                className={cn(
+                  "relative z-10 shrink-0 transition-transform duration-500 text-blue-600 dark:text-blue-400",
+                  buttonSize === "lg" ? "size-4" : "size-3.5",
+                  isTransitioning && "scale-110",
+                )}
+              />
+            );
+          }
+          if (isWaitingPayment) {
+            return (
+              <CreditCard
+                className={cn(
+                  "relative z-10 shrink-0 transition-transform duration-500 text-amber-600 dark:text-amber-400",
+                  buttonSize === "lg" ? "size-4" : "size-3.5",
+                  isTransitioning && "scale-110",
+                )}
+              />
+            );
+          }
+          return (
+            <CheckCircle2
+              className={cn(
+                "relative z-10 shrink-0 transition-transform duration-500",
+                buttonSize === "lg" ? "size-4" : "size-3.5",
+                isApproved ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400",
+                isTransitioning && "scale-110",
+              )}
+            />
+          );
+        })()}
         <span className="relative z-10 font-medium">{statusLabel}</span>
         <div className="shimmer-wave" aria-hidden="true" />
       </Button>
@@ -1828,17 +1845,19 @@ export function EventRegistrationModal({
         <DialogTrigger asChild>
           {children || (
             <Button size="sm" className="gap-1.5">
-              {!user ? (
+              {!user && (
                 <>
                   <Image src={googleFavicon} alt="Google" width={16} height={16} className="size-3.5 object-contain" />
                   {windowStatus.isWaitlist ? "Join Community to Join Waitlist" : "Join Community to Register"}
                 </>
-              ) : windowStatus.isWaitlist ? (
+              )}
+              {Boolean(user && windowStatus.isWaitlist) && (
                 <>
                   <Clock className="size-3.5" />
                   Join Waitlist
                 </>
-              ) : (
+              )}
+              {Boolean(user && !windowStatus.isWaitlist) && (
                 <>
                   <Sparkles className="size-3.5" />
                   Register for Event
@@ -1918,9 +1937,9 @@ export function EventRegistrationModal({
 
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={(e) => {
                       if (registrationStep === "tickets") {
-                        handleProceedToForm();
+                        handleProceedToForm(e);
                       }
                     }}
                     className={cn(
@@ -2025,17 +2044,7 @@ export function EventRegistrationModal({
               </div>
             </div>
           ) : (
-            <form
-              onSubmit={
-                registrationStep === "tickets"
-                  ? (e) => {
-                      e.preventDefault();
-                      handleProceedToForm();
-                    }
-                  : handleSubmit
-              }
-              className="flex min-h-0 flex-1 flex-col overflow-hidden"
-            >
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
               <div ref={modalBodyRef} className="min-h-0 flex-1 space-y-6 overflow-y-auto px-6 py-5">
                 {registrationStep === "tickets" ? (
                   <>
@@ -2747,6 +2756,12 @@ export function EventRegistrationModal({
                                   setVoucherInput(e.target.value.toUpperCase());
                                   setVoucherError(null);
                                 }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    handleApplyVoucher();
+                                  }
+                                }}
                                 placeholder="Enter voucher code (e.g. DEVFEST50)"
                                 className="h-8 font-mono text-xs uppercase tracking-wider"
                               />
@@ -2828,6 +2843,12 @@ export function EventRegistrationModal({
                                 onChange={(e) => {
                                   setReferralInput(e.target.value.toUpperCase());
                                   setReferralError(null);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    void handleApplyReferral();
+                                  }
                                 }}
                                 placeholder="Enter referral code (e.g. GDG8X4K)"
                                 className="h-8 font-mono text-xs uppercase tracking-wider"
@@ -2956,7 +2977,7 @@ export function EventRegistrationModal({
                     )}
                   </>
                 ) : (
-                  <>
+                  <form id="event-registration-form" onSubmit={handleSubmit} className="space-y-6">
                     {/* ── STEP 2 PASS & PERKS RECAP ──────────────────────────── */}
                     <div className="flex flex-col gap-2 rounded-xl border border-primary/20 bg-primary/5 p-3.5 sm:flex-row sm:items-center sm:justify-between">
                       <div className="space-y-1">
@@ -3575,7 +3596,7 @@ export function EventRegistrationModal({
                         </div>
                       ))}
                     </div>
-                  </>
+                  </form>
                 )}
               </div>
 
@@ -3586,6 +3607,7 @@ export function EventRegistrationModal({
 
                     <div className="flex items-center gap-2">
                       <Button
+                        key="tickets-cancel-btn"
                         type="button"
                         variant="outline"
                         size="sm"
@@ -3595,9 +3617,14 @@ export function EventRegistrationModal({
                         Cancel
                       </Button>
                       <Button
+                        key="tickets-continue-to-form-btn"
                         type="button"
                         size="sm"
-                        onClick={handleProceedToForm}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleProceedToForm(e);
+                        }}
                         disabled={
                           isPending || (hasTickets && (!selectedTicket || !getTicketSalesStatus(selectedTicket).isOpen))
                         }
@@ -3611,6 +3638,7 @@ export function EventRegistrationModal({
                 ) : (
                   <>
                     <Button
+                      key="form-back-btn"
                       type="button"
                       variant="ghost"
                       size="sm"
@@ -3626,6 +3654,7 @@ export function EventRegistrationModal({
 
                     <div className="flex items-center gap-2">
                       <Button
+                        key="form-cancel-btn"
                         type="button"
                         variant="outline"
                         size="sm"
@@ -3634,7 +3663,14 @@ export function EventRegistrationModal({
                       >
                         Cancel
                       </Button>
-                      <Button type="submit" size="sm" disabled={isPending} className="gap-2 shadow-xs">
+                      <Button
+                        key="form-submit-btn"
+                        form="event-registration-form"
+                        type="submit"
+                        size="sm"
+                        disabled={isPending}
+                        className="gap-2 shadow-xs"
+                      >
                         {isPending ? (
                           <>
                             <Loader2 className="size-3.5 animate-spin" />
@@ -3656,7 +3692,7 @@ export function EventRegistrationModal({
                   </>
                 )}
               </div>
-            </form>
+            </div>
           )}
         </DialogContent>
       </Dialog>
