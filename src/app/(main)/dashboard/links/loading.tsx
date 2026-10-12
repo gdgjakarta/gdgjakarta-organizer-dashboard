@@ -16,8 +16,8 @@ export default function Loading() {
       </div>
 
       {/* KPI Cards Skeletons */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => (
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {Array.from({ length: 3 }).map((_, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: Loading skeleton placeholder
           <div key={i} className="flex flex-col gap-2 rounded-xl border p-4">
             <Skeleton className="h-4 w-24" />

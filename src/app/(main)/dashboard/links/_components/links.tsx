@@ -9,7 +9,8 @@ import {
   type SortingState,
   useTable,
 } from "@tanstack/react-table";
-import { Folder, FolderPlus, Globe, Link2, Plus, Search, Sparkles } from "lucide-react";
+import { Folder, FolderPlus, Globe, Link2, Plus, Search } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,11 +20,14 @@ import { SHORTIO_CONFIG } from "@/config/shortio-config";
 import { dataTableFeatures } from "@/lib/data-table-features";
 import type { ShortFolder, ShortLinkItem } from "@/lib/shortio/types";
 
+import { BulkDeleteLinksDialog } from "./bulk-delete-links-dialog";
+import { BulkMoveFolderDialog } from "./bulk-move-folder-dialog";
 import { CreateFolderDialog } from "./create-folder-dialog";
 import { CreateLinkDialog } from "./create-link-dialog";
 import { getFolderColor, getLinkCountByFolder } from "./data";
 import { DeleteLinkDialog } from "./delete-link-dialog";
 import { EditLinkDialog } from "./edit-link-dialog";
+import { LinksBulkActions } from "./links-bulk-actions";
 import { createLinksColumns } from "./links-columns";
 import { LinksTable } from "./links-table";
 import { MoveFolderDialog } from "./move-folder-dialog";
@@ -46,6 +50,8 @@ export function Links({ initialLinks, initialFolders }: LinksProps) {
   const [movingLink, setMovingLink] = React.useState<ShortLinkItem | null>(null);
   const [deletingLink, setDeletingLink] = React.useState<ShortLinkItem | null>(null);
   const [qrCodeLink, setQrCodeLink] = React.useState<ShortLinkItem | null>(null);
+  const [isBulkMoveOpen, setIsBulkMoveOpen] = React.useState(false);
+  const [isBulkDeleteOpen, setIsBulkDeleteOpen] = React.useState(false);
 
   // Table state
   const [rowSelection, setRowSelection] = React.useState({});
@@ -121,6 +127,42 @@ export function Links({ initialLinks, initialFolders }: LinksProps) {
 
   const searchQuery = (table.getColumn("search")?.getFilterValue() as string | undefined) ?? "";
 
+  const selectedRows = table.getFilteredSelectedRowModel().rows;
+  const selectedCount = selectedRows.length;
+  const filteredRows = table.getFilteredRowModel().rows;
+  const selectedLinks = React.useMemo(() => selectedRows.map((r) => r.original), [selectedRows]);
+
+  const handleSelectAll = React.useCallback(() => {
+    const newSelection: Record<string, boolean> = {};
+    for (const row of filteredRows) {
+      newSelection[row.id] = true;
+    }
+    setRowSelection(newSelection);
+  }, [filteredRows]);
+
+  const handleClearSelection = React.useCallback(() => {
+    setRowSelection({});
+  }, []);
+
+  const handleCopySelectedLinks = React.useCallback(() => {
+    if (selectedLinks.length === 0) return;
+    const urls = selectedLinks.map((l) => l.shortURL).join("\n");
+    void navigator.clipboard.writeText(urls);
+    toast.success(`Copied ${selectedLinks.length} short link${selectedLinks.length > 1 ? "s" : ""} to clipboard`);
+  }, [selectedLinks]);
+
+  const handleBulkLinksMoved = (updatedLinks: ShortLinkItem[]) => {
+    const updatedMap = new Map(updatedLinks.map((l) => [l.id, l]));
+    setLinks((prev) => prev.map((l) => updatedMap.get(l.id) ?? l));
+    setRowSelection({});
+  };
+
+  const handleBulkLinksDeleted = (deletedIds: string[]) => {
+    const idSet = new Set(deletedIds);
+    setLinks((prev) => prev.filter((l) => !idSet.has(l.id)));
+    setRowSelection({});
+  };
+
   const handleLinkCreated = (newLink: ShortLinkItem) => {
     setLinks((prev) => [newLink, ...prev]);
   };
@@ -140,8 +182,6 @@ export function Links({ initialLinks, initialFolders }: LinksProps) {
   // KPI Calculations
   const totalLinksCount = links.length;
   const totalFoldersCount = folders.length;
-  const devfestFolder = folders.find((f) => f.name.toLowerCase().includes("devfest"));
-  const devfestLinksCount = devfestFolder ? getLinkCountByFolder(links, devfestFolder.id) : 0;
   const uncategorizedCount = getLinkCountByFolder(links);
 
   return (
@@ -173,7 +213,7 @@ export function Links({ initialLinks, initialFolders }: LinksProps) {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Card className="p-4">
           <CardHeader className="p-0 pb-2">
             <CardDescription className="flex items-center justify-between text-xs">
@@ -198,17 +238,6 @@ export function Links({ initialLinks, initialFolders }: LinksProps) {
           <CardContent className="p-0 text-muted-foreground text-xs">
             {uncategorizedCount} link{uncategorizedCount === 1 ? "" : "s"} uncategorized
           </CardContent>
-        </Card>
-
-        <Card className="p-4">
-          <CardHeader className="p-0 pb-2">
-            <CardDescription className="flex items-center justify-between text-xs">
-              <span>DevFest Links</span>
-              <Sparkles className="size-4 text-primary" />
-            </CardDescription>
-            <CardTitle className="font-bold text-2xl tracking-tight">{devfestLinksCount}</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0 text-muted-foreground text-xs">Organized under the DevFest category</CardContent>
         </Card>
 
         <Card className="p-4">
@@ -323,6 +352,18 @@ export function Links({ initialLinks, initialFolders }: LinksProps) {
           </InputGroup>
         </div>
 
+        {/* Bulk Actions Bar */}
+        <LinksBulkActions
+          selectedCount={selectedCount}
+          totalFilteredCount={filteredRows.length}
+          selectedLinks={selectedLinks}
+          onClearSelection={handleClearSelection}
+          onSelectAll={handleSelectAll}
+          onMoveFolder={() => setIsBulkMoveOpen(true)}
+          onDelete={() => setIsBulkDeleteOpen(true)}
+          onCopyLinks={handleCopySelectedLinks}
+        />
+
         {/* Links Data Table */}
         <LinksTable table={table} />
       </Card>
@@ -365,6 +406,21 @@ export function Links({ initialLinks, initialFolders }: LinksProps) {
         onOpenChange={(open) => !open && setDeletingLink(null)}
         link={deletingLink}
         onLinkDeleted={handleLinkDeleted}
+      />
+
+      <BulkMoveFolderDialog
+        open={isBulkMoveOpen}
+        onOpenChange={setIsBulkMoveOpen}
+        links={selectedLinks}
+        folders={folders}
+        onLinksMoved={handleBulkLinksMoved}
+      />
+
+      <BulkDeleteLinksDialog
+        open={isBulkDeleteOpen}
+        onOpenChange={setIsBulkDeleteOpen}
+        links={selectedLinks}
+        onLinksDeleted={handleBulkLinksDeleted}
       />
 
       <QrCodeDialog

@@ -261,3 +261,98 @@ export async function generateEventShortLinkAction(params: {
     return { success: false, error: message };
   }
 }
+
+export async function bulkMoveLinksToFolderAction(
+  linkIds: string[],
+  folderId: string | null,
+): Promise<{ success: boolean; updatedCount: number; updatedLinks: ShortLinkItem[]; error?: string }> {
+  if (!(await isAuthorizedOrganizerSession())) {
+    return { success: false, updatedCount: 0, updatedLinks: [], error: "Unauthorized: Organizer privileges required" };
+  }
+
+  if (linkIds.length === 0) {
+    return { success: false, updatedCount: 0, updatedLinks: [], error: "No links selected" };
+  }
+
+  try {
+    const results = await Promise.allSettled(linkIds.map((id) => updateShortLink(id, { folderId })));
+
+    const updatedLinks: ShortLinkItem[] = [];
+    let failures = 0;
+
+    for (const res of results) {
+      if (res.status === "fulfilled" && res.value) {
+        updatedLinks.push(res.value);
+      } else {
+        failures++;
+      }
+    }
+
+    revalidatePath("/dashboard/links");
+
+    if (updatedLinks.length === 0 && failures > 0) {
+      return { success: false, updatedCount: 0, updatedLinks: [], error: "Failed to move selected links" };
+    }
+
+    return {
+      success: true,
+      updatedCount: updatedLinks.length,
+      updatedLinks,
+      error: failures > 0 ? `Moved ${updatedLinks.length} links, but ${failures} failed.` : undefined,
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to move links to folder";
+    return { success: false, updatedCount: 0, updatedLinks: [], error: message };
+  }
+}
+
+export async function bulkDeleteShortLinksAction(
+  linkIds: string[],
+): Promise<{ success: boolean; deletedCount: number; deletedIds: string[]; error?: string }> {
+  if (!(await isAuthorizedOrganizerSession())) {
+    return { success: false, deletedCount: 0, deletedIds: [], error: "Unauthorized: Organizer privileges required" };
+  }
+
+  if (linkIds.length === 0) {
+    return { success: false, deletedCount: 0, deletedIds: [], error: "No links selected" };
+  }
+
+  try {
+    const results = await Promise.allSettled(
+      linkIds.map(async (id) => {
+        const ok = await deleteShortLink(id);
+        if (!ok) {
+          throw new Error(`Failed to delete link ${id}`);
+        }
+        return id;
+      }),
+    );
+
+    const deletedIds: string[] = [];
+    let failures = 0;
+
+    for (const res of results) {
+      if (res.status === "fulfilled" && res.value) {
+        deletedIds.push(res.value);
+      } else {
+        failures++;
+      }
+    }
+
+    revalidatePath("/dashboard/links");
+
+    if (deletedIds.length === 0 && failures > 0) {
+      return { success: false, deletedCount: 0, deletedIds: [], error: "Failed to delete selected links" };
+    }
+
+    return {
+      success: true,
+      deletedCount: deletedIds.length,
+      deletedIds,
+      error: failures > 0 ? `Deleted ${deletedIds.length} links, but ${failures} failed.` : undefined,
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to delete short links";
+    return { success: false, deletedCount: 0, deletedIds: [], error: message };
+  }
+}
