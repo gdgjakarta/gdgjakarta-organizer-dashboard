@@ -39,7 +39,7 @@ const COURIER_OPTIONS: Array<{ value: CourierType; label: string }> = [
   { value: "paxel", label: "Paxel" },
   { value: "gojek", label: "Gojek" },
   { value: "grab", label: "Grab" },
-  { value: "other", label: "Lainnya / Auto" },
+  { value: "other", label: "Other / Auto" },
 ];
 
 interface PackageTrackingDialogProps {
@@ -69,7 +69,7 @@ export function PackageTrackingDialog({
   const performTrack = useCallback((numberToTrack: string, courierCode: string) => {
     const cleanNumber = numberToTrack.trim();
     if (!cleanNumber) {
-      setErrorMessage("Nomor resi tidak boleh kosong.");
+      setErrorMessage("Tracking number cannot be empty.");
       return;
     }
 
@@ -87,11 +87,11 @@ export function PackageTrackingDialog({
         } else {
           setTrackingData(null);
           setErrorMessage(
-            res.message ?? res.error ?? "Nomor resi belum terdaftar atau tidak ditemukan di sistem ekspedisi.",
+            res.message ?? res.error ?? "Tracking number is not yet registered or not found in courier system.",
           );
         }
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "Gagal memuat status pelacakan paket.";
+        const msg = err instanceof Error ? err.message : "Failed to load package tracking status.";
         setErrorMessage(msg);
       }
     });
@@ -116,7 +116,7 @@ export function PackageTrackingDialog({
     if (!num) return;
     navigator.clipboard.writeText(num);
     setCopied(true);
-    toast.success("Nomor resi disalin ke papan klip");
+    toast.success("Tracking number copied to clipboard");
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -144,9 +144,9 @@ export function PackageTrackingDialog({
                 <Truck className="size-5" />
               </div>
               <div>
-                <DialogTitle className="text-lg">Pelacakan Paket Pengiriman</DialogTitle>
+                <DialogTitle className="text-lg">Package Shipment Tracking</DialogTitle>
                 <DialogDescription className="text-xs">
-                  Integrasi live tracking ekspedisi Indonesia via CekResi API
+                  Live Indonesian courier tracking integration via CekResi API
                 </DialogDescription>
               </div>
             </div>
@@ -169,11 +169,11 @@ export function PackageTrackingDialog({
             <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 p-3.5 bg-muted/40 rounded-xl border">
               <div className="sm:col-span-4 space-y-1">
                 <Label htmlFor="courier-select" className="text-xs font-medium">
-                  Ekspedisi
+                  Courier
                 </Label>
                 <Select value={courier} onValueChange={setCourier}>
                   <SelectTrigger id="courier-select" className="h-9 text-xs">
-                    <SelectValue placeholder="Pilih Kurir" />
+                    <SelectValue placeholder="Select Courier" />
                   </SelectTrigger>
                   <SelectContent>
                     {COURIER_OPTIONS.map((c) => (
@@ -187,11 +187,11 @@ export function PackageTrackingDialog({
 
               <div className="sm:col-span-6 space-y-1">
                 <Label htmlFor="search-resi-input" className="text-xs font-medium">
-                  Nomor Resi / Delivery ID
+                  Tracking Number / Delivery ID
                 </Label>
                 <Input
                   id="search-resi-input"
-                  placeholder="Contoh: 023423949234324"
+                  placeholder="e.g. 023423949234324"
                   value={trackingNumber}
                   onChange={(e) => setTrackingNumber(e.target.value)}
                   className="h-9 text-xs font-mono"
@@ -211,7 +211,7 @@ export function PackageTrackingDialog({
                   onClick={() => performTrack(trackingNumber, courier)}
                 >
                   {isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Search className="size-3.5" />}
-                  Lacak
+                  Track
                 </Button>
               </div>
             </div>
@@ -222,7 +222,7 @@ export function PackageTrackingDialog({
             <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-muted/30 rounded-xl border">
               <div className="space-y-0.5">
                 <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-                  Nomor Resi ({courier.toUpperCase()})
+                  Tracking Number ({courier.toUpperCase()})
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="font-mono font-bold text-base">{trackingNumber}</span>
@@ -231,7 +231,7 @@ export function PackageTrackingDialog({
                     size="icon"
                     className="size-6 text-muted-foreground hover:text-foreground"
                     onClick={() => handleCopyResi(trackingNumber)}
-                    title="Salin Resi"
+                    title="Copy Tracking Number"
                   >
                     {copied ? <Check className="size-3 text-emerald-600" /> : <Copy className="size-3" />}
                   </Button>
@@ -273,8 +273,8 @@ export function PackageTrackingDialog({
                 <Loader2 className="size-6 animate-spin" />
               </div>
               <div className="space-y-1">
-                <p className="font-medium text-sm">Menghubungkan ke Ekspedisi...</p>
-                <p className="text-xs text-muted-foreground">Mengambil riwayat tracking resmi melalui CekResi API</p>
+                <p className="font-medium text-sm">Connecting to Courier...</p>
+                <p className="text-xs text-muted-foreground">Fetching official tracking history via CekResi API</p>
               </div>
             </div>
           )}
@@ -284,7 +284,7 @@ export function PackageTrackingDialog({
             <div className="flex items-start gap-3 p-4 rounded-xl border border-destructive/30 bg-destructive/5 text-destructive">
               <AlertCircle className="size-5 shrink-0 mt-0.5" />
               <div className="space-y-1 text-xs">
-                <p className="font-semibold text-sm">Tidak Dapat Menampilkan Status</p>
+                <p className="font-semibold text-sm">Unable to Display Status</p>
                 <p className="text-muted-foreground">{errorMessage}</p>
                 <div className="pt-2">
                   <Button
@@ -293,7 +293,7 @@ export function PackageTrackingDialog({
                     className="h-7 text-xs border-destructive/30 text-destructive hover:bg-destructive/10"
                     onClick={() => performTrack(trackingNumber, courier)}
                   >
-                    Coba Lagi
+                    Try Again
                   </Button>
                 </div>
               </div>
@@ -306,25 +306,25 @@ export function PackageTrackingDialog({
               {/* Delivery Meta Grid */}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 <div className="p-3 rounded-lg border bg-card space-y-0.5">
-                  <span className="text-[11px] text-muted-foreground font-medium">Ekspedisi</span>
+                  <span className="text-[11px] text-muted-foreground font-medium">Courier</span>
                   <p className="font-semibold text-sm truncate">
                     {trackingData.expedisi ? trackingData.expedisi : courier.toUpperCase()}
                   </p>
                 </div>
                 <div className="p-3 rounded-lg border bg-card space-y-0.5">
-                  <span className="text-[11px] text-muted-foreground font-medium">Tujuan / Penerima</span>
+                  <span className="text-[11px] text-muted-foreground font-medium">Destination / Recipient</span>
                   <p className="font-semibold text-sm truncate">
-                    {recipientName ?? (trackingData.tujuan !== "-" ? trackingData.tujuan : "Sesuai Alamat Pemesan")}
+                    {recipientName ?? (trackingData.tujuan !== "-" ? trackingData.tujuan : "As per Order Address")}
                   </p>
                 </div>
                 <div className="p-3 rounded-lg border bg-card space-y-0.5 col-span-2 sm:col-span-1">
-                  <span className="text-[11px] text-muted-foreground font-medium">Status Terkini</span>
+                  <span className="text-[11px] text-muted-foreground font-medium">Latest Status</span>
                   <p className="font-semibold text-sm text-primary truncate">
                     {trackingData.penerima
                       ? trackingData.penerima
                       : trackingData.status
                         ? trackingData.status
-                        : "Dalam Pengiriman"}
+                        : "In Transit"}
                   </p>
                 </div>
               </div>
@@ -335,7 +335,7 @@ export function PackageTrackingDialog({
                   <div className="flex items-center gap-2">
                     <Clock className="size-4 text-muted-foreground" />
                     <span className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">
-                      Riwayat Perjalanan Paket ({trackingData.perjalanan.length} Checkpoint)
+                      Shipment Journey History ({trackingData.perjalanan.length} Checkpoints)
                     </span>
                   </div>
                   {allowManualSearch && (
@@ -355,8 +355,8 @@ export function PackageTrackingDialog({
                 {trackingData.perjalanan.length === 0 ? (
                   <div className="p-6 text-center rounded-xl border border-dashed text-muted-foreground text-xs">
                     <Package className="size-8 mx-auto mb-2 opacity-50" />
-                    Belum ada rincian riwayat perjalanan bertahap. Paket kemungkinan baru di-manifestasi atau dalam
-                    proses penjemputan kurir.
+                    No tracking journey details yet. The package may have just been manifested or is awaiting courier
+                    pickup.
                   </div>
                 ) : (
                   <ScrollArea className="max-h-[320px] rounded-xl border bg-muted/10 p-4">
@@ -384,14 +384,14 @@ export function PackageTrackingDialog({
                             <div className="space-y-1">
                               <div className="flex flex-wrap items-center gap-2">
                                 <span className="font-mono text-[11px] font-semibold text-muted-foreground">
-                                  {step.tanggal !== "-" ? step.tanggal : "Proses Kurir"}
+                                  {step.tanggal !== "-" ? step.tanggal : "Courier Processing"}
                                 </span>
                                 {isLatest && (
                                   <Badge
                                     variant="outline"
                                     className="text-[10px] py-0 px-1.5 border-primary/40 text-primary"
                                   >
-                                    Update Terbaru
+                                    Latest Update
                                   </Badge>
                                 )}
                                 {isDelivered && (
@@ -399,7 +399,7 @@ export function PackageTrackingDialog({
                                     variant="outline"
                                     className="text-[10px] py-0 px-1.5 border-emerald-500/40 text-emerald-600"
                                   >
-                                    Paket Diterima
+                                    Package Delivered
                                   </Badge>
                                 )}
                               </div>
@@ -418,7 +418,9 @@ export function PackageTrackingDialog({
                 trackingData.penerima?.toLowerCase().includes("delivered")) && (
                 <div className="flex items-center gap-2.5 p-3 rounded-lg border border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400 text-xs">
                   <CheckCircle2 className="size-4 shrink-0" />
-                  <span>Paket telah sampai di tujuan. Terima kasih telah memesan merchandise resmi GDG Jakarta!</span>
+                  <span>
+                    Package has arrived at its destination. Thank you for ordering official GDG Jakarta merchandise!
+                  </span>
                 </div>
               )}
             </div>
