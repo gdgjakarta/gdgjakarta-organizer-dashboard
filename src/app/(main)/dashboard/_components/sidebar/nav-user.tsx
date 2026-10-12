@@ -48,13 +48,16 @@ export function NavUser({
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const authUser = useAuthStore((s) => s.user);
   const isLoading = useAuthStore((s) => s.isLoading);
+  const isLoggingOut = useAuthStore((s) => s.isLoggingOut);
+  const setLoggingOut = useAuthStore((s) => s.setLoggingOut);
 
   const handleLogout = async () => {
+    setLoggingOut(true);
     await signOutOrganizer();
     window.location.assign("/auth/login");
   };
 
-  if (isLoading || (!authUser && !fallbackUser)) {
+  if (isLoading || isLoggingOut || (!authUser && !fallbackUser)) {
     return (
       <SidebarMenu>
         <SidebarMenuItem>

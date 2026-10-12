@@ -40,7 +40,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   const { filterNavItems } = useFeatureFlags();
   const user = useAuthStore((s) => s.user);
-  const isLoading = useAuthStore((s) => s.isLoading);
+  const isLoading = useAuthStore((s) => s.isLoading || s.isLoggingOut);
 
   const rawSidebarItems = useMemo(() => {
     if (user) {

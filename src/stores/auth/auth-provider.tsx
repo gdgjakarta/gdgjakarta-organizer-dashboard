@@ -255,6 +255,7 @@ export async function signInWithGoogle(): Promise<{ organizer: AuthOrganizer; is
 export async function signOutOrganizer(): Promise<void> {
   console.log("[Auth Flow - Client] Signing out from Firebase and clearing session cookie...");
   if (globalStore) {
+    globalStore.getState().setLoggingOut(true);
     globalStore.getState().setUser(null, null);
   }
   await signOut(auth);

@@ -22,8 +22,10 @@ export interface AuthState {
   firebaseUser: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  isLoggingOut: boolean;
   setUser: (user: AuthOrganizer | null, firebaseUser: User | null) => void;
   setLoading: (isLoading: boolean) => void;
+  setLoggingOut: (isLoggingOut: boolean) => void;
 }
 
 export const createAuthStore = (initialState?: Partial<AuthState>) => {
@@ -32,16 +34,18 @@ export const createAuthStore = (initialState?: Partial<AuthState>) => {
     firebaseUser: null,
     isLoading: true,
     isAuthenticated: false,
+    isLoggingOut: false,
     ...initialState,
 
     setUser: (user, firebaseUser) =>
-      set({
+      set((state) => ({
         user,
         firebaseUser,
         isAuthenticated: Boolean(user),
-        isLoading: false,
-      }),
+        isLoading: state.isLoggingOut,
+      })),
 
     setLoading: (isLoading) => set({ isLoading }),
+    setLoggingOut: (isLoggingOut) => set({ isLoggingOut, isLoading: isLoggingOut }),
   }));
 };
