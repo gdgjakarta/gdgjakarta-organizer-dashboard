@@ -1,4 +1,6 @@
-import type { CustomQuestion, EventSession, FirestoreEvent } from "@/lib/firestore/types";
+import type { CustomQuestion, EventSession, EventTicketTier, FirestoreEvent } from "@/lib/firestore/types";
+
+import { getRecommendedTicketsForFormat } from "./ticket-templates";
 
 /**
  * Section definitions for structuring the combined registration form.
@@ -412,49 +414,17 @@ export const FREE_REGISTRATION_TEMPLATE: CustomQuestion[] = [
 ];
 
 /**
- * Paid Registration Template (Ticketing with Payment Reconciliation & Invoicing).
+ * Paid Registration Template (Ticketing with Payment Gateway Reconciliation & Optional Invoicing).
+ * Note: Ticket tier selection is handled in Step 1 of registration. Payment is processed via DOKU payment link.
  */
 export const PAID_REGISTRATION_TEMPLATE: CustomQuestion[] = [
-  {
-    id: "ticket_tier",
-    label: "Selected Ticket Tier",
-    type: "select",
-    options: ["Regular Admission", "Early Bird Pass", "Student / Academic Pass", "Corporate / VIP Pass"],
-    required: true,
-    section: "Payment & Ticket Details",
-  },
-  {
-    id: "payment_proof",
-    label: "Payment Reference / Bank Transfer Slip",
-    type: "text",
-    required: true,
-    placeholder: "Transfer reference number, bank receipt number, or public image URL",
-    description: "Used by organizers to verify payment before ticket confirmation.",
-    section: "Payment & Ticket Details",
-  },
-  {
-    id: "billing_name",
-    label: "Full Name for Invoice / E-Receipt",
-    type: "text",
-    required: true,
-    placeholder: "e.g. John Doe / PT. Tech Nusantara",
-    section: "Payment & Ticket Details",
-  },
-  {
-    id: "billing_company",
-    label: "Company / Tax Entity for Official Receipt (Optional)",
-    type: "text",
-    required: false,
-    placeholder: "Leave empty if registering as individual",
-    section: "Payment & Ticket Details",
-  },
   {
     id: "whatsapp",
     label: "WhatsApp Phone Number",
     type: "text",
     required: true,
     placeholder: "e.g. 628123444555",
-    description: "For e-ticket dispatch and check-in QR coordination.",
+    description: "For e-ticket dispatch, emergency updates, and check-in QR coordination.",
     section: "Personal & Contact Information",
     validation_type: "isWhatsappNumber",
   },
@@ -475,11 +445,29 @@ export const PAID_REGISTRATION_TEMPLATE: CustomQuestion[] = [
     section: "Professional Background & Experience",
   },
   {
+    id: "billing_name",
+    label: "Full Name for E-Receipt / Tax Invoice (Optional)",
+    type: "text",
+    required: false,
+    placeholder: "e.g. John Doe / PT. Tech Nusantara",
+    description: "Provide if an official tax invoice or company reimbursement receipt is required.",
+    section: "Payment & Ticket Details",
+  },
+  {
+    id: "billing_company",
+    label: "Company / Tax Entity for Official Receipt (Optional)",
+    type: "text",
+    required: false,
+    placeholder: "Corporate billing name or NPWP/tax ID if employer sponsored",
+    section: "Payment & Ticket Details",
+  },
+  {
     id: "tshirt_size",
     label: "Event Merchandise T-Shirt Size",
     type: "select",
     options: ["S", "M", "L", "XL", "2XL", "3XL"],
     required: true,
+    description: "Apparel sizing for conference swag kit included with your pass.",
     section: "Personal & Contact Information",
   },
   {
@@ -505,38 +493,9 @@ export const PAID_REGISTRATION_TEMPLATE: CustomQuestion[] = [
 
 /**
  * Free Registration with Commitment Fee Template.
- * Fully refundable upon physical check-in at the venue desk; strictly forfeited on no-show.
+ * Deposit pass is paid via payment link; 100% refunded in cash upon physical on-site check-in at venue desk.
  */
 export const COMMITMENT_FEE_TEMPLATE: CustomQuestion[] = [
-  {
-    id: "commitment_fee_proof",
-    label: "Commitment Fee Transfer Slip / Reference",
-    type: "text",
-    required: true,
-    placeholder: "e.g. Bank transfer reference number or slip image URL",
-    description:
-      "Proof of commitment fee transfer. Fee is 100% refunded in cash at the venue check-in desk upon physical attendance.",
-    section: "Commitment Fee & Attendance",
-  },
-  {
-    id: "commitment_refund_choice",
-    label: "Commitment Fee Refund Disbursement",
-    type: "select",
-    options: [
-      "Cash Refund at Venue Desk upon Check-in (Standard)",
-      "Bank Transfer / E-Wallet (Emergency fallback only)",
-    ],
-    required: true,
-    section: "Commitment Fee & Attendance",
-  },
-  {
-    id: "commitment_refund_account",
-    label: "Bank Name & Account Number (Emergency Digital Fallback)",
-    type: "text",
-    required: false,
-    placeholder: "e.g. BCA 123456789 a/n Nama Lengkap",
-    section: "Commitment Fee & Attendance",
-  },
   {
     id: "whatsapp",
     label: "WhatsApp Phone Number",
@@ -586,7 +545,7 @@ export const COMMITMENT_FEE_TEMPLATE: CustomQuestion[] = [
     options: [
       "I understand that the commitment fee will be refunded 100% in cash upon physical attendance and check-in on event day.",
       "I acknowledge that failing to attend the event physically forfeits the commitment fee to cover venue catering and reservation expenses.",
-      "I agree to adhere to the GDG Community Guidelines.",
+      "I agree to adhere to the GDG Community Guidelines and Code of Conduct.",
     ],
     required: true,
     section: "Consent & Code of Conduct",
@@ -888,34 +847,6 @@ export const CURATED_COMMITMENT_FEE_TEMPLATE: CustomQuestion[] = [
     section: "Professional Background & Experience",
   },
   {
-    id: "commitment_fee_proof",
-    label: "Commitment Fee Transfer Slip / Reference",
-    type: "text",
-    required: true,
-    placeholder: "e.g. Bank transfer reference number or slip image URL",
-    description: "Fee is 100% refunded in cash at the venue check-in desk upon physical attendance once approved.",
-    section: "Commitment Fee & Attendance",
-  },
-  {
-    id: "commitment_refund_choice",
-    label: "Commitment Fee Refund Disbursement",
-    type: "select",
-    options: [
-      "Cash Refund at Venue Desk upon Check-in (Standard)",
-      "Bank Transfer / E-Wallet (Emergency fallback only)",
-    ],
-    required: true,
-    section: "Commitment Fee & Attendance",
-  },
-  {
-    id: "commitment_refund_account",
-    label: "Bank Name & Account Number (Emergency Digital Fallback)",
-    type: "text",
-    required: false,
-    placeholder: "e.g. BCA 123456789 a/n Nama Lengkap",
-    section: "Commitment Fee & Attendance",
-  },
-  {
     id: "curation_motivation",
     label: "Why are you interested in joining, and what will you contribute?",
     type: "textarea",
@@ -1158,35 +1089,6 @@ export const CURATED_MULTI_COMMITMENT_TEMPLATE: CustomQuestion[] = [
     section: "Professional Background & Experience",
   },
   {
-    id: "commitment_fee_proof",
-    label: "Commitment Fee Transfer Slip / Reference",
-    type: "text",
-    required: true,
-    placeholder: "e.g. Bank transfer reference number or slip image URL",
-    description:
-      "Fee is 100% refunded in cash at the venue check-in desk upon physical attendance for your selected session track.",
-    section: "Commitment Fee & Attendance",
-  },
-  {
-    id: "commitment_refund_choice",
-    label: "Commitment Fee Refund Disbursement",
-    type: "select",
-    options: [
-      "Cash Refund at Venue Desk upon Check-in (Standard)",
-      "Bank Transfer / E-Wallet (Emergency fallback only)",
-    ],
-    required: true,
-    section: "Commitment Fee & Attendance",
-  },
-  {
-    id: "commitment_refund_account",
-    label: "Bank Name & Account Number (Emergency Digital Fallback)",
-    type: "text",
-    required: false,
-    placeholder: "e.g. BCA 123456789 a/n Nama Lengkap",
-    section: "Commitment Fee & Attendance",
-  },
-  {
     id: "curation_motivation",
     label: "Why are you interested in joining, and what will you contribute?",
     type: "textarea",
@@ -1213,7 +1115,8 @@ export const CURATED_MULTI_COMMITMENT_TEMPLATE: CustomQuestion[] = [
 
 /**
  * Curated Registration + Multiple Sessions (Paid) Template.
- * Combines multi-track sessions, mandatory Work Email & LinkedIn curation, and paid ticketing with invoicing.
+ * Combines multi-track sessions, mandatory Work Email & LinkedIn curation, and paid ticketing with optional invoicing.
+ * Note: Ticket tier selection is performed in Step 1. Payment is processed upon organizer approval.
  */
 export const CURATED_MULTI_PAID_TEMPLATE: CustomQuestion[] = [
   {
@@ -1258,28 +1161,12 @@ export const CURATED_MULTI_PAID_TEMPLATE: CustomQuestion[] = [
     validation_type: "isGithubUrl",
   },
   {
-    id: "ticket_tier",
-    label: "Selected Ticket / Session Tier",
-    type: "select",
-    options: ["Full Day VIP / Executive Pass", "Track Specialist Pass", "Academic / Student Track Pass"],
-    required: true,
-    section: "Payment & Ticket Details",
-  },
-  {
-    id: "payment_proof",
-    label: "Payment Reference / Transfer Slip / Purchase Order",
-    type: "text",
-    required: true,
-    placeholder: "Payment reference, bank transfer ID, or corporate PO number",
-    description: "Used by organizers to verify payment and process registration curation.",
-    section: "Payment & Ticket Details",
-  },
-  {
     id: "billing_name",
-    label: "Full Name for Invoice / Tax Receipt",
+    label: "Full Name for Invoice / Tax Receipt (Optional)",
     type: "text",
-    required: true,
+    required: false,
     placeholder: "e.g. John Doe / PT. Company",
+    description: "Provide if an official tax invoice or corporate reimbursement receipt is required.",
     section: "Payment & Ticket Details",
   },
   {
@@ -1420,6 +1307,7 @@ export const DEFAULT_GDG_SESSIONS: EventSession[] = [
 
 /**
  * Event Format Template structure definition.
+ * Encompasses admission policy, breakout session tracks, ticket tiers, and custom questionnaire.
  */
 export interface EventFormatTemplate {
   id: string;
@@ -1429,12 +1317,13 @@ export interface EventFormatTemplate {
   description: string;
   requires_approval: boolean;
   sessions?: EventSession[];
+  tickets?: EventTicketTier[];
   questions: CustomQuestion[];
 }
 
 /**
  * Registry of all GDG Jakarta Event Format Templates.
- * Encompasses 4 Standard Open Formats and 5 Curated Formats.
+ * Encompasses 4 Standard Open Formats and 5 Curated Formats, complete with pre-configured ticket tiers.
  */
 export const EVENT_FORMAT_TEMPLATES: EventFormatTemplate[] = [
   // ── 1. Standard Open Formats ──
@@ -1445,6 +1334,7 @@ export const EVENT_FORMAT_TEMPLATES: EventFormatTemplate[] = [
     category: "standard",
     description: "Open community meetup or tech talk with instant RSVP confirmation.",
     requires_approval: false,
+    tickets: getRecommendedTicketsForFormat("free"),
     questions: FREE_REGISTRATION_TEMPLATE,
   },
   {
@@ -1454,6 +1344,7 @@ export const EVENT_FORMAT_TEMPLATES: EventFormatTemplate[] = [
     category: "standard",
     description: "Paid conference or summit with payment reconciliation, ticket tier, and invoicing.",
     requires_approval: false,
+    tickets: getRecommendedTicketsForFormat("paid"),
     questions: PAID_REGISTRATION_TEMPLATE,
   },
   {
@@ -1463,6 +1354,7 @@ export const EVENT_FORMAT_TEMPLATES: EventFormatTemplate[] = [
     category: "standard",
     description: "100% refundable fee returned in cash upon physical check-in; strictly forfeited on no-show.",
     requires_approval: false,
+    tickets: getRecommendedTicketsForFormat("commitment_fee"),
     questions: COMMITMENT_FEE_TEMPLATE,
   },
   {
@@ -1473,6 +1365,7 @@ export const EVENT_FORMAT_TEMPLATES: EventFormatTemplate[] = [
     description: "Event split into Morning, Afternoon, and Regular session tracks with independent capacity limits.",
     requires_approval: false,
     sessions: DEFAULT_GDG_SESSIONS,
+    tickets: getRecommendedTicketsForFormat("multi_track"),
     questions: MULTI_TRACK_TEMPLATE,
   },
 
@@ -1485,6 +1378,7 @@ export const EVENT_FORMAT_TEMPLATES: EventFormatTemplate[] = [
     description:
       "Curated free admission reviewed by organizers. Requires Work Email and Public LinkedIn Profile (not a private account).",
     requires_approval: true,
+    tickets: getRecommendedTicketsForFormat("curated_free"),
     questions: CURATED_FREE_TEMPLATE,
   },
   {
@@ -1495,6 +1389,7 @@ export const EVENT_FORMAT_TEMPLATES: EventFormatTemplate[] = [
     description:
       "Curated admission with refundable commitment fee. Requires Work Email and Public LinkedIn Profile (not a private account).",
     requires_approval: true,
+    tickets: getRecommendedTicketsForFormat("curated_commitment"),
     questions: CURATED_COMMITMENT_FEE_TEMPLATE,
   },
   {
@@ -1506,6 +1401,7 @@ export const EVENT_FORMAT_TEMPLATES: EventFormatTemplate[] = [
       "Curated multi-track breakout sessions with free admission. Requires Work Email and Public LinkedIn Profile (not a private account).",
     requires_approval: true,
     sessions: DEFAULT_GDG_SESSIONS,
+    tickets: getRecommendedTicketsForFormat("curated_multi_free"),
     questions: CURATED_MULTI_FREE_TEMPLATE,
   },
   {
@@ -1517,6 +1413,7 @@ export const EVENT_FORMAT_TEMPLATES: EventFormatTemplate[] = [
       "Curated multi-track sessions with refundable commitment fee. Requires Work Email and Public LinkedIn Profile (not a private account).",
     requires_approval: true,
     sessions: DEFAULT_GDG_SESSIONS,
+    tickets: getRecommendedTicketsForFormat("curated_multi_commitment"),
     questions: CURATED_MULTI_COMMITMENT_TEMPLATE,
   },
   {
@@ -1528,6 +1425,7 @@ export const EVENT_FORMAT_TEMPLATES: EventFormatTemplate[] = [
       "Curated multi-track conference with paid ticketing & invoicing. Requires Work Email and Public LinkedIn Profile (not a private account).",
     requires_approval: true,
     sessions: DEFAULT_GDG_SESSIONS,
+    tickets: getRecommendedTicketsForFormat("curated_multi_paid"),
     questions: CURATED_MULTI_PAID_TEMPLATE,
   },
 ];

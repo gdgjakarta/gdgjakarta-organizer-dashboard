@@ -1,6 +1,16 @@
 import { notFound } from "next/navigation";
 
-import { FileSpreadsheet, Mail, Package, Sparkles, Ticket, TicketPercent, Truck, Users } from "lucide-react";
+import {
+  CreditCard,
+  FileSpreadsheet,
+  Mail,
+  Package,
+  Sparkles,
+  Ticket,
+  TicketPercent,
+  Truck,
+  Users,
+} from "lucide-react";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getAllBevyChapterEvents, getBevyEventById, resolveEventAudience } from "@/lib/bevy/client";
@@ -12,6 +22,7 @@ import { EventDetailHeader } from "./_components/event-detail-header";
 import { HighlightsMediaTab } from "./_components/highlights-media-tab";
 import { MerchandiseDeliveryTab } from "./_components/merchandise-delivery-tab";
 import { MerchandiseTab } from "./_components/merchandise-tab";
+import { PaymentGatewayTab } from "./_components/payment-gateway-tab";
 import { RegistrantsTab } from "./_components/registrants-tab";
 import { TicketsTab } from "./_components/tickets-tab";
 import { VouchersTab } from "./_components/vouchers-tab";
@@ -213,6 +224,10 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
               <TicketPercent className="size-4" />
               Vouchers
             </TabsTrigger>
+            <TabsTrigger value="payment" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
+              <CreditCard className="size-4" />
+              Payment Gateway
+            </TabsTrigger>
             <TabsTrigger value="highlights" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
               <Sparkles className="size-4" />
               Highlights & Media
@@ -246,6 +261,10 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
 
         <TabsContent value="vouchers" className="space-y-4">
           <VouchersTab event={event} />
+        </TabsContent>
+
+        <TabsContent value="payment" className="space-y-4">
+          <PaymentGatewayTab event={event} />
         </TabsContent>
 
         <TabsContent value="highlights" className="space-y-4">

@@ -1317,6 +1317,7 @@ export async function updateEventPaymentConfig(
   eventId: string,
   config: {
     payment_environment: "production" | "sandbox";
+    merchandise_delivery_payment_environment?: "production" | "sandbox";
     payment_webhook_url?: string | null;
   },
 ): Promise<void> {
@@ -1324,6 +1325,9 @@ export async function updateEventPaymentConfig(
   const eventRef = doc(db, "events", String(eventId));
   const updatePayload: Record<string, unknown> = {
     payment_environment: config.payment_environment,
+    ...(config.merchandise_delivery_payment_environment
+      ? { merchandise_delivery_payment_environment: config.merchandise_delivery_payment_environment }
+      : {}),
     payment_webhook_url:
       config.payment_webhook_url && config.payment_webhook_url.trim().length > 0
         ? config.payment_webhook_url.trim()

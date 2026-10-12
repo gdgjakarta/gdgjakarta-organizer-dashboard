@@ -110,9 +110,7 @@ export function MerchandiseDeliveryRequestDialog({
       if (res.success && res.deliveryRequest) {
         setGeneratedPaymentUrl(res.paymentUrl ?? null);
         setInvoiceNumber(res.invoiceNumber ?? null);
-        if (res.paymentEnvironment) {
-          setPaymentEnvironment(res.paymentEnvironment);
-        }
+        setPaymentEnvironment(res.paymentEnvironment);
         setStep("payment");
         toast.success("Delivery request created! Please complete payment to proceed.");
 

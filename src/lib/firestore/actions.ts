@@ -709,6 +709,7 @@ export async function updateEventPaymentConfigAction(
   eventId: string,
   config: {
     payment_environment: "production" | "sandbox";
+    merchandise_delivery_payment_environment?: "production" | "sandbox";
     payment_webhook_url?: string | null;
   },
 ) {

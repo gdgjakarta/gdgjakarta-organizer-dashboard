@@ -78,9 +78,9 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
   const [isRefreshing, startRefresh] = useTransition();
 
   const initialEnv: "production" | "sandbox" =
-    event?.merchandise_delivery_payment_environment ??
-    event?.payment_environment ??
-    (event?.is_test ? "sandbox" : "production");
+    event.merchandise_delivery_payment_environment ??
+    event.payment_environment ??
+    (event.is_test ? "sandbox" : "production");
   const [currentEnv, setCurrentEnv] = useState<"production" | "sandbox">(initialEnv);
   const [isSavingEnv, setIsSavingEnv] = useState(false);
 
@@ -511,21 +511,19 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
                           >
                             {req.payment_status === "paid" ? "Paid ✓" : "Unpaid"}
                           </Badge>
-                          {req.payment_environment === "sandbox" ? (
+                          {req.payment_environment && (
                             <Badge
                               variant="outline"
-                              className="border-amber-500/30 bg-amber-500/10 px-1 py-0 text-[9px] text-amber-700 dark:text-amber-300"
+                              className={cn(
+                                "px-1 py-0 text-[9px]",
+                                req.payment_environment === "sandbox"
+                                  ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                                  : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+                              )}
                             >
-                              Sandbox
+                              {req.payment_environment === "sandbox" ? "Sandbox" : "Live"}
                             </Badge>
-                          ) : req.payment_environment === "production" ? (
-                            <Badge
-                              variant="outline"
-                              className="border-emerald-500/30 bg-emerald-500/10 px-1 py-0 text-[9px] text-emerald-700 dark:text-emerald-300"
-                            >
-                              Live
-                            </Badge>
-                          ) : null}
+                          )}
                         </div>
                       </div>
                     </TableCell>
