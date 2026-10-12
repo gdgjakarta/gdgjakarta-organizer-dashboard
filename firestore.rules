@@ -341,9 +341,14 @@ service cloud.firestore {
       return isAuthenticated() && (
         (
           'email' in request.auth.token && request.auth.token.email is string &&
-          request.auth.token.email.lower() in [
-            'fachridantm@bangkit.academy'
-          ]
+          (
+            request.auth.token.email.lower().matches('^[a-z0-9._%+-]+@nusantarabetastudio\\.com$') ||
+            request.auth.token.email.lower().matches('^[a-z0-9._%+-]+@bangkit\\.academy$') ||
+            request.auth.token.email.lower() in [
+              'fachridan@nusantarabetastudio.com',
+              'fachridantm@bangkit.academy'
+            ]
+          )
         ) ||
         ('role' in request.auth.token && (
           request.auth.token.role in [
@@ -364,9 +369,10 @@ service cloud.firestore {
             (
               'chapter_role' in get(/databases/$(database)/documents/members/$(request.auth.uid)).data &&
               get(/databases/$(database)/documents/members/$(request.auth.uid)).data.chapter_role in [
-                'Core Team', 'core team',
-                'Team Member', 'team member',
-                'Check-in Staff', 'check-in staff', 'Check-in', 'Staff'
+                'Core Team', 'core team', 'Core team',
+                'Team Member', 'team member', 'Team member',
+                'Check-in Staff', 'check-in staff', 'Check-In Staff',
+                'Check-in', 'Staff'
               ]
             )
           )
@@ -819,10 +825,10 @@ service cloud.firestore {
       // Eliminates public or unprivileged member dumps of emails, phone numbers, and notes.
       allow list: if hasTeamAccess();
 
-      // Creation: Organizers or authenticated owners creating their initial profile.
+      // Creation: Organizers, staff members (hasTeamAccess), or authenticated owners creating their initial profile.
       // Solves bootstrap deadlock while strictly requiring valid member schema and identity ownership.
       allow create: if isValidMember(request.resource.data) && (
-        isOrganizer() ||
+        hasTeamAccess() ||
         (
           isOwner(memberId) &&
           request.resource.data.id == request.auth.uid &&
