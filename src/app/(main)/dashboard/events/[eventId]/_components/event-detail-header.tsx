@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -40,10 +40,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { getBevyLiveEventUrl, getBevyManageEventUrl } from "@/config/remote-config-utils";
+import { isExecutiveOrganizer } from "@/lib/auth-roles";
 import { resolveEventAudience } from "@/lib/bevy/audience";
 import { triggerEventsSyncAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/stores/auth/auth-provider";
 
 function getDropRateColorClass(rate: number): string {
   if (rate > 60) return "text-rose-600 dark:text-rose-400";
@@ -59,6 +61,7 @@ interface EventDetailHeaderProps {
   totalPending?: number;
   totalWaitlisted?: number;
   totalCheckedIn?: number;
+  initialRole?: string;
 }
 
 export function EventDetailHeader({
@@ -69,9 +72,18 @@ export function EventDetailHeader({
   totalPending = 0,
   totalWaitlisted = 0,
   totalCheckedIn: initialTotalCheckedIn = 0,
+  initialRole,
 }: EventDetailHeaderProps) {
   const router = useRouter();
+  const user = useAuthStore((s) => s.user);
   const [isPending, startTransition] = useTransition();
+
+  const isOrganizer = useMemo(() => {
+    if (user) {
+      return isExecutiveOrganizer(user);
+    }
+    return isExecutiveOrganizer(initialRole);
+  }, [user, initialRole]);
   const [liveTotals, setLiveTotals] = useState({
     totalRegistrations,
     totalApproved: initialTotalApproved,
@@ -425,42 +437,44 @@ export function EventDetailHeader({
             </DropdownMenu>
           )}
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-1.5">
-                <CreditCard className="size-3.5" />
-                DOKU Portals
-                <ChevronDown className="size-3 opacity-60" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuLabel className="font-normal text-muted-foreground text-xs">
-                Simulator & Testing
-              </DropdownMenuLabel>
-              <DropdownMenuItem asChild>
-                <a href="https://www.doku.com/testqr/" target="_blank" rel="noopener noreferrer">
-                  <QrCode className="mr-2 size-3.5 text-primary" />
-                  DOKU QRIS Simulator
-                </a>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <a href="https://sandbox.doku.com/bo/dashboard" target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="mr-2 size-3.5 text-amber-500" />
-                  DOKU Sandbox Dashboard
-                </a>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel className="font-normal text-muted-foreground text-xs">
-                Live Back-Office
-              </DropdownMenuLabel>
-              <DropdownMenuItem asChild>
-                <a href="https://dashboard.doku.com/bo/dashboard" target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="mr-2 size-3.5 text-emerald-600 dark:text-emerald-400" />
-                  DOKU Production Dashboard
-                </a>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {isOrganizer && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-1.5">
+                  <CreditCard className="size-3.5" />
+                  DOKU Portals
+                  <ChevronDown className="size-3 opacity-60" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel className="font-normal text-muted-foreground text-xs">
+                  Simulator & Testing
+                </DropdownMenuLabel>
+                <DropdownMenuItem asChild>
+                  <a href="https://www.doku.com/testqr/" target="_blank" rel="noopener noreferrer">
+                    <QrCode className="mr-2 size-3.5 text-primary" />
+                    DOKU QRIS Simulator
+                  </a>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <a href="https://sandbox.doku.com/bo/dashboard" target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="mr-2 size-3.5 text-amber-500" />
+                    DOKU Sandbox Dashboard
+                  </a>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="font-normal text-muted-foreground text-xs">
+                  Live Back-Office
+                </DropdownMenuLabel>
+                <DropdownMenuItem asChild>
+                  <a href="https://dashboard.doku.com/bo/dashboard" target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="mr-2 size-3.5 text-emerald-600 dark:text-emerald-400" />
+                    DOKU Production Dashboard
+                  </a>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
 
           <Button size="sm" asChild className="gap-1.5">
             <a href={getBevyManageEventUrl(event.id)} target="_blank" rel="noopener noreferrer">
