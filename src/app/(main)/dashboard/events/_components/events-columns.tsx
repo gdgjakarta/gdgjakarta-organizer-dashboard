@@ -6,7 +6,19 @@ import Link from "next/link";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Subscribe } from "@tanstack/react-table";
 import { parse } from "date-fns";
-import { Calendar, Copy, ExternalLink, Eye, Globe, MapPin, MoreHorizontal, Radio, Users } from "lucide-react";
+import {
+  Calendar,
+  Copy,
+  ExternalLink,
+  Eye,
+  Globe,
+  Loader2,
+  MapPin,
+  MoreHorizontal,
+  Radio,
+  Sparkles,
+  Users,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -22,7 +34,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { getBevyLiveEventUrl, getBevyManageEventUrl } from "@/config/remote-config-utils";
 import type { DataTableFeatures } from "@/lib/data-table-features";
+import type { ShortLinkItem } from "@/lib/shortio/types";
 import { cn } from "@/lib/utils";
+import { generateEventShortLinkAction, getEventShortLinksAction } from "@/server/shortio-actions";
 
 import { type EventRow, eventStatusMeta } from "./data";
 
@@ -113,6 +127,176 @@ function DropRateBadge({
         {formattedRate}
       </Badge>
       <span className="text-muted-foreground text-xs tabular-nums">({dropped} no-show)</span>
+    </div>
+  );
+}
+
+function EventActionsMenu({ row }: { row: { original: EventRow } }) {
+  const [liveShortLink, setLiveShortLink] = React.useState<ShortLinkItem | null>(null);
+  const [bevyShortLink, setBevyShortLink] = React.useState<ShortLinkItem | null>(null);
+  const [hasChecked, setHasChecked] = React.useState(false);
+  const [isGenerating, setIsGenerating] = React.useState<"live" | "bevy" | null>(null);
+
+  const liveBevyUrl = getBevyLiveEventUrl({
+    url: row.original.url,
+    static_url: row.original.staticUrl,
+    id: row.original.id,
+  });
+
+  const getLiveUrl = React.useCallback(() => {
+    const origin = typeof window !== "undefined" ? window.location.origin : "https://gdgjakarta.org";
+    return `${origin}/events/${row.original.id}`;
+  }, [row.original.id]);
+
+  const handleOpenChange = (open: boolean) => {
+    if (open && !hasChecked) {
+      const liveUrl = getLiveUrl();
+      void getEventShortLinksAction({
+        liveUrl,
+        bevyUrl: liveBevyUrl || undefined,
+      }).then((res) => {
+        if (res.success && res.data) {
+          setLiveShortLink(res.data.liveShortLink || null);
+          setBevyShortLink(res.data.bevyShortLink || null);
+        }
+        setHasChecked(true);
+      });
+    }
+  };
+
+  const handleCopyShortLink = (link: ShortLinkItem, type: "live" | "bevy") => {
+    void navigator.clipboard.writeText(link.shortURL);
+    toast.success(`Copied ${type === "live" ? "Live page" : "Bevy page"} short link: ${link.shortURL}`);
+  };
+
+  const handleGenerateShortLink = async (type: "live" | "bevy") => {
+    const destinationUrl = type === "live" ? getLiveUrl() : liveBevyUrl;
+    if (!destinationUrl) {
+      toast.error("Destination URL not found for this event");
+      return;
+    }
+
+    setIsGenerating(type);
+    const toastId = toast.loading(`Generating short link for ${type === "live" ? "Live page" : "Bevy page"}...`);
+
+    try {
+      const res = await generateEventShortLinkAction({
+        eventId: String(row.original.id),
+        type,
+        originalURL: destinationUrl,
+        title: row.original.title,
+        tags: row.original.tags,
+      });
+
+      if (res.success && res.data) {
+        if (type === "live") {
+          setLiveShortLink(res.data);
+        } else {
+          setBevyShortLink(res.data);
+        }
+        void navigator.clipboard.writeText(res.data.shortURL);
+        toast.success(`Short link generated & copied: ${res.data.shortURL}`, { id: toastId });
+      } else {
+        toast.error(res.error ?? "Failed to generate short link", { id: toastId });
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error generating short link", { id: toastId });
+    } finally {
+      setIsGenerating(null);
+    }
+  };
+
+  return (
+    <div className="text-right">
+      <DropdownMenu onOpenChange={handleOpenChange}>
+        <DropdownMenuTrigger asChild>
+          <Button
+            aria-label={`Open actions for ${row.original.title}`}
+            className="size-8 rounded-md text-muted-foreground hover:bg-muted/50"
+            size="icon-sm"
+            variant="ghost"
+          >
+            <MoreHorizontal className="size-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56">
+          {row.original.id && (
+            <DropdownMenuItem asChild>
+              <Link href={`/events/${row.original.id}`} target="_blank" rel="noopener noreferrer">
+                <Eye className="mr-2 size-3.5" />
+                Preview Live Page
+              </Link>
+            </DropdownMenuItem>
+          )}
+
+          {row.original.id &&
+            (liveShortLink ? (
+              <DropdownMenuItem onClick={() => handleCopyShortLink(liveShortLink, "live")}>
+                <Copy className="mr-2 size-3.5 text-emerald-500" />
+                Copy Short Link (Live)
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem
+                onClick={() => handleGenerateShortLink("live")}
+                disabled={isGenerating === "live"}
+                className="font-medium text-primary"
+              >
+                {isGenerating === "live" ? (
+                  <Loader2 className="mr-2 size-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="mr-2 size-3.5" />
+                )}
+                Generate Short Link (Live)
+              </DropdownMenuItem>
+            ))}
+
+          {liveBevyUrl && (
+            <DropdownMenuItem asChild>
+              <a href={liveBevyUrl} target="_blank" rel="noopener noreferrer">
+                <Globe className="mr-2 size-3.5" />
+                Preview Live Bevy Page
+              </a>
+            </DropdownMenuItem>
+          )}
+
+          {liveBevyUrl &&
+            (bevyShortLink ? (
+              <DropdownMenuItem onClick={() => handleCopyShortLink(bevyShortLink, "bevy")}>
+                <Copy className="mr-2 size-3.5 text-emerald-500" />
+                Copy Short Link (Bevy)
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem
+                onClick={() => handleGenerateShortLink("bevy")}
+                disabled={isGenerating === "bevy"}
+                className="font-medium text-primary"
+              >
+                {isGenerating === "bevy" ? (
+                  <Loader2 className="mr-2 size-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="mr-2 size-3.5" />
+                )}
+                Generate Short Link (Bevy)
+              </DropdownMenuItem>
+            ))}
+
+          <DropdownMenuSeparator />
+          <DropdownMenuItem asChild>
+            <a
+              href={
+                row.original.id
+                  ? getBevyManageEventUrl(row.original.id)
+                  : (row.original.url ?? "https://gdg.community.dev/gdg-jakarta/")
+              }
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <ExternalLink className="mr-2 size-3.5" />
+              Manage in Bevy
+            </a>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }
@@ -282,87 +466,7 @@ export const eventsColumns: ColumnDef<DataTableFeatures, EventRow>[] = [
   {
     id: "actions",
     header: () => <div className="text-right">Actions</div>,
-    cell: ({ row }) => {
-      const liveBevyUrl = getBevyLiveEventUrl({
-        url: row.original.url,
-        static_url: row.original.staticUrl,
-        id: row.original.id,
-      });
-
-      return (
-        <div className="text-right">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                aria-label={`Open actions for ${row.original.title}`}
-                className="size-8 rounded-md text-muted-foreground hover:bg-muted/50"
-                size="icon-sm"
-                variant="ghost"
-              >
-                <MoreHorizontal className="size-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {row.original.id && (
-                <DropdownMenuItem asChild>
-                  <Link href={`/events/${row.original.id}`} target="_blank" rel="noopener noreferrer">
-                    <Eye className="mr-2 size-3.5" />
-                    Preview Live Page
-                  </Link>
-                </DropdownMenuItem>
-              )}
-              {row.original.id && (
-                <DropdownMenuItem
-                  onClick={() => {
-                    const origin = typeof window !== "undefined" ? window.location.origin : "";
-                    const liveUrl = `${origin}/events/${row.original.id}`;
-                    void navigator.clipboard.writeText(liveUrl);
-                    toast.success("Live page link copied to clipboard");
-                  }}
-                >
-                  <Copy className="mr-2 size-3.5" />
-                  Copy Link Live Page
-                </DropdownMenuItem>
-              )}
-              {liveBevyUrl && (
-                <DropdownMenuItem asChild>
-                  <a href={liveBevyUrl} target="_blank" rel="noopener noreferrer">
-                    <Globe className="mr-2 size-3.5" />
-                    Preview Live Bevy Page
-                  </a>
-                </DropdownMenuItem>
-              )}
-              {liveBevyUrl && (
-                <DropdownMenuItem
-                  onClick={() => {
-                    void navigator.clipboard.writeText(liveBevyUrl);
-                    toast.success("Live Bevy page link copied to clipboard");
-                  }}
-                >
-                  <Copy className="mr-2 size-3.5" />
-                  Copy Link Live Bevy Page
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <a
-                  href={
-                    row.original.id
-                      ? getBevyManageEventUrl(row.original.id)
-                      : (row.original.url ?? "https://gdg.community.dev/gdg-jakarta/")
-                  }
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <ExternalLink className="mr-2 size-3.5" />
-                  Manage in Bevy
-                </a>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      );
-    },
+    cell: ({ row }) => <EventActionsMenu row={row} />,
     enableHiding: false,
     enableSorting: false,
   },

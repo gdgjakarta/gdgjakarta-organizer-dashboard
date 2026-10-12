@@ -6,6 +6,7 @@ import {
   Handshake,
   HelpCircle,
   House,
+  Link2,
   type LucideIcon,
   Mail,
   QrCode,
@@ -106,6 +107,12 @@ export const organizerSidebarItems: NavGroup[] = [
     id: 3,
     label: "Content Management",
     items: [
+      {
+        id: "links",
+        title: "Short Links",
+        url: "/dashboard/links",
+        icon: Link2,
+      },
       {
         id: "partnership",
         title: "Partnership & Sponsorship",

@@ -47,6 +47,8 @@ import type { FirestoreEvent } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
+import { EventShortLinkButton } from "./event-short-link-button";
+
 function getDropRateColorClass(rate: number): string {
   if (rate > 60) return "text-rose-600 dark:text-rose-400";
   if (rate > 35) return "text-amber-600 dark:text-amber-400";
@@ -358,7 +360,7 @@ export function EventDetailHeader({
                 >
                   <TrendingDown className="size-4" />
                   <strong>{formattedDropRate}</strong> Drop Rate
-                  <span className="text-muted-foreground text-xs font-normal">({droppedCount} no-show)</span>
+                  <span className="font-normal text-muted-foreground text-xs">({droppedCount} no-show)</span>
                 </span>
               </>
             )}
@@ -386,6 +388,8 @@ export function EventDetailHeader({
             <RefreshCw className={cn("size-3.5", isPending && "animate-spin")} />
             Sync
           </Button>
+
+          <EventShortLinkButton event={event} isOrganizer={isOrganizer} />
 
           {(event.id || liveBevyUrl) && (
             <DropdownMenu>

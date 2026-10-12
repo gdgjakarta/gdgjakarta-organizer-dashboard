@@ -31,6 +31,7 @@ const EXECUTIVE_ORGANIZER_ONLY_PREFIXES = [
   "/dashboard/partnership",
   "/dashboard/crm",
   "/dashboard/roles",
+  "/dashboard/links",
 ];
 
 /**
