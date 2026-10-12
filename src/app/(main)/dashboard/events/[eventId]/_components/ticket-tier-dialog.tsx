@@ -5,9 +5,11 @@ import { useEffect, useState } from "react";
 import {
   Award,
   Bookmark,
+  Check,
   Coffee,
   Gift,
   Package,
+  Pencil,
   Plus,
   ShieldCheck,
   Shirt,
@@ -150,6 +152,13 @@ export function TicketTierDialog({ open, onOpenChange, ticket, eventMerchandise 
   const [newPerkIcon, setNewPerkIcon] = useState<TicketPerkIcon>("sparkles");
   const [selectedMerchId, setSelectedMerchId] = useState("");
 
+  // Editing Perk state
+  const [editingPerkId, setEditingPerkId] = useState<string | null>(null);
+  const [editingPerkName, setEditingPerkName] = useState("");
+  const [editingPerkDesc, setEditingPerkDesc] = useState("");
+  const [editingPerkIcon, setEditingPerkIcon] = useState<TicketPerkIcon>("sparkles");
+  const [editingPerkMerchId, setEditingPerkMerchId] = useState<string | undefined>(undefined);
+
   // Template saving option
   const [saveAsTemplateChecked, setSaveAsTemplateChecked] = useState(false);
 
@@ -184,6 +193,11 @@ export function TicketTierDialog({ open, onOpenChange, ticket, eventMerchandise 
     setNewPerkName("");
     setNewPerkDesc("");
     setSelectedMerchId("");
+    setEditingPerkId(null);
+    setEditingPerkName("");
+    setEditingPerkDesc("");
+    setEditingPerkIcon("sparkles");
+    setEditingPerkMerchId(undefined);
   }, [ticket, open]);
 
   const handleTypeChange = (newType: TicketType) => {
@@ -252,7 +266,50 @@ export function TicketTierDialog({ open, onOpenChange, ticket, eventMerchandise 
     toast.success(`Added perk "${newPerk.name}"`);
   };
 
+  const handleStartEditPerk = (perk: TicketPerk) => {
+    setEditingPerkId(perk.id);
+    setEditingPerkName(perk.name);
+    setEditingPerkDesc(perk.description ?? "");
+    setEditingPerkIcon(perk.icon ?? "sparkles");
+    setEditingPerkMerchId(perk.merchandise_id);
+  };
+
+  const handleCancelEditPerk = () => {
+    setEditingPerkId(null);
+    setEditingPerkName("");
+    setEditingPerkDesc("");
+    setEditingPerkIcon("sparkles");
+    setEditingPerkMerchId(undefined);
+  };
+
+  const handleSaveEditPerk = (perkId: string) => {
+    const trimmedName = editingPerkName.trim();
+    if (!trimmedName) {
+      toast.error("Perk name cannot be empty.");
+      return;
+    }
+
+    setPerks((prev) =>
+      prev.map((p) => {
+        if (p.id !== perkId) return p;
+        return {
+          ...p,
+          name: trimmedName,
+          description: editingPerkDesc.trim() || undefined,
+          icon: editingPerkIcon,
+          merchandise_id: editingPerkMerchId || undefined,
+        };
+      }),
+    );
+
+    toast.success(`Updated perk "${trimmedName}"`);
+    handleCancelEditPerk();
+  };
+
   const handleRemovePerk = (perkId: string) => {
+    if (editingPerkId === perkId) {
+      handleCancelEditPerk();
+    }
     setPerks((prev) => prev.filter((p) => p.id !== perkId));
   };
 
@@ -416,7 +473,7 @@ export function TicketTierDialog({ open, onOpenChange, ticket, eventMerchandise 
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Sparkles className="size-4 text-amber-500" />
-                <span className="font-semibold text-xs text-foreground">Perks Included with Ticket</span>
+                <span className="font-semibold text-foreground text-xs">Perks Included with Ticket</span>
               </div>
               <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
                 {perks.length} perk{perks.length === 1 ? "" : "s"}
@@ -428,7 +485,7 @@ export function TicketTierDialog({ open, onOpenChange, ticket, eventMerchandise 
 
             {/* Quick Add Preset Perks */}
             <div className="space-y-1.5">
-              <span className="font-medium text-[10px] uppercase tracking-wider text-muted-foreground">
+              <span className="font-medium text-[10px] text-muted-foreground uppercase tracking-wider">
                 Quick Add Presets:
               </span>
               <div className="flex flex-wrap gap-1.5">
@@ -437,7 +494,7 @@ export function TicketTierDialog({ open, onOpenChange, ticket, eventMerchandise 
                     key={preset.name}
                     type="button"
                     onClick={() => handleAddPresetPerk(preset)}
-                    className="inline-flex items-center gap-1 rounded-md border border-border/80 bg-background px-2 py-1 text-[11px] font-normal text-foreground transition-colors hover:border-primary/50 hover:bg-muted/50 cursor-pointer"
+                    className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-border/80 bg-background px-2 py-1 font-normal text-[11px] text-foreground transition-colors hover:border-primary/50 hover:bg-muted/50"
                   >
                     {renderPerkIcon(preset.icon)}
                     <span>{preset.name}</span>
@@ -451,12 +508,12 @@ export function TicketTierDialog({ open, onOpenChange, ticket, eventMerchandise 
             {eventMerchandise.length > 0 && (
               <div className="space-y-1.5 pt-1">
                 <div className="flex items-center justify-between">
-                  <span className="font-medium text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <span className="font-medium text-[10px] text-muted-foreground uppercase tracking-wider">
                     Link from Event Merchandise Catalog:
                   </span>
                   <Badge
                     variant="outline"
-                    className="text-[9px] px-1 py-0 border-blue-500/30 text-blue-600 dark:text-blue-400"
+                    className="border-blue-500/30 px-1 py-0 text-[9px] text-blue-600 dark:text-blue-400"
                   >
                     {eventMerchandise.length} Items Available
                   </Badge>
@@ -485,8 +542,8 @@ export function TicketTierDialog({ open, onOpenChange, ticket, eventMerchandise 
             )}
 
             {/* Custom Perk Input */}
-            <div className="space-y-2 pt-1 border-t border-border/40">
-              <span className="font-medium text-[10px] uppercase tracking-wider text-muted-foreground">
+            <div className="space-y-2 border-border/40 border-t pt-1">
+              <span className="font-medium text-[10px] text-muted-foreground uppercase tracking-wider">
                 Or Add Custom Perk:
               </span>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -518,7 +575,7 @@ export function TicketTierDialog({ open, onOpenChange, ticket, eventMerchandise 
                         handleAddCustomPerk();
                       }
                     }}
-                    className="h-8 text-xs flex-1"
+                    className="h-8 flex-1 text-xs"
                   />
                 </div>
                 <Button
@@ -526,7 +583,7 @@ export function TicketTierDialog({ open, onOpenChange, ticket, eventMerchandise 
                   size="sm"
                   onClick={handleAddCustomPerk}
                   disabled={!newPerkName.trim()}
-                  className="h-8 gap-1 text-xs shrink-0"
+                  className="h-8 shrink-0 gap-1 text-xs"
                 >
                   <Plus className="size-3.5" />
                   Add Perk
@@ -536,22 +593,172 @@ export function TicketTierDialog({ open, onOpenChange, ticket, eventMerchandise 
 
             {/* Configured Perks List */}
             {perks.length > 0 ? (
-              <div className="space-y-1.5 pt-2 border-t border-border/40">
-                <span className="font-medium text-[10px] uppercase tracking-wider text-muted-foreground">
+              <div className="space-y-1.5 border-border/40 border-t pt-2">
+                <span className="font-medium text-[10px] text-muted-foreground uppercase tracking-wider">
                   Included Perks on this Ticket ({perks.length}):
                 </span>
-                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                <div className="max-h-64 space-y-1.5 overflow-y-auto pr-1">
                   {perks.map((p) => {
+                    const isEditing = editingPerkId === p.id;
                     const linkedMerch = p.merchandise_id
                       ? eventMerchandise.find((m) => m.id === p.merchandise_id)
                       : null;
 
+                    if (isEditing) {
+                      return (
+                        <div
+                          key={p.id}
+                          className="space-y-2 rounded-md border border-primary/40 bg-primary/[0.04] p-2.5 text-xs shadow-2xs transition-all"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5 font-medium text-foreground text-xs">
+                              <Pencil className="size-3 text-primary" />
+                              <span>Edit Perk</span>
+                              {editingPerkMerchId && (
+                                <Badge
+                                  variant="secondary"
+                                  className="bg-blue-500/10 px-1 py-0 text-[9px] text-blue-600 dark:text-blue-400"
+                                >
+                                  Merchandise
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="xs"
+                                onClick={handleCancelEditPerk}
+                                className="h-6 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+                              >
+                                Cancel
+                              </Button>
+                              <Button
+                                type="button"
+                                size="xs"
+                                onClick={() => handleSaveEditPerk(p.id)}
+                                disabled={!editingPerkName.trim()}
+                                className="h-6 gap-1 px-2 text-[11px]"
+                              >
+                                <Check className="size-3" />
+                                Save
+                              </Button>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                            <div className="flex flex-1 gap-2">
+                              <Select
+                                value={editingPerkIcon}
+                                onValueChange={(val: TicketPerkIcon) => setEditingPerkIcon(val)}
+                              >
+                                <SelectTrigger className="h-8 w-28 shrink-0 text-xs" aria-label="Edit perk icon">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {(
+                                    [
+                                      "sparkles",
+                                      "shirt",
+                                      "coffee",
+                                      "award",
+                                      "gift",
+                                      "star",
+                                      "ticket",
+                                    ] as TicketPerkIcon[]
+                                  ).map((ic) => (
+                                    <SelectItem key={ic} value={ic} className="text-xs">
+                                      <div className="flex items-center gap-1.5">
+                                        {renderPerkIcon(ic)}
+                                        <span className="capitalize">{ic}</span>
+                                      </div>
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <Input
+                                placeholder="Perk name..."
+                                value={editingPerkName}
+                                onChange={(e) => setEditingPerkName(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    handleSaveEditPerk(p.id);
+                                  } else if (e.key === "Escape") {
+                                    e.preventDefault();
+                                    handleCancelEditPerk();
+                                  }
+                                }}
+                                className="h-8 flex-1 text-xs"
+                                autoFocus
+                              />
+                            </div>
+                          </div>
+
+                          <Input
+                            placeholder="Perk description / details (optional)..."
+                            value={editingPerkDesc}
+                            onChange={(e) => setEditingPerkDesc(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                handleSaveEditPerk(p.id);
+                              } else if (e.key === "Escape") {
+                                e.preventDefault();
+                                handleCancelEditPerk();
+                              }
+                            }}
+                            className="h-8 text-xs"
+                          />
+
+                          {eventMerchandise.length > 0 && (
+                            <div className="flex items-center gap-2 border-border/40 border-t pt-1">
+                              <span className="shrink-0 text-[10px] text-muted-foreground">Merchandise Link:</span>
+                              <Select
+                                value={editingPerkMerchId || "none"}
+                                onValueChange={(val) => {
+                                  const nextMerchId = val === "none" ? undefined : val;
+                                  setEditingPerkMerchId(nextMerchId);
+                                  if (nextMerchId) {
+                                    const merch = eventMerchandise.find((m) => m.id === nextMerchId);
+                                    if (merch && !editingPerkName.trim()) {
+                                      setEditingPerkName(merch.name);
+                                    }
+                                  }
+                                }}
+                              >
+                                <SelectTrigger className="h-7 flex-1 text-[11px]">
+                                  <SelectValue placeholder="None (Custom perk)" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="none" className="text-muted-foreground text-xs">
+                                    None (Custom perk)
+                                  </SelectItem>
+                                  {eventMerchandise.map((item) => (
+                                    <SelectItem key={item.id} value={item.id} className="text-xs">
+                                      <div className="flex items-center gap-1.5">
+                                        <Package className="size-3 text-muted-foreground" />
+                                        <span>{item.name}</span>
+                                        <span className="text-[10px] text-muted-foreground">
+                                          ({item.is_free ? "Free Perk" : `Rp ${item.price.toLocaleString("id-ID")}`})
+                                        </span>
+                                      </div>
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+
                     return (
                       <div
                         key={p.id}
-                        className="flex items-center justify-between gap-2 rounded-md border border-border/70 bg-card p-2 text-xs shadow-2xs"
+                        className="group flex cursor-default items-center justify-between gap-2 rounded-md border border-border/70 bg-card p-2 text-xs shadow-2xs transition-colors hover:border-border"
                       >
-                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
                           <div className="flex size-6 shrink-0 items-center justify-center rounded-sm bg-muted">
                             {linkedMerch?.image_url ? (
                               // biome-ignore lint/performance/noImgElement: thumbnail
@@ -563,39 +770,51 @@ export function TicketTierDialog({ open, onOpenChange, ticket, eventMerchandise 
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-1.5">
-                              <span className="font-medium text-foreground truncate">{p.name}</span>
+                              <span className="truncate font-medium text-foreground">{p.name}</span>
                               {p.merchandise_id && (
                                 <Badge
                                   variant="secondary"
-                                  className="px-1 py-0 text-[9px] bg-blue-500/10 text-blue-600 dark:text-blue-400"
+                                  className="bg-blue-500/10 px-1 py-0 text-[9px] text-blue-600 dark:text-blue-400"
                                 >
                                   Merchandise
                                 </Badge>
                               )}
                             </div>
                             {p.description && (
-                              <p className="text-[10px] text-muted-foreground truncate">{p.description}</p>
+                              <p className="truncate text-[10px] text-muted-foreground">{p.description}</p>
                             )}
                           </div>
                         </div>
 
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-xs"
-                          onClick={() => handleRemovePerk(p.id)}
-                          className="text-muted-foreground hover:text-destructive shrink-0"
-                          title="Remove perk"
-                        >
-                          <Trash2 className="size-3.5" />
-                        </Button>
+                        <div className="flex shrink-0 items-center gap-0.5">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-xs"
+                            onClick={() => handleStartEditPerk(p)}
+                            className="text-muted-foreground hover:text-foreground"
+                            title="Edit perk"
+                          >
+                            <Pencil className="size-3.5" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-xs"
+                            onClick={() => handleRemovePerk(p.id)}
+                            className="text-muted-foreground hover:text-destructive"
+                            title="Remove perk"
+                          >
+                            <Trash2 className="size-3.5" />
+                          </Button>
+                        </div>
                       </div>
                     );
                   })}
                 </div>
               </div>
             ) : (
-              <div className="rounded-md border border-dashed border-border/70 p-2.5 text-center text-[11px] text-muted-foreground">
+              <div className="rounded-md border border-border/70 border-dashed p-2.5 text-center text-[11px] text-muted-foreground">
                 No perks included yet. Add merchandise or benefits that attendees receive with this ticket.
               </div>
             )}
