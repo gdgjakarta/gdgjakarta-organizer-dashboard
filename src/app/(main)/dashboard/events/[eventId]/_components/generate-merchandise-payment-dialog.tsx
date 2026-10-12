@@ -212,11 +212,25 @@ export function GenerateMerchandisePaymentDialog({
 
   if (!item) return null;
 
+  let effectivePrice = item.price || 0;
+  if (item.variations) {
+    for (const v of item.variations) {
+      const selectedOpt = selectedVariations[v.name];
+      if (
+        selectedOpt &&
+        v.option_details?.[selectedOpt]?.price !== undefined &&
+        v.option_details[selectedOpt].price !== null
+      ) {
+        effectivePrice = v.option_details[selectedOpt].price;
+      }
+    }
+  }
+
   const eligibleVouchers = (event.vouchers ?? []).filter(
     (v) => v.status === "active" && (v.applies_to === "merchandise" || v.applies_to === "all"),
   );
   const selectedVoucher = eligibleVouchers.find((v) => v.id === selectedVoucherId);
-  const itemTotal = (item.price || 0) * quantity;
+  const itemTotal = effectivePrice * quantity;
   const voucherDiscount = selectedVoucher
     ? calculateVoucherDiscount(selectedVoucher, {
         ticketPrice: 0,

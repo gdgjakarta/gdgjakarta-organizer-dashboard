@@ -2650,6 +2650,17 @@ export function EventRegistrationModal({
                           const m = availableMerchandise.find((it) => it.id === itemId);
                           if (!m) return null;
                           const varText = Object.values(order.selectedVariations).join(", ");
+                          const isIncludedInTicket = Boolean(
+                            selectedTicket?.perks?.some((p) => p.merchandise_id === m.id),
+                          );
+                          const bundledRecord = selectedBundle?.merchandise_items.find(
+                            (bi) => bi.merchandise_id === itemId,
+                          );
+                          const bundledQty = bundledRecord?.quantity || 0;
+                          const billableQty = Math.max(0, order.quantity - bundledQty);
+                          const effectiveUnitPrice = getMerchEffectivePrice(m, order.selectedVariations);
+                          const linePrice = effectiveUnitPrice * billableQty;
+
                           return (
                             <div
                               key={itemId}
@@ -2659,7 +2670,9 @@ export function EventRegistrationModal({
                                 {order.quantity}x {m.name} {varText ? `(${varText})` : ""}
                               </span>
                               <span className="font-mono">
-                                {m.is_free ? "Free" : `Rp ${((m.price || 0) * order.quantity).toLocaleString("id-ID")}`}
+                                {m.is_free || isIncludedInTicket || linePrice === 0
+                                  ? "Free"
+                                  : `Rp ${linePrice.toLocaleString("id-ID")}`}
                               </span>
                             </div>
                           );
