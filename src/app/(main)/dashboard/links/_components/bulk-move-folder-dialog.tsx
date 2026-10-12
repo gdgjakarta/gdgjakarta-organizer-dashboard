@@ -108,15 +108,15 @@ export function BulkMoveFolderDialog({ open, onOpenChange, links, folders, onLin
             <span className="font-medium text-muted-foreground text-xs uppercase tracking-wider">
               Selected Links ({links.length})
             </span>
-            <ScrollArea className="max-h-36 rounded-md border p-2">
-              <div className="space-y-1.5">
+            <ScrollArea className="max-h-40 rounded-md border bg-muted/20 p-2.5">
+              <div className="divide-y divide-border/40">
                 {links.map((link) => (
-                  <div key={link.id} className="flex items-center justify-between gap-2 text-xs">
-                    <span className="truncate font-medium font-mono text-foreground">{link.shortURL}</span>
-                    <span className="flex shrink-0 items-center gap-1 truncate text-muted-foreground">
-                      <Globe className="size-3" />
-                      <span className="max-w-[180px] truncate">{link.originalURL}</span>
-                    </span>
+                  <div key={link.id} className="flex min-w-0 flex-col gap-0.5 py-1.5 first:pt-0 last:pb-0">
+                    <span className="truncate font-medium font-mono text-foreground text-xs">{link.shortURL}</span>
+                    <div className="flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground">
+                      <Globe className="size-3 shrink-0 opacity-60" />
+                      <span className="truncate">{link.originalURL}</span>
+                    </div>
                   </div>
                 ))}
               </div>
