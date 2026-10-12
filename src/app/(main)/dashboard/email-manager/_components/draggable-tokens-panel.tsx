@@ -55,10 +55,10 @@ export const PREBUILT_HTML_BLOCKS: DraggableTokenItem[] = [
     tag: "Event Details Card",
     label: "Event Details Card",
     description: "Responsive card displaying date, time, and venue location",
-    snippet: `<div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px; margin: 20px 0;">
-  <h3 style="margin-top: 0; color: #1e293b; font-size: 16px;">📅 [[EventName]]</h3>
-  <p style="margin: 6px 0; font-size: 14px; color: #475569;"><strong>Date & Time:</strong> [[EventDate]] at [[EventTime]]</p>
-  <p style="margin: 6px 0; font-size: 14px; color: #475569;"><strong>Location:</strong> [[EventVenue]]</p>
+    snippet: `<div class="checklist-box">
+  <h3 style="margin-top: 0; color: #4285f4;">📅 [[EventName]]</h3>
+  <p style="margin: 6px 0;"><strong>Date & Time:</strong> [[EventDate]] at [[EventTime]]</p>
+  <p style="margin: 6px 0;"><strong>Location:</strong> [[EventVenue]]</p>
 </div>`,
   },
   {
@@ -66,20 +66,66 @@ export const PREBUILT_HTML_BLOCKS: DraggableTokenItem[] = [
     tag: "RSVP Action Button",
     label: "RSVP Action Button",
     description: "Google Blue call-to-action button linking to the event page",
-    snippet: `<div style="text-align: center; margin: 24px 0;">
-  <a href="[[EventUrl]]" style="background-color: #1a73e8; color: #ffffff; padding: 12px 26px; border-radius: 6px; text-decoration: none; font-weight: 600; display: inline-block;">
-    View Event & RSVP &rarr;
-  </a>
+    snippet: `<a href="[[EventUrl]]" class="btn">See you at the venue! 🚀</a>`,
+  },
+  {
+    id: "block_info_box",
+    tag: "Notice Info Box",
+    label: "Notice Info Box",
+    description: "Highlighted alert box for important announcements or guidelines",
+    snippet: `<div class="info-box">
+  <p><strong>Notice:</strong> Please make sure to check in at least 15 minutes before the session starts.</p>
+</div>`,
+  },
+  {
+    id: "block_checklist",
+    tag: "Checklist Box",
+    label: "Checklist Box",
+    description: "Important notes and reminders checklist box",
+    snippet: `<div class="checklist-box">
+  <h3 style="margin-top: 0; color: #4285f4;">📝 Attendee Checklist</h3>
+  <div class="checklist-item">
+    <div class="icon">✅</div>
+    <div class="text">Arrive at least 15 minutes before the scheduled start time.</div>
+  </div>
+  <div class="checklist-item">
+    <div class="icon">💻</div>
+    <div class="text">Bring your laptop and charger if participating in hands-on workshops.</div>
+  </div>
 </div>`,
   },
   {
     id: "block_ticket_badge",
-    tag: "Attendee Ticket Pass",
-    label: "Attendee Ticket Pass",
-    description: "Highlighted badge with attendee name and ticket type",
-    snippet: `<div style="background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border-left: 4px solid #2563eb; padding: 14px; border-radius: 6px; margin: 16px 0;">
-  <div style="font-size: 11px; color: #1e40af; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px;">Confirmed Ticket Pass</div>
-  <div style="font-size: 15px; font-weight: 700; color: #1e3a8a; margin-top: 4px;">[[Name]] &bull; [[TicketType]]</div>
+    tag: "Official Ticket Pass Card",
+    label: "Official Ticket Pass Card",
+    description: "Full dashed ticket card with attendee details and event location",
+    snippet: `<div class="ticket-card">
+  <div class="ticket-title">Official Entry Pass</div>
+  <div class="attendee-name">[[Name]]</div>
+  <div class="attendee-id">Ticket: [[TicketType]]</div>
+  <div class="details-box">
+    <div class="detail-row">
+      <span class="detail-icon">📅</span>
+      <div>
+        <strong>Date</strong><br>
+        [[EventDate]]
+      </div>
+    </div>
+    <div class="detail-row">
+      <span class="detail-icon">⏰</span>
+      <div>
+        <strong>Time</strong><br>
+        [[EventTime]]
+      </div>
+    </div>
+    <div class="detail-row">
+      <span class="detail-icon">📍</span>
+      <div>
+        <strong>Location</strong><br>
+        <a href="[[EventUrl]]" class="location-link" target="_blank">[[EventVenue]]</a>
+      </div>
+    </div>
+  </div>
 </div>`,
   },
   {
@@ -89,7 +135,7 @@ export const PREBUILT_HTML_BLOCKS: DraggableTokenItem[] = [
     description: "GDG Jakarta bubble logo footer block",
     snippet: `<div class="center">
   <div class="footer">
-    <img alt="GDG Jakarta" src="https://assets.gdgjakarta.org/gdg-sign-bubble-transparent.png" style="width: 113px; height: auto;" />
+    <img alt="GDG Jakarta" src="https://assets.gdgjakarta.org/gdg-jakarta/gdg-sign-bubble-transparent.png" style="width: 113px; height: auto;" />
   </div>
 </div>`,
   },
