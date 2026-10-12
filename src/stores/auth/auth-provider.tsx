@@ -41,7 +41,7 @@ async function syncMemberToFirestore(
 ) {
   if (typeof window === "undefined") return;
   try {
-    const { saveFirestoreMember } = await import("@/lib/firestore/client");
+    const { saveFirestoreMember, generateUserReferralCode } = await import("@/lib/firestore/client");
     const { isCoreTeamOrStaff } = await import("@/lib/auth-roles");
     const isStaff = isCoreTeamOrStaff(validation);
     const isOrg = validation?.isValidOrganizer ?? false;
@@ -78,6 +78,7 @@ async function syncMemberToFirestore(
       events_attended_count: 0,
       last_active: now,
       updated_at: now,
+      referral_code: generateUserReferralCode(user.uid),
     };
     await saveFirestoreMember(memberData);
     console.log(`[Auth Flow - Client] Synced member profile to Firestore for ${email}`);

@@ -17,6 +17,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { getMemberReferralDataAction } from "@/lib/firestore/actions";
+import { generateUserReferralCode } from "@/lib/firestore/client";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
 interface MemberReferralInfo {
@@ -36,12 +37,18 @@ export function MemberReferralCard() {
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [info, setInfo] = useState<MemberReferralInfo | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [_loading, setLoading] = useState(true);
 
   useEffect(() => {
     let isMounted = true;
     async function loadData() {
-      if (!user?.id) return;
+      if (!user?.id) {
+        setInfo(null);
+        setLoading(false);
+        return;
+      }
+      setLoading(true);
+      setInfo(null);
       try {
         const data = await getMemberReferralDataAction(user.id, user.email, user.name);
         if (isMounted && data) {
@@ -62,7 +69,9 @@ export function MemberReferralCard() {
 
   if (!user) return null;
 
-  const referralCode = info?.code || "GENERATING...";
+  const currentUserId = user.id;
+  const immediateCode = currentUserId ? generateUserReferralCode(currentUserId) : "";
+  const referralCode = info?.code && info.code !== "GDG7X9K" ? info.code : immediateCode || "GENERATING...";
   const discountPercent = info?.discountPercentage ?? 10;
   const isFixed = info?.discountType === "fixed";
   const discountLabel = isFixed
@@ -74,11 +83,12 @@ export function MemberReferralCard() {
   const hasUsed = info?.hasUsedReferral ?? false;
 
   const handleCopyCode = async () => {
-    if (!info?.code) return;
+    const codeToCopy = referralCode !== "GENERATING..." ? referralCode : null;
+    if (!codeToCopy) return;
     try {
-      await navigator.clipboard.writeText(info.code);
+      await navigator.clipboard.writeText(codeToCopy);
       setCopiedCode(true);
-      toast.success(`Referral code ${info.code} copied to clipboard!`);
+      toast.success(`Referral code ${codeToCopy} copied to clipboard!`);
       setTimeout(() => setCopiedCode(false), 2000);
     } catch {
       toast.error("Failed to copy code.");
@@ -86,15 +96,16 @@ export function MemberReferralCard() {
   };
 
   const handleShareLink = async () => {
-    if (!info?.code) return;
+    const codeToShare = referralCode !== "GENERATING..." ? referralCode : null;
+    if (!codeToShare) return;
     const origin = typeof window !== "undefined" ? window.location.origin : "";
-    const shareUrl = `${origin}/events?ref=${encodeURIComponent(info.code)}`;
+    const shareUrl = `${origin}/events?ref=${encodeURIComponent(codeToShare)}`;
 
     if (navigator.share) {
       try {
         await navigator.share({
           title: "Join GDG Jakarta Events with my Referral Code!",
-          text: `Use my referral code ${info.code} to get ${discountLabel} off your GDG Jakarta ticket!`,
+          text: `Use my referral code ${codeToShare} to get ${discountLabel} off your GDG Jakarta ticket!`,
           url: shareUrl,
         });
         return;
@@ -232,7 +243,7 @@ export function MemberReferralCard() {
                 variant="outline"
                 size="sm"
                 onClick={handleCopyCode}
-                disabled={loading || !info?.code}
+                disabled={!referralCode || referralCode === "GENERATING..."}
                 className="h-8 gap-1.5 text-xs font-medium"
               >
                 {copiedCode ? <Check className="size-3.5 text-emerald-600" /> : <Copy className="size-3.5" />}
@@ -242,7 +253,7 @@ export function MemberReferralCard() {
                 variant="default"
                 size="sm"
                 onClick={handleShareLink}
-                disabled={loading || !info?.code}
+                disabled={!referralCode || referralCode === "GENERATING..."}
                 className="h-8 gap-1.5 text-xs font-medium shadow-xs"
               >
                 {copiedLink ? <Check className="size-3.5" /> : <Share2 className="size-3.5" />}

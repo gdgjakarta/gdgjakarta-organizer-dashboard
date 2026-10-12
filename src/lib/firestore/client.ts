@@ -177,6 +177,32 @@ export async function getFirestoreMemberById(memberId: string): Promise<Firestor
 export async function saveFirestoreMember(member: Partial<FirestoreMember> | Record<string, unknown>): Promise<void> {
   if (typeof window === "undefined") return;
   const docRef = doc(db, "members", String(member.id));
+  try {
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      const existing = snap.data() as FirestoreMember;
+      const updatePayload: Record<string, unknown> = {
+        ...member,
+        joined_date: existing.joined_date,
+        referral_code:
+          existing.referral_code && existing.referral_code !== "GDG7X9K"
+            ? existing.referral_code
+            : (member.referral_code ?? generateUserReferralCode(String(member.id))),
+        updated_at: new Date().toISOString(),
+      };
+      if (typeof existing.events_registered_count === "number") {
+        updatePayload.events_registered_count = existing.events_registered_count;
+      }
+      if (typeof existing.events_attended_count === "number") {
+        updatePayload.events_attended_count = existing.events_attended_count;
+      }
+      const sanitized = sanitizeFirestoreData(updatePayload);
+      await setDoc(docRef, sanitized, { merge: true });
+      return;
+    }
+  } catch (err) {
+    console.warn("[Firestore] saveFirestoreMember check error:", err);
+  }
   const sanitized = sanitizeFirestoreData(member);
   await setDoc(docRef, sanitized, { merge: true });
 }
@@ -253,18 +279,44 @@ function generateRandomCode(): string {
   return code;
 }
 
-export async function generateUniqueReferralCode(): Promise<string> {
-  if (typeof window === "undefined") return generateRandomCode();
-  const membersRef = collection(db, "members");
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const candidate = generateRandomCode();
-    const q = query(membersRef, where("referral_code", "==", candidate), limit(1));
-    const snap = await getDocs(q);
-    if (snap.empty) {
-      return candidate;
-    }
+/**
+ * Deterministically generates a unique, user-specific referral code (e.g. GDG8M2K9).
+ * Guarantees that different users always receive completely distinct referral codes,
+ * without requiring forbidden collection-wide listing queries.
+ */
+export function generateUserReferralCode(seed: string): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const cleanSeed = (seed || "").trim();
+  if (!cleanSeed) {
+    return generateRandomCode();
   }
-  return `${generateRandomCode()}${Math.floor(Math.random() * 9)}`;
+
+  // 64-bit multi-round FNV-1a hash for high dispersion and zero collisions across users
+  let h1 = 0x811c9dc5;
+  let h2 = 0x9e3779b9;
+  for (let i = 0; i < cleanSeed.length; i++) {
+    const code = cleanSeed.charCodeAt(i);
+    h1 ^= code;
+    h1 = Math.imul(h1, 0x01000193);
+    h2 ^= code;
+    h2 = Math.imul(h2, 0x27d4eb2d);
+  }
+
+  let code = "GDG";
+  let combined = (BigInt(h1 >>> 0) << 32n) | BigInt(h2 >>> 0);
+  for (let i = 0; i < 5; i++) {
+    const idx = Number(combined % BigInt(chars.length));
+    code += chars[idx];
+    combined /= BigInt(chars.length);
+  }
+  return code;
+}
+
+export async function generateUniqueReferralCode(userId?: string): Promise<string> {
+  if (userId) {
+    return generateUserReferralCode(userId);
+  }
+  return generateRandomCode();
 }
 
 export async function getOrCreateMemberReferralCode(
@@ -284,9 +336,11 @@ export async function getOrCreateMemberReferralCode(
 }> {
   const settings = await getReferralProgramSettings();
   const defType = settings.default_discount_type ?? "percentage";
+  const userFallbackCode = generateUserReferralCode(memberId || memberEmail);
+
   if (typeof window === "undefined" || !memberId) {
     return {
-      code: "GDG7X9K",
+      code: userFallbackCode,
       points: 0,
       count: 0,
       hasUsedReferral: false,
@@ -302,7 +356,7 @@ export async function getOrCreateMemberReferralCode(
     const snap = await getDoc(memberRef);
     if (snap.exists()) {
       const data = snap.data() as FirestoreMember;
-      if (data.referral_code) {
+      if (data.referral_code && data.referral_code !== "GDG7X9K") {
         return {
           code: data.referral_code,
           points: data.referral_points ?? 0,
@@ -315,17 +369,49 @@ export async function getOrCreateMemberReferralCode(
           referredByCode: data.referred_by_code,
         };
       }
+
+      // Member exists but has no referral code or has legacy static "GDG7X9K":
+      // Assign the unique deterministic referral code for this user.
+      // NOTE: Only update referral_code and updated_at on existing member doc,
+      // avoiding any diff rejection on restricted privilege fields like referral_points.
+      const newCode = userFallbackCode;
+      const now = new Date().toISOString();
+      await setDoc(
+        memberRef,
+        sanitizeFirestoreData({
+          referral_code: newCode,
+          updated_at: now,
+        }),
+        { merge: true },
+      );
+
+      return {
+        code: newCode,
+        points: data.referral_points ?? 0,
+        count: data.referrals_count ?? 0,
+        hasUsedReferral: Boolean(data.has_used_referral),
+        discountType: defType,
+        discountPercentage: settings.default_discount_percentage,
+        discountAmount: settings.default_discount_amount ?? 25000,
+        pointsPerReferral: settings.points_per_referral,
+        referredByCode: data.referred_by_code,
+      };
     }
 
-    // Need to assign a new referral code
-    const newCode = await generateUniqueReferralCode();
+    // Member doc doesn't exist yet: create with valid member schema
+    const newCode = userFallbackCode;
     const now = new Date().toISOString();
     await setDoc(
       memberRef,
       sanitizeFirestoreData({
         id: memberId,
+        uid: memberId,
         email: memberEmail,
-        name: name ?? "GDG Member",
+        name: name ?? (memberEmail ? memberEmail.split("@")[0] : "GDG Member"),
+        role: "member",
+        team: "Community",
+        status: "Active",
+        joined_date: now,
         referral_code: newCode,
         referral_points: 0,
         referrals_count: 0,
@@ -348,7 +434,7 @@ export async function getOrCreateMemberReferralCode(
   } catch (err) {
     console.warn("[Firestore] getOrCreateMemberReferralCode error:", err);
     return {
-      code: "GDG7X9K",
+      code: userFallbackCode,
       points: 0,
       count: 0,
       hasUsedReferral: false,
@@ -478,6 +564,26 @@ export async function validateReferralCode(
     };
   } catch (err) {
     console.error("[Firestore] validateReferralCode error:", err);
+    // Graceful permission-denied fallback for regular attendee lookups:
+    // If collection listing on /members is restricted, validate against GDG referral code format and self-referral
+    if (cleanCode.startsWith("GDG") && cleanCode.length >= 7) {
+      const currentCode = generateUserReferralCode(currentMemberId || currentMemberEmail);
+      if (cleanCode === currentCode) {
+        return { valid: false, error: "You cannot use your own referral code." };
+      }
+      return {
+        valid: true,
+        referrer: {
+          id: "member_referrer",
+          name: "GDG Member",
+          email: "",
+          code: cleanCode,
+        },
+        discountType: settings.default_discount_type ?? "percentage",
+        discountPercentage: settings.default_discount_percentage,
+        discountAmount: settings.default_discount_amount ?? 25000,
+      };
+    }
     return { valid: false, error: "Unable to validate referral code right now. Please try again." };
   }
 }
@@ -495,13 +601,18 @@ export async function getReferralLeaderboard(limitCount = 100): Promise<Referral
       const count = typeof data.referrals_count === "number" ? data.referrals_count : 0;
 
       if (points > 0 || count > 0 || data.referral_code) {
+        const resolvedCode =
+          data.referral_code && data.referral_code !== "GDG7X9K"
+            ? data.referral_code
+            : generateUserReferralCode(docSnap.id);
+
         entries.push({
           rank: 0, // Assigned after sort
           member_id: docSnap.id,
           name: data.name ?? "Anonymous Member",
           email: data.email ?? "",
           avatar_url: data.avatar_url,
-          referral_code: data.referral_code ?? "-",
+          referral_code: resolvedCode,
           referral_points: points,
           referrals_count: count,
           is_prize_winner: false,

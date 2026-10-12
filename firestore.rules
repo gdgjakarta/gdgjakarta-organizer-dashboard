@@ -335,10 +335,16 @@ service cloud.firestore {
     }
 
     // Staff Member Verification:
-    // Evaluates custom auth claims or member document role / chapter_role / team for operational staff roles
+    // Evaluates verified bootstrap staff emails, custom auth claims, or member document role / chapter_role / team for operational staff roles
     // ('Core Team', 'Check-in Staff', 'Team Member', and their kebab/snake case variations).
     function isStaffMember() {
       return isAuthenticated() && (
+        (
+          'email' in request.auth.token && request.auth.token.email is string &&
+          request.auth.token.email.lower() in [
+            'fachridantm@bangkit.academy'
+          ]
+        ) ||
         ('role' in request.auth.token && (
           request.auth.token.role in [
             'core_team', 'core-team', 'Core Team',
@@ -826,10 +832,10 @@ service cloud.firestore {
         )
       );
 
-      // Update: Organizers or members updating their own profile.
+      // Update: Organizers and staff members (hasTeamAccess), or members updating their own profile.
       // Members are strictly prevented from altering privilege fields ('role', 'team', 'uid', 'id', 'referral_points', 'referrals_count').
       allow update: if isValidMember(request.resource.data) && (
-        isOrganizer() ||
+        hasTeamAccess() ||
         (
           isOwner(memberId) &&
           !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'team', 'uid', 'id', 'referral_points', 'referrals_count'])
