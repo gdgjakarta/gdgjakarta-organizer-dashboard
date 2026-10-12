@@ -33,6 +33,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { getBevyLiveEventUrl, getBevyManageEventUrl } from "@/config/remote-config-utils";
@@ -366,53 +368,61 @@ export function EventDetailHeader({
         </div>
 
         {/* Action Buttons */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <Button variant="outline" size="sm" onClick={handleSync} disabled={isPending} className="gap-1.5">
             <RefreshCw className={cn("size-3.5", isPending && "animate-spin")} />
             Sync
           </Button>
 
-          {event.id && (
-            <Button variant="outline" size="sm" asChild className="gap-1.5">
-              <Link href={`/events/${event.id}`} target="_blank" rel="noopener noreferrer">
-                <Eye className="size-3.5" />
-                Preview Live Page
-              </Link>
-            </Button>
-          )}
+          {(event.id || liveBevyUrl) && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-1.5">
+                  <Eye className="size-3.5" />
+                  Preview & Share
+                  <ChevronDown className="size-3 opacity-60" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                {event.id && (
+                  <>
+                    <DropdownMenuLabel className="font-normal text-muted-foreground text-xs">
+                      Community Live Page
+                    </DropdownMenuLabel>
+                    <DropdownMenuItem asChild>
+                      <Link href={`/events/${event.id}`} target="_blank" rel="noopener noreferrer">
+                        <Eye className="mr-2 size-3.5" />
+                        Open Live Page
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleCopyLivePage}>
+                      <Copy className="mr-2 size-3.5" />
+                      Copy Live Page Link
+                    </DropdownMenuItem>
+                  </>
+                )}
 
-          {liveBevyUrl && (
-            <Button variant="outline" size="sm" asChild className="gap-1.5">
-              <a href={liveBevyUrl} target="_blank" rel="noopener noreferrer">
-                <Globe className="size-3.5" />
-                Preview Live Bevy Page
-              </a>
-            </Button>
+                {liveBevyUrl && (
+                  <>
+                    {event.id && <DropdownMenuSeparator />}
+                    <DropdownMenuLabel className="font-normal text-muted-foreground text-xs">
+                      Bevy Chapter Page
+                    </DropdownMenuLabel>
+                    <DropdownMenuItem asChild>
+                      <a href={liveBevyUrl} target="_blank" rel="noopener noreferrer">
+                        <Globe className="mr-2 size-3.5" />
+                        Open Bevy Page
+                      </a>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleCopyLiveBevyPage}>
+                      <Copy className="mr-2 size-3.5" />
+                      Copy Bevy Page Link
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-1.5">
-                <Copy className="size-3.5" />
-                Copy Link
-                <ChevronDown className="size-3 opacity-60" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {event.id && (
-                <DropdownMenuItem onClick={handleCopyLivePage}>
-                  <Copy className="mr-2 size-3.5" />
-                  Copy Link Live Page
-                </DropdownMenuItem>
-              )}
-              {liveBevyUrl && (
-                <DropdownMenuItem onClick={handleCopyLiveBevyPage}>
-                  <Globe className="mr-2 size-3.5" />
-                  Copy Link Live Bevy Page
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
 
           <Button size="sm" asChild className="gap-1.5">
             <a href={getBevyManageEventUrl(event.id)} target="_blank" rel="noopener noreferrer">
