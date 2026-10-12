@@ -91,6 +91,7 @@ service cloud.firestore {
     //   - referrer_member_id: string|null (optional, <= 128 chars) - Member UID of referrer
     //   - referrer_name: string|null (optional, <= 150 chars) - Display name of referrer
     //   - referral_discount_percent: int|float|null (optional, 0..100) - Referral discount percentage applied
+    //   - referral_discount_type: string|null (optional) - Referral discount calculation type ('percentage'|'fixed')
     //   - referral_discount_amount: int|float|null (optional, >= 0) - Referral discount amount in IDR
     //   - delivery_request: map|null (optional) - Merchandise delivery request for no-show attendees
     //     Fields in delivery_request:
@@ -174,6 +175,8 @@ service cloud.firestore {
     //   - bundles: list|null (optional, <= 50 items) - Bundling packages combining tickets & merchandise
     //   - vouchers: list|null (optional, <= 50 items) - Event discount vouchers configuration
     //   - referral_discount_percentage: int|float|null (optional, 0..100) - Referral discount percentage for this event
+    //   - referral_discount_type: string|null (optional) - Referral discount calculation type ('percentage'|'fixed')
+    //   - referral_discount_amount: int|float|null (optional, >= 0) - Referral discount fixed amount in IDR
     //   - referral_enabled: bool|null (optional) - Referral discount toggle for this event
     //   - highlight_video_url: string|null (optional, <= 2000 chars) - Highlight video URL
     //   - highlight_video_title: string|null (optional, <= 300 chars) - Highlight video title
@@ -255,6 +258,7 @@ service cloud.firestore {
     //   - ticket_type: string|null (optional, <= 50 chars) - Ticket type ('free'|'paid'|'commitment_fee')
     //   - ticket_price: int|float|null (optional, >= 0) - Ticket price
     //   - discount_percentage: int|float|null (optional, 0..100) - Applied discount percentage
+    //   - discount_type: string|null (optional) - Applied discount calculation type ('percentage'|'fixed')
     //   - discount_amount: int|float|null (optional, >= 0) - Applied discount amount
     //   - points_awarded: int|float (required, >= 0) - Referral points awarded to referrer
     //   - registration_id: string|null (optional, <= 200 chars) - Associated registration ID
@@ -265,7 +269,9 @@ service cloud.firestore {
     // Document ID: settingId (e.g. 'referral')
     // Fields:
     //   - id: string|null (optional, <= 128 chars) - Setting document identifier
+    //   - default_discount_type: string|null (optional) - Master default discount type ('percentage'|'fixed')
     //   - default_discount_percentage: int|float|null (optional, 0..100) - Default referral discount percentage
+    //   - default_discount_amount: int|float|null (optional, >= 0) - Default referral discount fixed amount in IDR
     //   - points_per_referral: int|float|null (optional, >= 0) - Points awarded per referral
     //   - is_active: bool|null (optional) - Program toggle
     //   - merch_prize_description: string|null (optional, <= 1000 chars) - Prize description
@@ -290,7 +296,7 @@ service cloud.firestore {
 
     // Dynamic Organizer Verification:
     // Evaluates custom auth claims, verified bootstrap organizer emails (@gdgjakarta.org or info@gdgjakarta.org),
-    // or organizer role / Core Team membership in the members collection.
+    // or organizer role / chapter role / Core Team membership in the members collection.
     function isOrganizer() {
       return isAuthenticated() && (
         ('role' in request.auth.token && request.auth.token.role == 'organizer') ||
@@ -307,7 +313,14 @@ service cloud.firestore {
           (
             get(/databases/$(database)/documents/members/$(request.auth.uid)).data.role == 'organizer' ||
             get(/databases/$(database)/documents/members/$(request.auth.uid)).data.role == 'Organizer' ||
-            get(/databases/$(database)/documents/members/$(request.auth.uid)).data.team == 'Core Team'
+            get(/databases/$(database)/documents/members/$(request.auth.uid)).data.team == 'Core Team' ||
+            (
+              'chapter_role' in get(/databases/$(database)/documents/members/$(request.auth.uid)).data &&
+              (
+                get(/databases/$(database)/documents/members/$(request.auth.uid)).data.chapter_role == 'organizer' ||
+                get(/databases/$(database)/documents/members/$(request.auth.uid)).data.chapter_role == 'Organizer'
+              )
+            )
           )
         )
       );
@@ -461,7 +474,7 @@ service cloud.firestore {
           'checked_in_at', 'is_checked_in', 'bevy_attendee_id', 'checkin_date',
           'attendee_code',
           'payment_status', 'payment_url', 'payment_invoice_number', 'payment_amount', 'payment_expired_datetime',
-          'referral_code', 'referrer_member_id', 'referrer_name', 'referral_discount_percent', 'referral_discount_amount',
+          'referral_code', 'referrer_member_id', 'referrer_name', 'referral_discount_percent', 'referral_discount_type', 'referral_discount_amount',
           'delivery_request',
           'updated_at'
         ]) &&
@@ -509,6 +522,7 @@ service cloud.firestore {
         (!('referrer_member_id' in data) || data.referrer_member_id == null || (data.referrer_member_id is string && data.referrer_member_id.size() <= 128)) &&
         (!('referrer_name' in data) || data.referrer_name == null || (data.referrer_name is string && data.referrer_name.size() <= 150)) &&
         (!('referral_discount_percent' in data) || data.referral_discount_percent == null || ((data.referral_discount_percent is int || data.referral_discount_percent is float) && data.referral_discount_percent >= 0 && data.referral_discount_percent <= 100)) &&
+        (!('referral_discount_type' in data) || data.referral_discount_type == null || (data.referral_discount_type is string && (data.referral_discount_type in ['percentage', 'fixed']))) &&
         (!('referral_discount_amount' in data) || data.referral_discount_amount == null || ((data.referral_discount_amount is int || data.referral_discount_amount is float) && data.referral_discount_amount >= 0)) &&
         (!('delivery_request' in data) || data.delivery_request == null || isValidDeliveryRequest(data.delivery_request)) &&
         (!('updated_at' in data) || data.updated_at == null || (data.updated_at is string && data.updated_at.size() <= 50));
@@ -531,7 +545,7 @@ service cloud.firestore {
           'tickets', 'max_tickets_per_person', 'merchandise', 'max_merchandise_per_person',
           'bundles',
           'vouchers',
-          'referral_discount_percentage', 'referral_enabled',
+          'referral_discount_percentage', 'referral_discount_type', 'referral_discount_amount', 'referral_enabled',
           'highlight_video_url', 'highlight_video_title', 'photo_album_url', 'photo_album_title', 'recap_description',
           'email_templates',
           'synced_from_bevy_at', 'created_at', 'updated_at'
@@ -586,6 +600,8 @@ service cloud.firestore {
         (!('bundles' in data) || data.bundles == null || (data.bundles is list && data.bundles.size() <= 50)) &&
         (!('vouchers' in data) || data.vouchers == null || (data.vouchers is list && data.vouchers.size() <= 50)) &&
         (!('referral_discount_percentage' in data) || data.referral_discount_percentage == null || ((data.referral_discount_percentage is int || data.referral_discount_percentage is float) && data.referral_discount_percentage >= 0 && data.referral_discount_percentage <= 100)) &&
+        (!('referral_discount_type' in data) || data.referral_discount_type == null || (data.referral_discount_type is string && (data.referral_discount_type in ['percentage', 'fixed']))) &&
+        (!('referral_discount_amount' in data) || data.referral_discount_amount == null || ((data.referral_discount_amount is int || data.referral_discount_amount is float) && data.referral_discount_amount >= 0)) &&
         (!('referral_enabled' in data) || data.referral_enabled == null || data.referral_enabled is bool) &&
         (!('highlight_video_url' in data) || data.highlight_video_url == null || (data.highlight_video_url is string && data.highlight_video_url.size() <= 2000)) &&
         (!('highlight_video_title' in data) || data.highlight_video_title == null || (data.highlight_video_title is string && data.highlight_video_title.size() <= 300)) &&
@@ -674,7 +690,7 @@ service cloud.firestore {
           'referee_id', 'referee_name', 'referee_email',
           'event_id', 'event_title',
           'ticket_id', 'ticket_name', 'ticket_type', 'ticket_price',
-          'discount_percentage', 'discount_amount',
+          'discount_percentage', 'discount_type', 'discount_amount',
           'points_awarded', 'registration_id', 'created_at', 'updated_at'
         ]) &&
         data.id is string && data.id.size() > 0 && data.id.size() <= 200 &&
@@ -694,6 +710,7 @@ service cloud.firestore {
         (!('ticket_type' in data) || data.ticket_type == null || (data.ticket_type is string && data.ticket_type.size() <= 50)) &&
         (!('ticket_price' in data) || data.ticket_price == null || ((data.ticket_price is int || data.ticket_price is float) && data.ticket_price >= 0)) &&
         (!('discount_percentage' in data) || data.discount_percentage == null || ((data.discount_percentage is int || data.discount_percentage is float) && data.discount_percentage >= 0 && data.discount_percentage <= 100)) &&
+        (!('discount_type' in data) || data.discount_type == null || (data.discount_type is string && (data.discount_type in ['percentage', 'fixed']))) &&
         (!('discount_amount' in data) || data.discount_amount == null || ((data.discount_amount is int || data.discount_amount is float) && data.discount_amount >= 0)) &&
         (!('registration_id' in data) || data.registration_id == null || (data.registration_id is string && data.registration_id.size() <= 200)) &&
         (!('updated_at' in data) || data.updated_at == null || (data.updated_at is string && data.updated_at.size() <= 50));
@@ -702,11 +719,14 @@ service cloud.firestore {
     // Validates system_settings document structure, data types, and bounds
     function isValidSystemSetting(data) {
       return hasOnlyAllowedFields(data, [
-          'id', 'default_discount_percentage', 'points_per_referral', 'is_active',
-          'merch_prize_description', 'updated_at', 'updated_by_name'
+          'id', 'default_discount_type', 'default_discount_percentage', 'default_discount_amount',
+          'points_per_referral', 'is_active', 'merch_prize_description',
+          'updated_at', 'updated_by_name'
         ]) &&
         (!('id' in data) || data.id == null || (data.id is string && data.id.size() <= 128)) &&
+        (!('default_discount_type' in data) || data.default_discount_type == null || (data.default_discount_type is string && (data.default_discount_type in ['percentage', 'fixed']))) &&
         (!('default_discount_percentage' in data) || data.default_discount_percentage == null || ((data.default_discount_percentage is int || data.default_discount_percentage is float) && data.default_discount_percentage >= 0 && data.default_discount_percentage <= 100)) &&
+        (!('default_discount_amount' in data) || data.default_discount_amount == null || ((data.default_discount_amount is int || data.default_discount_amount is float) && data.default_discount_amount >= 0)) &&
         (!('points_per_referral' in data) || data.points_per_referral == null || ((data.points_per_referral is int || data.points_per_referral is float) && data.points_per_referral >= 0)) &&
         (!('is_active' in data) || data.is_active == null || data.is_active is bool) &&
         (!('merch_prize_description' in data) || data.merch_prize_description == null || (data.merch_prize_description is string && data.merch_prize_description.size() <= 1000)) &&
@@ -907,8 +927,8 @@ service cloud.firestore {
     // System Settings Collection
     // -------------------------------------------------------------
     match /system_settings/{settingId} {
-      // Read: Allowed for all authenticated users (to read program settings & perks).
-      allow read: if isAuthenticated();
+      // Read: Allowed for authenticated users and public visitors (for attendee checkout code validation & program perks).
+      allow read: if true;
 
       // Write: Organizers only, validating settings structure and limits.
       allow create, update: if isOrganizer() && isValidSystemSetting(request.resource.data);

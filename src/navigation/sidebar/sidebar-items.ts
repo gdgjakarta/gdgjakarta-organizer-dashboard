@@ -99,7 +99,6 @@ export const organizerSidebarItems: NavGroup[] = [
         title: "Referrals",
         url: "/dashboard/referrals",
         icon: Trophy,
-        badge: "new",
       },
     ],
   },

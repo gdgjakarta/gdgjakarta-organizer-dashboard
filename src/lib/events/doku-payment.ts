@@ -164,8 +164,8 @@ export function buildRegistrationPaymentPayload(
     });
   }
 
-  // Adjust item prices if voucher discount is applied
-  const discountTotal = registration.voucher_discount_amount ?? 0;
+  // Adjust item prices if voucher or referral discount is applied
+  const discountTotal = (registration.voucher_discount_amount ?? 0) + (registration.referral_discount_amount ?? 0);
   if (discountTotal > 0 && items.length > 0) {
     let remainingDiscount = discountTotal;
     for (const item of items) {
@@ -176,6 +176,8 @@ export function buildRegistrationPaymentPayload(
       item.price = Math.round(newSubtotal / item.quantity);
       if (registration.voucher_code) {
         item.name = `${item.name} (${registration.voucher_code})`;
+      } else if (registration.referral_code) {
+        item.name = `${item.name} (Ref: ${registration.referral_code})`;
       }
       remainingDiscount -= discountToApply;
     }

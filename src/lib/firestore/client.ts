@@ -199,7 +199,9 @@ export async function updateFirestoreMemberBevyId(uid: string, bevyUserId: strin
 // ── Referral Program ────────────────────────────────────────────────────────
 
 const DEFAULT_REFERRAL_SETTINGS: ReferralProgramSettings = {
+  default_discount_type: "percentage",
   default_discount_percentage: 10,
+  default_discount_amount: 25000,
   points_per_referral: 10,
   is_active: true,
   merch_prize_description: "Exclusive GDG Jakarta merchandise bundle",
@@ -216,8 +218,10 @@ export async function getReferralProgramSettings(): Promise<ReferralProgramSetti
     }
     const data = snap.data() as Partial<ReferralProgramSettings>;
     return {
+      default_discount_type: data.default_discount_type === "fixed" ? "fixed" : "percentage",
       default_discount_percentage:
         typeof data.default_discount_percentage === "number" ? data.default_discount_percentage : 10,
+      default_discount_amount: typeof data.default_discount_amount === "number" ? data.default_discount_amount : 25000,
       points_per_referral: typeof data.points_per_referral === "number" ? data.points_per_referral : 10,
       is_active: data.is_active !== false,
       merch_prize_description: data.merch_prize_description ?? "Exclusive GDG Jakarta merchandise bundle",
@@ -272,18 +276,23 @@ export async function getOrCreateMemberReferralCode(
   points: number;
   count: number;
   hasUsedReferral: boolean;
+  discountType: "percentage" | "fixed";
   discountPercentage: number;
+  discountAmount?: number;
   pointsPerReferral: number;
   referredByCode?: string;
 }> {
   const settings = await getReferralProgramSettings();
+  const defType = settings.default_discount_type ?? "percentage";
   if (typeof window === "undefined" || !memberId) {
     return {
       code: "GDG7X9K",
       points: 0,
       count: 0,
       hasUsedReferral: false,
+      discountType: defType,
       discountPercentage: settings.default_discount_percentage,
+      discountAmount: settings.default_discount_amount ?? 25000,
       pointsPerReferral: settings.points_per_referral,
     };
   }
@@ -299,7 +308,9 @@ export async function getOrCreateMemberReferralCode(
           points: data.referral_points ?? 0,
           count: data.referrals_count ?? 0,
           hasUsedReferral: Boolean(data.has_used_referral),
+          discountType: defType,
           discountPercentage: settings.default_discount_percentage,
+          discountAmount: settings.default_discount_amount ?? 25000,
           pointsPerReferral: settings.points_per_referral,
           referredByCode: data.referred_by_code,
         };
@@ -329,7 +340,9 @@ export async function getOrCreateMemberReferralCode(
       points: 0,
       count: 0,
       hasUsedReferral: false,
+      discountType: defType,
       discountPercentage: settings.default_discount_percentage,
+      discountAmount: settings.default_discount_amount ?? 25000,
       pointsPerReferral: settings.points_per_referral,
     };
   } catch (err) {
@@ -339,7 +352,9 @@ export async function getOrCreateMemberReferralCode(
       points: 0,
       count: 0,
       hasUsedReferral: false,
+      discountType: defType,
       discountPercentage: settings.default_discount_percentage,
+      discountAmount: settings.default_discount_amount ?? 25000,
       pointsPerReferral: settings.points_per_referral,
     };
   }
@@ -354,7 +369,9 @@ export async function validateReferralCode(
   valid: boolean;
   error?: string;
   referrer?: { id: string; name: string; email: string; code: string };
+  discountType?: "percentage" | "fixed";
   discountPercentage?: number;
+  discountAmount?: number;
 }> {
   if (typeof window === "undefined") {
     return { valid: false, error: "Validation must be performed from client" };
@@ -407,8 +424,11 @@ export async function validateReferralCode(
       }
     }
 
-    // 5. Determine applicable discount percentage
+    // 5. Determine applicable discount
+    let discountType: "percentage" | "fixed" = settings.default_discount_type ?? "percentage";
     let discountPercent = settings.default_discount_percentage;
+    let discountAmount = settings.default_discount_amount ?? 25000;
+
     if (eventId) {
       try {
         const evSnap = await getDoc(doc(db, "events", String(eventId)));
@@ -420,7 +440,22 @@ export async function validateReferralCode(
               error: "Referral discounts are not enabled for this event.",
             };
           }
-          if (typeof evData.referral_discount_percentage === "number" && evData.referral_discount_percentage >= 0) {
+          if (evData.referral_discount_type === "fixed") {
+            discountType = "fixed";
+            if (typeof evData.referral_discount_amount === "number" && evData.referral_discount_amount >= 0) {
+              discountAmount = evData.referral_discount_amount;
+            }
+          } else if (evData.referral_discount_type === "percentage") {
+            discountType = "percentage";
+            if (typeof evData.referral_discount_percentage === "number" && evData.referral_discount_percentage >= 0) {
+              discountPercent = evData.referral_discount_percentage;
+            }
+          } else if (
+            typeof evData.referral_discount_percentage === "number" &&
+            evData.referral_discount_percentage >= 0
+          ) {
+            // Backwards compatibility if referral_discount_type wasn't explicitly saved
+            discountType = "percentage";
             discountPercent = evData.referral_discount_percentage;
           }
         }
@@ -437,7 +472,9 @@ export async function validateReferralCode(
         email: referrerData.email || "",
         code: cleanCode,
       },
-      discountPercentage: discountPercent,
+      discountType,
+      discountPercentage: discountType === "percentage" ? discountPercent : undefined,
+      discountAmount: discountType === "fixed" ? discountAmount : undefined,
     };
   } catch (err) {
     console.error("[Firestore] validateReferralCode error:", err);
@@ -1028,6 +1065,8 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
               ticket_name: registration.ticket_name,
               ticket_type: registration.ticket_type,
               ticket_price: registration.ticket_price,
+              discount_type:
+                registration.referral_discount_type ?? (registration.referral_discount_amount ? "fixed" : "percentage"),
               discount_percentage: registration.referral_discount_percent ?? 0,
               discount_amount: registration.referral_discount_amount ?? 0,
               points_awarded: pointsAwarded,
@@ -1472,10 +1511,48 @@ export async function deleteBatchEventRegistrations(registrationIds: string[], e
   }
 }
 
+/**
+ * Helper to ensure an event document exists in Firestore with required fields before modifying it.
+ * Returns true if the document already existed, false if it was newly initialized.
+ */
+async function ensureEventDocInitialized(
+  eventId: string,
+  baseEvent?: Partial<FirestoreEvent>,
+  additionalFields?: Record<string, unknown>,
+): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+  const eventRef = doc(db, "events", String(eventId));
+  const snap = await getDoc(eventRef);
+
+  if (!snap.exists()) {
+    const now = new Date().toISOString();
+    const fullPayload: Record<string, unknown> = {
+      ...(baseEvent ?? {}),
+      id: String(eventId),
+      title: baseEvent?.title ?? "Untitled Event",
+      status: baseEvent?.status ?? "Published",
+      start_date: baseEvent?.start_date ?? now,
+      end_date: baseEvent?.end_date ?? baseEvent?.start_date ?? now,
+      total_registrations: baseEvent?.total_registrations ?? 0,
+      total_approved: baseEvent?.total_approved ?? 0,
+      total_checked_in: baseEvent?.total_checked_in ?? 0,
+      requires_approval: baseEvent?.requires_approval ?? false,
+      ...(additionalFields ?? {}),
+      updated_at: now,
+      created_at: now,
+    };
+    const sanitized = sanitizeFirestoreData(fullPayload);
+    await setDoc(eventRef, sanitized, { merge: true });
+    return false;
+  }
+  return true;
+}
+
 export async function updateEventTickets(
   eventId: string,
   tickets: EventTicketTier[],
   maxTicketsPerPerson?: number | null,
+  baseEvent?: Partial<FirestoreEvent>,
 ): Promise<void> {
   if (typeof window === "undefined") return;
   const eventRef = doc(db, "events", String(eventId));
@@ -1486,6 +1563,10 @@ export async function updateEventTickets(
   if (maxTicketsPerPerson !== undefined) {
     updatePayload.max_tickets_per_person = maxTicketsPerPerson;
   }
+
+  const exists = await ensureEventDocInitialized(eventId, baseEvent, updatePayload);
+  if (!exists) return;
+
   const sanitized = sanitizeFirestoreData(updatePayload);
   await setDoc(eventRef, sanitized, { merge: true });
 }
@@ -1494,6 +1575,7 @@ export async function updateEventMerchandise(
   eventId: string,
   merchandise: EventMerchandiseItem[],
   maxMerchandisePerPerson?: number | null,
+  baseEvent?: Partial<FirestoreEvent>,
 ): Promise<void> {
   if (typeof window === "undefined") return;
   const eventRef = doc(db, "events", String(eventId));
@@ -1504,24 +1586,42 @@ export async function updateEventMerchandise(
   if (maxMerchandisePerPerson !== undefined) {
     updatePayload.max_merchandise_per_person = maxMerchandisePerPerson;
   }
+
+  const exists = await ensureEventDocInitialized(eventId, baseEvent, updatePayload);
+  if (!exists) return;
+
   const sanitized = sanitizeFirestoreData(updatePayload);
   await setDoc(eventRef, sanitized, { merge: true });
 }
 
-export async function updateEventVouchers(eventId: string, vouchers: EventVoucher[]): Promise<void> {
+export async function updateEventVouchers(
+  eventId: string,
+  vouchers: EventVoucher[],
+  baseEvent?: Partial<FirestoreEvent>,
+): Promise<void> {
   if (typeof window === "undefined") return;
   const eventRef = doc(db, "events", String(eventId));
   const updatePayload: Record<string, unknown> = {
     vouchers,
     updated_at: new Date().toISOString(),
   };
+
+  const exists = await ensureEventDocInitialized(eventId, baseEvent, updatePayload);
+  if (!exists) return;
+
   const sanitized = sanitizeFirestoreData(updatePayload);
   await setDoc(eventRef, sanitized, { merge: true });
 }
 
 export async function updateEventReferralConfig(
   eventId: string,
-  config: { referral_enabled?: boolean; referral_discount_percentage?: number | null },
+  config: {
+    referral_enabled?: boolean;
+    referral_discount_type?: "percentage" | "fixed";
+    referral_discount_percentage?: number | null;
+    referral_discount_amount?: number | null;
+  },
+  baseEvent?: Partial<FirestoreEvent>,
 ): Promise<void> {
   if (typeof window === "undefined" || !eventId) return;
   const eventRef = doc(db, "events", String(eventId));
@@ -1529,17 +1629,29 @@ export async function updateEventReferralConfig(
     ...config,
     updated_at: new Date().toISOString(),
   };
+
+  const exists = await ensureEventDocInitialized(eventId, baseEvent, updatePayload);
+  if (!exists) return;
+
   const sanitized = sanitizeFirestoreData(updatePayload);
   await setDoc(eventRef, sanitized, { merge: true });
 }
 
-export async function updateEventBundles(eventId: string, bundles: EventBundlePackage[]): Promise<void> {
+export async function updateEventBundles(
+  eventId: string,
+  bundles: EventBundlePackage[],
+  baseEvent?: Partial<FirestoreEvent>,
+): Promise<void> {
   if (typeof window === "undefined") return;
   const eventRef = doc(db, "events", String(eventId));
   const updatePayload: Record<string, unknown> = {
     bundles,
     updated_at: new Date().toISOString(),
   };
+
+  const exists = await ensureEventDocInitialized(eventId, baseEvent, updatePayload);
+  if (!exists) return;
+
   const sanitized = sanitizeFirestoreData(updatePayload);
   await setDoc(eventRef, sanitized, { merge: true });
 }
@@ -1554,6 +1666,7 @@ export async function updateEventHighlightsMedia(
     recap_description?: string;
     sessions?: EventSession[];
   },
+  baseEvent?: Partial<FirestoreEvent>,
 ): Promise<void> {
   if (typeof window === "undefined") return;
   const eventRef = doc(db, "events", String(eventId));
@@ -1584,16 +1697,28 @@ export async function updateEventHighlightsMedia(
     updatePayload.sessions = data.sessions.length > 0 ? data.sessions : deleteField();
   }
 
+  const exists = await ensureEventDocInitialized(eventId, baseEvent, updatePayload);
+  if (!exists) return;
+
   await setDoc(eventRef, updatePayload, { merge: true });
 }
 
-export async function updateEventEmailTemplates(eventId: string, emailTemplates: EventEmailTemplates): Promise<void> {
+export async function updateEventEmailTemplates(
+  eventId: string,
+  emailTemplates: EventEmailTemplates,
+  baseEvent?: Partial<FirestoreEvent>,
+): Promise<void> {
   if (typeof window === "undefined") return;
   const eventRef = doc(db, "events", String(eventId));
-  const sanitized = sanitizeFirestoreData({
+  const updatePayload: Record<string, unknown> = {
     email_templates: emailTemplates,
     updated_at: new Date().toISOString(),
-  });
+  };
+
+  const exists = await ensureEventDocInitialized(eventId, baseEvent, updatePayload);
+  if (!exists) return;
+
+  const sanitized = sanitizeFirestoreData(updatePayload);
   await setDoc(eventRef, sanitized, { merge: true });
 }
 
@@ -1790,34 +1915,14 @@ export async function updateEventMerchandiseDeliveryConfig(
 ): Promise<void> {
   if (typeof window === "undefined") return;
   const eventRef = doc(db, "events", String(eventId));
-  const snap = await getDoc(eventRef);
-
-  if (!snap.exists()) {
-    const now = new Date().toISOString();
-    const fullPayload: Record<string, unknown> = {
-      ...(baseEvent ?? {}),
-      id: String(eventId),
-      title: baseEvent?.title ?? "Untitled Event",
-      status: baseEvent?.status ?? "Published",
-      start_date: baseEvent?.start_date ?? now,
-      end_date: baseEvent?.end_date ?? baseEvent?.start_date ?? now,
-      total_registrations: baseEvent?.total_registrations ?? 0,
-      total_approved: baseEvent?.total_approved ?? 0,
-      total_checked_in: baseEvent?.total_checked_in ?? 0,
-      requires_approval: baseEvent?.requires_approval ?? false,
-      merchandise_delivery_payment_environment: environment,
-      updated_at: now,
-      created_at: now,
-    };
-    const sanitized = sanitizeFirestoreData(fullPayload);
-    await setDoc(eventRef, sanitized, { merge: true });
-    return;
-  }
-
   const updatePayload: Record<string, unknown> = {
     merchandise_delivery_payment_environment: environment,
     updated_at: new Date().toISOString(),
   };
+
+  const exists = await ensureEventDocInitialized(eventId, baseEvent, updatePayload);
+  if (!exists) return;
+
   const sanitized = sanitizeFirestoreData(updatePayload);
   await setDoc(eventRef, sanitized, { merge: true });
 }

@@ -412,7 +412,9 @@ export function EventRegistrationModal({
     code: string;
     referrerId: string;
     referrerName: string;
-    discountPercentage: number;
+    discountType?: "percentage" | "fixed";
+    discountPercentage?: number;
+    discountAmount?: number;
   } | null>(null);
   const [referralError, setReferralError] = useState<string | null>(null);
   const [isValidatingReferral, setIsValidatingReferral] = useState(false);
@@ -480,10 +482,14 @@ export function EventRegistrationModal({
 
   // Calculate referral ticket discount
   const referralDiscount = useMemo(() => {
-    if (!appliedReferral || !appliedReferral.discountPercentage || effectiveBasePrice <= 0) {
+    if (!appliedReferral || effectiveBasePrice <= 0) {
       return 0;
     }
-    return Math.round((effectiveBasePrice * appliedReferral.discountPercentage) / 100);
+    if (appliedReferral.discountType === "fixed") {
+      return Math.min(effectiveBasePrice, appliedReferral.discountAmount ?? 0);
+    }
+    const pct = appliedReferral.discountPercentage ?? 10;
+    return Math.round((effectiveBasePrice * pct) / 100);
   }, [appliedReferral, effectiveBasePrice]);
 
   const rawSubtotal = effectiveBasePrice + merchandiseTotalPrice;
@@ -544,10 +550,18 @@ export function EventRegistrationModal({
         code: cleanCode,
         referrerId: res.referrer?.id || "",
         referrerName: res.referrer?.name || "Community Member",
-        discountPercentage: res.discountPercentage ?? 10,
+        discountType: res.discountType,
+        discountPercentage: res.discountPercentage,
+        discountAmount: res.discountAmount,
       });
       setReferralError(null);
-      toast.success(`Referral code "${cleanCode}" applied! Enjoy ${res.discountPercentage ?? 10}% off your ticket.`);
+      if (res.discountType === "fixed") {
+        toast.success(
+          `Referral code "${cleanCode}" applied! Enjoy Rp ${(res.discountAmount ?? 0).toLocaleString("id-ID")} off your ticket.`,
+        );
+      } else {
+        toast.success(`Referral code "${cleanCode}" applied! Enjoy ${res.discountPercentage ?? 10}% off your ticket.`);
+      }
     } catch {
       setReferralError("Failed to validate referral code. Please try again.");
     } finally {
@@ -1146,6 +1160,7 @@ export function EventRegistrationModal({
           referral_code: appliedReferral?.code,
           referrer_member_id: appliedReferral?.referrerId,
           referrer_name: appliedReferral?.referrerName,
+          referral_discount_type: appliedReferral?.discountType,
           referral_discount_percent: appliedReferral?.discountPercentage,
           referral_discount_amount: referralDiscount > 0 ? referralDiscount : undefined,
         };
@@ -1206,6 +1221,7 @@ export function EventRegistrationModal({
           referral_code: appliedReferral?.code,
           referrer_member_id: appliedReferral?.referrerId,
           referrer_name: appliedReferral?.referrerName,
+          referral_discount_type: appliedReferral?.discountType,
           referral_discount_percent: appliedReferral?.discountPercentage,
           referral_discount_amount: referralDiscount > 0 ? referralDiscount : undefined,
           registered_at: new Date().toISOString(),
@@ -2538,7 +2554,11 @@ export function EventRegistrationModal({
                               variant="outline"
                               className="border-emerald-500/30 bg-emerald-500/10 font-semibold text-[10px] text-emerald-600 dark:text-emerald-400"
                             >
-                              Applied ({appliedReferral.discountPercentage}% OFF)
+                              Applied (
+                              {appliedReferral.discountType === "fixed"
+                                ? `Rp ${(appliedReferral.discountAmount ?? 0).toLocaleString("id-ID")} OFF`
+                                : `${appliedReferral.discountPercentage ?? 10}% OFF`}
+                              )
                             </Badge>
                           )}
                         </div>
@@ -2551,7 +2571,11 @@ export function EventRegistrationModal({
                                   {appliedReferral.code}
                                 </span>
                                 <span className="text-[11px] text-emerald-700 dark:text-emerald-400">
-                                  (-{appliedReferral.discountPercentage}% on ticket)
+                                  (-
+                                  {appliedReferral.discountType === "fixed"
+                                    ? `Rp ${(appliedReferral.discountAmount ?? 0).toLocaleString("id-ID")}`
+                                    : `${appliedReferral.discountPercentage ?? 10}%`}{" "}
+                                  on ticket)
                                 </span>
                               </div>
                               <p className="line-clamp-1 text-[10px] text-emerald-700/80 dark:text-emerald-400/80">
@@ -2665,7 +2689,11 @@ export function EventRegistrationModal({
                           <div className="flex items-center justify-between font-medium text-emerald-600 text-xs dark:text-emerald-400">
                             <span className="flex items-center gap-1">
                               <Sparkles className="size-3" />
-                              Referral Discount ({appliedReferral.discountPercentage}%)
+                              Referral Discount (
+                              {appliedReferral.discountType === "fixed"
+                                ? `Rp ${(appliedReferral.discountAmount ?? 0).toLocaleString("id-ID")}`
+                                : `${appliedReferral.discountPercentage ?? 10}%`}
+                              )
                             </span>
                             <span className="font-mono">-Rp {referralDiscount.toLocaleString("id-ID")}</span>
                           </div>

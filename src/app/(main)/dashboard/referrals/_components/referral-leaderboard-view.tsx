@@ -1,26 +1,64 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Crown, Gift, Sparkles, Ticket, Trophy, Users } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { getReferralLeaderboardAction, getReferralProgramSettingsAction } from "@/lib/firestore/actions";
 import type { ReferralLeaderboardEntry, ReferralProgramSettings } from "@/lib/firestore/types";
 
+import { ReferralLeaderboardSkeleton } from "../loading";
 import { ReferralExport } from "./referral-export";
 import { ReferralPodium } from "./referral-podium";
 import { ReferralSettingsDialog } from "./referral-settings-dialog";
 import { ReferralTable } from "./referral-table";
 
 interface ReferralLeaderboardViewProps {
-  initialEntries: ReferralLeaderboardEntry[];
+  initialEntries?: ReferralLeaderboardEntry[];
   initialSettings?: ReferralProgramSettings | null;
 }
 
 export function ReferralLeaderboardView({ initialEntries, initialSettings }: ReferralLeaderboardViewProps) {
-  const [entries, setEntries] = useState<ReferralLeaderboardEntry[]>(initialEntries);
+  const [entries, setEntries] = useState<ReferralLeaderboardEntry[]>(initialEntries ?? []);
   const [settings, setSettings] = useState<ReferralProgramSettings | null>(initialSettings ?? null);
+  const [loading, setLoading] = useState<boolean>(!initialEntries);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadData() {
+      try {
+        const [loadedEntries, loadedSettings] = await Promise.all([
+          getReferralLeaderboardAction(200),
+          getReferralProgramSettingsAction(),
+        ]);
+        if (isMounted) {
+          setEntries(loadedEntries);
+          if (loadedSettings) {
+            setSettings(loadedSettings);
+          }
+        }
+      } catch (err) {
+        console.error("[ReferralLeaderboardView] Failed to load referral data:", err);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    if (!initialEntries) {
+      void loadData();
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [initialEntries]);
+
+  if (loading) {
+    return <ReferralLeaderboardSkeleton />;
+  }
 
   const totalPoints = entries.reduce((acc, curr) => acc + (curr.referral_points || 0), 0);
   const totalReferrals = entries.reduce((acc, curr) => acc + (curr.referrals_count || 0), 0);
@@ -69,13 +107,19 @@ export function ReferralLeaderboardView({ initialEntries, initialSettings }: Ref
                   Season Grand Prize: {settings?.merch_prize_description || "Exclusive GDG Jakarta Merchandise"}
                 </p>
                 <Badge variant="secondary" className="font-mono text-[10px]">
-                  {settings?.default_discount_percentage ?? 10}% Attendee Discount
+                  {settings?.default_discount_type === "fixed"
+                    ? `Rp ${(settings?.default_discount_amount ?? 25000).toLocaleString("id-ID")}`
+                    : `${settings?.default_discount_percentage ?? 10}%`}{" "}
+                  Attendee Discount
                 </Badge>
               </div>
               <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
-                Attendees applying referral codes receive {settings?.default_discount_percentage ?? 10}% off their
-                ticket. Referrers gain +{settings?.points_per_referral ?? 10} points per ticket. The highest scorer wins
-                the official merchandise pack!
+                Attendees applying referral codes receive{" "}
+                {settings?.default_discount_type === "fixed"
+                  ? `Rp ${(settings?.default_discount_amount ?? 25000).toLocaleString("id-ID")}`
+                  : `${settings?.default_discount_percentage ?? 10}%`}{" "}
+                off their ticket. Referrers gain +{settings?.points_per_referral ?? 10} points per ticket. The highest
+                scorer wins the official merchandise pack!
               </p>
             </div>
           </div>

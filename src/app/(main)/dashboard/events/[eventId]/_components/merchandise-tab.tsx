@@ -125,7 +125,7 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
 
     startTransition(async () => {
       try {
-        const res = await updateEventMerchandiseAction(String(event.id), items, maxMerchandisePerPerson);
+        const res = await updateEventMerchandiseAction(String(event.id), items, maxMerchandisePerPerson, event);
         if (res.success) {
           setIsDirty(false);
           toast.success("Event merchandise saved successfully!");

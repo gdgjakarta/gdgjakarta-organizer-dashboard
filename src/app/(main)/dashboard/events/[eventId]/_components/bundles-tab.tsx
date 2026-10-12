@@ -187,7 +187,7 @@ export function BundlesTab({ event }: BundlesTabProps) {
 
     startTransition(async () => {
       try {
-        const res = await updateEventBundlesAction(String(event.id), bundles);
+        const res = await updateEventBundlesAction(String(event.id), bundles, event);
         if (res.success) {
           setIsDirty(false);
           toast.success("Bundling packages saved successfully!");

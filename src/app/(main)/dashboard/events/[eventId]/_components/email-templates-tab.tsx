@@ -397,7 +397,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
             },
           },
         };
-        const res = await updateEventEmailTemplatesAction(String(event.id), payload);
+        const res = await updateEventEmailTemplatesAction(String(event.id), payload, event);
         if (res.success) {
           setSavedTemplates(allDefaults);
           setSavedTemplatesData(cleanData);
@@ -526,7 +526,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
             },
           },
         };
-        const res = await updateEventEmailTemplatesAction(String(event.id), payload);
+        const res = await updateEventEmailTemplatesAction(String(event.id), payload, event);
         if (res.success) {
           setSavedTemplates(templates);
           setSavedTemplatesData(templatesData);

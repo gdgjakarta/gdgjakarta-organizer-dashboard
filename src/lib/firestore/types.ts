@@ -273,7 +273,9 @@ export interface FirestoreEvent {
   max_merchandise_per_person?: number | null; // Limit merchandise items per person (null = unlimited)
   vouchers?: EventVoucher[];
   bundles?: EventBundlePackage[];
+  referral_discount_type?: "percentage" | "fixed"; // Referral discount type: "percentage" or "fixed"
   referral_discount_percentage?: number | null; // Custom referral ticket discount override for this event in %
+  referral_discount_amount?: number | null; // Custom referral ticket discount override for this event in IDR
   referral_enabled?: boolean; // Enable or disable referral discount for this event (default true)
   webhook_url?: string | null;
   payment_environment?: "production" | "sandbox";
@@ -484,6 +486,7 @@ export interface FirestoreRegistration {
   referral_code?: string;
   referrer_member_id?: string;
   referrer_name?: string;
+  referral_discount_type?: "percentage" | "fixed";
   referral_discount_percent?: number;
   referral_discount_amount?: number;
 
@@ -494,7 +497,9 @@ export interface FirestoreRegistration {
 }
 
 export interface ReferralProgramSettings {
+  default_discount_type?: "percentage" | "fixed"; // Master default discount type ("percentage" | "fixed")
   default_discount_percentage: number; // e.g. 10 (10% discount on tickets)
+  default_discount_amount?: number; // e.g. 25000 (Rp 25.000 discount on tickets)
   points_per_referral: number; // e.g. 10 points awarded per referral
   is_active: boolean; // Master referral program toggle
   merch_prize_description?: string; // "Exclusive GDG Jakarta merchandise"
@@ -517,6 +522,7 @@ export interface ReferralRedemption {
   ticket_name?: string | null;
   ticket_type?: TicketType;
   ticket_price?: number;
+  discount_type?: "percentage" | "fixed";
   discount_percentage: number;
   discount_amount: number;
   points_awarded: number;

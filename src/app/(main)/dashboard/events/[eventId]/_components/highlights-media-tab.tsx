@@ -151,14 +151,18 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
     setIsSaving(true);
     startTransition(async () => {
       try {
-        const res = await updateEventHighlightsMediaAction(String(event.id), {
-          highlight_video_url: highlightVideoUrl,
-          highlight_video_title: highlightVideoTitle,
-          photo_album_url: photoAlbumUrl,
-          photo_album_title: photoAlbumTitle,
-          recap_description: recapDescription,
-          sessions,
-        });
+        const res = await updateEventHighlightsMediaAction(
+          String(event.id),
+          {
+            highlight_video_url: highlightVideoUrl,
+            highlight_video_title: highlightVideoTitle,
+            photo_album_url: photoAlbumUrl,
+            photo_album_title: photoAlbumTitle,
+            recap_description: recapDescription,
+            sessions,
+          },
+          event,
+        );
 
         if (res.success) {
           initialSnapshotRef.current = currentSnapshot;

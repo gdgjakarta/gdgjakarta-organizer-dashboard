@@ -191,10 +191,11 @@ export async function updateEventTicketsAction(
   eventId: string,
   tickets: import("./types").EventTicketTier[],
   maxTicketsPerPerson?: number | null,
+  baseEvent?: Partial<FirestoreEvent>,
 ) {
   try {
     const { updateEventTickets } = await import("./client");
-    await updateEventTickets(eventId, tickets, maxTicketsPerPerson);
+    await updateEventTickets(eventId, tickets, maxTicketsPerPerson, baseEvent);
     await revalidateDashboardPath(`/dashboard/events/${eventId}`);
     return { success: true };
   } catch (err) {
@@ -211,10 +212,11 @@ export async function updateEventMerchandiseAction(
   eventId: string,
   merchandise: import("./types").EventMerchandiseItem[],
   maxMerchandisePerPerson?: number | null,
+  baseEvent?: Partial<FirestoreEvent>,
 ) {
   try {
     const { updateEventMerchandise } = await import("./client");
-    await updateEventMerchandise(eventId, merchandise, maxMerchandisePerPerson);
+    await updateEventMerchandise(eventId, merchandise, maxMerchandisePerPerson, baseEvent);
     await revalidateDashboardPath(`/dashboard/events/${eventId}`);
     return { success: true };
   } catch (err) {
@@ -227,10 +229,14 @@ export async function updateEventMerchandiseAction(
 /**
  * Update event discount vouchers
  */
-export async function updateEventVouchersAction(eventId: string, vouchers: import("./types").EventVoucher[]) {
+export async function updateEventVouchersAction(
+  eventId: string,
+  vouchers: import("./types").EventVoucher[],
+  baseEvent?: Partial<FirestoreEvent>,
+) {
   try {
     const { updateEventVouchers } = await import("./client");
-    await updateEventVouchers(eventId, vouchers);
+    await updateEventVouchers(eventId, vouchers, baseEvent);
     await revalidateDashboardPath(`/dashboard/events/${eventId}`);
     return { success: true };
   } catch (err) {
@@ -245,11 +251,17 @@ export async function updateEventVouchersAction(eventId: string, vouchers: impor
  */
 export async function updateEventReferralConfigAction(
   eventId: string,
-  config: { referral_enabled?: boolean; referral_discount_percentage?: number | null },
+  config: {
+    referral_enabled?: boolean;
+    referral_discount_type?: "percentage" | "fixed";
+    referral_discount_percentage?: number | null;
+    referral_discount_amount?: number | null;
+  },
+  baseEvent?: Partial<FirestoreEvent>,
 ) {
   try {
     const { updateEventReferralConfig } = await import("./client");
-    await updateEventReferralConfig(eventId, config);
+    await updateEventReferralConfig(eventId, config, baseEvent);
     await revalidateDashboardPath(`/dashboard/events/${eventId}`);
     await revalidateDashboardPath("/dashboard/events");
     await revalidateDashboardPath(`/events/${eventId}`);
@@ -264,10 +276,14 @@ export async function updateEventReferralConfigAction(
 /**
  * Update event bundling packages (combining tickets and merchandise)
  */
-export async function updateEventBundlesAction(eventId: string, bundles: import("./types").EventBundlePackage[]) {
+export async function updateEventBundlesAction(
+  eventId: string,
+  bundles: import("./types").EventBundlePackage[],
+  baseEvent?: Partial<FirestoreEvent>,
+) {
   try {
     const { updateEventBundles } = await import("./client");
-    await updateEventBundles(eventId, bundles);
+    await updateEventBundles(eventId, bundles, baseEvent);
     await revalidateDashboardPath(`/dashboard/events/${eventId}`);
     return { success: true };
   } catch (err) {
@@ -283,10 +299,11 @@ export async function updateEventBundlesAction(eventId: string, bundles: import(
 export async function updateEventEmailTemplatesAction(
   eventId: string,
   emailTemplates: import("./types").EventEmailTemplates,
+  baseEvent?: Partial<FirestoreEvent>,
 ) {
   try {
     const { updateEventEmailTemplates } = await import("./client");
-    await updateEventEmailTemplates(eventId, emailTemplates);
+    await updateEventEmailTemplates(eventId, emailTemplates, baseEvent);
     await revalidateDashboardPath(`/dashboard/events/${eventId}`);
     return { success: true };
   } catch (err) {
@@ -331,10 +348,11 @@ export async function updateEventHighlightsMediaAction(
     recap_description?: string;
     sessions?: import("./types").EventSession[];
   },
+  baseEvent?: Partial<FirestoreEvent>,
 ) {
   try {
     const { updateEventHighlightsMedia } = await import("./client");
-    await updateEventHighlightsMedia(eventId, data);
+    await updateEventHighlightsMedia(eventId, data, baseEvent);
     await revalidateDashboardPath(`/dashboard/events/${eventId}`);
     return { success: true };
   } catch (err) {

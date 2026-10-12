@@ -208,7 +208,7 @@ export function TicketsTab({ event }: TicketsTabProps) {
 
     startTransition(async () => {
       try {
-        const res = await updateEventTicketsAction(String(event.id), finalTickets, maxTicketsPerPerson);
+        const res = await updateEventTicketsAction(String(event.id), finalTickets, maxTicketsPerPerson, event);
         if (res.success) {
           setTickets(finalTickets);
           setIsDirty(false);

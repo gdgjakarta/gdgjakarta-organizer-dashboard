@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { Settings, Sparkles } from "lucide-react";
+import { Percent, Settings, Sparkles, Tag } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { saveReferralProgramSettingsAction } from "@/lib/firestore/actions";
 import type { ReferralProgramSettings } from "@/lib/firestore/types";
+import { cn } from "@/lib/utils";
 
 interface ReferralSettingsDialogProps {
   initialSettings?: ReferralProgramSettings | null;
@@ -31,7 +32,11 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  const [discountType, setDiscountType] = useState<"percentage" | "fixed">(
+    initialSettings?.default_discount_type === "fixed" ? "fixed" : "percentage",
+  );
   const [discountPercent, setDiscountPercent] = useState<number>(initialSettings?.default_discount_percentage ?? 10);
+  const [discountAmount, setDiscountAmount] = useState<number>(initialSettings?.default_discount_amount ?? 25000);
   const [pointsPerReferral, setPointsPerReferral] = useState<number>(initialSettings?.points_per_referral ?? 10);
   const [isActive, setIsActive] = useState<boolean>(initialSettings?.is_active ?? true);
   const [prizeDesc, setPrizeDesc] = useState<string>(
@@ -42,7 +47,9 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
     setSaving(true);
     try {
       const res = await saveReferralProgramSettingsAction({
+        default_discount_type: discountType,
         default_discount_percentage: Number(discountPercent) || 0,
+        default_discount_amount: Number(discountAmount) || 0,
         points_per_referral: Number(pointsPerReferral) || 0,
         is_active: isActive,
         merch_prize_description: prizeDesc.trim(),
@@ -56,7 +63,9 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
       toast.success("Referral program settings updated successfully!");
       if (onSettingsUpdated) {
         onSettingsUpdated({
+          default_discount_type: discountType,
           default_discount_percentage: Number(discountPercent) || 0,
+          default_discount_amount: Number(discountAmount) || 0,
           points_per_referral: Number(pointsPerReferral) || 0,
           is_active: isActive,
           merch_prize_description: prizeDesc.trim(),
@@ -107,26 +116,97 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
             <Switch checked={isActive} onCheckedChange={setIsActive} />
           </div>
 
-          {/* Discount Percentage */}
-          <Field>
-            <FieldLabel className="text-xs font-medium">Default Ticket Discount Percentage (%)</FieldLabel>
-            <div className="relative mt-1">
-              <Input
-                type="number"
-                min={0}
-                max={100}
-                value={discountPercent}
-                onChange={(e) => setDiscountPercent(Math.min(100, Math.max(0, Number(e.target.value))))}
-                className="h-8 pr-8 font-mono text-xs"
-              />
-              <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-muted-foreground">
-                %
-              </span>
+          {/* Discount Configuration: Type & Value */}
+          <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
+            <div className="space-y-1">
+              <FieldLabel className="text-xs font-medium">Default Discount Type</FieldLabel>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDiscountType("percentage")}
+                  className={cn(
+                    "flex items-center gap-2 rounded-lg border p-2.5 text-left transition-all",
+                    discountType === "percentage"
+                      ? "border-primary bg-primary/10 text-primary shadow-xs font-semibold"
+                      : "border-border hover:bg-muted/50 text-muted-foreground",
+                  )}
+                >
+                  <div
+                    className={cn(
+                      "flex size-6 shrink-0 items-center justify-center rounded-md border",
+                      discountType === "percentage" ? "border-primary bg-primary text-primary-foreground" : "bg-muted",
+                    )}
+                  >
+                    <Percent className="size-3" />
+                  </div>
+                  <div className="text-xs">Percentage (%)</div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setDiscountType("fixed")}
+                  className={cn(
+                    "flex items-center gap-2 rounded-lg border p-2.5 text-left transition-all",
+                    discountType === "fixed"
+                      ? "border-primary bg-primary/10 text-primary shadow-xs font-semibold"
+                      : "border-border hover:bg-muted/50 text-muted-foreground",
+                  )}
+                >
+                  <div
+                    className={cn(
+                      "flex size-6 shrink-0 items-center justify-center rounded-md border",
+                      discountType === "fixed" ? "border-primary bg-primary text-primary-foreground" : "bg-muted",
+                    )}
+                  >
+                    <Tag className="size-3" />
+                  </div>
+                  <div className="text-xs">Fixed Amount (Rp)</div>
+                </button>
+              </div>
             </div>
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              Discount automatically applied to attendees purchasing a ticket via referral code.
-            </p>
-          </Field>
+
+            {discountType === "percentage" ? (
+              <Field>
+                <FieldLabel className="text-xs font-medium">Default Ticket Discount Percentage (%)</FieldLabel>
+                <div className="relative mt-1">
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={discountPercent}
+                    onChange={(e) => setDiscountPercent(Math.min(100, Math.max(0, Number(e.target.value))))}
+                    className="h-8 pr-8 font-mono text-xs"
+                  />
+                  <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-muted-foreground">
+                    %
+                  </span>
+                </div>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Percentage automatically deducted from tickets purchased using a referral code.
+                </p>
+              </Field>
+            ) : (
+              <Field>
+                <FieldLabel className="text-xs font-medium">Default Ticket Fixed Discount (Rp)</FieldLabel>
+                <div className="relative mt-1">
+                  <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-xs font-medium text-muted-foreground">
+                    Rp
+                  </span>
+                  <Input
+                    type="number"
+                    min={0}
+                    step={1000}
+                    value={discountAmount}
+                    onChange={(e) => setDiscountAmount(Math.max(0, Number(e.target.value)))}
+                    className="h-8 pl-8 font-mono text-xs"
+                  />
+                </div>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Fixed IDR amount automatically deducted from tickets purchased using a referral code.
+                </p>
+              </Field>
+            )}
+          </div>
 
           {/* Points Per Referral */}
           <Field>

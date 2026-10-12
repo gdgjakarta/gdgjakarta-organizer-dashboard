@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
-export default function ReferralLeaderboardLoading() {
+export function ReferralLeaderboardSkeleton() {
   return (
     <div className="flex h-full flex-col gap-6 p-4 md:p-6 lg:p-8">
       {/* Header Skeleton */}
@@ -69,3 +69,5 @@ export default function ReferralLeaderboardLoading() {
     </div>
   );
 }
+
+export default ReferralLeaderboardSkeleton;

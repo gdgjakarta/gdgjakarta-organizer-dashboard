@@ -68,19 +68,38 @@ export function VouchersTab({ event }: VouchersTabProps) {
 
   // Event Referral Settings State
   const [referralEnabled, setReferralEnabled] = useState<boolean>(event.referral_enabled !== false);
+  const [referralDiscountType, setReferralDiscountType] = useState<"percentage" | "fixed">(
+    event.referral_discount_type === "fixed" ? "fixed" : "percentage",
+  );
   const [referralDiscountOverride, setReferralDiscountOverride] = useState<string>(
     typeof event.referral_discount_percentage === "number" ? String(event.referral_discount_percentage) : "",
+  );
+  const [referralDiscountAmount, setReferralDiscountAmount] = useState<string>(
+    typeof event.referral_discount_amount === "number" ? String(event.referral_discount_amount) : "",
   );
   const [isSavingReferral, setIsSavingReferral] = useState(false);
 
   const handleSaveReferralConfig = async () => {
     setIsSavingReferral(true);
     try {
-      const parsedOverride = referralDiscountOverride.trim() !== "" ? Number(referralDiscountOverride) : null;
-      const res = await updateEventReferralConfigAction(String(event.id), {
-        referral_enabled: referralEnabled,
-        referral_discount_percentage: parsedOverride,
-      });
+      const parsedPercentage =
+        referralDiscountType === "percentage" && referralDiscountOverride.trim() !== ""
+          ? Number(referralDiscountOverride)
+          : null;
+      const parsedAmount =
+        referralDiscountType === "fixed" && referralDiscountAmount.trim() !== ""
+          ? Number(referralDiscountAmount)
+          : null;
+      const res = await updateEventReferralConfigAction(
+        String(event.id),
+        {
+          referral_enabled: referralEnabled,
+          referral_discount_type: referralDiscountType,
+          referral_discount_percentage: parsedPercentage,
+          referral_discount_amount: parsedAmount,
+        },
+        event,
+      );
       if (res.success) {
         toast.success("Event referral settings updated successfully!");
       } else {
@@ -215,7 +234,7 @@ export function VouchersTab({ event }: VouchersTabProps) {
   const handleSaveToFirestore = () => {
     startTransition(async () => {
       try {
-        const res = await updateEventVouchersAction(String(event.id), vouchers);
+        const res = await updateEventVouchersAction(String(event.id), vouchers, event);
         if (res.success) {
           setIsDirty(false);
           toast.success("Vouchers saved successfully!");
@@ -324,41 +343,109 @@ export function VouchersTab({ event }: VouchersTabProps) {
             </div>
           </div>
         </CardHeader>
-        <CardContent className="flex flex-col gap-3 p-4 pt-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
-            <div className="w-full max-w-[220px]">
-              <label
-                htmlFor="event-referral-discount-input"
-                className="text-[11px] font-medium text-muted-foreground block mb-1"
-              >
-                Discount Percentage (%):
-              </label>
-              <div className="relative">
-                <Input
-                  id="event-referral-discount-input"
-                  type="number"
-                  min="0"
-                  max="100"
-                  placeholder="Global default"
-                  value={referralDiscountOverride}
-                  onChange={(e) => setReferralDiscountOverride(e.target.value)}
+        <CardContent className="flex flex-col gap-4 p-4 pt-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+            {/* Segmented selector for Discount Type */}
+            <div className="flex flex-col gap-1">
+              <span className="text-[11px] font-medium text-muted-foreground">Discount Type:</span>
+              <div className="flex items-center gap-1 rounded-lg border bg-muted/40 p-0.5">
+                <button
+                  type="button"
                   disabled={!referralEnabled}
-                  className="h-8 text-xs pr-7"
-                />
-                <Percent className="absolute right-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                  onClick={() => setReferralDiscountType("percentage")}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all disabled:opacity-50",
+                    referralDiscountType === "percentage"
+                      ? "bg-background text-foreground shadow-xs font-semibold"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <Percent className="size-3" />
+                  Percentage (%)
+                </button>
+                <button
+                  type="button"
+                  disabled={!referralEnabled}
+                  onClick={() => setReferralDiscountType("fixed")}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all disabled:opacity-50",
+                    referralDiscountType === "fixed"
+                      ? "bg-background text-foreground shadow-xs font-semibold"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <Tag className="size-3" />
+                  Fixed Amount (Rp)
+                </button>
               </div>
             </div>
-            <p className="text-[11px] text-muted-foreground sm:pt-4">
-              {referralDiscountOverride.trim() !== ""
-                ? `Overrides the global default with a fixed ${referralDiscountOverride}% ticket discount for this event.`
-                : "No override set — uses the global referral program discount rate (configured in Referrals settings)."}
+
+            {/* Input field based on selected discount type */}
+            {referralDiscountType === "percentage" ? (
+              <div className="w-full max-w-[200px]">
+                <label
+                  htmlFor="event-referral-discount-input"
+                  className="text-[11px] font-medium text-muted-foreground block mb-1"
+                >
+                  Discount Percentage (%):
+                </label>
+                <div className="relative">
+                  <Input
+                    id="event-referral-discount-input"
+                    type="number"
+                    min="0"
+                    max="100"
+                    placeholder="Global default"
+                    value={referralDiscountOverride}
+                    onChange={(e) => setReferralDiscountOverride(e.target.value)}
+                    disabled={!referralEnabled}
+                    className="h-8 text-xs pr-7 font-mono"
+                  />
+                  <Percent className="absolute right-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                </div>
+              </div>
+            ) : (
+              <div className="w-full max-w-[200px]">
+                <label
+                  htmlFor="event-referral-fixed-input"
+                  className="text-[11px] font-medium text-muted-foreground block mb-1"
+                >
+                  Fixed Discount (Rp):
+                </label>
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-medium text-muted-foreground">
+                    Rp
+                  </span>
+                  <Input
+                    id="event-referral-fixed-input"
+                    type="number"
+                    min="0"
+                    step="1000"
+                    placeholder="Global default"
+                    value={referralDiscountAmount}
+                    onChange={(e) => setReferralDiscountAmount(e.target.value)}
+                    disabled={!referralEnabled}
+                    className="h-8 text-xs pl-8 font-mono"
+                  />
+                </div>
+              </div>
+            )}
+
+            <p className="text-[11px] text-muted-foreground sm:pt-4 max-w-sm">
+              {referralDiscountType === "percentage"
+                ? referralDiscountOverride.trim() !== ""
+                  ? `Overrides the global default with a fixed ${referralDiscountOverride}% ticket discount for this event.`
+                  : "No override set — uses the global referral program discount rate (configured in Referrals settings)."
+                : referralDiscountAmount.trim() !== ""
+                  ? `Overrides the global default with a fixed Rp ${Number(referralDiscountAmount).toLocaleString("id-ID")} ticket discount for this event.`
+                  : "No override set — uses the global referral program discount amount (configured in Referrals settings)."}
             </p>
           </div>
           <Button
             size="sm"
             onClick={handleSaveReferralConfig}
             disabled={isSavingReferral}
-            className="h-8 self-end sm:self-center text-xs"
+            className="h-8 self-end sm:self-center text-xs shrink-0"
           >
             {isSavingReferral && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
             Save Referral Settings

@@ -24,7 +24,9 @@ interface MemberReferralInfo {
   points: number;
   count: number;
   hasUsedReferral: boolean;
+  discountType?: "percentage" | "fixed";
   discountPercentage: number;
+  discountAmount?: number;
   pointsPerReferral: number;
   referredByCode?: string;
 }
@@ -62,6 +64,10 @@ export function MemberReferralCard() {
 
   const referralCode = info?.code || "GENERATING...";
   const discountPercent = info?.discountPercentage ?? 10;
+  const isFixed = info?.discountType === "fixed";
+  const discountLabel = isFixed
+    ? `Rp ${(info?.discountAmount ?? 25000).toLocaleString("id-ID")}`
+    : `${discountPercent}%`;
   const pointsPerRef = info?.pointsPerReferral ?? 10;
   const points = info?.points ?? 0;
   const referralsCount = info?.count ?? 0;
@@ -88,7 +94,7 @@ export function MemberReferralCard() {
       try {
         await navigator.share({
           title: "Join GDG Jakarta Events with my Referral Code!",
-          text: `Use my referral code ${info.code} to get ${discountPercent}% off your GDG Jakarta ticket!`,
+          text: `Use my referral code ${info.code} to get ${discountLabel} off your GDG Jakarta ticket!`,
           url: shareUrl,
         });
         return;
@@ -175,8 +181,7 @@ export function MemberReferralCard() {
                     <p className="font-medium text-foreground text-xs">They Get a Ticket Discount</p>
                     <p className="text-muted-foreground text-xs leading-relaxed">
                       When your friend books a ticket using your code, they receive up to{" "}
-                      <span className="font-semibold text-foreground">{discountPercent}% discount</span> on their
-                      ticket!
+                      <span className="font-semibold text-foreground">{discountLabel} discount</span> on their ticket!
                     </p>
                   </div>
                 </div>
