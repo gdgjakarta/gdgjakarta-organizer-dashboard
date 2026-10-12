@@ -295,7 +295,7 @@ service cloud.firestore {
     }
 
     // Dynamic Organizer Verification:
-    // Evaluates custom auth claims, verified bootstrap organizer emails (@gdgjakarta.org or info@gdgjakarta.org),
+    // Evaluates custom auth claims, verified bootstrap organizer emails (@gdgjakarta.org or authorized chapter organizer emails),
     // or organizer role / chapter role / Core Team membership in the members collection.
     function isOrganizer() {
       return isAuthenticated() && (
@@ -303,9 +303,18 @@ service cloud.firestore {
         (
           'email' in request.auth.token && request.auth.token.email is string &&
           (
-            request.auth.token.email == 'info@gdgjakarta.org' ||
-            request.auth.token.email.matches('(?i)^info@gdgjakarta\\.org$') ||
-            request.auth.token.email.matches('(?i)^[a-zA-Z0-9._%+-]+@gdgjakarta\\.org$')
+            request.auth.token.email.matches('(?i)^[a-zA-Z0-9._%+-]+@gdgjakarta\\.org$') ||
+            request.auth.token.email.lower().matches('^[a-zA-Z0-9._%+-]+@gdgjakarta\\.org$') ||
+            request.auth.token.email.lower() in [
+              'info@gdgjakarta.org',
+              'fachridantm@gmail.com',
+              'rizfirsy@gmail.com',
+              'anggi.hadaya@gmail.com',
+              'abadisuryo@gmail.com',
+              'anggitapinasthika@gmail.com',
+              'mukhammadnurprasaja@gmail.com',
+              'andiwijaya@gmail.com'
+            ]
           )
         ) ||
         (

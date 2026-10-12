@@ -1511,6 +1511,80 @@ export async function deleteBatchEventRegistrations(registrationIds: string[], e
   }
 }
 
+const ALLOWED_EVENT_DOC_KEYS = new Set<string>([
+  "id",
+  "title",
+  "description",
+  "description_short",
+  "status",
+  "start_date",
+  "end_date",
+  "picture_url",
+  "banner_url",
+  "picture",
+  "banner",
+  "cropped_picture_url",
+  "cropped_banner_url",
+  "event_type_title",
+  "audience_type",
+  "is_virtual",
+  "venue",
+  "url",
+  "static_url",
+  "tags",
+  "is_hidden",
+  "is_test",
+  "requires_approval",
+  "curation_mode",
+  "allow_waitlist",
+  "max_attendees",
+  "total_registrations",
+  "total_approved",
+  "total_checked_in",
+  "total_waitlisted",
+  "custom_questions",
+  "agenda",
+  "speakers",
+  "sessions",
+  "webhook_url",
+  "payment_webhook_url",
+  "payment_environment",
+  "merchandise_delivery_payment_environment",
+  "merchandise_delivery_fee",
+  "registration_status",
+  "registration_start_date",
+  "registration_end_date",
+  "tickets",
+  "max_tickets_per_person",
+  "merchandise",
+  "max_merchandise_per_person",
+  "bundles",
+  "vouchers",
+  "referral_discount_percentage",
+  "referral_discount_type",
+  "referral_discount_amount",
+  "referral_enabled",
+  "highlight_video_url",
+  "highlight_video_title",
+  "photo_album_url",
+  "photo_album_title",
+  "recap_description",
+  "email_templates",
+  "synced_from_bevy_at",
+  "created_at",
+  "updated_at",
+]);
+
+function pickAllowedEventFields(payload: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(payload)) {
+    if (ALLOWED_EVENT_DOC_KEYS.has(key) && value !== undefined) {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
 /**
  * Helper to ensure an event document exists in Firestore with required fields before modifying it.
  * Returns true if the document already existed, false if it was newly initialized.
@@ -1541,7 +1615,7 @@ async function ensureEventDocInitialized(
       updated_at: now,
       created_at: now,
     };
-    const sanitized = sanitizeFirestoreData(fullPayload);
+    const sanitized = sanitizeFirestoreData(pickAllowedEventFields(fullPayload));
     await setDoc(eventRef, sanitized, { merge: true });
     return false;
   }
@@ -1942,39 +2016,6 @@ export async function updateEventPaymentConfig(
 ): Promise<void> {
   if (typeof window === "undefined") return;
   const eventRef = doc(db, "events", String(eventId));
-  const snap = await getDoc(eventRef);
-
-  if (!snap.exists()) {
-    const now = new Date().toISOString();
-    const fullPayload: Record<string, unknown> = {
-      ...(baseEvent ?? {}),
-      id: String(eventId),
-      title: baseEvent?.title ?? "Untitled Event",
-      status: baseEvent?.status ?? "Published",
-      start_date: baseEvent?.start_date ?? now,
-      end_date: baseEvent?.end_date ?? baseEvent?.start_date ?? now,
-      total_registrations: baseEvent?.total_registrations ?? 0,
-      total_approved: baseEvent?.total_approved ?? 0,
-      total_checked_in: baseEvent?.total_checked_in ?? 0,
-      requires_approval: baseEvent?.requires_approval ?? false,
-      payment_environment: config.payment_environment,
-      ...(config.merchandise_delivery_payment_environment
-        ? { merchandise_delivery_payment_environment: config.merchandise_delivery_payment_environment }
-        : {}),
-      ...(typeof config.merchandise_delivery_fee === "number"
-        ? { merchandise_delivery_fee: config.merchandise_delivery_fee }
-        : {}),
-      payment_webhook_url:
-        config.payment_webhook_url && config.payment_webhook_url.trim().length > 0
-          ? config.payment_webhook_url.trim()
-          : null,
-      updated_at: now,
-    };
-    const sanitized = sanitizeFirestoreData(fullPayload);
-    await setDoc(eventRef, sanitized, { merge: true });
-    return;
-  }
-
   const updatePayload: Record<string, unknown> = {
     payment_environment: config.payment_environment,
     ...(config.merchandise_delivery_payment_environment
@@ -1989,6 +2030,10 @@ export async function updateEventPaymentConfig(
         : deleteField(),
     updated_at: new Date().toISOString(),
   };
+
+  const exists = await ensureEventDocInitialized(eventId, baseEvent, updatePayload);
+  if (!exists) return;
+
   const sanitized = sanitizeFirestoreData(updatePayload);
   await setDoc(eventRef, sanitized, { merge: true });
 }
