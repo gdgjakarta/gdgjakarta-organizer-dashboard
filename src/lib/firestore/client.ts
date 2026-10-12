@@ -303,7 +303,7 @@ export function generateUserReferralCode(seed: string): string {
   }
 
   let code = "GDG";
-  let combined = (BigInt(h1 >>> 0) << 32n) | BigInt(h2 >>> 0);
+  let combined = (BigInt(h1 >>> 0) << BigInt(32)) | BigInt(h2 >>> 0);
   for (let i = 0; i < 5; i++) {
     const idx = Number(combined % BigInt(chars.length));
     code += chars[idx];
