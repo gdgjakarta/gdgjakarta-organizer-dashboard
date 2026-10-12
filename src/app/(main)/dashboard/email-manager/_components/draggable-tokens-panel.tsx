@@ -82,6 +82,17 @@ export const PREBUILT_HTML_BLOCKS: DraggableTokenItem[] = [
   <div style="font-size: 15px; font-weight: 700; color: #1e3a8a; margin-top: 4px;">[[Name]] &bull; [[TicketType]]</div>
 </div>`,
   },
+  {
+    id: "block_footer_bubble",
+    tag: "Footer Bubble Logo",
+    label: "Footer Bubble Logo",
+    description: "GDG Jakarta bubble logo footer block",
+    snippet: `<div class="center">
+  <div class="footer">
+    <img alt="GDG Jakarta" src="https://assets.gdgjakarta.org/gdg-sign-bubble-transparent.png" style="width: 113px; height: auto;" />
+  </div>
+</div>`,
+  },
 ];
 
 interface DraggableTokensPanelProps {

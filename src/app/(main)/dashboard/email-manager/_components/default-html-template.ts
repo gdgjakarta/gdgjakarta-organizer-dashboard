@@ -55,6 +55,9 @@ export const defaultHtmlTemplate = `<!DOCTYPE html>
       font-weight: 600;
       font-size: 14px;
     }
+    .center {
+      text-align: center;
+    }
     .footer {
       background-color: #f1f5f9;
       padding: 20px 24px;
@@ -78,9 +81,10 @@ export const defaultHtmlTemplate = `<!DOCTYPE html>
       <p>If you have any questions or need further assistance, please feel free to reply to this email or reach out to our organizer team.</p>
       <p>Best regards,<br><strong>GDG Jakarta Organizer Team</strong></p>
     </div>
-    <div class="footer">
-      <p style="margin: 0;">You received this email because you registered for a GDG Jakarta event.</p>
-      <p style="margin: 4px 0 0;">Google Developer Groups Jakarta &bull; Jakarta, Indonesia</p>
+    <div class="center">
+      <div class="footer">
+        <img alt="GDG Jakarta" src="https://assets.gdgjakarta.org/gdg-jakarta/gdg-sign-bubble-transparent.png" style="width: 113px; height: auto;" />
+      </div>
     </div>
   </div>
 </body>
