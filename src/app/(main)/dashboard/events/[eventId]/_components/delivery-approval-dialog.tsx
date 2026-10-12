@@ -2,9 +2,10 @@
 
 import { useEffect, useState, useTransition } from "react";
 
-import { CheckCircle2, Loader2, Truck } from "lucide-react";
+import { CheckCircle2, Loader2, Search, Truck } from "lucide-react";
 import { toast } from "sonner";
 
+import { PackageTrackingDialog } from "@/components/delivery/package-tracking-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -61,6 +62,7 @@ export function DeliveryApprovalDialog({
     req?.dispatched_at ? req.dispatched_at.slice(0, 16) : new Date().toISOString().slice(0, 16),
   );
   const [notes, setNotes] = useState<string>(req?.notes ?? "");
+  const [isTrackingTestOpen, setIsTrackingTestOpen] = useState(false);
   const [isSubmitting, startTransition] = useTransition();
 
   useEffect(() => {
@@ -200,17 +202,49 @@ export function DeliveryApprovalDialog({
             </div>
 
             <div className="space-y-1">
-              <Label htmlFor="trackingNumber" className="text-xs">
-                Delivery ID / Tracking No. (Resi) <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="trackingNumber"
-                placeholder="e.g. PAX-12345678 or JNE98765432"
-                value={trackingNumber}
-                onChange={(e) => setTrackingNumber(e.target.value)}
-                required
-                className="h-9 font-mono text-xs"
-              />
+              <div className="flex items-center justify-between">
+                <Label htmlFor="trackingNumber" className="text-xs">
+                  Delivery ID / Tracking No. (Resi) <span className="text-destructive">*</span>
+                </Label>
+                {trackingNumber.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => setIsTrackingTestOpen(true)}
+                    className="text-[11px] font-medium text-primary hover:underline flex items-center gap-1"
+                  >
+                    <Search className="size-3" />
+                    Cek Resi Sekarang
+                  </button>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  id="trackingNumber"
+                  placeholder="e.g. 023423949234324 or PAX-12345678"
+                  value={trackingNumber}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setTrackingNumber(val);
+                    if (!trackingUrl && val.trim()) {
+                      setTrackingUrl(`https://cekresi.com/?r=w&noresi=${encodeURIComponent(val.trim())}`);
+                    }
+                  }}
+                  required
+                  className="h-9 font-mono text-xs flex-1"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!trackingNumber.trim()}
+                  onClick={() => setIsTrackingTestOpen(true)}
+                  className="h-9 text-xs gap-1 shrink-0 px-2.5"
+                  title="Uji pelacakan resi via CekResi API"
+                >
+                  <Search className="size-3.5" />
+                  Cek Resi
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -303,6 +337,14 @@ export function DeliveryApprovalDialog({
             </Button>
           </DialogFooter>
         </form>
+
+        <PackageTrackingDialog
+          open={isTrackingTestOpen}
+          onOpenChange={setIsTrackingTestOpen}
+          trackingNumber={trackingNumber}
+          courierType={courierType}
+          recipientName={req?.recipient_name}
+        />
       </DialogContent>
     </Dialog>
   );

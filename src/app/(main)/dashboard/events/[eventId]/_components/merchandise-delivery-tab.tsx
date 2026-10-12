@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { PackageTrackingDialog } from "@/components/delivery/package-tracking-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -90,6 +91,13 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
   const [approvingReg, setApprovingReg] = useState<FirestoreRegistration | null>(null);
   const [rejectingReg, setRejectingReg] = useState<FirestoreRegistration | null>(null);
   const [markingDeliveredId, setMarkingDeliveredId] = useState<string | null>(null);
+  const [isTrackingModalOpen, setIsTrackingModalOpen] = useState(false);
+  const [activeTracking, setActiveTracking] = useState<{
+    number: string;
+    courier?: string;
+    recipient?: string;
+    allowManualSearch?: boolean;
+  }>({ number: "", allowManualSearch: false });
 
   const loadRequests = useCallback(async () => {
     try {
@@ -377,6 +385,20 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
           <Button
             variant="outline"
             size="sm"
+            onClick={() => {
+              setActiveTracking({ number: "", allowManualSearch: true });
+              setIsTrackingModalOpen(true);
+            }}
+            className="h-9 gap-1.5 text-xs border-primary/30 text-primary hover:bg-primary/5"
+            title="Lacak nomor resi ekspedisi langsung via CekResi"
+          >
+            <Truck className="size-3.5" />
+            Cek Resi
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
             onClick={handleRefresh}
             disabled={isRefreshing || isLoading}
             className="h-9 gap-1.5 text-xs"
@@ -565,6 +587,23 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
                             </Button>
                           </div>
                           <div className="flex flex-wrap items-center gap-1.5">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-6 gap-1 px-1.5 text-[10px] border-primary/30 text-primary hover:bg-primary/5"
+                              onClick={() => {
+                                setActiveTracking({
+                                  number: req.tracking_number || "",
+                                  courier: req.courier_type,
+                                  recipient: req.recipient_name,
+                                  allowManualSearch: false,
+                                });
+                                setIsTrackingModalOpen(true);
+                              }}
+                            >
+                              <Truck className="size-2.5" />
+                              Lacak
+                            </Button>
                             {req.tracking_url && (
                               <Button asChild variant="ghost" size="sm" className="h-6 gap-1 px-1.5 text-[10px]">
                                 <a href={req.tracking_url} target="_blank" rel="noopener noreferrer">
@@ -691,6 +730,15 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
           }}
         />
       )}
+
+      <PackageTrackingDialog
+        open={isTrackingModalOpen}
+        onOpenChange={setIsTrackingModalOpen}
+        trackingNumber={activeTracking.number}
+        courierType={activeTracking.courier}
+        recipientName={activeTracking.recipient}
+        allowManualSearch={activeTracking.allowManualSearch}
+      />
     </div>
   );
 }

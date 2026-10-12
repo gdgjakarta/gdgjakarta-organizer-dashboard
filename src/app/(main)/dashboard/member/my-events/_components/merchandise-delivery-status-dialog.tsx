@@ -6,6 +6,7 @@ import { format, parseISO } from "date-fns";
 import { CheckCircle2, Clock, Copy, ExternalLink, FileImage, MapPin, ShoppingBag, Truck, XCircle } from "lucide-react";
 import { toast } from "sonner";
 
+import { PackageTrackingDialog } from "@/components/delivery/package-tracking-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -65,6 +66,7 @@ export function MerchandiseDeliveryStatusDialog({
 }: MerchandiseDeliveryStatusDialogProps) {
   const req = registration.delivery_request;
   const [copiedResi, setCopiedResi] = useState(false);
+  const [isLiveTrackingOpen, setIsLiveTrackingOpen] = useState(false);
 
   if (!req) return null;
 
@@ -199,10 +201,21 @@ export function MerchandiseDeliveryStatusDialog({
               )}
 
               <div className="flex flex-wrap items-center gap-2 pt-1">
+                {req.tracking_number && (
+                  <Button
+                    size="sm"
+                    className="h-8 gap-1.5 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
+                    onClick={() => setIsLiveTrackingOpen(true)}
+                  >
+                    <Truck className="size-3.5" />
+                    Lacak Perjalanan Paket
+                  </Button>
+                )}
+
                 {req.tracking_url && (
-                  <Button asChild size="sm" className="h-8 gap-1.5 text-xs">
+                  <Button asChild variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
                     <a href={req.tracking_url} target="_blank" rel="noopener noreferrer">
-                      Track Package Online
+                      Buka Web Ekspedisi
                       <ExternalLink className="size-3" />
                     </a>
                   </Button>
@@ -274,6 +287,14 @@ export function MerchandiseDeliveryStatusDialog({
             Close
           </Button>
         </DialogFooter>
+
+        <PackageTrackingDialog
+          open={isLiveTrackingOpen}
+          onOpenChange={setIsLiveTrackingOpen}
+          trackingNumber={req.tracking_number}
+          courierType={req.courier_type}
+          recipientName={req.recipient_name}
+        />
       </DialogContent>
     </Dialog>
   );

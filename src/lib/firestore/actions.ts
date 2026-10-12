@@ -727,3 +727,18 @@ export async function updateEventPaymentConfigAction(
     return { success: false, error: message };
   }
 }
+
+/**
+ * Tracks a package delivery status and journey history using the CekResi engine.
+ */
+export async function trackDeliveryPackageAction(input: { trackingNumber: string; courier?: string }) {
+  try {
+    const { trackPackageWithCekResi } = await import("@/lib/shipping/cek-resi");
+    const result = await trackPackageWithCekResi(input.trackingNumber, input.courier);
+    return result;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to track package.";
+    console.error("[trackDeliveryPackageAction] error:", message);
+    return { valid: false, error: message };
+  }
+}
