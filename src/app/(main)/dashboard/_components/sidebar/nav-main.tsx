@@ -37,8 +37,13 @@ import type {
   NavMainParentItem,
 } from "@/navigation/sidebar/sidebar-items";
 
+import { NavMainSkeleton } from "./nav-main-skeleton";
+
+export { NavMainSkeleton };
+
 interface NavMainProps {
   readonly items: readonly NavGroup[];
+  readonly isLoading?: boolean;
 }
 interface NavItemProps {
   readonly item: NavMainItem;
@@ -83,8 +88,12 @@ function hasSubItems(item: NavMainItem): item is NavMainParentItem {
   return Boolean(item.subItems?.length);
 }
 
-export function NavMain({ items }: NavMainProps) {
+export function NavMain({ items, isLoading = false }: NavMainProps) {
   const path = usePathname();
+
+  if (isLoading) {
+    return <NavMainSkeleton />;
+  }
 
   const isItemActive = (item: NavMainItem) => {
     if (hasSubItems(item)) {

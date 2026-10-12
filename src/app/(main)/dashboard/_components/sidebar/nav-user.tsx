@@ -32,7 +32,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from "@/components/ui/sidebar";
-import { Skeleton } from "@/components/ui/skeleton";
 import { getInitials } from "@/lib/utils";
 import { signOutOrganizer, useAuthStore } from "@/stores/auth/auth-provider";
 
@@ -59,11 +58,17 @@ export function NavUser({
     return (
       <SidebarMenu>
         <SidebarMenuItem>
-          <div className="flex h-12 items-center gap-2 px-2 py-1.5">
-            <Skeleton className="h-8 w-8 shrink-0 rounded-lg" />
-            <div className="grid flex-1 gap-1.5">
-              <Skeleton className="h-3.5 w-24" />
-              <Skeleton className="h-2.5 w-32" />
+          <div className="flex h-12 items-center gap-2 px-2 py-1.5 group-data-[collapsible=icon]:size-12! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0!">
+            <div className="relative size-8 shrink-0 overflow-hidden rounded-lg bg-muted">
+              <div className="shimmer-wave" aria-hidden="true" />
+            </div>
+            <div className="grid flex-1 gap-1.5 group-data-[collapsible=icon]:hidden">
+              <div className="relative h-3.5 w-24 overflow-hidden rounded bg-muted">
+                <div className="shimmer-wave" aria-hidden="true" />
+              </div>
+              <div className="relative h-2.5 w-32 overflow-hidden rounded bg-muted/80">
+                <div className="shimmer-wave" aria-hidden="true" />
+              </div>
             </div>
           </div>
         </SidebarMenuItem>
