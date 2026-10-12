@@ -259,6 +259,15 @@ export function TicketTierDialog({ open, onOpenChange, ticket, eventMerchandise 
   const handleSave = () => {
     if (!name.trim()) return;
 
+    if (salesStartDate && salesEndDate) {
+      const startMs = new Date(salesStartDate).getTime();
+      const endMs = new Date(salesEndDate).getTime();
+      if (!Number.isNaN(startMs) && !Number.isNaN(endMs) && endMs <= startMs) {
+        toast.error("Sales Close date must be after Sales Open date.");
+        return;
+      }
+    }
+
     const payload: EventTicketTier = {
       id: ticket?.id ?? `ticket-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       name: name.trim(),

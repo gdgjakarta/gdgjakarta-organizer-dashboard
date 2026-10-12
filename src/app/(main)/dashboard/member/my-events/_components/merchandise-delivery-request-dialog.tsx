@@ -362,7 +362,7 @@ export function MerchandiseDeliveryRequestDialog({
                   </a>
                 </Button>
                 <p className="text-center text-[11px] text-muted-foreground">
-                  Opens DOKU checkout (QRIS, Virtual Account, E-Wallet). Once paid, click below to confirm.
+                  Opens DOKU QRIS checkout. Scan the QR code with any e-wallet or banking app. Once paid, click below to confirm.
                 </p>
               </div>
             ) : (

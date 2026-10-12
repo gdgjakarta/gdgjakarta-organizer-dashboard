@@ -7,6 +7,7 @@ import {
   Bookmark,
   BookmarkPlus,
   CheckCircle2,
+  Clock,
   Copy,
   Edit2,
   Plus,
@@ -36,6 +37,7 @@ import {
   deleteCustomTicketTemplate,
   ensureEventTickets,
   getAllTicketTemplates,
+  getTicketSalesStatus,
   saveTicketAsTemplate,
   type TicketTemplate,
 } from "@/lib/events/ticket-templates";
@@ -453,6 +455,7 @@ export function TicketsTab({ event }: TicketsTabProps) {
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
               {tickets.map((t) => {
                 const meta = TICKET_TYPE_META[t.type];
+                const salesStatus = getTicketSalesStatus(t);
                 return (
                   <div
                     key={t.id}
@@ -467,17 +470,40 @@ export function TicketsTab({ event }: TicketsTabProps) {
                         <Badge variant="outline" className={cn("text-[10px] font-semibold", meta.color)}>
                           {meta.badge}
                         </Badge>
-                        <Badge
-                          variant="secondary"
-                          className={cn(
-                            "text-[10px] font-medium",
-                            t.status === "active" && "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
-                            t.status === "sold_out" && "bg-destructive/10 text-destructive",
-                            t.status === "hidden" && "bg-muted text-muted-foreground",
+                        <div className="flex items-center gap-1.5">
+                          {t.status === "active" && salesStatus.state === "upcoming" && (
+                            <Badge
+                              variant="outline"
+                              className="border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-400 text-[10px] font-medium"
+                            >
+                              Opens Soon
+                            </Badge>
                           )}
-                        >
-                          {getStatusLabel(t.status)}
-                        </Badge>
+                          {t.status === "active" && salesStatus.state === "ended" && (
+                            <Badge
+                              variant="secondary"
+                              className="bg-muted text-muted-foreground text-[10px] font-medium"
+                            >
+                              Sales Closed
+                            </Badge>
+                          )}
+                          <Badge
+                            variant="secondary"
+                            className={cn(
+                              "text-[10px] font-medium",
+                              t.status === "active" &&
+                                salesStatus.state === "available" &&
+                                "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+                              t.status === "active" &&
+                                salesStatus.state !== "available" &&
+                                "bg-muted text-muted-foreground",
+                              t.status === "sold_out" && "bg-destructive/10 text-destructive",
+                              t.status === "hidden" && "bg-muted text-muted-foreground",
+                            )}
+                          >
+                            {getStatusLabel(t.status)}
+                          </Badge>
+                        </div>
                       </div>
 
                       {/* Ticket Title & Price */}
@@ -539,6 +565,29 @@ export function TicketsTab({ event }: TicketsTabProps) {
                           <Ticket className="size-3" />
                           <span>Max {t.max_per_person ?? 1} / attendee</span>
                         </div>
+                        {(t.sales_start_date || t.sales_end_date) && (
+                          <div
+                            className={cn(
+                              "flex items-center gap-1 rounded px-2 py-0.5 text-[10px]",
+                              salesStatus.state === "available" &&
+                                "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+                              salesStatus.state === "upcoming" &&
+                                "bg-blue-500/10 text-blue-700 dark:text-blue-400",
+                              salesStatus.state === "ended" && "bg-muted/80 text-muted-foreground",
+                            )}
+                          >
+                            <Clock className="size-3 shrink-0" />
+                            <span>
+                              {salesStatus.state === "upcoming" && salesStatus.formattedStart
+                                ? `Sales starts ${salesStatus.formattedStart}`
+                                : salesStatus.state === "ended" && salesStatus.formattedEnd
+                                  ? `Sales closed ${salesStatus.formattedEnd}`
+                                  : salesStatus.formattedEnd
+                                    ? `Sales until ${salesStatus.formattedEnd}`
+                                    : "Sales Scheduled"}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
 

@@ -467,18 +467,35 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
       }
     }
 
-    // 3. Ticket capacity check
+    // 3. Ticket sales window and capacity check
     if (!isWaitlisted && registration.ticket_id && eventData.tickets) {
       const matchingTicket = eventData.tickets.find((t) => t.id === registration.ticket_id);
-      if (matchingTicket && typeof matchingTicket.capacity === "number" && matchingTicket.capacity > 0) {
-        const currentTicketCount = matchingTicket.total_registered || 0;
-        if (currentTicketCount >= matchingTicket.capacity) {
-          if (allowWaitlist) {
-            isWaitlisted = true;
-          } else {
-            throw new Error(
-              `The ticket tier "${matchingTicket.name}" is sold out (${matchingTicket.capacity} tickets).`,
-            );
+      if (matchingTicket) {
+        if (matchingTicket.status === "sold_out") {
+          throw new Error(`The ticket tier "${matchingTicket.name}" is sold out.`);
+        }
+        if (matchingTicket.sales_start_date && matchingTicket.sales_start_date.trim() !== "") {
+          const startTime = new Date(matchingTicket.sales_start_date).getTime();
+          if (!Number.isNaN(startTime) && Date.now() < startTime) {
+            throw new Error(`Sales for ticket "${matchingTicket.name}" have not started yet.`);
+          }
+        }
+        if (matchingTicket.sales_end_date && matchingTicket.sales_end_date.trim() !== "") {
+          const endTime = new Date(matchingTicket.sales_end_date).getTime();
+          if (!Number.isNaN(endTime) && Date.now() > endTime) {
+            throw new Error(`Sales for ticket "${matchingTicket.name}" have ended.`);
+          }
+        }
+        if (typeof matchingTicket.capacity === "number" && matchingTicket.capacity > 0) {
+          const currentTicketCount = matchingTicket.total_registered || 0;
+          if (currentTicketCount >= matchingTicket.capacity) {
+            if (allowWaitlist) {
+              isWaitlisted = true;
+            } else {
+              throw new Error(
+                `The ticket tier "${matchingTicket.name}" is sold out (${matchingTicket.capacity} tickets).`,
+              );
+            }
           }
         }
       }
@@ -1320,9 +1337,40 @@ export async function updateEventPaymentConfig(
     merchandise_delivery_payment_environment?: "production" | "sandbox";
     payment_webhook_url?: string | null;
   },
+  baseEvent?: Partial<FirestoreEvent>,
 ): Promise<void> {
   if (typeof window === "undefined") return;
   const eventRef = doc(db, "events", String(eventId));
+  const snap = await getDoc(eventRef);
+
+  if (!snap.exists()) {
+    const now = new Date().toISOString();
+    const fullPayload: Record<string, unknown> = {
+      ...(baseEvent ?? {}),
+      id: String(eventId),
+      title: baseEvent?.title || "Untitled Event",
+      status: baseEvent?.status || "Published",
+      start_date: baseEvent?.start_date || now,
+      end_date: baseEvent?.end_date || baseEvent?.start_date || now,
+      total_registrations: baseEvent?.total_registrations ?? 0,
+      total_approved: baseEvent?.total_approved ?? 0,
+      total_checked_in: baseEvent?.total_checked_in ?? 0,
+      requires_approval: baseEvent?.requires_approval ?? false,
+      payment_environment: config.payment_environment,
+      ...(config.merchandise_delivery_payment_environment
+        ? { merchandise_delivery_payment_environment: config.merchandise_delivery_payment_environment }
+        : {}),
+      payment_webhook_url:
+        config.payment_webhook_url && config.payment_webhook_url.trim().length > 0
+          ? config.payment_webhook_url.trim()
+          : null,
+      updated_at: now,
+    };
+    const sanitized = sanitizeFirestoreData(fullPayload);
+    await setDoc(eventRef, sanitized, { merge: true });
+    return;
+  }
+
   const updatePayload: Record<string, unknown> = {
     payment_environment: config.payment_environment,
     ...(config.merchandise_delivery_payment_environment

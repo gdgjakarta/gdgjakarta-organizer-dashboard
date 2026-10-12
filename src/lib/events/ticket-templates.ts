@@ -311,7 +311,6 @@ export function getRecommendedTicketsForFormat(formatId: string): EventTicketTie
           description: "Curated cohort entry to selected technical tracks and breakout sessions.",
         }),
       ];
-    case "free":
     default:
       return [createFreeRsvpTicket()];
   }
@@ -566,5 +565,124 @@ export function getAllTicketTemplates(): {
   return {
     defaultTemplates: DEFAULT_TICKET_TEMPLATES,
     customTemplates: getCustomTicketTemplates(),
+  };
+}
+
+export type TicketSalesState = "available" | "upcoming" | "ended" | "sold_out";
+
+export interface TicketSalesStatus {
+  isOpen: boolean;
+  state: TicketSalesState;
+  badgeLabel: string;
+  message?: string;
+  formattedStart?: string | null;
+  formattedEnd?: string | null;
+}
+
+/**
+ * Formats a sales date string for display.
+ */
+export function formatTicketDate(dateStr: string): string {
+  try {
+    const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return dateStr;
+    return d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return dateStr;
+  }
+}
+
+/**
+ * Evaluates the sales window status of an event ticket tier.
+ * A ticket is enabled/open only between sales_start_date and sales_end_date (if configured)
+ * and when status is active and capacity is not full.
+ */
+export function getTicketSalesStatus(ticket: EventTicketTier, now: number = Date.now()): TicketSalesStatus {
+  if (ticket.status === "hidden") {
+    return {
+      isOpen: false,
+      state: "ended",
+      badgeLabel: "Hidden",
+      message: `The ticket "${ticket.name}" is not open for registration.`,
+    };
+  }
+
+  if (ticket.status === "sold_out") {
+    return {
+      isOpen: false,
+      state: "sold_out",
+      badgeLabel: "Sold Out",
+      message: `The ticket "${ticket.name}" is sold out.`,
+    };
+  }
+
+  if (
+    typeof ticket.capacity === "number" &&
+    ticket.capacity > 0 &&
+    typeof ticket.total_registered === "number" &&
+    ticket.total_registered >= ticket.capacity
+  ) {
+    return {
+      isOpen: false,
+      state: "sold_out",
+      badgeLabel: "Sold Out",
+      message: `The ticket "${ticket.name}" has reached full capacity (${ticket.capacity} attendees).`,
+    };
+  }
+
+  const formattedStart =
+    ticket.sales_start_date && ticket.sales_start_date.trim() !== "" ? formatTicketDate(ticket.sales_start_date) : null;
+  const formattedEnd =
+    ticket.sales_end_date && ticket.sales_end_date.trim() !== "" ? formatTicketDate(ticket.sales_end_date) : null;
+
+  if (ticket.sales_start_date && ticket.sales_start_date.trim() !== "") {
+    try {
+      const startTime = new Date(ticket.sales_start_date).getTime();
+      if (!Number.isNaN(startTime) && now < startTime) {
+        return {
+          isOpen: false,
+          state: "upcoming",
+          badgeLabel: "Sales Opens Soon",
+          message: formattedStart ? `Sales starts on ${formattedStart}.` : "Sales has not opened yet.",
+          formattedStart,
+          formattedEnd,
+        };
+      }
+    } catch {
+      // ignore invalid date
+    }
+  }
+
+  if (ticket.sales_end_date && ticket.sales_end_date.trim() !== "") {
+    try {
+      const endTime = new Date(ticket.sales_end_date).getTime();
+      if (!Number.isNaN(endTime) && now > endTime) {
+        return {
+          isOpen: false,
+          state: "ended",
+          badgeLabel: "Sales Closed",
+          message: formattedEnd ? `Sales closed on ${formattedEnd}.` : "Sales has ended.",
+          formattedStart,
+          formattedEnd,
+        };
+      }
+    } catch {
+      // ignore invalid date
+    }
+  }
+
+  return {
+    isOpen: true,
+    state: "available",
+    badgeLabel: "Available",
+    message: formattedEnd ? `Sales closes on ${formattedEnd}.` : undefined,
+    formattedStart,
+    formattedEnd,
   };
 }

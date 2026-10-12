@@ -253,7 +253,7 @@ export function GenerateMerchandisePaymentDialog({
                 )}
               </div>
               <DialogDescription className="text-xs">
-                Create a dynamic QRIS / Virtual Account checkout link for this merchandise item.
+                Create a dynamic QRIS checkout link for this merchandise item.
               </DialogDescription>
             </div>
           </div>

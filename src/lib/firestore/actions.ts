@@ -2,7 +2,7 @@
 
 import { revalidateDashboardPath } from "@/server/server-actions";
 
-import type { FirestoreRegistration, RegistrationStatus } from "./types";
+import type { FirestoreEvent, FirestoreRegistration, RegistrationStatus } from "./types";
 
 /**
  * Triggers a full sync from Bevy into Firestore on the client.
@@ -712,10 +712,11 @@ export async function updateEventPaymentConfigAction(
     merchandise_delivery_payment_environment?: "production" | "sandbox";
     payment_webhook_url?: string | null;
   },
+  baseEvent?: Partial<FirestoreEvent>,
 ) {
   try {
     const { updateEventPaymentConfig } = await import("./client");
-    await updateEventPaymentConfig(eventId, config);
+    await updateEventPaymentConfig(eventId, config, baseEvent);
     await revalidateDashboardPath(`/dashboard/events/${eventId}`);
     await revalidateDashboardPath("/dashboard/events");
     await revalidateDashboardPath("/dashboard/member/my-events");

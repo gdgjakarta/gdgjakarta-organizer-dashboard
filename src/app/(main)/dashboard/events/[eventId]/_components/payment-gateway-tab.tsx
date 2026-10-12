@@ -4,18 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { useRouter } from "next/navigation";
 
-import {
-  AlertTriangle,
-  Check,
-  CheckCircle2,
-  Copy,
-  CreditCard,
-  Info,
-  QrCode,
-  ShieldCheck,
-  Truck,
-  Workflow,
-} from "lucide-react";
+import { AlertTriangle, Check, CheckCircle2, Copy, Info, QrCode, ShieldCheck, Truck, Workflow } from "lucide-react";
 import { toast } from "sonner";
 
 import { FloatingSaveBar } from "@/app/(main)/dashboard/_components/floating-save-bar";
@@ -210,11 +199,15 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
     startTransition(async () => {
       try {
         const trimmedWebhook = paymentWebhookUrl.trim();
-        const res = await updateEventPaymentConfigAction(String(event.id), {
-          payment_environment: paymentEnvironment,
-          merchandise_delivery_payment_environment: merchandiseDeliveryEnv,
-          payment_webhook_url: trimmedWebhook ? trimmedWebhook : null,
-        });
+        const res = await updateEventPaymentConfigAction(
+          String(event.id),
+          {
+            payment_environment: paymentEnvironment,
+            merchandise_delivery_payment_environment: merchandiseDeliveryEnv,
+            payment_webhook_url: trimmedWebhook ? trimmedWebhook : null,
+          },
+          event,
+        );
 
         if (res.success) {
           initialSnapshotRef.current = JSON.stringify({
@@ -236,7 +229,6 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
 
   const handleDiscard = () => {
     const raw = initialSnapshotRef.current;
-    // biome-ignore lint/suspicious/noUnnecessaryConditions: snapshot ref may be null prior to initial load
     if (!raw) return;
     try {
       const parsed = JSON.parse(raw) as {
@@ -274,7 +266,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
         <CardHeader>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2">
-              <CreditCard className="size-4 text-primary" />
+              <QrCode className="size-4 text-primary" />
               <CardTitle className="text-lg">Payment Gateway & API Environment</CardTitle>
             </div>
             <div className="flex items-center gap-2">
@@ -295,8 +287,8 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
             </div>
           </div>
           <CardDescription>
-            Configure whether payment link generation (DOKU Checkout via n8n webhook) for this event points to the Live
-            Production API or the Development / Sandbox environment.
+            Configure whether QRIS payment link generation (DOKU Checkout via n8n webhook) for this event points to the
+            Live Production API or the Development / Sandbox environment. QRIS is the only supported payment method.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -356,7 +348,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
               <p className="font-normal text-muted-foreground text-xs leading-relaxed">
                 Connects to the live DOKU payment processor (
                 <code className="rounded bg-muted px-1 text-[11px]">isProduction: true</code>). Attendees will make real
-                payments via QRIS, Virtual Accounts, or credit cards.
+                payments via QRIS using any supported e-wallet or mobile banking app.
               </p>
             </Label>
           </RadioGroup>
@@ -461,11 +453,12 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
             <div className="space-y-2 rounded-lg bg-muted/40 p-3 text-muted-foreground leading-relaxed">
               <div className="flex items-center gap-2 font-medium text-[11px] text-foreground">
                 <ShieldCheck className="size-3.5 text-emerald-600 dark:text-emerald-400" />
-                Supported Payment Methods
+                Supported Payment Method
               </div>
               <p className="text-[11px]">
-                <strong>QRIS</strong> (GoPay, OVO, Dana, ShopeePay, Mobile Banking), <strong>Virtual Accounts</strong>{" "}
-                (BCA, Mandiri, BRI, BNI), and <strong>Credit/Debit Cards</strong> via DOKU Checkout Hosted Page.
+                <strong>QRIS</strong> (GoPay, OVO, Dana, ShopeePay, LinkAja, and all Mobile Banking apps) via DOKU
+                Checkout Hosted Page. Attendees scan the generated QR code with any QRIS-compatible e-wallet or banking
+                app to complete payment.
               </p>
             </div>
           </CardContent>
@@ -548,7 +541,6 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
               onClick={() => {
                 setShowUnsavedDialog(false);
                 handleDiscard();
-                // biome-ignore lint/suspicious/noUnnecessaryConditions: navigation callback is stored dynamically
                 if (pendingNavigationRef.current) {
                   const nav = pendingNavigationRef.current;
                   pendingNavigationRef.current = null;

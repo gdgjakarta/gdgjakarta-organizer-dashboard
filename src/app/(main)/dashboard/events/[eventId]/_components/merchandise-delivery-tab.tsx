@@ -390,10 +390,10 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
               setIsTrackingModalOpen(true);
             }}
             className="h-9 gap-1.5 text-xs border-primary/30 text-primary hover:bg-primary/5"
-            title="Lacak nomor resi ekspedisi langsung via CekResi"
+            title="Track shipment expedition directly"
           >
             <Truck className="size-3.5" />
-            Cek Resi
+            Track Shipment
           </Button>
 
           <Button

@@ -67,7 +67,11 @@ import {
   getSessionRemainingSeats,
   isSessionAvailable,
 } from "@/lib/events/registration-defaults";
-import { createDefaultRegularTicket, ensureEventTickets } from "@/lib/events/ticket-templates";
+import {
+  createDefaultRegularTicket,
+  ensureEventTickets,
+  getTicketSalesStatus,
+} from "@/lib/events/ticket-templates";
 import { calculateVoucherDiscount, validateVoucherForCart } from "@/lib/events/voucher-utils";
 import { checkEventRegistrationAction, registerForEventAction } from "@/lib/firestore/actions";
 import type {
@@ -326,11 +330,18 @@ export function EventRegistrationModal({
     }
   }, [eventConfig.sessions, selectedSessionId]);
 
-  // Auto-select first active ticket if available and none selected
+  // Auto-select first open ticket if none selected or if currently selected ticket is closed/unavailable
   useEffect(() => {
-    const activeTickets = availableTickets.filter((t) => t.status === "active");
-    if (activeTickets.length > 0 && !selectedTicketId) {
-      setSelectedTicketId(activeTickets[0].id);
+    const openTickets = availableTickets.filter((t) => getTicketSalesStatus(t).isOpen);
+    const currentTicket = availableTickets.find((t) => t.id === selectedTicketId);
+    const isCurrentTicketOpen = currentTicket ? getTicketSalesStatus(currentTicket).isOpen : false;
+
+    if (!isCurrentTicketOpen) {
+      if (openTickets.length > 0) {
+        setSelectedTicketId(openTickets[0].id);
+      } else if (selectedTicketId) {
+        setSelectedTicketId("");
+      }
     }
   }, [availableTickets, selectedTicketId]);
 
@@ -795,11 +806,15 @@ export function EventRegistrationModal({
     // 2. Validate Ticket Tier Selection
     if (hasTickets) {
       if (!selectedTicket) {
-        toast.error("Please choose a ticket tier to attend.");
+        toast.error("Please choose an available ticket tier to attend.");
         return;
       }
-      if (selectedTicket.status === "sold_out") {
-        toast.error(`The ticket tier "${selectedTicket.name}" is sold out. Please select another tier.`);
+      const ticketSales = getTicketSalesStatus(selectedTicket);
+      if (!ticketSales.isOpen) {
+        toast.error(
+          ticketSales.message ||
+            `The ticket tier "${selectedTicket.name}" is currently not available for selection (${ticketSales.badgeLabel}).`,
+        );
         return;
       }
     }
@@ -869,12 +884,16 @@ export function EventRegistrationModal({
 
     if (hasTickets) {
       if (!selectedTicket) {
-        toast.error("Please choose a ticket tier to attend.");
+        toast.error("Please choose an available ticket tier to attend.");
         setRegistrationStep("tickets");
         return;
       }
-      if (selectedTicket.status === "sold_out") {
-        toast.error(`The ticket tier "${selectedTicket.name}" is sold out. Please select another tier.`);
+      const ticketSales = getTicketSalesStatus(selectedTicket);
+      if (!ticketSales.isOpen) {
+        toast.error(
+          ticketSales.message ||
+            `The ticket tier "${selectedTicket.name}" is currently not available for selection (${ticketSales.badgeLabel}).`,
+        );
         setRegistrationStep("tickets");
         return;
       }
@@ -1797,37 +1816,72 @@ export function EventRegistrationModal({
                           Select your preferred pass type. Free RSVP, Commitment Deposit, and Paid tiers are supported.
                         </p>
 
+                        {availableTickets.length > 0 && availableTickets.every((t) => !getTicketSalesStatus(t).isOpen) && (
+                          <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-300">
+                            <Clock className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                            <div>
+                              <p className="font-semibold">Ticket Sales Currently Closed</p>
+                              <p className="mt-0.5 text-[11px] text-amber-700/90 dark:text-amber-400/90 leading-relaxed">
+                                None of the ticket tiers are currently open for registration. Please review the sales window dates below.
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
                         <RadioGroup
                           value={selectedTicketId}
-                          onValueChange={setSelectedTicketId}
+                          onValueChange={(val) => {
+                            const target = availableTickets.find((t) => t.id === val);
+                            if (target && !getTicketSalesStatus(target).isOpen) {
+                              return;
+                            }
+                            setSelectedTicketId(val);
+                          }}
                           className="grid grid-cols-1 gap-2.5 pt-1"
                         >
                           {availableTickets.map((t) => {
-                            const isSelected = selectedTicketId === t.id;
-                            const isSoldOut = t.status === "sold_out";
+                            const salesStatus = getTicketSalesStatus(t);
+                            const isDisabled = !salesStatus.isOpen;
+                            const isSelected = selectedTicketId === t.id && !isDisabled;
 
                             return (
                               <label
                                 key={t.id}
                                 htmlFor={`ticket-opt-${t.id}`}
+                                onClick={(e) => {
+                                  if (isDisabled) {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    if (salesStatus.message) {
+                                      toast.info(salesStatus.message);
+                                    }
+                                  }
+                                }}
                                 className={cn(
-                                  "relative flex cursor-pointer items-start gap-3 rounded-lg border p-3.5 transition-colors",
-                                  isSelected
-                                    ? "border-primary bg-primary/10 shadow-xs ring-1 ring-primary/40"
-                                    : "border-border bg-card hover:bg-muted/30",
-                                  isSoldOut && "cursor-not-allowed opacity-60 hover:bg-card",
+                                  "relative flex items-start gap-3 rounded-lg border p-3.5 transition-colors",
+                                  isDisabled
+                                    ? "cursor-not-allowed border-border/60 bg-muted/30 opacity-60 hover:bg-muted/30"
+                                    : "cursor-pointer border-border bg-card hover:bg-muted/30",
+                                  isSelected && "border-primary bg-primary/10 shadow-xs ring-1 ring-primary/40",
                                 )}
                               >
                                 <RadioGroupItem
                                   value={t.id}
                                   id={`ticket-opt-${t.id}`}
-                                  disabled={isSoldOut}
+                                  disabled={isDisabled}
                                   className="mt-0.5 shrink-0"
                                 />
                                 <div className="flex-1 space-y-1">
                                   <div className="flex flex-wrap items-center justify-between gap-2">
                                     <div className="flex items-center gap-2">
-                                      <span className="font-medium text-foreground text-sm">{t.name}</span>
+                                      <span
+                                        className={cn(
+                                          "font-medium text-sm",
+                                          isDisabled ? "text-muted-foreground" : "text-foreground",
+                                        )}
+                                      >
+                                        {t.name}
+                                      </span>
                                       <Badge
                                         variant="outline"
                                         className={cn(
@@ -1844,12 +1898,33 @@ export function EventRegistrationModal({
                                       </Badge>
                                     </div>
                                     <div className="flex items-center gap-1.5">
-                                      <span className="font-bold text-foreground text-sm">
+                                      <span
+                                        className={cn(
+                                          "font-bold text-sm",
+                                          isDisabled ? "text-muted-foreground" : "text-foreground",
+                                        )}
+                                      >
                                         {t.type === "free" ? "Free" : `Rp ${(t.price || 0).toLocaleString("id-ID")}`}
                                       </span>
-                                      {isSoldOut && (
+                                      {salesStatus.state === "sold_out" && (
                                         <Badge variant="destructive" className="text-[10px]">
                                           Sold Out
+                                        </Badge>
+                                      )}
+                                      {salesStatus.state === "upcoming" && (
+                                        <Badge
+                                          variant="outline"
+                                          className="border-blue-500/40 bg-blue-500/10 text-[10px] font-medium text-blue-700 dark:text-blue-400"
+                                        >
+                                          Opens Soon
+                                        </Badge>
+                                      )}
+                                      {salesStatus.state === "ended" && (
+                                        <Badge
+                                          variant="secondary"
+                                          className="bg-muted text-[10px] text-muted-foreground"
+                                        >
+                                          Sales Closed
                                         </Badge>
                                       )}
                                     </div>
@@ -1857,6 +1932,26 @@ export function EventRegistrationModal({
 
                                   {t.description && (
                                     <p className="text-muted-foreground text-xs leading-relaxed">{t.description}</p>
+                                  )}
+
+                                  {/* Sales schedule info */}
+                                  {salesStatus.state === "upcoming" && salesStatus.formattedStart && (
+                                    <div className="mt-1 flex items-center gap-1.5 text-[11px] text-blue-600 dark:text-blue-400">
+                                      <Clock className="size-3.5 shrink-0" />
+                                      <span>Sales starts: {salesStatus.formattedStart}</span>
+                                    </div>
+                                  )}
+                                  {salesStatus.state === "ended" && salesStatus.formattedEnd && (
+                                    <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                                      <Clock className="size-3.5 shrink-0" />
+                                      <span>Sales ended: {salesStatus.formattedEnd}</span>
+                                    </div>
+                                  )}
+                                  {salesStatus.state === "available" && salesStatus.formattedEnd && (
+                                    <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                                      <Clock className="size-3.5 shrink-0" />
+                                      <span>Sales closes: {salesStatus.formattedEnd}</span>
+                                    </div>
                                   )}
 
                                   {t.type === "commitment_fee" && (
@@ -2870,7 +2965,15 @@ export function EventRegistrationModal({
                       >
                         Cancel
                       </Button>
-                      <Button type="button" size="sm" onClick={handleProceedToForm} className="gap-2 shadow-xs">
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleProceedToForm}
+                        disabled={
+                          isPending || (hasTickets && (!selectedTicket || !getTicketSalesStatus(selectedTicket).isOpen))
+                        }
+                        className="gap-2 shadow-xs"
+                      >
                         <span>Continue to Registration Form</span>
                         <ArrowRight className="size-3.5" />
                       </Button>

@@ -213,7 +213,7 @@ export function DeliveryApprovalDialog({
                     className="text-[11px] font-medium text-primary hover:underline flex items-center gap-1"
                   >
                     <Search className="size-3" />
-                    Cek Resi Sekarang
+                    Track Shipment Now
                   </button>
                 )}
               </div>
@@ -239,10 +239,10 @@ export function DeliveryApprovalDialog({
                   disabled={!trackingNumber.trim()}
                   onClick={() => setIsTrackingTestOpen(true)}
                   className="h-9 text-xs gap-1 shrink-0 px-2.5"
-                  title="Uji pelacakan resi via CekResi API"
+                  title="Track shipment via CekResi API"
                 >
                   <Search className="size-3.5" />
-                  Cek Resi
+                  Track Shipment
                 </Button>
               </div>
             </div>
