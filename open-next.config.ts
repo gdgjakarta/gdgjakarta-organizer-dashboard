@@ -5,6 +5,6 @@ const config = defineCloudflareConfig({
   incrementalCache: r2IncrementalCache,
 });
 
-config.buildCommand = "next build";
+config.buildCommand = "next build --webpack";
 
 export default config;
