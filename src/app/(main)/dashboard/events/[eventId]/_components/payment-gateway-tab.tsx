@@ -24,7 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { updateEventPaymentConfigAction } from "@/lib/firestore/actions";
+import { updateEventMerchandiseDeliveryConfigAction, updateEventPaymentConfigAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
@@ -108,6 +108,111 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
     }
     void loadConfig();
   }, [event]);
+
+  // Real-time synchronization across tabs in the same window
+  useEffect(() => {
+    const handleEnvChange = (e: Event) => {
+      const customEvent = e as CustomEvent<{ eventId: string; environment: "production" | "sandbox" }>;
+      if (customEvent.detail && String(customEvent.detail.eventId) === String(event.id)) {
+        const nextEnv = customEvent.detail.environment;
+        setMerchandiseDeliveryEnv(nextEnv);
+        if (initialSnapshotRef.current) {
+          try {
+            const parsed = JSON.parse(initialSnapshotRef.current);
+            parsed.merchandiseDeliveryEnv = nextEnv;
+            initialSnapshotRef.current = JSON.stringify(parsed);
+          } catch {
+            // ignore
+          }
+        }
+      }
+    };
+    window.addEventListener("gdg:merchandise-delivery-env-change", handleEnvChange);
+    return () => {
+      window.removeEventListener("gdg:merchandise-delivery-env-change", handleEnvChange);
+    };
+  }, [event.id]);
+
+  // Real-time subscription to Firestore document
+  useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+    async function setupSub() {
+      try {
+        const { subscribeFirestoreEventDoc } = await import("@/lib/firestore/client");
+        unsubscribe = subscribeFirestoreEventDoc(String(event.id), (docData) => {
+          if (docData.merchandise_delivery_payment_environment) {
+            setMerchandiseDeliveryEnv(docData.merchandise_delivery_payment_environment);
+          }
+          if (docData.payment_environment) {
+            setPaymentEnvironment(docData.payment_environment);
+          }
+          if (typeof docData.merchandise_delivery_fee === "number") {
+            setMerchandiseDeliveryFee(docData.merchandise_delivery_fee);
+          }
+          if (initialSnapshotRef.current) {
+            try {
+              const parsed = JSON.parse(initialSnapshotRef.current);
+              if (docData.merchandise_delivery_payment_environment) {
+                parsed.merchandiseDeliveryEnv = docData.merchandise_delivery_payment_environment;
+              }
+              if (docData.payment_environment) {
+                parsed.paymentEnvironment = docData.payment_environment;
+              }
+              if (typeof docData.merchandise_delivery_fee === "number") {
+                parsed.merchandiseDeliveryFee = docData.merchandise_delivery_fee;
+              }
+              initialSnapshotRef.current = JSON.stringify(parsed);
+            } catch {
+              // ignore
+            }
+          }
+        });
+      } catch (err) {
+        console.warn("[PaymentGatewayTab] Failed to subscribe to Firestore event:", err);
+      }
+    }
+    void setupSub();
+    return () => {
+      unsubscribe?.();
+    };
+  }, [event.id]);
+
+  const handleMerchandiseDeliveryEnvChange = async (val: "production" | "sandbox") => {
+    setMerchandiseDeliveryEnv(val);
+
+    // Optimistically broadcast change to MerchandiseDeliveryTab
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("gdg:merchandise-delivery-env-change", {
+          detail: { eventId: String(event.id), environment: val },
+        }),
+      );
+    }
+
+    // Keep baseline snapshot in sync so changing environment doesn't trigger dirty prompt
+    if (initialSnapshotRef.current) {
+      try {
+        const parsed = JSON.parse(initialSnapshotRef.current);
+        parsed.merchandiseDeliveryEnv = val;
+        initialSnapshotRef.current = JSON.stringify(parsed);
+      } catch {
+        // ignore
+      }
+    }
+
+    try {
+      const res = await updateEventMerchandiseDeliveryConfigAction(String(event.id), val, event);
+      if (res.success) {
+        toast.success(
+          `Delivery payment environment set to ${val === "production" ? "Live Production" : "Development / Sandbox"}.`,
+        );
+      } else {
+        toast.error(res.error || "Failed to update delivery payment environment.");
+      }
+    } catch {
+      toast.error("Failed to update delivery payment environment.");
+    }
+  };
 
   // Handle browser unload and navigation intercept when dirty
   useEffect(() => {
@@ -211,6 +316,13 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
         );
 
         if (res.success) {
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(
+              new CustomEvent("gdg:merchandise-delivery-env-change", {
+                detail: { eventId: String(event.id), environment: merchandiseDeliveryEnv },
+              }),
+            );
+          }
           initialSnapshotRef.current = JSON.stringify({
             paymentEnvironment,
             merchandiseDeliveryEnv,
@@ -544,7 +656,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
                 </FieldLabel>
                 <Select
                   value={merchandiseDeliveryEnv}
-                  onValueChange={(val: "production" | "sandbox") => setMerchandiseDeliveryEnv(val)}
+                  onValueChange={(val: "production" | "sandbox") => void handleMerchandiseDeliveryEnvChange(val)}
                 >
                   <SelectTrigger id="merch-delivery-env" className="text-xs">
                     <SelectValue placeholder="Select Environment" />

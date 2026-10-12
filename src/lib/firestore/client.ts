@@ -2047,3 +2047,36 @@ export async function updateEventPaymentConfig(
   const sanitized = sanitizeFirestoreData(updatePayload);
   await setDoc(eventRef, sanitized, { merge: true });
 }
+
+/**
+ * Subscribes to real-time updates for an event document in Firestore.
+ */
+export function subscribeFirestoreEventDoc(
+  eventId: string,
+  onUpdate: (event: FirestoreEvent) => void,
+  onError?: (error: Error) => void,
+): () => void {
+  if (typeof window === "undefined" || !eventId) {
+    return () => {
+      // noop in server or non-window environment
+    };
+  }
+  const eventRef = doc(db, "events", String(eventId));
+  return onSnapshot(
+    eventRef,
+    (snap) => {
+      if (snap.exists()) {
+        const data = snap.data() as FirestoreEvent;
+        onUpdate({
+          ...data,
+          id: snap.id,
+          tickets: ensureEventTickets(data.tickets),
+        });
+      }
+    },
+    (err) => {
+      console.warn(`[Firestore] subscribeFirestoreEventDoc error for ${eventId}:`, err);
+      onError?.(err);
+    },
+  );
+}

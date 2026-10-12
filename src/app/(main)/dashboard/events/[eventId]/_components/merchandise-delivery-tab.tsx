@@ -83,7 +83,58 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
     event.payment_environment ??
     (event.is_test ? "sandbox" : "production");
   const [currentEnv, setCurrentEnv] = useState<"production" | "sandbox">(initialEnv);
+  const [deliveryFee, setDeliveryFee] = useState<number>(
+    typeof event.merchandise_delivery_fee === "number" ? event.merchandise_delivery_fee : 50000,
+  );
   const [isSavingEnv, setIsSavingEnv] = useState(false);
+
+  // Sync if server event prop changes
+  useEffect(() => {
+    if (event.merchandise_delivery_payment_environment) {
+      setCurrentEnv(event.merchandise_delivery_payment_environment);
+    }
+    if (typeof event.merchandise_delivery_fee === "number") {
+      setDeliveryFee(event.merchandise_delivery_fee);
+    }
+  }, [event.merchandise_delivery_payment_environment, event.merchandise_delivery_fee]);
+
+  // Real-time synchronization across tabs in the same window
+  useEffect(() => {
+    const handleEnvChange = (e: Event) => {
+      const customEvent = e as CustomEvent<{ eventId: string; environment: "production" | "sandbox" }>;
+      if (customEvent.detail && String(customEvent.detail.eventId) === String(eventId)) {
+        setCurrentEnv(customEvent.detail.environment);
+      }
+    };
+    window.addEventListener("gdg:merchandise-delivery-env-change", handleEnvChange);
+    return () => {
+      window.removeEventListener("gdg:merchandise-delivery-env-change", handleEnvChange);
+    };
+  }, [eventId]);
+
+  // Real-time subscription to Firestore document
+  useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+    async function setupSub() {
+      try {
+        const { subscribeFirestoreEventDoc } = await import("@/lib/firestore/client");
+        unsubscribe = subscribeFirestoreEventDoc(String(eventId), (docData) => {
+          if (docData.merchandise_delivery_payment_environment) {
+            setCurrentEnv(docData.merchandise_delivery_payment_environment);
+          }
+          if (typeof docData.merchandise_delivery_fee === "number") {
+            setDeliveryFee(docData.merchandise_delivery_fee);
+          }
+        });
+      } catch (err) {
+        console.warn("[MerchandiseDeliveryTab] Failed to subscribe to Firestore event:", err);
+      }
+    }
+    void setupSub();
+    return () => {
+      unsubscribe?.();
+    };
+  }, [eventId]);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -127,6 +178,16 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
     try {
       setIsSavingEnv(true);
       setCurrentEnv(newEnv);
+
+      // Optimistically dispatch change to PaymentGatewayTab
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("gdg:merchandise-delivery-env-change", {
+            detail: { eventId: String(eventId), environment: newEnv },
+          }),
+        );
+      }
+
       const res = await updateEventMerchandiseDeliveryConfigAction(eventId, newEnv, event);
       if (res.success) {
         toast.success(
@@ -135,10 +196,24 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
       } else {
         toast.error(res.error ?? "Failed to update environment.");
         setCurrentEnv(initialEnv);
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent("gdg:merchandise-delivery-env-change", {
+              detail: { eventId: String(eventId), environment: initialEnv },
+            }),
+          );
+        }
       }
     } catch {
       toast.error("Failed to update environment.");
       setCurrentEnv(initialEnv);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("gdg:merchandise-delivery-env-change", {
+            detail: { eventId: String(eventId), environment: initialEnv },
+          }),
+        );
+      }
     } finally {
       setIsSavingEnv(false);
     }
@@ -181,7 +256,7 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
   const approvedCount = registrations.filter((r) => r.delivery_request?.status === "approved").length;
   const deliveredCount = registrations.filter((r) => r.delivery_request?.status === "delivered").length;
   const rejectedCount = registrations.filter((r) => r.delivery_request?.status === "rejected").length;
-  const eventDeliveryFee = typeof event.merchandise_delivery_fee === "number" ? event.merchandise_delivery_fee : 50000;
+  const eventDeliveryFee = deliveryFee;
   const totalFeesCollected = registrations
     .filter((r) => r.delivery_request?.payment_status === "paid")
     .reduce((sum, r) => sum + (r.delivery_request?.fee_amount || eventDeliveryFee), 0);

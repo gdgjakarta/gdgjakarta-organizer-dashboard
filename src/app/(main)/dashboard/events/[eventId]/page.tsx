@@ -165,8 +165,8 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
 
     // Merge or fallback to Firestore
     try {
-      const { getFirestoreEventById } = await import("@/lib/firestore/client");
-      const firestoreDoc = await getFirestoreEventById(eventId);
+      const { getFirestoreEventByIdServer } = await import("@/server/firestore-admin");
+      const firestoreDoc = await getFirestoreEventByIdServer(eventId);
       if (firestoreDoc) {
         event = event
           ? {

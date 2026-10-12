@@ -275,3 +275,22 @@ export async function updateRegistrationFromPayment(input: UpdateRegistrationFro
     message: `Registration successfully updated to ${resolvedStatus}`,
   };
 }
+
+/**
+ * Loads an event from Firestore on the server (Node/RSC).
+ */
+export async function getFirestoreEventByIdServer(eventId: string): Promise<FirestoreEvent | null> {
+  try {
+    const db = getFirestore(app);
+    const eventRef = doc(db, "events", String(eventId));
+    const snap = await getDoc(eventRef);
+    if (!snap.exists()) return null;
+    return {
+      ...(snap.data() as FirestoreEvent),
+      id: snap.id,
+    };
+  } catch (err) {
+    console.error(`[Firestore Server] getFirestoreEventByIdServer error for ${eventId}:`, err);
+    return null;
+  }
+}
