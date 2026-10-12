@@ -16,6 +16,7 @@ import { GDGKpiCards } from "./_components/gdg-kpi-cards";
 import { GDGUpcomingEvents } from "./_components/gdg-upcoming-events";
 import { OrganizerHeader } from "./_components/organizer-header";
 import { type CommunityOrganizerItem, RecentMembersWidget } from "./_components/recent-members-widget";
+import { ReferralLeaderboardWidget } from "./_components/referral-leaderboard-widget";
 
 export const dynamic = "force-dynamic";
 
@@ -216,7 +217,8 @@ export default async function Page() {
         <div className="xl:col-span-7">
           <GDGUpcomingEvents events={events} />
         </div>
-        <div className="xl:col-span-5">
+        <div className="flex flex-col gap-5 xl:col-span-5">
+          <ReferralLeaderboardWidget />
           <RecentMembersWidget organizers={organizersList} members={members} />
         </div>
       </div>

@@ -73,6 +73,7 @@ import {
 
 import type {
   AuditLogEntry,
+  EventBundlePackage,
   EventEmailTemplates,
   EventMerchandiseItem,
   EventSession,
@@ -84,6 +85,9 @@ import type {
   FirestoreSyncMetadata,
   MerchandiseDeliveryRequest,
   MerchandiseDeliveryStatus,
+  ReferralLeaderboardEntry,
+  ReferralProgramSettings,
+  ReferralRedemption,
   RegistrationStatus,
   RegistrationStatusLog,
 } from "./types";
@@ -189,6 +193,323 @@ export async function updateFirestoreMemberBevyId(uid: string, bevyUserId: strin
     console.log(`[Firestore] Updated member ${uid} with bevy_user_id: ${bevyUserId}`);
   } catch (error) {
     console.error(`[Firestore] Failed to update bevy_user_id for member ${uid}:`, error);
+  }
+}
+
+// ── Referral Program ────────────────────────────────────────────────────────
+
+const DEFAULT_REFERRAL_SETTINGS: ReferralProgramSettings = {
+  default_discount_percentage: 10,
+  points_per_referral: 10,
+  is_active: true,
+  merch_prize_description: "Exclusive GDG Jakarta merchandise bundle",
+  updated_at: new Date().toISOString(),
+};
+
+export async function getReferralProgramSettings(): Promise<ReferralProgramSettings> {
+  if (typeof window === "undefined") return DEFAULT_REFERRAL_SETTINGS;
+  try {
+    const docRef = doc(db, "system_settings", "referral");
+    const snap = await getDoc(docRef);
+    if (!snap.exists()) {
+      return DEFAULT_REFERRAL_SETTINGS;
+    }
+    const data = snap.data() as Partial<ReferralProgramSettings>;
+    return {
+      default_discount_percentage:
+        typeof data.default_discount_percentage === "number" ? data.default_discount_percentage : 10,
+      points_per_referral: typeof data.points_per_referral === "number" ? data.points_per_referral : 10,
+      is_active: data.is_active !== false,
+      merch_prize_description: data.merch_prize_description ?? "Exclusive GDG Jakarta merchandise bundle",
+      updated_at: data.updated_at ?? new Date().toISOString(),
+      updated_by_name: data.updated_by_name,
+    };
+  } catch (err) {
+    console.warn("[Firestore] getReferralProgramSettings fallback:", err);
+    return DEFAULT_REFERRAL_SETTINGS;
+  }
+}
+
+export async function saveReferralProgramSettings(settings: Partial<ReferralProgramSettings>): Promise<void> {
+  if (typeof window === "undefined") return;
+  const docRef = doc(db, "system_settings", "referral");
+  const payload = sanitizeFirestoreData({
+    ...settings,
+    updated_at: new Date().toISOString(),
+  });
+  await setDoc(docRef, payload, { merge: true });
+}
+
+function generateRandomCode(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // Removed O, 0, 1, I for readability
+  let code = "GDG";
+  for (let i = 0; i < 5; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
+
+export async function generateUniqueReferralCode(): Promise<string> {
+  if (typeof window === "undefined") return generateRandomCode();
+  const membersRef = collection(db, "members");
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const candidate = generateRandomCode();
+    const q = query(membersRef, where("referral_code", "==", candidate), limit(1));
+    const snap = await getDocs(q);
+    if (snap.empty) {
+      return candidate;
+    }
+  }
+  return `${generateRandomCode()}${Math.floor(Math.random() * 9)}`;
+}
+
+export async function getOrCreateMemberReferralCode(
+  memberId: string,
+  memberEmail: string,
+  name?: string,
+): Promise<{
+  code: string;
+  points: number;
+  count: number;
+  hasUsedReferral: boolean;
+  discountPercentage: number;
+  pointsPerReferral: number;
+  referredByCode?: string;
+}> {
+  const settings = await getReferralProgramSettings();
+  if (typeof window === "undefined" || !memberId) {
+    return {
+      code: "GDG7X9K",
+      points: 0,
+      count: 0,
+      hasUsedReferral: false,
+      discountPercentage: settings.default_discount_percentage,
+      pointsPerReferral: settings.points_per_referral,
+    };
+  }
+
+  try {
+    const memberRef = doc(db, "members", memberId);
+    const snap = await getDoc(memberRef);
+    if (snap.exists()) {
+      const data = snap.data() as FirestoreMember;
+      if (data.referral_code) {
+        return {
+          code: data.referral_code,
+          points: data.referral_points ?? 0,
+          count: data.referrals_count ?? 0,
+          hasUsedReferral: Boolean(data.has_used_referral),
+          discountPercentage: settings.default_discount_percentage,
+          pointsPerReferral: settings.points_per_referral,
+          referredByCode: data.referred_by_code,
+        };
+      }
+    }
+
+    // Need to assign a new referral code
+    const newCode = await generateUniqueReferralCode();
+    const now = new Date().toISOString();
+    await setDoc(
+      memberRef,
+      sanitizeFirestoreData({
+        id: memberId,
+        email: memberEmail,
+        name: name ?? "GDG Member",
+        referral_code: newCode,
+        referral_points: 0,
+        referrals_count: 0,
+        has_used_referral: false,
+        updated_at: now,
+      }),
+      { merge: true },
+    );
+
+    return {
+      code: newCode,
+      points: 0,
+      count: 0,
+      hasUsedReferral: false,
+      discountPercentage: settings.default_discount_percentage,
+      pointsPerReferral: settings.points_per_referral,
+    };
+  } catch (err) {
+    console.warn("[Firestore] getOrCreateMemberReferralCode error:", err);
+    return {
+      code: "GDG7X9K",
+      points: 0,
+      count: 0,
+      hasUsedReferral: false,
+      discountPercentage: settings.default_discount_percentage,
+      pointsPerReferral: settings.points_per_referral,
+    };
+  }
+}
+
+export async function validateReferralCode(
+  code: string,
+  currentMemberId: string,
+  currentMemberEmail: string,
+  eventId?: string,
+): Promise<{
+  valid: boolean;
+  error?: string;
+  referrer?: { id: string; name: string; email: string; code: string };
+  discountPercentage?: number;
+}> {
+  if (typeof window === "undefined") {
+    return { valid: false, error: "Validation must be performed from client" };
+  }
+
+  const cleanCode = (code || "").trim().toUpperCase();
+  if (!cleanCode) {
+    return { valid: false, error: "Please enter a referral code." };
+  }
+
+  // 1. Fetch referral settings
+  const settings = await getReferralProgramSettings();
+  if (!settings.is_active) {
+    return { valid: false, error: "Referral program is currently not active." };
+  }
+
+  // 2. Query member with this referral_code
+  try {
+    const membersRef = collection(db, "members");
+    const q = query(membersRef, where("referral_code", "==", cleanCode), limit(1));
+    const snap = await getDocs(q);
+
+    if (snap.empty) {
+      return { valid: false, error: `Referral code "${cleanCode}" does not exist. Please check and try again.` };
+    }
+
+    const referrerDoc = snap.docs[0];
+    const referrerData = referrerDoc.data() as FirestoreMember;
+    const referrerId = referrerDoc.id;
+
+    // 3. Self-referral prevention
+    const currentEmailNorm = (currentMemberEmail || "").trim().toLowerCase();
+    const referrerEmailNorm = (referrerData.email || "").trim().toLowerCase();
+
+    if (referrerId === currentMemberId || (referrerEmailNorm && currentEmailNorm === referrerEmailNorm)) {
+      return { valid: false, error: "You cannot use your own referral code." };
+    }
+
+    // 4. One-per-account rule
+    if (currentMemberId) {
+      const currentSnap = await getDoc(doc(db, "members", currentMemberId));
+      if (currentSnap.exists()) {
+        const currentData = currentSnap.data() as FirestoreMember;
+        if (currentData.has_used_referral) {
+          return {
+            valid: false,
+            error: "Referral code can only be applied once per account.",
+          };
+        }
+      }
+    }
+
+    // 5. Determine applicable discount percentage
+    let discountPercent = settings.default_discount_percentage;
+    if (eventId) {
+      try {
+        const evSnap = await getDoc(doc(db, "events", String(eventId)));
+        if (evSnap.exists()) {
+          const evData = evSnap.data() as FirestoreEvent;
+          if (evData.referral_enabled === false) {
+            return {
+              valid: false,
+              error: "Referral discounts are not enabled for this event.",
+            };
+          }
+          if (typeof evData.referral_discount_percentage === "number" && evData.referral_discount_percentage >= 0) {
+            discountPercent = evData.referral_discount_percentage;
+          }
+        }
+      } catch {
+        // Fallback to default
+      }
+    }
+
+    return {
+      valid: true,
+      referrer: {
+        id: referrerId,
+        name: referrerData.name || "Community Member",
+        email: referrerData.email || "",
+        code: cleanCode,
+      },
+      discountPercentage: discountPercent,
+    };
+  } catch (err) {
+    console.error("[Firestore] validateReferralCode error:", err);
+    return { valid: false, error: "Unable to validate referral code right now. Please try again." };
+  }
+}
+
+export async function getReferralLeaderboard(limitCount = 100): Promise<ReferralLeaderboardEntry[]> {
+  if (typeof window === "undefined") return [];
+  try {
+    const membersRef = collection(db, "members");
+    const snapshot = await getDocs(membersRef);
+    const entries: ReferralLeaderboardEntry[] = [];
+
+    for (const docSnap of snapshot.docs) {
+      const data = docSnap.data() as FirestoreMember;
+      const points = typeof data.referral_points === "number" ? data.referral_points : 0;
+      const count = typeof data.referrals_count === "number" ? data.referrals_count : 0;
+
+      if (points > 0 || count > 0 || data.referral_code) {
+        entries.push({
+          rank: 0, // Assigned after sort
+          member_id: docSnap.id,
+          name: data.name ?? "Anonymous Member",
+          email: data.email ?? "",
+          avatar_url: data.avatar_url,
+          referral_code: data.referral_code ?? "-",
+          referral_points: points,
+          referrals_count: count,
+          is_prize_winner: false,
+          joined_date: data.joined_date ?? new Date().toISOString(),
+          last_active: data.last_active,
+        });
+      }
+    }
+
+    // Sort descending by points, then referrals_count
+    entries.sort((a, b) => {
+      if (b.referral_points !== a.referral_points) {
+        return b.referral_points - a.referral_points;
+      }
+      return b.referrals_count - a.referrals_count;
+    });
+
+    const topEntries = entries.slice(0, limitCount);
+    topEntries.forEach((entry, idx) => {
+      entry.rank = idx + 1;
+      entry.is_prize_winner = idx === 0 && entry.referral_points > 0;
+    });
+
+    return topEntries;
+  } catch (err) {
+    console.error("[Firestore] getReferralLeaderboard error:", err);
+    return [];
+  }
+}
+
+export async function getMemberReferralHistory(memberId: string): Promise<ReferralRedemption[]> {
+  if (typeof window === "undefined" || !memberId) return [];
+  try {
+    const redemptionsRef = collection(db, "referral_redemptions");
+    const q = query(redemptionsRef, where("referrer_id", "==", memberId));
+    const snapshot = await getDocs(q);
+    const list = snapshot.docs.map((docSnap) => ({
+      id: docSnap.id,
+      ...docSnap.data(),
+    })) as ReferralRedemption[];
+
+    return list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  } catch (err) {
+    console.warn("[Firestore] getMemberReferralHistory error:", err);
+    return [];
   }
 }
 
@@ -500,6 +821,40 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
         }
       }
     }
+
+    // 4. Bundle package sales window and capacity check
+    if (!isWaitlisted && registration.bundle_id && eventData.bundles) {
+      const matchingBundle = eventData.bundles.find((b) => b.id === registration.bundle_id);
+      if (matchingBundle) {
+        if (matchingBundle.status === "sold_out") {
+          throw new Error(`The bundling package "${matchingBundle.name}" is sold out.`);
+        }
+        if (matchingBundle.sales_start_date && matchingBundle.sales_start_date.trim() !== "") {
+          const startTime = new Date(matchingBundle.sales_start_date).getTime();
+          if (!Number.isNaN(startTime) && Date.now() < startTime) {
+            throw new Error(`Sales for package "${matchingBundle.name}" have not started yet.`);
+          }
+        }
+        if (matchingBundle.sales_end_date && matchingBundle.sales_end_date.trim() !== "") {
+          const endTime = new Date(matchingBundle.sales_end_date).getTime();
+          if (!Number.isNaN(endTime) && Date.now() > endTime) {
+            throw new Error(`Sales for package "${matchingBundle.name}" have ended.`);
+          }
+        }
+        if (typeof matchingBundle.capacity === "number" && matchingBundle.capacity > 0) {
+          const currentBundleCount = matchingBundle.total_registered || 0;
+          if (currentBundleCount >= matchingBundle.capacity) {
+            if (allowWaitlist) {
+              isWaitlisted = true;
+            } else {
+              throw new Error(
+                `The package "${matchingBundle.name}" is sold out (${matchingBundle.capacity} packages).`,
+              );
+            }
+          }
+        }
+      }
+    }
   }
 
   // 3. Enforce registration status:
@@ -593,10 +948,98 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
         updateData.vouchers = updatedVouchers;
       }
 
+      if (registration.bundle_id && Array.isArray(eventData.bundles)) {
+        const updatedBundles = eventData.bundles.map((b) => {
+          if (b.id === registration.bundle_id) {
+            return {
+              ...b,
+              total_registered: (b.total_registered ?? 0) + 1,
+            };
+          }
+          return b;
+        });
+        updateData.bundles = updatedBundles;
+      }
+
       await updateDoc(eventRef, sanitizeFirestoreData(updateData));
     }
   } catch (err) {
     console.warn("[Firestore] Failed to update event registration / session counters:", err);
+  }
+
+  // 4. Process Referral Redemption & Award Points
+  if (registration.referral_code) {
+    try {
+      const refCode = registration.referral_code.trim().toUpperCase();
+      const membersRef = collection(db, "members");
+      const qRef = query(membersRef, where("referral_code", "==", refCode), limit(1));
+      const refSnap = await getDocs(qRef);
+
+      if (!refSnap.empty) {
+        const referrerDoc = refSnap.docs[0];
+        const referrerData = referrerDoc.data() as FirestoreMember;
+        const referrerId = referrerDoc.id;
+
+        // Ensure not self-referral
+        if (referrerId !== registration.member_id) {
+          const settings = await getReferralProgramSettings();
+          const pointsAwarded = typeof settings.points_per_referral === "number" ? settings.points_per_referral : 10;
+
+          // 1. Increment referrer points and referrals_count
+          const currentPoints = typeof referrerData.referral_points === "number" ? referrerData.referral_points : 0;
+          const currentCount = typeof referrerData.referrals_count === "number" ? referrerData.referrals_count : 0;
+
+          await updateDoc(
+            doc(db, "members", referrerId),
+            sanitizeFirestoreData({
+              referral_points: currentPoints + pointsAwarded,
+              referrals_count: currentCount + 1,
+              updated_at: new Date().toISOString(),
+            }),
+          );
+
+          // 2. Mark referee member doc as having redeemed their 1-time referral
+          await updateDoc(
+            doc(db, "members", registration.member_id),
+            sanitizeFirestoreData({
+              has_used_referral: true,
+              referred_by_code: refCode,
+              updated_at: new Date().toISOString(),
+            }),
+          );
+
+          // 3. Record redemption transaction in referral_redemptions collection
+          const redemptionId = `${registration.member_id}_${regId}`;
+          const redemptionDocRef = doc(db, "referral_redemptions", redemptionId);
+          await setDoc(
+            redemptionDocRef,
+            sanitizeFirestoreData<ReferralRedemption>({
+              id: redemptionId,
+              referrer_id: referrerId,
+              referrer_name: referrerData.name || "GDG Member",
+              referrer_email: referrerData.email || "",
+              referrer_code: refCode,
+              referee_id: registration.member_id,
+              referee_name: registration.member_name ?? "Applicant",
+              referee_email: normalizedEmail,
+              event_id: eventIdStr,
+              event_title: registration.event_title ?? eventData?.title ?? "GDG Event",
+              ticket_id: registration.ticket_id,
+              ticket_name: registration.ticket_name,
+              ticket_type: registration.ticket_type,
+              ticket_price: registration.ticket_price,
+              discount_percentage: registration.referral_discount_percent ?? 0,
+              discount_amount: registration.referral_discount_amount ?? 0,
+              points_awarded: pointsAwarded,
+              created_at: new Date().toISOString(),
+            }),
+            { merge: true },
+          );
+        }
+      }
+    } catch (refErr) {
+      console.warn("[registerMemberForEvent] Failed to process referral redemption:", refErr);
+    }
   }
 
   return regId;
@@ -1076,6 +1519,31 @@ export async function updateEventVouchers(eventId: string, vouchers: EventVouche
   await setDoc(eventRef, sanitized, { merge: true });
 }
 
+export async function updateEventReferralConfig(
+  eventId: string,
+  config: { referral_enabled?: boolean; referral_discount_percentage?: number | null },
+): Promise<void> {
+  if (typeof window === "undefined" || !eventId) return;
+  const eventRef = doc(db, "events", String(eventId));
+  const updatePayload: Record<string, unknown> = {
+    ...config,
+    updated_at: new Date().toISOString(),
+  };
+  const sanitized = sanitizeFirestoreData(updatePayload);
+  await setDoc(eventRef, sanitized, { merge: true });
+}
+
+export async function updateEventBundles(eventId: string, bundles: EventBundlePackage[]): Promise<void> {
+  if (typeof window === "undefined") return;
+  const eventRef = doc(db, "events", String(eventId));
+  const updatePayload: Record<string, unknown> = {
+    bundles,
+    updated_at: new Date().toISOString(),
+  };
+  const sanitized = sanitizeFirestoreData(updatePayload);
+  await setDoc(eventRef, sanitized, { merge: true });
+}
+
 export async function updateEventHighlightsMedia(
   eventId: string,
   data: {
@@ -1318,16 +1786,43 @@ export async function getEventMerchandiseDeliveryRequests(eventId: string): Prom
 export async function updateEventMerchandiseDeliveryConfig(
   eventId: string,
   environment: "production" | "sandbox",
+  baseEvent?: Partial<FirestoreEvent>,
 ): Promise<void> {
   if (typeof window === "undefined") return;
   const eventRef = doc(db, "events", String(eventId));
+  const snap = await getDoc(eventRef);
+
+  if (!snap.exists()) {
+    const now = new Date().toISOString();
+    const fullPayload: Record<string, unknown> = {
+      ...(baseEvent ?? {}),
+      id: String(eventId),
+      title: baseEvent?.title ?? "Untitled Event",
+      status: baseEvent?.status ?? "Published",
+      start_date: baseEvent?.start_date ?? now,
+      end_date: baseEvent?.end_date ?? baseEvent?.start_date ?? now,
+      total_registrations: baseEvent?.total_registrations ?? 0,
+      total_approved: baseEvent?.total_approved ?? 0,
+      total_checked_in: baseEvent?.total_checked_in ?? 0,
+      requires_approval: baseEvent?.requires_approval ?? false,
+      merchandise_delivery_payment_environment: environment,
+      updated_at: now,
+      created_at: now,
+    };
+    const sanitized = sanitizeFirestoreData(fullPayload);
+    await setDoc(eventRef, sanitized, { merge: true });
+    return;
+  }
+
   const updatePayload: Record<string, unknown> = {
     merchandise_delivery_payment_environment: environment,
     updated_at: new Date().toISOString(),
   };
   const sanitized = sanitizeFirestoreData(updatePayload);
   await setDoc(eventRef, sanitized, { merge: true });
-} /**
+}
+
+/**
  * Updates the payment gateway environment and webhook URL override on the event document.
  */
 export async function updateEventPaymentConfig(
@@ -1335,6 +1830,7 @@ export async function updateEventPaymentConfig(
   config: {
     payment_environment: "production" | "sandbox";
     merchandise_delivery_payment_environment?: "production" | "sandbox";
+    merchandise_delivery_fee?: number;
     payment_webhook_url?: string | null;
   },
   baseEvent?: Partial<FirestoreEvent>,
@@ -1360,6 +1856,9 @@ export async function updateEventPaymentConfig(
       ...(config.merchandise_delivery_payment_environment
         ? { merchandise_delivery_payment_environment: config.merchandise_delivery_payment_environment }
         : {}),
+      ...(typeof config.merchandise_delivery_fee === "number"
+        ? { merchandise_delivery_fee: config.merchandise_delivery_fee }
+        : {}),
       payment_webhook_url:
         config.payment_webhook_url && config.payment_webhook_url.trim().length > 0
           ? config.payment_webhook_url.trim()
@@ -1375,6 +1874,9 @@ export async function updateEventPaymentConfig(
     payment_environment: config.payment_environment,
     ...(config.merchandise_delivery_payment_environment
       ? { merchandise_delivery_payment_environment: config.merchandise_delivery_payment_environment }
+      : {}),
+    ...(typeof config.merchandise_delivery_fee === "number"
+      ? { merchandise_delivery_fee: config.merchandise_delivery_fee }
       : {}),
     payment_webhook_url:
       config.payment_webhook_url && config.payment_webhook_url.trim().length > 0

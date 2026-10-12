@@ -2,7 +2,7 @@
 
 import { revalidateDashboardPath } from "@/server/server-actions";
 
-import type { FirestoreEvent, FirestoreRegistration, RegistrationStatus } from "./types";
+import type { FirestoreEvent, FirestoreRegistration, ReferralProgramSettings, RegistrationStatus } from "./types";
 
 /**
  * Triggers a full sync from Bevy into Firestore on the client.
@@ -123,6 +123,7 @@ export async function registerForEventAction(registration: Omit<FirestoreRegistr
     await revalidateDashboardPath(`/dashboard/events/${registration.event_id}`);
     await revalidateDashboardPath("/dashboard/member");
     await revalidateDashboardPath("/dashboard/organizer");
+    await revalidateDashboardPath("/dashboard/referrals");
     return { success: true, registrationId: regId };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to register for event.";
@@ -235,6 +236,43 @@ export async function updateEventVouchersAction(eventId: string, vouchers: impor
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to save vouchers.";
     console.error("[updateEventVouchersAction] error:", message);
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * Update event referral discount configuration override
+ */
+export async function updateEventReferralConfigAction(
+  eventId: string,
+  config: { referral_enabled?: boolean; referral_discount_percentage?: number | null },
+) {
+  try {
+    const { updateEventReferralConfig } = await import("./client");
+    await updateEventReferralConfig(eventId, config);
+    await revalidateDashboardPath(`/dashboard/events/${eventId}`);
+    await revalidateDashboardPath("/dashboard/events");
+    await revalidateDashboardPath(`/events/${eventId}`);
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to update event referral settings.";
+    console.error("[updateEventReferralConfigAction] error:", message);
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * Update event bundling packages (combining tickets and merchandise)
+ */
+export async function updateEventBundlesAction(eventId: string, bundles: import("./types").EventBundlePackage[]) {
+  try {
+    const { updateEventBundles } = await import("./client");
+    await updateEventBundles(eventId, bundles);
+    await revalidateDashboardPath(`/dashboard/events/${eventId}`);
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to save bundling packages.";
+    console.error("[updateEventBundlesAction] error:", message);
     return { success: false, error: message };
   }
 }
@@ -435,6 +473,7 @@ export async function submitMerchandiseDeliveryRequestAction(input: SubmitMercha
     let isProduction: boolean | undefined;
     let paymentWebhookUrl: string | undefined;
     let deliveryPaymentEnv: "production" | "sandbox" = "production";
+    let deliveryFee = 50000;
 
     try {
       const eventDoc = await getFirestoreEventById(String(input.eventId));
@@ -446,12 +485,15 @@ export async function submitMerchandiseDeliveryRequestAction(input: SubmitMercha
         deliveryPaymentEnv = "production";
         isProduction = true;
       }
+      if (typeof eventDoc?.merchandise_delivery_fee === "number") {
+        deliveryFee = eventDoc.merchandise_delivery_fee;
+      }
       paymentWebhookUrl = eventDoc?.payment_webhook_url ?? undefined;
     } catch {
       // ignore fallback
     }
 
-    // 1. Generate payment link for Rp 50.000 distribution & commitment cutting fee
+    // 1. Generate payment link for distribution & commitment cutting fee
     const paymentPayload = {
       customer: {
         name: input.recipientName.trim(),
@@ -468,7 +510,7 @@ export async function submitMerchandiseDeliveryRequestAction(input: SubmitMercha
         {
           name: "Merchandise Delivery Fee (No-Show Commitment Cutting Fee)",
           quantity: 1,
-          price: 50000,
+          price: deliveryFee,
           type: "Fee",
           description: "Distribution delivery cost & non-commitment cutting fee for uncollected event merchandise.",
         },
@@ -511,7 +553,7 @@ export async function submitMerchandiseDeliveryRequestAction(input: SubmitMercha
       postal_code: input.postalCode.trim(),
       notes: input.notes?.trim() ? input.notes.trim() : undefined,
       requested_at: now,
-      fee_amount: 50000,
+      fee_amount: deliveryFee,
       payment_status: payResult.success && payResult.paymentUrl ? "pending" : "unpaid",
       payment_environment: deliveryPaymentEnv,
       payment_url: payResult.paymentUrl,
@@ -686,10 +728,11 @@ export async function fetchEventMerchandiseDeliveryRequestsAction(eventId: strin
 export async function updateEventMerchandiseDeliveryConfigAction(
   eventId: string,
   environment: "production" | "sandbox",
+  baseEvent?: Partial<FirestoreEvent>,
 ) {
   try {
     const { updateEventMerchandiseDeliveryConfig } = await import("./client");
-    await updateEventMerchandiseDeliveryConfig(eventId, environment);
+    await updateEventMerchandiseDeliveryConfig(eventId, environment, baseEvent);
     await revalidateDashboardPath(`/dashboard/events/${eventId}`);
     await revalidateDashboardPath("/dashboard/events");
     await revalidateDashboardPath("/dashboard/member/my-events");
@@ -710,6 +753,7 @@ export async function updateEventPaymentConfigAction(
   config: {
     payment_environment: "production" | "sandbox";
     merchandise_delivery_payment_environment?: "production" | "sandbox";
+    merchandise_delivery_fee?: number;
     payment_webhook_url?: string | null;
   },
   baseEvent?: Partial<FirestoreEvent>,
@@ -741,5 +785,78 @@ export async function trackDeliveryPackageAction(input: { trackingNumber: string
     const message = err instanceof Error ? err.message : "Failed to track package.";
     console.error("[trackDeliveryPackageAction] error:", message);
     return { valid: false, error: message };
+  }
+}
+
+// ── Referral Program Actions ────────────────────────────────────────────────
+
+export async function getMemberReferralDataAction(memberId: string, memberEmail: string, name?: string) {
+  try {
+    const { getOrCreateMemberReferralCode } = await import("./client");
+    return await getOrCreateMemberReferralCode(memberId, memberEmail, name);
+  } catch (err) {
+    console.error("[getMemberReferralDataAction] error:", err);
+    return null;
+  }
+}
+
+export async function validateReferralCodeAction(
+  code: string,
+  currentMemberId: string,
+  currentMemberEmail: string,
+  eventId?: string,
+) {
+  try {
+    const { validateReferralCode } = await import("./client");
+    return await validateReferralCode(code, currentMemberId, currentMemberEmail, eventId);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to validate referral code.";
+    console.error("[validateReferralCodeAction] error:", message);
+    return { valid: false, error: message };
+  }
+}
+
+export async function getReferralLeaderboardAction(limitCount?: number) {
+  try {
+    const { getReferralLeaderboard } = await import("./client");
+    return await getReferralLeaderboard(limitCount);
+  } catch (err) {
+    console.error("[getReferralLeaderboardAction] error:", err);
+    return [];
+  }
+}
+
+export async function getReferralProgramSettingsAction() {
+  try {
+    const { getReferralProgramSettings } = await import("./client");
+    return await getReferralProgramSettings();
+  } catch (err) {
+    console.error("[getReferralProgramSettingsAction] error:", err);
+    return null;
+  }
+}
+
+export async function saveReferralProgramSettingsAction(settings: Partial<ReferralProgramSettings>) {
+  try {
+    const { saveReferralProgramSettings } = await import("./client");
+    await saveReferralProgramSettings(settings);
+    await revalidateDashboardPath("/dashboard/referrals");
+    await revalidateDashboardPath("/dashboard/member");
+    await revalidateDashboardPath("/dashboard/organizer");
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to save referral settings.";
+    console.error("[saveReferralProgramSettingsAction] error:", message);
+    return { success: false, error: message };
+  }
+}
+
+export async function getMemberReferralHistoryAction(memberId: string) {
+  try {
+    const { getMemberReferralHistory } = await import("./client");
+    return await getMemberReferralHistory(memberId);
+  } catch (err) {
+    console.error("[getMemberReferralHistoryAction] error:", err);
+    return [];
   }
 }

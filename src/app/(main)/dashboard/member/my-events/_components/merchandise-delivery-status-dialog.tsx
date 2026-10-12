@@ -132,10 +132,11 @@ export function MerchandiseDeliveryStatusDialog({
           {/* Status Explanation Card */}
           {req.status === "pending_payment" && (
             <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 text-amber-900 dark:text-amber-200">
-              <p className="font-medium">Payment Required (Rp 50.000)</p>
+              <p className="font-medium">Payment Required (Rp {(req.fee_amount || 50000).toLocaleString("id-ID")})</p>
               <p className="mt-1 text-[11px] leading-relaxed">
-                Your delivery request was created, but the Rp 50.000 distribution & non-commitment cutting fee is still
-                unpaid. Please complete payment to submit it for organizer review.
+                Your delivery request was created, but the Rp {(req.fee_amount || 50000).toLocaleString("id-ID")}{" "}
+                distribution & non-commitment cutting fee is still unpaid. Please complete payment to submit it for
+                organizer review.
               </p>
               {onOpenPayment && (
                 <Button size="sm" onClick={onOpenPayment} className="mt-2.5 h-8 gap-1.5 text-xs">
@@ -149,8 +150,8 @@ export function MerchandiseDeliveryStatusDialog({
             <div className="rounded-lg border border-blue-500/20 bg-blue-500/10 p-3 text-blue-900 dark:text-blue-200">
               <p className="font-medium">Payment Confirmed — Awaiting Organizer Processing</p>
               <p className="mt-1 text-[11px] leading-relaxed">
-                Your Rp 50.000 distribution fee has been verified. The organizers are packing your merchandise and will
-                assign a courier tracking number soon.
+                Your Rp {(req.fee_amount || 50000).toLocaleString("id-ID")} distribution fee has been verified. The
+                organizers are packing your merchandise and will assign a courier tracking number soon.
               </p>
             </div>
           )}

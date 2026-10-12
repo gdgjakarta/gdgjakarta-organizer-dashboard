@@ -10,10 +10,12 @@ import {
   Edit2,
   Filter,
   Layers,
+  Loader2,
   Package,
   Percent,
   Plus,
   Search,
+  Share2,
   Sparkles,
   Tag,
   Ticket,
@@ -44,7 +46,7 @@ import {
   type VoucherTemplate,
 } from "@/lib/events/voucher-templates";
 import { formatVoucherDiscountDisplay } from "@/lib/events/voucher-utils";
-import { updateEventVouchersAction } from "@/lib/firestore/actions";
+import { updateEventReferralConfigAction, updateEventVouchersAction } from "@/lib/firestore/actions";
 import type { EventVoucher, FirestoreEvent, VoucherAppliesTo, VoucherStatus } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
@@ -63,6 +65,33 @@ export function VouchersTab({ event }: VouchersTabProps) {
   const [targetFilter, setTargetFilter] = useState<string>("all");
   const [isDirty, setIsDirty] = useState(false);
   const [isSaving, startTransition] = useTransition();
+
+  // Event Referral Settings State
+  const [referralEnabled, setReferralEnabled] = useState<boolean>(event.referral_enabled !== false);
+  const [referralDiscountOverride, setReferralDiscountOverride] = useState<string>(
+    typeof event.referral_discount_percentage === "number" ? String(event.referral_discount_percentage) : "",
+  );
+  const [isSavingReferral, setIsSavingReferral] = useState(false);
+
+  const handleSaveReferralConfig = async () => {
+    setIsSavingReferral(true);
+    try {
+      const parsedOverride = referralDiscountOverride.trim() !== "" ? Number(referralDiscountOverride) : null;
+      const res = await updateEventReferralConfigAction(String(event.id), {
+        referral_enabled: referralEnabled,
+        referral_discount_percentage: parsedOverride,
+      });
+      if (res.success) {
+        toast.success("Event referral settings updated successfully!");
+      } else {
+        toast.error(res.error || "Failed to update referral settings.");
+      }
+    } catch {
+      toast.error("Failed to update referral settings.");
+    } finally {
+      setIsSavingReferral(false);
+    }
+  };
 
   // Load latest event vouchers from Firestore
   useEffect(() => {
@@ -268,6 +297,74 @@ export function VouchersTab({ event }: VouchersTabProps) {
           </CardContent>
         </Card>
       </div>
+
+      {/* ── EVENT REFERRAL DISCOUNT SETTINGS ───────────────────────────── */}
+      <Card className="border-border/60 bg-gradient-to-r from-card to-muted/20 shadow-xs">
+        <CardHeader className="p-4 pb-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2">
+              <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Share2 className="size-4" />
+              </div>
+              <div>
+                <CardTitle className="text-sm font-semibold">Event Referral Program</CardTitle>
+                <CardDescription className="text-xs">
+                  Configure whether attendee referral codes can be applied for tickets to this event and customize the
+                  discount rate.
+                </CardDescription>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <Switch id="referral-enabled-toggle" checked={referralEnabled} onCheckedChange={setReferralEnabled} />
+                <label htmlFor="referral-enabled-toggle" className="cursor-pointer text-xs font-medium text-foreground">
+                  {referralEnabled ? "Enabled" : "Disabled"}
+                </label>
+              </div>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3 p-4 pt-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+            <div className="w-full max-w-[220px]">
+              <label
+                htmlFor="event-referral-discount-input"
+                className="text-[11px] font-medium text-muted-foreground block mb-1"
+              >
+                Discount Percentage (%):
+              </label>
+              <div className="relative">
+                <Input
+                  id="event-referral-discount-input"
+                  type="number"
+                  min="0"
+                  max="100"
+                  placeholder="Global default"
+                  value={referralDiscountOverride}
+                  onChange={(e) => setReferralDiscountOverride(e.target.value)}
+                  disabled={!referralEnabled}
+                  className="h-8 text-xs pr-7"
+                />
+                <Percent className="absolute right-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              </div>
+            </div>
+            <p className="text-[11px] text-muted-foreground sm:pt-4">
+              {referralDiscountOverride.trim() !== ""
+                ? `Overrides the global default with a fixed ${referralDiscountOverride}% ticket discount for this event.`
+                : "No override set — uses the global referral program discount rate (configured in Referrals settings)."}
+            </p>
+          </div>
+          <Button
+            size="sm"
+            onClick={handleSaveReferralConfig}
+            disabled={isSavingReferral}
+            className="h-8 self-end sm:self-center text-xs"
+          >
+            {isSavingReferral && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
+            Save Referral Settings
+          </Button>
+        </CardContent>
+      </Card>
 
       {/* ── TOOLBAR & ACTIONS ────────────────────────────────────────────── */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

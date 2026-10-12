@@ -4,6 +4,7 @@ import { getBevyChapterEvents, resolveEventAudience } from "@/lib/bevy/client";
 import type { FirestoreEvent } from "@/lib/firestore/types";
 
 import { MemberEventsList } from "./_components/member-events-list";
+import { MemberReferralCard } from "./_components/member-referral-card";
 
 export const dynamic = "force-dynamic";
 
@@ -79,6 +80,7 @@ export default async function MemberDashboardPage() {
 
   return (
     <div className="flex h-full flex-col p-4 md:p-6 lg:p-8">
+      <MemberReferralCard />
       <MemberEventsList events={events} myRegistrations={[]} />
     </div>
   );

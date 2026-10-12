@@ -16,6 +16,7 @@ import {
   Layers,
   MapPin,
   Package,
+  PackageCheck,
   Radio,
   Search,
   Sparkles,
@@ -424,6 +425,16 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
                     </div>
                   )}
 
+                  {/* Bundling Package badge */}
+                  {reg.bundle_name && (
+                    <div className="flex items-center gap-1.5 rounded-md border border-primary/30 bg-primary/10 px-2.5 py-1.5 text-xs">
+                      <PackageCheck className="size-3.5 shrink-0 text-primary" />
+                      <span className="truncate font-semibold text-[11px] text-primary">
+                        Package: {reg.bundle_name}
+                      </span>
+                    </div>
+                  )}
+
                   {/* Status Helper Message */}
                   {isPending && (
                     <div className="rounded-md border border-amber-500/20 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-800 dark:text-amber-300">
@@ -457,8 +468,8 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
                             </Badge>
                           </div>
                           <p className="mt-1 text-[10px] text-muted-foreground leading-relaxed">
-                            Event concluded and check-in was missed. You can request package delivery to your address
-                            for Rp 50.000.
+                            Event concluded and check-in was missed. You can request courier delivery for your
+                            uncollected merchandise.
                           </p>
                         </div>
                       );

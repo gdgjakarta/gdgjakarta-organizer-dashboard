@@ -991,6 +991,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         Boolean(reg.reviewed_by_name?.toLowerCase().includes(searchLower)) ||
         Boolean(reg.reviewed_by_email?.toLowerCase().includes(searchLower)) ||
         Boolean(reg.ticket_name?.toLowerCase().includes(searchLower)) ||
+        Boolean(reg.bundle_name?.toLowerCase().includes(searchLower)) ||
         (reg.answers && JSON.stringify(reg.answers).toLowerCase().includes(searchLower));
 
       const regStatus = (reg.status ?? "").toLowerCase().trim();
@@ -1997,7 +1998,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       "Status",
       "Reviewed By",
       "Reviewed At",
-      ...(hasTickets ? ["Ticket Pass", "Ticket Type", "Ticket Price"] : []),
+      ...(hasTickets ? ["Ticket Pass", "Ticket Type", "Ticket Price", "Bundle Package", "Bundle Price"] : []),
       ...(hasMerchandise ? ["Merchandise Orders"] : []),
       "Voucher Code",
       "Voucher Discount",
@@ -2048,6 +2049,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
               `"${(r.ticket_name || "General RSVP").replace(/"/g, '""')}"`,
               `"${(r.ticket_type || "free").replace(/"/g, '""')}"`,
               `"${r.ticket_price || 0}"`,
+              `"${(r.bundle_name || "").replace(/"/g, '""')}"`,
+              `"${r.bundle_price || 0}"`,
             ]
           : []),
         ...(hasMerchandise ? [`"${merchText.replace(/"/g, '""')}"`] : []),
@@ -2837,6 +2840,14 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                     className="w-fit border-primary/30 bg-primary/10 px-1.5 py-0 font-mono font-semibold text-[9px] text-primary"
                                   >
                                     Promo: {reg.voucher_code}
+                                  </Badge>
+                                )}
+                                {reg.bundle_name && (
+                                  <Badge
+                                    variant="outline"
+                                    className="w-fit border-primary/40 bg-primary/10 px-1.5 py-0 font-semibold text-[9px] text-primary"
+                                  >
+                                    Bundle: {reg.bundle_name}
                                   </Badge>
                                 )}
                               </div>

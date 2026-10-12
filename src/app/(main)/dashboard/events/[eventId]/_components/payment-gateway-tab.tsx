@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { useRouter } from "next/navigation";
 
-import { AlertTriangle, Check, CheckCircle2, Copy, Info, QrCode, ShieldCheck, Truck, Workflow } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CreditCard, ExternalLink, Info, QrCode, ShieldCheck, Truck } from "lucide-react";
 import { toast } from "sonner";
 
 import { FloatingSaveBar } from "@/app/(main)/dashboard/_components/floating-save-bar";
@@ -32,8 +32,6 @@ interface PaymentGatewayTabProps {
   event: FirestoreEvent;
 }
 
-const DEFAULT_WEBHOOK_URL = "https://n8n.gdgjakarta.com/webhook/api/generate-payment-link";
-
 export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
   const router = useRouter();
   const [isSaving, startTransition] = useTransition();
@@ -46,19 +44,18 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
       event.payment_environment ??
       (event.is_test ? "sandbox" : "production"),
   );
-  const [paymentWebhookUrl, setPaymentWebhookUrl] = useState<string>(event.payment_webhook_url ?? "");
+  const [merchandiseDeliveryFee, setMerchandiseDeliveryFee] = useState<number>(event.merchandise_delivery_fee ?? 50000);
 
   const [isInitialLoaded, setIsInitialLoaded] = useState(false);
   const initialSnapshotRef = useRef<string | null>(null);
-  const [copiedWebhook, setCopiedWebhook] = useState(false);
 
   const currentSnapshot = useMemo(() => {
     return JSON.stringify({
       paymentEnvironment,
       merchandiseDeliveryEnv,
-      paymentWebhookUrl: paymentWebhookUrl.trim(),
+      merchandiseDeliveryFee,
     });
-  }, [paymentEnvironment, merchandiseDeliveryEnv, paymentWebhookUrl]);
+  }, [paymentEnvironment, merchandiseDeliveryEnv, merchandiseDeliveryFee]);
 
   const isDirty =
     isInitialLoaded && initialSnapshotRef.current !== null && initialSnapshotRef.current !== currentSnapshot;
@@ -79,26 +76,31 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
         const loadedDeliveryEnv = (docData?.merchandise_delivery_payment_environment ??
           event.merchandise_delivery_payment_environment ??
           loadedEnv) as "production" | "sandbox";
-        const loadedWebhook = (docData?.payment_webhook_url ?? event.payment_webhook_url ?? "").trim();
+        let loadedDeliveryFee = 50000;
+        if (typeof docData?.merchandise_delivery_fee === "number") {
+          loadedDeliveryFee = docData.merchandise_delivery_fee;
+        } else if (typeof event.merchandise_delivery_fee === "number") {
+          loadedDeliveryFee = event.merchandise_delivery_fee;
+        }
 
         setPaymentEnvironment(loadedEnv);
         setMerchandiseDeliveryEnv(loadedDeliveryEnv);
-        setPaymentWebhookUrl(loadedWebhook);
+        setMerchandiseDeliveryFee(loadedDeliveryFee);
 
         initialSnapshotRef.current = JSON.stringify({
           paymentEnvironment: loadedEnv,
           merchandiseDeliveryEnv: loadedDeliveryEnv,
-          paymentWebhookUrl: loadedWebhook,
+          merchandiseDeliveryFee: loadedDeliveryFee,
         });
       } catch (err) {
         console.warn("[PaymentGatewayTab] Failed to fetch latest Firestore config:", err);
         const fallbackEnv = event.payment_environment ?? (event.is_test ? "sandbox" : "production");
         const fallbackDeliveryEnv = event.merchandise_delivery_payment_environment ?? fallbackEnv;
-        const fallbackWebhook = (event.payment_webhook_url ?? "").trim();
+        const fallbackDeliveryFee = event.merchandise_delivery_fee ?? 50000;
         initialSnapshotRef.current ??= JSON.stringify({
           paymentEnvironment: fallbackEnv,
           merchandiseDeliveryEnv: fallbackDeliveryEnv,
-          paymentWebhookUrl: fallbackWebhook,
+          merchandiseDeliveryFee: fallbackDeliveryFee,
         });
       } finally {
         setIsInitialLoaded(true);
@@ -198,13 +200,12 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
 
     startTransition(async () => {
       try {
-        const trimmedWebhook = paymentWebhookUrl.trim();
         const res = await updateEventPaymentConfigAction(
           String(event.id),
           {
             payment_environment: paymentEnvironment,
             merchandise_delivery_payment_environment: merchandiseDeliveryEnv,
-            payment_webhook_url: trimmedWebhook ? trimmedWebhook : null,
+            merchandise_delivery_fee: merchandiseDeliveryFee,
           },
           event,
         );
@@ -213,7 +214,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
           initialSnapshotRef.current = JSON.stringify({
             paymentEnvironment,
             merchandiseDeliveryEnv,
-            paymentWebhookUrl: trimmedWebhook,
+            merchandiseDeliveryFee,
           });
           toast.success("Payment gateway settings saved successfully!");
           router.refresh();
@@ -234,11 +235,11 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
       const parsed = JSON.parse(raw) as {
         paymentEnvironment: "production" | "sandbox";
         merchandiseDeliveryEnv?: "production" | "sandbox";
-        paymentWebhookUrl: string;
+        merchandiseDeliveryFee?: number;
       };
       setPaymentEnvironment(parsed.paymentEnvironment);
       setMerchandiseDeliveryEnv(parsed.merchandiseDeliveryEnv ?? parsed.paymentEnvironment);
-      setPaymentWebhookUrl(parsed.paymentWebhookUrl);
+      setMerchandiseDeliveryFee(parsed.merchandiseDeliveryFee ?? 50000);
       toast.info("Unsaved payment settings discarded.");
     } catch {
       setPaymentEnvironment(event.payment_environment ?? (event.is_test ? "sandbox" : "production"));
@@ -247,20 +248,141 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
           event.payment_environment ??
           (event.is_test ? "sandbox" : "production"),
       );
-      setPaymentWebhookUrl(event.payment_webhook_url ?? "");
+      setMerchandiseDeliveryFee(event.merchandise_delivery_fee ?? 50000);
     }
-  };
-
-  const handleCopyWebhook = () => {
-    const url = paymentWebhookUrl.trim() || DEFAULT_WEBHOOK_URL;
-    navigator.clipboard.writeText(url);
-    setCopiedWebhook(true);
-    toast.success("Webhook URL copied to clipboard.");
-    setTimeout(() => setCopiedWebhook(false), 2000);
   };
 
   return (
     <div className="space-y-6 pb-24">
+      {/* ── 0. DOKU DEVELOPER & MERCHANT PORTALS ──────────────────────── */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <CreditCard className="size-4 text-primary" />
+                <CardTitle className="text-base sm:text-lg">DOKU Portals & Simulator</CardTitle>
+              </div>
+              <CardDescription className="text-xs">
+                Quick access to official DOKU merchant back-office dashboards and QRIS payment testing simulator
+              </CardDescription>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="outline" asChild className="h-8 gap-1.5 text-xs">
+                <a href="https://www.doku.com/testqr/" target="_blank" rel="noopener noreferrer">
+                  <QrCode className="size-3.5 text-primary" />
+                  QRIS Simulator
+                  <ExternalLink className="size-3 opacity-60" />
+                </a>
+              </Button>
+              <Button size="sm" variant="outline" asChild className="h-8 gap-1.5 text-xs">
+                <a href="https://sandbox.doku.com/bo/dashboard" target="_blank" rel="noopener noreferrer">
+                  Sandbox Dashboard
+                  <ExternalLink className="size-3 opacity-60" />
+                </a>
+              </Button>
+              <Button size="sm" variant="outline" asChild className="h-8 gap-1.5 text-xs">
+                <a href="https://dashboard.doku.com/bo/dashboard" target="_blank" rel="noopener noreferrer">
+                  Production Dashboard
+                  <ExternalLink className="size-3 opacity-60" />
+                </a>
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {/* DOKU QRIS Simulator */}
+            <div className="flex flex-col justify-between rounded-lg border bg-muted/20 p-3.5 transition-colors hover:border-primary/40 hover:bg-muted/40">
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 font-medium text-xs text-foreground">
+                    <QrCode className="size-4 text-primary" />
+                    QRIS Simulator
+                  </span>
+                  <Badge
+                    variant="outline"
+                    className="border-amber-500/30 text-[10px] text-amber-600 dark:text-amber-400"
+                  >
+                    Testing Tool
+                  </Badge>
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  Simulate QRIS barcode scanning and trigger mock payment success for Sandbox invoices.
+                </p>
+              </div>
+              <div className="pt-3">
+                <Button variant="outline" size="sm" asChild className="w-full gap-1.5 text-xs">
+                  <a href="https://www.doku.com/testqr/" target="_blank" rel="noopener noreferrer">
+                    <QrCode className="size-3.5" />
+                    Open QRIS Simulator
+                    <ExternalLink className="size-3 opacity-60" />
+                  </a>
+                </Button>
+              </div>
+            </div>
+
+            {/* DOKU Sandbox Dashboard */}
+            <div className="flex flex-col justify-between rounded-lg border bg-muted/20 p-3.5 transition-colors hover:border-amber-500/40 hover:bg-muted/40">
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 font-medium text-xs text-foreground">
+                    <CreditCard className="size-4 text-amber-500" />
+                    Sandbox Dashboard
+                  </span>
+                  <Badge
+                    variant="outline"
+                    className="border-amber-500/30 text-[10px] text-amber-600 dark:text-amber-400"
+                  >
+                    Development
+                  </Badge>
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  Inspect sandbox test transactions, client IDs, secret keys, and webhook callback status.
+                </p>
+              </div>
+              <div className="pt-3">
+                <Button variant="outline" size="sm" asChild className="w-full gap-1.5 text-xs">
+                  <a href="https://sandbox.doku.com/bo/dashboard" target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="size-3.5" />
+                    Open Sandbox Dashboard
+                  </a>
+                </Button>
+              </div>
+            </div>
+
+            {/* DOKU Production Dashboard */}
+            <div className="flex flex-col justify-between rounded-lg border bg-muted/20 p-3.5 transition-colors hover:border-emerald-500/40 hover:bg-muted/40">
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 font-medium text-xs text-foreground">
+                    <ShieldCheck className="size-4 text-emerald-600 dark:text-emerald-400" />
+                    Production Dashboard
+                  </span>
+                  <Badge
+                    variant="outline"
+                    className="border-emerald-500/30 text-[10px] text-emerald-600 dark:text-emerald-400"
+                  >
+                    Live
+                  </Badge>
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  Live merchant back-office for settlement, disbursements, and real revenue tracking.
+                </p>
+              </div>
+              <div className="pt-3">
+                <Button variant="outline" size="sm" asChild className="w-full gap-1.5 text-xs">
+                  <a href="https://dashboard.doku.com/bo/dashboard" target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="size-3.5" />
+                    Open Production Dashboard
+                  </a>
+                </Button>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* ── 1. PAYMENT GATEWAY & API ENVIRONMENT CARD ────────────────── */}
       <Card>
         <CardHeader>
@@ -353,112 +475,135 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
             </Label>
           </RadioGroup>
 
-          {/* Merchandise Delivery Request Fee Environment */}
-          <div className="border-t pt-3">
-            <Field>
-              <div className="flex items-center gap-2 pb-1.5">
-                <Truck className="size-4 text-primary" />
-                <FieldLabel htmlFor="merch-delivery-env" className="font-semibold text-xs">
-                  Merchandise Delivery Fee Environment (Uncollected Perks Claim)
-                </FieldLabel>
+          {/* ── Merchandise Delivery Pricing & Environment ── */}
+          <div className="space-y-4 border-t pt-4">
+            <div className="flex items-center gap-2">
+              <Truck className="size-4 text-primary" />
+              <div>
+                <h4 className="font-semibold text-xs text-foreground">Merchandise Delivery Pricing & Configuration</h4>
+                <p className="text-[11px] text-muted-foreground">
+                  Configure the handling and courier delivery fee charged to attendees who claim uncollected merchandise
+                  after missing event check-in.
+                </p>
               </div>
-              <Select
-                value={merchandiseDeliveryEnv}
-                onValueChange={(val: "production" | "sandbox") => setMerchandiseDeliveryEnv(val)}
-              >
-                <SelectTrigger id="merch-delivery-env" className="text-xs">
-                  <SelectValue placeholder="Select Environment" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="production" className="text-xs">
-                    <div className="flex items-center gap-2">
-                      <span className="size-2 rounded-full bg-emerald-500" />
-                      <span>Live Production (Real DOKU QRIS Rp 50.000)</span>
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="sandbox" className="text-xs">
-                    <div className="flex items-center gap-2">
-                      <span className="size-2 rounded-full bg-amber-500" />
-                      <span>Development / Sandbox (Test DOKU QRIS Simulator)</span>
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-[11px] text-muted-foreground">
-                Specifies whether attendees who missed on-site check-in and request delivery for uncollected merchandise
-                are charged via DOKU Production or Sandbox.
-              </p>
-            </Field>
-          </div>
+            </div>
 
-          {/* Webhook Endpoint Override (Optional) */}
-          <div className="space-y-2 pt-2">
-            <Field>
-              <FieldLabel htmlFor="payment-webhook-url">Custom Payment Link Webhook URL (Optional Override)</FieldLabel>
-              <div className="flex gap-2">
-                <Input
-                  id="payment-webhook-url"
-                  placeholder={`Leave empty to use system default (${DEFAULT_WEBHOOK_URL})`}
-                  value={paymentWebhookUrl}
-                  onChange={(e) => setPaymentWebhookUrl(e.target.value)}
-                  className="font-mono text-xs"
-                />
-                {paymentWebhookUrl && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPaymentWebhookUrl("")}
-                    className="text-xs"
-                  >
-                    Reset
-                  </Button>
-                )}
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                Override the n8n endpoint for this event if you are routing payments through a custom automation
-                workflow or staging webhook (e.g.{" "}
-                <code className="rounded bg-muted px-1 text-[10px]">/webhook-test/...</code>).
-              </p>
-            </Field>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {/* Configurable Delivery Price (IDR) */}
+              <Field>
+                <FieldLabel htmlFor="merch-delivery-fee" className="font-semibold text-xs">
+                  Merchandise Delivery Fee (IDR)
+                </FieldLabel>
+                <div className="relative">
+                  <span className="absolute inset-y-0 left-0 flex items-center pl-3 font-semibold text-muted-foreground text-xs">
+                    Rp
+                  </span>
+                  <Input
+                    id="merch-delivery-fee"
+                    type="number"
+                    min={0}
+                    step={1000}
+                    value={merchandiseDeliveryFee}
+                    onChange={(e) => {
+                      const val = Number.parseInt(e.target.value, 10);
+                      setMerchandiseDeliveryFee(Number.isNaN(val) ? 0 : Math.max(0, val));
+                    }}
+                    className="pl-9 font-semibold text-xs"
+                    placeholder="50000"
+                  />
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                  <span className="mr-1 text-[10px] text-muted-foreground">Quick presets:</span>
+                  {[25000, 35000, 50000, 75000, 100000].map((preset) => (
+                    <Button
+                      key={preset}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setMerchandiseDeliveryFee(preset)}
+                      className={cn(
+                        "h-6 px-2 text-[10px]",
+                        merchandiseDeliveryFee === preset && "border-primary bg-primary/10 font-semibold text-primary",
+                      )}
+                    >
+                      Rp {preset.toLocaleString("id-ID")}
+                    </Button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Current fee:{" "}
+                  <strong className="text-foreground">Rp {merchandiseDeliveryFee.toLocaleString("id-ID")}</strong>.
+                  Applied to each uncollected perk courier delivery invoice.
+                </p>
+              </Field>
+
+              {/* Delivery Fee Environment */}
+              <Field>
+                <FieldLabel htmlFor="merch-delivery-env" className="font-semibold text-xs">
+                  Delivery Payment Environment
+                </FieldLabel>
+                <Select
+                  value={merchandiseDeliveryEnv}
+                  onValueChange={(val: "production" | "sandbox") => setMerchandiseDeliveryEnv(val)}
+                >
+                  <SelectTrigger id="merch-delivery-env" className="text-xs">
+                    <SelectValue placeholder="Select Environment" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="production" className="text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="size-2 rounded-full bg-emerald-500" />
+                        <span>Live Production (Real QRIS Rp {merchandiseDeliveryFee.toLocaleString("id-ID")})</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="sandbox" className="text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="size-2 rounded-full bg-amber-500" />
+                        <span>Development / Sandbox (Test Simulator)</span>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  Specifies whether attendees who missed on-site check-in are charged via DOKU Production or Sandbox
+                  invoices.
+                </p>
+              </Field>
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* ── 2. PIPELINE & INTEGRATION OVERVIEW ────────────────────────── */}
+      {/* ── 2. PAYMENT METHODS & TESTING OVERVIEW ─────────────────────── */}
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
-              <Workflow className="size-4 text-primary" />
-              <CardTitle className="text-base">DOKU Checkout & n8n Pipeline</CardTitle>
+              <ShieldCheck className="size-4 text-primary" />
+              <CardTitle className="text-base">Payment Method & QRIS Standard</CardTitle>
             </div>
-            <CardDescription className="text-xs">
-              Automated payment link generation and transaction lifecycle
-            </CardDescription>
+            <CardDescription className="text-xs">Supported payment channels and attendee checkout flow</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 text-xs">
-            <div className="flex items-start justify-between gap-4 rounded-lg border p-3">
-              <div>
-                <p className="font-medium text-foreground">Target Webhook Endpoint</p>
-                <p className="mt-0.5 break-all font-mono text-[11px] text-muted-foreground">
-                  {paymentWebhookUrl.trim() || DEFAULT_WEBHOOK_URL}
-                </p>
-              </div>
-              <Button type="button" variant="ghost" size="sm" onClick={handleCopyWebhook} className="h-7 shrink-0 px-2">
-                {copiedWebhook ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
-              </Button>
-            </div>
-
             <div className="space-y-2 rounded-lg bg-muted/40 p-3 text-muted-foreground leading-relaxed">
               <div className="flex items-center gap-2 font-medium text-[11px] text-foreground">
-                <ShieldCheck className="size-3.5 text-emerald-600 dark:text-emerald-400" />
-                Supported Payment Method
+                <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                Universal QRIS Standard
               </div>
               <p className="text-[11px]">
                 <strong>QRIS</strong> (GoPay, OVO, Dana, ShopeePay, LinkAja, and all Mobile Banking apps) via DOKU
                 Checkout Hosted Page. Attendees scan the generated QR code with any QRIS-compatible e-wallet or banking
                 app to complete payment.
+              </p>
+            </div>
+
+            <div className="rounded-lg border p-3">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-muted-foreground">Active Merchandise Delivery Fee:</span>
+                <strong className="text-foreground">Rp {merchandiseDeliveryFee.toLocaleString("id-ID")}</strong>
+              </div>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Billed when an approved attendee requests delivery for uncollected swag perks.
               </p>
             </div>
           </CardContent>
@@ -488,21 +633,62 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
                 You can scan the generated QR code or copy the invoice number using the DOKU Sandbox Simulator to
                 trigger instant mock payment success events.
               </p>
+              <div className="flex flex-wrap items-center gap-2 pt-1.5">
+                <Button size="sm" variant="outline" asChild className="h-7 gap-1.5 text-xs">
+                  <a href="https://www.doku.com/testqr/" target="_blank" rel="noopener noreferrer">
+                    <QrCode className="size-3 text-primary" />
+                    Open DOKU QRIS Simulator
+                    <ExternalLink className="size-2.5 opacity-60" />
+                  </a>
+                </Button>
+                <Button size="sm" variant="ghost" asChild className="h-7 gap-1.5 text-xs">
+                  <a href="https://sandbox.doku.com/bo/dashboard" target="_blank" rel="noopener noreferrer">
+                    DOKU Sandbox Dashboard
+                    <ExternalLink className="size-2.5 opacity-60" />
+                  </a>
+                </Button>
+              </div>
             </div>
 
             {paymentEnvironment === "production" ? (
-              <div className="flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 text-[11px] text-emerald-700 dark:text-emerald-400">
-                <CheckCircle2 className="size-4 shrink-0" />
-                <span>
-                  Currently in <strong>Live Production</strong>. Real bank charges and transactions will be issued.
-                </span>
+              <div className="flex flex-col gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 text-[11px] text-emerald-700 dark:text-emerald-400 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="size-4 shrink-0" />
+                  <span>
+                    Currently in <strong>Live Production</strong>. Real bank charges and transactions will be issued.
+                  </span>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  asChild
+                  className="h-7 shrink-0 gap-1.5 border-emerald-500/30 text-xs text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-400"
+                >
+                  <a href="https://dashboard.doku.com/bo/dashboard" target="_blank" rel="noopener noreferrer">
+                    DOKU Production Dashboard
+                    <ExternalLink className="size-2.5 opacity-60" />
+                  </a>
+                </Button>
               </div>
             ) : (
-              <div className="flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-[11px] text-amber-700 dark:text-amber-400">
-                <AlertTriangle className="size-4 shrink-0" />
-                <span>
-                  Currently in <strong>Sandbox Mode</strong>. Test transactions only. Attendees cannot pay real money.
-                </span>
+              <div className="flex flex-col gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-[11px] text-amber-700 dark:text-amber-400 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="size-4 shrink-0" />
+                  <span>
+                    Currently in <strong>Sandbox Mode</strong>. Test transactions only. Attendees cannot pay real money.
+                  </span>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  asChild
+                  className="h-7 shrink-0 gap-1.5 border-amber-500/30 text-xs text-amber-700 hover:bg-amber-500/10 dark:text-amber-400"
+                >
+                  <a href="https://sandbox.doku.com/bo/dashboard" target="_blank" rel="noopener noreferrer">
+                    DOKU Sandbox Dashboard
+                    <ExternalLink className="size-2.5 opacity-60" />
+                  </a>
+                </Button>
               </div>
             )}
           </CardContent>
@@ -564,8 +750,8 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
         saveLabel="Save Payment Settings"
         savingLabel="Saving Settings..."
         savedLabel="Settings Saved"
-        statusInfo={`Environment: ${paymentEnvironment === "production" ? "Live Production" : "Development / Sandbox"}`}
-        helperText="Payment environment and webhook overrides will immediately take effect for new payment links."
+        statusInfo={`Environment: ${paymentEnvironment === "production" ? "Live Production" : "Development / Sandbox"} | Delivery Fee: Rp ${merchandiseDeliveryFee.toLocaleString("id-ID")}`}
+        helperText="Payment environment and merchandise delivery pricing settings will take effect immediately for new payment links."
       />
     </div>
   );

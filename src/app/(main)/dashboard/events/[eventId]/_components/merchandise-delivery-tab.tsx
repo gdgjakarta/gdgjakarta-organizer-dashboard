@@ -127,7 +127,7 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
     try {
       setIsSavingEnv(true);
       setCurrentEnv(newEnv);
-      const res = await updateEventMerchandiseDeliveryConfigAction(eventId, newEnv);
+      const res = await updateEventMerchandiseDeliveryConfigAction(eventId, newEnv, event);
       if (res.success) {
         toast.success(
           `Merchandise delivery environment updated to ${newEnv === "production" ? "Live Production" : "Sandbox / Dev"}.`,
@@ -181,9 +181,10 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
   const approvedCount = registrations.filter((r) => r.delivery_request?.status === "approved").length;
   const deliveredCount = registrations.filter((r) => r.delivery_request?.status === "delivered").length;
   const rejectedCount = registrations.filter((r) => r.delivery_request?.status === "rejected").length;
+  const eventDeliveryFee = typeof event.merchandise_delivery_fee === "number" ? event.merchandise_delivery_fee : 50000;
   const totalFeesCollected = registrations
     .filter((r) => r.delivery_request?.payment_status === "paid")
-    .reduce((sum, r) => sum + (r.delivery_request?.fee_amount || 50000), 0);
+    .reduce((sum, r) => sum + (r.delivery_request?.fee_amount || eventDeliveryFee), 0);
 
   // Filtered registrations
   const filteredRegistrations = useMemo(() => {
@@ -243,7 +244,7 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
               </div>
               <p className="text-muted-foreground text-xs leading-relaxed">
                 {currentEnv === "production"
-                  ? "Real payments will be generated and processed via DOKU QRIS Production for Rp 50.000 delivery fee."
+                  ? `Real payments will be generated and processed via DOKU QRIS Production for Rp ${eventDeliveryFee.toLocaleString("id-ID")} delivery fee.`
                   : "Test mode enabled. Delivery fee requests will generate DOKU Sandbox payment links with mock QRIS testing."}
               </p>
             </div>
@@ -519,7 +520,7 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
                     <TableCell className="align-top">
                       <div className="space-y-1">
                         <span className="font-medium font-mono text-foreground">
-                          Rp {(req.fee_amount || 50000).toLocaleString("id-ID")}
+                          Rp {(req.fee_amount || eventDeliveryFee).toLocaleString("id-ID")}
                         </span>
                         <div className="flex flex-wrap items-center gap-1">
                           <Badge

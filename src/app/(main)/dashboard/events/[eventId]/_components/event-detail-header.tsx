@@ -13,11 +13,13 @@ import {
   ChevronDown,
   Clock,
   Copy,
+  CreditCard,
   ExternalLink,
   Eye,
   Globe,
   Hourglass,
   MapPin,
+  QrCode,
   Radio,
   RefreshCw,
   TrendingDown,
@@ -42,6 +44,12 @@ import { resolveEventAudience } from "@/lib/bevy/audience";
 import { triggerEventsSyncAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
+
+function getDropRateColorClass(rate: number): string {
+  if (rate > 60) return "text-rose-600 dark:text-rose-400";
+  if (rate > 35) return "text-amber-600 dark:text-amber-400";
+  return "text-emerald-600 dark:text-emerald-400";
+}
 
 interface EventDetailHeaderProps {
   event: FirestoreEvent;
@@ -70,7 +78,7 @@ export function EventDetailHeader({
     totalRejected,
     totalPending,
     totalWaitlisted,
-    totalCheckedIn: initialTotalCheckedIn ?? event.total_checked_in ?? 0,
+    totalCheckedIn: initialTotalCheckedIn > 0 ? initialTotalCheckedIn : event.total_checked_in,
   });
 
   useEffect(() => {
@@ -80,7 +88,7 @@ export function EventDetailHeader({
       totalRejected,
       totalPending,
       totalWaitlisted,
-      totalCheckedIn: initialTotalCheckedIn ?? event.total_checked_in ?? 0,
+      totalCheckedIn: initialTotalCheckedIn > 0 ? initialTotalCheckedIn : event.total_checked_in,
     });
   }, [
     totalRegistrations,
@@ -333,14 +341,7 @@ export function EventDetailHeader({
               <>
                 <span>•</span>
                 <span
-                  className={cn(
-                    "flex items-center gap-1.5",
-                    dropRateNumber > 60
-                      ? "text-rose-600 dark:text-rose-400"
-                      : dropRateNumber > 35
-                        ? "text-amber-600 dark:text-amber-400"
-                        : "text-emerald-600 dark:text-emerald-400",
-                  )}
+                  className={cn("flex items-center gap-1.5", getDropRateColorClass(dropRateNumber))}
                   title={`${droppedCount} approved attendee${droppedCount === 1 ? "" : "s"} not checked in`}
                 >
                   <TrendingDown className="size-4" />
@@ -423,6 +424,43 @@ export function EventDetailHeader({
               </DropdownMenuContent>
             </DropdownMenu>
           )}
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-1.5">
+                <CreditCard className="size-3.5" />
+                DOKU Portals
+                <ChevronDown className="size-3 opacity-60" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel className="font-normal text-muted-foreground text-xs">
+                Simulator & Testing
+              </DropdownMenuLabel>
+              <DropdownMenuItem asChild>
+                <a href="https://www.doku.com/testqr/" target="_blank" rel="noopener noreferrer">
+                  <QrCode className="mr-2 size-3.5 text-primary" />
+                  DOKU QRIS Simulator
+                </a>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <a href="https://sandbox.doku.com/bo/dashboard" target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="mr-2 size-3.5 text-amber-500" />
+                  DOKU Sandbox Dashboard
+                </a>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel className="font-normal text-muted-foreground text-xs">
+                Live Back-Office
+              </DropdownMenuLabel>
+              <DropdownMenuItem asChild>
+                <a href="https://dashboard.doku.com/bo/dashboard" target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="mr-2 size-3.5 text-emerald-600 dark:text-emerald-400" />
+                  DOKU Production Dashboard
+                </a>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           <Button size="sm" asChild className="gap-1.5">
             <a href={getBevyManageEventUrl(event.id)} target="_blank" rel="noopener noreferrer">

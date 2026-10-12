@@ -121,8 +121,9 @@ export function hasRegistrationPaymentRequirements(registration?: Partial<Firest
   const hasMerch = Boolean(registration.selected_merchandise?.some((m) => (m.price ?? 0) > 0));
   const hasPaidTicket = registration.ticket_type === "paid" && (registration.ticket_price ?? 0) > 0;
   const hasCommitmentFee = registration.ticket_type === "commitment_fee" && (registration.ticket_price ?? 0) > 0;
+  const hasBundle = Boolean(registration.bundle_id && (registration.bundle_price ?? 0) > 0);
 
-  return hasMerch || hasPaidTicket || hasCommitmentFee;
+  return hasMerch || hasPaidTicket || hasCommitmentFee || hasBundle;
 }
 
 /**
@@ -145,7 +146,15 @@ export function buildRegistrationPaymentPayload(
     type: "Merchandise",
   }));
 
-  if (registration.ticket_type === "paid" && (registration.ticket_price ?? 0) > 0) {
+  if (registration.bundle_id && (registration.bundle_price ?? 0) > 0) {
+    items.unshift({
+      id: registration.bundle_id,
+      name: `${registration.bundle_name ?? "Bundling Package"} (${registration.ticket_name ?? "Event Ticket"})`,
+      quantity: 1,
+      price: registration.bundle_price ?? 0,
+      type: "Ticket",
+    });
+  } else if (registration.ticket_type === "paid" && (registration.ticket_price ?? 0) > 0) {
     items.unshift({
       id: registration.ticket_id ?? "ticket",
       name: registration.ticket_name ?? "Event Ticket",

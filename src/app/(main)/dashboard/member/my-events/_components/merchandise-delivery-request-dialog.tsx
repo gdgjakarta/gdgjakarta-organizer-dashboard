@@ -64,6 +64,10 @@ export function MerchandiseDeliveryRequestDialog({
       event?.payment_environment ??
       (event?.is_test ? "sandbox" : "production"),
   );
+
+  const deliveryFee =
+    existingDelivery?.fee_amount ??
+    (typeof event?.merchandise_delivery_fee === "number" ? event.merchandise_delivery_fee : 50000);
   const [step, setStep] = useState<"form" | "payment">(isPendingPayment ? "payment" : "form");
 
   const merchandiseItems = registration.selected_merchandise ?? [];
@@ -170,11 +174,12 @@ export function MerchandiseDeliveryRequestDialog({
             <Alert className="border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-200">
               <AlertCircle className="size-4 text-amber-600 dark:text-amber-400" />
               <AlertTitle className="font-semibold text-xs sm:text-sm">
-                Distribution Fee & Non-Commitment Charge: Rp 50.000
+                Distribution Fee & Non-Commitment Charge: Rp {deliveryFee.toLocaleString("id-ID")}
               </AlertTitle>
               <AlertDescription className="mt-1 text-[11px] leading-relaxed sm:text-xs">
-                A fixed fee of <strong>Rp 50.000</strong> applies for handling and courier distribution. This includes
-                delivery logistics and a cutting fee because you could not commit to attending the event on-site.
+                A fixed fee of <strong>Rp {deliveryFee.toLocaleString("id-ID")}</strong> applies for handling and
+                courier distribution. This includes delivery logistics and a cutting fee because you could not commit to
+                attending the event on-site.
               </AlertDescription>
             </Alert>
 
@@ -323,7 +328,7 @@ export function MerchandiseDeliveryRequestDialog({
                 ) : (
                   <>
                     <Truck className="size-3.5" />
-                    Proceed to Pay Rp 50.000
+                    Proceed to Pay Rp {deliveryFee.toLocaleString("id-ID")}
                   </>
                 )}
               </Button>
@@ -339,7 +344,7 @@ export function MerchandiseDeliveryRequestDialog({
               <h3 className="font-semibold text-foreground text-sm">Delivery Form Submitted!</h3>
               <p className="mt-1 text-muted-foreground text-xs">
                 To finalize your delivery request, please complete the distribution payment of{" "}
-                <strong className="text-foreground">Rp 50.000</strong>.
+                <strong className="text-foreground">Rp {deliveryFee.toLocaleString("id-ID")}</strong>.
               </p>
               {invoiceNumber && (
                 <div className="mt-2 font-mono text-[11px] text-muted-foreground">Invoice: {invoiceNumber}</div>

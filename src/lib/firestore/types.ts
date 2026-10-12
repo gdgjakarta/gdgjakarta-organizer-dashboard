@@ -145,6 +145,30 @@ export interface EventVoucher {
   updated_at?: string;
 }
 
+export interface BundleMerchandiseItem {
+  merchandise_id: string; // References EventMerchandiseItem.id
+  quantity: number; // e.g. 1
+  default_variations?: Record<string, string>; // Optional default preset
+}
+
+export interface EventBundlePackage {
+  id: string;
+  name: string; // e.g. "VIP Swag & Conference Pass"
+  description?: string;
+  ticket_id: string; // The primary ticket tier included (references EventTicketTier.id)
+  merchandise_items: BundleMerchandiseItem[]; // Bundled merchandise items
+  price: number; // Bundled price in IDR
+  original_price?: number; // Calculated or custom compare-at total price
+  capacity?: number | null; // Quota cap (null = unlimited)
+  total_registered?: number;
+  status: "active" | "sold_out" | "hidden";
+  sales_start_date?: string | null; // ISO string
+  sales_end_date?: string | null; // ISO string
+  badge?: string; // e.g. "Best Value", "Save 25%", "Limited Edition"
+  created_at?: string;
+  updated_at?: string;
+}
+
 export type EmailTemplateKey =
   | "interest"
   | "accepted"
@@ -248,9 +272,13 @@ export interface FirestoreEvent {
   merchandise?: EventMerchandiseItem[];
   max_merchandise_per_person?: number | null; // Limit merchandise items per person (null = unlimited)
   vouchers?: EventVoucher[];
+  bundles?: EventBundlePackage[];
+  referral_discount_percentage?: number | null; // Custom referral ticket discount override for this event in %
+  referral_enabled?: boolean; // Enable or disable referral discount for this event (default true)
   webhook_url?: string | null;
   payment_environment?: "production" | "sandbox";
   merchandise_delivery_payment_environment?: "production" | "sandbox";
+  merchandise_delivery_fee?: number;
   payment_webhook_url?: string | null;
   registration_status?: "Draft" | "Published" | "Closed";
   registration_start_date?: string | null;
@@ -300,6 +328,13 @@ export interface FirestoreMember {
   events_attended_count?: number; // Tracked through on-site scanner/check-ins
   last_active?: string | null;
   notes?: string;
+
+  // Referral Program Extensions
+  referral_code?: string;
+  referral_points?: number;
+  referrals_count?: number;
+  has_used_referral?: boolean;
+  referred_by_code?: string;
 
   // Sync Metadata
   synced_from_bevy_at?: string;
@@ -415,6 +450,9 @@ export interface FirestoreRegistration {
   ticket_type?: TicketType;
   ticket_price?: number;
   selected_merchandise?: SelectedMerchandiseOrder[];
+  bundle_id?: string | null;
+  bundle_name?: string | null;
+  bundle_price?: number | null;
   registered_at: string;
   reviewed_at?: string;
   reviewed_by_id?: string;
@@ -442,10 +480,61 @@ export interface FirestoreRegistration {
   voucher_discount_value?: number;
   voucher_applies_to?: VoucherAppliesTo;
 
+  // Referral tracking
+  referral_code?: string;
+  referrer_member_id?: string;
+  referrer_name?: string;
+  referral_discount_percent?: number;
+  referral_discount_amount?: number;
+
   // Merchandise delivery request (No-show uncollected merchandise claim)
   delivery_request?: MerchandiseDeliveryRequest;
 
   updated_at?: string;
+}
+
+export interface ReferralProgramSettings {
+  default_discount_percentage: number; // e.g. 10 (10% discount on tickets)
+  points_per_referral: number; // e.g. 10 points awarded per referral
+  is_active: boolean; // Master referral program toggle
+  merch_prize_description?: string; // "Exclusive GDG Jakarta merchandise"
+  updated_at: string;
+  updated_by_name?: string;
+}
+
+export interface ReferralRedemption {
+  id: string; // `${referee_id}_${registration_id}`
+  referrer_id: string;
+  referrer_name: string;
+  referrer_email: string;
+  referrer_code: string;
+  referee_id: string;
+  referee_name: string;
+  referee_email: string;
+  event_id: string;
+  event_title: string;
+  ticket_id?: string | null;
+  ticket_name?: string | null;
+  ticket_type?: TicketType;
+  ticket_price?: number;
+  discount_percentage: number;
+  discount_amount: number;
+  points_awarded: number;
+  created_at: string;
+}
+
+export interface ReferralLeaderboardEntry {
+  rank: number;
+  member_id: string;
+  name: string;
+  email: string;
+  avatar_url?: string | null;
+  referral_code: string;
+  referral_points: number;
+  referrals_count: number;
+  is_prize_winner: boolean;
+  joined_date: string;
+  last_active?: string | null;
 }
 
 export interface FirestoreSyncMetadata {

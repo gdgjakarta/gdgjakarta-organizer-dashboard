@@ -5,6 +5,7 @@ import {
   FileSpreadsheet,
   Mail,
   Package,
+  PackageCheck,
   Sparkles,
   Ticket,
   TicketPercent,
@@ -16,6 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getAllBevyChapterEvents, getBevyEventById, resolveEventAudience } from "@/lib/bevy/client";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
 
+import { BundlesTab } from "./_components/bundles-tab";
 import { CustomFormTab } from "./_components/custom-form-tab";
 import { EmailTemplatesTab } from "./_components/email-templates-tab";
 import { EventDetailHeader } from "./_components/event-detail-header";
@@ -216,6 +218,10 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
               <Package className="size-4" />
               Merchandise
             </TabsTrigger>
+            <TabsTrigger value="bundles" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
+              <PackageCheck className="size-4" />
+              Bundles
+            </TabsTrigger>
             <TabsTrigger value="delivery" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
               <Truck className="size-4" />
               Merchandise Delivery
@@ -253,6 +259,10 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
 
         <TabsContent value="merch" className="space-y-4">
           <MerchandiseTab event={event} />
+        </TabsContent>
+
+        <TabsContent value="bundles" className="space-y-4">
+          <BundlesTab event={event} />
         </TabsContent>
 
         <TabsContent value="delivery" className="space-y-4">

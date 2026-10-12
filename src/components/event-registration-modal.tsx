@@ -18,6 +18,7 @@ import {
   MapPin,
   Minus,
   Package,
+  PackageCheck,
   Plus,
   Ruler,
   ShieldCheck,
@@ -52,6 +53,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { resolveEventAudience } from "@/lib/bevy/audience";
+import { calculateBundlePricing, getBundleSalesStatus } from "@/lib/events/bundle-templates";
 import { checkEventCapacityStatus, validateRegistrationSubmissionCapacity } from "@/lib/events/capacity-validator";
 import { buildRegistrationPaymentPayload, hasRegistrationPaymentRequirements } from "@/lib/events/doku-payment";
 import { extractEventImageUrl } from "@/lib/events/media-utils";
@@ -72,6 +74,7 @@ import { calculateVoucherDiscount, validateVoucherForCart } from "@/lib/events/v
 import { checkEventRegistrationAction, registerForEventAction } from "@/lib/firestore/actions";
 import type {
   CustomQuestion,
+  EventBundlePackage,
   EventMerchandiseItem,
   EventVoucher,
   FirestoreEvent,
@@ -171,6 +174,7 @@ export function EventRegistrationModal({
   const [touchedFields, setTouchedFields] = useState<Set<string>>(new Set());
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const [selectedTicketId, setSelectedTicketId] = useState<string>("");
+  const [selectedBundleId, setSelectedBundleId] = useState<string>("");
   const [selectedMerch, setSelectedMerch] = useState<
     Record<string, { quantity: number; selectedVariations: Record<string, string> }>
   >({});
@@ -319,6 +323,51 @@ export function EventRegistrationModal({
   }, [eventConfig.merchandise]);
   const hasMerchandise = availableMerchandise.length > 0;
 
+  const availableBundles = useMemo(() => {
+    return (eventConfig.bundles ?? []).filter((b) => b.status !== "hidden");
+  }, [eventConfig.bundles]);
+  const hasBundles = availableBundles.length > 0;
+
+  const selectedBundle = useMemo(() => {
+    return availableBundles.find((b) => b.id === selectedBundleId) ?? null;
+  }, [availableBundles, selectedBundleId]);
+
+  const handleSelectBundle = (bundle: EventBundlePackage) => {
+    if (selectedBundleId === bundle.id) {
+      setSelectedBundleId("");
+      return;
+    }
+
+    setSelectedBundleId(bundle.id);
+
+    if (bundle.ticket_id) {
+      setSelectedTicketId(bundle.ticket_id);
+    }
+
+    setSelectedMerch((prev) => {
+      const updated = { ...prev };
+      for (const bItem of bundle.merchandise_items) {
+        const existing = updated[bItem.merchandise_id] ?? { quantity: 0, selectedVariations: {} };
+        const targetMerch = availableMerchandise.find((m) => m.id === bItem.merchandise_id);
+
+        const defaultVars: Record<string, string> = { ...existing.selectedVariations };
+        if (targetMerch?.variations) {
+          for (const v of targetMerch.variations) {
+            if (!defaultVars[v.name] && v.options?.length) {
+              defaultVars[v.name] = bItem.default_variations?.[v.name] || v.options[0];
+            }
+          }
+        }
+
+        updated[bItem.merchandise_id] = {
+          quantity: Math.max(bItem.quantity, existing.quantity || bItem.quantity),
+          selectedVariations: defaultVars,
+        };
+      }
+      return updated;
+    });
+  };
+
   // Auto-select session if only 1 session track exists
   useEffect(() => {
     if (Array.isArray(eventConfig.sessions) && eventConfig.sessions.length === 1 && !selectedSessionId) {
@@ -350,11 +399,34 @@ export function EventRegistrationModal({
   }, [eventConfig.sessions, selectedSessionId]);
 
   const ticketPrice = selectedTicket ? selectedTicket.price || 0 : 0;
+  const effectiveBasePrice = selectedBundle ? selectedBundle.price : ticketPrice;
 
   // Voucher state
   const [voucherInput, setVoucherInput] = useState("");
   const [appliedVoucher, setAppliedVoucher] = useState<EventVoucher | null>(null);
   const [voucherError, setVoucherError] = useState<string | null>(null);
+
+  // Referral state
+  const [referralInput, setReferralInput] = useState("");
+  const [appliedReferral, setAppliedReferral] = useState<{
+    code: string;
+    referrerId: string;
+    referrerName: string;
+    discountPercentage: number;
+  } | null>(null);
+  const [referralError, setReferralError] = useState<string | null>(null);
+  const [isValidatingReferral, setIsValidatingReferral] = useState(false);
+
+  // Auto-detect referral code from URL search parameters on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const refParam = params.get("ref");
+      if (refParam && !appliedReferral) {
+        setReferralInput(refParam.toUpperCase());
+      }
+    }
+  }, [appliedReferral]);
 
   const totalMerchandiseItems = useMemo(() => {
     return Object.values(selectedMerch).reduce((sum, item) => sum + (item.quantity || 0), 0);
@@ -368,20 +440,25 @@ export function EventRegistrationModal({
       if (order.quantity > 0) {
         const item = availableMerchandise.find((m) => m.id === itemId);
         const isIncludedInTicket = Boolean(selectedTicket?.perks?.some((p) => p.merchandise_id === item?.id));
-        if (item && !item.is_free && !isIncludedInTicket) {
+
+        const bundledRecord = selectedBundle?.merchandise_items.find((bi) => bi.merchandise_id === itemId);
+        const bundledQty = bundledRecord?.quantity || 0;
+        const billableQty = Math.max(0, order.quantity - bundledQty);
+
+        if (item && !item.is_free && !isIncludedInTicket && billableQty > 0) {
           const unitPrice = getMerchEffectivePrice(item, order.selectedVariations);
-          total += unitPrice * order.quantity;
+          total += unitPrice * billableQty;
         }
       }
     }
     return total;
-  }, [selectedMerch, availableMerchandise, selectedTicket]);
+  }, [selectedMerch, availableMerchandise, selectedTicket, selectedBundle]);
 
   // Auto re-validate applied voucher when ticket or merchandise selection changes
   useEffect(() => {
     if (appliedVoucher) {
       const res = validateVoucherForCart(appliedVoucher, {
-        ticketPrice,
+        ticketPrice: effectiveBasePrice,
         merchandiseTotal: merchandiseTotalPrice,
       });
       if (!res.isValid) {
@@ -389,20 +466,28 @@ export function EventRegistrationModal({
         setVoucherError(res.error ?? "Voucher is no longer applicable to your selection.");
       }
     }
-  }, [appliedVoucher, ticketPrice, merchandiseTotalPrice]);
+  }, [appliedVoucher, effectiveBasePrice, merchandiseTotalPrice]);
 
   const voucherDiscount = useMemo(() => {
     if (!appliedVoucher) {
       return { ticketDiscount: 0, merchandiseDiscount: 0, totalDiscount: 0 };
     }
     return calculateVoucherDiscount(appliedVoucher, {
-      ticketPrice,
+      ticketPrice: effectiveBasePrice,
       merchandiseTotal: merchandiseTotalPrice,
     });
-  }, [appliedVoucher, ticketPrice, merchandiseTotalPrice]);
+  }, [appliedVoucher, effectiveBasePrice, merchandiseTotalPrice]);
 
-  const rawSubtotal = ticketPrice + merchandiseTotalPrice;
-  const grandTotal = Math.max(0, rawSubtotal - voucherDiscount.totalDiscount);
+  // Calculate referral ticket discount
+  const referralDiscount = useMemo(() => {
+    if (!appliedReferral || !appliedReferral.discountPercentage || effectiveBasePrice <= 0) {
+      return 0;
+    }
+    return Math.round((effectiveBasePrice * appliedReferral.discountPercentage) / 100);
+  }, [appliedReferral, effectiveBasePrice]);
+
+  const rawSubtotal = effectiveBasePrice + merchandiseTotalPrice;
+  const grandTotal = Math.max(0, rawSubtotal - voucherDiscount.totalDiscount - referralDiscount);
 
   const handleApplyVoucher = () => {
     const cleanCode = voucherInput.trim().toUpperCase();
@@ -434,6 +519,47 @@ export function EventRegistrationModal({
     setVoucherInput("");
     setVoucherError(null);
     toast.info("Voucher removed.");
+  };
+
+  const handleApplyReferral = async () => {
+    const cleanCode = referralInput.trim().toUpperCase();
+    if (!cleanCode) {
+      setReferralError("Please enter a referral code.");
+      return;
+    }
+    if (!user) {
+      setReferralError("Please sign in with Google to apply a referral code.");
+      return;
+    }
+    setIsValidatingReferral(true);
+    setReferralError(null);
+    try {
+      const { validateReferralCodeAction } = await import("@/lib/firestore/actions");
+      const res = await validateReferralCodeAction(cleanCode, user.id, user.email, String(event.id));
+      if (!res.valid) {
+        setReferralError(res.error || "Invalid referral code.");
+        return;
+      }
+      setAppliedReferral({
+        code: cleanCode,
+        referrerId: res.referrer?.id || "",
+        referrerName: res.referrer?.name || "Community Member",
+        discountPercentage: res.discountPercentage ?? 10,
+      });
+      setReferralError(null);
+      toast.success(`Referral code "${cleanCode}" applied! Enjoy ${res.discountPercentage ?? 10}% off your ticket.`);
+    } catch {
+      setReferralError("Failed to validate referral code. Please try again.");
+    } finally {
+      setIsValidatingReferral(false);
+    }
+  };
+
+  const handleRemoveReferral = () => {
+    setAppliedReferral(null);
+    setReferralInput("");
+    setReferralError(null);
+    toast.info("Referral code removed.");
   };
 
   const handleUpdateMerchQuantity = (itemId: string, delta: number) => {
@@ -974,11 +1100,13 @@ export function EventRegistrationModal({
             if (item) {
               const unitPrice = getMerchEffectivePrice(item, order.selectedVariations);
               const isIncludedInTicket = Boolean(selectedTicket?.perks?.some((p) => p.merchandise_id === item.id));
+              const bundledRecord = selectedBundle?.merchandise_items.find((bi) => bi.merchandise_id === item.id);
+              const isCoveredByBundle = Boolean(bundledRecord && order.quantity <= bundledRecord.quantity);
               selectedMerchOrders.push({
                 id: item.id,
                 name: item.name,
                 quantity: order.quantity,
-                price: item.is_free || isIncludedInTicket ? 0 : unitPrice,
+                price: item.is_free || isIncludedInTicket || isCoveredByBundle ? 0 : unitPrice,
                 selected_variations:
                   Object.keys(order.selectedVariations).length > 0 ? order.selectedVariations : undefined,
               });
@@ -1002,8 +1130,11 @@ export function EventRegistrationModal({
           member_email: attendeeEmail,
           ticket_id: selectedTicket?.id,
           ticket_name: selectedTicket?.name,
-          ticket_price: selectedTicket?.price,
+          ticket_price: selectedBundle ? selectedBundle.price : selectedTicket?.price,
           ticket_type: selectedTicket?.type,
+          bundle_id: selectedBundle?.id,
+          bundle_name: selectedBundle?.name,
+          bundle_price: selectedBundle ? selectedBundle.price : undefined,
           selected_merchandise: selectedMerchOrders.length > 0 ? selectedMerchOrders : undefined,
           payment_amount: grandTotal,
           voucher_id: appliedVoucher?.id,
@@ -1012,6 +1143,11 @@ export function EventRegistrationModal({
           voucher_discount_type: appliedVoucher?.discount_type,
           voucher_discount_value: appliedVoucher?.discount_value,
           voucher_applies_to: appliedVoucher?.applies_to,
+          referral_code: appliedReferral?.code,
+          referrer_member_id: appliedReferral?.referrerId,
+          referrer_name: appliedReferral?.referrerName,
+          referral_discount_percent: appliedReferral?.discountPercentage,
+          referral_discount_amount: referralDiscount > 0 ? referralDiscount : undefined,
         };
 
         const requiresPayment = grandTotal > 0 && hasRegistrationPaymentRequirements(regCandidate);
@@ -1067,6 +1203,11 @@ export function EventRegistrationModal({
           voucher_discount_type: appliedVoucher?.discount_type,
           voucher_discount_value: appliedVoucher?.discount_value,
           voucher_applies_to: appliedVoucher?.applies_to,
+          referral_code: appliedReferral?.code,
+          referrer_member_id: appliedReferral?.referrerId,
+          referrer_name: appliedReferral?.referrerName,
+          referral_discount_percent: appliedReferral?.discountPercentage,
+          referral_discount_amount: referralDiscount > 0 ? referralDiscount : undefined,
           registered_at: new Date().toISOString(),
           payment_status: isWaitlistMode ? undefined : requiresPayment ? "unpaid" : undefined,
           payment_url: isWaitlistMode ? undefined : generatedPaymentUrl,
@@ -1793,13 +1934,140 @@ export function EventRegistrationModal({
                       </div>
                     )}
 
+                    {/* ── BUNDLING PACKAGES SECTION ───────────────────────────── */}
+                    {hasBundles && (
+                      <div className="space-y-3 rounded-xl border border-primary/30 bg-primary/[0.03] p-4 shadow-xs">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <PackageCheck className="size-4 text-primary" />
+                            <h3 className="font-semibold text-foreground text-sm">
+                              Bundling Packages (Combo Tickets & Merchandise)
+                            </h3>
+                          </div>
+                          <Badge
+                            variant="outline"
+                            className="border-primary/30 bg-primary/10 text-[10px] text-primary font-semibold"
+                          >
+                            Best Value
+                          </Badge>
+                        </div>
+                        <p className="text-muted-foreground text-xs leading-relaxed">
+                          Save on official event merchandise and tickets by choosing a bundled combo package.
+                        </p>
+
+                        <div className="grid grid-cols-1 gap-3 pt-1">
+                          {availableBundles.map((b) => {
+                            const salesStatus = getBundleSalesStatus(b);
+                            const isDisabled = !salesStatus.isAvailable;
+                            const isSelected = selectedBundleId === b.id;
+                            const pricing = calculateBundlePricing(b, availableTickets, availableMerchandise);
+                            const linkedTicket = availableTickets.find((t) => t.id === b.ticket_id);
+
+                            return (
+                              <div
+                                key={b.id}
+                                className={cn(
+                                  "relative flex flex-col justify-between rounded-xl border p-4 transition-all",
+                                  isSelected
+                                    ? "border-primary bg-primary/10 shadow-sm ring-1 ring-primary/40"
+                                    : "border-border bg-card hover:border-primary/40 hover:bg-muted/20",
+                                  isDisabled && "cursor-not-allowed opacity-60",
+                                )}
+                              >
+                                <div className="space-y-2">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="space-y-0.5">
+                                      <div className="flex flex-wrap items-center gap-1.5">
+                                        <span className="font-semibold text-foreground text-sm">{b.name}</span>
+                                        {b.badge && (
+                                          <Badge className="bg-primary/20 text-primary border-primary/30 text-[10px] font-semibold">
+                                            {b.badge}
+                                          </Badge>
+                                        )}
+                                        <Badge variant="outline" className={cn("text-[10px]", salesStatus.badgeColor)}>
+                                          {salesStatus.badgeLabel}
+                                        </Badge>
+                                      </div>
+                                      {b.description && (
+                                        <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
+                                          {b.description}
+                                        </p>
+                                      )}
+                                    </div>
+
+                                    {/* Price display */}
+                                    <div className="text-right shrink-0">
+                                      <div className="font-bold text-base text-foreground">
+                                        {b.price === 0 ? "Free (Rp 0)" : `Rp ${b.price.toLocaleString("id-ID")}`}
+                                      </div>
+                                      {pricing.standaloneTotal > b.price && (
+                                        <div className="text-[11px] text-muted-foreground line-through">
+                                          Rp {pricing.standaloneTotal.toLocaleString("id-ID")}
+                                        </div>
+                                      )}
+                                      {pricing.savings > 0 && (
+                                        <div className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                                          Save {pricing.discountPercentage}%
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Included breakdown preview */}
+                                  <div className="flex flex-wrap items-center gap-1.5 pt-1 text-xs">
+                                    <Badge variant="secondary" className="gap-1 px-2 py-0.5 text-[11px] font-medium">
+                                      <Ticket className="size-3 text-primary" />
+                                      {linkedTicket?.name || "Event Pass"} Included
+                                    </Badge>
+                                    {b.merchandise_items.map((mItem) => {
+                                      const m = availableMerchandise.find((item) => item.id === mItem.merchandise_id);
+                                      return (
+                                        <Badge
+                                          key={mItem.merchandise_id}
+                                          variant="outline"
+                                          className="gap-1 px-2 py-0.5 text-[11px] bg-background"
+                                        >
+                                          <Package className="size-3 text-primary" />
+                                          {mItem.quantity}x {m?.name || "Merchandise"}
+                                        </Badge>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+
+                                <div className="mt-3 flex items-center justify-between border-t border-border/40 pt-2.5 text-xs">
+                                  <span className="text-[11px] text-muted-foreground">
+                                    {isSelected
+                                      ? "✓ Selected package — ticket and merchandise auto-included"
+                                      : "Click to select this bundling package"}
+                                  </span>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant={isSelected ? "default" : "outline"}
+                                    className="h-7 text-xs px-3"
+                                    disabled={isDisabled}
+                                    onClick={() => handleSelectBundle(b)}
+                                  >
+                                    {isSelected ? "Selected" : "Select Package"}
+                                  </Button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
                     {/* ── TICKET TIER SELECTION SECTION ───────────────────────── */}
                     {hasTickets && (
                       <div className="space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <Ticket className="size-4 text-primary" />
-                            <h3 className="font-semibold text-foreground text-sm">Select Your Registration Ticket</h3>
+                            <h3 className="font-semibold text-foreground text-sm">
+                              {hasBundles ? "Or Select Standard Ticket Pass" : "Select Your Registration Ticket"}
+                            </h3>
                             <span className="text-destructive">*</span>
                           </div>
                           {eventConfig.max_tickets_per_person && (
@@ -2257,6 +2525,81 @@ export function EventRegistrationModal({
                       </div>
                     )}
 
+                    {/* ── REFERRAL CODE SECTION ───────────────────────────────── */}
+                    {hasTickets && (
+                      <div className="space-y-2 rounded-xl border bg-card p-3.5 shadow-2xs">
+                        <div className="flex items-center justify-between font-semibold text-foreground text-xs">
+                          <span className="flex items-center gap-1.5">
+                            <Sparkles className="size-3.5 text-primary" />
+                            Have a Referral Code?
+                          </span>
+                          {appliedReferral && (
+                            <Badge
+                              variant="outline"
+                              className="border-emerald-500/30 bg-emerald-500/10 font-semibold text-[10px] text-emerald-600 dark:text-emerald-400"
+                            >
+                              Applied ({appliedReferral.discountPercentage}% OFF)
+                            </Badge>
+                          )}
+                        </div>
+
+                        {appliedReferral ? (
+                          <div className="flex items-center justify-between rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-xs">
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold font-mono text-emerald-800 dark:text-emerald-300">
+                                  {appliedReferral.code}
+                                </span>
+                                <span className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                                  (-{appliedReferral.discountPercentage}% on ticket)
+                                </span>
+                              </div>
+                              <p className="line-clamp-1 text-[10px] text-emerald-700/80 dark:text-emerald-400/80">
+                                Referred by {appliedReferral.referrerName}
+                              </p>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-xs"
+                              onClick={handleRemoveReferral}
+                              className="size-6 text-emerald-800 hover:bg-emerald-500/20 dark:text-emerald-200"
+                              title="Remove referral code"
+                            >
+                              <X className="size-3.5" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="space-y-1.5">
+                            <div className="flex gap-2">
+                              <Input
+                                value={referralInput}
+                                onChange={(e) => {
+                                  setReferralInput(e.target.value.toUpperCase());
+                                  setReferralError(null);
+                                }}
+                                placeholder="Enter referral code (e.g. GDG8X4K)"
+                                className="h-8 font-mono text-xs uppercase tracking-wider"
+                              />
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={handleApplyReferral}
+                                disabled={isValidatingReferral}
+                                className="h-8 shrink-0 px-3 font-medium text-xs"
+                              >
+                                {isValidatingReferral ? <Loader2 className="size-3 animate-spin" /> : "Apply"}
+                              </Button>
+                            </div>
+                            {referralError && (
+                              <p className="text-[11px] text-destructive leading-normal">{referralError}</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     {/* ── REGISTRATION & ORDER SUMMARY ─────────────────────────── */}
                     {(hasTickets || (hasMerchandise && totalMerchandiseItems > 0)) && (
                       <div className="space-y-2.5 rounded-xl border bg-muted/40 p-4">
@@ -2298,23 +2641,34 @@ export function EventRegistrationModal({
                           );
                         })}
 
-                        {/* Subtotal & Voucher Line item */}
+                        {/* Subtotal & Discounts */}
+                        {(appliedVoucher || (appliedReferral && referralDiscount > 0)) && (
+                          <div className="flex items-center justify-between border-t pt-2 text-muted-foreground text-xs">
+                            <span>Subtotal</span>
+                            <span className="font-mono">Rp {rawSubtotal.toLocaleString("id-ID")}</span>
+                          </div>
+                        )}
+
                         {appliedVoucher && voucherDiscount.totalDiscount > 0 && (
-                          <>
-                            <div className="flex items-center justify-between border-t pt-2 text-muted-foreground text-xs">
-                              <span>Subtotal</span>
-                              <span className="font-mono">Rp {rawSubtotal.toLocaleString("id-ID")}</span>
-                            </div>
-                            <div className="flex items-center justify-between font-medium text-emerald-600 text-xs dark:text-emerald-400">
-                              <span className="flex items-center gap-1">
-                                <Tag className="size-3" />
-                                Voucher ({appliedVoucher.code})
-                              </span>
-                              <span className="font-mono">
-                                -Rp {voucherDiscount.totalDiscount.toLocaleString("id-ID")}
-                              </span>
-                            </div>
-                          </>
+                          <div className="flex items-center justify-between font-medium text-emerald-600 text-xs dark:text-emerald-400">
+                            <span className="flex items-center gap-1">
+                              <Tag className="size-3" />
+                              Voucher ({appliedVoucher.code})
+                            </span>
+                            <span className="font-mono">
+                              -Rp {voucherDiscount.totalDiscount.toLocaleString("id-ID")}
+                            </span>
+                          </div>
+                        )}
+
+                        {appliedReferral && referralDiscount > 0 && (
+                          <div className="flex items-center justify-between font-medium text-emerald-600 text-xs dark:text-emerald-400">
+                            <span className="flex items-center gap-1">
+                              <Sparkles className="size-3" />
+                              Referral Discount ({appliedReferral.discountPercentage}%)
+                            </span>
+                            <span className="font-mono">-Rp {referralDiscount.toLocaleString("id-ID")}</span>
+                          </div>
                         )}
 
                         <div className="flex items-center justify-between border-t pt-2 font-bold text-foreground text-sm">

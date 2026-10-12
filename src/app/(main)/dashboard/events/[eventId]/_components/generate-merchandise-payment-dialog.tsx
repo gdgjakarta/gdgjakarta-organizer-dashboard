@@ -295,6 +295,12 @@ export function GenerateMerchandisePaymentDialog({
                   Open DOKU Checkout in New Tab
                 </a>
               </Button>
+              <Button variant="outline" size="sm" asChild className="w-full gap-2 text-xs">
+                <a href="https://www.doku.com/testqr/" target="_blank" rel="noopener noreferrer">
+                  <QrCode className="size-3.5 text-primary" />
+                  Test with DOKU QRIS Simulator
+                </a>
+              </Button>
               <Button variant="ghost" size="sm" onClick={resetForm} className="text-muted-foreground text-xs">
                 Generate Another Link
               </Button>

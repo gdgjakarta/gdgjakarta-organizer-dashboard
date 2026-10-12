@@ -105,6 +105,7 @@ export function PublicEventRsvpCard({
     merchandise: firestoreEvent?.merchandise,
     max_merchandise_per_person: firestoreEvent?.max_merchandise_per_person,
     vouchers: firestoreEvent?.vouchers,
+    bundles: firestoreEvent?.bundles,
     registration_status: firestoreEvent?.registration_status,
     registration_start_date: firestoreEvent?.registration_start_date,
     registration_end_date: firestoreEvent?.registration_end_date,
@@ -248,7 +249,7 @@ export function PublicEventRsvpCard({
                 onSuccess={(reg) => setCurrentRegistration(reg)}
               >
                 <Button className="w-full gap-2 font-medium shadow-xs" size="lg">
-                  {!user ? (
+                  {!user && (
                     <>
                       <Image
                         src={googleFavicon}
@@ -259,12 +260,14 @@ export function PublicEventRsvpCard({
                       />
                       {windowStatus.isWaitlist ? "Join Community to Join Waitlist" : "Join Community to Register"}
                     </>
-                  ) : windowStatus.isWaitlist ? (
+                  )}
+                  {user && windowStatus.isWaitlist && (
                     <>
                       <Clock className="size-4" />
                       Join Waitlist
                     </>
-                  ) : (
+                  )}
+                  {user && !windowStatus.isWaitlist && (
                     <>
                       <Sparkles className="size-4" />
                       Register for Event
@@ -343,7 +346,7 @@ export function PublicEventRsvpCard({
                     onSuccess={(reg) => setCurrentRegistration(reg)}
                   >
                     <Button size="sm" className="gap-1.5 shadow-xs">
-                      {!user ? (
+                      {!user && (
                         <>
                           <Image
                             src={googleFavicon}
@@ -354,12 +357,14 @@ export function PublicEventRsvpCard({
                           />
                           {windowStatus.isWaitlist ? "Join & Waitlist" : "Join & RSVP"}
                         </>
-                      ) : windowStatus.isWaitlist ? (
+                      )}
+                      {user && windowStatus.isWaitlist && (
                         <>
                           <Clock className="size-3.5" />
                           Join Waitlist
                         </>
-                      ) : (
+                      )}
+                      {user && !windowStatus.isWaitlist && (
                         <>
                           <Sparkles className="size-3.5" />
                           RSVP

@@ -154,7 +154,7 @@ export function DeliveryApprovalDialog({
               <div className="flex items-center justify-between font-medium text-foreground">
                 <span>Shipping Destination:</span>
                 <Badge variant="outline" className="text-[10px] text-emerald-600 dark:text-emerald-400">
-                  Fee Paid (Rp 50.000)
+                  Fee Paid (Rp {(req.fee_amount || 50000).toLocaleString("id-ID")})
                 </Badge>
               </div>
               <div className="mt-1 text-muted-foreground leading-relaxed">

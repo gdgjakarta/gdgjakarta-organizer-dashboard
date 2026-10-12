@@ -38,6 +38,11 @@ service cloud.firestore {
     //   - notes: string|null (optional, <= 2000 chars) - Organizer notes
     //   - synced_from_bevy_at: string|null (optional, <= 50 chars) - Bevy sync timestamp
     //   - updated_at: string (required, <= 50 chars) - Last update timestamp
+    //   - referral_code: string|null (optional, <= 64 chars) - Member referral sharing code
+    //   - referral_points: int|float|null (optional, >= 0) - Accumulated referral reward points
+    //   - referrals_count: int|float|null (optional, >= 0) - Successful referrals count
+    //   - has_used_referral: bool|null (optional) - Whether member has redeemed a referral code
+    //   - referred_by_code: string|null (optional, <= 64 chars) - Referral code redeemed by member
     //
     // Collection: event_registrations
     // Document ID: registrationId (e.g. eventId_memberId)
@@ -60,6 +65,9 @@ service cloud.firestore {
     //   - ticket_name: string|null (optional, <= 200 chars) - Selected ticket tier name
     //   - ticket_type: string|null (optional, <= 50 chars) - Ticket type ('free'|'paid'|'commitment_fee')
     //   - ticket_price: int|float|null (optional, >= 0) - Ticket price
+    //   - bundle_id: string|null (optional, <= 128 chars)
+    //   - bundle_name: string|null (optional, <= 200 chars)
+    //   - bundle_price: int|float|null (optional, >= 0)
     //   - selected_merchandise: list|null (optional, <= 50 items) - Selected merchandise orders
     //   - session_id: string|null (optional, <= 128 chars) - Selected session identifier
     //   - session_title: string|null (optional, <= 200 chars) - Selected session title
@@ -79,6 +87,11 @@ service cloud.firestore {
     //   - payment_invoice_number: string|null (optional, <= 128 chars) - DOKU invoice number
     //   - payment_amount: int|float|null (optional, >= 0) - Total payment amount in IDR
     //   - payment_expired_datetime: string|null (optional, <= 50 chars) - DOKU invoice expiry timestamp
+    //   - referral_code: string|null (optional, <= 64 chars) - Referral code used during registration
+    //   - referrer_member_id: string|null (optional, <= 128 chars) - Member UID of referrer
+    //   - referrer_name: string|null (optional, <= 150 chars) - Display name of referrer
+    //   - referral_discount_percent: int|float|null (optional, 0..100) - Referral discount percentage applied
+    //   - referral_discount_amount: int|float|null (optional, >= 0) - Referral discount amount in IDR
     //   - delivery_request: map|null (optional) - Merchandise delivery request for no-show attendees
     //     Fields in delivery_request:
     //       - id: string (required, <= 200 chars) - Delivery request ID
@@ -150,6 +163,7 @@ service cloud.firestore {
     //   - payment_webhook_url: string|null (optional, <= 2000 chars) - Payment webhook URL
     //   - payment_environment: string|null (optional) - Payment environment ('production'|'sandbox')
     //   - merchandise_delivery_payment_environment: string|null (optional) - Delivery fee payment environment ('production'|'sandbox')
+    //   - merchandise_delivery_fee: int|float|null (optional, >= 0) - Fixed shipping delivery fee override in IDR
     //   - registration_status: string|null (optional) - Registration window status ('Draft'|'Published'|'Closed')
     //   - registration_start_date: string|null (optional, <= 50 chars) - Registration start date ISO string
     //   - registration_end_date: string|null (optional, <= 50 chars) - Registration end date ISO string
@@ -157,7 +171,10 @@ service cloud.firestore {
     //   - max_tickets_per_person: int|float|null (optional, >= 0) - Limit tickets per person
     //   - merchandise: list|null (optional, <= 50 items) - Merchandise items configuration
     //   - max_merchandise_per_person: int|float|null (optional, >= 0) - Limit merchandise per person
+    //   - bundles: list|null (optional, <= 50 items) - Bundling packages combining tickets & merchandise
     //   - vouchers: list|null (optional, <= 50 items) - Event discount vouchers configuration
+    //   - referral_discount_percentage: int|float|null (optional, 0..100) - Referral discount percentage for this event
+    //   - referral_enabled: bool|null (optional) - Referral discount toggle for this event
     //   - highlight_video_url: string|null (optional, <= 2000 chars) - Highlight video URL
     //   - highlight_video_title: string|null (optional, <= 300 chars) - Highlight video title
     //   - photo_album_url: string|null (optional, <= 2000 chars) - Photo album URL
@@ -219,6 +236,41 @@ service cloud.firestore {
     //   - new_value: string|int|float|bool|null (optional, <= 2000 chars if string) - Value after transition
     //   - notes: string|null (optional, <= 2000 chars) - Change notes / comments
     //   - timestamp: string (required, <= 50 chars) - Action timestamp ISO string
+    //
+    // Collection: referral_redemptions
+    // Document ID: redemptionId (e.g. `${referee_id}_${registration_id}`)
+    // Fields:
+    //   - id: string (required, <= 200 chars) - Redemption record ID
+    //   - referrer_id: string (required, <= 128 chars) - Referrer member UID
+    //   - referrer_name: string|null (optional, <= 150 chars) - Referrer display name
+    //   - referrer_email: string|null (optional, valid email, <= 150 chars) - Referrer email
+    //   - referrer_code: string|null (optional, <= 64 chars) - Referral code used
+    //   - referee_id: string (required, <= 128 chars) - Referee member UID
+    //   - referee_name: string|null (optional, <= 150 chars) - Referee display name
+    //   - referee_email: string|null (optional, valid email, <= 150 chars) - Referee email
+    //   - event_id: string (required, <= 128 chars) - Event ID
+    //   - event_title: string|null (optional, <= 300 chars) - Event title
+    //   - ticket_id: string|null (optional, <= 128 chars) - Selected ticket tier ID
+    //   - ticket_name: string|null (optional, <= 200 chars) - Selected ticket tier name
+    //   - ticket_type: string|null (optional, <= 50 chars) - Ticket type ('free'|'paid'|'commitment_fee')
+    //   - ticket_price: int|float|null (optional, >= 0) - Ticket price
+    //   - discount_percentage: int|float|null (optional, 0..100) - Applied discount percentage
+    //   - discount_amount: int|float|null (optional, >= 0) - Applied discount amount
+    //   - points_awarded: int|float (required, >= 0) - Referral points awarded to referrer
+    //   - registration_id: string|null (optional, <= 200 chars) - Associated registration ID
+    //   - created_at: string (required, <= 50 chars) - Creation timestamp ISO string
+    //   - updated_at: string|null (optional, <= 50 chars) - Last update timestamp
+    //
+    // Collection: system_settings
+    // Document ID: settingId (e.g. 'referral')
+    // Fields:
+    //   - id: string|null (optional, <= 128 chars) - Setting document identifier
+    //   - default_discount_percentage: int|float|null (optional, 0..100) - Default referral discount percentage
+    //   - points_per_referral: int|float|null (optional, >= 0) - Points awarded per referral
+    //   - is_active: bool|null (optional) - Program toggle
+    //   - merch_prize_description: string|null (optional, <= 1000 chars) - Prize description
+    //   - updated_at: string|null (optional, <= 50 chars) - Last update timestamp
+    //   - updated_by_name: string|null (optional, <= 150 chars) - Updater display name
     //
     // ===============================================================
 
@@ -289,7 +341,8 @@ service cloud.firestore {
           'email', 'company', 'company_or_institution', 'title', 'role', 'chapter_role',
           'team', 'status', 'joined_date', 'raw_created_date', 'events_registered_count',
           'avatar_url', 'profile_url', 'is_email_verified', 'phone', 'events_attended_count',
-          'last_active', 'notes', 'synced_from_bevy_at', 'updated_at'
+          'last_active', 'notes', 'synced_from_bevy_at', 'updated_at',
+          'referral_code', 'referral_points', 'referrals_count', 'has_used_referral', 'referred_by_code'
         ]) &&
         data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
         data.name is string && data.name.size() > 0 && data.name.size() <= 150 &&
@@ -317,7 +370,12 @@ service cloud.firestore {
         (!('phone' in data) || data.phone == null || (data.phone is string && data.phone.size() <= 30)) &&
         (!('last_active' in data) || data.last_active == null || (data.last_active is string && data.last_active.size() <= 50)) &&
         (!('notes' in data) || data.notes == null || (data.notes is string && data.notes.size() <= 2000)) &&
-        (!('synced_from_bevy_at' in data) || data.synced_from_bevy_at == null || (data.synced_from_bevy_at is string && data.synced_from_bevy_at.size() <= 50));
+        (!('synced_from_bevy_at' in data) || data.synced_from_bevy_at == null || (data.synced_from_bevy_at is string && data.synced_from_bevy_at.size() <= 50)) &&
+        (!('referral_code' in data) || data.referral_code == null || (data.referral_code is string && data.referral_code.size() <= 64)) &&
+        (!('referral_points' in data) || data.referral_points == null || ((data.referral_points is int || data.referral_points is float) && data.referral_points >= 0)) &&
+        (!('referrals_count' in data) || data.referrals_count == null || ((data.referrals_count is int || data.referrals_count is float) && data.referrals_count >= 0)) &&
+        (!('has_used_referral' in data) || data.has_used_referral == null || data.has_used_referral is bool) &&
+        (!('referred_by_code' in data) || data.referred_by_code == null || (data.referred_by_code is string && data.referred_by_code.size() <= 64));
     }
 
     // Validates delivery_request map structure, data types, and bounds
@@ -396,12 +454,14 @@ service cloud.firestore {
           'member_id', 'member_name', 'member_email', 'member_avatar', 'member_role',
           'status', 'answers', 'notes', 'ticket_tier',
           'ticket_id', 'ticket_name', 'ticket_type', 'ticket_price',
+          'bundle_id', 'bundle_name', 'bundle_price',
           'selected_merchandise', 'session_id', 'session_title',
           'registered_at', 'reviewed_at', 'reviewed_by_id', 'reviewed_by_name',
           'reviewed_by_email', 'status_logs',
           'checked_in_at', 'is_checked_in', 'bevy_attendee_id', 'checkin_date',
           'attendee_code',
           'payment_status', 'payment_url', 'payment_invoice_number', 'payment_amount', 'payment_expired_datetime',
+          'referral_code', 'referrer_member_id', 'referrer_name', 'referral_discount_percent', 'referral_discount_amount',
           'delivery_request',
           'updated_at'
         ]) &&
@@ -422,6 +482,9 @@ service cloud.firestore {
         (!('ticket_name' in data) || data.ticket_name == null || (data.ticket_name is string && data.ticket_name.size() <= 200)) &&
         (!('ticket_type' in data) || data.ticket_type == null || (data.ticket_type is string && data.ticket_type.size() <= 50)) &&
         (!('ticket_price' in data) || data.ticket_price == null || ((data.ticket_price is int || data.ticket_price is float) && data.ticket_price >= 0)) &&
+        (!('bundle_id' in data) || data.bundle_id == null || (data.bundle_id is string && data.bundle_id.size() <= 128)) &&
+        (!('bundle_name' in data) || data.bundle_name == null || (data.bundle_name is string && data.bundle_name.size() <= 200)) &&
+        (!('bundle_price' in data) || data.bundle_price == null || ((data.bundle_price is int || data.bundle_price is float) && data.bundle_price >= 0)) &&
         (!('selected_merchandise' in data) || data.selected_merchandise == null || (data.selected_merchandise is list && data.selected_merchandise.size() <= 50)) &&
         (!('session_id' in data) || data.session_id == null || (data.session_id is string && data.session_id.size() <= 128)) &&
         (!('session_title' in data) || data.session_title == null || (data.session_title is string && data.session_title.size() <= 200)) &&
@@ -442,6 +505,11 @@ service cloud.firestore {
         (!('payment_invoice_number' in data) || data.payment_invoice_number == null || (data.payment_invoice_number is string && data.payment_invoice_number.size() <= 128)) &&
         (!('payment_amount' in data) || data.payment_amount == null || ((data.payment_amount is int || data.payment_amount is float) && data.payment_amount >= 0)) &&
         (!('payment_expired_datetime' in data) || data.payment_expired_datetime == null || (data.payment_expired_datetime is string && data.payment_expired_datetime.size() <= 50)) &&
+        (!('referral_code' in data) || data.referral_code == null || (data.referral_code is string && data.referral_code.size() <= 64)) &&
+        (!('referrer_member_id' in data) || data.referrer_member_id == null || (data.referrer_member_id is string && data.referrer_member_id.size() <= 128)) &&
+        (!('referrer_name' in data) || data.referrer_name == null || (data.referrer_name is string && data.referrer_name.size() <= 150)) &&
+        (!('referral_discount_percent' in data) || data.referral_discount_percent == null || ((data.referral_discount_percent is int || data.referral_discount_percent is float) && data.referral_discount_percent >= 0 && data.referral_discount_percent <= 100)) &&
+        (!('referral_discount_amount' in data) || data.referral_discount_amount == null || ((data.referral_discount_amount is int || data.referral_discount_amount is float) && data.referral_discount_amount >= 0)) &&
         (!('delivery_request' in data) || data.delivery_request == null || isValidDeliveryRequest(data.delivery_request)) &&
         (!('updated_at' in data) || data.updated_at == null || (data.updated_at is string && data.updated_at.size() <= 50));
     }
@@ -458,9 +526,12 @@ service cloud.firestore {
           'max_attendees', 'total_registrations', 'total_approved', 'total_checked_in', 'total_waitlisted',
           'custom_questions', 'agenda', 'speakers', 'sessions', 'webhook_url',
           'payment_webhook_url', 'payment_environment', 'merchandise_delivery_payment_environment',
+          'merchandise_delivery_fee',
           'registration_status', 'registration_start_date', 'registration_end_date',
           'tickets', 'max_tickets_per_person', 'merchandise', 'max_merchandise_per_person',
+          'bundles',
           'vouchers',
+          'referral_discount_percentage', 'referral_enabled',
           'highlight_video_url', 'highlight_video_title', 'photo_album_url', 'photo_album_title', 'recap_description',
           'email_templates',
           'synced_from_bevy_at', 'created_at', 'updated_at'
@@ -499,6 +570,7 @@ service cloud.firestore {
         (!('payment_webhook_url' in data) || data.payment_webhook_url == null || (data.payment_webhook_url is string && data.payment_webhook_url.size() <= 2000)) &&
         (!('payment_environment' in data) || data.payment_environment == null || (data.payment_environment is string && (data.payment_environment in ['production', 'sandbox']))) &&
         (!('merchandise_delivery_payment_environment' in data) || data.merchandise_delivery_payment_environment == null || (data.merchandise_delivery_payment_environment is string && (data.merchandise_delivery_payment_environment in ['production', 'sandbox']))) &&
+        (!('merchandise_delivery_fee' in data) || data.merchandise_delivery_fee == null || ((data.merchandise_delivery_fee is int || data.merchandise_delivery_fee is float) && data.merchandise_delivery_fee >= 0)) &&
         (!('max_attendees' in data) || data.max_attendees == null || ((data.max_attendees is int || data.max_attendees is float) && data.max_attendees >= 0)) &&
         (!('total_registrations' in data) || data.total_registrations == null || ((data.total_registrations is int || data.total_registrations is float) && data.total_registrations >= 0)) &&
         (!('total_approved' in data) || data.total_approved == null || ((data.total_approved is int || data.total_approved is float) && data.total_approved >= 0)) &&
@@ -511,7 +583,10 @@ service cloud.firestore {
         (!('max_tickets_per_person' in data) || data.max_tickets_per_person == null || ((data.max_tickets_per_person is int || data.max_tickets_per_person is float) && data.max_tickets_per_person >= 0)) &&
         (!('merchandise' in data) || data.merchandise == null || (data.merchandise is list && data.merchandise.size() <= 50)) &&
         (!('max_merchandise_per_person' in data) || data.max_merchandise_per_person == null || ((data.max_merchandise_per_person is int || data.max_merchandise_per_person is float) && data.max_merchandise_per_person >= 0)) &&
+        (!('bundles' in data) || data.bundles == null || (data.bundles is list && data.bundles.size() <= 50)) &&
         (!('vouchers' in data) || data.vouchers == null || (data.vouchers is list && data.vouchers.size() <= 50)) &&
+        (!('referral_discount_percentage' in data) || data.referral_discount_percentage == null || ((data.referral_discount_percentage is int || data.referral_discount_percentage is float) && data.referral_discount_percentage >= 0 && data.referral_discount_percentage <= 100)) &&
+        (!('referral_enabled' in data) || data.referral_enabled == null || data.referral_enabled is bool) &&
         (!('highlight_video_url' in data) || data.highlight_video_url == null || (data.highlight_video_url is string && data.highlight_video_url.size() <= 2000)) &&
         (!('highlight_video_title' in data) || data.highlight_video_title == null || (data.highlight_video_title is string && data.highlight_video_title.size() <= 300)) &&
         (!('photo_album_url' in data) || data.photo_album_url == null || (data.photo_album_url is string && data.photo_album_url.size() <= 2000)) &&
@@ -591,6 +666,54 @@ service cloud.firestore {
         (!('notes' in data) || data.notes == null || (data.notes is string && data.notes.size() <= 2000));
     }
 
+    // Validates referral_redemptions document structure, data types, and bounds
+    function isValidReferralRedemption(data) {
+      return hasRequiredFields(data, ['id', 'referrer_id', 'referee_id', 'event_id', 'created_at', 'points_awarded']) &&
+        hasOnlyAllowedFields(data, [
+          'id', 'referrer_id', 'referrer_name', 'referrer_email', 'referrer_code',
+          'referee_id', 'referee_name', 'referee_email',
+          'event_id', 'event_title',
+          'ticket_id', 'ticket_name', 'ticket_type', 'ticket_price',
+          'discount_percentage', 'discount_amount',
+          'points_awarded', 'registration_id', 'created_at', 'updated_at'
+        ]) &&
+        data.id is string && data.id.size() > 0 && data.id.size() <= 200 &&
+        data.referrer_id is string && data.referrer_id.size() > 0 && data.referrer_id.size() <= 128 &&
+        data.referee_id is string && data.referee_id.size() > 0 && data.referee_id.size() <= 128 &&
+        data.event_id is string && data.event_id.size() > 0 && data.event_id.size() <= 128 &&
+        data.created_at is string && data.created_at.size() <= 50 &&
+        (data.points_awarded is int || data.points_awarded is float) && data.points_awarded >= 0 &&
+        (!('referrer_name' in data) || data.referrer_name == null || (data.referrer_name is string && data.referrer_name.size() <= 150)) &&
+        (!('referrer_email' in data) || data.referrer_email == null || (data.referrer_email is string && isValidEmail(data.referrer_email) && data.referrer_email.size() <= 150)) &&
+        (!('referrer_code' in data) || data.referrer_code == null || (data.referrer_code is string && data.referrer_code.size() <= 64)) &&
+        (!('referee_name' in data) || data.referee_name == null || (data.referee_name is string && data.referee_name.size() <= 150)) &&
+        (!('referee_email' in data) || data.referee_email == null || (data.referee_email is string && isValidEmail(data.referee_email) && data.referee_email.size() <= 150)) &&
+        (!('event_title' in data) || data.event_title == null || (data.event_title is string && data.event_title.size() <= 300)) &&
+        (!('ticket_id' in data) || data.ticket_id == null || (data.ticket_id is string && data.ticket_id.size() <= 128)) &&
+        (!('ticket_name' in data) || data.ticket_name == null || (data.ticket_name is string && data.ticket_name.size() <= 200)) &&
+        (!('ticket_type' in data) || data.ticket_type == null || (data.ticket_type is string && data.ticket_type.size() <= 50)) &&
+        (!('ticket_price' in data) || data.ticket_price == null || ((data.ticket_price is int || data.ticket_price is float) && data.ticket_price >= 0)) &&
+        (!('discount_percentage' in data) || data.discount_percentage == null || ((data.discount_percentage is int || data.discount_percentage is float) && data.discount_percentage >= 0 && data.discount_percentage <= 100)) &&
+        (!('discount_amount' in data) || data.discount_amount == null || ((data.discount_amount is int || data.discount_amount is float) && data.discount_amount >= 0)) &&
+        (!('registration_id' in data) || data.registration_id == null || (data.registration_id is string && data.registration_id.size() <= 200)) &&
+        (!('updated_at' in data) || data.updated_at == null || (data.updated_at is string && data.updated_at.size() <= 50));
+    }
+
+    // Validates system_settings document structure, data types, and bounds
+    function isValidSystemSetting(data) {
+      return hasOnlyAllowedFields(data, [
+          'id', 'default_discount_percentage', 'points_per_referral', 'is_active',
+          'merch_prize_description', 'updated_at', 'updated_by_name'
+        ]) &&
+        (!('id' in data) || data.id == null || (data.id is string && data.id.size() <= 128)) &&
+        (!('default_discount_percentage' in data) || data.default_discount_percentage == null || ((data.default_discount_percentage is int || data.default_discount_percentage is float) && data.default_discount_percentage >= 0 && data.default_discount_percentage <= 100)) &&
+        (!('points_per_referral' in data) || data.points_per_referral == null || ((data.points_per_referral is int || data.points_per_referral is float) && data.points_per_referral >= 0)) &&
+        (!('is_active' in data) || data.is_active == null || data.is_active is bool) &&
+        (!('merch_prize_description' in data) || data.merch_prize_description == null || (data.merch_prize_description is string && data.merch_prize_description.size() <= 1000)) &&
+        (!('updated_at' in data) || data.updated_at == null || (data.updated_at is string && data.updated_at.size() <= 50)) &&
+        (!('updated_by_name' in data) || data.updated_by_name == null || (data.updated_by_name is string && data.updated_by_name.size() <= 150));
+    }
+
     // ===============================================================
     // Collection Security Rules
     // ===============================================================
@@ -624,15 +747,20 @@ service cloud.firestore {
         (
           isOwner(memberId) &&
           request.resource.data.id == request.auth.uid &&
-          (!('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid)
+          (!('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid) &&
+          (!('referral_points' in request.resource.data) || request.resource.data.referral_points == 0) &&
+          (!('referrals_count' in request.resource.data) || request.resource.data.referrals_count == 0)
         )
       );
 
       // Update: Organizers or members updating their own profile.
-      // Members are strictly prevented from altering privilege fields ('role', 'team', 'uid', 'id').
+      // Members are strictly prevented from altering privilege fields ('role', 'team', 'uid', 'id', 'referral_points', 'referrals_count').
       allow update: if isValidMember(request.resource.data) && (
         isOrganizer() ||
-        (isOwner(memberId) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'team', 'uid', 'id']))
+        (
+          isOwner(memberId) &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'team', 'uid', 'id', 'referral_points', 'referrals_count'])
+        )
       );
 
       // Deletion: Organizers only.
@@ -703,12 +831,12 @@ service cloud.firestore {
       allow delete: if isOrganizer();
 
       // Update: Organizers (full event editing) or authenticated users updating total_registrations upon RSVP / cancellation.
-      // Non-organizers are strictly constrained to only update total_registrations, updated_at, sessions, and tickets.
+      // Non-organizers are strictly constrained to only update total_registrations, updated_at, sessions, tickets, and bundles.
       allow update: if isValidEvent(request.resource.data) && (
         isOrganizer() ||
         (
           isAuthenticated() &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['total_registrations', 'updated_at', 'sessions', 'tickets']) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['total_registrations', 'updated_at', 'sessions', 'tickets', 'bundles']) &&
           (request.resource.data.total_registrations is int || request.resource.data.total_registrations is float) &&
           request.resource.data.total_registrations >= 0
         )
@@ -744,5 +872,48 @@ service cloud.firestore {
       // Create: Organizers only, validating schema, required fields, and bounds.
       allow create: if isOrganizer() && isValidAuditLog(request.resource.data);
     }
+
+    // -------------------------------------------------------------
+    // Referral Redemptions Collection
+    // -------------------------------------------------------------
+    match /referral_redemptions/{redemptionId} {
+      // Read: Organizers, or authenticated participants (referrer or referee).
+      // Gracefully allows non-existent doc lookup (resource == null) and scoped collection queries.
+      allow get: if isOrganizer() ||
+        (isAuthenticated() && (
+          resource == null ||
+          resource.data.referee_id == request.auth.uid ||
+          resource.data.referrer_id == request.auth.uid
+        ));
+
+      allow list: if isOrganizer() ||
+        (isAuthenticated() && (
+          resource.data.referee_id == request.auth.uid ||
+          resource.data.referrer_id == request.auth.uid
+        ));
+
+      // Create: Organizers, or authenticated users creating their own redemption (as referee).
+      allow create: if isValidReferralRedemption(request.resource.data) && (
+        isOrganizer() ||
+        (isAuthenticated() && request.auth.uid == request.resource.data.referee_id)
+      );
+
+      // Update & Delete: Strictly restricted to organizers.
+      allow update: if isOrganizer() && isValidReferralRedemption(request.resource.data);
+      allow delete: if isOrganizer();
+    }
+
+    // -------------------------------------------------------------
+    // System Settings Collection
+    // -------------------------------------------------------------
+    match /system_settings/{settingId} {
+      // Read: Allowed for all authenticated users (to read program settings & perks).
+      allow read: if isAuthenticated();
+
+      // Write: Organizers only, validating settings structure and limits.
+      allow create, update: if isOrganizer() && isValidSystemSetting(request.resource.data);
+      allow delete: if isOrganizer();
+    }
   }
 }
+

@@ -20,6 +20,7 @@ import {
   type LucideIcon,
   Mail,
   Package,
+  PackageCheck,
   Phone,
   QrCode,
   RotateCcw,
@@ -551,7 +552,15 @@ export function ApplicantDetailDialog({
       type: "Merchandise",
     }));
 
-    if (registration.ticket_type === "paid" && (registration.ticket_price ?? 0) > 0) {
+    if (registration.bundle_id && (registration.bundle_price ?? 0) > 0) {
+      items.unshift({
+        id: registration.bundle_id,
+        name: `${registration.bundle_name ?? "Bundling Package"} (${registration.ticket_name ?? "Event Ticket"})`,
+        quantity: 1,
+        price: registration.bundle_price ?? 0,
+        type: "Ticket",
+      });
+    } else if (registration.ticket_type === "paid" && (registration.ticket_price ?? 0) > 0) {
       items.unshift({
         id: registration.ticket_id ?? "ticket",
         name: registration.ticket_name ?? "Event Ticket",
@@ -816,6 +825,27 @@ export function ApplicantDetailDialog({
                 </Button>
               )}
             </div>
+
+            {/* Bundling Package Details if registered via bundle */}
+            {Boolean(registration.bundle_name) && (
+              <div className="flex items-center justify-between rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-xs">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <PackageCheck className="size-3.5 shrink-0 text-primary" />
+                  <span className="shrink-0 font-medium text-[11px] text-muted-foreground">Package:</span>
+                  <span className="truncate font-semibold text-[11px] text-foreground">{registration.bundle_name}</span>
+                </div>
+                <Badge
+                  variant="outline"
+                  className="shrink-0 border-primary/30 bg-primary/10 text-[10px] font-semibold text-primary"
+                >
+                  {registration.bundle_price !== undefined && registration.bundle_price !== null
+                    ? registration.bundle_price === 0
+                      ? "Free Bundle"
+                      : `Rp ${registration.bundle_price.toLocaleString("id-ID")}`
+                    : "Combo Package"}
+                </Badge>
+              </div>
+            )}
 
             {/* Merchandise Add-on Details if present */}
             {Boolean(registration.selected_merchandise && registration.selected_merchandise.length > 0) && (
