@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 
-import { FileSpreadsheet, Mail, Package, Sparkles, Ticket, Users } from "lucide-react";
+import { FileSpreadsheet, Mail, Package, Sparkles, Ticket, TicketPercent, Users } from "lucide-react";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getAllBevyChapterEvents, getBevyEventById, resolveEventAudience } from "@/lib/bevy/client";
@@ -13,6 +13,7 @@ import { HighlightsMediaTab } from "./_components/highlights-media-tab";
 import { MerchandiseTab } from "./_components/merchandise-tab";
 import { RegistrantsTab } from "./_components/registrants-tab";
 import { TicketsTab } from "./_components/tickets-tab";
+import { VouchersTab } from "./_components/vouchers-tab";
 
 export const dynamic = "force-dynamic";
 
@@ -203,6 +204,10 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
               <Package className="size-4" />
               Merchandise
             </TabsTrigger>
+            <TabsTrigger value="vouchers" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
+              <TicketPercent className="size-4" />
+              Vouchers
+            </TabsTrigger>
             <TabsTrigger value="highlights" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
               <Sparkles className="size-4" />
               Highlights & Media
@@ -228,6 +233,10 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
 
         <TabsContent value="merch" className="space-y-4">
           <MerchandiseTab event={event} />
+        </TabsContent>
+
+        <TabsContent value="vouchers" className="space-y-4">
+          <VouchersTab event={event} />
         </TabsContent>
 
         <TabsContent value="highlights" className="space-y-4">

@@ -224,6 +224,22 @@ export async function updateEventMerchandiseAction(
 }
 
 /**
+ * Update event discount vouchers
+ */
+export async function updateEventVouchersAction(eventId: string, vouchers: import("./types").EventVoucher[]) {
+  try {
+    const { updateEventVouchers } = await import("./client");
+    await updateEventVouchers(eventId, vouchers);
+    await revalidateDashboardPath(`/dashboard/events/${eventId}`);
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to save vouchers.";
+    console.error("[updateEventVouchersAction] error:", message);
+    return { success: false, error: message };
+  }
+}
+
+/**
  * Update event email templates for n8n automation
  */
 export async function updateEventEmailTemplatesAction(

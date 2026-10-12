@@ -23,7 +23,9 @@ import {
   ShieldCheck,
   ShoppingBag,
   Sparkles,
+  Tag,
   Ticket,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -66,11 +68,12 @@ import {
   isSessionAvailable,
 } from "@/lib/events/registration-defaults";
 import { createDefaultRegularTicket, ensureEventTickets } from "@/lib/events/ticket-templates";
+import { calculateVoucherDiscount, validateVoucherForCart } from "@/lib/events/voucher-utils";
 import { checkEventRegistrationAction, registerForEventAction } from "@/lib/firestore/actions";
 import type {
   CustomQuestion,
   EventMerchandiseItem,
-  EventSession,
+  EventVoucher,
   FirestoreEvent,
   FirestoreRegistration,
   RegistrationStatus,
@@ -341,6 +344,11 @@ export function EventRegistrationModal({
 
   const ticketPrice = selectedTicket ? selectedTicket.price || 0 : 0;
 
+  // Voucher state
+  const [voucherInput, setVoucherInput] = useState("");
+  const [appliedVoucher, setAppliedVoucher] = useState<EventVoucher | null>(null);
+  const [voucherError, setVoucherError] = useState<string | null>(null);
+
   const totalMerchandiseItems = useMemo(() => {
     return Object.values(selectedMerch).reduce((sum, item) => sum + (item.quantity || 0), 0);
   }, [selectedMerch]);
@@ -362,7 +370,64 @@ export function EventRegistrationModal({
     return total;
   }, [selectedMerch, availableMerchandise, selectedTicket]);
 
-  const grandTotal = ticketPrice + merchandiseTotalPrice;
+  // Auto re-validate applied voucher when ticket or merchandise selection changes
+  useEffect(() => {
+    if (appliedVoucher) {
+      const res = validateVoucherForCart(appliedVoucher, {
+        ticketPrice,
+        merchandiseTotal: merchandiseTotalPrice,
+      });
+      if (!res.isValid) {
+        setAppliedVoucher(null);
+        setVoucherError(res.error ?? "Voucher is no longer applicable to your selection.");
+      }
+    }
+  }, [appliedVoucher, ticketPrice, merchandiseTotalPrice]);
+
+  const voucherDiscount = useMemo(() => {
+    if (!appliedVoucher) {
+      return { ticketDiscount: 0, merchandiseDiscount: 0, totalDiscount: 0 };
+    }
+    return calculateVoucherDiscount(appliedVoucher, {
+      ticketPrice,
+      merchandiseTotal: merchandiseTotalPrice,
+    });
+  }, [appliedVoucher, ticketPrice, merchandiseTotalPrice]);
+
+  const rawSubtotal = ticketPrice + merchandiseTotalPrice;
+  const grandTotal = Math.max(0, rawSubtotal - voucherDiscount.totalDiscount);
+
+  const handleApplyVoucher = () => {
+    const cleanCode = voucherInput.trim().toUpperCase();
+    if (!cleanCode) {
+      setVoucherError("Please enter a voucher code.");
+      return;
+    }
+    const eventVouchers = eventConfig.vouchers ?? [];
+    const matched = eventVouchers.find((v) => v.code.toUpperCase() === cleanCode);
+    if (!matched) {
+      setVoucherError(`Voucher "${cleanCode}" is invalid or does not exist.`);
+      return;
+    }
+    const validation = validateVoucherForCart(matched, {
+      ticketPrice,
+      merchandiseTotal: merchandiseTotalPrice,
+    });
+    if (!validation.isValid) {
+      setVoucherError(validation.error ?? "This voucher cannot be applied.");
+      return;
+    }
+    setAppliedVoucher(matched);
+    setVoucherError(null);
+    toast.success(`Voucher "${matched.code}" applied! Saved Rp ${validation.totalDiscount.toLocaleString("id-ID")}.`);
+  };
+
+  const handleRemoveVoucher = () => {
+    setAppliedVoucher(null);
+    setVoucherInput("");
+    setVoucherError(null);
+    toast.info("Voucher removed.");
+  };
 
   const handleUpdateMerchQuantity = (itemId: string, delta: number) => {
     const item = availableMerchandise.find((m) => m.id === itemId);
@@ -915,7 +980,7 @@ export function EventRegistrationModal({
         // Check whether event requires organizer approval (curated) vs open registration
         const isCurated = Boolean(eventConfig.requires_approval || eventConfig.curation_mode);
 
-        const regCandidate = {
+        const regCandidate: Partial<FirestoreRegistration> = {
           event_id: String(event.id),
           event_title: event.title,
           member_name: user.name,
@@ -925,9 +990,16 @@ export function EventRegistrationModal({
           ticket_price: selectedTicket?.price,
           ticket_type: selectedTicket?.type,
           selected_merchandise: selectedMerchOrders.length > 0 ? selectedMerchOrders : undefined,
+          payment_amount: grandTotal,
+          voucher_id: appliedVoucher?.id,
+          voucher_code: appliedVoucher?.code,
+          voucher_discount_amount: voucherDiscount.totalDiscount > 0 ? voucherDiscount.totalDiscount : undefined,
+          voucher_discount_type: appliedVoucher?.discount_type,
+          voucher_discount_value: appliedVoucher?.discount_value,
+          voucher_applies_to: appliedVoucher?.applies_to,
         };
 
-        const requiresPayment = grandTotal > 0 || hasRegistrationPaymentRequirements(regCandidate);
+        const requiresPayment = grandTotal > 0 && hasRegistrationPaymentRequirements(regCandidate);
 
         // For non-curated events with payable items, generate DOKU payment link immediately upon registration.
         // For curated events and waitlisted applicants, payment link generation is deferred until organizer approval.
@@ -974,6 +1046,12 @@ export function EventRegistrationModal({
           ticket_type: selectedTicket?.type,
           ticket_price: selectedTicket?.price,
           selected_merchandise: selectedMerchOrders.length > 0 ? selectedMerchOrders : undefined,
+          voucher_id: appliedVoucher?.id,
+          voucher_code: appliedVoucher?.code,
+          voucher_discount_amount: voucherDiscount.totalDiscount > 0 ? voucherDiscount.totalDiscount : undefined,
+          voucher_discount_type: appliedVoucher?.discount_type,
+          voucher_discount_value: appliedVoucher?.discount_value,
+          voucher_applies_to: appliedVoucher?.applies_to,
           registered_at: new Date().toISOString(),
           payment_status: isWaitlistMode ? undefined : requiresPayment ? "unpaid" : undefined,
           payment_url: isWaitlistMode ? undefined : generatedPaymentUrl,
@@ -1032,6 +1110,8 @@ export function EventRegistrationModal({
             selected_merchandise: selectedMerchOrders.length > 0 ? selectedMerchOrders : undefined,
             payment_url: generatedPaymentUrl,
             payment_amount: generatedPaymentAmount ?? (requiresPayment ? grandTotal : undefined),
+            voucher_code: appliedVoucher?.code,
+            voucher_discount_amount: voucherDiscount.totalDiscount > 0 ? voucherDiscount.totalDiscount : undefined,
           },
           member: {
             id: user.id,
@@ -1999,6 +2079,82 @@ export function EventRegistrationModal({
                       </div>
                     )}
 
+                    {/* ── PROMO VOUCHER SECTION ───────────────────────────────── */}
+                    {rawSubtotal > 0 && (
+                      <div className="space-y-2 rounded-xl border bg-card p-3.5 shadow-2xs">
+                        <div className="flex items-center justify-between font-semibold text-foreground text-xs">
+                          <span className="flex items-center gap-1.5">
+                            <Tag className="size-3.5 text-primary" />
+                            Have a Promo Voucher?
+                          </span>
+                          {appliedVoucher && (
+                            <Badge
+                              variant="outline"
+                              className="border-emerald-500/30 bg-emerald-500/10 font-semibold text-[10px] text-emerald-600 dark:text-emerald-400"
+                            >
+                              Applied
+                            </Badge>
+                          )}
+                        </div>
+
+                        {appliedVoucher ? (
+                          <div className="flex items-center justify-between rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-xs">
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold font-mono text-emerald-800 dark:text-emerald-300">
+                                  {appliedVoucher.code}
+                                </span>
+                                <span className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                                  (-Rp {voucherDiscount.totalDiscount.toLocaleString("id-ID")})
+                                </span>
+                              </div>
+                              {appliedVoucher.description && (
+                                <p className="line-clamp-1 text-[10px] text-emerald-700/80 dark:text-emerald-400/80">
+                                  {appliedVoucher.description}
+                                </p>
+                              )}
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-xs"
+                              onClick={handleRemoveVoucher}
+                              className="size-6 text-emerald-800 hover:bg-emerald-500/20 dark:text-emerald-200"
+                              title="Remove voucher"
+                            >
+                              <X className="size-3.5" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="space-y-1.5">
+                            <div className="flex gap-2">
+                              <Input
+                                value={voucherInput}
+                                onChange={(e) => {
+                                  setVoucherInput(e.target.value.toUpperCase());
+                                  setVoucherError(null);
+                                }}
+                                placeholder="Enter voucher code (e.g. DEVFEST50)"
+                                className="h-8 font-mono text-xs uppercase tracking-wider"
+                              />
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={handleApplyVoucher}
+                                className="h-8 shrink-0 px-3 font-medium text-xs"
+                              >
+                                Apply
+                              </Button>
+                            </div>
+                            {voucherError && (
+                              <p className="text-[11px] text-destructive leading-normal">{voucherError}</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     {/* ── REGISTRATION & ORDER SUMMARY ─────────────────────────── */}
                     {(hasTickets || (hasMerchandise && totalMerchandiseItems > 0)) && (
                       <div className="space-y-2.5 rounded-xl border bg-muted/40 p-4">
@@ -2039,6 +2195,25 @@ export function EventRegistrationModal({
                             </div>
                           );
                         })}
+
+                        {/* Subtotal & Voucher Line item */}
+                        {appliedVoucher && voucherDiscount.totalDiscount > 0 && (
+                          <>
+                            <div className="flex items-center justify-between border-t pt-2 text-muted-foreground text-xs">
+                              <span>Subtotal</span>
+                              <span className="font-mono">Rp {rawSubtotal.toLocaleString("id-ID")}</span>
+                            </div>
+                            <div className="flex items-center justify-between font-medium text-emerald-600 text-xs dark:text-emerald-400">
+                              <span className="flex items-center gap-1">
+                                <Tag className="size-3" />
+                                Voucher ({appliedVoucher.code})
+                              </span>
+                              <span className="font-mono">
+                                -Rp {voucherDiscount.totalDiscount.toLocaleString("id-ID")}
+                              </span>
+                            </div>
+                          </>
+                        )}
 
                         <div className="flex items-center justify-between border-t pt-2 font-bold text-foreground text-sm">
                           <span>Total Amount</span>
@@ -2102,6 +2277,15 @@ export function EventRegistrationModal({
                               <span>
                                 Merchandise:{" "}
                                 <strong className="text-foreground">{totalMerchandiseItems} item(s)</strong>
+                              </span>
+                            </span>
+                          )}
+                          {appliedVoucher && (
+                            <span className="flex items-center gap-1 font-mono text-emerald-600 dark:text-emerald-400">
+                              <Tag className="size-3" />
+                              <span>
+                                Voucher: {appliedVoucher.code} (-Rp{" "}
+                                {voucherDiscount.totalDiscount.toLocaleString("id-ID")})
                               </span>
                             </span>
                           )}

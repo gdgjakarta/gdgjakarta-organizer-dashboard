@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 
-import { Check, Copy, CreditCard, ExternalLink, Loader2, QrCode, Sparkles } from "lucide-react";
+import { Check, Copy, CreditCard, ExternalLink, Loader2, QrCode, Sparkles, Tag } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,9 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { calculateVoucherDiscount, formatVoucherDiscountDisplay } from "@/lib/events/voucher-utils";
 import type { EventMerchandiseItem, FirestoreEvent } from "@/lib/firestore/types";
 import { generatePaymentLinkAction } from "@/server/payment-actions";
 
@@ -38,6 +40,7 @@ export function GenerateMerchandisePaymentDialog({
   const [customerEmail, setCustomerEmail] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [selectedVariations, setSelectedVariations] = useState<Record<string, string>>({});
+  const [selectedVoucherId, setSelectedVoucherId] = useState<string>("none");
   const [sendEmail, setSendEmail] = useState(true);
   const [includeCommitmentFee, setIncludeCommitmentFee] = useState(false);
   const [commitmentFeeAmount, _setCommitmentFeeAmount] = useState(50000);
@@ -65,6 +68,7 @@ export function GenerateMerchandisePaymentDialog({
     setCustomerEmail("");
     setCustomerPhone("");
     setSelectedVariations({});
+    setSelectedVoucherId("none");
     setSendEmail(true);
     setIncludeCommitmentFee(false);
     setPaymentResult(null);
@@ -132,6 +136,21 @@ export function GenerateMerchandisePaymentDialog({
       }
     }
 
+    const eligibleVouchers = (event.vouchers ?? []).filter(
+      (v) => v.status === "active" && (v.applies_to === "merchandise" || v.applies_to === "all"),
+    );
+    const selectedVoucher = eligibleVouchers.find((v) => v.id === selectedVoucherId);
+    const merchSubtotal = effectivePrice * quantity;
+    const voucherDiscount = selectedVoucher
+      ? calculateVoucherDiscount(selectedVoucher, {
+          ticketPrice: 0,
+          merchandiseTotal: merchSubtotal,
+        }).merchandiseDiscount
+      : 0;
+    const finalMerchTotal = Math.max(0, merchSubtotal - voucherDiscount);
+    const chargedUnitPrice = Math.max(0, Math.round(finalMerchTotal / quantity));
+    const finalItemName = selectedVoucher ? `${itemName} (Promo: ${selectedVoucher.code})` : itemName;
+
     startTransition(async () => {
       try {
         const res = await generatePaymentLinkAction({
@@ -149,9 +168,9 @@ export function GenerateMerchandisePaymentDialog({
           items: [
             {
               id: item.id,
-              name: itemName,
+              name: finalItemName,
               quantity: quantity,
-              price: effectivePrice,
+              price: chargedUnitPrice,
               imageUrl: effectiveImage,
               description: item.description,
               type: "Merchandise",
@@ -169,7 +188,7 @@ export function GenerateMerchandisePaymentDialog({
           setPaymentResult({
             paymentUrl: res.paymentUrl,
             invoiceNumber: res.invoiceNumber ?? "INV-NEW",
-            amount: res.amount ?? effectivePrice * quantity + (includeCommitmentFee ? commitmentFeeAmount : 0),
+            amount: res.amount ?? finalMerchTotal + (includeCommitmentFee ? commitmentFeeAmount : 0),
             expiredDatetime: res.expiredDatetime,
           });
           toast.success("DOKU payment link generated successfully!");
@@ -185,8 +204,18 @@ export function GenerateMerchandisePaymentDialog({
 
   if (!item) return null;
 
+  const eligibleVouchers = (event.vouchers ?? []).filter(
+    (v) => v.status === "active" && (v.applies_to === "merchandise" || v.applies_to === "all"),
+  );
+  const selectedVoucher = eligibleVouchers.find((v) => v.id === selectedVoucherId);
   const itemTotal = (item.price || 0) * quantity;
-  const grandTotal = itemTotal + (includeCommitmentFee ? commitmentFeeAmount : 0);
+  const voucherDiscount = selectedVoucher
+    ? calculateVoucherDiscount(selectedVoucher, {
+        ticketPrice: 0,
+        merchandiseTotal: itemTotal,
+      }).merchandiseDiscount
+    : 0;
+  const grandTotal = Math.max(0, itemTotal - voucherDiscount) + (includeCommitmentFee ? commitmentFeeAmount : 0);
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -325,6 +354,36 @@ export function GenerateMerchandisePaymentDialog({
                 </div>
               </div>
             </div>
+
+            {/* Optional Voucher Discount Selector */}
+            {eligibleVouchers.length > 0 && (
+              <div className="space-y-1.5 rounded-lg border bg-muted/20 p-2.5">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="order-voucher" className="flex items-center gap-1.5 font-medium text-xs">
+                    <Tag className="size-3 text-primary" />
+                    Apply Promo Voucher
+                  </Label>
+                  {selectedVoucher && (
+                    <span className="font-semibold text-emerald-600 text-xs dark:text-emerald-400">
+                      -Rp {voucherDiscount.toLocaleString("id-ID")}
+                    </span>
+                  )}
+                </div>
+                <Select value={selectedVoucherId} onValueChange={setSelectedVoucherId}>
+                  <SelectTrigger id="order-voucher" className="h-8 text-xs">
+                    <SelectValue placeholder="Select a voucher (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No voucher</SelectItem>
+                    {eligibleVouchers.map((v) => (
+                      <SelectItem key={v.id} value={v.id}>
+                        {v.code} — {formatVoucherDiscountDisplay(v)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             {/* Customer Details */}
             <div className="space-y-2.5 pt-1">

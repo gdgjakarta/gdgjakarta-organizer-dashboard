@@ -104,6 +104,7 @@ export function resolvePaymentLinkWebhookUrl(customBaseUrl?: string): string {
  */
 export function hasRegistrationPaymentRequirements(registration?: Partial<FirestoreRegistration> | null): boolean {
   if (!registration) return false;
+  if (registration.payment_amount !== undefined && registration.payment_amount <= 0) return false;
   const hasMerch = Boolean(registration.selected_merchandise?.some((m) => (m.price ?? 0) > 0));
   const hasPaidTicket = registration.ticket_type === "paid" && (registration.ticket_price ?? 0) > 0;
   const hasCommitmentFee = registration.ticket_type === "commitment_fee" && (registration.ticket_price ?? 0) > 0;
@@ -139,6 +140,23 @@ export function buildRegistrationPaymentPayload(
       price: registration.ticket_price ?? 0,
       type: "Ticket",
     });
+  }
+
+  // Adjust item prices if voucher discount is applied
+  const discountTotal = registration.voucher_discount_amount ?? 0;
+  if (discountTotal > 0 && items.length > 0) {
+    let remainingDiscount = discountTotal;
+    for (const item of items) {
+      if (remainingDiscount <= 0) break;
+      const itemSubtotal = item.price * item.quantity;
+      const discountToApply = Math.min(itemSubtotal, remainingDiscount);
+      const newSubtotal = Math.max(0, itemSubtotal - discountToApply);
+      item.price = Math.round(newSubtotal / item.quantity);
+      if (registration.voucher_code) {
+        item.name = `${item.name} (${registration.voucher_code})`;
+      }
+      remainingDiscount -= discountToApply;
+    }
   }
 
   const fees: PaymentFee[] =

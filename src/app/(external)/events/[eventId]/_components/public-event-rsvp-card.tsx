@@ -104,6 +104,7 @@ export function PublicEventRsvpCard({
     max_tickets_per_person: firestoreEvent?.max_tickets_per_person,
     merchandise: firestoreEvent?.merchandise,
     max_merchandise_per_person: firestoreEvent?.max_merchandise_per_person,
+    vouchers: firestoreEvent?.vouchers,
     registration_status: firestoreEvent?.registration_status,
     registration_start_date: firestoreEvent?.registration_start_date,
     registration_end_date: firestoreEvent?.registration_end_date,

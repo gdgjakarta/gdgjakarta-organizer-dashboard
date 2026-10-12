@@ -1998,6 +1998,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       "Reviewed At",
       ...(hasTickets ? ["Ticket Pass", "Ticket Type", "Ticket Price"] : []),
       ...(hasMerchandise ? ["Merchandise Orders"] : []),
+      "Voucher Code",
+      "Voucher Discount",
       "Bevy Check-In",
       "Session Track",
       ...dynamicHeaders,
@@ -2048,6 +2050,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
             ]
           : []),
         ...(hasMerchandise ? [`"${merchText.replace(/"/g, '""')}"`] : []),
+        `"${(r.voucher_code || "").replace(/"/g, '""')}"`,
+        `"${r.voucher_discount_amount || 0}"`,
         `"${r.is_checked_in ? "Checked In" : "Not Checked In"}"`,
         `"${sessionTitle.replace(/"/g, '""')}"`,
         ...questionColsData,
@@ -2826,6 +2830,14 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                 >
                                   {getTicketBadgeText(reg.ticket_type, reg.ticket_price)}
                                 </Badge>
+                                {reg.voucher_code && (
+                                  <Badge
+                                    variant="outline"
+                                    className="w-fit border-primary/30 bg-primary/10 px-1.5 py-0 font-mono text-[9px] font-semibold text-primary"
+                                  >
+                                    Promo: {reg.voucher_code}
+                                  </Badge>
+                                )}
                               </div>
                             ) : (
                               <span className="text-muted-foreground text-xs">General RSVP</span>

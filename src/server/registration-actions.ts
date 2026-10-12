@@ -54,6 +54,8 @@ export interface RegistrationWebhookPayload {
     selected_merchandise?: unknown;
     payment_url?: string;
     payment_amount?: number;
+    voucher_code?: string;
+    voucher_discount_amount?: number;
   };
   member: {
     id: string;

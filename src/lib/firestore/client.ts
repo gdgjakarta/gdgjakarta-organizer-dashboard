@@ -77,6 +77,7 @@ import type {
   EventMerchandiseItem,
   EventSession,
   EventTicketTier,
+  EventVoucher,
   FirestoreEvent,
   FirestoreMember,
   FirestoreRegistration,
@@ -559,6 +560,20 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
         updateData.tickets = updatedTickets;
       }
 
+      if ((registration.voucher_id || registration.voucher_code) && Array.isArray(eventData.vouchers)) {
+        const normalizedCode = registration.voucher_code?.trim().toUpperCase();
+        const updatedVouchers = eventData.vouchers.map((v) => {
+          if (v.id === registration.voucher_id || (normalizedCode && v.code.toUpperCase() === normalizedCode)) {
+            return {
+              ...v,
+              times_used: (v.times_used ?? 0) + 1,
+            };
+          }
+          return v;
+        });
+        updateData.vouchers = updatedVouchers;
+      }
+
       await updateDoc(eventRef, sanitizeFirestoreData(updateData));
     }
   } catch (err) {
@@ -1027,6 +1042,17 @@ export async function updateEventMerchandise(
   if (maxMerchandisePerPerson !== undefined) {
     updatePayload.max_merchandise_per_person = maxMerchandisePerPerson;
   }
+  const sanitized = sanitizeFirestoreData(updatePayload);
+  await setDoc(eventRef, sanitized, { merge: true });
+}
+
+export async function updateEventVouchers(eventId: string, vouchers: EventVoucher[]): Promise<void> {
+  if (typeof window === "undefined") return;
+  const eventRef = doc(db, "events", String(eventId));
+  const updatePayload: Record<string, unknown> = {
+    vouchers,
+    updated_at: new Date().toISOString(),
+  };
   const sanitized = sanitizeFirestoreData(updatePayload);
   await setDoc(eventRef, sanitized, { merge: true });
 }

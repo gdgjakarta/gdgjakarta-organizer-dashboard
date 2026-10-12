@@ -123,6 +123,28 @@ export interface EventTicketTier {
   updated_at?: string;
 }
 
+export type VoucherDiscountType = "percentage" | "fixed";
+export type VoucherAppliesTo = "all" | "ticket" | "merchandise";
+export type VoucherStatus = "active" | "inactive" | "expired";
+
+export interface EventVoucher {
+  id: string;
+  code: string; // e.g. "DEVFEST50", uppercase and trimmed
+  description?: string; // e.g. "Early Bird 50% discount on tickets"
+  discount_type: VoucherDiscountType; // "percentage" | "fixed"
+  discount_value: number; // e.g. 20 (for 20%) or 50000 (for Rp 50.000)
+  applies_to: VoucherAppliesTo; // "all" | "ticket" | "merchandise"
+  min_spend?: number | null; // Minimum eligible cart amount in IDR
+  max_discount?: number | null; // Maximum discount cap in IDR (for percentage discounts)
+  usage_limit?: number | null; // Total redemptions allowed across all attendees (null = unlimited)
+  times_used?: number; // Times this voucher has been redeemed
+  start_date?: string | null; // ISO string
+  end_date?: string | null; // ISO string
+  status: VoucherStatus;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export type EmailTemplateKey =
   | "interest"
   | "accepted"
@@ -225,6 +247,7 @@ export interface FirestoreEvent {
   max_tickets_per_person?: number | null; // Limit tickets per person (default 1)
   merchandise?: EventMerchandiseItem[];
   max_merchandise_per_person?: number | null; // Limit merchandise items per person (null = unlimited)
+  vouchers?: EventVoucher[];
   webhook_url?: string | null;
   registration_status?: "Draft" | "Published" | "Closed";
   registration_start_date?: string | null;
@@ -358,6 +381,14 @@ export interface FirestoreRegistration {
   payment_invoice_number?: string;
   payment_amount?: number;
   payment_expired_datetime?: string;
+
+  // Voucher tracking
+  voucher_id?: string;
+  voucher_code?: string;
+  voucher_discount_amount?: number;
+  voucher_discount_type?: VoucherDiscountType;
+  voucher_discount_value?: number;
+  voucher_applies_to?: VoucherAppliesTo;
 
   updated_at?: string;
 }

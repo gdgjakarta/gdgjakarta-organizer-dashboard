@@ -25,6 +25,7 @@ import {
   RotateCcw,
   ShieldCheck,
   Sparkles,
+  Tag,
   Ticket,
   Trash2,
   User,
@@ -819,6 +820,25 @@ export function ApplicantDetailDialog({
                 </div>
                 <Badge variant="secondary" className="shrink-0 text-[10px]">
                   {registration.selected_merchandise?.length} items
+                </Badge>
+              </div>
+            )}
+
+            {/* Voucher Discount Details if applied */}
+            {Boolean(registration.voucher_code) && (
+              <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <Tag className="size-3.5 shrink-0 text-primary" />
+                  <span className="shrink-0 text-[11px] text-muted-foreground">Voucher:</span>
+                  <span className="truncate font-mono font-semibold text-[11px] text-foreground">
+                    {registration.voucher_code}
+                  </span>
+                </div>
+                <Badge
+                  variant="outline"
+                  className="shrink-0 border-primary/30 bg-primary/10 text-[10px] font-semibold text-primary"
+                >
+                  -Rp {(registration.voucher_discount_amount ?? 0).toLocaleString("id-ID")}
                 </Badge>
               </div>
             )}
