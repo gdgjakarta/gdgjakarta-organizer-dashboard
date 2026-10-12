@@ -22,7 +22,7 @@ service cloud.firestore {
     //   - company: string|null (optional, <= 150 chars) - Company or organization name
     //   - company_or_institution: string|null (optional, <= 150 chars) - Alternate company or institution
     //   - title: string|null (optional, <= 150 chars) - Professional title or job role
-    //   - role: string (required, immutable for members) - Chapter role ('organizer'|'Organizer'|'Core Team'|'Check-in Staff'|'Member'|'member')
+    //   - role: string (required, immutable for members) - Chapter role ('organizer'|'Organizer'|'Core Team'|'core_team'|'core-team'|'Check-in Staff'|'check_in_staff'|'checkin_staff'|'check-in staff'|'Team Member'|'team_member'|'team-member'|'Member'|'member')
     //   - chapter_role: string|null (optional, <= 100 chars) - Bevy chapter role title
     //   - team: string (required, immutable for members) - Team assignment ('Core Team'|'Community')
     //   - status: string (required) - Membership status ('Active'|'Inactive')
@@ -334,6 +334,45 @@ service cloud.firestore {
       );
     }
 
+    // Staff Member Verification:
+    // Evaluates custom auth claims or member document role / chapter_role / team for operational staff roles
+    // ('Core Team', 'Check-in Staff', 'Team Member', and their kebab/snake case variations).
+    function isStaffMember() {
+      return isAuthenticated() && (
+        ('role' in request.auth.token && (
+          request.auth.token.role in [
+            'core_team', 'core-team', 'Core Team',
+            'check_in_staff', 'checkin_staff', 'Check-in Staff', 'check-in staff',
+            'team_member', 'team-member', 'Team Member'
+          ]
+        )) ||
+        (
+          exists(/databases/$(database)/documents/members/$(request.auth.uid)) &&
+          (
+            get(/databases/$(database)/documents/members/$(request.auth.uid)).data.role in [
+              'Core Team', 'core_team', 'core-team',
+              'Check-in Staff', 'check_in_staff', 'checkin_staff', 'check-in staff',
+              'Team Member', 'team_member', 'team-member'
+            ] ||
+            get(/databases/$(database)/documents/members/$(request.auth.uid)).data.team == 'Core Team' ||
+            (
+              'chapter_role' in get(/databases/$(database)/documents/members/$(request.auth.uid)).data &&
+              get(/databases/$(database)/documents/members/$(request.auth.uid)).data.chapter_role in [
+                'Core Team', 'core team',
+                'Team Member', 'team member',
+                'Check-in Staff', 'check-in staff', 'Check-in', 'Staff'
+              ]
+            )
+          )
+        )
+      );
+    }
+
+    // Unified operational team access check (Organizers + Staff Members)
+    function hasTeamAccess() {
+      return isOrganizer() || isStaffMember();
+    }
+
     // Validate email string format
     function isValidEmail(email) {
       return email is string &&
@@ -368,7 +407,13 @@ service cloud.firestore {
         data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
         data.name is string && data.name.size() > 0 && data.name.size() <= 150 &&
         data.email is string && isValidEmail(data.email) && data.email.size() <= 150 &&
-        data.role is string && (data.role in ['organizer', 'Organizer', 'Core Team', 'Check-in Staff', 'Member', 'member']) &&
+        data.role is string && (data.role in [
+          'organizer', 'Organizer',
+          'Core Team', 'core_team', 'core-team',
+          'Check-in Staff', 'check_in_staff', 'checkin_staff', 'check-in staff',
+          'Team Member', 'team_member', 'team-member',
+          'Member', 'member'
+        ]) &&
         data.team is string && (data.team in ['Core Team', 'Community']) &&
         data.status is string && (data.status in ['Active', 'Inactive']) &&
         data.joined_date is string && data.joined_date.size() <= 50 &&
@@ -755,18 +800,18 @@ service cloud.firestore {
     // Members Collection
     // -------------------------------------------------------------
     match /members/{memberId} {
-      // Individual profile lookup: Organizers or the document owner (by ID or UID).
+      // Individual profile lookup: Organizers, staff members, or the document owner (by ID or UID).
       // Safely handles non-existent doc lookup when resource == null (snap.exists() == false).
-      allow get: if isOrganizer() ||
+      allow get: if hasTeamAccess() ||
         (isAuthenticated() && (
           resource == null ||
           request.auth.uid == memberId ||
           (('uid' in resource.data) && resource.data.uid == request.auth.uid)
         ));
 
-      // Listing members: STRICTLY Organizers only.
+      // Listing members: Organizers and staff members (e.g. for attendee lookup and curation).
       // Eliminates public or unprivileged member dumps of emails, phone numbers, and notes.
-      allow list: if isOrganizer();
+      allow list: if hasTeamAccess();
 
       // Creation: Organizers or authenticated owners creating their initial profile.
       // Solves bootstrap deadlock while strictly requiring valid member schema and identity ownership.
@@ -799,17 +844,17 @@ service cloud.firestore {
     // Event Registrations Collection
     // -------------------------------------------------------------
     match /event_registrations/{registrationId} {
-      // Individual registration lookup: Organizers, or the registrant themselves (matching member_id or member_email).
+      // Individual registration lookup: Team access (Organizers & Staff), or the registrant themselves (matching member_id or member_email).
       // Handles non-existent doc lookup gracefully when resource == null before registration.
-      allow get: if isOrganizer() ||
+      allow get: if hasTeamAccess() ||
         (isAuthenticated() && (
           resource == null ||
           resource.data.member_id == request.auth.uid ||
           (('member_email' in resource.data) && resource.data.member_email == request.auth.token.email)
         ));
 
-      // Listing registrations: Organizers, or authenticated users querying their own registrations.
-      allow list: if isOrganizer() ||
+      // Listing registrations: Team access (Organizers & Staff), or authenticated users querying their own registrations.
+      allow list: if hasTeamAccess() ||
         (isAuthenticated() && (
           resource.data.member_id == request.auth.uid ||
           (('member_email' in resource.data) && resource.data.member_email == request.auth.token.email)
@@ -821,11 +866,11 @@ service cloud.firestore {
         (isAuthenticated() && request.auth.uid == request.resource.data.member_id)
       );
 
-      // Update: Organizers (e.g. status review, check-in, delivery fulfillment) or the registrant updating payment fields, answers, delivery request, and RSVP details.
+      // Update: Team access (Organizers & Staff for attendee curation, status review, check-in, delivery fulfillment) or the registrant updating payment fields, answers, delivery request, and RSVP details.
       // Registrants cannot alter review fields, check-in status/timestamps, or event/member identifiers, and registration status must remain unchanged.
-      // For merchandise delivery requests, registrants can submit delivery address & fee payment (pending_payment / pending_review), while organizers handle review, approval, rejection, and fulfillment.
+      // For merchandise delivery requests, registrants can submit delivery address & fee payment (pending_payment / pending_review), while organizers/staff handle review, approval, rejection, and fulfillment.
       allow update: if isValidRegistration(request.resource.data) && (
-        isOrganizer() ||
+        hasTeamAccess() ||
         (
           isOwner(resource.data.member_id) &&
           (
@@ -858,14 +903,26 @@ service cloud.firestore {
       allow create: if isOrganizer();
       allow delete: if isOrganizer();
 
-      // Update: Organizers (full event editing) or authenticated users updating total_registrations upon RSVP / cancellation.
-      // Non-organizers are strictly constrained to only update total_registrations, updated_at, sessions, tickets, and bundles.
+      // Update: Organizers (full event editing), team members updating wrap-up media, sessions & counters, or authenticated users updating total_registrations upon RSVP / cancellation.
+      // Non-organizers are strictly constrained to only update total_registrations, updated_at, sessions, tickets, and bundles, or wrap-up media/sessions and operational counters for team members.
       allow update: if isOrganizer() || (
         isAuthenticated() &&
         isValidEvent(request.resource.data) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['total_registrations', 'updated_at', 'sessions', 'tickets', 'bundles']) &&
-        (request.resource.data.total_registrations is int || request.resource.data.total_registrations is float) &&
-        request.resource.data.total_registrations >= 0
+        (
+          (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['total_registrations', 'updated_at', 'sessions', 'tickets', 'bundles']) &&
+            (request.resource.data.total_registrations is int || request.resource.data.total_registrations is float) &&
+            request.resource.data.total_registrations >= 0
+          ) ||
+          (
+            hasTeamAccess() &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'highlight_video_url', 'highlight_video_title', 'photo_album_url',
+              'photo_album_title', 'recap_description', 'sessions', 'updated_at',
+              'total_approved', 'total_checked_in', 'total_waitlisted'
+            ])
+          )
+        )
       );
     }
 
@@ -892,11 +949,11 @@ service cloud.firestore {
     // Audit Logs Collection
     // -------------------------------------------------------------
     match /audit_logs/{auditId} {
-      // Read: Organizers only.
-      allow read: if isOrganizer();
+      // Read: Team access (Organizers & Staff).
+      allow read: if hasTeamAccess();
 
-      // Create: Organizers only, validating schema, required fields, and bounds.
-      allow create: if isOrganizer() && isValidAuditLog(request.resource.data);
+      // Create: Team access (Organizers & Staff), validating schema, required fields, and bounds.
+      allow create: if hasTeamAccess() && isValidAuditLog(request.resource.data);
     }
 
     // -------------------------------------------------------------

@@ -42,8 +42,25 @@ async function syncMemberToFirestore(
   if (typeof window === "undefined") return;
   try {
     const { saveFirestoreMember } = await import("@/lib/firestore/client");
+    const { isCoreTeamOrStaff } = await import("@/lib/auth-roles");
+    const isStaff = isCoreTeamOrStaff(validation);
     const isOrg = validation?.isValidOrganizer ?? false;
+    const isStaffOrOrg = isOrg || isStaff;
     const now = new Date().toISOString();
+    let fallbackRole = "member";
+    if (isOrg) {
+      fallbackRole = "organizer";
+    } else if (isStaff) {
+      fallbackRole = "Core Team";
+    }
+
+    let fallbackChapterRole = "Member";
+    if (isOrg) {
+      fallbackChapterRole = "Organizer";
+    } else if (isStaff) {
+      fallbackChapterRole = "Core Team";
+    }
+
     const email = user.email ?? "";
     const memberData: FirestoreMember = {
       id: user.uid,
@@ -52,9 +69,9 @@ async function syncMemberToFirestore(
       name: user.displayName ?? (email ? email.split("@")[0] : "Community Member"),
       email,
       avatar_url: user.photoURL ?? "",
-      role: validation?.role ?? (isOrg ? "organizer" : "member"),
-      chapter_role: validation?.chapterRole ?? (isOrg ? "Organizer" : "Member"),
-      team: isOrg ? "Core Team" : "Community",
+      role: validation?.role ?? fallbackRole,
+      chapter_role: validation?.chapterRole ?? fallbackChapterRole,
+      team: isStaffOrOrg ? "Core Team" : "Community",
       status: "Active",
       joined_date: now,
       events_registered_count: 0,
