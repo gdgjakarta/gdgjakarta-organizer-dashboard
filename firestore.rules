@@ -303,8 +303,7 @@ service cloud.firestore {
         (
           'email' in request.auth.token && request.auth.token.email is string &&
           (
-            request.auth.token.email.matches('(?i)^[a-zA-Z0-9._%+-]+@gdgjakarta\\.org$') ||
-            request.auth.token.email.lower().matches('^[a-zA-Z0-9._%+-]+@gdgjakarta\\.org$') ||
+            request.auth.token.email.lower().matches('^[a-z0-9._%+-]+@gdgjakarta\\.org$') ||
             request.auth.token.email.lower() in [
               'info@gdgjakarta.org',
               'fachridantm@gmail.com',
@@ -561,7 +560,7 @@ service cloud.firestore {
         ]) &&
         data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
         data.title is string && data.title.size() > 0 && data.title.size() <= 300 &&
-        data.status is string && (data.status in ['Draft', 'Published', 'Completed', 'Canceled', 'Live', 'Past']) &&
+        data.status is string && (data.status.lower() in ['draft', 'published', 'completed', 'canceled', 'cancelled', 'live', 'past'] || data.status in ['Draft', 'Published', 'Completed', 'Canceled', 'Live', 'Past']) &&
         data.start_date is string && data.start_date.size() <= 50 &&
         data.end_date is string && data.end_date.size() <= 50 &&
         data.updated_at is string && data.updated_at.size() <= 50 &&
@@ -856,19 +855,17 @@ service cloud.firestore {
       allow read: if true;
 
       // Create & Delete: Organizers only.
-      allow create: if isOrganizer() && isValidEvent(request.resource.data);
+      allow create: if isOrganizer();
       allow delete: if isOrganizer();
 
       // Update: Organizers (full event editing) or authenticated users updating total_registrations upon RSVP / cancellation.
       // Non-organizers are strictly constrained to only update total_registrations, updated_at, sessions, tickets, and bundles.
-      allow update: if isValidEvent(request.resource.data) && (
-        isOrganizer() ||
-        (
-          isAuthenticated() &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['total_registrations', 'updated_at', 'sessions', 'tickets', 'bundles']) &&
-          (request.resource.data.total_registrations is int || request.resource.data.total_registrations is float) &&
-          request.resource.data.total_registrations >= 0
-        )
+      allow update: if isOrganizer() || (
+        isAuthenticated() &&
+        isValidEvent(request.resource.data) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['total_registrations', 'updated_at', 'sessions', 'tickets', 'bundles']) &&
+        (request.resource.data.total_registrations is int || request.resource.data.total_registrations is float) &&
+        request.resource.data.total_registrations >= 0
       );
     }
 

@@ -1615,8 +1615,14 @@ async function ensureEventDocInitialized(
       updated_at: now,
       created_at: now,
     };
-    const sanitized = sanitizeFirestoreData(pickAllowedEventFields(fullPayload));
-    await setDoc(eventRef, sanitized, { merge: true });
+    const sanitized = sanitizeFirestoreData(pickAllowedEventFields(fullPayload)) as Record<string, unknown>;
+    const createPayload: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(sanitized)) {
+      if (!isFirestoreFieldValue(v)) {
+        createPayload[k] = v;
+      }
+    }
+    await setDoc(eventRef, createPayload, { merge: true });
     return false;
   }
   return true;
@@ -2024,10 +2030,14 @@ export async function updateEventPaymentConfig(
     ...(typeof config.merchandise_delivery_fee === "number"
       ? { merchandise_delivery_fee: config.merchandise_delivery_fee }
       : {}),
-    payment_webhook_url:
-      config.payment_webhook_url && config.payment_webhook_url.trim().length > 0
-        ? config.payment_webhook_url.trim()
-        : deleteField(),
+    ...(config.payment_webhook_url !== undefined
+      ? {
+          payment_webhook_url:
+            config.payment_webhook_url && config.payment_webhook_url.trim().length > 0
+              ? config.payment_webhook_url.trim()
+              : deleteField(),
+        }
+      : {}),
     updated_at: new Date().toISOString(),
   };
 
