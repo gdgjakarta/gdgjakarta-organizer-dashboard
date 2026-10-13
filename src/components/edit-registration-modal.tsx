@@ -18,8 +18,10 @@ import {
   Lock,
   type LucideIcon,
   MapPin,
+  Package,
   ShieldCheck,
   Sparkles,
+  Ticket,
   User,
   UserX,
 } from "lucide-react";
@@ -52,6 +54,15 @@ import { DEFAULT_COMBINED_QUESTIONS } from "@/lib/events/registration-defaults";
 import { updateRegistrationAnswersAction } from "@/lib/firestore/actions";
 import type { CustomQuestion, EventSession, FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
+
+function formatRupiah(amount: number): string {
+  return new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
 
 const SECTION_ICONS: Record<string, LucideIcon> = {
   "Personal & Contact Information": User,
@@ -96,10 +107,27 @@ export function EditRegistrationModal({
   const [touchedFields, setTouchedFields] = useState<Set<string>>(new Set());
 
   const status = registration.status;
+  const paymentStatus = (registration.payment_status ?? "").toLowerCase().trim();
+  const isPaid = status === "paid_and_registered" || paymentStatus === "paid";
+  const isWaitingPayment =
+    !isPaid &&
+    (status === "waiting_for_payment" ||
+      (paymentStatus === "unpaid" && status !== "approved" && status !== "attended"));
   const isPendingReview = status === "pending" || status === "waitlisted";
-  const isApproved = status === "approved" || status === "attended";
+  const isApproved = !isPaid && (status === "approved" || status === "attended" || status === "registered");
   const isRejected = status === "rejected";
-  const canEdit = isPendingReview;
+  const isExpiredOrFailed =
+    status === "expired" || status === "failed" || paymentStatus === "expired" || paymentStatus === "failed";
+  const isCancelled = status === "canceled" || status === "cancelled";
+
+  // Registration form is editable while waiting for payment or pending review. Locked once payment is made or finalized.
+  const canEdit =
+    !isPaid &&
+    !isApproved &&
+    !isRejected &&
+    !isExpiredOrFailed &&
+    !isCancelled &&
+    (isPendingReview || isWaitingPayment);
 
   // Initialize/sync answers from registration when dialog opens
   useEffect(() => {
@@ -396,11 +424,25 @@ export function EditRegistrationModal({
     </div>
   );
 
-  if (canEdit) {
+  if (isWaitingPayment && canEdit) {
     statusBanner = (
       <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-amber-900 text-xs dark:text-amber-200">
         <Clock className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
-        <div>
+        <div className="space-y-0.5">
+          <p className="font-semibold">Awaiting Payment Confirmation</p>
+          <p className="text-[11px] leading-relaxed opacity-90">
+            You can still update your application answers and session track below while waiting for payment. Ticket and
+            merchandise selections are locked. If you wish to change your ticket or merchandise, please cancel your RSVP
+            and re-register.
+          </p>
+        </div>
+      </div>
+    );
+  } else if (isPendingReview && canEdit) {
+    statusBanner = (
+      <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-amber-900 text-xs dark:text-amber-200">
+        <Clock className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+        <div className="space-y-0.5">
           <p className="font-semibold">Application Pending Organizer Review</p>
           <p className="text-[11px] leading-relaxed opacity-90">
             You can freely update your selected track and form answers below before the organizing committee finalizes
@@ -409,11 +451,24 @@ export function EditRegistrationModal({
         </div>
       </div>
     );
+  } else if (isPaid) {
+    statusBanner = (
+      <div className="flex items-start gap-2.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-emerald-900 text-xs dark:text-emerald-200">
+        <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+        <div className="space-y-0.5">
+          <p className="font-semibold">Payment Completed & Registration Locked</p>
+          <p className="text-[11px] leading-relaxed opacity-90">
+            Your payment has been successfully verified. Submitted registration details, ticket tier, and merchandise
+            are permanently locked.
+          </p>
+        </div>
+      </div>
+    );
   } else if (isApproved) {
     statusBanner = (
       <div className="flex items-start gap-2.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-emerald-900 text-xs dark:text-emerald-200">
         <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-        <div>
+        <div className="space-y-0.5">
           <p className="font-semibold">Application Confirmed & Approved</p>
           <p className="text-[11px] leading-relaxed opacity-90">
             Your spot has been confirmed. Submitted registration details are locked for ticketing and access purposes.
@@ -457,7 +512,7 @@ export function EditRegistrationModal({
           href={strVal}
           target="_blank"
           rel="noopener noreferrer"
-          className="group inline-flex items-center gap-1.5 break-all font-medium text-primary text-xs hover:underline"
+          className="group inline-flex max-w-full items-center gap-1.5 break-all font-medium text-primary text-xs hover:underline"
         >
           <Globe className="size-3.5 shrink-0 opacity-80" />
           <span className="truncate">{strVal}</span>
@@ -469,7 +524,7 @@ export function EditRegistrationModal({
     // Multi-select or array
     if (Array.isArray(value)) {
       return (
-        <div className="flex flex-wrap gap-1.5 pt-0.5">
+        <div className="flex max-w-full flex-wrap gap-1.5 pt-0.5">
           {value.map((item) => {
             const itemKey = String(item);
             if (itemKey.toLowerCase().startsWith("other:")) {
@@ -477,15 +532,19 @@ export function EditRegistrationModal({
               return (
                 <div
                   key={itemKey}
-                  className="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-2 py-0.5 text-xs"
+                  className="inline-flex max-w-full items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-2.5 py-1 text-xs break-words"
                 >
-                  <span className="font-semibold text-primary">Other:</span>
-                  <span className="text-foreground">{customVal || "Custom"}</span>
+                  <span className="shrink-0 font-semibold text-primary">Other:</span>
+                  <span className="text-foreground break-words">{customVal || "Custom"}</span>
                 </div>
               );
             }
             return (
-              <Badge key={itemKey} variant="secondary" className="font-medium text-xs">
+              <Badge
+                key={itemKey}
+                variant="secondary"
+                className="h-auto max-w-full whitespace-normal break-words px-2.5 py-1 text-left font-medium text-xs leading-relaxed"
+              >
                 {itemKey}
               </Badge>
             );
@@ -498,11 +557,16 @@ export function EditRegistrationModal({
     if (strVal.toLowerCase().startsWith("other:")) {
       const customVal = strVal.slice(strVal.indexOf(":") + 1).trim();
       return (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <Badge variant="outline" className="border-primary/40 bg-primary/10 font-medium text-primary text-xs">
+        <div className="flex max-w-full flex-wrap items-center gap-1.5">
+          <Badge
+            variant="outline"
+            className="shrink-0 border-primary/40 bg-primary/10 font-medium text-primary text-xs"
+          >
             Other
           </Badge>
-          <span className="font-medium text-foreground text-xs sm:text-sm">{customVal || "(None specified)"}</span>
+          <span className="font-medium text-foreground text-xs break-words sm:text-sm">
+            {customVal || "(None specified)"}
+          </span>
         </div>
       );
     }
@@ -518,7 +582,10 @@ export function EditRegistrationModal({
         strVal === "Non-Tech")
     ) {
       return (
-        <Badge variant="outline" className="border-border/80 bg-muted/40 font-medium text-foreground text-xs">
+        <Badge
+          variant="outline"
+          className="h-auto max-w-full whitespace-normal break-words border-border/80 bg-muted/40 px-2.5 py-0.5 font-medium text-foreground text-xs leading-relaxed"
+        >
           {strVal}
         </Badge>
       );
@@ -527,14 +594,14 @@ export function EditRegistrationModal({
     // Longer paragraphs / open text
     if (strVal.length > 60 || strVal.includes("\n")) {
       return (
-        <div className="whitespace-pre-wrap rounded-md border border-border/50 bg-muted/30 p-2.5 text-foreground text-xs leading-relaxed">
+        <div className="whitespace-pre-wrap break-words rounded-md border border-border/50 bg-muted/30 p-2.5 text-foreground text-xs leading-relaxed">
           {strVal}
         </div>
       );
     }
 
     // Standard string
-    return <span className="font-medium text-foreground text-xs sm:text-sm">{strVal}</span>;
+    return <span className="font-medium text-foreground text-xs break-words sm:text-sm">{strVal}</span>;
   };
 
   return (
@@ -553,14 +620,24 @@ export function EditRegistrationModal({
                   variant="outline"
                   className={cn(
                     "px-2 py-0.5 font-medium text-xs",
-                    isPendingReview && "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-                    isApproved && "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+                    isWaitingPayment && "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+                    !isWaitingPayment &&
+                      isPendingReview &&
+                      "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+                    (isApproved || isPaid) &&
+                      "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
                     isRejected && "border-destructive/30 bg-destructive/10 text-destructive",
+                    isExpiredOrFailed && "border-destructive/30 bg-destructive/10 text-destructive",
+                    isCancelled && "border-muted-foreground/30 bg-muted text-muted-foreground",
                   )}
                 >
-                  {isPendingReview && "Pending Review"}
-                  {isApproved && "Approved / Confirmed"}
+                  {isWaitingPayment && "Waiting for Payment"}
+                  {!isWaitingPayment && isPendingReview && "Pending Review"}
+                  {isPaid && "Paid & Confirmed"}
+                  {!isPaid && isApproved && "Approved / Confirmed"}
                   {isRejected && "Not Selected"}
+                  {isExpiredOrFailed && "Expired / Failed"}
+                  {isCancelled && "Cancelled"}
                 </Badge>
               </div>
               <DialogDescription className="text-xs">
@@ -613,6 +690,86 @@ export function EditRegistrationModal({
                   </div>
                 )}
 
+                {/* Locked Ticket & Merchandise (Read-Only) */}
+                {(Boolean(registration.ticket_name) ||
+                  Boolean(registration.bundle_name) ||
+                  Boolean(registration.selected_merchandise && registration.selected_merchandise.length > 0)) && (
+                  <div className="space-y-3 rounded-xl border border-border/70 bg-card p-4 shadow-2xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Lock className="size-4 text-primary" />
+                        <div>
+                          <h4 className="font-semibold text-foreground text-sm">Ticket & Merchandise</h4>
+                          <p className="text-[11px] text-muted-foreground">Locked selection for this registration.</p>
+                        </div>
+                      </div>
+                      <Badge variant="secondary" className="gap-1 text-[10px] font-semibold uppercase tracking-wider">
+                        <Lock className="size-2.5" />
+                        Locked
+                      </Badge>
+                    </div>
+
+                    <div className="divide-y divide-border/40 rounded-lg border border-border/60 bg-muted/20 text-xs">
+                      {registration.ticket_name && (
+                        <div className="flex items-center justify-between p-3">
+                          <div className="flex items-center gap-2">
+                            <Ticket className="size-3.5 text-muted-foreground" />
+                            <span className="text-muted-foreground">Ticket Tier:</span>
+                            <span className="font-semibold text-foreground">{registration.ticket_name}</span>
+                          </div>
+                          {registration.ticket_price !== undefined && (
+                            <span className="font-medium text-foreground">
+                              {registration.ticket_price === 0 ? "Free" : formatRupiah(registration.ticket_price)}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {registration.bundle_name && (
+                        <div className="flex items-center justify-between p-3">
+                          <div className="flex items-center gap-2">
+                            <Package className="size-3.5 text-muted-foreground" />
+                            <span className="text-muted-foreground">Bundle Package:</span>
+                            <span className="font-semibold text-foreground">{registration.bundle_name}</span>
+                          </div>
+                          {registration.bundle_price !== undefined && registration.bundle_price !== null && (
+                            <span className="font-medium text-foreground">
+                              {registration.bundle_price === 0 ? "Free" : formatRupiah(registration.bundle_price)}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {registration.selected_merchandise && registration.selected_merchandise.length > 0 && (
+                        <div className="space-y-2 p-3">
+                          <span className="font-medium text-[11px] text-muted-foreground uppercase tracking-wider">
+                            Selected Merchandise:
+                          </span>
+                          <div className="space-y-1.5">
+                            {registration.selected_merchandise.map((item, idx) => (
+                              <div
+                                key={item.merchandise_id || item.id || `${item.merchandise_title || item.name}-${idx}`}
+                                className="flex items-center justify-between text-xs"
+                              >
+                                <span className="text-foreground">
+                                  {item.merchandise_title || item.name}
+                                  {item.selected_size ? ` (${item.selected_size})` : ""}
+                                  {item.selected_variant ? ` • ${item.selected_variant}` : ""}
+                                  {" × "}
+                                  {item.quantity || 1}
+                                </span>
+                                <span className="font-medium text-muted-foreground">
+                                  {formatRupiah((item.price || 0) * (item.quantity || 1))}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* Sections in Read-Only Mode */}
                 {Array.from(sectionsMap.entries()).map(([sectionName, sectionQuestions], secIdx) => {
                   const SectionIcon = SECTION_ICONS[sectionName] || FileText;
@@ -647,7 +804,7 @@ export function EditRegistrationModal({
                             <div
                               key={q.id}
                               className={cn(
-                                "flex flex-col justify-between rounded-lg border border-border/60 bg-card p-3 shadow-2xs transition-colors hover:border-border",
+                                "flex flex-col justify-between rounded-lg border border-border/60 bg-card p-3 shadow-2xs transition-colors hover:border-border min-w-0 overflow-hidden",
                                 isWide && "sm:col-span-2",
                               )}
                             >
@@ -670,6 +827,103 @@ export function EditRegistrationModal({
             ) : (
               /* ── EDITABLE FORM VIEW ───────────────────────────────────── */
               <div className="space-y-6">
+                {/* Locked Ticket & Merchandise Notice in Editable Form */}
+                {(Boolean(registration.ticket_name) ||
+                  Boolean(registration.bundle_name) ||
+                  Boolean(registration.selected_merchandise && registration.selected_merchandise.length > 0)) && (
+                  <div className="space-y-3 rounded-xl border border-border/70 bg-card p-4 shadow-2xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Lock className="size-4 text-primary" />
+                        <div>
+                          <h4 className="font-semibold text-foreground text-sm">Ticket & Merchandise (Locked)</h4>
+                          <p className="text-[11px] text-muted-foreground">
+                            Locked selection • If you want to change merchandise or ticket, you need to cancel RSVP and
+                            re-register.
+                          </p>
+                        </div>
+                      </div>
+                      <Badge variant="secondary" className="gap-1 text-[10px] font-semibold uppercase tracking-wider">
+                        <Lock className="size-2.5" />
+                        Locked
+                      </Badge>
+                    </div>
+
+                    <div className="divide-y divide-border/40 rounded-lg border border-border/60 bg-muted/20 text-xs">
+                      {registration.ticket_name && (
+                        <div className="flex items-center justify-between p-3">
+                          <div className="flex items-center gap-2">
+                            <Ticket className="size-3.5 text-muted-foreground" />
+                            <span className="text-muted-foreground">Ticket Tier:</span>
+                            <span className="font-semibold text-foreground">{registration.ticket_name}</span>
+                          </div>
+                          {registration.ticket_price !== undefined && (
+                            <span className="font-medium text-foreground">
+                              {registration.ticket_price === 0 ? "Free" : formatRupiah(registration.ticket_price)}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {registration.bundle_name && (
+                        <div className="flex items-center justify-between p-3">
+                          <div className="flex items-center gap-2">
+                            <Package className="size-3.5 text-muted-foreground" />
+                            <span className="text-muted-foreground">Bundle Package:</span>
+                            <span className="font-semibold text-foreground">{registration.bundle_name}</span>
+                          </div>
+                          {registration.bundle_price !== undefined && registration.bundle_price !== null && (
+                            <span className="font-medium text-foreground">
+                              {registration.bundle_price === 0 ? "Free" : formatRupiah(registration.bundle_price)}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {registration.selected_merchandise && registration.selected_merchandise.length > 0 && (
+                        <div className="space-y-2 p-3">
+                          <span className="font-medium text-[11px] text-muted-foreground uppercase tracking-wider">
+                            Selected Merchandise:
+                          </span>
+                          <div className="space-y-1.5">
+                            {registration.selected_merchandise.map((item, idx) => (
+                              <div
+                                key={item.merchandise_id || item.id || `${item.merchandise_title || item.name}-${idx}`}
+                                className="flex items-center justify-between text-xs"
+                              >
+                                <span className="text-foreground">
+                                  {item.merchandise_title || item.name}
+                                  {item.selected_size ? ` (${item.selected_size})` : ""}
+                                  {item.selected_variant ? ` • ${item.selected_variant}` : ""}
+                                  {" × "}
+                                  {item.quantity || 1}
+                                </span>
+                                <span className="font-medium text-muted-foreground">
+                                  {formatRupiah((item.price || 0) * (item.quantity || 1))}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] text-muted-foreground">
+                      <span>Want to change your ticket or merchandise?</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setIsCancelConfirmOpen(true)}
+                        className="h-7 gap-1 px-2 text-[11px] text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      >
+                        <UserX className="size-3" />
+                        Cancel RSVP to Re-register
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Sessions / Tracks Selection */}
                 {hasSessions && (
                   <div className="space-y-3 rounded-xl border border-border/70 bg-card p-4 shadow-2xs">

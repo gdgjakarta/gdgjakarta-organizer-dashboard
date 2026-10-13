@@ -1398,6 +1398,10 @@ export async function updateRegistrationAnswers(
   }
 
   const existing = snap.data() as FirestoreRegistration;
+  const isPaid = existing.status === "paid_and_registered" || String(existing.payment_status).toLowerCase() === "paid";
+  if (isPaid) {
+    throw new Error("Registration details are locked because payment has already been completed.");
+  }
   if (existing.status === "approved" || existing.status === "attended") {
     throw new Error("Cannot edit application because it has already been accepted.");
   }

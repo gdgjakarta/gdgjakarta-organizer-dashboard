@@ -506,10 +506,11 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
               size="sm"
               className={cn(
                 "w-full gap-2 font-medium text-xs shadow-xs",
-                isPending && "border-amber-500/30 hover:bg-amber-500/10 hover:text-amber-700 dark:hover:text-amber-300",
+                (isPending || isWaitingPayment) &&
+                  "border-amber-500/30 hover:bg-amber-500/10 hover:text-amber-700 dark:hover:text-amber-300",
               )}
             >
-              {isPending ? (
+              {isPending || isWaitingPayment ? (
                 <>
                   <Edit3 className="size-3.5 text-amber-500" />
                   Edit Form Responses

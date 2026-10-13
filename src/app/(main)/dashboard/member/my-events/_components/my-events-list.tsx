@@ -755,7 +755,7 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
                       setRegistrations((prev) => prev.filter((r) => r.id !== reg.id));
                     }}
                     triggerButton={
-                      isPending ? (
+                      isPending || isWaitingPayment ? (
                         <Button
                           variant="outline"
                           size="sm"
