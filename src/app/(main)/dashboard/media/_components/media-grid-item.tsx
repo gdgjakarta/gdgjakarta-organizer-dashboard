@@ -69,11 +69,11 @@ export function FolderCard({ folder, onOpen, onDelete }: FolderCardProps) {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
             <DropdownMenuItem onClick={() => onOpen(folder.prefix)}>
-              <ExternalLink className="mr-2 h-4 w-4" /> Buka Folder
+              <ExternalLink className="mr-2 h-4 w-4" /> Open Folder
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => onDelete(folder)} className="text-destructive focus:text-destructive">
-              <Trash2 className="mr-2 h-4 w-4" /> Hapus Folder
+              <Trash2 className="mr-2 h-4 w-4" /> Delete Folder
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -116,7 +116,7 @@ export function MediaCard({ item, isSelected, onToggleSelect, onPreview, onRenam
     e.stopPropagation();
     const fullUrl = item.url.startsWith("http") ? item.url : `${window.location.origin}${item.url}`;
     void navigator.clipboard.writeText(fullUrl);
-    toast.success("CDN URL berhasil disalin ke clipboard");
+    toast.success("CDN URL copied to clipboard");
   };
 
   const handleCopyMarkdown = (e: React.MouseEvent) => {
@@ -124,7 +124,7 @@ export function MediaCard({ item, isSelected, onToggleSelect, onPreview, onRenam
     const fullUrl = item.url.startsWith("http") ? item.url : `${window.location.origin}${item.url}`;
     const tag = `![${item.name}](${fullUrl})`;
     void navigator.clipboard.writeText(tag);
-    toast.success("Markdown tag berhasil disalin");
+    toast.success("Markdown tag copied to clipboard");
   };
 
   const handleCopyHtml = (e: React.MouseEvent) => {
@@ -132,7 +132,7 @@ export function MediaCard({ item, isSelected, onToggleSelect, onPreview, onRenam
     const fullUrl = item.url.startsWith("http") ? item.url : `${window.location.origin}${item.url}`;
     const tag = `<img src="${fullUrl}" alt="${item.name}" />`;
     void navigator.clipboard.writeText(tag);
-    toast.success("HTML tag berhasil disalin");
+    toast.success("HTML tag copied to clipboard");
   };
 
   const handleDownload = (e: React.MouseEvent) => {
@@ -172,30 +172,30 @@ export function MediaCard({ item, isSelected, onToggleSelect, onPreview, onRenam
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
             <DropdownMenuItem onClick={() => onPreview(item)}>
-              <Eye className="mr-2 h-4 w-4" /> Pratinjau
+              <Eye className="mr-2 h-4 w-4" /> Preview
             </DropdownMenuItem>
             <DropdownMenuItem onClick={handleCopyUrl}>
-              <Copy className="mr-2 h-4 w-4" /> Salin URL
+              <Copy className="mr-2 h-4 w-4" /> Copy URL
             </DropdownMenuItem>
             <DropdownMenuItem onClick={handleCopyMarkdown}>
-              <Code className="mr-2 h-4 w-4" /> Salin Markdown Tag
+              <Code className="mr-2 h-4 w-4" /> Copy Markdown Tag
             </DropdownMenuItem>
             <DropdownMenuItem onClick={handleCopyHtml}>
-              <Code className="mr-2 h-4 w-4" /> Salin HTML Tag
+              <Code className="mr-2 h-4 w-4" /> Copy HTML Tag
             </DropdownMenuItem>
             <DropdownMenuItem onClick={handleDownload}>
-              <Download className="mr-2 h-4 w-4" /> Unduh
+              <Download className="mr-2 h-4 w-4" /> Download
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => onRename(item)}>
-              <Edit2 className="mr-2 h-4 w-4" /> Ubah Nama
+              <Edit2 className="mr-2 h-4 w-4" /> Rename
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onMove(item)}>
-              <Move className="mr-2 h-4 w-4" /> Pindahkan
+              <Move className="mr-2 h-4 w-4" /> Move
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => onDelete(item)} className="text-destructive focus:text-destructive">
-              <Trash2 className="mr-2 h-4 w-4" /> Hapus
+              <Trash2 className="mr-2 h-4 w-4" /> Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

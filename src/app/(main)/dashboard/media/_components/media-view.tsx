@@ -106,10 +106,10 @@ export function MediaView({ initialContent }: MediaViewProps) {
           setCurrentPrefix(prefixToLoad);
           setSelectedKeys(new Set());
         } else {
-          toast.error(res.error ?? "Gagal memuat direktori R2");
+          toast.error(res.error ?? "Failed to load R2 directory");
         }
       } catch {
-        toast.error("Terjadi kegagalan jaringan saat memuat berkas");
+        toast.error("Network error while loading files");
       } finally {
         setIsLoading(false);
       }
@@ -170,13 +170,13 @@ export function MediaView({ initialContent }: MediaViewProps) {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="font-bold text-2xl text-foreground tracking-tight sm:text-3xl">Bucket Management</h1>
+            <h1 className="font-bold text-2xl text-foreground tracking-tight sm:text-3xl">Bucket Storage</h1>
             <Badge variant="outline" className="border-primary/30 text-primary text-xs">
               Cloudflare R2
             </Badge>
           </div>
           <p className="mt-1 text-muted-foreground text-sm">
-            Kelola direktori folder, unggah aset, atur media, dan distribusikan tautan CDN GDG Jakarta.
+            Manage directory folders, upload assets, organize media, and distribute GDG Jakarta CDN links.
           </p>
         </div>
 
@@ -189,15 +189,15 @@ export function MediaView({ initialContent }: MediaViewProps) {
             className="gap-1.5"
           >
             <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
-            Segarkan
+            Refresh
           </Button>
           <Button variant="outline" size="sm" onClick={() => setIsCreateFolderOpen(true)} className="gap-1.5">
             <FolderPlus className="h-4 w-4" />
-            Folder Baru
+            New Folder
           </Button>
           <Button size="sm" onClick={() => setIsUploadOpen(true)} className="gap-1.5">
             <UploadCloud className="h-4 w-4" />
-            Unggah Berkas
+            Upload Files
           </Button>
         </div>
       </div>
@@ -206,47 +206,47 @@ export function MediaView({ initialContent }: MediaViewProps) {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="font-medium text-muted-foreground text-xs">Direktori Aktif</CardTitle>
+            <CardTitle className="font-medium text-muted-foreground text-xs">Active Directory</CardTitle>
             <HardDrive className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="truncate font-bold font-mono text-foreground text-lg" title={currentPrefix || "/ (Root)"}>
               {currentPrefix ? `/${currentPrefix}` : "/ (Root)"}
             </div>
-            <p className="mt-1 text-muted-foreground text-xs">Lokasi penyimpanan saat ini</p>
+            <p className="mt-1 text-muted-foreground text-xs">Current storage location</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="font-medium text-muted-foreground text-xs">Total Subfolder</CardTitle>
+            <CardTitle className="font-medium text-muted-foreground text-xs">Total Subfolders</CardTitle>
             <FolderPlus className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="font-bold text-2xl text-foreground">{content.folders.length}</div>
-            <p className="mt-1 text-muted-foreground text-xs">Folder dalam direktori ini</p>
+            <p className="mt-1 text-muted-foreground text-xs">Folders in this directory</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="font-medium text-muted-foreground text-xs">Total Berkas</CardTitle>
+            <CardTitle className="font-medium text-muted-foreground text-xs">Total Files</CardTitle>
             <Layers className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="font-bold text-2xl text-foreground">{content.items.length}</div>
-            <p className="mt-1 text-muted-foreground text-xs">{filteredItems.length} berkas ditampilkan</p>
+            <p className="mt-1 text-muted-foreground text-xs">{filteredItems.length} files displayed</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="font-medium text-muted-foreground text-xs">Total Ukuran Berkas</CardTitle>
+            <CardTitle className="font-medium text-muted-foreground text-xs">Total File Size</CardTitle>
             <LayoutGrid className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="font-bold font-mono text-2xl text-foreground">{formatFileSize(totalSizeBytes)}</div>
-            <p className="mt-1 text-muted-foreground text-xs">Akumulasi ukuran direktori ini</p>
+            <p className="mt-1 text-muted-foreground text-xs">Accumulated size of this directory</p>
           </CardContent>
         </Card>
       </div>
@@ -268,7 +268,7 @@ export function MediaView({ initialContent }: MediaViewProps) {
                 </InputGroupAddon>
                 <InputGroupInput
                   ref={searchInputRef}
-                  placeholder="Cari berkas atau folder..."
+                  placeholder="Search files or folders..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
@@ -281,18 +281,18 @@ export function MediaView({ initialContent }: MediaViewProps) {
               <div className="hidden lg:block">
                 <Tabs value={categoryFilter} onValueChange={setCategoryFilter}>
                   <TabsList>
-                    <TabsTrigger value="all">Semua</TabsTrigger>
+                    <TabsTrigger value="all">All</TabsTrigger>
                     <TabsTrigger value="image" className="gap-1">
-                      <ImageIcon className="h-3.5 w-3.5" /> Gambar
+                      <ImageIcon className="h-3.5 w-3.5" /> Images
                     </TabsTrigger>
                     <TabsTrigger value="video" className="gap-1">
-                      <FileVideo className="h-3.5 w-3.5" /> Video
+                      <FileVideo className="h-3.5 w-3.5" /> Videos
                     </TabsTrigger>
                     <TabsTrigger value="document" className="gap-1">
-                      <FileText className="h-3.5 w-3.5" /> Dokumen
+                      <FileText className="h-3.5 w-3.5" /> Documents
                     </TabsTrigger>
                     <TabsTrigger value="archive" className="gap-1">
-                      <FileArchive className="h-3.5 w-3.5" /> Arsip
+                      <FileArchive className="h-3.5 w-3.5" /> Archives
                     </TabsTrigger>
                   </TabsList>
                 </Tabs>
@@ -306,7 +306,7 @@ export function MediaView({ initialContent }: MediaViewProps) {
                   variant={viewMode === "grid" ? "secondary" : "ghost"}
                   size="icon-xs"
                   onClick={() => setViewMode("grid")}
-                  title="Tampilan Kisi (Grid)"
+                  title="Grid View"
                 >
                   <Grid className="h-4 w-4" />
                 </Button>
@@ -314,7 +314,7 @@ export function MediaView({ initialContent }: MediaViewProps) {
                   variant={viewMode === "list" ? "secondary" : "ghost"}
                   size="icon-xs"
                   onClick={() => setViewMode("list")}
-                  title="Tampilan Tabel (List)"
+                  title="List View"
                 >
                   <List className="h-4 w-4" />
                 </Button>
@@ -329,18 +329,18 @@ export function MediaView({ initialContent }: MediaViewProps) {
         <div className="sticky top-4 z-20 flex items-center justify-between rounded-xl border border-primary/20 bg-background/95 p-3 shadow-lg backdrop-blur-md">
           <div className="flex items-center gap-3">
             <Badge variant="default" className="text-xs">
-              {selectedKeys.size} Berkas Terpilih
+              {selectedKeys.size} Selected
             </Badge>
-            <span className="text-muted-foreground text-xs">Pilih tindakan untuk berkas yang ditandai:</span>
+            <span className="text-muted-foreground text-xs">Actions for selected items:</span>
           </div>
 
           <div className="flex items-center gap-2">
             <Button variant="outline" size="xs" onClick={() => setSelectedKeys(new Set())} className="text-xs">
-              Batal Pilih
+              Deselect All
             </Button>
             <Button variant="destructive" size="xs" onClick={() => setIsBulkDeleteOpen(true)} className="gap-1 text-xs">
               <Trash2 className="h-3.5 w-3.5" />
-              Hapus ({selectedKeys.size}) Berkas
+              Delete ({selectedKeys.size}) Files
             </Button>
           </div>
         </div>
@@ -352,7 +352,7 @@ export function MediaView({ initialContent }: MediaViewProps) {
           return (
             <div className="flex min-h-64 flex-col items-center justify-center rounded-xl border bg-card p-12 text-center">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              <p className="mt-3 font-medium text-foreground text-sm">Memuat berkas dari Cloudflare R2...</p>
+              <p className="mt-3 font-medium text-foreground text-sm">Loading files from Cloudflare R2...</p>
             </div>
           );
         }
@@ -363,16 +363,16 @@ export function MediaView({ initialContent }: MediaViewProps) {
               <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 text-primary">
                 <HardDrive className="h-8 w-8" />
               </div>
-              <CardTitle className="mt-4 text-base">Direktori ini masih kosong</CardTitle>
+              <CardTitle className="mt-4 text-base">This directory is empty</CardTitle>
               <CardDescription className="mt-1 max-w-sm text-xs">
-                Belum ada berkas atau folder di direktori ini. Mulai dengan membuat folder baru atau mengunggah media.
+                There are no files or folders in this directory yet. Start by creating a new folder or uploading media.
               </CardDescription>
               <div className="mt-5 flex items-center gap-2">
                 <Button variant="outline" size="sm" onClick={() => setIsCreateFolderOpen(true)} className="gap-1.5">
-                  <FolderPlus className="h-4 w-4" /> Folder Baru
+                  <FolderPlus className="h-4 w-4" /> New Folder
                 </Button>
                 <Button size="sm" onClick={() => setIsUploadOpen(true)} className="gap-1.5">
-                  <UploadCloud className="h-4 w-4" /> Unggah Berkas
+                  <UploadCloud className="h-4 w-4" /> Upload Files
                 </Button>
               </div>
             </Card>
@@ -386,7 +386,7 @@ export function MediaView({ initialContent }: MediaViewProps) {
               {filteredFolders.length > 0 && (
                 <div className="space-y-3">
                   <h2 className="font-semibold text-muted-foreground text-xs uppercase tracking-wider">
-                    Folder ({filteredFolders.length})
+                    Folders ({filteredFolders.length})
                   </h2>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                     {filteredFolders.map((folder) => (
@@ -406,7 +406,7 @@ export function MediaView({ initialContent }: MediaViewProps) {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <h2 className="font-semibold text-muted-foreground text-xs uppercase tracking-wider">
-                      Berkas Media ({filteredItems.length})
+                      Media Files ({filteredItems.length})
                     </h2>
                     <Button
                       variant="ghost"
@@ -414,7 +414,7 @@ export function MediaView({ initialContent }: MediaViewProps) {
                       onClick={handleToggleSelectAll}
                       className="text-muted-foreground text-xs hover:text-foreground"
                     >
-                      {selectedKeys.size === filteredItems.length ? "Batal Pilih Semua" : "Pilih Semua Berkas"}
+                      {selectedKeys.size === filteredItems.length ? "Deselect All" : "Select All"}
                     </Button>
                   </div>
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">

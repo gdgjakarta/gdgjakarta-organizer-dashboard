@@ -42,24 +42,24 @@ export function DeleteMediaDialog({ item, folder, isOpen, onOpenChange, onSucces
       if (isFolderDelete) {
         const res = await deleteMediaFolderAction(targetKey);
         if (res.success) {
-          toast.success(`Folder '${targetName}' beserta isinya berhasil dihapus`);
+          toast.success(`Folder '${targetName}' and its contents deleted successfully`);
           onOpenChange(false);
           onSuccess();
         } else {
-          toast.error(res.error ?? "Gagal menghapus folder");
+          toast.error(res.error ?? "Failed to delete folder");
         }
       } else {
         const res = await deleteMediaObjectAction(targetKey);
         if (res.success) {
-          toast.success(`Berkas '${targetName}' berhasil dihapus`);
+          toast.success(`File '${targetName}' deleted successfully`);
           onOpenChange(false);
           onSuccess();
         } else {
-          toast.error(res.error ?? "Gagal menghapus berkas");
+          toast.error(res.error ?? "Failed to delete file");
         }
       }
     } catch {
-      toast.error("Terjadi kesalahan saat menghapus data");
+      toast.error("Error deleting item");
     } finally {
       setIsPending(false);
     }
@@ -71,39 +71,38 @@ export function DeleteMediaDialog({ item, folder, isOpen, onOpenChange, onSucces
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-destructive">
             <AlertTriangle className="h-5 w-5" />
-            Hapus {isFolderDelete ? "Folder" : "Berkas"}
+            Delete {isFolderDelete ? "Folder" : "File"}
           </DialogTitle>
           <DialogDescription>
             {isFolderDelete ? (
               <span>
-                Apakah Anda yakin ingin menghapus folder{" "}
-                <span className="font-semibold text-foreground">/{targetName}</span>? Semua berkas dan subfolder di
-                dalamnya akan dihapus permanen dari Cloudflare R2.
+                Are you sure you want to delete folder{" "}
+                <span className="font-semibold text-foreground">/{targetName}</span>? All files and subfolders within it
+                will be permanently deleted from Cloudflare R2.
               </span>
             ) : (
               <span>
-                Apakah Anda yakin ingin menghapus berkas{" "}
-                <span className="font-semibold text-foreground">{targetName}</span>? Tindakan ini tidak dapat
-                dibatalkan.
+                Are you sure you want to delete file <span className="font-semibold text-foreground">{targetName}</span>
+                ? This action cannot be undone.
               </span>
             )}
           </DialogDescription>
         </DialogHeader>
 
         <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-destructive text-xs">
-          <p className="font-medium">Peringatan Penghapusan Permanen</p>
+          <p className="font-medium">Permanent Deletion Warning</p>
           <p className="mt-1">
-            Data yang dihapus dari bucket R2 tidak dapat dipulihkan. Pastikan Anda tidak memerlukan aset ini lagi.
+            Data deleted from Cloudflare R2 cannot be recovered. Make sure you no longer need this asset.
           </p>
         </div>
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
-            Batal
+            Cancel
           </Button>
           <Button type="button" variant="destructive" onClick={handleDelete} disabled={isPending}>
             {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
-            Hapus Permanen
+            Delete Permanently
           </Button>
         </DialogFooter>
       </DialogContent>

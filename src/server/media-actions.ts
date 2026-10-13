@@ -45,7 +45,7 @@ export async function fetchMediaDirectoryAction(
     const data = await listDirectoryContent(prefix);
     return { success: true, data };
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Gagal memuat konten direktori dari R2";
+    const message = err instanceof Error ? err.message : "Failed to load directory content from R2";
     return { success: false, error: message };
   }
 }
@@ -64,19 +64,19 @@ export async function createMediaFolderAction(
 
   const cleanName = sanitizeStorageName(rawFolderName, true);
   if (!cleanName) {
-    return { success: false, error: "Nama folder tidak boleh kosong dan harus menggunakan karakter valid" };
+    return { success: false, error: "Folder name cannot be empty and must use valid characters" };
   }
 
   try {
     const result = await createFolderMarker(parentPrefix, cleanName);
     if (!result.success) {
-      return { success: false, error: result.error ?? "Gagal membuat folder di Cloudflare R2" };
+      return { success: false, error: result.error ?? "Failed to create folder in Cloudflare R2" };
     }
 
     revalidatePath("/dashboard/media");
     return { success: true, folder: result.folder };
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Gagal membuat folder";
+    const message = err instanceof Error ? err.message : "Failed to create folder";
     return { success: false, error: message };
   }
 }
@@ -97,7 +97,7 @@ export async function renameMediaObjectAction(
   const cleanName = sanitizeStorageName(rawNewName, isFolder);
 
   if (!cleanName) {
-    return { success: false, error: "Nama baru tidak valid" };
+    return { success: false, error: "Invalid new name" };
   }
 
   const newKey = buildStorageKey(folder, cleanName, isFolder);
@@ -105,13 +105,13 @@ export async function renameMediaObjectAction(
   try {
     const result = await renameOrMoveObject(oldKey, newKey);
     if (!result.success) {
-      return { success: false, error: result.error ?? "Gagal mengubah nama file" };
+      return { success: false, error: result.error ?? "Failed to rename file" };
     }
 
     revalidatePath("/dashboard/media");
     return { success: true, item: result.item, newKey: result.newKey };
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Gagal mengubah nama";
+    const message = err instanceof Error ? err.message : "Failed to rename";
     return { success: false, error: message };
   }
 }
@@ -134,13 +134,13 @@ export async function moveMediaObjectAction(
   try {
     const result = await renameOrMoveObject(sourceKey, destKey);
     if (!result.success) {
-      return { success: false, error: result.error ?? "Gagal memindahkan file" };
+      return { success: false, error: result.error ?? "Failed to move file" };
     }
 
     revalidatePath("/dashboard/media");
     return { success: true, item: result.item };
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Gagal memindahkan file";
+    const message = err instanceof Error ? err.message : "Failed to move file";
     return { success: false, error: message };
   }
 }
@@ -156,13 +156,13 @@ export async function deleteMediaObjectAction(key: string): Promise<{ success: b
   try {
     const res = await deleteMediaObject(key);
     if (!res.success) {
-      return { success: false, error: res.error ?? "Gagal menghapus file" };
+      return { success: false, error: res.error ?? "Failed to delete file" };
     }
 
     revalidatePath("/dashboard/media");
     return { success: true };
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Gagal menghapus file";
+    const message = err instanceof Error ? err.message : "Failed to delete file";
     return { success: false, error: message };
   }
 }
@@ -180,13 +180,13 @@ export async function deleteMediaFolderAction(
   try {
     const res = await deleteFolderRecursive(folderPrefix);
     if (!res.success) {
-      return { success: false, error: res.error ?? "Gagal menghapus folder" };
+      return { success: false, error: res.error ?? "Failed to delete folder" };
     }
 
     revalidatePath("/dashboard/media");
     return { success: true, deletedCount: res.deletedCount };
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Gagal menghapus folder";
+    const message = err instanceof Error ? err.message : "Failed to delete folder";
     return { success: false, error: message };
   }
 }
@@ -202,19 +202,19 @@ export async function bulkDeleteMediaAction(
   }
 
   if (keys.length === 0) {
-    return { success: false, error: "Tidak ada file yang dipilih" };
+    return { success: false, error: "No files selected" };
   }
 
   try {
     const res = await bulkDeleteMediaObjects(keys);
     if (!res.success) {
-      return { success: false, error: res.error ?? "Gagal menghapus beberapa item" };
+      return { success: false, error: res.error ?? "Failed to delete selected items" };
     }
 
     revalidatePath("/dashboard/media");
     return { success: true, deletedCount: res.deletedCount };
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Gagal menghapus media";
+    const message = err instanceof Error ? err.message : "Failed to delete media";
     return { success: false, error: message };
   }
 }
@@ -233,13 +233,13 @@ export async function updateMediaMetadataAction(
   try {
     const res = await updateMediaMetadata(key, metadata);
     if (!res.success) {
-      return { success: false, error: res.error ?? "Gagal memperbarui metadata file" };
+      return { success: false, error: res.error ?? "Failed to update file metadata" };
     }
 
     revalidatePath("/dashboard/media");
     return { success: true, item: res.item };
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Gagal memperbarui metadata";
+    const message = err instanceof Error ? err.message : "Failed to update metadata";
     return { success: false, error: message };
   }
 }

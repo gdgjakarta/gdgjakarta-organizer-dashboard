@@ -46,7 +46,7 @@ export function RenameMediaDialog({ item, isOpen, onOpenChange, onSuccess }: Ren
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!sanitized) {
-      toast.error("Nama file tidak boleh kosong");
+      toast.error("File name cannot be empty");
       return;
     }
 
@@ -59,14 +59,14 @@ export function RenameMediaDialog({ item, isOpen, onOpenChange, onSuccess }: Ren
     try {
       const res = await renameMediaObjectAction(item.key, sanitized);
       if (res.success) {
-        toast.success(`Berhasil mengubah nama menjadi '${sanitized}'`);
+        toast.success(`File renamed to '${sanitized}'`);
         onOpenChange(false);
         onSuccess();
       } else {
-        toast.error(res.error ?? "Gagal mengubah nama file");
+        toast.error(res.error ?? "Failed to rename file");
       }
     } catch {
-      toast.error("Terjadi kesalahan saat mengubah nama");
+      toast.error("Error renaming file");
     } finally {
       setIsPending(false);
     }
@@ -79,17 +79,16 @@ export function RenameMediaDialog({ item, isOpen, onOpenChange, onSuccess }: Ren
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Edit2 className="h-5 w-5 text-primary" />
-              Ubah Nama Berkas
+              Rename File
             </DialogTitle>
             <DialogDescription>
-              Ubah nama berkas. Nama baru akan otomatis diformat menjadi huruf kecil (lowercase) dan dipisahkan strip
-              (-).
+              Rename file. The new name will be automatically converted to lowercase and hyphen-separated (-).
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="rename-input">Nama Baru</Label>
+              <Label htmlFor="rename-input">New Name</Label>
               <Input
                 id="rename-input"
                 value={newName}
@@ -101,7 +100,7 @@ export function RenameMediaDialog({ item, isOpen, onOpenChange, onSuccess }: Ren
 
             {sanitized && sanitized !== item.name && (
               <div className="rounded-lg border bg-muted/40 p-3 text-xs">
-                <span className="text-muted-foreground">Pratinjau nama baru: </span>
+                <span className="text-muted-foreground">Preview new name: </span>
                 <span className="font-medium font-mono text-foreground">{sanitized}</span>
               </div>
             )}
@@ -109,11 +108,11 @@ export function RenameMediaDialog({ item, isOpen, onOpenChange, onSuccess }: Ren
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
-              Batal
+              Cancel
             </Button>
             <Button type="submit" disabled={isPending || !sanitized || sanitized === item.name}>
               {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Simpan Perubahan
+              Save Changes
             </Button>
           </DialogFooter>
         </form>

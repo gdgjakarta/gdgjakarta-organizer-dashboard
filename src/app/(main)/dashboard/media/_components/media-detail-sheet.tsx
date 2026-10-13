@@ -31,7 +31,7 @@ export function MediaDetailSheet({ item, isOpen, onOpenChange, onRename, onMove,
   const copyToClipboard = (text: string, label: string) => {
     void navigator.clipboard.writeText(text);
     setCopiedKey(label);
-    toast.success(`${label} disalin ke clipboard`);
+    toast.success(`${label} copied to clipboard`);
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
@@ -49,7 +49,7 @@ export function MediaDetailSheet({ item, isOpen, onOpenChange, onRename, onMove,
               {item.category}
             </Badge>
             <Button variant="ghost" size="icon-sm" asChild>
-              <a href={item.url} target="_blank" rel="noopener noreferrer" title="Buka URL asli">
+              <a href={item.url} target="_blank" rel="noopener noreferrer" title="Open original URL">
                 <ExternalLink className="h-4 w-4" />
               </a>
             </Button>
@@ -88,7 +88,7 @@ export function MediaDetailSheet({ item, isOpen, onOpenChange, onRename, onMove,
             return (
               <div className="flex flex-col items-center gap-2 p-6 text-center text-muted-foreground">
                 <span className="font-mono text-xs uppercase">{item.contentType}</span>
-                <p className="text-sm">Pratinjau langsung tidak tersedia untuk format ini</p>
+                <p className="text-sm">Direct preview not available for this format</p>
               </div>
             );
           })()}
@@ -96,7 +96,7 @@ export function MediaDetailSheet({ item, isOpen, onOpenChange, onRename, onMove,
 
         {/* Quick Embed Snippets */}
         <div className="flex flex-col gap-2 rounded-lg border bg-muted/20 p-3">
-          <p className="font-medium text-foreground text-xs">Salin Tautan Cepat</p>
+          <p className="font-medium text-foreground text-xs">Quick Embed Links</p>
 
           <div className="flex items-center justify-between gap-2">
             <span className="text-muted-foreground text-xs">Direct URL</span>
@@ -111,7 +111,7 @@ export function MediaDetailSheet({ item, isOpen, onOpenChange, onRename, onMove,
               ) : (
                 <Copy className="h-3 w-3" />
               )}
-              Salin URL
+              Copy URL
             </Button>
           </div>
 
@@ -144,22 +144,22 @@ export function MediaDetailSheet({ item, isOpen, onOpenChange, onRename, onMove,
 
         {/* Technical Details */}
         <div className="space-y-2 text-xs">
-          <p className="font-medium text-foreground">Detail File</p>
+          <p className="font-medium text-foreground">File Details</p>
           <div className="grid grid-cols-2 gap-2 rounded-lg border bg-card p-3">
             <div>
-              <p className="text-muted-foreground">Ukuran</p>
+              <p className="text-muted-foreground">Size</p>
               <p className="font-medium font-mono">{formatFileSize(item.size)}</p>
             </div>
             <div>
-              <p className="text-muted-foreground">Format MIME</p>
+              <p className="text-muted-foreground">MIME Type</p>
               <p className="truncate font-medium font-mono" title={item.contentType}>
                 {item.contentType}
               </p>
             </div>
             <div>
-              <p className="text-muted-foreground">Diunggah</p>
+              <p className="text-muted-foreground">Uploaded</p>
               <p className="font-medium">
-                {new Date(item.updatedAt).toLocaleString("id-ID", {
+                {new Date(item.updatedAt).toLocaleString("en-US", {
                   dateStyle: "medium",
                   timeStyle: "short",
                 })}
@@ -178,14 +178,14 @@ export function MediaDetailSheet({ item, isOpen, onOpenChange, onRename, onMove,
         <div className="mt-auto flex flex-col gap-2 border-t pt-4">
           <div className="grid grid-cols-2 gap-2">
             <Button variant="outline" size="sm" onClick={() => onRename(item)} className="gap-1.5">
-              <Edit2 className="h-3.5 w-3.5" /> Ubah Nama
+              <Edit2 className="h-3.5 w-3.5" /> Rename
             </Button>
             <Button variant="outline" size="sm" onClick={() => onMove(item)} className="gap-1.5">
-              <Move className="h-3.5 w-3.5" /> Pindahkan
+              <Move className="h-3.5 w-3.5" /> Move
             </Button>
           </div>
           <Button variant="secondary" size="sm" onClick={handleDownload} className="w-full gap-1.5">
-            <Download className="h-3.5 w-3.5" /> Unduh Berkas
+            <Download className="h-3.5 w-3.5" /> Download File
           </Button>
           <Button
             variant="destructive"
@@ -196,7 +196,7 @@ export function MediaDetailSheet({ item, isOpen, onOpenChange, onRename, onMove,
             }}
             className="w-full gap-1.5"
           >
-            <Trash2 className="h-3.5 w-3.5" /> Hapus dari R2
+            <Trash2 className="h-3.5 w-3.5" /> Delete from R2
           </Button>
         </div>
       </SheetContent>

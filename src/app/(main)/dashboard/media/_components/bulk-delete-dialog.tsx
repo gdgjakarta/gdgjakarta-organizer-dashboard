@@ -33,14 +33,14 @@ export function BulkDeleteDialog({ selectedKeys, isOpen, onOpenChange, onSuccess
     try {
       const res = await bulkDeleteMediaAction(selectedKeys);
       if (res.success) {
-        toast.success(`Berhasil menghapus ${res.deletedCount ?? selectedKeys.length} berkas terpilih`);
+        toast.success(`Successfully deleted ${res.deletedCount ?? selectedKeys.length} selected file(s)`);
         onOpenChange(false);
         onSuccess();
       } else {
-        toast.error(res.error ?? "Gagal menghapus berkas terpilih");
+        toast.error(res.error ?? "Failed to delete selected files");
       }
     } catch {
-      toast.error("Terjadi kesalahan saat menghapus berkas");
+      toast.error("Error deleting files");
     } finally {
       setIsPending(false);
     }
@@ -52,27 +52,27 @@ export function BulkDeleteDialog({ selectedKeys, isOpen, onOpenChange, onSuccess
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-destructive">
             <AlertTriangle className="h-5 w-5" />
-            Hapus Masal ({selectedKeys.length}) Berkas
+            Bulk Delete ({selectedKeys.length}) Files
           </DialogTitle>
           <DialogDescription>
-            Apakah Anda yakin ingin menghapus{" "}
-            <span className="font-semibold text-foreground">{selectedKeys.length} berkas</span> yang dipilih? Tindakan
-            ini bersifat permanen dan tidak dapat dibatalkan.
+            Are you sure you want to delete{" "}
+            <span className="font-semibold text-foreground">{selectedKeys.length} selected file(s)</span>? This action
+            is permanent and cannot be undone.
           </DialogDescription>
         </DialogHeader>
 
         <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-destructive text-xs">
-          <p className="font-medium">Konfirmasi Penghapusan Masal</p>
-          <p className="mt-1">Semua objek yang dipilih akan dihapus dari Cloudflare R2 secara bersamaan.</p>
+          <p className="font-medium">Bulk Deletion Confirmation</p>
+          <p className="mt-1">All selected objects will be permanently removed from Cloudflare R2.</p>
         </div>
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
-            Batal
+            Cancel
           </Button>
           <Button type="button" variant="destructive" onClick={handleBulkDelete} disabled={isPending}>
             {isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
-            Hapus {selectedKeys.length} Berkas
+            Delete {selectedKeys.length} Files
           </Button>
         </DialogFooter>
       </DialogContent>

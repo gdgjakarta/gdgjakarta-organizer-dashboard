@@ -70,11 +70,11 @@ export async function POST(request: NextRequest) {
         if (res.success && res.item) {
           uploadedItems.push(res.item);
         } else {
-          errors.push(`Gagal mengunggah ${file.name}: ${res.error ?? "Unknown error"}`);
+          errors.push(`Failed to upload ${file.name}: ${res.error ?? "Unknown error"}`);
         }
       } catch (uploadErr) {
         const msg = uploadErr instanceof Error ? uploadErr.message : "Upload error";
-        errors.push(`Gagal mengunggah ${file.name}: ${msg}`);
+        errors.push(`Failed to upload ${file.name}: ${msg}`);
       }
     }
 

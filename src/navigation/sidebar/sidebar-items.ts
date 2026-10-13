@@ -116,7 +116,7 @@ export const organizerSidebarItems: NavGroup[] = [
       },
       {
         id: "media-bucket",
-        title: "Bucket Management",
+        title: "Bucket Storage",
         url: "/dashboard/media",
         icon: HardDrive,
       },

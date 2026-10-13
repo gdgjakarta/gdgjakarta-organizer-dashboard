@@ -53,14 +53,14 @@ export function MoveMediaDialog({ item, availableFolders, isOpen, onOpenChange, 
     try {
       const res = await moveMediaObjectAction(item.key, selectedFolderPrefix);
       if (res.success) {
-        toast.success(`Berkas berhasil dipindahkan ke ${selectedFolderPrefix ? `/${selectedFolderPrefix}` : "/Root"}`);
+        toast.success(`File moved to ${selectedFolderPrefix ? `/${selectedFolderPrefix}` : "/Root"}`);
         onOpenChange(false);
         onSuccess();
       } else {
-        toast.error(res.error ?? "Gagal memindahkan berkas");
+        toast.error(res.error ?? "Failed to move file");
       }
     } catch {
-      toast.error("Terjadi kesalahan saat memindahkan berkas");
+      toast.error("Error moving file");
     } finally {
       setIsPending(false);
     }
@@ -73,16 +73,15 @@ export function MoveMediaDialog({ item, availableFolders, isOpen, onOpenChange, 
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Move className="h-5 w-5 text-primary" />
-              Pindahkan Berkas
+              Move File
             </DialogTitle>
             <DialogDescription>
-              Pilih folder tujuan untuk memindahkan berkas{" "}
-              <span className="font-medium text-foreground">{item.name}</span>.
+              Select destination folder to move file <span className="font-medium text-foreground">{item.name}</span>.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-4">
-            <Label>Pilih Direktori Tujuan</Label>
+            <Label>Select Destination Directory</Label>
             <RadioGroup
               value={selectedFolderPrefix}
               onValueChange={setSelectedFolderPrefix}
@@ -124,11 +123,11 @@ export function MoveMediaDialog({ item, availableFolders, isOpen, onOpenChange, 
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
-              Batal
+              Cancel
             </Button>
             <Button type="submit" disabled={isPending || selectedFolderPrefix === currentFolder}>
               {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Pindahkan
+              Move
             </Button>
           </DialogFooter>
         </form>

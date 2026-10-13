@@ -81,13 +81,13 @@ export function MediaListTable({
   const handleCopyUrl = (item: MediaItem) => {
     const fullUrl = item.url.startsWith("http") ? item.url : `${window.location.origin}${item.url}`;
     void navigator.clipboard.writeText(fullUrl);
-    toast.success("URL berhasil disalin");
+    toast.success("URL copied to clipboard");
   };
 
   const handleCopyMarkdown = (item: MediaItem) => {
     const fullUrl = item.url.startsWith("http") ? item.url : `${window.location.origin}${item.url}`;
     void navigator.clipboard.writeText(`![${item.name}](${fullUrl})`);
-    toast.success("Markdown tag disalin");
+    toast.success("Markdown tag copied to clipboard");
   };
 
   return (
@@ -99,15 +99,15 @@ export function MediaListTable({
               <Checkbox
                 checked={allSelected}
                 onCheckedChange={onToggleSelectAll}
-                aria-label="Pilih semua file"
+                aria-label="Select all files"
                 disabled={items.length === 0}
               />
             </TableHead>
-            <TableHead>Nama</TableHead>
-            <TableHead className="w-28">Kategori</TableHead>
-            <TableHead className="w-28 text-right">Ukuran</TableHead>
-            <TableHead className="w-40">Terakhir Diperbarui</TableHead>
-            <TableHead className="w-16 text-right">Aksi</TableHead>
+            <TableHead>Name</TableHead>
+            <TableHead className="w-28">Category</TableHead>
+            <TableHead className="w-28 text-right">Size</TableHead>
+            <TableHead className="w-40">Last Modified</TableHead>
+            <TableHead className="w-16 text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -141,14 +141,14 @@ export function MediaListTable({
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem onClick={() => onOpenFolder(folder.prefix)}>
-                      <Eye className="mr-2 h-4 w-4" /> Buka Folder
+                      <Eye className="mr-2 h-4 w-4" /> Open Folder
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       onClick={() => onDeleteFolder(folder)}
                       className="text-destructive focus:text-destructive"
                     >
-                      <Trash2 className="mr-2 h-4 w-4" /> Hapus Folder
+                      <Trash2 className="mr-2 h-4 w-4" /> Delete Folder
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -169,7 +169,7 @@ export function MediaListTable({
                   <Checkbox
                     checked={isSelected}
                     onCheckedChange={() => onToggleSelect(item.key)}
-                    aria-label={`Pilih ${item.name}`}
+                    aria-label={`Select ${item.name}`}
                   />
                 </TableCell>
                 <TableCell>
@@ -189,7 +189,7 @@ export function MediaListTable({
                   {formatFileSize(item.size)}
                 </TableCell>
                 <TableCell className="text-muted-foreground text-xs">
-                  {new Date(item.updatedAt).toLocaleDateString("id-ID", {
+                  {new Date(item.updatedAt).toLocaleDateString("en-US", {
                     day: "numeric",
                     month: "short",
                     year: "numeric",
@@ -202,34 +202,34 @@ export function MediaListTable({
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => onPreview(item)}>
-                        <Eye className="mr-2 h-4 w-4" /> Pratinjau
+                        <Eye className="mr-2 h-4 w-4" /> Preview
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => handleCopyUrl(item)}>
-                        <Copy className="mr-2 h-4 w-4" /> Salin URL
+                        <Copy className="mr-2 h-4 w-4" /> Copy URL
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => handleCopyMarkdown(item)}>
-                        <Code className="mr-2 h-4 w-4" /> Salin Markdown
+                        <Code className="mr-2 h-4 w-4" /> Copy Markdown
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={() =>
                           window.open(`${item.url}${item.url.includes("?") ? "&" : "?"}download=1`, "_blank")
                         }
                       >
-                        <Download className="mr-2 h-4 w-4" /> Unduh
+                        <Download className="mr-2 h-4 w-4" /> Download
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem onClick={() => onRename(item)}>
-                        <Edit2 className="mr-2 h-4 w-4" /> Ubah Nama
+                        <Edit2 className="mr-2 h-4 w-4" /> Rename
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => onMove(item)}>
-                        <Move className="mr-2 h-4 w-4" /> Pindahkan
+                        <Move className="mr-2 h-4 w-4" /> Move
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
                         onClick={() => onDelete(item)}
                         className="text-destructive focus:text-destructive"
                       >
-                        <Trash2 className="mr-2 h-4 w-4" /> Hapus
+                        <Trash2 className="mr-2 h-4 w-4" /> Delete
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>

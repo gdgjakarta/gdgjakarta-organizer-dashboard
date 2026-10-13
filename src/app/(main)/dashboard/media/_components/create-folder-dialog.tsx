@@ -37,7 +37,7 @@ export function CreateFolderDialog({ currentPrefix, isOpen, onOpenChange, onSucc
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formattedName) {
-      toast.error("Nama folder tidak boleh kosong");
+      toast.error("Folder name cannot be empty");
       return;
     }
 
@@ -45,15 +45,15 @@ export function CreateFolderDialog({ currentPrefix, isOpen, onOpenChange, onSucc
     try {
       const res = await createMediaFolderAction(currentPrefix, formattedName);
       if (res.success) {
-        toast.success(`Folder '${formattedName}' berhasil dibuat`);
+        toast.success(`Folder '${formattedName}' created successfully`);
         setFolderName("");
         onOpenChange(false);
         onSuccess();
       } else {
-        toast.error(res.error ?? "Gagal membuat folder");
+        toast.error(res.error ?? "Failed to create folder");
       }
     } catch {
-      toast.error("Terjadi kesalahan saat membuat folder");
+      toast.error("Error creating folder");
     } finally {
       setIsPending(false);
     }
@@ -66,10 +66,10 @@ export function CreateFolderDialog({ currentPrefix, isOpen, onOpenChange, onSucc
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FolderPlus className="h-5 w-5 text-primary" />
-              Buat Folder Baru
+              Create New Folder
             </DialogTitle>
             <DialogDescription>
-              Buat direktori baru di dalam direktori{" "}
+              Create a new directory inside{" "}
               <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
                 {currentPrefix ? `/${currentPrefix}` : "/ (Root)"}
               </code>
@@ -78,23 +78,23 @@ export function CreateFolderDialog({ currentPrefix, isOpen, onOpenChange, onSucc
 
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="folder-name">Nama Folder</Label>
+              <Label htmlFor="folder-name">Folder Name</Label>
               <Input
                 id="folder-name"
-                placeholder="misal: devfest-2024 atau sponsors"
+                placeholder="e.g. devfest-2024 or sponsors"
                 value={folderName}
                 onChange={(e) => setFolderName(e.target.value)}
                 autoFocus
                 disabled={isPending}
               />
               <p className="text-muted-foreground text-xs">
-                Nama folder otomatis diformat menjadi huruf kecil (lowercase) dan dipisahkan strip (-).
+                Folder name is automatically converted to lowercase and hyphen-separated (-).
               </p>
             </div>
 
             {folderName.trim() && (
               <div className="rounded-lg border bg-muted/40 p-3 text-xs">
-                <span className="text-muted-foreground">Path yang akan dibuat: </span>
+                <span className="text-muted-foreground">Target path: </span>
                 <span className="font-medium font-mono text-foreground">
                   {currentPrefix}
                   {formattedName}/
@@ -105,11 +105,11 @@ export function CreateFolderDialog({ currentPrefix, isOpen, onOpenChange, onSucc
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
-              Batal
+              Cancel
             </Button>
             <Button type="submit" disabled={isPending || !formattedName}>
               {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Buat Folder
+              Create Folder
             </Button>
           </DialogFooter>
         </form>

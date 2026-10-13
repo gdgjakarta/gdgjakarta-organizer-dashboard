@@ -37,13 +37,7 @@ export function MediaBreadcrumbs({ currentPrefix, onNavigate }: MediaBreadcrumbs
   return (
     <nav aria-label="Directory Breadcrumbs" className="flex items-center gap-1.5 overflow-x-auto py-1 text-sm">
       {currentPrefix && (
-        <Button
-          variant="outline"
-          size="icon-xs"
-          onClick={handleGoUp}
-          title="Naik satu tingkat (Go up one level)"
-          className="mr-1 shrink-0"
-        >
+        <Button variant="outline" size="icon-xs" onClick={handleGoUp} title="Go up one level" className="mr-1 shrink-0">
           <ArrowUp className="h-3.5 w-3.5" />
         </Button>
       )}

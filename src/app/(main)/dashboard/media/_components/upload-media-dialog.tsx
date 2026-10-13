@@ -106,15 +106,15 @@ export function UploadMediaDialog({ currentPrefix, isOpen, onOpenChange, onSucce
 
       if (res.ok && data.success) {
         setUploadProgress(100);
-        toast.success(`Berhasil mengunggah ${data.uploadedCount ?? 0} berkas ke R2`);
+        toast.success(`Successfully uploaded ${data.uploadedCount ?? 0} file(s) to R2`);
         setFileList([]);
         onOpenChange(false);
         onSuccess();
       } else {
-        toast.error(data.error ?? "Gagal mengunggah berkas");
+        toast.error(data.error ?? "Failed to upload files");
       }
     } catch {
-      toast.error("Terjadi kegagalan jaringan saat mengunggah berkas");
+      toast.error("Network error while uploading files");
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
@@ -127,14 +127,14 @@ export function UploadMediaDialog({ currentPrefix, isOpen, onOpenChange, onSucce
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <UploadCloud className="h-5 w-5 text-primary" />
-            Unggah Berkas ke R2
+            Upload Files to R2
           </DialogTitle>
           <DialogDescription>
-            Unggah berkas ke direktori{" "}
+            Upload files to directory{" "}
             <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
               {currentPrefix ? `/${currentPrefix}` : "/ (Root)"}
             </code>
-            . Nama file otomatis diformat menjadi huruf kecil &amp; strip (-).
+            . File names will be automatically converted to lowercase and hyphen-separated (-).
           </DialogDescription>
         </DialogHeader>
 
@@ -161,16 +161,16 @@ export function UploadMediaDialog({ currentPrefix, isOpen, onOpenChange, onSucce
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
             <UploadCloud className="h-6 w-6" />
           </div>
-          <p className="mt-3 font-medium text-sm">Tarik berkas ke sini, atau klik untuk memilih</p>
+          <p className="mt-3 font-medium text-sm">Drag and drop files here, or click to browse</p>
           <p className="mt-1 text-muted-foreground text-xs">
-            Mendukung gambar, video, dokumen, audio, dan arsip zip hingga 50 MB
+            Supports images, videos, documents, audio, and zip archives up to 50 MB
           </p>
         </button>
 
         {/* Selected Files Preview List */}
         {fileList.length > 0 && (
           <div className="flex max-h-56 flex-col gap-2 overflow-y-auto pr-1">
-            <p className="font-medium text-foreground text-xs">Daftar Berkas ({fileList.length})</p>
+            <p className="font-medium text-foreground text-xs">Selected Files ({fileList.length})</p>
             {fileList.map((item) => (
               <div key={item.id} className="flex items-center justify-between rounded-lg border bg-card p-2 text-xs">
                 <div className="flex items-center gap-2.5 overflow-hidden">
@@ -178,7 +178,7 @@ export function UploadMediaDialog({ currentPrefix, isOpen, onOpenChange, onSucce
                   <div className="overflow-hidden">
                     <p className="truncate font-medium text-foreground">{item.sanitizedName}</p>
                     <p className="text-[11px] text-muted-foreground">
-                      Asli: {item.file.name} • {formatFileSize(item.file.size)}
+                      Original: {item.file.name} • {formatFileSize(item.file.size)}
                     </p>
                   </div>
                 </div>
@@ -206,7 +206,7 @@ export function UploadMediaDialog({ currentPrefix, isOpen, onOpenChange, onSucce
         {isUploading && (
           <div className="space-y-1.5 pt-2">
             <div className="flex justify-between text-muted-foreground text-xs">
-              <span>Mengunggah berkas...</span>
+              <span>Uploading files...</span>
               <span>{uploadProgress}%</span>
             </div>
             <Progress value={uploadProgress} className="h-1.5" />
@@ -223,11 +223,11 @@ export function UploadMediaDialog({ currentPrefix, isOpen, onOpenChange, onSucce
             }}
             disabled={isUploading}
           >
-            Batal
+            Cancel
           </Button>
           <Button type="button" onClick={handleUploadAll} disabled={isUploading || fileList.length === 0}>
             {isUploading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Unggah {fileList.length > 0 ? `(${fileList.length}) Berkas` : ""}
+            Upload {fileList.length > 0 ? `(${fileList.length}) File(s)` : ""}
           </Button>
         </DialogFooter>
       </DialogContent>
