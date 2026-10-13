@@ -1569,12 +1569,12 @@ export function EventRegistrationModal({
         setTimeout(() => setIsTransitioning(false), 1500);
 
         if (!isCurated && generatedPaymentUrl) {
-          toast.success("Registration submitted! Redirecting to secure DOKU payment checkout...", {
+          toast.success("Registration submitted! Opening secure DOKU payment checkout in a new tab...", {
             duration: 5000,
           });
           setOpen(false);
           router.refresh();
-          window.location.href = generatedPaymentUrl;
+          window.open(generatedPaymentUrl, "_blank", "noopener,noreferrer");
           return;
         }
 
