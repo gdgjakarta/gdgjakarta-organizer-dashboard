@@ -3146,7 +3146,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                     } else if (rawStatus === "waiting_for_payment") {
                       approveTitle = "Waiting for Payment";
                     } else if (rawStatus === "expired") {
-                      approveTitle = "Payment Expired (Click to resend payment link)";
+                      approveTitle = "Payment Expired (Click to regenerate payment link)";
                     } else if (approvingRegistrationId === reg.id) {
                       approveTitle = "Approving...";
                     }
@@ -3500,14 +3500,14 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                 </>
                               )}
 
-                              {/* Quick Resend Payment Link Button */}
+                              {/* Quick Regenerate Payment Link Button */}
                               {(rawStatus === "expired" || rawStatus === "waiting_for_payment") &&
                                 hasRegistrationPaymentRequirements(reg) && (
                                   <Button
                                     size="icon-xs"
                                     variant="ghost"
                                     className="size-7 text-amber-600 hover:bg-amber-500/10 hover:text-amber-700"
-                                    title="Resend Payment Link with new deadline"
+                                    title="Regenerate Payment Link with new deadline"
                                     onClick={() => setResendPaymentRegistration(reg)}
                                   >
                                     <RefreshCw className="size-3.5" />
@@ -3541,7 +3541,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                     hasRegistrationPaymentRequirements(reg) && (
                                       <DropdownMenuItem onClick={() => setResendPaymentRegistration(reg)}>
                                         <RefreshCw className="mr-2 size-3.5" />
-                                        Resend Payment Link
+                                        Regenerate Payment Link
                                       </DropdownMenuItem>
                                     )}
                                   {isCurationMode && reg.status === "pending" && (
@@ -3619,6 +3619,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       <ApplicantDetailDialog
         registration={inspectRegistration}
         event={currentEvent}
+        isCurationMode={isCurationMode}
         onClose={() => setInspectRegistration(null)}
         onStatusChange={handleStatusChange}
         onApprove={handleApproveAttendee}

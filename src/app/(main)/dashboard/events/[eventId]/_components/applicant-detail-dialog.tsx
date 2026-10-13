@@ -9,7 +9,6 @@ import {
   CheckCircle,
   Clock,
   Copy,
-  CreditCard,
   ExternalLink,
   FileText,
   Globe,
@@ -41,18 +40,21 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { DEFAULT_PAYMENT_HEADER_EMAIL_URL, extractCustomerPhone } from "@/lib/events/doku-payment";
-import { getRegistrationPaymentDeadline, isRegistrationPaymentOverdue } from "@/lib/events/payment-deadline";
+import {
+  getRegistrationPaymentDeadline,
+  isEventCurationMode,
+  isRegistrationPaymentOverdue,
+} from "@/lib/events/payment-deadline";
 import { DEFAULT_COMBINED_QUESTIONS } from "@/lib/events/registration-defaults";
 import type { CustomQuestion, FirestoreEvent, FirestoreRegistration, RegistrationStatus } from "@/lib/firestore/types";
 import { cn, getInitials } from "@/lib/utils";
-import { generatePaymentLinkAction } from "@/server/payment-actions";
 
 import { ResendPaymentLinkDialog } from "./resend-payment-link-dialog";
 
 interface ApplicantDetailDialogProps {
   registration: FirestoreRegistration | null;
   event?: FirestoreEvent;
+  isCurationMode?: boolean;
   onClose: () => void;
   onStatusChange: (registrationId: string, newStatus: RegistrationStatus) => void;
   onApprove?: (registration: FirestoreRegistration) => void;
@@ -201,6 +203,7 @@ function getTicketTierLabel(type?: string, price?: number): string {
 export function ApplicantDetailDialog({
   registration,
   event,
+  isCurationMode,
   onClose,
   onStatusChange,
   onApprove,
@@ -216,10 +219,10 @@ export function ApplicantDetailDialog({
   onCancelRegistration,
   isCancelling = false,
 }: ApplicantDetailDialogProps) {
+  const isCuration = isCurationMode ?? isEventCurationMode(event);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [copiedProfile, setCopiedProfile] = useState(false);
   const [loadedQuestions, setLoadedQuestions] = useState<CustomQuestion[]>([]);
-  const [isGeneratingPayment, setIsGeneratingPayment] = useState(false);
   const [paymentLinkInfo, setPaymentLinkInfo] = useState<{ url: string; invoiceNumber: string } | null>(null);
   const [isResendPaymentOpen, setIsResendPaymentOpen] = useState(false);
 
@@ -502,7 +505,7 @@ export function ApplicantDetailDialog({
     // Multi-select or array
     if (Array.isArray(value)) {
       return (
-        <div className="flex flex-wrap gap-1.5 pt-0.5">
+        <div className="flex max-w-full flex-wrap gap-1.5 pt-0.5">
           {value.map((item) => {
             const itemKey = String(item);
             if (itemKey.toLowerCase().startsWith("other:")) {
@@ -510,15 +513,19 @@ export function ApplicantDetailDialog({
               return (
                 <div
                   key={itemKey}
-                  className="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-2 py-0.5 text-xs"
+                  className="inline-flex max-w-full items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-2.5 py-1 text-xs break-words"
                 >
-                  <span className="font-semibold text-primary">Other:</span>
-                  <span className="text-foreground">{customVal || "Custom"}</span>
+                  <span className="shrink-0 font-semibold text-primary">Other:</span>
+                  <span className="text-foreground break-words">{customVal || "Custom"}</span>
                 </div>
               );
             }
             return (
-              <Badge key={itemKey} variant="secondary" className="font-medium text-xs">
+              <Badge
+                key={itemKey}
+                variant="secondary"
+                className="h-auto max-w-full whitespace-normal break-words px-2.5 py-1 text-left font-medium text-xs leading-relaxed"
+              >
                 {itemKey}
               </Badge>
             );
@@ -570,149 +577,6 @@ export function ApplicantDetailDialog({
 
     // Standard string
     return <span className="font-medium text-foreground text-xs sm:text-sm">{strVal}</span>;
-  };
-
-  const handleSendPaymentLink = async () => {
-    if (!registration) return;
-
-    const phoneStr = extractCustomerPhone(registration);
-    if (!phoneStr) {
-      toast.error("Cannot generate payment link: Attendee WhatsApp Phone Number is missing.");
-      return;
-    }
-
-    const items = (registration.selected_merchandise ?? []).map((m) => ({
-      id: m.id,
-      name: m.name,
-      quantity: m.quantity || 1,
-      price: m.price || 0,
-      type: "Merchandise",
-    }));
-
-    if (registration.bundle_id && (registration.bundle_price ?? 0) > 0) {
-      items.unshift({
-        id: registration.bundle_id,
-        name: `${registration.bundle_name ?? "Bundling Package"} (${registration.ticket_name ?? "Event Ticket"})`,
-        quantity: 1,
-        price: registration.bundle_price ?? 0,
-        type: "Ticket",
-      });
-    } else if (registration.ticket_type === "paid" && (registration.ticket_price ?? 0) > 0) {
-      items.unshift({
-        id: registration.ticket_id ?? "ticket",
-        name: registration.ticket_name ?? "Event Ticket",
-        quantity: 1,
-        price: registration.ticket_price ?? 0,
-        type: "Ticket",
-      });
-    }
-
-    const fees =
-      registration.ticket_type === "commitment_fee" && (registration.ticket_price ?? 0) > 0
-        ? [
-            {
-              label: registration.ticket_name ?? "Commitment Fee",
-              type: "fixed" as const,
-              value: registration.ticket_price ?? 50000,
-              desc: "Refundable upon attendance.",
-            },
-          ]
-        : [];
-
-    if (items.length === 0 && fees.length === 0) {
-      toast.info("No paid merchandise or ticket fees detected for this registration.");
-      return;
-    }
-
-    setIsGeneratingPayment(true);
-    try {
-      const res = await generatePaymentLinkAction({
-        customer: {
-          name: registration.member_name,
-          email: registration.member_email,
-          phone: phoneStr,
-        },
-        event: {
-          id: registration.event_id,
-          title: registration.event_title,
-          headerEmailUrl:
-            event?.headerEmailUrl?.trim() || event?.header_email_url?.trim() || DEFAULT_PAYMENT_HEADER_EMAIL_URL,
-          paymentDeadlineMinutes:
-            event?.paymentDeadlinesInMinutes ??
-            event?.paymentDeadlineMinutes ??
-            event?.payment_deadline_minutes ??
-            1440,
-        },
-        items:
-          items.length > 0
-            ? items
-            : [
-                {
-                  name: "Commitment Fee",
-                  quantity: 1,
-                  price: fees[0].value,
-                  type: "Ticket",
-                },
-              ],
-        fees: items.length > 0 ? fees : [],
-        payment: {
-          paymentMethodTypes: ["QRIS"],
-          sendEmail: true,
-          emailTemplate:
-            event?.payment_email_template ??
-            event?.paymentEmailTemplate ??
-            (registration.ticket_type === "commitment_fee" ? "Commitment Fee" : "Ticketing"),
-        },
-        referenceId: registration.id,
-        isProduction:
-          event?.payment_environment === "production"
-            ? true
-            : event?.payment_environment === "sandbox"
-              ? false
-              : undefined,
-        webhookUrl: event?.payment_webhook_url ?? undefined,
-      });
-
-      if (res.success && res.paymentUrl) {
-        const invoiceNum = res.invoiceNumber ?? `INV-${Date.now()}`;
-
-        // Persist invoice number and payment metadata to Firestore registration
-        try {
-          const { db, sanitizeFirestoreData } = await import("@/lib/firestore/client");
-          const { doc, updateDoc } = await import("firebase/firestore");
-          const regRef = doc(db, "event_registrations", registration.id);
-          await updateDoc(
-            regRef,
-            sanitizeFirestoreData({
-              answers: {
-                ...(registration.answers ?? {}),
-                invoice_number: invoiceNum,
-                payment_url: res.paymentUrl,
-                payment_status: "PENDING",
-                payment_amount: res.amount,
-              },
-              updated_at: new Date().toISOString(),
-            }),
-          );
-        } catch (saveErr) {
-          console.error("[ApplicantDetailDialog] Failed to persist invoice number to registration:", saveErr);
-        }
-
-        setPaymentLinkInfo({
-          url: res.paymentUrl,
-          invoiceNumber: invoiceNum,
-        });
-        void navigator.clipboard.writeText(res.paymentUrl);
-        toast.success("DOKU payment link generated, emailed, and copied to clipboard!");
-      } else {
-        toast.error(res.error ?? "Failed to generate DOKU payment link.");
-      }
-    } catch (err) {
-      console.error("[ApplicantDetailDialog] Error generating payment link:", err);
-      toast.error("Failed to generate payment link via n8n.");
-    } finally {
-      setIsGeneratingPayment(false);
-    }
   };
 
   const hasPayableItems = Boolean(
@@ -973,7 +837,7 @@ export function ApplicantDetailDialog({
                       Payment Deadline Expired {deadlineInfo.timeStatusText ? `(${deadlineInfo.timeStatusText})` : ""}
                     </span>
                     <p className="text-[11px] text-amber-700/90 dark:text-amber-400/90">
-                      The payment link deadline has lapsed. You can resend a renewed checkout link.
+                      The payment link deadline has lapsed. You can regenerate a renewed checkout link.
                     </p>
                   </div>
                 </div>
@@ -985,7 +849,7 @@ export function ApplicantDetailDialog({
                   onClick={() => setIsResendPaymentOpen(true)}
                 >
                   <RefreshCw className="mr-1.5 size-3" />
-                  Resend Link
+                  Regenerate Link
                 </Button>
               </div>
             )}
@@ -1061,7 +925,7 @@ export function ApplicantDetailDialog({
                             <div
                               key={item.key}
                               className={cn(
-                                "flex flex-col justify-between rounded-lg border border-border/60 bg-card p-3 shadow-2xs transition-colors hover:border-border",
+                                "flex flex-col justify-between rounded-lg border border-border/60 bg-card p-3 shadow-2xs transition-colors hover:border-border min-w-0 overflow-hidden",
                                 isWide && "sm:col-span-2",
                               )}
                             >
@@ -1154,7 +1018,7 @@ export function ApplicantDetailDialog({
             return (
               <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t bg-muted/20 px-6 py-3.5">
                 <div className="flex items-center gap-2">
-                  {registration.status !== "waitlisted" && registration.status !== "approved" && (
+                  {isCuration && registration.status !== "waitlisted" && registration.status !== "approved" && (
                     <Button
                       size="sm"
                       variant="outline"
@@ -1169,7 +1033,7 @@ export function ApplicantDetailDialog({
                     </Button>
                   )}
 
-                  {registration.status !== "pending" && registration.status !== "approved" && (
+                  {isCuration && registration.status !== "pending" && registration.status !== "approved" && (
                     <Button
                       size="sm"
                       variant="outline"
@@ -1185,7 +1049,7 @@ export function ApplicantDetailDialog({
                     </Button>
                   )}
 
-                  {registration.status === "pending" && onResendInterestEmail && (
+                  {isCuration && registration.status === "pending" && onResendInterestEmail && (
                     <Button
                       size="sm"
                       variant="outline"
@@ -1204,33 +1068,23 @@ export function ApplicantDetailDialog({
                     </Button>
                   )}
 
-                  {(rawStatus === "expired" || deadlineInfo.isOverdue) && hasPayableItems ? (
+                  {hasPayableItems && (
                     <Button
                       size="sm"
                       variant="outline"
-                      className="border-amber-500/40 text-amber-600 text-xs hover:bg-amber-500/10"
+                      className={cn(
+                        "text-xs",
+                        rawStatus === "expired" || deadlineInfo.isOverdue
+                          ? "border-amber-500/40 text-amber-600 hover:bg-amber-500/10"
+                          : "border-primary/40 text-primary hover:bg-primary/5",
+                      )}
                       disabled={isActionBlocked}
                       onClick={() => setIsResendPaymentOpen(true)}
                     >
                       <RefreshCw className="mr-1.5 size-3.5" />
-                      Resend Payment Link
+                      Regenerate Payment Link
                     </Button>
-                  ) : hasPayableItems ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="border-primary/40 text-primary text-xs hover:bg-primary/5"
-                      disabled={isActionBlocked || isGeneratingPayment}
-                      onClick={handleSendPaymentLink}
-                    >
-                      {isGeneratingPayment ? (
-                        <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                      ) : (
-                        <CreditCard className="mr-1.5 size-3.5" />
-                      )}
-                      Send Payment Link
-                    </Button>
-                  ) : null}
+                  )}
 
                   {onCancelRegistration && (
                     <Button
@@ -1268,7 +1122,7 @@ export function ApplicantDetailDialog({
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {registration.status !== "rejected" && registration.status !== "approved" && (
+                  {isCuration && registration.status !== "rejected" && registration.status !== "approved" && (
                     <Button
                       size="sm"
                       variant="outline"
@@ -1292,38 +1146,39 @@ export function ApplicantDetailDialog({
                     </Button>
                   )}
 
-                  {registration.status === "approved" ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled
-                      className="cursor-default border-emerald-500/30 bg-emerald-500/10 text-emerald-600 text-xs dark:text-emerald-400"
-                    >
-                      <CheckCircle className="mr-1.5 size-3.5" />
-                      Approved
-                    </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      className="bg-emerald-600 text-white text-xs shadow-xs hover:bg-emerald-700"
-                      disabled={isActionBlocked}
-                      onClick={() => {
-                        if (onApprove) {
-                          onApprove(registration);
-                        } else {
-                          onStatusChange(registration.id, "approved");
-                          onClose();
-                        }
-                      }}
-                    >
-                      {isApproving ? (
-                        <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                      ) : (
+                  {isCuration &&
+                    (registration.status === "approved" ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled
+                        className="cursor-default border-emerald-500/30 bg-emerald-500/10 text-emerald-600 text-xs dark:text-emerald-400"
+                      >
                         <CheckCircle className="mr-1.5 size-3.5" />
-                      )}
-                      {isApproving ? "Approving..." : "Approve Applicant"}
-                    </Button>
-                  )}
+                        Approved
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        className="bg-emerald-600 text-white text-xs shadow-xs hover:bg-emerald-700"
+                        disabled={isActionBlocked}
+                        onClick={() => {
+                          if (onApprove) {
+                            onApprove(registration);
+                          } else {
+                            onStatusChange(registration.id, "approved");
+                            onClose();
+                          }
+                        }}
+                      >
+                        {isApproving ? (
+                          <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                        ) : (
+                          <CheckCircle className="mr-1.5 size-3.5" />
+                        )}
+                        {isApproving ? "Approving..." : "Approve Applicant"}
+                      </Button>
+                    ))}
 
                   <Button size="sm" variant="secondary" className="text-xs" onClick={onClose}>
                     Close
@@ -1342,7 +1197,12 @@ export function ApplicantDetailDialog({
         event={event}
         onSuccess={(updatedReg) => {
           onStatusChange(updatedReg.id, "waiting_for_payment");
-          onClose();
+          if (updatedReg.payment_url && updatedReg.payment_invoice_number) {
+            setPaymentLinkInfo({
+              url: updatedReg.payment_url,
+              invoiceNumber: updatedReg.payment_invoice_number,
+            });
+          }
         }}
       />
     </>

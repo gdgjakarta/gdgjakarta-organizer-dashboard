@@ -227,7 +227,7 @@ export function ResendPaymentLinkDialog({
               <RefreshCw className="size-4" />
             </div>
             <div>
-              <DialogTitle className="text-base sm:text-lg">Resend Payment Link</DialogTitle>
+              <DialogTitle className="text-base sm:text-lg">Regenerate Payment Link</DialogTitle>
               <DialogDescription className="text-xs">
                 Regenerate checkout payment link with a renewed expiration deadline.
               </DialogDescription>
@@ -468,7 +468,7 @@ export function ResendPaymentLinkDialog({
                 disabled={isSubmitting || activeMinutes <= 0}
               >
                 {isSubmitting ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
-                {isSubmitting ? "Generating Link..." : "Generate & Resend Link"}
+                {isSubmitting ? "Generating Link..." : "Regenerate Payment Link"}
               </Button>
             </>
           )}
@@ -477,3 +477,5 @@ export function ResendPaymentLinkDialog({
     </Dialog>
   );
 }
+
+export const RegeneratePaymentLinkDialog = ResendPaymentLinkDialog;
