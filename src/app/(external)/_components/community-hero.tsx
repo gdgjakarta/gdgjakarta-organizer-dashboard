@@ -243,7 +243,7 @@ export function CommunityHero() {
                   boxShadow: "var(--theme-shadow)",
                 }}
               >
-                {/* Card Header Badge */}
+                {/* Card Header */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div
@@ -260,15 +260,6 @@ export function CommunityHero() {
                       <p className="text-muted-foreground text-xs">Empowering Indonesian Builders</p>
                     </div>
                   </div>
-                  <span
-                    className="rounded-full px-3 py-1 font-medium text-xs"
-                    style={{
-                      backgroundColor: "var(--theme-bg-subtle)",
-                      color: "var(--theme-primary)",
-                    }}
-                  >
-                    Live Chapter
-                  </span>
                 </div>
 
                 {/* Graphic / Video Banner */}
