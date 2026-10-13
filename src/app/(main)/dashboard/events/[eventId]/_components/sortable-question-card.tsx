@@ -1,10 +1,27 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+
+import Image from "next/image";
 
 import { RestrictToVerticalAxis } from "@dnd-kit/abstract/modifiers";
 import { useSortable } from "@dnd-kit/react/sortable";
-import { ChevronDown, ChevronUp, Copy, GripVertical, Maximize2, Trash2 } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  Clipboard,
+  Copy,
+  ExternalLink,
+  GripVertical,
+  HardDrive,
+  Image as ImageIcon,
+  Loader2,
+  Maximize2,
+  Trash2,
+  UploadCloud,
+  X,
+} from "lucide-react";
+import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,6 +47,7 @@ interface SortableQuestionCardProps {
   question: CustomQuestion;
   index: number;
   totalQuestions: number;
+  eventName?: string;
   onUpdate: (id: string, updates: Partial<CustomQuestion>) => void;
   onRemove: (id: string) => void;
   onDuplicate: (id: string) => void;
@@ -41,6 +59,7 @@ export function SortableQuestionCard({
   question: q,
   index,
   totalQuestions,
+  eventName = "event",
   onUpdate,
   onRemove,
   onDuplicate,
@@ -60,6 +79,91 @@ export function SortableQuestionCard({
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [optionsDraft, setOptionsDraft] = useState("");
+  const [isUploadingHelper, setIsUploadingHelper] = useState(false);
+  const helperFileInputRef = useRef<HTMLInputElement | null>(null as unknown as HTMLInputElement);
+
+  const handleUploadHelperImage = async (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please provide an image file (PNG, JPG, WebP, etc.).");
+      return;
+    }
+    setIsUploadingHelper(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("eventName", eventName ?? "event");
+      formData.append("maxSizeMb", "10");
+
+      const res = await fetch("/api/events/upload-question-media", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = (await res.json()) as { success?: boolean; url?: string; error?: string };
+      if (!res.ok || !data.success || !data.url) {
+        throw new Error(data.error ?? "Failed to upload helper image");
+      }
+
+      onUpdate(q.id, { helper_image_url: data.url, image_url: data.url });
+      toast.success("Image helper attached from clipboard successfully!");
+    } catch (err) {
+      console.error("[Helper Image Upload] Failed:", err);
+      const msg = err instanceof Error ? err.message : "Failed to upload image";
+      toast.error(msg);
+    } finally {
+      setIsUploadingHelper(false);
+      if (helperFileInputRef.current) {
+        helperFileInputRef.current.value = "";
+      }
+    }
+  };
+
+  const handlePasteHelperFromClipboard = async () => {
+    if (isUploadingHelper) return;
+    try {
+      if (!navigator.clipboard?.read) {
+        toast.info("Please focus on this question and press Cmd+V / Ctrl+V to paste your clipboard image.");
+        return;
+      }
+      const clipboardItems = await navigator.clipboard.read();
+      let foundImage = false;
+      for (const item of clipboardItems) {
+        const imageType = item.types.find((t) => t.startsWith("image/"));
+        if (imageType) {
+          foundImage = true;
+          const blob = await item.getType(imageType);
+          const ext = imageType.split("/")[1] || "png";
+          const file = new File([blob], `question-helper-${Date.now()}.${ext}`, { type: imageType });
+          await handleUploadHelperImage(file);
+          break;
+        }
+      }
+      if (!foundImage) {
+        toast.error("No image found in clipboard. Please copy a screenshot or image first.");
+      }
+    } catch (err) {
+      console.warn("Clipboard access:", err);
+      toast.info("Clipboard access restricted. Press Cmd+V / Ctrl+V to paste your copied image.");
+    }
+  };
+
+  const handleCardPaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.startsWith("image/")) {
+        e.preventDefault();
+        e.stopPropagation();
+        const file = item.getAsFile();
+        if (file) {
+          void handleUploadHelperImage(file);
+        }
+        return;
+      }
+    }
+  };
 
   const handleOpenDialog = () => {
     setOptionsDraft(q.options && q.options.length > 0 ? q.options.join("\n") : "");
@@ -85,6 +189,7 @@ export function SortableQuestionCard({
   return (
     <div
       ref={ref}
+      onPaste={handleCardPaste}
       className={cn(
         "flex flex-col gap-3 rounded-lg border bg-card p-4 shadow-2xs transition-all",
         isDragging &&
@@ -248,6 +353,7 @@ export function SortableQuestionCard({
                 <SelectItem value="radio">Single Choice</SelectItem>
                 <SelectItem value="multiselect">Multi-select</SelectItem>
                 <SelectItem value="checkbox">Agreement Checkbox</SelectItem>
+                <SelectItem value="media">Media / File Upload</SelectItem>
               </SelectContent>
             </Select>
           </Field>
@@ -447,6 +553,144 @@ export function SortableQuestionCard({
         )}
       </div>
 
+      {/* Image Helper (Visual Guide / Screenshot Attached from Clipboard) */}
+      <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5 font-medium text-foreground text-xs">
+            <ImageIcon className="size-3.5 text-primary" />
+            <span>Image Helper (Visual Guide / Screenshot)</span>
+          </div>
+          {q.helper_image_url && (
+            <Badge variant="outline" className="border-primary/20 bg-primary/10 font-normal text-[10px] text-primary">
+              Image Attached
+            </Badge>
+          )}
+        </div>
+
+        {q.helper_image_url ? (
+          <div className="flex items-center justify-between gap-3 rounded-md border bg-card p-2.5">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="relative size-12 shrink-0 overflow-hidden rounded border bg-muted/40">
+                <Image
+                  src={q.helper_image_url}
+                  alt="Question helper visual guide"
+                  fill
+                  unoptimized
+                  className="object-cover"
+                  sizes="48px"
+                />
+              </div>
+              <div className="min-w-0">
+                <p className="truncate font-medium text-foreground text-xs">
+                  {q.helper_image_url.split("/").pop() ?? "Helper image"}
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  Shown as reference visual guide for respondents filling this question
+                </p>
+              </div>
+            </div>
+
+            <div className="flex shrink-0 items-center gap-1.5">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                className="size-7 text-muted-foreground hover:text-foreground"
+                asChild
+                title="Open helper image in new tab"
+              >
+                <a href={q.helper_image_url} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="size-3.5" />
+                </a>
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="xs"
+                className="h-7 gap-1 text-xs"
+                disabled={isUploadingHelper}
+                onClick={handlePasteHelperFromClipboard}
+                title="Paste another image from clipboard"
+              >
+                {isUploadingHelper ? (
+                  <Loader2 className="size-3 animate-spin text-primary" />
+                ) : (
+                  <Clipboard className="size-3" />
+                )}
+                <span>Paste New</span>
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                className="size-7 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                onClick={() => onUpdate(q.id, { helper_image_url: undefined, image_url: undefined })}
+                title="Remove helper image"
+                aria-label="Remove helper image"
+              >
+                <X className="size-3.5" />
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col justify-between gap-2 rounded-md border border-border/80 border-dashed bg-background/50 p-2.5 sm:flex-row sm:items-center">
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="flex size-7 shrink-0 items-center justify-center rounded bg-primary/10 text-primary">
+                <Clipboard className="size-3.5" />
+              </div>
+              <div className="min-w-0 text-[11px] text-muted-foreground">
+                <span className="font-medium text-foreground">Attach visual guideline: </span>
+                <span>
+                  Copy any screenshot and press{" "}
+                  <kbd className="rounded border bg-muted px-1 py-0.5 font-mono text-[10px]">Cmd+V</kbd> /{" "}
+                  <kbd className="rounded border bg-muted px-1 py-0.5 font-mono text-[10px]">Ctrl+V</kbd>
+                </span>
+              </div>
+            </div>
+
+            <div className="flex shrink-0 items-center gap-1.5">
+              <input
+                ref={helperFileInputRef}
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void handleUploadHelperImage(file);
+                }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="xs"
+                className="h-7 gap-1 text-xs"
+                disabled={isUploadingHelper}
+                onClick={handlePasteHelperFromClipboard}
+                title="Paste image directly from clipboard"
+              >
+                {isUploadingHelper ? (
+                  <Loader2 className="size-3 animate-spin text-primary" />
+                ) : (
+                  <Clipboard className="size-3" />
+                )}
+                <span>Paste from Clipboard</span>
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                className="h-7 text-muted-foreground text-xs hover:text-foreground"
+                disabled={isUploadingHelper}
+                onClick={() => helperFileInputRef.current?.click()}
+                title="Upload image file"
+              >
+                Browse...
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Validation & Constraints for Text & Paragraph inputs */}
       {["text", "textarea"].includes(q.type) && (
         <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
@@ -536,6 +780,73 @@ export function SortableQuestionCard({
               Leave blank if you want the app to generate intelligent, context-aware error messages by default.
             </p>
           </Field>
+        </div>
+      )}
+
+      {/* Media Upload Settings */}
+      {q.type === "media" && (
+        <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
+          <div className="flex items-center justify-between border-b pb-1.5">
+            <div className="flex items-center gap-2">
+              <UploadCloud className="size-4 text-primary" />
+              <span className="font-medium text-foreground text-xs">Media Upload Settings</span>
+            </div>
+            <span className="text-[10px] text-muted-foreground">Configurable maximum file size &amp; file formats</span>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field>
+              <FieldLabel className="text-xs">Max File Size (MB)</FieldLabel>
+              <Input
+                type="number"
+                min="1"
+                max="50"
+                placeholder="10"
+                value={q.max_file_size_mb !== undefined ? String(q.max_file_size_mb) : "10"}
+                onChange={(e) =>
+                  onUpdate(q.id, {
+                    max_file_size_mb: e.target.value ? Math.max(1, Math.min(Number(e.target.value), 50)) : 10,
+                  })
+                }
+              />
+              <p className="pt-0.5 text-[10px] text-muted-foreground">
+                Maximum file size allowed per submission (1 to 50 MB, default: 10 MB).
+              </p>
+            </Field>
+
+            <Field>
+              <FieldLabel className="text-xs">Allowed File Formats (Optional)</FieldLabel>
+              <Input
+                placeholder="e.g. image/*, application/pdf, .png, .jpg"
+                value={q.allowed_file_types ?? ""}
+                onChange={(e) => onUpdate(q.id, { allowed_file_types: e.target.value })}
+              />
+              <p className="pt-0.5 text-[10px] text-muted-foreground">
+                Leave blank to allow any media format. Use standard MIME types or comma-separated extensions.
+              </p>
+            </Field>
+          </div>
+
+          {/* Custom Error Message */}
+          <Field>
+            <FieldLabel className="text-xs">Custom Error Message (Optional)</FieldLabel>
+            <Input
+              placeholder="e.g. Please upload your ID card or certificate photo"
+              value={q.custom_error_message ?? ""}
+              onChange={(e) => onUpdate(q.id, { custom_error_message: e.target.value })}
+            />
+          </Field>
+
+          <div className="flex items-start gap-2 rounded-md border border-primary/20 bg-primary/5 px-2.5 py-1.5 text-[11px] text-muted-foreground">
+            <HardDrive className="mt-0.5 size-3.5 shrink-0 text-primary" />
+            <div>
+              <span className="font-medium text-foreground">Storage Bucket Location: </span>
+              Uploaded media will be securely stored in bucket storage under{" "}
+              <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px] text-foreground">
+                temp/&lt;event-name&gt;/&lt;file-name&gt;-&lt;timestamp&gt;
+              </code>
+            </div>
+          </div>
         </div>
       )}
     </div>

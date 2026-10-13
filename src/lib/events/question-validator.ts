@@ -257,7 +257,28 @@ export function validateQuestionAnswer(question: CustomQuestion, value: unknown)
   // 2. Required Check
   if (question.required) {
     if (value === undefined || value === null) {
-      return { isValid: false, error: customError || `${question.label} is required.` };
+      return {
+        isValid: false,
+        error:
+          customError ||
+          (question.type === "media"
+            ? `Please upload a file for "${question.label}".`
+            : `${question.label} is required.`),
+      };
+    }
+    if (question.type === "media") {
+      if (typeof value === "string" && !value.trim()) {
+        return {
+          isValid: false,
+          error: customError || `Please upload a file for "${question.label}".`,
+        };
+      }
+      if (typeof value === "object" && (!value || Object.keys(value).length === 0)) {
+        return {
+          isValid: false,
+          error: customError || `Please upload a file for "${question.label}".`,
+        };
+      }
     }
     if (Array.isArray(value)) {
       if (value.length === 0) {
@@ -272,6 +293,11 @@ export function validateQuestionAnswer(question: CustomQuestion, value: unknown)
 
   // If empty and not required, skip format checks
   if (value === undefined || value === null) {
+    return { isValid: true };
+  }
+
+  // Media questions only need file presence check
+  if (question.type === "media") {
     return { isValid: true };
   }
 

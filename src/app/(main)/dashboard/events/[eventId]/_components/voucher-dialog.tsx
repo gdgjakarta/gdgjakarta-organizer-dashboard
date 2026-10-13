@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { CheckCircle2, Percent, RefreshCw, Tag } from "lucide-react";
 import { toast } from "sonner";
 
+import { DatePicker } from "@/components/date-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -511,21 +512,11 @@ export function VoucherDialog({ open, onOpenChange, voucher, onSave }: VoucherDi
                 <div className="grid grid-cols-2 gap-2 pt-1">
                   <div className="space-y-1">
                     <Label className="text-[10px] text-muted-foreground">Valid From</Label>
-                    <Input
-                      type="date"
-                      value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
-                      className="text-xs h-8"
-                    />
+                    <DatePicker value={startDate} onChange={setStartDate} size="sm" placeholder="Start date" />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-[10px] text-muted-foreground">Valid Until</Label>
-                    <Input
-                      type="date"
-                      value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                      className="text-xs h-8"
-                    />
+                    <DatePicker value={endDate} onChange={setEndDate} size="sm" placeholder="Expiration date" />
                   </div>
                 </div>
               )}

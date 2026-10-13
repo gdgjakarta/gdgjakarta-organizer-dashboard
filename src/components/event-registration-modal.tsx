@@ -33,6 +33,7 @@ import { toast } from "sonner";
 import { GoogleButton } from "@/app/(main)/auth/_components/social-auth/google-button";
 import googleFavicon from "@/app/Google_Favicon.webp";
 import { CapacityFullDialog } from "@/components/capacity-full-dialog";
+import { QuestionMediaUpload } from "@/components/events/question-media-upload";
 import { GdgLogo } from "@/components/gdg-logo";
 import { RoleBadge } from "@/components/role-badge";
 import { Badge } from "@/components/ui/badge";
@@ -3119,6 +3120,32 @@ export function EventRegistrationModal({
                                     <p className="pb-1 text-[11px] text-muted-foreground">{q.description}</p>
                                   )}
 
+                                  {/* Helper / Guideline Image */}
+                                  {(q.helper_image_url || q.image_url) && (
+                                    <div className="my-1.5 overflow-hidden rounded-lg border border-border/70 bg-muted/20 p-1">
+                                      <a
+                                        href={q.helper_image_url || q.image_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="group relative flex max-h-56 justify-center overflow-hidden rounded-md"
+                                        title="Click to view visual guide in full size"
+                                      >
+                                        <Image
+                                          src={(q.helper_image_url || q.image_url) as string}
+                                          alt={`${q.label} visual guide`}
+                                          width={500}
+                                          height={280}
+                                          unoptimized
+                                          className="h-auto max-h-56 w-auto rounded object-contain transition-transform group-hover:scale-[1.01]"
+                                        />
+                                        <div className="absolute right-2 bottom-2 flex items-center gap-1 rounded bg-background/85 px-2 py-0.5 font-medium text-[11px] text-foreground shadow-xs backdrop-blur-xs opacity-0 transition-opacity group-hover:opacity-100">
+                                          <ExternalLink className="size-3" />
+                                          <span>Open Full Size</span>
+                                        </div>
+                                      </a>
+                                    </div>
+                                  )}
+
                                   {/* Short Text */}
                                   {q.type === "text" && (
                                     <Input
@@ -3179,6 +3206,33 @@ export function EventRegistrationModal({
                                         )}
                                       </div>
                                     )}
+
+                                  {/* Media / File Upload */}
+                                  {q.type === "media" && (
+                                    <QuestionMediaUpload
+                                      id={fieldId}
+                                      value={typeof answers[q.id] === "string" ? (answers[q.id] as string) : ""}
+                                      onChange={(uploadedUrl) => {
+                                        setAnswers((prev) => ({
+                                          ...prev,
+                                          [q.id]: uploadedUrl,
+                                        }));
+                                        if (fieldErrors[q.id]) {
+                                          setFieldErrors((prev) => {
+                                            const next = { ...prev };
+                                            delete next[q.id];
+                                            return next;
+                                          });
+                                        }
+                                      }}
+                                      eventName={eventConfig.title}
+                                      maxSizeMb={q.max_file_size_mb}
+                                      allowedFileTypes={q.allowed_file_types}
+                                      required={q.required}
+                                      hasError={Boolean(errorMessage)}
+                                      errorMessage={errorMessage}
+                                    />
+                                  )}
 
                                   {/* Dropdown Select */}
                                   {q.type === "select" &&

@@ -3,6 +3,8 @@
 import type React from "react";
 import { useEffect, useId, useRef, useState, useTransition } from "react";
 
+import Image from "next/image";
+
 import {
   Briefcase,
   Check,
@@ -13,6 +15,7 @@ import {
   FileText,
   Globe,
   Heart,
+  Image as ImageIcon,
   Layers,
   Loader2,
   Lock,
@@ -28,6 +31,7 @@ import {
 import { toast } from "sonner";
 
 import { CancelRegistrationDialog } from "@/components/cancel-registration-dialog";
+import { QuestionMediaUpload } from "@/components/events/question-media-upload";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -502,6 +506,28 @@ export function EditRegistrationModal({
         >
           No
         </Badge>
+      );
+    }
+
+    // Media / Uploaded file
+    if (q.type === "media" || strVal.includes("/api/media/") || strVal.includes("temp/")) {
+      const isImg = Boolean(strVal.match(/\.(png|jpe?g|webp|gif|svg|avif)(\?.*)?$/i));
+      const fileName = strVal.split("/").pop() || "Uploaded File";
+      return (
+        <a
+          href={strVal}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="group inline-flex max-w-full items-center gap-2 rounded-md border border-border bg-muted/30 px-2.5 py-1.5 font-medium text-xs hover:border-primary/40 hover:bg-muted/50"
+        >
+          {isImg ? (
+            <ImageIcon className="size-4 shrink-0 text-primary" />
+          ) : (
+            <FileText className="size-4 shrink-0 text-primary" />
+          )}
+          <span className="truncate text-foreground group-hover:text-primary">{fileName}</span>
+          <ExternalLink className="size-3.5 shrink-0 text-muted-foreground opacity-70 group-hover:text-primary" />
+        </a>
       );
     }
 
@@ -1034,6 +1060,32 @@ export function EditRegistrationModal({
                                 <p className="pb-1 text-[11px] text-muted-foreground">{q.description}</p>
                               )}
 
+                              {/* Helper / Guideline Image */}
+                              {(q.helper_image_url || q.image_url) && (
+                                <div className="my-1.5 overflow-hidden rounded-lg border border-border/70 bg-muted/20 p-1">
+                                  <a
+                                    href={q.helper_image_url || q.image_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="group relative flex max-h-56 justify-center overflow-hidden rounded-md"
+                                    title="Click to view visual guide in full size"
+                                  >
+                                    <Image
+                                      src={(q.helper_image_url || q.image_url) as string}
+                                      alt={`${q.label} visual guide`}
+                                      width={500}
+                                      height={280}
+                                      unoptimized
+                                      className="h-auto max-h-56 w-auto rounded object-contain transition-transform group-hover:scale-[1.01]"
+                                    />
+                                    <div className="absolute right-2 bottom-2 flex items-center gap-1 rounded bg-background/85 px-2 py-0.5 font-medium text-[11px] text-foreground shadow-xs backdrop-blur-xs opacity-0 transition-opacity group-hover:opacity-100">
+                                      <ExternalLink className="size-3" />
+                                      <span>Open Full Size</span>
+                                    </div>
+                                  </a>
+                                </div>
+                              )}
+
                               {/* Short Text */}
                               {q.type === "text" && (
                                 <Input
@@ -1081,6 +1133,33 @@ export function EditRegistrationModal({
                                     </span>
                                   )}
                                 </div>
+                              )}
+
+                              {/* Media / File Upload */}
+                              {q.type === "media" && (
+                                <QuestionMediaUpload
+                                  id={fieldId}
+                                  value={typeof answers[q.id] === "string" ? (answers[q.id] as string) : ""}
+                                  onChange={(uploadedUrl) => {
+                                    setAnswers((prev) => ({
+                                      ...prev,
+                                      [q.id]: uploadedUrl,
+                                    }));
+                                    if (fieldErrors[q.id]) {
+                                      setFieldErrors((prev) => {
+                                        const next = { ...prev };
+                                        delete next[q.id];
+                                        return next;
+                                      });
+                                    }
+                                  }}
+                                  eventName={eventData?.title ?? registration.event_title ?? "event"}
+                                  maxSizeMb={q.max_file_size_mb}
+                                  allowedFileTypes={q.allowed_file_types}
+                                  required={q.required}
+                                  hasError={Boolean(errorMessage)}
+                                  errorMessage={errorMessage}
+                                />
                               )}
 
                               {/* Dropdown Select */}

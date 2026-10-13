@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { DatePicker } from "@/components/date-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -881,24 +882,26 @@ export function TicketTierDialog({ open, onOpenChange, ticket, eventMerchandise 
               <Label htmlFor="sales-start" className="font-medium text-xs">
                 Sales Open (Optional)
               </Label>
-              <Input
+              <DatePicker
                 id="sales-start"
-                type="datetime-local"
+                withTime
                 value={salesStartDate}
-                onChange={(e) => setSalesStartDate(e.target.value)}
-                className="h-8 text-xs"
+                onChange={setSalesStartDate}
+                size="sm"
+                placeholder="Open immediately"
               />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="sales-end" className="font-medium text-xs">
                 Sales Close (Optional)
               </Label>
-              <Input
+              <DatePicker
                 id="sales-end"
-                type="datetime-local"
+                withTime
                 value={salesEndDate}
-                onChange={(e) => setSalesEndDate(e.target.value)}
-                className="h-8 text-xs"
+                onChange={setSalesEndDate}
+                size="sm"
+                placeholder="Close when sold out"
               />
             </div>
           </div>

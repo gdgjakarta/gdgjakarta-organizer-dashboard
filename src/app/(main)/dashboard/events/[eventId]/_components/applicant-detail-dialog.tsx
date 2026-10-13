@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import Image from "next/image";
+
 import { format, parseISO } from "date-fns";
 import {
   Briefcase,
@@ -14,6 +16,7 @@ import {
   Globe,
   Heart,
   HelpCircle,
+  Image as ImageIcon,
   Layers,
   Loader2,
   type LucideIcon,
@@ -418,6 +421,59 @@ export function ApplicantDetailDialog({
           <XCircle className="size-3 opacity-60" />
           No
         </Badge>
+      );
+    }
+
+    // Media / File Uploads
+    if (
+      strVal.includes("/api/media/") ||
+      strVal.includes("temp/") ||
+      /\.(png|jpe?g|webp|gif|svg|avif|pdf|doc|docx|zip)(\?.*)?$/i.test(strVal)
+    ) {
+      const isImg = /\.(png|jpe?g|webp|gif|svg|avif)(\?.*)?$/i.test(strVal);
+      const fileName = strVal.split("/").pop() || "Uploaded File";
+      return (
+        <div className="flex flex-col gap-2">
+          {isImg && (
+            <div className="relative h-32 w-full max-w-xs overflow-hidden rounded-md border border-border/70 bg-muted/30">
+              <Image
+                src={strVal}
+                alt={fileName}
+                fill
+                unoptimized
+                className="size-full object-cover"
+                sizes="(max-width: 768px) 100vw, 320px"
+              />
+            </div>
+          )}
+          <div className="flex items-center justify-between gap-2">
+            <a
+              href={strVal}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group inline-flex items-center gap-1.5 truncate font-medium text-primary text-xs hover:underline"
+              title={strVal}
+            >
+              {isImg ? (
+                <ImageIcon className="size-3.5 shrink-0 text-primary" />
+              ) : (
+                <FileText className="size-3.5 shrink-0 text-primary" />
+              )}
+              <span className="truncate">{fileName}</span>
+              <ExternalLink className="size-3 shrink-0 opacity-60 transition-transform group-hover:translate-x-0.5" />
+            </a>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              className="size-6 shrink-0 text-muted-foreground hover:text-foreground"
+              title="Copy link"
+              onClick={() => handleCopy(strVal, "File link", key)}
+            >
+              {copiedKey === key ? <Check className="size-3 text-emerald-600" /> : <Copy className="size-3" />}
+            </Button>
+          </div>
+        </div>
       );
     }
 

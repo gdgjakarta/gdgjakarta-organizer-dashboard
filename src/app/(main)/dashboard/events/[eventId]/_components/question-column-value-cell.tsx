@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, FileText, Image as ImageIcon } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 
@@ -58,6 +58,36 @@ export function QuestionColumnValueCell({ value }: QuestionColumnValueCellProps)
   const str = String(value).trim();
   if (!str) {
     return <span className="font-mono text-muted-foreground/40 text-xs">—</span>;
+  }
+
+  // Media / Storage file uploads
+  if (
+    str.includes("/api/media/") ||
+    str.includes("temp/") ||
+    /\.(png|jpe?g|webp|gif|svg|avif|pdf|doc|docx|zip)(\?.*)?$/i.test(str)
+  ) {
+    const isImg = /\.(png|jpe?g|webp|gif|svg|avif)(\?.*)?$/i.test(str);
+    const fileName = str.split("/").pop() || "Media file";
+    const href = str.startsWith("http") || str.startsWith("/") ? str : `/${str}`;
+
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => e.stopPropagation()}
+        className="group inline-flex max-w-[200px] items-center gap-1.5 rounded-md border border-border/80 bg-muted/40 px-2 py-0.5 font-medium text-foreground text-xs transition-colors hover:border-primary/50 hover:bg-muted/70 hover:text-primary"
+        title={str}
+      >
+        {isImg ? (
+          <ImageIcon className="size-3.5 shrink-0 text-primary" />
+        ) : (
+          <FileText className="size-3.5 shrink-0 text-primary" />
+        )}
+        <span className="truncate text-[11px]">{fileName}</span>
+        <ExternalLink className="size-3 shrink-0 opacity-60 group-hover:opacity-100" />
+      </a>
+    );
   }
 
   // URL / Social links

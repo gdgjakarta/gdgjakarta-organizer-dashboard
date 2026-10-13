@@ -5,6 +5,7 @@ import { useEffect, useState, useTransition } from "react";
 import { CheckCircle2, Loader2, Search, Truck } from "lucide-react";
 import { toast } from "sonner";
 
+import { DatePicker } from "@/components/date-picker";
 import { PackageTrackingDialog } from "@/components/delivery/package-tracking-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -283,12 +284,12 @@ export function DeliveryApprovalDialog({
                 <Label htmlFor="dispatchedAt" className="text-xs">
                   Dispatched / Delivery Date & Time
                 </Label>
-                <Input
+                <DatePicker
                   id="dispatchedAt"
-                  type="datetime-local"
+                  withTime
                   value={dispatchedAt}
-                  onChange={(e) => setDispatchedAt(e.target.value)}
-                  className="h-9 text-xs"
+                  onChange={setDispatchedAt}
+                  placeholder="Select dispatch date & time"
                 />
               </div>
 

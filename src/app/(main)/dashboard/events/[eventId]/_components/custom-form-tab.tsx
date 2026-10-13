@@ -23,6 +23,7 @@ import {
 import { toast } from "sonner";
 
 import { FloatingSaveBar } from "@/app/(main)/dashboard/_components/floating-save-bar";
+import { DatePicker } from "@/components/date-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -1059,12 +1060,12 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
               <label htmlFor="reg-start-date" className="font-medium text-xs text-foreground">
                 Registration Opens At (Optional Schedule)
               </label>
-              <Input
+              <DatePicker
                 id="reg-start-date"
-                type="datetime-local"
+                withTime
                 value={registrationStartDate}
-                onChange={(e) => setRegistrationStartDate(e.target.value)}
-                className="h-9 text-xs"
+                onChange={setRegistrationStartDate}
+                placeholder="Opens immediately once published"
               />
               <div className="flex flex-wrap items-center justify-between gap-1 pt-0.5">
                 <span className="text-[11px] text-muted-foreground">
@@ -1087,12 +1088,12 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
               <label htmlFor="reg-end-date" className="font-medium text-xs text-foreground">
                 Registration Closes At (Optional Schedule)
               </label>
-              <Input
+              <DatePicker
                 id="reg-end-date"
-                type="datetime-local"
+                withTime
                 value={registrationEndDate}
-                onChange={(e) => setRegistrationEndDate(e.target.value)}
-                className="h-9 text-xs"
+                onChange={setRegistrationEndDate}
+                placeholder="Closes when event ends"
               />
               <div className="flex flex-wrap items-center justify-between gap-1 pt-0.5">
                 <span className="text-[11px] text-muted-foreground">Leave blank to close when event ends.</span>
@@ -1749,6 +1750,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
                     question={q}
                     index={idx}
                     totalQuestions={questions.length}
+                    eventName={event.title}
                     onUpdate={handleUpdateQuestion}
                     onRemove={handleRemoveQuestion}
                     onDuplicate={handleDuplicateQuestion}

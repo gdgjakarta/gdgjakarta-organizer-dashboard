@@ -28,12 +28,20 @@ export type QuestionValidationType =
 export interface CustomQuestion {
   id: string;
   label: string;
-  type: "text" | "textarea" | "select" | "radio" | "checkbox" | "multiselect";
+  type: "text" | "textarea" | "select" | "radio" | "checkbox" | "multiselect" | "media";
   options?: string[];
   required: boolean;
   placeholder?: string;
   description?: string;
   section?: string;
+
+  // Media upload configuration
+  max_file_size_mb?: number;
+  allowed_file_types?: string;
+
+  // Question helper / guideline image (attached from clipboard or upload)
+  helper_image_url?: string;
+  image_url?: string;
 
   // Question validation & constraint settings
   validation_type?: QuestionValidationType;

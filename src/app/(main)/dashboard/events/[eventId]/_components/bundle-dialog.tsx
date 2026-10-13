@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Banknote, Check, Package, Plus, Ticket } from "lucide-react";
 import { toast } from "sonner";
 
+import { DatePicker } from "@/components/date-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -508,21 +509,23 @@ export function BundleDialog({
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="sales-start">Sales Open (Optional)</Label>
-                  <Input
+                  <DatePicker
                     id="sales-start"
-                    type="datetime-local"
+                    withTime
                     value={salesStartDate}
-                    onChange={(e) => setSalesStartDate(e.target.value)}
+                    onChange={setSalesStartDate}
+                    placeholder="Open immediately"
                   />
                 </div>
 
                 <div className="space-y-1.5">
                   <Label htmlFor="sales-end">Sales Close (Optional)</Label>
-                  <Input
+                  <DatePicker
                     id="sales-end"
-                    type="datetime-local"
+                    withTime
                     value={salesEndDate}
-                    onChange={(e) => setSalesEndDate(e.target.value)}
+                    onChange={setSalesEndDate}
+                    placeholder="Close when sold out"
                   />
                 </div>
               </div>

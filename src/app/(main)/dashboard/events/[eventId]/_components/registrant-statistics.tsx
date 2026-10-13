@@ -249,9 +249,9 @@ export function RegistrantStatistics({
       }
     }
 
-    // 3. Event custom questions
+    // 3. Event custom questions (exclude media upload questions from categorical distribution charts)
     for (const q of customQuestions) {
-      if (q.id && q.label) {
+      if (q.id && q.label && q.type !== "media") {
         fieldMap.set(q.id, {
           id: q.id,
           label: q.label,
