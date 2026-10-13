@@ -346,9 +346,17 @@ service cloud.firestore {
         (
           exists(/databases/$(database)/documents/members/$(request.auth.uid)) &&
           (
-            get(/databases/$(database)/documents/members/$(request.auth.uid)).data.role == 'organizer' ||
-            get(/databases/$(database)/documents/members/$(request.auth.uid)).data.role == 'Organizer' ||
-            get(/databases/$(database)/documents/members/$(request.auth.uid)).data.team == 'Core Team' ||
+            (
+              'role' in get(/databases/$(database)/documents/members/$(request.auth.uid)).data &&
+              (
+                get(/databases/$(database)/documents/members/$(request.auth.uid)).data.role == 'organizer' ||
+                get(/databases/$(database)/documents/members/$(request.auth.uid)).data.role == 'Organizer'
+              )
+            ) ||
+            (
+              'team' in get(/databases/$(database)/documents/members/$(request.auth.uid)).data &&
+              get(/databases/$(database)/documents/members/$(request.auth.uid)).data.team == 'Core Team'
+            ) ||
             (
               'chapter_role' in get(/databases/$(database)/documents/members/$(request.auth.uid)).data &&
               (
@@ -387,12 +395,18 @@ service cloud.firestore {
         (
           exists(/databases/$(database)/documents/members/$(request.auth.uid)) &&
           (
-            get(/databases/$(database)/documents/members/$(request.auth.uid)).data.role in [
-              'Core Team', 'core_team', 'core-team',
-              'Check-in Staff', 'check_in_staff', 'checkin_staff', 'check-in staff',
-              'Team Member', 'team_member', 'team-member'
-            ] ||
-            get(/databases/$(database)/documents/members/$(request.auth.uid)).data.team == 'Core Team' ||
+            (
+              'role' in get(/databases/$(database)/documents/members/$(request.auth.uid)).data &&
+              get(/databases/$(database)/documents/members/$(request.auth.uid)).data.role in [
+                'Core Team', 'core_team', 'core-team',
+                'Check-in Staff', 'check_in_staff', 'checkin_staff', 'check-in staff',
+                'Team Member', 'team_member', 'team-member'
+              ]
+            ) ||
+            (
+              'team' in get(/databases/$(database)/documents/members/$(request.auth.uid)).data &&
+              get(/databases/$(database)/documents/members/$(request.auth.uid)).data.team == 'Core Team'
+            ) ||
             (
               'chapter_role' in get(/databases/$(database)/documents/members/$(request.auth.uid)).data &&
               get(/databases/$(database)/documents/members/$(request.auth.uid)).data.chapter_role in [
@@ -531,21 +545,27 @@ service cloud.firestore {
       return !newData.diff(prevData).affectedKeys().hasAny(['delivery_request']) ||
         (
           ('delivery_request' in newData) &&
-          newData.delivery_request is map &&
-          (newData.delivery_request.status in ['pending_payment', 'pending_review']) &&
-          !newData.delivery_request.keys().hasAny([
-            'courier_type', 'tracking_number', 'tracking_url', 'delivery_proof_url',
-            'dispatched_at', 'delivered_at', 'rejection_reason',
-            'reviewed_by_id', 'reviewed_by_name', 'reviewed_at'
-          ]) &&
           (
-            !('delivery_request' in prevData) ||
-            prevData.delivery_request == null ||
+            newData.delivery_request == null ||
             (
-              prevData.delivery_request is map &&
-              (prevData.delivery_request.status in ['pending_payment', 'pending_review']) &&
-              newData.delivery_request.id == prevData.delivery_request.id &&
-              newData.delivery_request.requested_at == prevData.delivery_request.requested_at
+              newData.delivery_request is map &&
+              ('status' in newData.delivery_request) &&
+              (newData.delivery_request.status in ['pending_payment', 'pending_review']) &&
+              !newData.delivery_request.keys().hasAny([
+                'courier_type', 'tracking_number', 'tracking_url', 'delivery_proof_url',
+                'dispatched_at', 'delivered_at', 'rejection_reason',
+                'reviewed_by_id', 'reviewed_by_name', 'reviewed_at'
+              ]) &&
+              (
+                !('delivery_request' in prevData) ||
+                prevData.delivery_request == null ||
+                (
+                  prevData.delivery_request is map &&
+                  (!('status' in prevData.delivery_request) || prevData.delivery_request.status in ['pending_payment', 'pending_review']) &&
+                  (!('id' in prevData.delivery_request) || !('id' in newData.delivery_request) || newData.delivery_request.id == prevData.delivery_request.id) &&
+                  (!('requested_at' in prevData.delivery_request) || !('requested_at' in newData.delivery_request) || newData.delivery_request.requested_at == prevData.delivery_request.requested_at)
+                )
+              )
             )
           )
         );
@@ -926,15 +946,15 @@ service cloud.firestore {
       allow get: if hasTeamAccess() ||
         (isAuthenticated() && (
           resource == null ||
-          resource.data.member_id == request.auth.uid ||
+          ('member_id' in resource.data && resource.data.member_id == request.auth.uid) ||
           (('member_email' in resource.data) && resource.data.member_email == request.auth.token.email) ||
-          registrationId.matches('.*_' + request.auth.uid)
+          (registrationId.size() > request.auth.uid.size() && registrationId[registrationId.size() - request.auth.uid.size():] == request.auth.uid)
         ));
 
       // Listing registrations: Team access (Organizers & Staff), or authenticated users querying their own registrations.
       allow list: if hasTeamAccess() ||
         (isAuthenticated() && (
-          resource.data.member_id == request.auth.uid ||
+          ('member_id' in resource.data && resource.data.member_id == request.auth.uid) ||
           (('member_email' in resource.data) && resource.data.member_email == request.auth.token.email)
         ));
 
@@ -943,7 +963,7 @@ service cloud.firestore {
         isOrganizer() ||
         (isAuthenticated() && (
           request.auth.uid == request.resource.data.member_id ||
-          registrationId.matches('.*_' + request.auth.uid)
+          (registrationId.size() > request.auth.uid.size() && registrationId[registrationId.size() - request.auth.uid.size():] == request.auth.uid)
         ))
       );
 
@@ -953,9 +973,11 @@ service cloud.firestore {
       allow update: if isValidRegistration(request.resource.data) && (
         hasTeamAccess() ||
         (
+          isAuthenticated() &&
           (
-            ('member_id' in resource.data && isOwner(resource.data.member_id)) ||
-            (isAuthenticated() && registrationId.matches('.*_' + request.auth.uid))
+            ('member_id' in resource.data && resource.data.member_id == request.auth.uid) ||
+            request.resource.data.member_id == request.auth.uid ||
+            (registrationId.size() > request.auth.uid.size() && registrationId[registrationId.size() - request.auth.uid.size():] == request.auth.uid)
           ) &&
           (
             !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status']) ||
@@ -977,8 +999,8 @@ service cloud.firestore {
       // Deletion: Organizers or authenticated registrants cancelling their own registration.
       allow delete: if isOrganizer() || (
         isAuthenticated() && resource != null && (
-          resource.data.member_id == request.auth.uid ||
-          registrationId.matches('.*_' + request.auth.uid)
+          ('member_id' in resource.data && resource.data.member_id == request.auth.uid) ||
+          (registrationId.size() > request.auth.uid.size() && registrationId[registrationId.size() - request.auth.uid.size():] == request.auth.uid)
         )
       );
     }
@@ -1062,14 +1084,14 @@ service cloud.firestore {
       allow get: if isOrganizer() ||
         (isAuthenticated() && (
           resource == null ||
-          resource.data.referee_id == request.auth.uid ||
-          resource.data.referrer_id == request.auth.uid
+          (('referee_id' in resource.data) && resource.data.referee_id == request.auth.uid) ||
+          (('referrer_id' in resource.data) && resource.data.referrer_id == request.auth.uid)
         ));
 
       allow list: if isOrganizer() ||
         (isAuthenticated() && (
-          resource.data.referee_id == request.auth.uid ||
-          resource.data.referrer_id == request.auth.uid
+          (('referee_id' in resource.data) && resource.data.referee_id == request.auth.uid) ||
+          (('referrer_id' in resource.data) && resource.data.referrer_id == request.auth.uid)
         ));
 
       // Create: Organizers, or authenticated users creating their own redemption (as referee).
@@ -1085,7 +1107,7 @@ service cloud.firestore {
       allow update: if isValidReferralRedemption(request.resource.data) && (
         isOrganizer() ||
         (isAuthenticated() && (
-          resource.data.referee_id == request.auth.uid ||
+          (('referee_id' in resource.data) && resource.data.referee_id == request.auth.uid) ||
           (('referee_member_id' in resource.data) && resource.data.referee_member_id == request.auth.uid)
         ))
       );
