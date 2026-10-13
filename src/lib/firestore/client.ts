@@ -468,6 +468,13 @@ export async function validateReferralCode(
     return { valid: false, error: "Please enter a referral code." };
   }
 
+  // Ensure Firebase Auth state is fully restored on client before making Firestore calls
+  if (typeof auth?.authStateReady === "function") {
+    await auth.authStateReady();
+  }
+  const effectiveMemberId = auth?.currentUser?.uid ?? currentMemberId;
+  const effectiveMemberEmail = auth?.currentUser?.email ?? currentMemberEmail;
+
   // 1. Fetch referral settings
   const settings = await getReferralProgramSettings();
   if (!settings.is_active) {
@@ -489,16 +496,16 @@ export async function validateReferralCode(
     const referrerId = referrerDoc.id;
 
     // 3. Self-referral prevention
-    const currentEmailNorm = (currentMemberEmail || "").trim().toLowerCase();
+    const currentEmailNorm = (effectiveMemberEmail || "").trim().toLowerCase();
     const referrerEmailNorm = (referrerData.email || "").trim().toLowerCase();
 
-    if (referrerId === currentMemberId || (referrerEmailNorm && currentEmailNorm === referrerEmailNorm)) {
+    if (referrerId === effectiveMemberId || (referrerEmailNorm && currentEmailNorm === referrerEmailNorm)) {
       return { valid: false, error: "You cannot use your own referral code." };
     }
 
     // 4. One-per-account rule
-    if (currentMemberId) {
-      const currentSnap = await getDoc(doc(db, "members", currentMemberId));
+    if (effectiveMemberId) {
+      const currentSnap = await getDoc(doc(db, "members", effectiveMemberId));
       if (currentSnap.exists()) {
         const currentData = currentSnap.data() as FirestoreMember;
         if (currentData.has_used_referral) {
@@ -1151,7 +1158,7 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
         const referrerId = referrerDoc.id;
 
         // Ensure not self-referral
-        if (referrerId !== registration.member_id) {
+        if (referrerId !== effectiveMemberId) {
           const settings = await getReferralProgramSettings();
           const pointsAwarded = typeof settings.points_per_referral === "number" ? settings.points_per_referral : 10;
 
@@ -1170,7 +1177,7 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
 
           // 2. Mark referee member doc as having redeemed their 1-time referral
           await updateDoc(
-            doc(db, "members", registration.member_id),
+            doc(db, "members", effectiveMemberId),
             sanitizeFirestoreData({
               has_used_referral: true,
               referred_by_code: refCode,
@@ -1179,7 +1186,7 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
           );
 
           // 3. Record redemption transaction in referral_redemptions collection
-          const redemptionId = `${registration.member_id}_${regId}`;
+          const redemptionId = `${effectiveMemberId}_${regId}`;
           const redemptionDocRef = doc(db, "referral_redemptions", redemptionId);
           await setDoc(
             redemptionDocRef,
@@ -1189,7 +1196,7 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
               referrer_name: referrerData.name || "GDG Member",
               referrer_email: referrerData.email || "",
               referrer_code: refCode,
-              referee_id: registration.member_id,
+              referee_id: effectiveMemberId,
               referee_name: registration.member_name ?? "Applicant",
               referee_email: normalizedEmail,
               event_id: eventIdStr,
