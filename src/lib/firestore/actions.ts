@@ -893,3 +893,81 @@ export async function getMemberReferralHistoryAction(memberId: string) {
     return [];
   }
 }
+
+export async function resetMemberReferralAction(memberId: string) {
+  try {
+    const { resetMemberReferrals } = await import("./client");
+    await resetMemberReferrals(memberId);
+    await revalidateDashboardPath("/dashboard/referrals");
+    await revalidateDashboardPath("/dashboard/member");
+    await revalidateDashboardPath("/dashboard/organizer");
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to reset member referral.";
+    console.error("[resetMemberReferralAction] error:", message);
+    return { success: false, error: message };
+  }
+}
+
+export async function resetAllMembersReferralsAction() {
+  try {
+    const { resetAllMembersReferrals } = await import("./client");
+    const result = await resetAllMembersReferrals();
+    await revalidateDashboardPath("/dashboard/referrals");
+    await revalidateDashboardPath("/dashboard/member");
+    await revalidateDashboardPath("/dashboard/organizer");
+    return { success: true, count: result.resetCount };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to reset all referrals.";
+    console.error("[resetAllMembersReferralsAction] error:", message);
+    return { success: false, error: message };
+  }
+}
+
+export async function getExcludedReferralMembersAction() {
+  try {
+    const { getExcludedReferralMembers } = await import("./client");
+    return await getExcludedReferralMembers();
+  } catch (err) {
+    console.error("[getExcludedReferralMembersAction] error:", err);
+    return [];
+  }
+}
+
+export async function excludeMemberFromLeaderboardAction(memberId: string) {
+  try {
+    const { excludeMemberFromLeaderboard } = await import("./client");
+    await excludeMemberFromLeaderboard(memberId);
+    await revalidateDashboardPath("/dashboard/referrals");
+    await revalidateDashboardPath("/dashboard/organizer");
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to exclude member from leaderboard.";
+    console.error("[excludeMemberFromLeaderboardAction] error:", message);
+    return { success: false, error: message };
+  }
+}
+
+export async function includeMemberInLeaderboardAction(memberId: string) {
+  try {
+    const { includeMemberInLeaderboard } = await import("./client");
+    await includeMemberInLeaderboard(memberId);
+    await revalidateDashboardPath("/dashboard/referrals");
+    await revalidateDashboardPath("/dashboard/organizer");
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to restore member to leaderboard.";
+    console.error("[includeMemberInLeaderboardAction] error:", message);
+    return { success: false, error: message };
+  }
+}
+
+export async function searchMembersForExclusionAction(query: string) {
+  try {
+    const { searchMembersForExclusion } = await import("./client");
+    return await searchMembersForExclusion(query);
+  } catch (err) {
+    console.error("[searchMembersForExclusionAction] error:", err);
+    return [];
+  }
+}

@@ -39,6 +39,9 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
   const [discountAmount, setDiscountAmount] = useState<number>(initialSettings?.default_discount_amount ?? 25000);
   const [pointsPerReferral, setPointsPerReferral] = useState<number>(initialSettings?.points_per_referral ?? 10);
   const [isActive, setIsActive] = useState<boolean>(initialSettings?.is_active ?? true);
+  const [autoExcludeOrganizers, setAutoExcludeOrganizers] = useState<boolean>(
+    initialSettings?.auto_exclude_organizers ?? false,
+  );
   const [prizeDesc, setPrizeDesc] = useState<string>(
     initialSettings?.merch_prize_description ?? "Exclusive GDG Jakarta merchandise bundle",
   );
@@ -52,6 +55,8 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
         default_discount_amount: Number(discountAmount) || 0,
         points_per_referral: Number(pointsPerReferral) || 0,
         is_active: isActive,
+        auto_exclude_organizers: autoExcludeOrganizers,
+        excluded_member_ids: initialSettings?.excluded_member_ids ?? [],
         merch_prize_description: prizeDesc.trim(),
       });
 
@@ -68,6 +73,8 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
           default_discount_amount: Number(discountAmount) || 0,
           points_per_referral: Number(pointsPerReferral) || 0,
           is_active: isActive,
+          auto_exclude_organizers: autoExcludeOrganizers,
+          excluded_member_ids: initialSettings?.excluded_member_ids ?? [],
           merch_prize_description: prizeDesc.trim(),
           updated_at: new Date().toISOString(),
         });
@@ -98,7 +105,7 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
             <div>
               <DialogTitle className="text-base">Referral Program Configuration</DialogTitle>
               <DialogDescription className="text-xs">
-                Configure global discount percentages, points rules, and merchandise rewards.
+                Configure global discount percentages, points rules, exclusions, and merchandise rewards.
               </DialogDescription>
             </div>
           </div>
@@ -114,6 +121,17 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
               </p>
             </div>
             <Switch checked={isActive} onCheckedChange={setIsActive} />
+          </div>
+
+          {/* Auto-exclude Organizers Toggle */}
+          <div className="flex items-center justify-between rounded-lg border bg-muted/30 p-3">
+            <div className="space-y-0.5">
+              <p className="text-xs font-medium text-foreground">Auto-Exclude Organizers & Core Team</p>
+              <p className="text-[11px] text-muted-foreground">
+                Filter out chapter staff and organizers from leaderboard rankings and prizes.
+              </p>
+            </div>
+            <Switch checked={autoExcludeOrganizers} onCheckedChange={setAutoExcludeOrganizers} />
           </div>
 
           {/* Discount Configuration: Type & Value */}

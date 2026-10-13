@@ -570,6 +570,8 @@ export interface ReferralProgramSettings {
   points_per_referral: number; // e.g. 10 points awarded per referral
   is_active: boolean; // Master referral program toggle
   merch_prize_description?: string; // "Exclusive GDG Jakarta merchandise"
+  excluded_member_ids?: string[]; // IDs of members excluded from leaderboard
+  auto_exclude_organizers?: boolean; // When true, members with roles Organizer/Core Team are excluded
   updated_at: string;
   updated_by_name?: string;
 }
@@ -601,6 +603,7 @@ export interface ReferralLeaderboardEntry {
   member_id: string;
   name: string;
   email: string;
+  role?: string;
   avatar_url?: string | null;
   referral_code: string;
   referral_points: number;
@@ -608,6 +611,20 @@ export interface ReferralLeaderboardEntry {
   is_prize_winner: boolean;
   joined_date: string;
   last_active?: string | null;
+  is_excluded?: boolean;
+}
+
+export interface ExcludedReferralMember {
+  member_id: string;
+  name: string;
+  email: string;
+  role: string;
+  avatar_url?: string | null;
+  referral_code: string;
+  referral_points: number;
+  referrals_count: number;
+  joined_date: string;
+  reason?: "manual" | "role_auto";
 }
 
 export interface FirestoreSyncMetadata {

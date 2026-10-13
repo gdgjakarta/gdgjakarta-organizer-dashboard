@@ -10,8 +10,10 @@ import { getReferralLeaderboardAction, getReferralProgramSettingsAction } from "
 import type { ReferralLeaderboardEntry, ReferralProgramSettings } from "@/lib/firestore/types";
 
 import { ReferralLeaderboardSkeleton } from "../loading";
+import { ReferralExcludedMembersDialog } from "./referral-excluded-members-dialog";
 import { ReferralExport } from "./referral-export";
 import { ReferralPodium } from "./referral-podium";
+import { ReferralResetAllDialog } from "./referral-reset-all-dialog";
 import { ReferralSettingsDialog } from "./referral-settings-dialog";
 import { ReferralTable } from "./referral-table";
 
@@ -24,6 +26,21 @@ export function ReferralLeaderboardView({ initialEntries, initialSettings }: Ref
   const [entries, setEntries] = useState<ReferralLeaderboardEntry[]>(initialEntries ?? []);
   const [settings, setSettings] = useState<ReferralProgramSettings | null>(initialSettings ?? null);
   const [loading, setLoading] = useState<boolean>(!initialEntries);
+
+  const refreshData = async () => {
+    try {
+      const [loadedEntries, loadedSettings] = await Promise.all([
+        getReferralLeaderboardAction(200),
+        getReferralProgramSettingsAction(),
+      ]);
+      setEntries(loadedEntries);
+      if (loadedSettings) {
+        setSettings(loadedSettings);
+      }
+    } catch (err) {
+      console.error("[ReferralLeaderboardView] Failed to refresh referral data:", err);
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -89,7 +106,22 @@ export function ReferralLeaderboardView({ initialEntries, initialSettings }: Ref
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <ReferralSettingsDialog initialSettings={settings} onSettingsUpdated={setSettings} />
+          <ReferralExcludedMembersDialog
+            onExclusionsChanged={refreshData}
+            autoExcludeOrganizers={settings?.auto_exclude_organizers}
+          />
+          <ReferralSettingsDialog
+            initialSettings={settings}
+            onSettingsUpdated={(updatedSettings) => {
+              setSettings(updatedSettings);
+              void refreshData();
+            }}
+          />
+          <ReferralResetAllDialog
+            totalActiveReferrers={activeReferrersCount}
+            totalPoints={totalPoints}
+            onResetCompleted={refreshData}
+          />
           <ReferralExport entries={entries} />
         </div>
       </div>
@@ -197,7 +229,7 @@ export function ReferralLeaderboardView({ initialEntries, initialSettings }: Ref
       )}
 
       {/* Ranked Table */}
-      <ReferralTable entries={entries} />
+      <ReferralTable entries={entries} onDataMutated={refreshData} />
     </div>
   );
 }
