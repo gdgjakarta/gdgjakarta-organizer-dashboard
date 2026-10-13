@@ -36,6 +36,8 @@ import { DEFAULT_COMBINED_QUESTIONS } from "@/lib/events/registration-defaults";
 import type { CustomQuestion, EventSession, FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
+import { parseMerchandiseVariations } from "./merchandise-helpers";
+
 interface RegistrantStatisticsProps {
   registrations: FirestoreRegistration[];
   customQuestions?: CustomQuestion[];
@@ -46,6 +48,7 @@ interface RegistrantStatisticsProps {
   onSelectStatusFilter?: (status: string) => void;
   onSelectSearchFilter?: (term: string) => void;
   onSelectSessionFilter?: (sessionId: string) => void;
+  onSelectMerchandiseFilter?: (merchandise: string, variant?: string) => void;
 }
 
 interface DistributionItem {
@@ -91,6 +94,7 @@ export function RegistrantStatistics({
   onSelectStatusFilter,
   onSelectSearchFilter,
   onSelectSessionFilter,
+  onSelectMerchandiseFilter,
 }: RegistrantStatisticsProps) {
   // Primary selected field to analyze in detail
   const [selectedField, setSelectedField] = useState<string>("professional_background");
@@ -346,7 +350,9 @@ export function RegistrantStatistics({
         for (const r of targetPool) {
           if (r.selected_merchandise && r.selected_merchandise.length > 0) {
             for (const item of r.selected_merchandise) {
-              const label = `${item.name} (${item.quantity}x)`;
+              const variations = parseMerchandiseVariations(item, r.answers);
+              const varSummary = variations.map((v) => (v.label ? `${v.label}: ${v.value}` : v.value)).join(", ");
+              const label = varSummary ? `${item.name} (${varSummary})` : item.name;
               counts.set(label, (counts.get(label) ?? 0) + 1);
               totalCounted += 1;
             }
@@ -443,6 +449,22 @@ export function RegistrantStatistics({
       if (sessionMatch && onSelectSessionFilter) {
         onSelectSessionFilter(sessionMatch.id);
         return;
+      }
+    }
+    if (selectedField === "merchandise_orders") {
+      if (item.key === "No Merchandise") {
+        if (onSelectMerchandiseFilter) {
+          onSelectMerchandiseFilter("no_merchandise");
+          return;
+        }
+      } else {
+        const match = item.key.match(/^(.*?)(?:\s*\((.*?)\))?$/);
+        const productName = (match?.[1] || item.key).trim();
+        const variationStr = match?.[2]?.trim();
+        if (onSelectMerchandiseFilter) {
+          onSelectMerchandiseFilter(productName, variationStr);
+          return;
+        }
       }
     }
     if (onSelectSearchFilter && item.key !== "Not Specified") {

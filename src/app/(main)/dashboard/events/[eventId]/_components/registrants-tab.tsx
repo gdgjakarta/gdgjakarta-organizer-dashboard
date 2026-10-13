@@ -93,6 +93,11 @@ import { useAuthStore } from "@/stores/auth/auth-provider";
 
 import { ApplicantDetailDialog } from "./applicant-detail-dialog";
 import { type AvailableQuestionField, ColumnCustomizer } from "./column-customizer";
+import {
+  collectMerchandiseFilterOptions,
+  formatMerchandiseSummary,
+  parseMerchandiseVariations,
+} from "./merchandise-helpers";
 import { QuestionColumnValueCell } from "./question-column-value-cell";
 import { QuestionResponsesCell } from "./question-responses-cell";
 import { RegistrantStatistics } from "./registrant-statistics";
@@ -383,6 +388,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [sessionFilter, setSessionFilter] = useState<string>("all");
   const [ticketFilter, setTicketFilter] = useState<string>("all");
+  const [merchandiseFilter, setMerchandiseFilter] = useState<string>("all");
+  const [merchandiseVariantFilter, setMerchandiseVariantFilter] = useState<string>("all");
   const [reviewerFilter, setReviewerFilter] = useState<string>("all");
   const [sessions, setSessions] = useState<EventSession[]>(event?.sessions ?? []);
   const [customQuestions, setCustomQuestions] = useState<CustomQuestion[]>(event?.custom_questions ?? []);
@@ -921,6 +928,10 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     );
   }, [event?.merchandise, registrationsList]);
 
+  const merchandiseFilterOptions = useMemo(() => {
+    return collectMerchandiseFilterOptions(registrationsList, event?.merchandise);
+  }, [registrationsList, event?.merchandise]);
+
   // Map question IDs/keys to human-readable question labels
   const questionLabelMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -1149,11 +1160,55 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     }, 200);
   };
 
+  const handleMerchandiseFilterChange = (val: string) => {
+    setIsFiltering(true);
+    setMerchandiseFilter(val);
+    if (val === "no_merchandise" || val === "all") {
+      setMerchandiseVariantFilter("all");
+    }
+    setTimeout(() => {
+      setIsFiltering(false);
+    }, 200);
+  };
+
+  const handleMerchandiseVariantFilterChange = (val: string) => {
+    setIsFiltering(true);
+    setMerchandiseVariantFilter(val);
+    setTimeout(() => {
+      setIsFiltering(false);
+    }, 200);
+  };
+
+  const handleMerchandiseStatsFilter = useCallback((merchandise: string, variant?: string) => {
+    setIsFiltering(true);
+    if (merchandise === "no_merchandise") {
+      setMerchandiseFilter("no_merchandise");
+      setMerchandiseVariantFilter("all");
+    } else {
+      setMerchandiseFilter(merchandise);
+      if (variant) {
+        const sizeMatch = variant.match(/size:\s*([^\s,]+)/i);
+        if (sizeMatch?.[1]) {
+          setMerchandiseVariantFilter(sizeMatch[1].toUpperCase().trim());
+        } else {
+          setMerchandiseVariantFilter(variant);
+        }
+      } else {
+        setMerchandiseVariantFilter("all");
+      }
+    }
+    setTimeout(() => {
+      setIsFiltering(false);
+    }, 200);
+  }, []);
+
   const handleResetAllFilters = () => {
     setIsFiltering(true);
     setStatusFilter("all");
     setSessionFilter("all");
     setTicketFilter("all");
+    setMerchandiseFilter("all");
+    setMerchandiseVariantFilter("all");
     setReviewerFilter("all");
     setSearch("");
     setQuestionFilters({});
@@ -1166,6 +1221,20 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const filtered = useMemo(() => {
     return registrationsList.filter((reg) => {
       const searchLower = search.trim().toLowerCase();
+      const matchesMerchSearch = Boolean(
+        reg.selected_merchandise?.some((m) => {
+          if (m.name.toLowerCase().includes(searchLower)) return true;
+          if (m.selected_size?.toLowerCase().includes(searchLower)) return true;
+          if (m.selected_variant?.toLowerCase().includes(searchLower)) return true;
+          if (m.selected_variations) {
+            return Object.entries(m.selected_variations).some(
+              ([k, v]) => k.toLowerCase().includes(searchLower) || v.toLowerCase().includes(searchLower),
+            );
+          }
+          return false;
+        }),
+      );
+
       const matchesSearch =
         !searchLower ||
         reg.member_name.toLowerCase().includes(searchLower) ||
@@ -1174,6 +1243,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         Boolean(reg.reviewed_by_email?.toLowerCase().includes(searchLower)) ||
         Boolean(reg.ticket_name?.toLowerCase().includes(searchLower)) ||
         Boolean(reg.bundle_name?.toLowerCase().includes(searchLower)) ||
+        matchesMerchSearch ||
         (reg.answers && JSON.stringify(reg.answers).toLowerCase().includes(searchLower));
 
       const effectiveStatus = getEffectiveRegistrationStatus(reg, currentEvent);
@@ -1235,7 +1305,47 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         reviewerFilter === "all" ||
         (reviewerFilter === "unreviewed" ? !reg.reviewed_by_name : reg.reviewed_by_name === reviewerFilter);
 
-      if (!matchesSearch || !matchesStatus || !matchesSession || !matchesTicket || !matchesReviewer) {
+      let matchesMerchandise = true;
+      if (merchandiseFilter !== "all") {
+        const regMerch = reg.selected_merchandise || [];
+        if (merchandiseFilter === "has_merchandise") {
+          matchesMerchandise = regMerch.length > 0;
+        } else if (merchandiseFilter === "no_merchandise") {
+          matchesMerchandise = regMerch.length === 0;
+        } else {
+          const filterLower = merchandiseFilter.toLowerCase().trim();
+          matchesMerchandise = regMerch.some(
+            (m) =>
+              (m.name || "").toLowerCase().trim() === filterLower ||
+              (m.id || "").toLowerCase().trim() === filterLower ||
+              (m.merchandise_id || "").toLowerCase().trim() === filterLower,
+          );
+        }
+      }
+
+      let matchesMerchandiseVariant = true;
+      if (merchandiseVariantFilter !== "all") {
+        const regMerch = reg.selected_merchandise || [];
+        const targetVar = merchandiseVariantFilter.toLowerCase().trim();
+        matchesMerchandiseVariant = regMerch.some((m) => {
+          const variations = parseMerchandiseVariations(m, reg.answers);
+          return variations.some((v) => {
+            const vVal = v.value.toLowerCase().trim();
+            const vCombined = `${v.label}: ${v.value}`.toLowerCase().trim();
+            return vVal === targetVar || vCombined === targetVar || targetVar.includes(vVal);
+          });
+        });
+      }
+
+      if (
+        !matchesSearch ||
+        !matchesStatus ||
+        !matchesSession ||
+        !matchesTicket ||
+        !matchesReviewer ||
+        !matchesMerchandise ||
+        !matchesMerchandiseVariant
+      ) {
         return false;
       }
 
@@ -1272,6 +1382,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     statusFilter,
     sessionFilter,
     ticketFilter,
+    merchandiseFilter,
+    merchandiseVariantFilter,
     reviewerFilter,
     selectedQuestionColumns,
     questionFilters,
@@ -2292,14 +2404,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
             .join("; ")
         : "";
 
-      const merchText = (r.selected_merchandise ?? [])
-        .map(
-          (m) =>
-            `${m.quantity}x ${m.name}${
-              m.selected_variations ? ` (${Object.values(m.selected_variations).join(", ")})` : ""
-            }`,
-        )
-        .join("; ");
+      const merchText = (r.selected_merchandise ?? []).map((m) => formatMerchandiseSummary(m, r.answers)).join("; ");
 
       return [
         `"${(r.member_name || "").replace(/"/g, '""')}"`,
@@ -2367,6 +2472,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       statusFilter !== "all" ||
       sessionFilter !== "all" ||
       ticketFilter !== "all" ||
+      merchandiseFilter !== "all" ||
+      merchandiseVariantFilter !== "all" ||
       reviewerFilter !== "all" ||
       activeQuestionFilterCount > 0,
   );
@@ -2383,6 +2490,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         onSelectStatusFilter={handleStatusFilterChange}
         onSelectSearchFilter={handleSearchChange}
         onSelectSessionFilter={handleSessionFilterChange}
+        onSelectMerchandiseFilter={handleMerchandiseStatsFilter}
       />
 
       <Card>
@@ -2686,6 +2794,95 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 </Select>
               )}
 
+              {hasMerchandise && (
+                <>
+                  <Select value={merchandiseFilter} onValueChange={handleMerchandiseFilterChange}>
+                    <SelectTrigger size="sm" className="h-8 text-xs">
+                      <Package className="mr-1 size-3 shrink-0 text-muted-foreground" />
+                      <span className="text-muted-foreground">Merchandise:</span>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectItem value="all">
+                          All Merchandise (
+                          {merchandiseFilterOptions.totalWithMerch + merchandiseFilterOptions.totalWithoutMerch})
+                        </SelectItem>
+                        <SelectItem value="has_merchandise">
+                          Has Merchandise ({merchandiseFilterOptions.totalWithMerch})
+                        </SelectItem>
+                        <SelectItem value="no_merchandise">
+                          No Merchandise ({merchandiseFilterOptions.totalWithoutMerch})
+                        </SelectItem>
+                        {merchandiseFilterOptions.items.length > 0 && (
+                          <>
+                            <SelectItem
+                              disabled
+                              value="__items_header__"
+                              className="font-semibold text-muted-foreground text-[10px] uppercase"
+                            >
+                              By Product Item
+                            </SelectItem>
+                            {merchandiseFilterOptions.items.map((item) => (
+                              <SelectItem key={item.id} value={item.name}>
+                                {item.name} ({item.count})
+                              </SelectItem>
+                            ))}
+                          </>
+                        )}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+
+                  {(merchandiseFilterOptions.sizes.length > 0 || merchandiseFilterOptions.variants.length > 0) && (
+                    <Select value={merchandiseVariantFilter} onValueChange={handleMerchandiseVariantFilterChange}>
+                      <SelectTrigger size="sm" className="h-8 text-xs">
+                        <Layers className="mr-1 size-3 shrink-0 text-muted-foreground" />
+                        <span className="text-muted-foreground">Variant / Size:</span>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectItem value="all">All Variants & Sizes</SelectItem>
+                          {merchandiseFilterOptions.sizes.length > 0 && (
+                            <>
+                              <SelectItem
+                                disabled
+                                value="__size_header__"
+                                className="font-semibold text-muted-foreground text-[10px] uppercase"
+                              >
+                                Sizes
+                              </SelectItem>
+                              {merchandiseFilterOptions.sizes.map((s) => (
+                                <SelectItem key={s.value} value={s.value}>
+                                  {s.label} ({s.count})
+                                </SelectItem>
+                              ))}
+                            </>
+                          )}
+                          {merchandiseFilterOptions.variants.length > 0 && (
+                            <>
+                              <SelectItem
+                                disabled
+                                value="__variant_header__"
+                                className="font-semibold text-muted-foreground text-[10px] uppercase"
+                              >
+                                Other Variations
+                              </SelectItem>
+                              {merchandiseFilterOptions.variants.map((v) => (
+                                <SelectItem key={v.value} value={v.value}>
+                                  {v.label} ({v.count})
+                                </SelectItem>
+                              ))}
+                            </>
+                          )}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  )}
+                </>
+              )}
+
               {isCurationMode && availableReviewers.length > 0 && (
                 <Select value={reviewerFilter} onValueChange={handleReviewerFilterChange}>
                   <SelectTrigger size="sm" className="h-8 text-xs">
@@ -2966,6 +3163,41 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                     onClick={() => handleTicketFilterChange("all")}
                     className="ml-0.5 rounded-full p-0.5 hover:bg-muted-foreground/20"
                     aria-label="Clear ticket filter"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </Badge>
+              )}
+              {merchandiseFilter !== "all" && (
+                <Badge variant="secondary" className="gap-1 font-normal text-xs">
+                  <Package className="size-3 text-primary" />
+                  <span>
+                    Merchandise:{" "}
+                    {merchandiseFilter === "has_merchandise"
+                      ? "Has Merchandise"
+                      : merchandiseFilter === "no_merchandise"
+                        ? "No Merchandise"
+                        : merchandiseFilter}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleMerchandiseFilterChange("all")}
+                    className="ml-0.5 rounded-full p-0.5 hover:bg-muted-foreground/20"
+                    aria-label="Clear merchandise filter"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </Badge>
+              )}
+              {merchandiseVariantFilter !== "all" && (
+                <Badge variant="secondary" className="gap-1 font-normal text-xs">
+                  <Layers className="size-3 text-primary" />
+                  <span>Variant/Size: {merchandiseVariantFilter}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleMerchandiseVariantFilterChange("all")}
+                    className="ml-0.5 rounded-full p-0.5 hover:bg-muted-foreground/20"
+                    aria-label="Clear variant filter"
                   >
                     <X className="size-3" />
                   </button>
@@ -3294,15 +3526,41 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                         {hasMerchandise && visibleStandardColumns.merchandise !== false && (
                           <TableCell onClick={() => setInspectRegistration(reg)}>
                             {reg.selected_merchandise && reg.selected_merchandise.length > 0 ? (
-                              <div className="flex flex-col gap-1">
-                                {reg.selected_merchandise.map((m) => (
-                                  <Badge key={m.id} variant="secondary" className="w-fit gap-1 font-normal text-[10px]">
-                                    <Package className="size-2.5 text-primary" />
-                                    <span>
-                                      {m.quantity}x {m.name}
-                                    </span>
-                                  </Badge>
-                                ))}
+                              <div className="flex flex-col gap-1.5 min-w-[140px] max-w-[260px]">
+                                {reg.selected_merchandise.map((m, mIdx) => {
+                                  const variations = parseMerchandiseVariations(m, reg.answers);
+                                  return (
+                                    <div
+                                      key={m.id || mIdx}
+                                      className="flex flex-col gap-1 rounded-md border border-border/50 bg-muted/40 p-1.5"
+                                    >
+                                      <div className="flex items-center gap-1.5 font-medium text-[11px] text-foreground leading-tight">
+                                        <Package className="size-3 shrink-0 text-primary" />
+                                        <span className="font-semibold text-primary">{m.quantity}x</span>
+                                        <span className="truncate">{m.name}</span>
+                                      </div>
+                                      {variations.length > 0 && (
+                                        <div className="flex flex-wrap items-center gap-1 pl-4.5">
+                                          {variations.map((v) => (
+                                            <Badge
+                                              key={v.key + v.value}
+                                              variant="outline"
+                                              className={cn(
+                                                "h-4 px-1 py-0 text-[9px] font-medium leading-none",
+                                                v.isSize
+                                                  ? "border-primary/40 bg-primary/10 text-primary font-semibold"
+                                                  : "border-muted-foreground/30 bg-muted/60 text-muted-foreground",
+                                              )}
+                                            >
+                                              {v.label ? `${v.label}: ` : ""}
+                                              {v.value}
+                                            </Badge>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
                                 {reg.delivery_request && (
                                   <Badge
                                     variant="outline"

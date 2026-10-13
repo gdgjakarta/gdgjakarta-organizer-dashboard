@@ -49,6 +49,7 @@ import { DEFAULT_COMBINED_QUESTIONS } from "@/lib/events/registration-defaults";
 import type { CustomQuestion, FirestoreEvent, FirestoreRegistration, RegistrationStatus } from "@/lib/firestore/types";
 import { cn, getInitials } from "@/lib/utils";
 
+import { parseMerchandiseVariations } from "./merchandise-helpers";
 import { ResendPaymentLinkDialog } from "./resend-payment-link-dialog";
 
 interface ApplicantDetailDialogProps {
@@ -764,17 +765,61 @@ export function ApplicantDetailDialog({
 
               {/* Merchandise Add-on Details if present */}
               {Boolean(registration.selected_merchandise && registration.selected_merchandise.length > 0) && (
-                <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-xs">
-                  <div className="flex min-w-0 items-center gap-1.5">
-                    <Package className="size-3.5 shrink-0 text-primary" />
-                    <span className="shrink-0 text-[11px] text-muted-foreground">Merch:</span>
-                    <span className="truncate font-medium text-[11px] text-foreground">
-                      {registration.selected_merchandise?.map((item) => `${item.quantity}x ${item.name}`).join(", ")}
-                    </span>
+                <div className="rounded-lg border bg-muted/30 p-2.5 text-xs space-y-2">
+                  <div className="flex items-center justify-between border-b pb-1.5 text-[11px] text-muted-foreground">
+                    <div className="flex items-center gap-1.5 font-medium text-foreground">
+                      <Package className="size-3.5 text-primary" />
+                      <span>Merchandise & Swag Orders</span>
+                    </div>
+                    <Badge variant="secondary" className="text-[10px]">
+                      {registration.selected_merchandise?.reduce((sum, it) => sum + (it.quantity || 1), 0)} items
+                    </Badge>
                   </div>
-                  <Badge variant="secondary" className="shrink-0 text-[10px]">
-                    {registration.selected_merchandise?.length} items
-                  </Badge>
+                  <div className="space-y-1.5">
+                    {registration.selected_merchandise?.map((item, idx) => {
+                      const variations = parseMerchandiseVariations(item, registration.answers);
+                      return (
+                        <div
+                          key={item.id || idx}
+                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 rounded-md border border-border/40 bg-background/60 p-2"
+                        >
+                          <div className="flex flex-col gap-1 min-w-0">
+                            <div className="flex items-center gap-1.5 font-medium text-[11px] text-foreground">
+                              <span className="font-semibold text-primary">{item.quantity || 1}x</span>
+                              <span className="truncate">{item.name}</span>
+                            </div>
+                            {variations.length > 0 && (
+                              <div className="flex flex-wrap items-center gap-1">
+                                {variations.map((v) => (
+                                  <Badge
+                                    key={v.key + v.value}
+                                    variant="outline"
+                                    className={cn(
+                                      "h-4.5 px-1.5 py-0 text-[10px] font-medium",
+                                      v.isSize
+                                        ? "border-primary/40 bg-primary/10 text-primary font-semibold"
+                                        : "border-muted-foreground/30 bg-muted/60 text-muted-foreground",
+                                    )}
+                                  >
+                                    {v.label ? `${v.label}: ` : ""}
+                                    {v.value}
+                                  </Badge>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <Badge
+                            variant="outline"
+                            className="w-fit shrink-0 text-[10px] font-mono text-muted-foreground self-start sm:self-auto"
+                          >
+                            {item.price
+                              ? `Rp ${(item.price * (item.quantity || 1)).toLocaleString("id-ID")}`
+                              : "Free Perk"}
+                          </Badge>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 
