@@ -145,6 +145,14 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
         setPaymentDeadlinesInMinutes(loadedPaymentDeadlines);
         setEmailTemplate(loadedEmailTemplate);
 
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent("gdg:payment-env-change", {
+              detail: { eventId: String(event.id), environment: loadedEnv },
+            }),
+          );
+        }
+
         initialSnapshotRef.current = JSON.stringify({
           paymentEnvironment: loadedEnv,
           merchandiseDeliveryEnv: loadedDeliveryEnv,
@@ -198,9 +206,27 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
         }
       }
     };
+    const handlePaymentEnvChange = (e: Event) => {
+      const customEvent = e as CustomEvent<{ eventId: string; environment: "production" | "sandbox" }>;
+      if (customEvent.detail && String(customEvent.detail.eventId) === String(event.id)) {
+        const nextEnv = customEvent.detail.environment;
+        setPaymentEnvironment(nextEnv);
+        if (initialSnapshotRef.current) {
+          try {
+            const parsed = JSON.parse(initialSnapshotRef.current);
+            parsed.paymentEnvironment = nextEnv;
+            initialSnapshotRef.current = JSON.stringify(parsed);
+          } catch {
+            // ignore
+          }
+        }
+      }
+    };
     window.addEventListener("gdg:merchandise-delivery-env-change", handleEnvChange);
+    window.addEventListener("gdg:payment-env-change", handlePaymentEnvChange);
     return () => {
       window.removeEventListener("gdg:merchandise-delivery-env-change", handleEnvChange);
+      window.removeEventListener("gdg:payment-env-change", handlePaymentEnvChange);
     };
   }, [event.id]);
 
@@ -216,6 +242,13 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
           }
           if (docData.payment_environment) {
             setPaymentEnvironment(docData.payment_environment);
+            if (typeof window !== "undefined") {
+              window.dispatchEvent(
+                new CustomEvent("gdg:payment-env-change", {
+                  detail: { eventId: String(event.id), environment: docData.payment_environment },
+                }),
+              );
+            }
           }
           if (typeof docData.merchandise_delivery_fee === "number") {
             setMerchandiseDeliveryFee(docData.merchandise_delivery_fee);
@@ -418,6 +451,11 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
         if (res.success) {
           if (typeof window !== "undefined") {
             window.dispatchEvent(
+              new CustomEvent("gdg:payment-env-change", {
+                detail: { eventId: String(event.id), environment: paymentEnvironment },
+              }),
+            );
+            window.dispatchEvent(
               new CustomEvent("gdg:merchandise-delivery-env-change", {
                 detail: { eventId: String(event.id), environment: merchandiseDeliveryEnv },
               }),
@@ -476,7 +514,15 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
       );
       toast.info("Unsaved payment settings discarded.");
     } catch {
-      setPaymentEnvironment(event.payment_environment ?? (event.is_test ? "sandbox" : "production"));
+      const fallbackPaymentEnv = event.payment_environment ?? (event.is_test ? "sandbox" : "production");
+      setPaymentEnvironment(fallbackPaymentEnv);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("gdg:payment-env-change", {
+            detail: { eventId: String(event.id), environment: fallbackPaymentEnv },
+          }),
+        );
+      }
       setMerchandiseDeliveryEnv(
         event.merchandise_delivery_payment_environment ??
           event.payment_environment ??
@@ -659,7 +705,17 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
         <CardContent className="space-y-6">
           <RadioGroup
             value={paymentEnvironment}
-            onValueChange={(val) => setPaymentEnvironment(val as "production" | "sandbox")}
+            onValueChange={(val) => {
+              const nextEnv = val as "production" | "sandbox";
+              setPaymentEnvironment(nextEnv);
+              if (typeof window !== "undefined") {
+                window.dispatchEvent(
+                  new CustomEvent("gdg:payment-env-change", {
+                    detail: { eventId: String(event.id), environment: nextEnv },
+                  }),
+                );
+              }
+            }}
             className="grid grid-cols-1 gap-3 sm:grid-cols-2"
           >
             {/* Sandbox Option */}

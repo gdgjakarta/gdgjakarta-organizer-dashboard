@@ -1,11 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   ChevronDown,
   ChevronUp,
   Image as ImageIcon,
+  Info,
+  Link as LinkIcon,
+  Loader2,
   Package,
   Plus,
   Ruler,
@@ -13,6 +16,7 @@ import {
   Sparkles,
   Star,
   Trash2,
+  UploadCloud,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -31,6 +35,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { VARIATION_TEMPLATES } from "@/lib/events/merchandise-templates";
 import type { EventMerchandiseItem, MerchandiseVariation } from "@/lib/firestore/types";
@@ -100,6 +105,10 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
   // Multiple product images
   const [images, setImages] = useState<string[]>([]);
   const [newImageInput, setNewImageInput] = useState("");
+  const [productImageMode, setProductImageMode] = useState<"upload" | "url">("upload");
+  const [isUploadingProduct, setIsUploadingProduct] = useState(false);
+  const [isDraggingProduct, setIsDraggingProduct] = useState(false);
+  const productFileInputRef = useRef<HTMLInputElement>(null);
 
   const [hasStockLimit, setHasStockLimit] = useState(false);
   const [stock, setStock] = useState<number | null>(null);
@@ -112,6 +121,10 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
   const [guidelineTitle, setGuidelineTitle] = useState("");
   const [guidelineText, setGuidelineText] = useState("");
   const [guidelineImageUrl, setGuidelineImageUrl] = useState("");
+  const [guidelineImageMode, setGuidelineImageMode] = useState<"upload" | "url">("upload");
+  const [isUploadingGuideline, setIsUploadingGuideline] = useState(false);
+  const [isDraggingGuideline, setIsDraggingGuideline] = useState(false);
+  const guidelineFileInputRef = useRef<HTMLInputElement>(null);
 
   // Temporary input states for adding variation options
   const [newVarName, setNewVarName] = useState("");

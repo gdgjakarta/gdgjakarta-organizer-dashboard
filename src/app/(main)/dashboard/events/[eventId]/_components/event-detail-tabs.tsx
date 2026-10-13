@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   CreditCard,
@@ -40,6 +40,49 @@ interface EventDetailTabsProps {
 
 export function EventDetailTabs({ eventId, event, registrations, initialRole }: EventDetailTabsProps) {
   const user = useAuthStore((s) => s.user);
+  const [activeEvent, setActiveEvent] = useState<FirestoreEvent>(event);
+
+  useEffect(() => {
+    setActiveEvent(event);
+  }, [event]);
+
+  useEffect(() => {
+    if (!eventId) return;
+
+    const handlePaymentEnvChange = (e: Event) => {
+      const customEvent = e as CustomEvent<{ eventId: string; environment: "production" | "sandbox" }>;
+      if (customEvent.detail && String(customEvent.detail.eventId) === String(eventId)) {
+        setActiveEvent((prev) => ({
+          ...prev,
+          payment_environment: customEvent.detail.environment,
+        }));
+      }
+    };
+    window.addEventListener("gdg:payment-env-change", handlePaymentEnvChange);
+
+    let unsubscribe: (() => void) | undefined;
+    async function setupSub() {
+      try {
+        const { subscribeFirestoreEventDoc } = await import("@/lib/firestore/client");
+        unsubscribe = subscribeFirestoreEventDoc(String(eventId), (docData) => {
+          if (docData) {
+            setActiveEvent((prev) => ({
+              ...prev,
+              ...docData,
+            }));
+          }
+        });
+      } catch (err) {
+        console.warn("[EventDetailTabs] Failed to subscribe to Firestore event doc:", err);
+      }
+    }
+    void setupSub();
+
+    return () => {
+      window.removeEventListener("gdg:payment-env-change", handlePaymentEnvChange);
+      unsubscribe?.();
+    };
+  }, [eventId]);
 
   // Check if current user is an Executive Organizer.
   // Non-organizers (Core Team, Team Member, Check-in Staff) only have access to Registrants and Highlights & Media.
@@ -107,48 +150,48 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
       </div>
 
       <TabsContent value="registrants" className="space-y-4">
-        <RegistrantsTab eventId={eventId} registrations={registrations} event={event} />
+        <RegistrantsTab eventId={eventId} registrations={registrations} event={activeEvent} />
       </TabsContent>
 
       {isOrganizer && (
         <>
           <TabsContent value="form" className="space-y-4">
-            <CustomFormTab event={event} />
+            <CustomFormTab event={activeEvent} />
           </TabsContent>
 
           <TabsContent value="tickets" className="space-y-4">
-            <TicketsTab event={event} />
+            <TicketsTab event={activeEvent} />
           </TabsContent>
 
           <TabsContent value="merch" className="space-y-4">
-            <MerchandiseTab event={event} />
+            <MerchandiseTab event={activeEvent} />
           </TabsContent>
 
           <TabsContent value="bundles" className="space-y-4">
-            <BundlesTab event={event} />
+            <BundlesTab event={activeEvent} />
           </TabsContent>
 
           <TabsContent value="delivery" className="space-y-4">
-            <MerchandiseDeliveryTab event={event} eventId={eventId} />
+            <MerchandiseDeliveryTab event={activeEvent} eventId={eventId} />
           </TabsContent>
 
           <TabsContent value="vouchers" className="space-y-4">
-            <VouchersTab event={event} />
+            <VouchersTab event={activeEvent} />
           </TabsContent>
 
           <TabsContent value="payment" className="space-y-4">
-            <PaymentGatewayTab event={event} />
+            <PaymentGatewayTab event={activeEvent} />
           </TabsContent>
         </>
       )}
 
       <TabsContent value="highlights" className="space-y-4">
-        <HighlightsMediaTab event={event} />
+        <HighlightsMediaTab event={activeEvent} />
       </TabsContent>
 
       {isOrganizer && (
         <TabsContent value="emails" className="space-y-4">
-          <EmailTemplatesTab event={event} />
+          <EmailTemplatesTab event={activeEvent} />
         </TabsContent>
       )}
     </Tabs>

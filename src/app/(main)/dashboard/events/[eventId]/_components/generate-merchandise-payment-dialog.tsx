@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 
 import { Check, Copy, CreditCard, ExternalLink, Loader2, QrCode, Sparkles, Tag } from "lucide-react";
 import { toast } from "sonner";
@@ -47,6 +47,80 @@ export function GenerateMerchandisePaymentDialog({
   const [includeCommitmentFee, setIncludeCommitmentFee] = useState(false);
   const [commitmentFeeAmount, _setCommitmentFeeAmount] = useState(50000);
   const [isPending, startTransition] = useTransition();
+
+  // Synchronized payment environment from Payment Gateway configuration
+  const initialEnv: "production" | "sandbox" = event.payment_environment ?? (event.is_test ? "sandbox" : "production");
+  const [paymentEnvironment, setPaymentEnvironment] = useState<"production" | "sandbox">(initialEnv);
+  const [latestEventConfig, setLatestEventConfig] = useState<Partial<FirestoreEvent> | null>(null);
+
+  // Sync if event prop changes
+  useEffect(() => {
+    const nextEnv = event.payment_environment ?? (event.is_test ? "sandbox" : "production");
+    setPaymentEnvironment(nextEnv);
+  }, [event.payment_environment, event.is_test]);
+
+  // Real-time synchronization across tabs/components in the same window
+  useEffect(() => {
+    const handleEnvChange = (e: Event) => {
+      const customEvent = e as CustomEvent<{ eventId: string; environment: "production" | "sandbox" }>;
+      if (customEvent.detail && String(customEvent.detail.eventId) === String(event.id)) {
+        setPaymentEnvironment(customEvent.detail.environment);
+      }
+    };
+    window.addEventListener("gdg:payment-env-change", handleEnvChange);
+    return () => {
+      window.removeEventListener("gdg:payment-env-change", handleEnvChange);
+    };
+  }, [event.id]);
+
+  // Load latest Firestore config when modal opens
+  useEffect(() => {
+    if (!event.id || !open) return;
+
+    async function loadLatestPaymentEnv() {
+      try {
+        const { getFirestoreEventById } = await import("@/lib/firestore/client");
+        const docData = await getFirestoreEventById(String(event.id));
+        if (docData) {
+          setLatestEventConfig(docData);
+          const resolvedEnv =
+            docData.payment_environment ??
+            event.payment_environment ??
+            (docData.is_test || event.is_test ? "sandbox" : "production");
+          setPaymentEnvironment(resolvedEnv);
+        }
+      } catch (err) {
+        console.warn("[GenerateMerchandisePaymentDialog] Failed to load latest payment config:", err);
+      }
+    }
+
+    void loadLatestPaymentEnv();
+  }, [event.id, event.payment_environment, event.is_test, open]);
+
+  // Real-time subscription to Firestore document
+  useEffect(() => {
+    if (!event.id) return;
+    let unsubscribe: (() => void) | undefined;
+    async function setupSub() {
+      try {
+        const { subscribeFirestoreEventDoc } = await import("@/lib/firestore/client");
+        unsubscribe = subscribeFirestoreEventDoc(String(event.id), (docData) => {
+          if (docData) {
+            setLatestEventConfig(docData);
+            if (docData.payment_environment) {
+              setPaymentEnvironment(docData.payment_environment);
+            }
+          }
+        });
+      } catch (err) {
+        console.warn("[GenerateMerchandisePaymentDialog] Failed to subscribe to Firestore:", err);
+      }
+    }
+    void setupSub();
+    return () => {
+      unsubscribe?.();
+    };
+  }, [event.id]);
 
   // Generated payment result
   const [paymentResult, setPaymentResult] = useState<{
@@ -174,9 +248,19 @@ export function GenerateMerchandisePaymentDialog({
             id: event.id,
             title: event.title,
             headerEmailUrl:
-              event.headerEmailUrl?.trim() || event.header_email_url?.trim() || DEFAULT_PAYMENT_HEADER_EMAIL_URL,
+              latestEventConfig?.headerEmailUrl?.trim() ||
+              latestEventConfig?.header_email_url?.trim() ||
+              event.headerEmailUrl?.trim() ||
+              event.header_email_url?.trim() ||
+              DEFAULT_PAYMENT_HEADER_EMAIL_URL,
             paymentDeadlineMinutes:
-              event.paymentDeadlinesInMinutes ?? event.paymentDeadlineMinutes ?? event.payment_deadline_minutes ?? 1440,
+              latestEventConfig?.paymentDeadlinesInMinutes ??
+              latestEventConfig?.paymentDeadlineMinutes ??
+              latestEventConfig?.payment_deadline_minutes ??
+              event.paymentDeadlinesInMinutes ??
+              event.paymentDeadlineMinutes ??
+              event.payment_deadline_minutes ??
+              1440,
           },
           items: [
             {
@@ -193,16 +277,16 @@ export function GenerateMerchandisePaymentDialog({
           payment: {
             paymentMethodTypes: ["QRIS"],
             sendEmail,
-            emailTemplate: event.payment_email_template ?? event.paymentEmailTemplate ?? "Ticketing",
+            emailTemplate:
+              latestEventConfig?.payment_email_template ??
+              latestEventConfig?.paymentEmailTemplate ??
+              event.payment_email_template ??
+              event.paymentEmailTemplate ??
+              "Ticketing",
           },
           referenceId: `MERCH-${Date.now().toString(36).toUpperCase()}`,
-          isProduction:
-            event.payment_environment === "production"
-              ? true
-              : event.payment_environment === "sandbox"
-                ? false
-                : undefined,
-          webhookUrl: event.payment_webhook_url ?? undefined,
+          isProduction: paymentEnvironment === "production",
+          webhookUrl: latestEventConfig?.payment_webhook_url ?? event.payment_webhook_url ?? undefined,
         });
 
         if (res.success && res.paymentUrl) {
@@ -263,7 +347,7 @@ export function GenerateMerchandisePaymentDialog({
             <div>
               <div className="flex items-center gap-2">
                 <DialogTitle className="font-semibold text-base">Generate DOKU Payment Link</DialogTitle>
-                {event.payment_environment === "sandbox" ? (
+                {paymentEnvironment === "sandbox" ? (
                   <Badge
                     variant="outline"
                     className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 text-[10px]"

@@ -97,6 +97,27 @@ export function TicketsTab({ event }: TicketsTabProps) {
     setTemplatesData(getAllTicketTemplates());
   };
 
+  const [currentPaymentEnv, setCurrentPaymentEnv] = useState<"production" | "sandbox">(
+    event.payment_environment ?? (event.is_test ? "sandbox" : "production"),
+  );
+
+  useEffect(() => {
+    setCurrentPaymentEnv(event.payment_environment ?? (event.is_test ? "sandbox" : "production"));
+  }, [event.payment_environment, event.is_test]);
+
+  useEffect(() => {
+    const handleEnvChange = (e: Event) => {
+      const customEvent = e as CustomEvent<{ eventId: string; environment: "production" | "sandbox" }>;
+      if (customEvent.detail && String(customEvent.detail.eventId) === String(event.id)) {
+        setCurrentPaymentEnv(customEvent.detail.environment);
+      }
+    };
+    window.addEventListener("gdg:payment-env-change", handleEnvChange);
+    return () => {
+      window.removeEventListener("gdg:payment-env-change", handleEnvChange);
+    };
+  }, [event.id]);
+
   // Load latest tickets and limits from Firestore document
   useEffect(() => {
     if (!event.id) return;
@@ -110,6 +131,9 @@ export function TicketsTab({ event }: TicketsTabProps) {
         }
         if (typeof docData?.max_tickets_per_person === "number") {
           setMaxTicketsPerPerson(docData.max_tickets_per_person);
+        }
+        if (docData?.payment_environment) {
+          setCurrentPaymentEnv(docData.payment_environment);
         }
       } catch (err) {
         console.warn("[TicketsTab] Failed to fetch latest event tickets:", err);
@@ -237,7 +261,7 @@ export function TicketsTab({ event }: TicketsTabProps) {
           <div>
             <div className="flex items-center gap-2">
               <CardTitle className="text-base sm:text-lg">Event Registration Tickets & Quotas</CardTitle>
-              {event.payment_environment === "sandbox" ? (
+              {currentPaymentEnv === "sandbox" ? (
                 <Badge
                   variant="outline"
                   className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 text-xs"
