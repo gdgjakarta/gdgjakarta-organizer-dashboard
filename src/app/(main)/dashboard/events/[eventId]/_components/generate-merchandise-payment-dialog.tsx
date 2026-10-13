@@ -193,6 +193,7 @@ export function GenerateMerchandisePaymentDialog({
           payment: {
             paymentMethodTypes: ["QRIS"],
             sendEmail,
+            emailTemplate: event.payment_email_template ?? event.paymentEmailTemplate ?? "Ticketing",
           },
           referenceId: `MERCH-${Date.now().toString(36).toUpperCase()}`,
           isProduction:

@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { buildRegistrationPaymentPayload } from "@/lib/events/doku-payment";
 import { getRegistrationPaymentDeadline } from "@/lib/events/payment-deadline";
@@ -111,11 +112,22 @@ export function ResendPaymentLinkDialog({
     return Math.max(0, ticketPrice + merchTotal + bundlePrice - discount);
   }, [registration]);
 
+  const defaultTemplate = useMemo(() => {
+    return (
+      event?.payment_email_template ??
+      event?.paymentEmailTemplate ??
+      (registration?.ticket_type === "commitment_fee" ? "Commitment Fee" : "Ticketing")
+    );
+  }, [event, registration]);
+
+  const [emailTemplate, setEmailTemplate] = useState<string>(defaultTemplate);
+
   const handleClose = () => {
     setGeneratedResult(null);
     setHasCopied(false);
     setIsCustom(false);
     setSelectedMinutes(1440);
+    setEmailTemplate(defaultTemplate);
     onOpenChange(false);
   };
 
@@ -135,6 +147,7 @@ export function ResendPaymentLinkDialog({
       const paymentPayload = buildRegistrationPaymentPayload(registration, event, {
         sendEmail,
         paymentDeadlineMinutes: activeMinutes,
+        emailTemplate,
       });
 
       const res = await generatePaymentLinkAction(paymentPayload);
@@ -391,20 +404,48 @@ export function ResendPaymentLinkDialog({
             </div>
 
             {/* Email Dispatch Switch */}
-            <div className="flex items-center justify-between rounded-lg border p-3">
-              <div className="space-y-0.5">
-                <Label
-                  htmlFor="send-email-switch"
-                  className="text-xs font-medium flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Mail className="size-3.5 text-muted-foreground" />
-                  Send Payment Link Email
-                </Label>
-                <p className="text-[11px] text-muted-foreground">
-                  Dispatches checkout instructions and invoice directly to attendee's email.
-                </p>
+            <div className="space-y-3 rounded-lg border p-3">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label
+                    htmlFor="send-email-switch"
+                    className="text-xs font-medium flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Mail className="size-3.5 text-muted-foreground" />
+                    Send Payment Link Email
+                  </Label>
+                  <p className="text-[11px] text-muted-foreground">
+                    Dispatches checkout instructions and invoice directly to attendee's email.
+                  </p>
+                </div>
+                <Switch id="send-email-switch" checked={sendEmail} onCheckedChange={setSendEmail} />
               </div>
-              <Switch id="send-email-switch" checked={sendEmail} onCheckedChange={setSendEmail} />
+
+              {sendEmail && (
+                <div className="border-t pt-2.5 space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <Label className="text-[11px] font-medium text-muted-foreground">Email Template:</Label>
+                    <Select value={emailTemplate} onValueChange={setEmailTemplate}>
+                      <SelectTrigger className="h-7 w-48 text-xs">
+                        <SelectValue placeholder="Select template" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Ticketing" className="text-xs">
+                          Ticketing
+                        </SelectItem>
+                        <SelectItem value="Commitment Fee" className="text-xs">
+                          Commitment Fee
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    {emailTemplate === "Commitment Fee"
+                      ? "Routes to n8n 'Send Payment Commitment Fee Email' node."
+                      : "Routes to n8n 'Send Payment Ticket Email' node."}
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         )}

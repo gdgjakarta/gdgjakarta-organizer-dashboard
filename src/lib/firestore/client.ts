@@ -1714,6 +1714,8 @@ const ALLOWED_EVENT_DOC_KEYS = new Set<string>([
   "paymentDeadlinesInMinutes",
   "paymentDeadlineMinutes",
   "payment_deadline_minutes",
+  "payment_email_template",
+  "paymentEmailTemplate",
   "registration_status",
   "registration_start_date",
   "registration_end_date",
@@ -2185,6 +2187,8 @@ export async function updateEventPaymentConfig(
     paymentDeadlinesInMinutes?: number | null;
     paymentDeadlineMinutes?: number | null;
     payment_deadline_minutes?: number | null;
+    payment_email_template?: string | null;
+    paymentEmailTemplate?: string | null;
   },
   baseEvent?: Partial<FirestoreEvent>,
 ): Promise<void> {
@@ -2193,6 +2197,7 @@ export async function updateEventPaymentConfig(
   const resolvedHeaderUrl = config.headerEmailUrl ?? config.header_email_url;
   const resolvedDeadline =
     config.paymentDeadlinesInMinutes ?? config.paymentDeadlineMinutes ?? config.payment_deadline_minutes;
+  const resolvedEmailTemplate = config.payment_email_template ?? config.paymentEmailTemplate;
 
   const updatePayload: Record<string, unknown> = {
     payment_environment: config.payment_environment,
@@ -2226,6 +2231,18 @@ export async function updateEventPaymentConfig(
             typeof resolvedDeadline === "number" && resolvedDeadline > 0 ? resolvedDeadline : deleteField(),
           payment_deadline_minutes:
             typeof resolvedDeadline === "number" && resolvedDeadline > 0 ? resolvedDeadline : deleteField(),
+        }
+      : {}),
+    ...(resolvedEmailTemplate !== undefined
+      ? {
+          payment_email_template:
+            resolvedEmailTemplate && resolvedEmailTemplate.trim().length > 0
+              ? resolvedEmailTemplate.trim()
+              : deleteField(),
+          paymentEmailTemplate:
+            resolvedEmailTemplate && resolvedEmailTemplate.trim().length > 0
+              ? resolvedEmailTemplate.trim()
+              : deleteField(),
         }
       : {}),
     updated_at: new Date().toISOString(),

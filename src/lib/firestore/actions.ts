@@ -544,6 +544,7 @@ export async function submitMerchandiseDeliveryRequestAction(input: SubmitMercha
       payment: {
         paymentMethodTypes: ["QRIS"],
         sendEmail: true,
+        emailTemplate: eventDoc?.payment_email_template ?? eventDoc?.paymentEmailTemplate ?? "Ticketing",
       },
       referenceId: `DELIV-${input.registrationId}-${Date.now().toString(36).toUpperCase()}`,
       isProduction,
@@ -785,6 +786,8 @@ export async function updateEventPaymentConfigAction(
     paymentDeadlinesInMinutes?: number | null;
     paymentDeadlineMinutes?: number | null;
     payment_deadline_minutes?: number | null;
+    payment_email_template?: string | null;
+    paymentEmailTemplate?: string | null;
   },
   baseEvent?: Partial<FirestoreEvent>,
 ) {

@@ -658,6 +658,10 @@ export function ApplicantDetailDialog({
         payment: {
           paymentMethodTypes: ["QRIS"],
           sendEmail: true,
+          emailTemplate:
+            event?.payment_email_template ??
+            event?.paymentEmailTemplate ??
+            (registration.ticket_type === "commitment_fee" ? "Commitment Fee" : "Ticketing"),
         },
         referenceId: registration.id,
         isProduction:

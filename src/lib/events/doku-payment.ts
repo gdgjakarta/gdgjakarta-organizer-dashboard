@@ -41,6 +41,7 @@ export interface PaymentFee {
 export interface PaymentOptions {
   paymentMethodTypes?: string[];
   sendEmail?: boolean;
+  emailTemplate?: "Commitment Fee" | "Ticketing" | string;
 }
 
 export interface DokuPaymentLinkRequest {
@@ -233,7 +234,12 @@ export function extractCustomerEmail(
 export function buildRegistrationPaymentPayload(
   registration: Partial<FirestoreRegistration>,
   event: Partial<FirestoreEvent>,
-  options?: { sendEmail?: boolean; paymentMethodTypes?: string[]; paymentDeadlineMinutes?: number },
+  options?: {
+    sendEmail?: boolean;
+    paymentMethodTypes?: string[];
+    paymentDeadlineMinutes?: number;
+    emailTemplate?: string;
+  },
 ): DokuPaymentLinkRequest {
   const answers = (registration.answers ?? {}) as Record<string, unknown>;
   const phoneStr = extractCustomerPhone(registration, answers);
@@ -304,6 +310,12 @@ export function buildRegistrationPaymentPayload(
     isProduction = false;
   }
 
+  const emailTemplate =
+    options?.emailTemplate ??
+    event.payment_email_template ??
+    event.paymentEmailTemplate ??
+    (registration.ticket_type === "commitment_fee" ? "Commitment Fee" : "Ticketing");
+
   return {
     customer: {
       name: nameStr,
@@ -337,6 +349,7 @@ export function buildRegistrationPaymentPayload(
     payment: {
       paymentMethodTypes: options?.paymentMethodTypes ?? ["QRIS"],
       sendEmail: options?.sendEmail ?? true,
+      emailTemplate,
     },
     referenceId: registration.id ?? `REG-${Date.now()}`,
     isProduction,

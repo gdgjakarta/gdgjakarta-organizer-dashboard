@@ -303,6 +303,8 @@ export interface FirestoreEvent {
   paymentDeadlinesInMinutes?: number | null;
   paymentDeadlineMinutes?: number | null;
   payment_deadline_minutes?: number | null;
+  payment_email_template?: "Commitment Fee" | "Ticketing" | string | null;
+  paymentEmailTemplate?: "Commitment Fee" | "Ticketing" | string | null;
   registration_status?: "Draft" | "Published" | "Closed";
   registration_start_date?: string | null;
   registration_end_date?: string | null;

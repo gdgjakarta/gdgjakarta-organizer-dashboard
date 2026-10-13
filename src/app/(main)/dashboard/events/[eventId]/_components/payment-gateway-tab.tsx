@@ -65,6 +65,11 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
   const [paymentDeadlinesInMinutes, setPaymentDeadlinesInMinutes] = useState<number>(
     event.paymentDeadlinesInMinutes ?? event.paymentDeadlineMinutes ?? event.payment_deadline_minutes ?? 1440,
   );
+  const [emailTemplate, setEmailTemplate] = useState<string>(
+    event.payment_email_template ??
+      event.paymentEmailTemplate ??
+      (event.tickets?.some((t) => t.type === "commitment_fee") ? "Commitment Fee" : "Ticketing"),
+  );
 
   const [isInitialLoaded, setIsInitialLoaded] = useState(false);
   const initialSnapshotRef = useRef<string | null>(null);
@@ -76,8 +81,16 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
       merchandiseDeliveryFee,
       headerEmailUrl,
       paymentDeadlinesInMinutes,
+      emailTemplate,
     });
-  }, [paymentEnvironment, merchandiseDeliveryEnv, merchandiseDeliveryFee, headerEmailUrl, paymentDeadlinesInMinutes]);
+  }, [
+    paymentEnvironment,
+    merchandiseDeliveryEnv,
+    merchandiseDeliveryFee,
+    headerEmailUrl,
+    paymentDeadlinesInMinutes,
+    emailTemplate,
+  ]);
 
   const isDirty =
     isInitialLoaded && initialSnapshotRef.current !== null && initialSnapshotRef.current !== currentSnapshot;
@@ -118,12 +131,19 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
           event.paymentDeadlineMinutes ??
           event.payment_deadline_minutes ??
           1440;
+        const loadedEmailTemplate =
+          docData?.payment_email_template ??
+          docData?.paymentEmailTemplate ??
+          event.payment_email_template ??
+          event.paymentEmailTemplate ??
+          (event.tickets?.some((t) => t.type === "commitment_fee") ? "Commitment Fee" : "Ticketing");
 
         setPaymentEnvironment(loadedEnv);
         setMerchandiseDeliveryEnv(loadedDeliveryEnv);
         setMerchandiseDeliveryFee(loadedDeliveryFee);
         setHeaderEmailUrl(loadedHeaderEmail);
         setPaymentDeadlinesInMinutes(loadedPaymentDeadlines);
+        setEmailTemplate(loadedEmailTemplate);
 
         initialSnapshotRef.current = JSON.stringify({
           paymentEnvironment: loadedEnv,
@@ -131,6 +151,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
           merchandiseDeliveryFee: loadedDeliveryFee,
           headerEmailUrl: loadedHeaderEmail,
           paymentDeadlinesInMinutes: loadedPaymentDeadlines,
+          emailTemplate: loadedEmailTemplate,
         });
       } catch (err) {
         console.warn("[PaymentGatewayTab] Failed to fetch latest Firestore config:", err);
@@ -140,12 +161,17 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
         const fallbackHeaderEmail = event.headerEmailUrl ?? event.header_email_url ?? DEFAULT_PAYMENT_HEADER_EMAIL_URL;
         const fallbackPaymentDeadlines =
           event.paymentDeadlinesInMinutes ?? event.paymentDeadlineMinutes ?? event.payment_deadline_minutes ?? 1440;
+        const fallbackEmailTemplate =
+          event.payment_email_template ??
+          event.paymentEmailTemplate ??
+          (event.tickets?.some((t) => t.type === "commitment_fee") ? "Commitment Fee" : "Ticketing");
         initialSnapshotRef.current ??= JSON.stringify({
           paymentEnvironment: fallbackEnv,
           merchandiseDeliveryEnv: fallbackDeliveryEnv,
           merchandiseDeliveryFee: fallbackDeliveryFee,
           headerEmailUrl: fallbackHeaderEmail,
           paymentDeadlinesInMinutes: fallbackPaymentDeadlines,
+          emailTemplate: fallbackEmailTemplate,
         });
       } finally {
         setIsInitialLoaded(true);
@@ -203,6 +229,10 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
           if (typeof incomingDeadline === "number") {
             setPaymentDeadlinesInMinutes(incomingDeadline);
           }
+          const incomingEmailTemplate = docData.payment_email_template ?? docData.paymentEmailTemplate;
+          if (incomingEmailTemplate) {
+            setEmailTemplate(incomingEmailTemplate);
+          }
           if (initialSnapshotRef.current) {
             try {
               const parsed = JSON.parse(initialSnapshotRef.current);
@@ -220,6 +250,9 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
               }
               if (typeof incomingDeadline === "number") {
                 parsed.paymentDeadlinesInMinutes = incomingDeadline;
+              }
+              if (incomingEmailTemplate) {
+                parsed.emailTemplate = incomingEmailTemplate;
               }
               initialSnapshotRef.current = JSON.stringify(parsed);
             } catch {
@@ -376,6 +409,8 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
             paymentDeadlinesInMinutes,
             paymentDeadlineMinutes: paymentDeadlinesInMinutes,
             payment_deadline_minutes: paymentDeadlinesInMinutes,
+            payment_email_template: emailTemplate,
+            paymentEmailTemplate: emailTemplate,
           },
           event,
         );
@@ -394,6 +429,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
             merchandiseDeliveryFee,
             headerEmailUrl,
             paymentDeadlinesInMinutes,
+            emailTemplate,
           });
           toast.success("Payment gateway settings saved successfully!");
           router.refresh();
@@ -417,6 +453,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
         merchandiseDeliveryFee?: number;
         headerEmailUrl?: string;
         paymentDeadlinesInMinutes?: number;
+        emailTemplate?: string;
       };
       setPaymentEnvironment(parsed.paymentEnvironment);
       setMerchandiseDeliveryEnv(parsed.merchandiseDeliveryEnv ?? parsed.paymentEnvironment);
@@ -431,6 +468,12 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
           event.payment_deadline_minutes ??
           1440,
       );
+      setEmailTemplate(
+        parsed.emailTemplate ??
+          event.payment_email_template ??
+          event.paymentEmailTemplate ??
+          (event.tickets?.some((t) => t.type === "commitment_fee") ? "Commitment Fee" : "Ticketing"),
+      );
       toast.info("Unsaved payment settings discarded.");
     } catch {
       setPaymentEnvironment(event.payment_environment ?? (event.is_test ? "sandbox" : "production"));
@@ -443,6 +486,11 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
       setHeaderEmailUrl(event.headerEmailUrl ?? event.header_email_url ?? DEFAULT_PAYMENT_HEADER_EMAIL_URL);
       setPaymentDeadlinesInMinutes(
         event.paymentDeadlinesInMinutes ?? event.paymentDeadlineMinutes ?? event.payment_deadline_minutes ?? 1440,
+      );
+      setEmailTemplate(
+        event.payment_email_template ??
+          event.paymentEmailTemplate ??
+          (event.tickets?.some((t) => t.type === "commitment_fee") ? "Commitment Fee" : "Ticketing"),
       );
     }
   };
@@ -905,6 +953,98 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
               </p>
             </Field>
           </div>
+
+          {/* ── Payment Request Email Template Configuration ── */}
+          <div className="space-y-4 border-t pt-4">
+            <div className="flex items-center gap-2">
+              <Mail className="size-4 text-primary" />
+              <div>
+                <h4 className="font-semibold text-xs text-foreground">Payment Request Email Template</h4>
+                <p className="text-[11px] text-muted-foreground">
+                  Configure which automated email template n8n uses when generating a DOKU payment link (passes key{" "}
+                  <code className="rounded bg-muted px-1 text-[11px]">payment.emailTemplate</code> to the checkout
+                  webhook).
+                </p>
+              </div>
+            </div>
+
+            <RadioGroup
+              value={emailTemplate}
+              onValueChange={(val) => setEmailTemplate(val)}
+              className="grid grid-cols-1 gap-3 sm:grid-cols-2"
+            >
+              {/* Ticketing Template Option */}
+              <Label
+                htmlFor="template-ticketing"
+                className={cn(
+                  "relative flex cursor-pointer flex-col gap-2 rounded-lg border p-4 transition-colors",
+                  emailTemplate === "Ticketing"
+                    ? "border-primary bg-primary/5 ring-1 ring-primary"
+                    : "border-border hover:bg-muted/50",
+                )}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="Ticketing" id="template-ticketing" />
+                    <span className="font-semibold text-xs">Ticketing (Standard Order Email)</span>
+                  </div>
+                  <Badge variant="outline" className="border-blue-500/30 text-[10px] text-blue-600 dark:text-blue-400">
+                    Standard Orders
+                  </Badge>
+                </div>
+                <p className="font-normal text-muted-foreground text-xs leading-relaxed">
+                  Sends an itemized order summary email with ticket details and merchandise items (
+                  <code className="rounded bg-muted px-1 text-[11px]">Payment Required: [Event Name]</code>). Instructs
+                  attendees that their official ticket with a unique entry QR code will arrive within 24 hours after
+                  payment.
+                </p>
+                <div className="flex items-center gap-1.5 pt-1 text-[10px] text-muted-foreground">
+                  <span className="font-medium text-foreground">n8n Routing:</span>
+                  <span>
+                    Routes to <strong>Send Payment Ticket Email</strong> node
+                  </span>
+                </div>
+              </Label>
+
+              {/* Commitment Fee Template Option */}
+              <Label
+                htmlFor="template-commitment-fee"
+                className={cn(
+                  "relative flex cursor-pointer flex-col gap-2 rounded-lg border p-4 transition-colors",
+                  emailTemplate === "Commitment Fee"
+                    ? "border-primary bg-primary/5 ring-1 ring-primary"
+                    : "border-border hover:bg-muted/50",
+                )}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="Commitment Fee" id="template-commitment-fee" />
+                    <span className="font-semibold text-xs">Commitment Fee (RSVP Reservation Email)</span>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className="border-amber-500/30 text-[10px] text-amber-600 dark:text-amber-400"
+                  >
+                    Curated Admission
+                  </Badge>
+                </div>
+                <p className="font-normal text-muted-foreground text-xs leading-relaxed">
+                  Sends an acceptance notice with commitment deposit payment instructions (
+                  <code className="rounded bg-muted px-1 text-[11px]">
+                    Action Required: Pay Commitment Fee for [Event Name]
+                  </code>
+                  ). Highlights limited seat allocation and non-refundable attendance policy to guarantee high show-up
+                  rates.
+                </p>
+                <div className="flex items-center gap-1.5 pt-1 text-[10px] text-muted-foreground">
+                  <span className="font-medium text-foreground">n8n Routing:</span>
+                  <span>
+                    Routes to <strong>Send Payment Commitment Fee Email</strong> node
+                  </span>
+                </div>
+              </Label>
+            </RadioGroup>
+          </div>
         </CardContent>
       </Card>
 
@@ -1084,8 +1224,8 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
         saveLabel="Save Payment Settings"
         savingLabel="Saving Settings..."
         savedLabel="Settings Saved"
-        statusInfo={`Env: ${paymentEnvironment === "production" ? "Production" : "Sandbox"} | Deadline: ${paymentDeadlinesInMinutes}m | Merch Fee: Rp ${merchandiseDeliveryFee.toLocaleString("id-ID")}`}
-        helperText="Payment environment, email invoice banner, expiration deadline, and delivery fees take effect immediately for new payment links."
+        statusInfo={`Env: ${paymentEnvironment === "production" ? "Production" : "Sandbox"} | Template: ${emailTemplate} | Deadline: ${paymentDeadlinesInMinutes}m | Merch Fee: Rp ${merchandiseDeliveryFee.toLocaleString("id-ID")}`}
+        helperText="Payment environment, email template, banner, deadline, and delivery fees take effect immediately for new payment links."
       />
     </div>
   );

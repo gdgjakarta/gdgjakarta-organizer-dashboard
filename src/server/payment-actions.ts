@@ -49,6 +49,7 @@ const dokuPaymentRequestSchema = z.object({
     .object({
       paymentMethodTypes: z.array(z.string()).optional().default(["QRIS"]),
       sendEmail: z.boolean().optional().default(true),
+      emailTemplate: z.string().optional(),
     })
     .optional(),
   referenceId: z.string().optional(),
