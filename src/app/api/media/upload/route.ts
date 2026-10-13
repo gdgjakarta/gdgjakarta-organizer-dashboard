@@ -1,20 +1,21 @@
 import { cookies } from "next/headers";
 import { type NextRequest, NextResponse } from "next/server";
 
+import { isExecutiveOrganizer } from "@/lib/auth-roles";
 import { uploadMediaObject } from "@/lib/r2/client";
 import type { MediaItem } from "@/lib/r2/types";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Checks whether user has organizer or core team authorization via session cookies.
+ * Checks whether user has executive organizer authorization via session cookies.
  */
 async function isAuthorizedOrganizerSession(): Promise<boolean> {
   try {
     const cookieStore = await cookies();
     const token = cookieStore.get("auth_token")?.value;
     const role = cookieStore.get("auth_role")?.value;
-    return Boolean(token) && (role === "organizer" || role === "core_team" || role === "googler");
+    return Boolean(token) && isExecutiveOrganizer(role);
   } catch {
     return false;
   }

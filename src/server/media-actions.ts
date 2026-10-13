@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 
+import { isExecutiveOrganizer } from "@/lib/auth-roles";
 import {
   bulkDeleteMediaObjects,
   createFolderMarker,
@@ -16,15 +17,15 @@ import type { FolderItem, MediaItem, R2DirectoryContent } from "@/lib/r2/types";
 import { buildStorageKey, normalizePrefix, sanitizeStorageName, splitStorageKey } from "@/lib/r2/utils";
 
 /**
- * Verifies that the caller has an active, authenticated organizer session.
- * RBAC Guard: Organizers, Core Team, and Googlers only.
+ * Verifies that the caller has an active, authenticated executive organizer session.
+ * RBAC Guard: Organizers and Googlers only (team members, check-in staff, core team, and members excluded).
  */
 async function isAuthorizedOrganizerSession(): Promise<boolean> {
   try {
     const cookieStore = await cookies();
     const token = cookieStore.get("auth_token")?.value;
     const role = cookieStore.get("auth_role")?.value;
-    return Boolean(token) && (role === "organizer" || role === "core_team" || role === "googler");
+    return Boolean(token) && isExecutiveOrganizer(role);
   } catch {
     return false;
   }

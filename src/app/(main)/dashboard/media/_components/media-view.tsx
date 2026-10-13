@@ -2,6 +2,8 @@
 
 import * as React from "react";
 
+import { useRouter } from "next/navigation";
+
 import {
   FileArchive,
   FileText,
@@ -27,9 +29,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Kbd } from "@/components/ui/kbd";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { isExecutiveOrganizer } from "@/lib/auth-roles";
 import type { FolderItem, MediaItem, R2DirectoryContent } from "@/lib/r2/types";
 import { formatFileSize } from "@/lib/r2/utils";
 import { fetchMediaDirectoryAction } from "@/server/media-actions";
+import { useAuthStore } from "@/stores/auth/auth-provider";
 
 import { BulkDeleteDialog } from "./bulk-delete-dialog";
 import { CreateFolderDialog } from "./create-folder-dialog";
@@ -47,6 +51,15 @@ interface MediaViewProps {
 }
 
 export function MediaView({ initialContent }: MediaViewProps) {
+  const user = useAuthStore((s) => s.user);
+  const router = useRouter();
+
+  React.useEffect(() => {
+    if (user && !isExecutiveOrganizer(user)) {
+      router.replace("/dashboard/member");
+    }
+  }, [user, router]);
+
   const [content, setContent] = React.useState<R2DirectoryContent>(initialContent);
   const [currentPrefix, setCurrentPrefix] = React.useState<string>(initialContent.currentPrefix);
   const [isLoading, setIsLoading] = React.useState(false);
@@ -146,6 +159,10 @@ export function MediaView({ initialContent }: MediaViewProps) {
   const totalSizeBytes = React.useMemo(() => {
     return content.items.reduce((acc, it) => acc + it.size, 0);
   }, [content.items]);
+
+  if (user && !isExecutiveOrganizer(user)) {
+    return null;
+  }
 
   return (
     <div className="flex flex-col gap-6 p-4 md:p-6">

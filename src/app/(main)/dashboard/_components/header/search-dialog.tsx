@@ -17,8 +17,10 @@ import {
   CommandList,
   CommandSeparator,
 } from "@/components/ui/command";
-import type { NavMainItem } from "@/navigation/sidebar/sidebar-items";
-import { memberSidebarItems, organizerSidebarItems } from "@/navigation/sidebar/sidebar-items";
+import { isCoreTeamOrStaff, isExecutiveOrganizer } from "@/lib/auth-roles";
+import type { NavGroup, NavMainItem } from "@/navigation/sidebar/sidebar-items";
+import { coreTeamSidebarItems, memberSidebarItems, organizerSidebarItems } from "@/navigation/sidebar/sidebar-items";
+import { useAuthStore } from "@/stores/auth/auth-provider";
 
 type SearchItem = {
   id: string;
@@ -30,45 +32,42 @@ type SearchItem = {
   newTab?: boolean;
 };
 
-const sidebarItems = [...organizerSidebarItems, ...memberSidebarItems];
-const sidebarGroupLabels = new Set(sidebarItems.flatMap((group) => (group.label ? [group.label] : [])));
+function buildSearchItems(navGroups: NavGroup[]): SearchItem[] {
+  const sidebarGroupLabels = new Set(navGroups.flatMap((group) => (group.label ? [group.label] : [])));
+  const getSubItemGroup = (groupLabel: string | undefined, itemTitle: string) =>
+    sidebarGroupLabels.has(itemTitle) ? (groupLabel ?? "Other") : itemTitle;
 
-function getSubItemGroup(groupLabel: string | undefined, itemTitle: string) {
-  return sidebarGroupLabels.has(itemTitle) ? (groupLabel ?? "Other") : itemTitle;
+  return navGroups.flatMap((group) =>
+    group.items.flatMap((item) => {
+      if (item.subItems) {
+        return item.subItems.map((sub) => ({
+          id: sub.id,
+          group: getSubItemGroup(group.label, item.title),
+          label: sub.title,
+          url: sub.url,
+          icon: item.icon,
+          disabled: sub.disabled,
+          newTab: sub.newTab,
+        }));
+      }
+      return [
+        {
+          id: item.id,
+          group: group.label ?? "Other",
+          label: item.title,
+          url: item.url,
+          icon: item.icon,
+          disabled: item.disabled,
+          newTab: item.newTab,
+        },
+      ];
+    }),
+  );
 }
-
-const searchItems: SearchItem[] = sidebarItems.flatMap((group) =>
-  group.items.flatMap((item) => {
-    if (item.subItems) {
-      return item.subItems.map((sub) => ({
-        id: sub.id,
-        group: getSubItemGroup(group.label, item.title),
-        label: sub.title,
-        url: sub.url,
-        icon: item.icon,
-        disabled: sub.disabled,
-        newTab: sub.newTab,
-      }));
-    }
-    return [
-      {
-        id: item.id,
-        group: group.label ?? "Other",
-        label: item.title,
-        url: item.url,
-        icon: item.icon,
-        disabled: item.disabled,
-        newTab: item.newTab,
-      },
-    ];
-  }),
-);
 
 function getAvailableItems(items: SearchItem[]) {
   return items.filter((item) => !item.disabled && !item.url.includes("coming-soon"));
 }
-
-const recommendations = getAvailableItems(searchItems);
 
 function groupBy(items: SearchItem[]) {
   const groups = [...new Set(items.map((item) => item.group))];
@@ -82,6 +81,23 @@ export function SearchDialog() {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const router = useRouter();
+  const user = useAuthStore((s) => s.user);
+
+  const activeNavGroups = React.useMemo(() => {
+    if (user) {
+      if (isExecutiveOrganizer(user)) {
+        return [...organizerSidebarItems, ...memberSidebarItems];
+      }
+      if (isCoreTeamOrStaff(user)) {
+        return [...coreTeamSidebarItems, ...memberSidebarItems];
+      }
+      return memberSidebarItems;
+    }
+    return memberSidebarItems;
+  }, [user]);
+
+  const searchItems = React.useMemo(() => buildSearchItems(activeNavGroups), [activeNavGroups]);
+  const recommendations = React.useMemo(() => getAvailableItems(searchItems), [searchItems]);
 
   React.useEffect(() => {
     const down = (e: KeyboardEvent) => {
