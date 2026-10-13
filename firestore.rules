@@ -566,6 +566,7 @@ service cloud.firestore {
           'checked_in_at', 'is_checked_in', 'bevy_attendee_id', 'checkin_date',
           'attendee_code',
           'payment_status', 'payment_url', 'payment_invoice_number', 'payment_amount', 'payment_expired_datetime',
+          'payment_environment', 'payment_method', 'payment_channel', 'payment_reference',
           'voucher_id', 'voucher_code', 'voucher_discount_amount', 'voucher_discount_type', 'voucher_discount_value', 'voucher_applies_to',
           'referral_code', 'referrer_member_id', 'referrer_name',
           'referral_discount_percent', 'referral_discount_percentage', 'referral_discount_type', 'referral_discount_amount',
@@ -580,29 +581,29 @@ service cloud.firestore {
         data.member_id is string && data.member_id.size() > 0 && data.member_id.size() <= 128 &&
         data.member_name is string && data.member_name.size() > 0 && data.member_name.size() <= 150 &&
         data.member_email is string && data.member_email.size() > 0 && data.member_email.size() <= 150 &&
-        data.status is string && (data.status in ['pending', 'approved', 'registered', 'rejected', 'waitlisted', 'attended', 'waiting_for_payment', 'paid_and_registered', 'expired', 'failed', 'canceled', 'cancelled']) &&
+        data.status is string && (data.status in ['pending', 'approved', 'registered', 'rejected', 'waitlisted', 'attended', 'waiting_for_payment', 'paid_and_registered', 'expired', 'failed', 'canceled', 'cancelled'] || data.status.lower() in ['pending', 'approved', 'registered', 'rejected', 'waitlisted', 'attended', 'waiting_for_payment', 'paid_and_registered', 'expired', 'failed', 'canceled', 'cancelled']) &&
         data.registered_at is string && data.registered_at.size() <= 50 &&
-        (!('member_phone' in data) || data.member_phone == null || (data.member_phone is string && data.member_phone.size() <= 50)) &&
-        (!('member_avatar' in data) || data.member_avatar == null || (data.member_avatar is string && data.member_avatar.size() <= 3000)) &&
-        (!('member_role' in data) || data.member_role == null || (data.member_role is string && data.member_role.size() <= 100)) &&
+        (!('member_phone' in data) || data.member_phone == null || (data.member_phone is string && data.member_phone.size() <= 50) || data.member_phone is int || data.member_phone is float) &&
+        (!('member_avatar' in data) || data.member_avatar == null || (data.member_avatar is string && data.member_avatar.size() <= 50000)) &&
+        (!('member_role' in data) || data.member_role == null || (data.member_role is string && data.member_role.size() <= 200)) &&
         (!('answers' in data) || data.answers == null || (data.answers is map && data.answers.size() <= 500)) &&
         (!('notes' in data) || data.notes == null || (data.notes is string && data.notes.size() <= 2000)) &&
         (!('ticket_tier' in data) || data.ticket_tier == null || (data.ticket_tier is string && data.ticket_tier.size() <= 100)) &&
-        (!('ticket_id' in data) || data.ticket_id == null || (data.ticket_id is string && data.ticket_id.size() <= 128) || data.ticket_id is int || data.ticket_id is float) &&
-        (!('ticket_name' in data) || data.ticket_name == null || (data.ticket_name is string && data.ticket_name.size() <= 200)) &&
+        (!('ticket_id' in data) || data.ticket_id == null || (data.ticket_id is string && data.ticket_id.size() <= 200) || data.ticket_id is int || data.ticket_id is float) &&
+        (!('ticket_name' in data) || data.ticket_name == null || (data.ticket_name is string && data.ticket_name.size() <= 500)) &&
         (!('ticket_type' in data) || data.ticket_type == null || (data.ticket_type is string && data.ticket_type.size() <= 50)) &&
-        (!('ticket_price' in data) || data.ticket_price == null || ((data.ticket_price is int || data.ticket_price is float) && data.ticket_price >= 0)) &&
-        (!('bundle_id' in data) || data.bundle_id == null || (data.bundle_id is string && data.bundle_id.size() <= 128) || data.bundle_id is int || data.bundle_id is float) &&
-        (!('bundle_name' in data) || data.bundle_name == null || (data.bundle_name is string && data.bundle_name.size() <= 200)) &&
-        (!('bundle_price' in data) || data.bundle_price == null || ((data.bundle_price is int || data.bundle_price is float) && data.bundle_price >= 0)) &&
-        (!('selected_merchandise' in data) || data.selected_merchandise == null || (data.selected_merchandise is list && data.selected_merchandise.size() <= 50)) &&
-        (!('session_id' in data) || data.session_id == null || (data.session_id is string && data.session_id.size() <= 128) || data.session_id is int || data.session_id is float) &&
-        (!('session_title' in data) || data.session_title == null || (data.session_title is string && data.session_title.size() <= 200)) &&
+        (!('ticket_price' in data) || data.ticket_price == null || ((data.ticket_price is int || data.ticket_price is float) && data.ticket_price >= 0) || (data.ticket_price is string && data.ticket_price.size() <= 30)) &&
+        (!('bundle_id' in data) || data.bundle_id == null || (data.bundle_id is string && data.bundle_id.size() <= 200) || data.bundle_id is int || data.bundle_id is float) &&
+        (!('bundle_name' in data) || data.bundle_name == null || (data.bundle_name is string && data.bundle_name.size() <= 500)) &&
+        (!('bundle_price' in data) || data.bundle_price == null || ((data.bundle_price is int || data.bundle_price is float) && data.bundle_price >= 0) || (data.bundle_price is string && data.bundle_price.size() <= 30)) &&
+        (!('selected_merchandise' in data) || data.selected_merchandise == null || (data.selected_merchandise is list && data.selected_merchandise.size() <= 200)) &&
+        (!('session_id' in data) || data.session_id == null || (data.session_id is string && data.session_id.size() <= 200) || data.session_id is int || data.session_id is float) &&
+        (!('session_title' in data) || data.session_title == null || (data.session_title is string && data.session_title.size() <= 500)) &&
         (!('reviewed_at' in data) || data.reviewed_at == null || (data.reviewed_at is string && data.reviewed_at.size() <= 50)) &&
         (!('reviewed_by_id' in data) || data.reviewed_by_id == null || (data.reviewed_by_id is string && data.reviewed_by_id.size() <= 128)) &&
         (!('reviewed_by_name' in data) || data.reviewed_by_name == null || (data.reviewed_by_name is string && data.reviewed_by_name.size() <= 150)) &&
         (!('reviewed_by_email' in data) || data.reviewed_by_email == null || (data.reviewed_by_email is string && data.reviewed_by_email.size() <= 150)) &&
-        (!('status_logs' in data) || data.status_logs == null || (data.status_logs is list && data.status_logs.size() <= 100)) &&
+        (!('status_logs' in data) || data.status_logs == null || (data.status_logs is list && data.status_logs.size() <= 200)) &&
         (!('checked_in_at' in data) || data.checked_in_at == null || (data.checked_in_at is string && data.checked_in_at.size() <= 50)) &&
         (!('is_checked_in' in data) || data.is_checked_in == null || data.is_checked_in is bool) &&
         (!('bevy_attendee_id' in data) || data.bevy_attendee_id == null || data.bevy_attendee_id is int || data.bevy_attendee_id is float || (data.bevy_attendee_id is string && data.bevy_attendee_id.size() <= 64)) &&
@@ -610,28 +611,32 @@ service cloud.firestore {
         (!('attendee_code' in data) || data.attendee_code == null || (data.attendee_code is string && data.attendee_code.size() <= 100)) &&
         (!('event_picture_url' in data) || data.event_picture_url == null || (data.event_picture_url is string && data.event_picture_url.size() <= 50000)) &&
         (!('event_banner_url' in data) || data.event_banner_url == null || (data.event_banner_url is string && data.event_banner_url.size() <= 50000)) &&
-        (!('payment_status' in data) || data.payment_status == null || (data.payment_status is string && (data.payment_status in ['unpaid', 'pending', 'paid', 'expired', 'failed', 'canceled', 'cancelled', 'refunded', 'PENDING', 'PAID', 'FAILED', 'EXPIRED', 'REFUNDED', 'SUCCESS']))) &&
-        (!('payment_url' in data) || data.payment_url == null || (data.payment_url is string && data.payment_url.size() <= 2000)) &&
-        (!('payment_invoice_number' in data) || data.payment_invoice_number == null || (data.payment_invoice_number is string && data.payment_invoice_number.size() <= 128)) &&
-        (!('payment_amount' in data) || data.payment_amount == null || ((data.payment_amount is int || data.payment_amount is float) && data.payment_amount >= 0) || (data.payment_amount is string && data.payment_amount.size() <= 30)) &&
-        (!('payment_expired_datetime' in data) || data.payment_expired_datetime == null || (data.payment_expired_datetime is string && data.payment_expired_datetime.size() <= 100) || data.payment_expired_datetime is int || data.payment_expired_datetime is float) &&
+        (!('payment_status' in data) || data.payment_status == null || (data.payment_status is string && data.payment_status.size() <= 100)) &&
+        (!('payment_url' in data) || data.payment_url == null || (data.payment_url is string && data.payment_url.size() <= 50000)) &&
+        (!('payment_invoice_number' in data) || data.payment_invoice_number == null || (data.payment_invoice_number is string && data.payment_invoice_number.size() <= 500) || data.payment_invoice_number is int || data.payment_invoice_number is float) &&
+        (!('payment_amount' in data) || data.payment_amount == null || ((data.payment_amount is int || data.payment_amount is float) && data.payment_amount >= 0) || (data.payment_amount is string && data.payment_amount.size() <= 50)) &&
+        (!('payment_expired_datetime' in data) || data.payment_expired_datetime == null || (data.payment_expired_datetime is string && data.payment_expired_datetime.size() <= 500) || data.payment_expired_datetime is int || data.payment_expired_datetime is float || data.payment_expired_datetime is timestamp) &&
+        (!('payment_environment' in data) || data.payment_environment == null || (data.payment_environment is string && data.payment_environment.size() <= 50)) &&
+        (!('payment_method' in data) || data.payment_method == null || (data.payment_method is string && data.payment_method.size() <= 100)) &&
+        (!('payment_channel' in data) || data.payment_channel == null || (data.payment_channel is string && data.payment_channel.size() <= 100)) &&
+        (!('payment_reference' in data) || data.payment_reference == null || (data.payment_reference is string && data.payment_reference.size() <= 200)) &&
         (!('voucher_id' in data) || data.voucher_id == null || (data.voucher_id is string && data.voucher_id.size() <= 128)) &&
         (!('voucher_code' in data) || data.voucher_code == null || (data.voucher_code is string && data.voucher_code.size() <= 64)) &&
         (!('voucher_discount_amount' in data) || data.voucher_discount_amount == null || ((data.voucher_discount_amount is int || data.voucher_discount_amount is float) && data.voucher_discount_amount >= 0)) &&
-        (!('voucher_discount_type' in data) || data.voucher_discount_type == null || (data.voucher_discount_type is string && (data.voucher_discount_type in ['percentage', 'fixed']))) &&
+        (!('voucher_discount_type' in data) || data.voucher_discount_type == null || (data.voucher_discount_type is string && data.voucher_discount_type.size() <= 50)) &&
         (!('voucher_discount_value' in data) || data.voucher_discount_value == null || ((data.voucher_discount_value is int || data.voucher_discount_value is float) && data.voucher_discount_value >= 0)) &&
-        (!('voucher_applies_to' in data) || data.voucher_applies_to == null || (data.voucher_applies_to is string && (data.voucher_applies_to in ['ticket', 'bundle', 'merchandise', 'all']))) &&
+        (!('voucher_applies_to' in data) || data.voucher_applies_to == null || (data.voucher_applies_to is string && data.voucher_applies_to.size() <= 50)) &&
         (!('referral_code' in data) || data.referral_code == null || (data.referral_code is string && data.referral_code.size() <= 64)) &&
         (!('referrer_member_id' in data) || data.referrer_member_id == null || (data.referrer_member_id is string && data.referrer_member_id.size() <= 128)) &&
         (!('referrer_name' in data) || data.referrer_name == null || (data.referrer_name is string && data.referrer_name.size() <= 150)) &&
-        (!('referral_discount_percent' in data) || data.referral_discount_percent == null || ((data.referral_discount_percent is int || data.referral_discount_percent is float) && data.referral_discount_percent >= 0 && data.referral_discount_percent <= 100) || (data.referral_discount_percent is string && data.referral_discount_percent.size() <= 10)) &&
-        (!('referral_discount_percentage' in data) || data.referral_discount_percentage == null || ((data.referral_discount_percentage is int || data.referral_discount_percentage is float) && data.referral_discount_percentage >= 0 && data.referral_discount_percentage <= 100) || (data.referral_discount_percentage is string && data.referral_discount_percentage.size() <= 10)) &&
-        (!('referral_discount_type' in data) || data.referral_discount_type == null || (data.referral_discount_type is string && (data.referral_discount_type in ['percentage', 'fixed']))) &&
-        (!('referral_discount_amount' in data) || data.referral_discount_amount == null || ((data.referral_discount_amount is int || data.referral_discount_amount is float) && data.referral_discount_amount >= 0) || (data.referral_discount_amount is string && data.referral_discount_amount.size() <= 30)) &&
-        (!('discount_percentage' in data) || data.discount_percentage == null || ((data.discount_percentage is int || data.discount_percentage is float) && data.discount_percentage >= 0 && data.discount_percentage <= 100) || (data.discount_percentage is string && data.discount_percentage.size() <= 10)) &&
-        (!('discount_amount' in data) || data.discount_amount == null || ((data.discount_amount is int || data.discount_amount is float) && data.discount_amount >= 0) || (data.discount_amount is string && data.discount_amount.size() <= 30)) &&
-        (!('discount_type' in data) || data.discount_type == null || (data.discount_type is string && (data.discount_type in ['percentage', 'fixed']))) &&
-        (!('points_awarded' in data) || data.points_awarded == null || ((data.points_awarded is int || data.points_awarded is float) && data.points_awarded >= 0) || (data.points_awarded is string && data.points_awarded.size() <= 20)) &&
+        (!('referral_discount_percent' in data) || data.referral_discount_percent == null || ((data.referral_discount_percent is int || data.referral_discount_percent is float) && data.referral_discount_percent >= 0 && data.referral_discount_percent <= 100) || (data.referral_discount_percent is string && data.referral_discount_percent.size() <= 30)) &&
+        (!('referral_discount_percentage' in data) || data.referral_discount_percentage == null || ((data.referral_discount_percentage is int || data.referral_discount_percentage is float) && data.referral_discount_percentage >= 0 && data.referral_discount_percentage <= 100) || (data.referral_discount_percentage is string && data.referral_discount_percentage.size() <= 30)) &&
+        (!('referral_discount_type' in data) || data.referral_discount_type == null || (data.referral_discount_type is string && data.referral_discount_type.size() <= 50)) &&
+        (!('referral_discount_amount' in data) || data.referral_discount_amount == null || ((data.referral_discount_amount is int || data.referral_discount_amount is float) && data.referral_discount_amount >= 0) || (data.referral_discount_amount is string && data.referral_discount_amount.size() <= 50)) &&
+        (!('discount_percentage' in data) || data.discount_percentage == null || ((data.discount_percentage is int || data.discount_percentage is float) && data.discount_percentage >= 0 && data.discount_percentage <= 100) || (data.discount_percentage is string && data.discount_percentage.size() <= 30)) &&
+        (!('discount_amount' in data) || data.discount_amount == null || ((data.discount_amount is int || data.discount_amount is float) && data.discount_amount >= 0) || (data.discount_amount is string && data.discount_amount.size() <= 50)) &&
+        (!('discount_type' in data) || data.discount_type == null || (data.discount_type is string && data.discount_type.size() <= 50)) &&
+        (!('points_awarded' in data) || data.points_awarded == null || ((data.points_awarded is int || data.points_awarded is float) && data.points_awarded >= 0) || (data.points_awarded is string && data.points_awarded.size() <= 50)) &&
         (!('referrer_code' in data) || data.referrer_code == null || (data.referrer_code is string && data.referrer_code.size() <= 64)) &&
         (!('referee_id' in data) || data.referee_id == null || (data.referee_id is string && data.referee_id.size() <= 128)) &&
         (!('referee_name' in data) || data.referee_name == null || (data.referee_name is string && data.referee_name.size() <= 150)) &&
