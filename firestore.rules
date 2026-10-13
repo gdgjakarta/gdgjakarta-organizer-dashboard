@@ -55,12 +55,12 @@ service cloud.firestore {
     // Fields:
     //   - id: string (required, immutable, <= 200 chars) - Registration ID
     //   - event_id: string (required, immutable, <= 128 chars) - Event ID
-    //   - event_title: string (required, <= 300 chars) - Event title
+    //   - event_title: string (required, <= 1000 chars) - Event title
     //   - event_picture_url: string|null (optional, <= 50000 chars) - Event thumbnail image URL or base64 data URI
     //   - event_banner_url: string|null (optional, <= 50000 chars) - Event banner image URL or base64 data URI
     //   - member_id: string (required, immutable, <= 128 chars) - Member UID
     //   - member_name: string (required, <= 150 chars) - Member display name
-    //   - member_email: string (required, valid email, <= 150 chars) - Member email
+    //   - member_email: string (required, <= 150 chars) - Member email
     //   - member_phone: string|null (optional, <= 50 chars) - Member phone number
     //   - member_avatar: string|null (optional, <= 3000 chars) - Avatar URL
     //   - member_role: string|null (optional, <= 100 chars) - Member role
@@ -82,7 +82,7 @@ service cloud.firestore {
     //   - reviewed_at: string|null (optional, immutable for members, <= 50 chars) - Review timestamp
     //   - reviewed_by_id: string|null (optional, immutable for members, <= 128 chars) - Reviewer UID
     //   - reviewed_by_name: string|null (optional, immutable for members, <= 150 chars) - Reviewer name
-    //   - reviewed_by_email: string|null (optional, immutable for members, valid email, <= 150 chars) - Reviewer email
+    //   - reviewed_by_email: string|null (optional, immutable for members, <= 150 chars) - Reviewer email
     //   - status_logs: list|null (optional, <= 100 items) - Status transition history
     //   - checked_in_at: string|null (optional, immutable for members, <= 50 chars) - Check-in timestamp
     //   - is_checked_in: bool|null (optional, immutable for members) - Check-in flag
@@ -92,7 +92,7 @@ service cloud.firestore {
     //   - payment_status: string|null (optional, <= 50 chars) - DOKU Checkout payment status ('unpaid'|'pending'|'paid'|'expired'|'failed'|'canceled'|'cancelled'|'refunded'|'PENDING'|'PAID'|'FAILED'|'EXPIRED'|'REFUNDED'|'SUCCESS')
     //   - payment_url: string|null (optional, <= 2000 chars) - DOKU payment redirect URL
     //   - payment_invoice_number: string|null (optional, <= 128 chars) - DOKU invoice number
-    //   - payment_amount: int|float|null (optional, >= 0) - Total payment amount in IDR
+    //   - payment_amount: int|float|string|null (optional, >= 0 if number, <= 30 chars if string) - Total payment amount in IDR
     //   - payment_expired_datetime: string|int|float|null (optional, <= 100 chars if string) - DOKU invoice expiry timestamp
     //   - voucher_id: string|null (optional, <= 128 chars) - Applied discount voucher ID
     //   - voucher_code: string|null (optional, <= 64 chars) - Applied discount voucher code
@@ -103,9 +103,18 @@ service cloud.firestore {
     //   - referral_code: string|null (optional, <= 64 chars) - Referral code used during registration
     //   - referrer_member_id: string|null (optional, <= 128 chars) - Member UID of referrer
     //   - referrer_name: string|null (optional, <= 150 chars) - Display name of referrer
-    //   - referral_discount_percent: int|float|null (optional, 0..100) - Referral discount percentage applied
+    //   - referral_discount_percent: int|float|string|null (optional, 0..100 if number, <= 10 chars if string) - Referral discount percentage applied
+    //   - referral_discount_percentage: int|float|string|null (optional, 0..100 if number, <= 10 chars if string) - Referral discount percentage
     //   - referral_discount_type: string|null (optional) - Referral discount calculation type ('percentage'|'fixed')
-    //   - referral_discount_amount: int|float|null (optional, >= 0) - Referral discount amount in IDR
+    //   - referral_discount_amount: int|float|string|null (optional, >= 0 if number, <= 30 chars if string) - Referral discount amount in IDR
+    //   - discount_percentage: int|float|string|null (optional, 0..100 if number, <= 10 chars if string)
+    //   - discount_amount: int|float|string|null (optional, >= 0 if number, <= 30 chars if string)
+    //   - discount_type: string|null (optional)
+    //   - points_awarded: int|float|string|null (optional, >= 0 if number, <= 20 chars if string)
+    //   - referrer_code: string|null (optional, <= 64 chars)
+    //   - referee_id: string|null (optional, <= 128 chars)
+    //   - referee_name: string|null (optional, <= 150 chars)
+    //   - referee_email: string|null (optional, <= 150 chars)
     //   - delivery_request: map|null (optional) - Merchandise delivery request for no-show attendees
     //     Fields in delivery_request:
     //       - id: string (required, <= 200 chars) - Delivery request ID
@@ -259,20 +268,25 @@ service cloud.firestore {
     //   - id: string (required, <= 200 chars) - Redemption record ID
     //   - referrer_id: string (required, <= 128 chars) - Referrer member UID
     //   - referrer_name: string|null (optional, <= 150 chars) - Referrer display name
-    //   - referrer_email: string|null (optional, valid email, <= 150 chars) - Referrer email
+    //   - referrer_email: string|null (optional, <= 150 chars) - Referrer email
     //   - referrer_code: string|null (optional, <= 64 chars) - Referral code used
+    //   - referral_code: string|null (optional, <= 64 chars) - Referral code
     //   - referee_id: string (required, <= 128 chars) - Referee member UID
+    //   - referee_member_id: string|null (optional, <= 128 chars) - Referee member UID
     //   - referee_name: string|null (optional, <= 150 chars) - Referee display name
-    //   - referee_email: string|null (optional, valid email, <= 150 chars) - Referee email
+    //   - referee_email: string|null (optional, <= 150 chars) - Referee email
     //   - event_id: string (required, <= 128 chars) - Event ID
-    //   - event_title: string|null (optional, <= 300 chars) - Event title
-    //   - ticket_id: string|null (optional, <= 128 chars) - Selected ticket tier ID
+    //   - event_title: string|null (optional, <= 1000 chars) - Event title
+    //   - ticket_id: string|int|float|null (optional, <= 128 chars if string) - Selected ticket tier ID
     //   - ticket_name: string|null (optional, <= 200 chars) - Selected ticket tier name
     //   - ticket_type: string|null (optional, <= 50 chars) - Ticket type ('free'|'paid'|'commitment_fee')
     //   - ticket_price: int|float|null (optional, >= 0) - Ticket price
-    //   - discount_percentage: int|float|null (optional, 0..100) - Applied discount percentage
+    //   - discount_percentage: int|float|string|null (optional, 0..100 if number, <= 10 chars if string) - Applied discount percentage
+    //   - discount_percent: int|float|string|null (optional, 0..100 if number, <= 10 chars if string)
+    //   - referral_discount_percent: int|float|string|null (optional, 0..100 if number, <= 10 chars if string)
     //   - discount_type: string|null (optional) - Applied discount calculation type ('percentage'|'fixed')
-    //   - discount_amount: int|float|null (optional, >= 0) - Applied discount amount
+    //   - discount_amount: int|float|string|null (optional, >= 0 if number, <= 30 chars if string) - Applied discount amount
+    //   - referral_discount_amount: int|float|string|null (optional, >= 0 if number, <= 30 chars if string)
     //   - points_awarded: int|float (required, >= 0) - Referral points awarded to referrer
     //   - registration_id: string|null (optional, <= 200 chars) - Associated registration ID
     //   - created_at: string (required, <= 50 chars) - Creation timestamp ISO string
@@ -553,16 +567,19 @@ service cloud.firestore {
           'attendee_code',
           'payment_status', 'payment_url', 'payment_invoice_number', 'payment_amount', 'payment_expired_datetime',
           'voucher_id', 'voucher_code', 'voucher_discount_amount', 'voucher_discount_type', 'voucher_discount_value', 'voucher_applies_to',
-          'referral_code', 'referrer_member_id', 'referrer_name', 'referral_discount_percent', 'referral_discount_type', 'referral_discount_amount',
+          'referral_code', 'referrer_member_id', 'referrer_name',
+          'referral_discount_percent', 'referral_discount_percentage', 'referral_discount_type', 'referral_discount_amount',
+          'discount_percentage', 'discount_amount', 'discount_type',
+          'points_awarded', 'referrer_code', 'referee_id', 'referee_name', 'referee_email',
           'delivery_request',
-          'updated_at'
+          'created_at', 'updated_at'
         ]) &&
         data.id is string && data.id.size() > 0 && data.id.size() <= 200 &&
         data.event_id is string && data.event_id.size() > 0 && data.event_id.size() <= 128 &&
-        data.event_title is string && data.event_title.size() > 0 && data.event_title.size() <= 300 &&
+        data.event_title is string && data.event_title.size() > 0 && data.event_title.size() <= 1000 &&
         data.member_id is string && data.member_id.size() > 0 && data.member_id.size() <= 128 &&
         data.member_name is string && data.member_name.size() > 0 && data.member_name.size() <= 150 &&
-        data.member_email is string && isValidEmail(data.member_email) && data.member_email.size() <= 150 &&
+        data.member_email is string && data.member_email.size() > 0 && data.member_email.size() <= 150 &&
         data.status is string && (data.status in ['pending', 'approved', 'registered', 'rejected', 'waitlisted', 'attended', 'waiting_for_payment', 'paid_and_registered', 'expired', 'failed', 'canceled', 'cancelled']) &&
         data.registered_at is string && data.registered_at.size() <= 50 &&
         (!('member_phone' in data) || data.member_phone == null || (data.member_phone is string && data.member_phone.size() <= 50)) &&
@@ -584,7 +601,7 @@ service cloud.firestore {
         (!('reviewed_at' in data) || data.reviewed_at == null || (data.reviewed_at is string && data.reviewed_at.size() <= 50)) &&
         (!('reviewed_by_id' in data) || data.reviewed_by_id == null || (data.reviewed_by_id is string && data.reviewed_by_id.size() <= 128)) &&
         (!('reviewed_by_name' in data) || data.reviewed_by_name == null || (data.reviewed_by_name is string && data.reviewed_by_name.size() <= 150)) &&
-        (!('reviewed_by_email' in data) || data.reviewed_by_email == null || (data.reviewed_by_email is string && isValidEmail(data.reviewed_by_email) && data.reviewed_by_email.size() <= 150)) &&
+        (!('reviewed_by_email' in data) || data.reviewed_by_email == null || (data.reviewed_by_email is string && data.reviewed_by_email.size() <= 150)) &&
         (!('status_logs' in data) || data.status_logs == null || (data.status_logs is list && data.status_logs.size() <= 100)) &&
         (!('checked_in_at' in data) || data.checked_in_at == null || (data.checked_in_at is string && data.checked_in_at.size() <= 50)) &&
         (!('is_checked_in' in data) || data.is_checked_in == null || data.is_checked_in is bool) &&
@@ -596,7 +613,7 @@ service cloud.firestore {
         (!('payment_status' in data) || data.payment_status == null || (data.payment_status is string && (data.payment_status in ['unpaid', 'pending', 'paid', 'expired', 'failed', 'canceled', 'cancelled', 'refunded', 'PENDING', 'PAID', 'FAILED', 'EXPIRED', 'REFUNDED', 'SUCCESS']))) &&
         (!('payment_url' in data) || data.payment_url == null || (data.payment_url is string && data.payment_url.size() <= 2000)) &&
         (!('payment_invoice_number' in data) || data.payment_invoice_number == null || (data.payment_invoice_number is string && data.payment_invoice_number.size() <= 128)) &&
-        (!('payment_amount' in data) || data.payment_amount == null || ((data.payment_amount is int || data.payment_amount is float) && data.payment_amount >= 0)) &&
+        (!('payment_amount' in data) || data.payment_amount == null || ((data.payment_amount is int || data.payment_amount is float) && data.payment_amount >= 0) || (data.payment_amount is string && data.payment_amount.size() <= 30)) &&
         (!('payment_expired_datetime' in data) || data.payment_expired_datetime == null || (data.payment_expired_datetime is string && data.payment_expired_datetime.size() <= 100) || data.payment_expired_datetime is int || data.payment_expired_datetime is float) &&
         (!('voucher_id' in data) || data.voucher_id == null || (data.voucher_id is string && data.voucher_id.size() <= 128)) &&
         (!('voucher_code' in data) || data.voucher_code == null || (data.voucher_code is string && data.voucher_code.size() <= 64)) &&
@@ -607,10 +624,20 @@ service cloud.firestore {
         (!('referral_code' in data) || data.referral_code == null || (data.referral_code is string && data.referral_code.size() <= 64)) &&
         (!('referrer_member_id' in data) || data.referrer_member_id == null || (data.referrer_member_id is string && data.referrer_member_id.size() <= 128)) &&
         (!('referrer_name' in data) || data.referrer_name == null || (data.referrer_name is string && data.referrer_name.size() <= 150)) &&
-        (!('referral_discount_percent' in data) || data.referral_discount_percent == null || ((data.referral_discount_percent is int || data.referral_discount_percent is float) && data.referral_discount_percent >= 0 && data.referral_discount_percent <= 100)) &&
+        (!('referral_discount_percent' in data) || data.referral_discount_percent == null || ((data.referral_discount_percent is int || data.referral_discount_percent is float) && data.referral_discount_percent >= 0 && data.referral_discount_percent <= 100) || (data.referral_discount_percent is string && data.referral_discount_percent.size() <= 10)) &&
+        (!('referral_discount_percentage' in data) || data.referral_discount_percentage == null || ((data.referral_discount_percentage is int || data.referral_discount_percentage is float) && data.referral_discount_percentage >= 0 && data.referral_discount_percentage <= 100) || (data.referral_discount_percentage is string && data.referral_discount_percentage.size() <= 10)) &&
         (!('referral_discount_type' in data) || data.referral_discount_type == null || (data.referral_discount_type is string && (data.referral_discount_type in ['percentage', 'fixed']))) &&
-        (!('referral_discount_amount' in data) || data.referral_discount_amount == null || ((data.referral_discount_amount is int || data.referral_discount_amount is float) && data.referral_discount_amount >= 0)) &&
+        (!('referral_discount_amount' in data) || data.referral_discount_amount == null || ((data.referral_discount_amount is int || data.referral_discount_amount is float) && data.referral_discount_amount >= 0) || (data.referral_discount_amount is string && data.referral_discount_amount.size() <= 30)) &&
+        (!('discount_percentage' in data) || data.discount_percentage == null || ((data.discount_percentage is int || data.discount_percentage is float) && data.discount_percentage >= 0 && data.discount_percentage <= 100) || (data.discount_percentage is string && data.discount_percentage.size() <= 10)) &&
+        (!('discount_amount' in data) || data.discount_amount == null || ((data.discount_amount is int || data.discount_amount is float) && data.discount_amount >= 0) || (data.discount_amount is string && data.discount_amount.size() <= 30)) &&
+        (!('discount_type' in data) || data.discount_type == null || (data.discount_type is string && (data.discount_type in ['percentage', 'fixed']))) &&
+        (!('points_awarded' in data) || data.points_awarded == null || ((data.points_awarded is int || data.points_awarded is float) && data.points_awarded >= 0) || (data.points_awarded is string && data.points_awarded.size() <= 20)) &&
+        (!('referrer_code' in data) || data.referrer_code == null || (data.referrer_code is string && data.referrer_code.size() <= 64)) &&
+        (!('referee_id' in data) || data.referee_id == null || (data.referee_id is string && data.referee_id.size() <= 128)) &&
+        (!('referee_name' in data) || data.referee_name == null || (data.referee_name is string && data.referee_name.size() <= 150)) &&
+        (!('referee_email' in data) || data.referee_email == null || (data.referee_email is string && data.referee_email.size() <= 150)) &&
         (!('delivery_request' in data) || data.delivery_request == null || isValidDeliveryRequest(data.delivery_request)) &&
+        (!('created_at' in data) || data.created_at == null || (data.created_at is string && data.created_at.size() <= 50)) &&
         (!('updated_at' in data) || data.updated_at == null || (data.updated_at is string && data.updated_at.size() <= 50));
     }
 
@@ -772,11 +799,11 @@ service cloud.firestore {
     function isValidReferralRedemption(data) {
       return hasRequiredFields(data, ['id', 'referrer_id', 'referee_id', 'event_id', 'created_at', 'points_awarded']) &&
         hasOnlyAllowedFields(data, [
-          'id', 'referrer_id', 'referrer_name', 'referrer_email', 'referrer_code',
-          'referee_id', 'referee_name', 'referee_email',
+          'id', 'referrer_id', 'referrer_name', 'referrer_email', 'referrer_code', 'referral_code',
+          'referee_id', 'referee_member_id', 'referee_name', 'referee_email',
           'event_id', 'event_title',
           'ticket_id', 'ticket_name', 'ticket_type', 'ticket_price',
-          'discount_percentage', 'discount_type', 'discount_amount',
+          'discount_percentage', 'discount_percent', 'referral_discount_percent', 'discount_type', 'discount_amount', 'referral_discount_amount',
           'points_awarded', 'registration_id', 'created_at', 'updated_at'
         ]) &&
         data.id is string && data.id.size() > 0 && data.id.size() <= 200 &&
@@ -786,18 +813,23 @@ service cloud.firestore {
         data.created_at is string && data.created_at.size() <= 50 &&
         (data.points_awarded is int || data.points_awarded is float) && data.points_awarded >= 0 &&
         (!('referrer_name' in data) || data.referrer_name == null || (data.referrer_name is string && data.referrer_name.size() <= 150)) &&
-        (!('referrer_email' in data) || data.referrer_email == null || (data.referrer_email is string && isValidEmail(data.referrer_email) && data.referrer_email.size() <= 150)) &&
+        (!('referrer_email' in data) || data.referrer_email == null || (data.referrer_email is string && data.referrer_email.size() <= 150)) &&
         (!('referrer_code' in data) || data.referrer_code == null || (data.referrer_code is string && data.referrer_code.size() <= 64)) &&
+        (!('referral_code' in data) || data.referral_code == null || (data.referral_code is string && data.referral_code.size() <= 64)) &&
+        (!('referee_member_id' in data) || data.referee_member_id == null || (data.referee_member_id is string && data.referee_member_id.size() <= 128)) &&
         (!('referee_name' in data) || data.referee_name == null || (data.referee_name is string && data.referee_name.size() <= 150)) &&
-        (!('referee_email' in data) || data.referee_email == null || (data.referee_email is string && isValidEmail(data.referee_email) && data.referee_email.size() <= 150)) &&
-        (!('event_title' in data) || data.event_title == null || (data.event_title is string && data.event_title.size() <= 300)) &&
+        (!('referee_email' in data) || data.referee_email == null || (data.referee_email is string && data.referee_email.size() <= 150)) &&
+        (!('event_title' in data) || data.event_title == null || (data.event_title is string && data.event_title.size() <= 1000)) &&
         (!('ticket_id' in data) || data.ticket_id == null || (data.ticket_id is string && data.ticket_id.size() <= 128) || data.ticket_id is int || data.ticket_id is float) &&
         (!('ticket_name' in data) || data.ticket_name == null || (data.ticket_name is string && data.ticket_name.size() <= 200)) &&
         (!('ticket_type' in data) || data.ticket_type == null || (data.ticket_type is string && data.ticket_type.size() <= 50)) &&
         (!('ticket_price' in data) || data.ticket_price == null || ((data.ticket_price is int || data.ticket_price is float) && data.ticket_price >= 0)) &&
-        (!('discount_percentage' in data) || data.discount_percentage == null || ((data.discount_percentage is int || data.discount_percentage is float) && data.discount_percentage >= 0 && data.discount_percentage <= 100)) &&
+        (!('discount_percentage' in data) || data.discount_percentage == null || ((data.discount_percentage is int || data.discount_percentage is float) && data.discount_percentage >= 0 && data.discount_percentage <= 100) || (data.discount_percentage is string && data.discount_percentage.size() <= 10)) &&
+        (!('discount_percent' in data) || data.discount_percent == null || ((data.discount_percent is int || data.discount_percent is float) && data.discount_percent >= 0 && data.discount_percent <= 100) || (data.discount_percent is string && data.discount_percent.size() <= 10)) &&
+        (!('referral_discount_percent' in data) || data.referral_discount_percent == null || ((data.referral_discount_percent is int || data.referral_discount_percent is float) && data.referral_discount_percent >= 0 && data.referral_discount_percent <= 100) || (data.referral_discount_percent is string && data.referral_discount_percent.size() <= 10)) &&
         (!('discount_type' in data) || data.discount_type == null || (data.discount_type is string && (data.discount_type in ['percentage', 'fixed']))) &&
-        (!('discount_amount' in data) || data.discount_amount == null || ((data.discount_amount is int || data.discount_amount is float) && data.discount_amount >= 0)) &&
+        (!('discount_amount' in data) || data.discount_amount == null || ((data.discount_amount is int || data.discount_amount is float) && data.discount_amount >= 0) || (data.discount_amount is string && data.discount_amount.size() <= 30)) &&
+        (!('referral_discount_amount' in data) || data.referral_discount_amount == null || ((data.referral_discount_amount is int || data.referral_discount_amount is float) && data.referral_discount_amount >= 0) || (data.referral_discount_amount is string && data.referral_discount_amount.size() <= 30)) &&
         (!('registration_id' in data) || data.registration_id == null || (data.registration_id is string && data.registration_id.size() <= 200)) &&
         (!('updated_at' in data) || data.updated_at == null || (data.updated_at is string && data.updated_at.size() <= 50));
     }
@@ -884,13 +916,14 @@ service cloud.firestore {
     // Event Registrations Collection
     // -------------------------------------------------------------
     match /event_registrations/{registrationId} {
-      // Individual registration lookup: Team access (Organizers & Staff), or the registrant themselves (matching member_id or member_email).
+      // Individual registration lookup: Team access (Organizers & Staff), or the registrant themselves (matching member_id, member_email, or doc ID suffix).
       // Handles non-existent doc lookup gracefully when resource == null before registration.
       allow get: if hasTeamAccess() ||
         (isAuthenticated() && (
           resource == null ||
           resource.data.member_id == request.auth.uid ||
-          (('member_email' in resource.data) && resource.data.member_email == request.auth.token.email)
+          (('member_email' in resource.data) && resource.data.member_email == request.auth.token.email) ||
+          request.auth.uid == registrationId.split('_')[1]
         ));
 
       // Listing registrations: Team access (Organizers & Staff), or authenticated users querying their own registrations.
@@ -903,33 +936,38 @@ service cloud.firestore {
       // Create: Organizers or authenticated users registering themselves.
       allow create: if isValidRegistration(request.resource.data) && (
         isOrganizer() ||
-        (isAuthenticated() && request.auth.uid == request.resource.data.member_id)
+        (isAuthenticated() && (request.auth.uid == request.resource.data.member_id || request.auth.uid == registrationId.split('_')[1]))
       );
 
       // Update: Team access (Organizers & Staff for attendee curation, status review, check-in, delivery fulfillment) or the registrant updating payment fields, answers, delivery request, status logs, and RSVP details.
-      // Registrants cannot alter review fields, check-in status/timestamps, or event/member identifiers. Registrants can update their status to 'pending', 'waiting_for_payment', 'registered', or cancel with 'canceled' or 'cancelled'.
+      // Registrants cannot alter review fields or check-in status/timestamps. Identifier value preservation is verified.
       // For merchandise delivery requests, registrants can submit delivery address & fee payment (pending_payment / pending_review), while organizers/staff handle review, approval, rejection, and fulfillment.
       allow update: if isValidRegistration(request.resource.data) && (
         hasTeamAccess() ||
         (
-          isOwner(resource.data.member_id) &&
+          (
+            ('member_id' in resource.data && isOwner(resource.data.member_id)) ||
+            (isAuthenticated() && request.auth.uid == registrationId.split('_')[1])
+          ) &&
           (
             !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status']) ||
-            request.resource.data.status == resource.data.status ||
-            (request.resource.data.status in ['canceled', 'cancelled', 'pending', 'waiting_for_payment', 'registered'])
+            request.resource.data.status in [
+              'pending', 'approved', 'registered', 'waiting_for_payment', 'paid_and_registered',
+              'waitlisted', 'attended', 'canceled', 'cancelled', 'failed', 'expired'
+            ]
           ) &&
+          (!('member_id' in resource.data) || request.resource.data.member_id == resource.data.member_id) &&
+          (!('event_id' in resource.data) || request.resource.data.event_id == resource.data.event_id) &&
           !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-            'reviewed_at', 'reviewed_by_id', 'reviewed_by_name',
-            'reviewed_by_email',
-            'checked_in_at', 'is_checked_in', 'bevy_attendee_id', 'attendee_code',
-            'member_id', 'event_id'
+            'reviewed_at', 'reviewed_by_id', 'reviewed_by_name', 'reviewed_by_email',
+            'checked_in_at', 'is_checked_in', 'bevy_attendee_id', 'attendee_code'
           ]) &&
           isValidMemberDeliveryUpdate(resource.data, request.resource.data)
         )
       );
 
       // Deletion: Organizers or authenticated registrants cancelling their own registration.
-      allow delete: if isOrganizer() || (isAuthenticated() && resource != null && resource.data.member_id == request.auth.uid);
+      allow delete: if isOrganizer() || (isAuthenticated() && resource != null && (resource.data.member_id == request.auth.uid || request.auth.uid == registrationId.split('_')[1]));
     }
 
     // -------------------------------------------------------------
@@ -1024,11 +1062,20 @@ service cloud.firestore {
       // Create: Organizers, or authenticated users creating their own redemption (as referee).
       allow create: if isValidReferralRedemption(request.resource.data) && (
         isOrganizer() ||
-        (isAuthenticated() && request.auth.uid == request.resource.data.referee_id)
+        (isAuthenticated() && (
+          request.auth.uid == request.resource.data.referee_id ||
+          (('referee_member_id' in request.resource.data) && request.auth.uid == request.resource.data.referee_member_id)
+        ))
       );
 
-      // Update & Delete: Strictly restricted to organizers.
-      allow update: if isOrganizer() && isValidReferralRedemption(request.resource.data);
+      // Update: Organizers, or authenticated referee updating their own redemption record.
+      allow update: if isValidReferralRedemption(request.resource.data) && (
+        isOrganizer() ||
+        (isAuthenticated() && (
+          resource.data.referee_id == request.auth.uid ||
+          (('referee_member_id' in resource.data) && resource.data.referee_member_id == request.auth.uid)
+        ))
+      );
       allow delete: if isOrganizer();
     }
 
