@@ -142,6 +142,11 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
         const res = await updateEventMerchandiseAction(String(event.id), items, maxMerchandisePerPerson, event);
         if (res.success) {
           setIsDirty(false);
+          window.dispatchEvent(
+            new CustomEvent("gdg:merchandise-updated", {
+              detail: { eventId: String(event.id), merchandise: items },
+            }),
+          );
           toast.success("Event merchandise saved successfully!");
         } else {
           toast.error(res.error || "Failed to save merchandise.");

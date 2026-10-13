@@ -17,7 +17,14 @@ import {
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { isExecutiveOrganizer } from "@/lib/auth-roles";
-import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
+import { ensureEventTickets } from "@/lib/events/ticket-templates";
+import type {
+  EventBundlePackage,
+  EventMerchandiseItem,
+  EventTicketTier,
+  FirestoreEvent,
+  FirestoreRegistration,
+} from "@/lib/firestore/types";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
 import { BundlesTab } from "./bundles-tab";
@@ -58,7 +65,41 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
         }));
       }
     };
+
+    const handleTicketsUpdated = (e: Event) => {
+      const customEvent = e as CustomEvent<{ eventId: string; tickets: EventTicketTier[] }>;
+      if (customEvent.detail && String(customEvent.detail.eventId) === String(eventId)) {
+        setActiveEvent((prev) => ({
+          ...prev,
+          tickets: ensureEventTickets(customEvent.detail.tickets),
+        }));
+      }
+    };
+
+    const handleMerchandiseUpdated = (e: Event) => {
+      const customEvent = e as CustomEvent<{ eventId: string; merchandise: EventMerchandiseItem[] }>;
+      if (customEvent.detail && String(customEvent.detail.eventId) === String(eventId)) {
+        setActiveEvent((prev) => ({
+          ...prev,
+          merchandise: customEvent.detail.merchandise,
+        }));
+      }
+    };
+
+    const handleBundlesUpdated = (e: Event) => {
+      const customEvent = e as CustomEvent<{ eventId: string; bundles: EventBundlePackage[] }>;
+      if (customEvent.detail && String(customEvent.detail.eventId) === String(eventId)) {
+        setActiveEvent((prev) => ({
+          ...prev,
+          bundles: customEvent.detail.bundles,
+        }));
+      }
+    };
+
     window.addEventListener("gdg:payment-env-change", handlePaymentEnvChange);
+    window.addEventListener("gdg:tickets-updated", handleTicketsUpdated);
+    window.addEventListener("gdg:merchandise-updated", handleMerchandiseUpdated);
+    window.addEventListener("gdg:bundles-updated", handleBundlesUpdated);
 
     let unsubscribe: (() => void) | undefined;
     async function setupSub() {
@@ -69,6 +110,8 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
             setActiveEvent((prev) => ({
               ...prev,
               ...docData,
+              tickets: ensureEventTickets(docData.tickets ?? prev.tickets),
+              merchandise: docData.merchandise ?? prev.merchandise,
             }));
           }
         });
@@ -80,6 +123,9 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
 
     return () => {
       window.removeEventListener("gdg:payment-env-change", handlePaymentEnvChange);
+      window.removeEventListener("gdg:tickets-updated", handleTicketsUpdated);
+      window.removeEventListener("gdg:merchandise-updated", handleMerchandiseUpdated);
+      window.removeEventListener("gdg:bundles-updated", handleBundlesUpdated);
       unsubscribe?.();
     };
   }, [eventId]);

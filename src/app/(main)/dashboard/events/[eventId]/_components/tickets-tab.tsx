@@ -236,6 +236,11 @@ export function TicketsTab({ event }: TicketsTabProps) {
         if (res.success) {
           setTickets(finalTickets);
           setIsDirty(false);
+          window.dispatchEvent(
+            new CustomEvent("gdg:tickets-updated", {
+              detail: { eventId: String(event.id), tickets: finalTickets },
+            }),
+          );
           toast.success("Event registration tickets saved successfully!");
         } else {
           toast.error(res.error || "Failed to save tickets.");

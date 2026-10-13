@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 
 import {
   Banknote,
@@ -38,6 +38,7 @@ import {
   getAllBundleTemplates,
   getBundleSalesStatus,
 } from "@/lib/events/bundle-templates";
+import { ensureEventTickets } from "@/lib/events/ticket-templates";
 import { updateEventBundlesAction } from "@/lib/firestore/actions";
 import type { EventBundlePackage, EventMerchandiseItem, EventTicketTier, FirestoreEvent } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
@@ -56,36 +57,115 @@ export function BundlesTab({ event }: BundlesTabProps) {
   const [isDirty, setIsDirty] = useState(false);
   const [templatesData, setTemplatesData] = useState(() => getAllBundleTemplates());
 
-  const eventTickets: EventTicketTier[] = useMemo(() => {
-    return event.tickets ?? [];
-  }, [event.tickets]);
+  const [eventTickets, setEventTickets] = useState<EventTicketTier[]>(() => ensureEventTickets(event.tickets));
+  const [eventMerchandise, setEventMerchandise] = useState<EventMerchandiseItem[]>(() => event.merchandise ?? []);
+  const [isLoadingItems, setIsLoadingItems] = useState<boolean>(
+    () => !event.tickets?.length && !event.merchandise?.length,
+  );
 
-  const eventMerchandise: EventMerchandiseItem[] = useMemo(() => {
-    return event.merchandise ?? [];
-  }, [event.merchandise]);
+  // Sync state if parent event prop updates
+  useEffect(() => {
+    if (event.tickets && event.tickets.length > 0) {
+      setEventTickets(ensureEventTickets(event.tickets));
+    }
+    if (event.merchandise && event.merchandise.length > 0) {
+      setEventMerchandise(event.merchandise);
+    }
+  }, [event.tickets, event.merchandise]);
 
   // Refresh custom templates
   const refreshTemplates = () => {
     setTemplatesData(getAllBundleTemplates());
   };
 
-  // Load latest bundles from Firestore
+  // Load latest bundles, tickets, and merchandise from Firestore and subscribe to real-time updates
   useEffect(() => {
     if (!event.id) return;
 
-    async function loadLatestBundles() {
+    let isMounted = true;
+
+    async function loadLatestEventData() {
+      setIsLoadingItems(true);
       try {
         const { getFirestoreEventById } = await import("@/lib/firestore/client");
         const docData = await getFirestoreEventById(String(event.id));
-        if (docData?.bundles && Array.isArray(docData.bundles)) {
-          setBundles(docData.bundles);
+        if (!isMounted) return;
+
+        if (docData) {
+          if (docData.bundles && Array.isArray(docData.bundles)) {
+            setBundles(docData.bundles);
+          }
+          if (docData.tickets && Array.isArray(docData.tickets)) {
+            setEventTickets(ensureEventTickets(docData.tickets));
+          } else {
+            setEventTickets((prev) => (prev.length > 0 ? prev : ensureEventTickets([])));
+          }
+          if (docData.merchandise && Array.isArray(docData.merchandise)) {
+            setEventMerchandise(docData.merchandise);
+          }
         }
       } catch (err) {
-        console.warn("[BundlesTab] Failed to fetch latest event bundles:", err);
+        console.warn("[BundlesTab] Failed to fetch latest event data:", err);
+      } finally {
+        if (isMounted) {
+          setIsLoadingItems(false);
+        }
       }
     }
 
-    void loadLatestBundles();
+    void loadLatestEventData();
+
+    // Subscribe to live Firestore updates
+    let unsubscribe: (() => void) | undefined;
+    async function setupLiveSubscription() {
+      try {
+        const { subscribeFirestoreEventDoc } = await import("@/lib/firestore/client");
+        unsubscribe = subscribeFirestoreEventDoc(String(event.id), (docData) => {
+          if (!isMounted || !docData) return;
+          if (docData.bundles && Array.isArray(docData.bundles)) {
+            setBundles(docData.bundles);
+          }
+          if (docData.tickets && Array.isArray(docData.tickets)) {
+            setEventTickets(ensureEventTickets(docData.tickets));
+          }
+          if (docData.merchandise && Array.isArray(docData.merchandise)) {
+            setEventMerchandise(docData.merchandise);
+          }
+          setIsLoadingItems(false);
+        });
+      } catch (err) {
+        console.warn("[BundlesTab] Failed to subscribe to Firestore event doc:", err);
+      }
+    }
+
+    void setupLiveSubscription();
+
+    // Cross-tab synchronization via custom DOM events
+    const handleTicketsUpdated = (e: Event) => {
+      const customEvent = e as CustomEvent<{ eventId: string; tickets: EventTicketTier[] }>;
+      if (customEvent.detail && String(customEvent.detail.eventId) === String(event.id)) {
+        setEventTickets(ensureEventTickets(customEvent.detail.tickets));
+        setIsLoadingItems(false);
+      }
+    };
+
+    const handleMerchandiseUpdated = (e: Event) => {
+      const customEvent = e as CustomEvent<{ eventId: string; merchandise: EventMerchandiseItem[] }>;
+      if (customEvent.detail && String(customEvent.detail.eventId) === String(event.id)) {
+        setEventMerchandise(customEvent.detail.merchandise);
+        setIsLoadingItems(false);
+      }
+    };
+
+    window.addEventListener("gdg:tickets-updated", handleTicketsUpdated);
+    window.addEventListener("gdg:merchandise-updated", handleMerchandiseUpdated);
+
+    return () => {
+      isMounted = false;
+      unsubscribe?.();
+      window.removeEventListener("gdg:tickets-updated", handleTicketsUpdated);
+      window.removeEventListener("gdg:merchandise-updated", handleMerchandiseUpdated);
+    };
   }, [event.id]);
 
   const handleCreateNew = () => {
@@ -196,6 +276,11 @@ export function BundlesTab({ event }: BundlesTabProps) {
         const res = await updateEventBundlesAction(String(event.id), bundles, event);
         if (res.success) {
           setIsDirty(false);
+          window.dispatchEvent(
+            new CustomEvent("gdg:bundles-updated", {
+              detail: { eventId: String(event.id), bundles },
+            }),
+          );
           toast.success("Bundling packages saved successfully!");
         } else {
           toast.error(res.error || "Failed to save bundling packages.");
@@ -577,6 +662,7 @@ export function BundlesTab({ event }: BundlesTabProps) {
         bundle={editingBundle}
         eventTickets={eventTickets}
         eventMerchandise={eventMerchandise}
+        isLoading={isLoadingItems}
         onSave={handleSaveBundle}
       />
 

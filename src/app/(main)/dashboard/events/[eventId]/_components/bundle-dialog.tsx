@@ -19,6 +19,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { calculateBundlePricing, saveBundleAsTemplate } from "@/lib/events/bundle-templates";
@@ -36,6 +38,7 @@ interface BundleDialogProps {
   bundle: EventBundlePackage | null;
   eventTickets?: EventTicketTier[];
   eventMerchandise?: EventMerchandiseItem[];
+  isLoading?: boolean;
   onSave: (bundle: EventBundlePackage) => void;
 }
 
@@ -63,6 +66,7 @@ export function BundleDialog({
   bundle,
   eventTickets = [],
   eventMerchandise = [],
+  isLoading = false,
   onSave,
 }: BundleDialogProps) {
   const [name, setName] = useState("");
@@ -95,7 +99,7 @@ export function BundleDialog({
       setBadge(bundle.badge ?? "");
       setTicketId(bundle.ticket_id ?? "none");
       setTicketQuantity(bundle.ticket_quantity ?? 1);
-      setBundledMerch(bundle.merchandise_items ? JSON.parse(JSON.stringify(bundle.merchandise_items)) : []);
+      setBundledMerch(JSON.parse(JSON.stringify(bundle.merchandise_items)));
       setPrice(bundle.price);
       setDiscountMode(bundle.discount_type ?? "percentage");
       setDiscountValue(bundle.discount_value ?? 20);
@@ -123,7 +127,14 @@ export function BundleDialog({
       setSalesEndDate("");
     }
     setSaveAsTemplateChecked(false);
-  }, [bundle, open, activeTickets]);
+  }, [bundle, open, activeTickets[0]?.id]);
+
+  // If newly creating a bundle and active tickets become loaded after dialog was opened with "none", auto-select first ticket
+  useEffect(() => {
+    if (open && !bundle && (!ticketId || ticketId === "none") && activeTickets.length > 0) {
+      setTicketId(activeTickets[0].id);
+    }
+  }, [open, bundle, ticketId, activeTickets]);
 
   // Live Pricing Calculation
   const pricing = useMemo(() => {
@@ -265,6 +276,204 @@ export function BundleDialog({
     onOpenChange(false);
   };
 
+  const renderTicketsBody = () => {
+    if (isLoading) {
+      return (
+        <div className="space-y-2 rounded-lg border border-dashed border-border/80 bg-muted/20 p-3.5">
+          <div className="flex items-center gap-2">
+            <Spinner className="size-3.5 text-primary" />
+            <span className="text-muted-foreground text-xs">Loading available ticket tiers...</span>
+          </div>
+          <div className="grid grid-cols-1 gap-3 pt-1 sm:grid-cols-3">
+            <Skeleton className="h-9 rounded-md sm:col-span-2" />
+            <Skeleton className="h-9 rounded-md" />
+          </div>
+        </div>
+      );
+    }
+
+    if (eventTickets.length === 0) {
+      return (
+        <div className="rounded-lg border border-dashed p-3 text-center text-muted-foreground text-xs">
+          No ticket tiers configured. You can still create a merchandise-only package.
+        </div>
+      );
+    }
+
+    return (
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="sm:col-span-2">
+          <Label htmlFor="ticket-select" className="mb-1 block text-muted-foreground text-xs">
+            Ticket Tier
+          </Label>
+          <Select value={ticketId} onValueChange={setTicketId}>
+            <SelectTrigger id="ticket-select" className="w-full">
+              <SelectValue placeholder="Select ticket tier (or None)" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">
+                <span className="text-muted-foreground italic">None (Merchandise-only package)</span>
+              </SelectItem>
+              {eventTickets.map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="font-medium">{t.name}</span>
+                    <span className="text-muted-foreground text-xs">
+                      {t.type === "free" ? "Free" : `Rp ${(t.price || 0).toLocaleString("id-ID")}`}
+                    </span>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div>
+          <Label htmlFor="ticket-quantity" className="mb-1 block text-muted-foreground text-xs">
+            Quantity in Bundle
+          </Label>
+          <div className="flex items-center gap-1.5">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="size-9 shrink-0"
+              onClick={() => setTicketQuantity((q) => Math.max(1, q - 1))}
+              disabled={!ticketId || ticketId === "none" || ticketQuantity <= 1}
+            >
+              -
+            </Button>
+            <Input
+              id="ticket-quantity"
+              type="number"
+              min={1}
+              value={ticketId && ticketId !== "none" ? ticketQuantity : 0}
+              disabled={!ticketId || ticketId === "none"}
+              onChange={(e) => setTicketQuantity(Math.max(1, Number(e.target.value) || 1))}
+              className="text-center font-bold"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="size-9 shrink-0"
+              onClick={() => setTicketQuantity((q) => q + 1)}
+              disabled={!ticketId || ticketId === "none"}
+            >
+              +
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderMerchandiseBody = () => {
+    if (isLoading) {
+      return (
+        <div className="space-y-2 rounded-lg border border-dashed border-border/80 bg-muted/20 p-3.5">
+          <div className="flex items-center gap-2">
+            <Spinner className="size-3.5 text-primary" />
+            <span className="text-muted-foreground text-xs">Loading event merchandise...</span>
+          </div>
+          <div className="grid grid-cols-1 gap-2 pt-1 sm:grid-cols-2">
+            <Skeleton className="h-16 rounded-lg" />
+            <Skeleton className="h-16 rounded-lg" />
+          </div>
+        </div>
+      );
+    }
+
+    if (eventMerchandise.length === 0) {
+      return (
+        <div className="rounded-lg border border-dashed p-3 text-center text-muted-foreground text-xs">
+          No merchandise items found. Please add merchandise in the Merchandise tab first.
+        </div>
+      );
+    }
+
+    return (
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {eventMerchandise.map((item) => {
+          const isSelected = bundledMerch.some((m) => m.merchandise_id === item.id);
+          const selectedRecord = bundledMerch.find((m) => m.merchandise_id === item.id);
+
+          return (
+            <div
+              key={item.id}
+              className={cn(
+                "flex flex-col justify-between rounded-lg border p-3 transition-colors",
+                isSelected
+                  ? "border-primary bg-primary/5 shadow-xs"
+                  : "border-border bg-card hover:border-muted-foreground/30",
+              )}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium text-foreground text-xs sm:text-sm">{item.name}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {item.is_free ? "Free Perk" : `Rp ${item.price.toLocaleString("id-ID")}`}
+                    {item.variations?.length ? ` • ${item.variations.map((v) => v.name).join(", ")}` : ""}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={isSelected ? "default" : "outline"}
+                  className="h-7 shrink-0 px-2.5 text-xs"
+                  onClick={() => handleToggleMerch(item.id)}
+                >
+                  {isSelected ? (
+                    <>
+                      <Check className="mr-1 size-3" /> Included
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="mr-1 size-3" /> Add
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {isSelected && (
+                <div className="mt-2.5 flex items-center justify-between border-border/50 border-t pt-2 text-xs">
+                  <span className="text-[11px] text-muted-foreground">Quantity included:</span>
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="size-6 text-xs"
+                      onClick={() => handleUpdateMerchQuantity(item.id, (selectedRecord?.quantity || 1) - 1)}
+                    >
+                      -
+                    </Button>
+                    <Input
+                      type="number"
+                      min={1}
+                      className="h-6 w-12 px-1 text-center font-medium text-xs"
+                      value={selectedRecord?.quantity || 1}
+                      onChange={(e) => handleUpdateMerchQuantity(item.id, Math.max(1, Number(e.target.value) || 1))}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="size-6 text-xs"
+                      onClick={() => handleUpdateMerchQuantity(item.id, (selectedRecord?.quantity || 1) + 1)}
+                    >
+                      +
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
@@ -344,6 +553,7 @@ export function BundleDialog({
                     1. Included Ticket Tier & Quantity{" "}
                     <span className="font-normal text-muted-foreground text-xs">(Optional)</span>
                   </Label>
+                  {isLoading && <Spinner className="size-3 text-muted-foreground" />}
                 </div>
                 {pricing.ticketSubtotal > 0 && (
                   <span className="font-semibold text-primary text-xs">
@@ -352,76 +562,7 @@ export function BundleDialog({
                 )}
               </div>
 
-              {eventTickets.length === 0 ? (
-                <div className="rounded-lg border border-dashed p-3 text-center text-muted-foreground text-xs">
-                  No ticket tiers configured. You can still create a merchandise-only package.
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <div className="sm:col-span-2">
-                    <Label htmlFor="ticket-select" className="mb-1 block text-muted-foreground text-xs">
-                      Ticket Tier
-                    </Label>
-                    <Select value={ticketId} onValueChange={setTicketId}>
-                      <SelectTrigger id="ticket-select" className="w-full">
-                        <SelectValue placeholder="Select ticket tier (or None)" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">
-                          <span className="text-muted-foreground italic">None (Merchandise-only package)</span>
-                        </SelectItem>
-                        {eventTickets.map((t) => (
-                          <SelectItem key={t.id} value={t.id}>
-                            <div className="flex items-center justify-between gap-4">
-                              <span className="font-medium">{t.name}</span>
-                              <span className="text-muted-foreground text-xs">
-                                {t.type === "free" ? "Free" : `Rp ${(t.price || 0).toLocaleString("id-ID")}`}
-                              </span>
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="ticket-quantity" className="mb-1 block text-muted-foreground text-xs">
-                      Quantity in Bundle
-                    </Label>
-                    <div className="flex items-center gap-1.5">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        className="size-9 shrink-0"
-                        onClick={() => setTicketQuantity((q) => Math.max(1, q - 1))}
-                        disabled={!ticketId || ticketId === "none" || ticketQuantity <= 1}
-                      >
-                        -
-                      </Button>
-                      <Input
-                        id="ticket-quantity"
-                        type="number"
-                        min={1}
-                        value={ticketId && ticketId !== "none" ? ticketQuantity : 0}
-                        disabled={!ticketId || ticketId === "none"}
-                        onChange={(e) => setTicketQuantity(Math.max(1, Number(e.target.value) || 1))}
-                        className="text-center font-bold"
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        className="size-9 shrink-0"
-                        onClick={() => setTicketQuantity((q) => q + 1)}
-                        disabled={!ticketId || ticketId === "none"}
-                      >
-                        +
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              )}
+              {renderTicketsBody()}
 
               {ticketId && ticketId !== "none" && ticketQuantity > 1 && (
                 <div className="space-y-1.5 rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs">
@@ -462,6 +603,7 @@ export function BundleDialog({
                     2. Bundled Merchandise Items{" "}
                     <span className="font-normal text-muted-foreground text-xs">(Optional)</span>
                   </Label>
+                  {isLoading && <Spinner className="size-3 text-muted-foreground" />}
                 </div>
                 <span className="text-muted-foreground text-xs">
                   {bundledMerch.length === 0
@@ -470,92 +612,7 @@ export function BundleDialog({
                 </span>
               </div>
 
-              {eventMerchandise.length === 0 ? (
-                <div className="rounded-lg border border-dashed p-3 text-center text-muted-foreground text-xs">
-                  No merchandise items found. Please add merchandise in the Merchandise tab first.
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {eventMerchandise.map((item) => {
-                    const isSelected = bundledMerch.some((m) => m.merchandise_id === item.id);
-                    const selectedRecord = bundledMerch.find((m) => m.merchandise_id === item.id);
-
-                    return (
-                      <div
-                        key={item.id}
-                        className={cn(
-                          "flex flex-col justify-between rounded-lg border p-3 transition-colors",
-                          isSelected
-                            ? "border-primary bg-primary/5 shadow-xs"
-                            : "border-border bg-card hover:border-muted-foreground/30",
-                        )}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate font-medium text-foreground text-xs sm:text-sm">{item.name}</p>
-                            <p className="text-[11px] text-muted-foreground">
-                              {item.is_free ? "Free Perk" : `Rp ${item.price.toLocaleString("id-ID")}`}
-                              {item.variations?.length ? ` • ${item.variations.map((v) => v.name).join(", ")}` : ""}
-                            </p>
-                          </div>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant={isSelected ? "default" : "outline"}
-                            className="h-7 shrink-0 px-2.5 text-xs"
-                            onClick={() => handleToggleMerch(item.id)}
-                          >
-                            {isSelected ? (
-                              <>
-                                <Check className="mr-1 size-3" /> Included
-                              </>
-                            ) : (
-                              <>
-                                <Plus className="mr-1 size-3" /> Add
-                              </>
-                            )}
-                          </Button>
-                        </div>
-
-                        {isSelected && (
-                          <div className="mt-2.5 flex items-center justify-between border-border/50 border-t pt-2 text-xs">
-                            <span className="text-[11px] text-muted-foreground">Quantity included:</span>
-                            <div className="flex items-center gap-1.5">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="icon"
-                                className="size-6 text-xs"
-                                onClick={() => handleUpdateMerchQuantity(item.id, (selectedRecord?.quantity || 1) - 1)}
-                              >
-                                -
-                              </Button>
-                              <Input
-                                type="number"
-                                min={1}
-                                className="h-6 w-12 px-1 text-center font-medium text-xs"
-                                value={selectedRecord?.quantity || 1}
-                                onChange={(e) =>
-                                  handleUpdateMerchQuantity(item.id, Math.max(1, Number(e.target.value) || 1))
-                                }
-                              />
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="icon"
-                                className="size-6 text-xs"
-                                onClick={() => handleUpdateMerchQuantity(item.id, (selectedRecord?.quantity || 1) + 1)}
-                              >
-                                +
-                              </Button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+              {renderMerchandiseBody()}
             </div>
           </div>
 
