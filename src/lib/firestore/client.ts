@@ -1045,19 +1045,22 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
 
   // Guard against oversized base64 data URIs exceeding Firestore constraints
   const safePictureUrl =
-    registration.event_picture_url && registration.event_picture_url.length <= 50000
+    registration.event_picture_url && registration.event_picture_url.length <= 500000
       ? registration.event_picture_url
       : undefined;
   const safeBannerUrl =
-    registration.event_banner_url && registration.event_banner_url.length <= 50000
+    registration.event_banner_url && registration.event_banner_url.length <= 500000
       ? registration.event_banner_url
       : undefined;
+  const safeAvatar =
+    registration.member_avatar && registration.member_avatar.length <= 500000 ? registration.member_avatar : undefined;
 
   const cleanPayload = sanitizeFirestoreData<FirestoreRegistration>({
     ...registration,
     member_id: effectiveMemberId,
     event_picture_url: safePictureUrl,
     event_banner_url: safeBannerUrl,
+    member_avatar: safeAvatar,
     ticket_id: registration.ticket_id != null ? String(registration.ticket_id) : DEFAULT_REGULAR_TICKET_ID,
     ticket_name: registration.ticket_name ?? DEFAULT_REGULAR_TICKET_NAME,
     ticket_type: registration.ticket_type ?? "free",

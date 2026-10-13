@@ -584,7 +584,7 @@ service cloud.firestore {
         data.status is string && (data.status in ['pending', 'approved', 'registered', 'rejected', 'waitlisted', 'attended', 'waiting_for_payment', 'paid_and_registered', 'expired', 'failed', 'canceled', 'cancelled'] || data.status.lower() in ['pending', 'approved', 'registered', 'rejected', 'waitlisted', 'attended', 'waiting_for_payment', 'paid_and_registered', 'expired', 'failed', 'canceled', 'cancelled']) &&
         data.registered_at is string && data.registered_at.size() <= 50 &&
         (!('member_phone' in data) || data.member_phone == null || (data.member_phone is string && data.member_phone.size() <= 50) || data.member_phone is int || data.member_phone is float) &&
-        (!('member_avatar' in data) || data.member_avatar == null || (data.member_avatar is string && data.member_avatar.size() <= 50000)) &&
+        (!('member_avatar' in data) || data.member_avatar == null || (data.member_avatar is string && data.member_avatar.size() <= 500000)) &&
         (!('member_role' in data) || data.member_role == null || (data.member_role is string && data.member_role.size() <= 200)) &&
         (!('answers' in data) || data.answers == null || (data.answers is map && data.answers.size() <= 500)) &&
         (!('notes' in data) || data.notes == null || (data.notes is string && data.notes.size() <= 2000)) &&
@@ -609,10 +609,10 @@ service cloud.firestore {
         (!('bevy_attendee_id' in data) || data.bevy_attendee_id == null || data.bevy_attendee_id is int || data.bevy_attendee_id is float || (data.bevy_attendee_id is string && data.bevy_attendee_id.size() <= 64)) &&
         (!('checkin_date' in data) || data.checkin_date == null || (data.checkin_date is string && data.checkin_date.size() <= 50)) &&
         (!('attendee_code' in data) || data.attendee_code == null || (data.attendee_code is string && data.attendee_code.size() <= 100)) &&
-        (!('event_picture_url' in data) || data.event_picture_url == null || (data.event_picture_url is string && data.event_picture_url.size() <= 50000)) &&
-        (!('event_banner_url' in data) || data.event_banner_url == null || (data.event_banner_url is string && data.event_banner_url.size() <= 50000)) &&
+        (!('event_picture_url' in data) || data.event_picture_url == null || (data.event_picture_url is string && data.event_picture_url.size() <= 500000)) &&
+        (!('event_banner_url' in data) || data.event_banner_url == null || (data.event_banner_url is string && data.event_banner_url.size() <= 500000)) &&
         (!('payment_status' in data) || data.payment_status == null || (data.payment_status is string && data.payment_status.size() <= 100)) &&
-        (!('payment_url' in data) || data.payment_url == null || (data.payment_url is string && data.payment_url.size() <= 50000)) &&
+        (!('payment_url' in data) || data.payment_url == null || (data.payment_url is string && data.payment_url.size() <= 500000)) &&
         (!('payment_invoice_number' in data) || data.payment_invoice_number == null || (data.payment_invoice_number is string && data.payment_invoice_number.size() <= 500) || data.payment_invoice_number is int || data.payment_invoice_number is float) &&
         (!('payment_amount' in data) || data.payment_amount == null || ((data.payment_amount is int || data.payment_amount is float) && data.payment_amount >= 0) || (data.payment_amount is string && data.payment_amount.size() <= 50)) &&
         (!('payment_expired_datetime' in data) || data.payment_expired_datetime == null || (data.payment_expired_datetime is string && data.payment_expired_datetime.size() <= 500) || data.payment_expired_datetime is int || data.payment_expired_datetime is float || data.payment_expired_datetime is timestamp) &&
@@ -928,7 +928,7 @@ service cloud.firestore {
           resource == null ||
           resource.data.member_id == request.auth.uid ||
           (('member_email' in resource.data) && resource.data.member_email == request.auth.token.email) ||
-          request.auth.uid == registrationId.split('_')[1]
+          registrationId.matches('.*_' + request.auth.uid)
         ));
 
       // Listing registrations: Team access (Organizers & Staff), or authenticated users querying their own registrations.
@@ -941,7 +941,10 @@ service cloud.firestore {
       // Create: Organizers or authenticated users registering themselves.
       allow create: if isValidRegistration(request.resource.data) && (
         isOrganizer() ||
-        (isAuthenticated() && (request.auth.uid == request.resource.data.member_id || request.auth.uid == registrationId.split('_')[1]))
+        (isAuthenticated() && (
+          request.auth.uid == request.resource.data.member_id ||
+          registrationId.matches('.*_' + request.auth.uid)
+        ))
       );
 
       // Update: Team access (Organizers & Staff for attendee curation, status review, check-in, delivery fulfillment) or the registrant updating payment fields, answers, delivery request, status logs, and RSVP details.
@@ -952,7 +955,7 @@ service cloud.firestore {
         (
           (
             ('member_id' in resource.data && isOwner(resource.data.member_id)) ||
-            (isAuthenticated() && request.auth.uid == registrationId.split('_')[1])
+            (isAuthenticated() && registrationId.matches('.*_' + request.auth.uid))
           ) &&
           (
             !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status']) ||
@@ -972,7 +975,12 @@ service cloud.firestore {
       );
 
       // Deletion: Organizers or authenticated registrants cancelling their own registration.
-      allow delete: if isOrganizer() || (isAuthenticated() && resource != null && (resource.data.member_id == request.auth.uid || request.auth.uid == registrationId.split('_')[1]));
+      allow delete: if isOrganizer() || (
+        isAuthenticated() && resource != null && (
+          resource.data.member_id == request.auth.uid ||
+          registrationId.matches('.*_' + request.auth.uid)
+        )
+      );
     }
 
     // -------------------------------------------------------------
