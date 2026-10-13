@@ -115,6 +115,12 @@ export const organizerSidebarItems: NavGroup[] = [
         icon: Link2,
       },
       {
+        id: "media-bucket",
+        title: "Bucket Management",
+        url: "/dashboard/media",
+        icon: HardDrive,
+      },
+      {
         id: "partnership",
         title: "Partnership & Sponsorship",
         url: "/dashboard/partnership",
@@ -125,12 +131,6 @@ export const organizerSidebarItems: NavGroup[] = [
         title: "FAQ & Policy",
         url: "/dashboard/faq",
         icon: HelpCircle,
-      },
-      {
-        id: "media-bucket",
-        title: "Bucket Management",
-        url: "/dashboard/media",
-        icon: HardDrive,
       },
       {
         id: "others",
