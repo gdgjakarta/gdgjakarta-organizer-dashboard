@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 import { useShallow } from "zustand/react/shallow";
 
@@ -28,6 +29,7 @@ import { NavUser } from "./nav-user";
 import { SupportCard } from "./support-card";
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const pathname = usePathname();
   const { sidebarVariant, sidebarCollapsible, isSynced } = usePreferencesStore(
     useShallow((s) => ({
       sidebarVariant: s.values.sidebar_variant,
@@ -50,8 +52,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       }
       return memberSidebarItems;
     }
-    return memberSidebarItems;
-  }, [user]);
+    return pathname.startsWith("/dashboard/member") ? memberSidebarItems : organizerSidebarItems;
+  }, [user, pathname]);
 
   const sidebarItems = useMemo(() => filterNavItems(rawSidebarItems), [filterNavItems, rawSidebarItems]);
 

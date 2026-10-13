@@ -12,7 +12,7 @@ import { MediaView } from "./_components/media-view";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Bucket Storage",
+  title: "Bucket Management",
   description: "Manage Cloudflare R2 storage bucket, organize directories, upload assets, and distribute media links.",
 };
 

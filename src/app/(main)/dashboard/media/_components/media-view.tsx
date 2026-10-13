@@ -170,7 +170,7 @@ export function MediaView({ initialContent }: MediaViewProps) {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2.5">
-            <h1 className="font-bold text-2xl text-foreground tracking-tight sm:text-3xl">Bucket Storage</h1>
+            <h1 className="font-bold text-2xl text-foreground tracking-tight sm:text-3xl">Bucket Management</h1>
             <Badge variant="outline" className="border-primary/30 text-primary text-xs">
               Cloudflare R2
             </Badge>
