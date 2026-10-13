@@ -580,7 +580,7 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
                           <button
                             type="button"
                             onClick={() => handleRemoveImage(imgIdx)}
-                            className="flex size-6 items-center justify-center rounded-md bg-background/90 text-destructive shadow-xs hover:bg-destructive hover:text-destructive-foreground transition-colors"
+                            className="flex size-6 items-center justify-center rounded-md bg-background/90 text-destructive shadow-xs hover:bg-destructive hover:text-white transition-colors"
                             title="Remove photo"
                           >
                             <Trash2 className="size-3" />
