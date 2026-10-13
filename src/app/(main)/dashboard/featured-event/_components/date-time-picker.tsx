@@ -131,6 +131,8 @@ export function DateTimePicker({
     onChange("");
   };
 
+  const canClear = Boolean(value) && !disabled;
+
   return (
     <div className="relative w-full">
       <Popover open={open} onOpenChange={setOpen}>
@@ -143,6 +145,7 @@ export function DateTimePicker({
               disabled={disabled}
               className={cn(
                 "h-10 w-full justify-start px-3 text-left font-normal transition-colors",
+                canClear && "pr-9",
                 !value && "text-muted-foreground",
                 className,
               )}
@@ -150,23 +153,24 @@ export function DateTimePicker({
               <CalendarIcon className="mr-2 size-4 shrink-0 text-muted-foreground" />
               {/* biome-ignore lint/nursery/useNullishCoalescing: empty string should fall back to placeholder */}
               <span className="flex-1 truncate">{value || placeholder}</span>
-              <Clock className="ml-2 size-4 shrink-0 text-muted-foreground opacity-60" />
+              {!canClear && <Clock className="ml-2 size-4 shrink-0 text-muted-foreground opacity-60" />}
             </Button>
           </PopoverTrigger>
 
-          {value && !disabled && (
+          {canClear && (
             <Button
               type="button"
               variant="ghost"
-              size="icon"
+              size="icon-sm"
               title="Clear date & time"
               onClick={(e) => {
                 e.stopPropagation();
                 handleClear();
               }}
-              className="absolute right-8 size-7 text-muted-foreground hover:text-foreground"
+              className="absolute top-1/2 right-1.5 size-7 -translate-y-1/2 text-muted-foreground hover:text-foreground"
             >
               <X className="size-3.5" />
+              <span className="sr-only">Clear date & time</span>
             </Button>
           )}
         </div>

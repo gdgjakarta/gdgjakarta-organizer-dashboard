@@ -189,6 +189,7 @@ export function DatePicker({
   }, [selectedDate, withTime, time, effectiveOutputFormat, value]);
 
   const isSmall = size === "sm";
+  const canClear = clearable && Boolean(value) && !disabled;
 
   return (
     <div className="relative w-full">
@@ -203,6 +204,7 @@ export function DatePicker({
               className={cn(
                 "w-full justify-start text-left font-normal transition-colors",
                 isSmall ? "h-8 px-2.5 text-xs" : "h-9 px-3 text-sm",
+                canClear && (isSmall ? "pr-8" : "pr-9"),
                 !displayLabel && "text-muted-foreground",
                 className,
               )}
@@ -211,7 +213,7 @@ export function DatePicker({
               <span className="flex-1 truncate">
                 {displayLabel || placeholder || (withTime ? "Pick date & time" : "Pick date")}
               </span>
-              {withTime && (
+              {withTime && !canClear && (
                 <Clock
                   className={cn("ml-2 shrink-0 text-muted-foreground opacity-60", isSmall ? "size-3" : "size-3.5")}
                 />
@@ -219,22 +221,23 @@ export function DatePicker({
             </Button>
           </PopoverTrigger>
 
-          {clearable && Boolean(value) && !disabled && (
+          {canClear && (
             <Button
               type="button"
               variant="ghost"
-              size="icon"
+              size={isSmall ? "icon-xs" : "icon-sm"}
               title="Clear date"
               onClick={(e) => {
                 e.stopPropagation();
                 handleClear();
               }}
               className={cn(
-                "absolute right-2 text-muted-foreground hover:text-foreground",
+                "absolute top-1/2 right-1.5 -translate-y-1/2 text-muted-foreground hover:text-foreground",
                 isSmall ? "size-6" : "size-7",
               )}
             >
               <X className={isSmall ? "size-3" : "size-3.5"} />
+              <span className="sr-only">Clear date</span>
             </Button>
           )}
         </div>
