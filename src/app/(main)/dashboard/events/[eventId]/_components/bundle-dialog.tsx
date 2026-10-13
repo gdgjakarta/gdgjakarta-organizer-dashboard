@@ -69,8 +69,12 @@ export function BundleDialog({
   const [description, setDescription] = useState("");
   const [badge, setBadge] = useState("");
   const [ticketId, setTicketId] = useState("");
+  const [ticketQuantity, setTicketQuantity] = useState<number>(1);
   const [bundledMerch, setBundledMerch] = useState<BundleMerchandiseItem[]>([]);
+  const [discountMode, setDiscountMode] = useState<"percentage" | "fixed" | "custom">("percentage");
+  const [discountValue, setDiscountValue] = useState<number>(20);
   const [price, setPrice] = useState<number>(0);
+  const [generateVouchers, setGenerateVouchers] = useState(true);
   const [hasCapacityLimit, setHasCapacityLimit] = useState(false);
   const [capacity, setCapacity] = useState<number | null>(null);
   const [status, setStatus] = useState<"active" | "sold_out" | "hidden">("active");
@@ -90,8 +94,12 @@ export function BundleDialog({
       setDescription(bundle.description ?? "");
       setBadge(bundle.badge ?? "");
       setTicketId(bundle.ticket_id);
+      setTicketQuantity(bundle.ticket_quantity ?? 1);
       setBundledMerch(JSON.parse(JSON.stringify(bundle.merchandise_items)));
       setPrice(bundle.price);
+      setDiscountMode(bundle.discount_type ?? "percentage");
+      setDiscountValue(bundle.discount_value ?? 20);
+      setGenerateVouchers(bundle.generate_vouchers !== false);
       setHasCapacityLimit(bundle.capacity != null);
       setCapacity(bundle.capacity ?? null);
       setStatus(bundle.status);
@@ -102,8 +110,12 @@ export function BundleDialog({
       setDescription("");
       setBadge("Best Value");
       setTicketId(activeTickets[0]?.id ?? "");
+      setTicketQuantity(1);
       setBundledMerch([]);
       setPrice(0);
+      setDiscountMode("percentage");
+      setDiscountValue(20);
+      setGenerateVouchers(true);
       setHasCapacityLimit(false);
       setCapacity(null);
       setStatus("active");
@@ -118,13 +130,59 @@ export function BundleDialog({
     return calculateBundlePricing(
       {
         ticket_id: ticketId,
+        ticket_quantity: ticketQuantity,
         merchandise_items: bundledMerch,
         price,
       },
       eventTickets,
       eventMerchandise,
     );
-  }, [ticketId, bundledMerch, price, eventTickets, eventMerchandise]);
+  }, [ticketId, ticketQuantity, bundledMerch, price, eventTickets, eventMerchandise]);
+
+  // Helper to recompute price based on discountMode & discountValue
+  const applyDiscountCalculation = (mode: "percentage" | "fixed" | "custom", val: number, standaloneTot: number) => {
+    if (mode === "percentage") {
+      const pct = Math.min(100, Math.max(0, val));
+      const discounted = Math.round((standaloneTot * (1 - pct / 100)) / 1000) * 1000;
+      setPrice(Math.max(0, discounted));
+    } else if (mode === "fixed") {
+      const fixedDiscount = Math.max(0, val);
+      const discounted = Math.max(0, standaloneTot - fixedDiscount);
+      setPrice(discounted);
+    }
+  };
+
+  const handleModeChange = (newMode: "percentage" | "fixed" | "custom") => {
+    setDiscountMode(newMode);
+    if (newMode === "percentage") {
+      const currentPct = pricing.discountPercentage || 20;
+      setDiscountValue(currentPct);
+      applyDiscountCalculation("percentage", currentPct, pricing.standaloneTotal);
+    } else if (newMode === "fixed") {
+      const currentSavings = pricing.savings || Math.round(pricing.standaloneTotal * 0.2);
+      setDiscountValue(currentSavings);
+      applyDiscountCalculation("fixed", currentSavings, pricing.standaloneTotal);
+    }
+  };
+
+  const handleDiscountValueChange = (val: number) => {
+    setDiscountValue(val);
+    applyDiscountCalculation(discountMode, val, pricing.standaloneTotal);
+  };
+
+  const handleDirectPriceChange = (newPrice: number) => {
+    const validPrice = Math.max(0, newPrice);
+    setPrice(validPrice);
+    if (pricing.standaloneTotal > 0) {
+      const savings = Math.max(0, pricing.standaloneTotal - validPrice);
+      if (discountMode === "percentage") {
+        const pct = Math.round((savings / pricing.standaloneTotal) * 100);
+        setDiscountValue(pct);
+      } else if (discountMode === "fixed") {
+        setDiscountValue(savings);
+      }
+    }
+  };
 
   // Helper to add a merchandise item into bundle
   const handleToggleMerch = (merchId: string) => {
@@ -146,6 +204,8 @@ export function BundleDialog({
   };
 
   const handleApplySuggestedPrice = (discountPct: number) => {
+    setDiscountMode("percentage");
+    setDiscountValue(discountPct);
     const discounted = Math.round((pricing.standaloneTotal * (1 - discountPct / 100)) / 1000) * 1000;
     setPrice(Math.max(0, discounted));
     setBadge(`Save ${discountPct}%`);
@@ -180,9 +240,13 @@ export function BundleDialog({
       description: description.trim() || undefined,
       badge: badge.trim() || undefined,
       ticket_id: ticketId,
+      ticket_quantity: Math.max(1, Number(ticketQuantity) || 1),
       merchandise_items: bundledMerch,
       price: Math.max(0, Number(price) || 0),
       original_price: pricing.standaloneTotal > 0 ? pricing.standaloneTotal : undefined,
+      discount_type: discountMode,
+      discount_value: Number(discountValue) || undefined,
+      generate_vouchers: generateVouchers,
       capacity: hasCapacityLimit && capacity && capacity > 0 ? Number(capacity) : null,
       total_registered: bundle?.total_registered ?? 0,
       status,
@@ -270,37 +334,113 @@ export function BundleDialog({
           </div>
 
           <div className="border-t pt-4">
-            {/* Step 1: Select Ticket Tier */}
+            {/* Step 1: Select Ticket Tier & Quantity */}
             <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Ticket className="size-4 text-primary" />
-                <Label className="font-semibold text-foreground">
-                  1. Included Ticket Tier <span className="text-destructive">*</span>
-                </Label>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Ticket className="size-4 text-primary" />
+                  <Label className="font-semibold text-foreground">
+                    1. Included Ticket Tier & Quantity <span className="text-destructive">*</span>
+                  </Label>
+                </div>
+                {pricing.ticketSubtotal > 0 && (
+                  <span className="font-semibold text-primary text-xs">
+                    Subtotal: Rp {pricing.ticketSubtotal.toLocaleString("id-ID")}
+                  </span>
+                )}
               </div>
 
               {eventTickets.length === 0 ? (
-                <div className="rounded-lg border border-dashed p-3 text-center text-xs text-muted-foreground">
+                <div className="rounded-lg border border-dashed p-3 text-center text-muted-foreground text-xs">
                   No ticket tiers configured. Please create a ticket tier in the Tickets tab first.
                 </div>
               ) : (
-                <Select value={ticketId} onValueChange={setTicketId}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select ticket tier" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {eventTickets.map((t) => (
-                      <SelectItem key={t.id} value={t.id}>
-                        <div className="flex items-center justify-between gap-4">
-                          <span className="font-medium">{t.name}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {t.type === "free" ? "Free" : `Rp ${(t.price || 0).toLocaleString("id-ID")}`}
-                          </span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="sm:col-span-2">
+                    <Label htmlFor="ticket-select" className="mb-1 block text-muted-foreground text-xs">
+                      Ticket Tier
+                    </Label>
+                    <Select value={ticketId} onValueChange={setTicketId}>
+                      <SelectTrigger id="ticket-select" className="w-full">
+                        <SelectValue placeholder="Select ticket tier" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {eventTickets.map((t) => (
+                          <SelectItem key={t.id} value={t.id}>
+                            <div className="flex items-center justify-between gap-4">
+                              <span className="font-medium">{t.name}</span>
+                              <span className="text-muted-foreground text-xs">
+                                {t.type === "free" ? "Free" : `Rp ${(t.price || 0).toLocaleString("id-ID")}`}
+                              </span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="ticket-quantity" className="mb-1 block text-muted-foreground text-xs">
+                      Quantity in Bundle
+                    </Label>
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="size-9 shrink-0"
+                        onClick={() => setTicketQuantity((q) => Math.max(1, q - 1))}
+                        disabled={ticketQuantity <= 1}
+                      >
+                        -
+                      </Button>
+                      <Input
+                        id="ticket-quantity"
+                        type="number"
+                        min={1}
+                        value={ticketQuantity}
+                        onChange={(e) => setTicketQuantity(Math.max(1, Number(e.target.value) || 1))}
+                        className="text-center font-bold"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="size-9 shrink-0"
+                        onClick={() => setTicketQuantity((q) => q + 1)}
+                      >
+                        +
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {ticketQuantity > 1 && (
+                <div className="space-y-1.5 rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-primary">
+                      Bulk / Group Pass ({ticketQuantity} Tickets Total):
+                    </span>
+                    <span className="font-semibold text-foreground">
+                      {ticketQuantity} × Rp{" "}
+                      {(eventTickets.find((t) => t.id === ticketId)?.price || 0).toLocaleString("id-ID")} = Rp{" "}
+                      {pricing.ticketSubtotal.toLocaleString("id-ID")}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between border-primary/10 border-t pt-1">
+                    <span className="text-[11px] text-muted-foreground">
+                      Generates <strong>{ticketQuantity - 1} friend vouchers</strong> (100% free ticket discount) upon
+                      purchase
+                    </span>
+                    <Switch
+                      id="gen-vouchers"
+                      checked={generateVouchers}
+                      onCheckedChange={setGenerateVouchers}
+                      className="scale-75"
+                    />
+                  </div>
+                </div>
               )}
             </div>
           </div>
@@ -315,13 +455,13 @@ export function BundleDialog({
                     2. Bundled Merchandise Items <span className="text-destructive">*</span>
                   </Label>
                 </div>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-muted-foreground text-xs">
                   {bundledMerch.length} item{bundledMerch.length === 1 ? "" : "s"} selected
                 </span>
               </div>
 
               {eventMerchandise.length === 0 ? (
-                <div className="rounded-lg border border-dashed p-3 text-center text-xs text-muted-foreground">
+                <div className="rounded-lg border border-dashed p-3 text-center text-muted-foreground text-xs">
                   No merchandise items found. Please add merchandise in the Merchandise tab first.
                 </div>
               ) : (
@@ -342,7 +482,7 @@ export function BundleDialog({
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
-                            <p className="truncate font-medium text-xs text-foreground sm:text-sm">{item.name}</p>
+                            <p className="truncate font-medium text-foreground text-xs sm:text-sm">{item.name}</p>
                             <p className="text-[11px] text-muted-foreground">
                               {item.is_free ? "Free Perk" : `Rp ${item.price.toLocaleString("id-ID")}`}
                               {item.variations?.length ? ` • ${item.variations.map((v) => v.name).join(", ")}` : ""}
@@ -368,7 +508,7 @@ export function BundleDialog({
                         </div>
 
                         {isSelected && (
-                          <div className="mt-2.5 flex items-center justify-between border-t border-border/50 pt-2 text-xs">
+                          <div className="mt-2.5 flex items-center justify-between border-border/50 border-t pt-2 text-xs">
                             <span className="text-[11px] text-muted-foreground">Quantity included:</span>
                             <div className="flex items-center gap-1.5">
                               <Button
@@ -380,7 +520,15 @@ export function BundleDialog({
                               >
                                 -
                               </Button>
-                              <span className="w-5 text-center font-medium">{selectedRecord?.quantity || 1}</span>
+                              <Input
+                                type="number"
+                                min={1}
+                                className="h-6 w-12 px-1 text-center font-medium text-xs"
+                                value={selectedRecord?.quantity || 1}
+                                onChange={(e) =>
+                                  handleUpdateMerchQuantity(item.id, Math.max(1, Number(e.target.value) || 1))
+                                }
+                              />
                               <Button
                                 type="button"
                                 variant="outline"
@@ -410,24 +558,40 @@ export function BundleDialog({
               </div>
 
               {/* Breakdown comparison banner */}
-              <div className="rounded-xl border bg-muted/40 p-3.5 space-y-2">
+              <div className="space-y-2 rounded-xl border bg-muted/40 p-3.5">
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                  <span className="text-muted-foreground">Total Standalone Item Value:</span>
+                  <span className="text-muted-foreground">Ticket Subtotal ({pricing.ticketQuantity}x Tickets):</span>
                   <span className="font-semibold text-foreground">
+                    Rp {pricing.ticketSubtotal.toLocaleString("id-ID")}
+                  </span>
+                </div>
+
+                {pricing.merchSubtotal > 0 && (
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                    <span className="text-muted-foreground">Merchandise Subtotal:</span>
+                    <span className="font-semibold text-foreground">
+                      Rp {pricing.merchSubtotal.toLocaleString("id-ID")}
+                    </span>
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-center justify-between gap-2 border-border/50 border-t pt-1.5 text-xs">
+                  <span className="font-medium text-muted-foreground">Total Standalone Value:</span>
+                  <span className="font-bold text-foreground">
                     Rp {pricing.standaloneTotal.toLocaleString("id-ID")}
                   </span>
                 </div>
 
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                  <span className="text-muted-foreground">Package Combo Price:</span>
-                  <span className="font-bold text-sm text-primary">
+                  <span className="font-medium text-muted-foreground">Package Combo Price:</span>
+                  <span className="font-bold text-primary text-sm">
                     Rp {pricing.bundlePrice.toLocaleString("id-ID")}
                   </span>
                 </div>
 
                 {pricing.savings > 0 && (
-                  <div className="flex items-center justify-between rounded-lg bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-700 dark:text-emerald-400">
-                    <span className="font-medium">Attendee Savings ({pricing.discountPercentage}% OFF):</span>
+                  <div className="flex items-center justify-between rounded-lg bg-emerald-500/10 px-3 py-1.5 text-emerald-700 text-xs dark:text-emerald-400">
+                    <span className="font-medium">Total Attendee Savings ({pricing.discountPercentage}% OFF):</span>
                     <span className="font-bold">-Rp {pricing.savings.toLocaleString("id-ID")}</span>
                   </div>
                 )}
@@ -438,12 +602,103 @@ export function BundleDialog({
                   )}
               </div>
 
+              {/* Discount Mode Selector */}
+              <div className="space-y-2">
+                <Label className="text-muted-foreground text-xs">Discount Method</Label>
+                <div className="grid grid-cols-3 gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={discountMode === "percentage" ? "default" : "outline"}
+                    className="h-8 text-xs"
+                    onClick={() => handleModeChange("percentage")}
+                  >
+                    Percentage (%)
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={discountMode === "fixed" ? "default" : "outline"}
+                    className="h-8 text-xs"
+                    onClick={() => handleModeChange("fixed")}
+                  >
+                    Fixed Amount (Rp)
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={discountMode === "custom" ? "default" : "outline"}
+                    className="h-8 text-xs"
+                    onClick={() => handleModeChange("custom")}
+                  >
+                    Direct Price
+                  </Button>
+                </div>
+              </div>
+
+              {/* Dynamic discount value input based on mode */}
+              {discountMode === "percentage" && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="discount-pct">Discount Percentage (%)</Label>
+                    <span className="text-muted-foreground text-xs">
+                      Savings: -Rp {pricing.savings.toLocaleString("id-ID")}
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <Input
+                      id="discount-pct"
+                      type="number"
+                      min={0}
+                      max={100}
+                      className="pr-8"
+                      value={discountValue}
+                      onChange={(e) =>
+                        handleDiscountValueChange(Math.max(0, Math.min(100, Number(e.target.value) || 0)))
+                      }
+                    />
+                    <span className="absolute top-2.5 right-3 text-muted-foreground text-xs">%</span>
+                  </div>
+                </div>
+              )}
+
+              {discountMode === "fixed" && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="discount-amount">Fixed Discount Deduction (IDR)</Label>
+                    <span className="text-muted-foreground text-xs">{pricing.discountPercentage}% OFF</span>
+                  </div>
+                  <div className="relative">
+                    <span className="absolute top-2.5 left-3 text-muted-foreground text-xs">Rp</span>
+                    <Input
+                      id="discount-amount"
+                      type="number"
+                      min={0}
+                      step={1000}
+                      className="pl-9"
+                      value={discountValue}
+                      onChange={(e) => handleDiscountValueChange(Math.max(0, Number(e.target.value) || 0))}
+                    />
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-1.5">
-                <Label htmlFor="bundle-price">
-                  Bundle Package Price (IDR) <span className="text-destructive">*</span>
-                </Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="bundle-price">
+                    Final Bundle Package Price (IDR) <span className="text-destructive">*</span>
+                  </Label>
+                  {discountMode !== "custom" && (
+                    <span className="text-[11px] text-muted-foreground">
+                      Calculated from{" "}
+                      {discountMode === "percentage"
+                        ? `${discountValue}% discount`
+                        : `Rp ${discountValue.toLocaleString("id-ID")} discount`}
+                    </span>
+                  )}
+                </div>
                 <div className="relative">
-                  <span className="absolute left-3 top-2.5 text-xs text-muted-foreground">Rp</span>
+                  <span className="absolute top-2.5 left-3 text-muted-foreground text-xs">Rp</span>
                   <Input
                     id="bundle-price"
                     type="number"
@@ -451,16 +706,16 @@ export function BundleDialog({
                     step={1000}
                     className="pl-9"
                     value={price || ""}
-                    onChange={(e) => setPrice(Math.max(0, Number(e.target.value) || 0))}
+                    onChange={(e) => handleDirectPriceChange(Math.max(0, Number(e.target.value) || 0))}
                   />
                 </div>
               </div>
 
               {/* Quick discount suggestions if standalone total > 0 */}
               {pricing.standaloneTotal > 0 && (
-                <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                <div className="flex flex-wrap items-center gap-1.5 pt-1 text-xs">
                   <span className="text-[11px] text-muted-foreground">Quick Discount:</span>
-                  {[10, 15, 20, 25, 30].map((pct) => (
+                  {[10, 15, 20, 25, 30, 50].map((pct) => (
                     <Button
                       key={pct}
                       type="button"
@@ -482,7 +737,7 @@ export function BundleDialog({
             <div className="space-y-4">
               <div className="flex items-center justify-between rounded-lg border p-3">
                 <div className="space-y-0.5">
-                  <Label htmlFor="capacity-limit" className="text-xs sm:text-sm font-medium">
+                  <Label htmlFor="capacity-limit" className="font-medium text-xs sm:text-sm">
                     Limit Total Packages (Quota)
                   </Label>
                   <p className="text-[11px] text-muted-foreground">
@@ -546,7 +801,7 @@ export function BundleDialog({
 
               <div className="flex items-center space-x-2 pt-1">
                 <Switch id="save-template" checked={saveAsTemplateChecked} onCheckedChange={setSaveAsTemplateChecked} />
-                <Label htmlFor="save-template" className="text-xs cursor-pointer">
+                <Label htmlFor="save-template" className="cursor-pointer text-xs">
                   Save as reusable template for future events
                 </Label>
               </div>

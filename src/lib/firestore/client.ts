@@ -65,6 +65,7 @@ export function sanitizeFirestoreData<T>(data: T): T {
   return data;
 }
 
+import { generateBundleFriendVouchers } from "@/lib/events/bundle-voucher-generator";
 import {
   DEFAULT_REGULAR_TICKET_ID,
   DEFAULT_REGULAR_TICKET_NAME,
@@ -73,6 +74,7 @@ import {
 
 import type {
   AuditLogEntry,
+  BundleIssuedVoucher,
   EventBundlePackage,
   EventEmailTemplates,
   EventMerchandiseItem,
@@ -1082,8 +1084,31 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
   const safeAvatar =
     registration.member_avatar && registration.member_avatar.length <= 500000 ? registration.member_avatar : undefined;
 
+  // Generate friend vouchers if this registration includes a bundle with multiple tickets
+  let issuedBundleVouchers: BundleIssuedVoucher[] | undefined;
+  let newFriendVouchers: EventVoucher[] = [];
+
+  if (registration.bundle_id && eventData?.bundles) {
+    const matchingBundle = eventData.bundles.find((b) => b.id === registration.bundle_id);
+    if (matchingBundle && (matchingBundle.ticket_quantity ?? 1) > 1 && matchingBundle.generate_vouchers !== false) {
+      const matchingTicketTier = eventData.tickets?.find((t) => t.id === matchingBundle.ticket_id);
+      const generated = generateBundleFriendVouchers({
+        bundle: matchingBundle,
+        buyerRegistrationId: regId,
+        buyerMemberId: effectiveMemberId,
+        buyerName: registration.member_name || "Bundle Purchaser",
+        buyerEmail: normalizedEmail,
+        ticketTier: matchingTicketTier,
+        eventStartDate: eventData.start_date,
+      });
+      issuedBundleVouchers = generated.registrationVouchers;
+      newFriendVouchers = generated.newEventVouchers;
+    }
+  }
+
   const cleanPayload = sanitizeFirestoreData<FirestoreRegistration>({
     ...registration,
+    bundle_vouchers: issuedBundleVouchers ?? registration.bundle_vouchers,
     member_id: effectiveMemberId,
     event_picture_url: safePictureUrl,
     event_banner_url: safeBannerUrl,
@@ -1156,17 +1181,64 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
         updateData.tickets = updatedTickets;
       }
 
-      if ((registration.voucher_id || registration.voucher_code) && Array.isArray(eventData.vouchers)) {
+      // Handle applied voucher redemption tracking
+      let updatedVouchers = Array.isArray(eventData.vouchers) ? [...eventData.vouchers] : [];
+
+      if (registration.voucher_id || registration.voucher_code) {
         const normalizedCode = registration.voucher_code?.trim().toUpperCase();
-        const updatedVouchers = eventData.vouchers.map((v) => {
+        updatedVouchers = updatedVouchers.map((v) => {
           if (v.id === registration.voucher_id || (normalizedCode && v.code.toUpperCase() === normalizedCode)) {
             return {
               ...v,
               times_used: (v.times_used ?? 0) + 1,
+              redeemed_by_member_id: effectiveMemberId,
+              redeemed_by_name: registration.member_name || undefined,
+              redeemed_by_email: normalizedEmail,
+              redeemed_at: new Date().toISOString(),
             };
           }
           return v;
         });
+
+        // Also if this voucher came from another buyer's bundle, update buyer's registration record
+        const redeemedVoucherObj = updatedVouchers.find(
+          (v) => v.id === registration.voucher_id || (normalizedCode && v.code.toUpperCase() === normalizedCode),
+        );
+        if (redeemedVoucherObj?.source_registration_id) {
+          try {
+            const purchaserRegRef = doc(db, "event_registrations", redeemedVoucherObj.source_registration_id);
+            const purchaserRegSnap = await getDoc(purchaserRegRef);
+            if (purchaserRegSnap.exists()) {
+              const pData = purchaserRegSnap.data() as FirestoreRegistration;
+              if (Array.isArray(pData.bundle_vouchers)) {
+                const updatedBuyerVouchers = pData.bundle_vouchers.map((bv) => {
+                  if (bv.code.toUpperCase() === normalizedCode) {
+                    return {
+                      ...bv,
+                      status: "redeemed" as const,
+                      redeemed_by_member_id: effectiveMemberId,
+                      redeemed_by_name: registration.member_name || "Friend",
+                      redeemed_by_email: normalizedEmail,
+                      redeemed_at: new Date().toISOString(),
+                    };
+                  }
+                  return bv;
+                });
+                await updateDoc(purchaserRegRef, { bundle_vouchers: updatedBuyerVouchers });
+              }
+            }
+          } catch (buyerUpdateErr) {
+            console.warn("[Firestore] Failed to update purchaser bundle voucher state:", buyerUpdateErr);
+          }
+        }
+      }
+
+      // Append newly generated friend vouchers if any
+      if (newFriendVouchers.length > 0) {
+        updatedVouchers = [...updatedVouchers, ...newFriendVouchers];
+      }
+
+      if (updatedVouchers.length > 0 || registration.voucher_id || registration.voucher_code) {
         updateData.vouchers = updatedVouchers;
       }
 

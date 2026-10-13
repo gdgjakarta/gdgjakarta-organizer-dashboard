@@ -6,10 +6,8 @@ import {
   Banknote,
   Bookmark,
   CheckCircle2,
-  Clock,
   Copy,
   Edit2,
-  Layers,
   Package,
   PackageCheck,
   Plus,
@@ -218,33 +216,33 @@ export function BundlesTab({ event }: BundlesTabProps) {
         <Card className="p-4">
           <div className="flex items-center gap-2">
             <PackageCheck className="size-4 text-primary" />
-            <span className="text-xs text-muted-foreground font-medium">Total Packages</span>
+            <span className="font-medium text-muted-foreground text-xs">Total Packages</span>
           </div>
-          <p className="mt-2 text-2xl font-bold tracking-tight text-foreground">{bundles.length}</p>
+          <p className="mt-2 font-bold text-2xl text-foreground tracking-tight">{bundles.length}</p>
         </Card>
 
         <Card className="p-4">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="size-4 text-emerald-600 dark:text-emerald-400" />
-            <span className="text-xs text-muted-foreground font-medium">Active Packages</span>
+            <span className="font-medium text-muted-foreground text-xs">Active Packages</span>
           </div>
-          <p className="mt-2 text-2xl font-bold tracking-tight text-foreground">{activeCount}</p>
+          <p className="mt-2 font-bold text-2xl text-foreground tracking-tight">{activeCount}</p>
         </Card>
 
         <Card className="p-4">
           <div className="flex items-center gap-2">
             <Users className="size-4 text-blue-600 dark:text-blue-400" />
-            <span className="text-xs text-muted-foreground font-medium">Packages Sold</span>
+            <span className="font-medium text-muted-foreground text-xs">Packages Sold</span>
           </div>
-          <p className="mt-2 text-2xl font-bold tracking-tight text-foreground">{totalSold}</p>
+          <p className="mt-2 font-bold text-2xl text-foreground tracking-tight">{totalSold}</p>
         </Card>
 
         <Card className="p-4">
           <div className="flex items-center gap-2">
             <Banknote className="size-4 text-amber-600 dark:text-amber-400" />
-            <span className="text-xs text-muted-foreground font-medium">Bundle Revenue</span>
+            <span className="font-medium text-muted-foreground text-xs">Bundle Revenue</span>
           </div>
-          <p className="mt-2 text-2xl font-bold tracking-tight text-foreground">
+          <p className="mt-2 font-bold text-2xl text-foreground tracking-tight">
             Rp {totalRevenue.toLocaleString("id-ID")}
           </p>
         </Card>
@@ -278,16 +276,16 @@ export function BundlesTab({ event }: BundlesTabProps) {
                 {GDG_BUNDLE_TEMPLATES.map((tpl) => (
                   <DropdownMenuItem
                     key={tpl.id}
-                    className="flex flex-col items-start gap-0.5 text-xs py-2 cursor-pointer"
+                    className="flex cursor-pointer flex-col items-start gap-0.5 py-2 text-xs"
                     onClick={() => handleAddTemplate(tpl)}
                   >
-                    <div className="flex items-center justify-between w-full">
+                    <div className="flex w-full items-center justify-between">
                       <span className="font-medium text-foreground">{tpl.name}</span>
                       <Badge variant="outline" className="text-[10px]">
                         Rp {tpl.price.toLocaleString("id-ID")}
                       </Badge>
                     </div>
-                    <span className="text-[11px] text-muted-foreground line-clamp-1">{tpl.description}</span>
+                    <span className="line-clamp-1 text-[11px] text-muted-foreground">{tpl.description}</span>
                   </DropdownMenuItem>
                 ))}
 
@@ -298,7 +296,7 @@ export function BundlesTab({ event }: BundlesTabProps) {
                     {templatesData.map((tpl) => (
                       <DropdownMenuItem
                         key={tpl.id}
-                        className="flex items-center justify-between text-xs py-2 cursor-pointer"
+                        className="flex cursor-pointer items-center justify-between py-2 text-xs"
                         onClick={() => handleApplySavedTemplate(tpl)}
                       >
                         <span className="truncate">{tpl.name}</span>
@@ -332,12 +330,12 @@ export function BundlesTab({ event }: BundlesTabProps) {
 
         <CardContent className="space-y-6">
           {bundles.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-12 px-4 text-center">
+            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed px-4 py-12 text-center">
               <div className="flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                 <PackageCheck className="size-7" />
               </div>
               <h3 className="mt-4 font-semibold text-base text-foreground">No Bundling Packages Yet</h3>
-              <p className="mt-1.5 max-w-md text-xs text-muted-foreground leading-relaxed">
+              <p className="mt-1.5 max-w-md text-muted-foreground text-xs leading-relaxed">
                 Bundling packages allow you to offer discounted combo tickets including event t-shirts, hoodies, and
                 swag kits to boost community merchandise sales and attendee excitement.
               </p>
@@ -379,13 +377,13 @@ export function BundlesTab({ event }: BundlesTabProps) {
                   >
                     {/* Top Row: Badges & Actions */}
                     <div>
-                      <div className="flex items-center justify-between gap-2 mb-3">
+                      <div className="mb-3 flex items-center justify-between gap-2">
                         <div className="flex flex-wrap items-center gap-1.5">
-                          <Badge variant="outline" className={cn("text-[10px] font-semibold", salesStatus.badgeColor)}>
+                          <Badge variant="outline" className={cn("font-semibold text-[10px]", salesStatus.badgeColor)}>
                             {salesStatus.badgeLabel}
                           </Badge>
                           {b.badge && (
-                            <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px]">
+                            <Badge className="border-primary/20 bg-primary/10 text-[10px] text-primary">
                               {b.badge}
                             </Badge>
                           )}
@@ -423,25 +421,25 @@ export function BundlesTab({ event }: BundlesTabProps) {
                       </div>
 
                       {/* Package Name & Description */}
-                      <h4 className="font-semibold text-foreground text-sm line-clamp-1">{b.name}</h4>
+                      <h4 className="line-clamp-1 font-semibold text-foreground text-sm">{b.name}</h4>
                       {b.description && (
-                        <p className="mt-1 text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+                        <p className="mt-1 line-clamp-2 text-muted-foreground text-xs leading-relaxed">
                           {b.description}
                         </p>
                       )}
 
                       {/* Pricing block */}
                       <div className="mt-3.5 flex items-baseline gap-2">
-                        <span className="font-bold text-lg text-foreground">
+                        <span className="font-bold text-foreground text-lg">
                           {b.price === 0 ? "Free (Rp 0)" : `Rp ${b.price.toLocaleString("id-ID")}`}
                         </span>
                         {pricing.standaloneTotal > b.price && (
-                          <span className="text-xs text-muted-foreground line-through">
+                          <span className="text-muted-foreground text-xs line-through">
                             Rp {pricing.standaloneTotal.toLocaleString("id-ID")}
                           </span>
                         )}
                         {pricing.savings > 0 && (
-                          <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                          <span className="font-semibold text-[11px] text-emerald-600 dark:text-emerald-400">
                             Save {pricing.discountPercentage}%
                           </span>
                         )}
@@ -452,17 +450,31 @@ export function BundlesTab({ event }: BundlesTabProps) {
                         {/* Included Ticket */}
                         <div className="flex items-center gap-2">
                           <Ticket className="size-3.5 shrink-0 text-primary" />
-                          <span className="shrink-0 text-muted-foreground font-medium">Ticket:</span>
+                          <span className="shrink-0 font-medium text-muted-foreground">Ticket:</span>
                           <span className="truncate font-semibold text-foreground">
-                            {linkedTicket?.name || "Regular Admission Ticket"}
+                            {b.ticket_quantity && b.ticket_quantity > 1 ? (
+                              <span className="inline-flex items-center gap-1">
+                                <Badge variant="secondary" className="px-1 py-0 font-bold text-[10px]">
+                                  {b.ticket_quantity}x
+                                </Badge>
+                                {linkedTicket?.name || "Regular Admission Ticket"}
+                                {b.generate_vouchers !== false && (
+                                  <span className="font-normal text-[10px] text-muted-foreground">
+                                    ({b.ticket_quantity - 1} friend vouchers)
+                                  </span>
+                                )}
+                              </span>
+                            ) : (
+                              linkedTicket?.name || "Regular Admission Ticket"
+                            )}
                           </span>
                         </div>
 
                         {/* Included Merchandise Items */}
                         <div className="flex items-start gap-2">
-                          <Package className="size-3.5 shrink-0 text-primary mt-0.5" />
+                          <Package className="mt-0.5 size-3.5 shrink-0 text-primary" />
                           <div className="min-w-0 flex-1">
-                            <span className="text-muted-foreground font-medium">Merch: </span>
+                            <span className="font-medium text-muted-foreground">Merch: </span>
                             {b.merchandise_items.length === 0 ? (
                               <span className="text-muted-foreground italic">None</span>
                             ) : (
@@ -475,7 +487,7 @@ export function BundlesTab({ event }: BundlesTabProps) {
                                     <Badge
                                       key={mItem.merchandise_id}
                                       variant="secondary"
-                                      className="text-[10px] py-0 px-1.5 font-normal"
+                                      className="px-1.5 py-0 font-normal text-[10px]"
                                     >
                                       {mItem.quantity}x {matchingMerch?.name || "Merchandise Item"}
                                     </Badge>
@@ -489,7 +501,7 @@ export function BundlesTab({ event }: BundlesTabProps) {
                     </div>
 
                     {/* Bottom: Quota / Sales Schedule */}
-                    <div className="mt-4 pt-3 border-t text-xs">
+                    <div className="mt-4 border-t pt-3 text-xs">
                       {hasCapacity ? (
                         <div className="space-y-1.5">
                           <div className="flex items-center justify-between text-[11px] text-muted-foreground">
@@ -533,7 +545,7 @@ export function BundlesTab({ event }: BundlesTabProps) {
                 size="sm"
                 variant="outline"
                 onClick={handleCreateNew}
-                className="gap-1.5 self-end sm:self-auto text-xs"
+                className="gap-1.5 self-end text-xs sm:self-auto"
               >
                 <Plus className="size-3.5" />
                 Add Another Package

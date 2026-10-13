@@ -199,15 +199,13 @@ export async function updateRegistrationFromPayment(input: UpdateRegistrationFro
   const regRef = doc(db, "event_registrations", targetDocSnap.id);
   const eventIdStr = String(regData.event_id);
 
-  // 2. Hydrate associated event to verify curation mode
-  let isCurated = true;
+  // 2. Hydrate associated event if needed
   if (regData.event_id) {
     try {
       const eventRef = doc(db, "events", eventIdStr);
       const eventSnap = await getDoc(eventRef);
       if (eventSnap.exists()) {
-        const eData = eventSnap.data() as FirestoreEvent;
-        isCurated = eData.requires_approval === true || eData.curation_mode === true;
+        const _eData = eventSnap.data() as FirestoreEvent;
       }
     } catch {
       // keep fallback
@@ -270,8 +268,50 @@ export async function updateRegistrationFromPayment(input: UpdateRegistrationFro
         total_approved: increment(1),
         updated_at: now,
       });
+
+      // Ensure bundle vouchers are properly included in event.vouchers
+      if (regData.bundle_id && Array.isArray(regData.bundle_vouchers) && regData.bundle_vouchers.length > 0) {
+        const eventSnap = await getDoc(eventRef);
+        if (eventSnap.exists()) {
+          const evData = eventSnap.data() as FirestoreEvent;
+          const currentVouchers = Array.isArray(evData.vouchers) ? [...evData.vouchers] : [];
+          let hasNew = false;
+
+          for (const bv of regData.bundle_vouchers) {
+            if (!currentVouchers.some((cv) => cv.code.toUpperCase() === bv.code.toUpperCase())) {
+              currentVouchers.push({
+                id: bv.voucher_id,
+                code: bv.code,
+                description: `100% Ticket Pass sponsored by ${regData.member_name || "Friend"}`,
+                discount_type: "percentage",
+                discount_value: 100,
+                applies_to: "ticket",
+                usage_limit: 1,
+                times_used: 0,
+                min_spend: null,
+                max_discount: null,
+                start_date: now,
+                end_date: evData.start_date || null,
+                status: "active",
+                source_bundle_id: regData.bundle_id,
+                source_registration_id: targetDocSnap.id,
+                purchaser_member_id: regData.member_id,
+                purchaser_name: regData.member_name,
+                purchaser_email: regData.member_email,
+                created_at: now,
+                updated_at: now,
+              });
+              hasNew = true;
+            }
+          }
+
+          if (hasNew) {
+            await updateDoc(eventRef, { vouchers: currentVouchers, updated_at: now });
+          }
+        }
+      }
     } catch (countErr) {
-      console.warn("[updateRegistrationFromPayment] Failed to increment total_approved:", countErr);
+      console.warn("[updateRegistrationFromPayment] Failed to update event / bundle vouchers:", countErr);
     }
   }
 

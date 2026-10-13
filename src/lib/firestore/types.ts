@@ -208,6 +208,18 @@ export interface EventBundlePackage {
   updated_at?: string;
 }
 
+export interface BundleIssuedVoucher {
+  code: string;
+  voucher_id: string;
+  ticket_id: string;
+  ticket_name?: string;
+  status: "available" | "redeemed" | "expired";
+  redeemed_by_member_id?: string;
+  redeemed_by_name?: string;
+  redeemed_by_email?: string;
+  redeemed_at?: string;
+}
+
 export type EmailTemplateKey =
   | "interest"
   | "accepted"

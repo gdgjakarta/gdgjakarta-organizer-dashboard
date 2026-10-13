@@ -14,6 +14,7 @@ import {
   Edit3,
   FileText,
   Filter,
+  Gift,
   Globe,
   Layers,
   MapPin,
@@ -49,6 +50,7 @@ import type { FirestoreEvent, FirestoreRegistration, RegistrationStatus } from "
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
+import { BundleVouchersDialog } from "./bundle-vouchers-dialog";
 import { MerchandiseDeliveryRequestDialog } from "./merchandise-delivery-request-dialog";
 import { MerchandiseDeliveryStatusDialog } from "./merchandise-delivery-status-dialog";
 
@@ -140,6 +142,7 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
   const [cancellingRegistration, setCancellingRegistration] = useState<FirestoreRegistration | null>(null);
   const [deliveryModalReg, setDeliveryModalReg] = useState<FirestoreRegistration | null>(null);
   const [deliveryStatusReg, setDeliveryStatusReg] = useState<FirestoreRegistration | null>(null);
+  const [bundleVouchersModalReg, setBundleVouchersModalReg] = useState<FirestoreRegistration | null>(null);
 
   useEffect(() => {
     async function loadRegistrations() {
@@ -456,7 +459,7 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
               key={reg.id}
               className={cn(
                 "group flex flex-col justify-between overflow-hidden shadow-xs transition-all hover:shadow-md",
-                isWaitingPayment && "border-amber-500/50 dark:border-amber-500/40 ring-1 ring-amber-500/20",
+                isWaitingPayment && "border-amber-500/50 ring-1 ring-amber-500/20 dark:border-amber-500/40",
                 isPaidAndRegistered && "border-emerald-500/30",
                 isPending && "border-amber-500/30",
               )}
@@ -745,6 +748,19 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
                         Pay Now {reg.payment_amount ? `(${formatRupiah(reg.payment_amount)})` : ""}
                       </Button>
                     </a>
+                  )}
+
+                  {/* Friend Vouchers Button if registration contains bundle vouchers */}
+                  {reg.bundle_vouchers && reg.bundle_vouchers.length > 0 && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 gap-1.5 border-primary/40 bg-primary/5 font-semibold text-primary text-xs hover:bg-primary/10"
+                      onClick={() => setBundleVouchersModalReg(reg)}
+                    >
+                      <Gift className="size-3.5" />
+                      Friend Vouchers ({reg.bundle_vouchers.filter((v) => v.status === "available").length} left)
+                    </Button>
                   )}
 
                   <EditRegistrationModal
@@ -1068,6 +1084,15 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
             setDeliveryStatusReg(null);
             setDeliveryModalReg(target);
           }}
+        />
+      )}
+
+      {bundleVouchersModalReg && (
+        <BundleVouchersDialog
+          open={Boolean(bundleVouchersModalReg)}
+          onOpenChange={(open) => !open && setBundleVouchersModalReg(null)}
+          registration={bundleVouchersModalReg}
+          event={eventMap.get(String(bundleVouchersModalReg.event_id))}
         />
       )}
     </div>

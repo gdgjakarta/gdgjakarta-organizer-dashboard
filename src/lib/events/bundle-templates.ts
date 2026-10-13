@@ -1,6 +1,9 @@
 import type { EventBundlePackage, EventMerchandiseItem, EventTicketTier } from "@/lib/firestore/types";
 
 export interface BundlePricingDetails {
+  ticketSubtotal: number;
+  ticketQuantity: number;
+  merchSubtotal: number;
   standaloneTotal: number;
   bundlePrice: number;
   savings: number;
@@ -20,12 +23,16 @@ export const CUSTOM_BUNDLE_TEMPLATES_STORAGE_KEY = "gdg_custom_bundle_templates"
  * Calculates total standalone price, savings amount, and discount percentage for a bundle.
  */
 export function calculateBundlePricing(
-  bundle: Pick<EventBundlePackage, "price" | "ticket_id" | "merchandise_items">,
+  bundle: Pick<EventBundlePackage, "price" | "ticket_id" | "merchandise_items"> & {
+    ticket_quantity?: number;
+  },
   tickets: EventTicketTier[] = [],
   merchandise: EventMerchandiseItem[] = [],
 ): BundlePricingDetails {
   const matchingTicket = tickets.find((t) => t.id === bundle.ticket_id);
+  const ticketQuantity = Math.max(1, bundle.ticket_quantity ?? 1);
   const ticketPrice = matchingTicket?.price ?? 0;
+  const ticketSubtotal = ticketPrice * ticketQuantity;
 
   let merchTotal = 0;
   for (const item of bundle.merchandise_items) {
@@ -35,12 +42,15 @@ export function calculateBundlePricing(
     }
   }
 
-  const standaloneTotal = ticketPrice + merchTotal;
+  const standaloneTotal = ticketSubtotal + merchTotal;
   const bundlePrice = bundle.price;
   const savings = Math.max(0, standaloneTotal - bundlePrice);
   const discountPercentage = standaloneTotal > 0 ? Math.round((savings / standaloneTotal) * 100) : 0;
 
   return {
+    ticketSubtotal,
+    ticketQuantity,
+    merchSubtotal: merchTotal,
     standaloneTotal,
     bundlePrice,
     savings,

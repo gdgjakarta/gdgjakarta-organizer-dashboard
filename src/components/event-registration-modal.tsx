@@ -651,7 +651,7 @@ export function EventRegistrationModal({
       return;
     }
     const validation = validateVoucherForCart(matched, {
-      ticketPrice,
+      ticketPrice: effectiveBasePrice,
       merchandiseTotal: merchandiseTotalPrice,
     });
     if (!validation.isValid) {
@@ -1728,7 +1728,7 @@ export function EventRegistrationModal({
             return (
               <Clock
                 className={cn(
-                  "relative z-10 shrink-0 transition-transform duration-500 text-blue-600 dark:text-blue-400",
+                  "relative z-10 shrink-0 text-blue-600 transition-transform duration-500 dark:text-blue-400",
                   buttonSize === "lg" ? "size-4" : "size-3.5",
                   isTransitioning && "scale-110",
                 )}
@@ -1739,7 +1739,7 @@ export function EventRegistrationModal({
             return (
               <CreditCard
                 className={cn(
-                  "relative z-10 shrink-0 transition-transform duration-500 text-amber-600 dark:text-amber-400",
+                  "relative z-10 shrink-0 text-amber-600 transition-transform duration-500 dark:text-amber-400",
                   buttonSize === "lg" ? "size-4" : "size-3.5",
                   isTransitioning && "scale-110",
                 )}
@@ -1928,15 +1928,15 @@ export function EventRegistrationModal({
                     type="button"
                     onClick={() => setRegistrationStep("tickets")}
                     className={cn(
-                      "flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-all cursor-pointer",
+                      "flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1 font-medium text-xs transition-all",
                       registrationStep === "tickets"
-                        ? "bg-primary text-primary-foreground shadow-xs font-semibold"
+                        ? "bg-primary font-semibold text-primary-foreground shadow-xs"
                         : "bg-muted/80 text-muted-foreground hover:bg-muted hover:text-foreground",
                     )}
                   >
                     <span
                       className={cn(
-                        "flex size-4 items-center justify-center rounded-full text-[10px] font-bold",
+                        "flex size-4 items-center justify-center rounded-full font-bold text-[10px]",
                         registrationStep === "tickets"
                           ? "bg-primary-foreground/20 text-primary-foreground"
                           : "bg-muted-foreground/20 text-muted-foreground",
@@ -1957,15 +1957,15 @@ export function EventRegistrationModal({
                       }
                     }}
                     className={cn(
-                      "flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-all",
+                      "flex items-center gap-1.5 rounded-full px-3 py-1 font-medium text-xs transition-all",
                       registrationStep === "form"
-                        ? "bg-primary text-primary-foreground shadow-xs font-semibold cursor-default"
-                        : "bg-muted/80 text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer",
+                        ? "cursor-default bg-primary font-semibold text-primary-foreground shadow-xs"
+                        : "cursor-pointer bg-muted/80 text-muted-foreground hover:bg-muted hover:text-foreground",
                     )}
                   >
                     <span
                       className={cn(
-                        "flex size-4 items-center justify-center rounded-full text-[10px] font-bold",
+                        "flex size-4 items-center justify-center rounded-full font-bold text-[10px]",
                         registrationStep === "form"
                           ? "bg-primary-foreground/20 text-primary-foreground"
                           : "bg-muted-foreground/20 text-muted-foreground",
@@ -2078,7 +2078,7 @@ export function EventRegistrationModal({
 
                     {/* Waitlist Notice Banner */}
                     {isWaitlistActive && (
-                      <div className="flex items-start gap-3 rounded-lg border border-blue-500/30 bg-blue-500/10 p-3.5 text-xs text-blue-900 dark:text-blue-200">
+                      <div className="flex items-start gap-3 rounded-lg border border-blue-500/30 bg-blue-500/10 p-3.5 text-blue-900 text-xs dark:text-blue-200">
                         <Clock className="mt-0.5 size-4 shrink-0 text-blue-600 dark:text-blue-400" />
                         <div className="space-y-1">
                           <p className="font-semibold text-blue-800 dark:text-blue-300">
@@ -2212,7 +2212,7 @@ export function EventRegistrationModal({
                           </div>
                           <Badge
                             variant="outline"
-                            className="border-primary/30 bg-primary/10 text-[10px] text-primary font-semibold"
+                            className="border-primary/30 bg-primary/10 font-semibold text-[10px] text-primary"
                           >
                             Best Value
                           </Badge>
@@ -2246,7 +2246,7 @@ export function EventRegistrationModal({
                                       <div className="flex flex-wrap items-center gap-1.5">
                                         <span className="font-semibold text-foreground text-sm">{b.name}</span>
                                         {b.badge && (
-                                          <Badge className="bg-primary/20 text-primary border-primary/30 text-[10px] font-semibold">
+                                          <Badge className="border-primary/30 bg-primary/20 font-semibold text-[10px] text-primary">
                                             {b.badge}
                                           </Badge>
                                         )}
@@ -2255,14 +2255,14 @@ export function EventRegistrationModal({
                                         </Badge>
                                       </div>
                                       {b.description && (
-                                        <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2">
+                                        <p className="line-clamp-2 text-muted-foreground text-xs leading-relaxed">
                                           {b.description}
                                         </p>
                                       )}
                                     </div>
 
                                     {/* Price display */}
-                                    <div className="text-right shrink-0">
+                                    <div className="shrink-0 text-right">
                                       <div className="font-bold text-base text-foreground">
                                         {b.price === 0 ? "Free (Rp 0)" : `Rp ${b.price.toLocaleString("id-ID")}`}
                                       </div>
@@ -2272,7 +2272,7 @@ export function EventRegistrationModal({
                                         </div>
                                       )}
                                       {pricing.savings > 0 && (
-                                        <div className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                                        <div className="font-bold text-[10px] text-emerald-600 dark:text-emerald-400">
                                           Save {pricing.discountPercentage}%
                                         </div>
                                       )}
@@ -2281,17 +2281,27 @@ export function EventRegistrationModal({
 
                                   {/* Included breakdown preview */}
                                   <div className="flex flex-wrap items-center gap-1.5 pt-1 text-xs">
-                                    <Badge variant="secondary" className="gap-1 px-2 py-0.5 text-[11px] font-medium">
+                                    <Badge variant="secondary" className="gap-1 px-2 py-0.5 font-medium text-[11px]">
                                       <Ticket className="size-3 text-primary" />
-                                      {linkedTicket?.name || "Event Pass"} Included
+                                      {b.ticket_quantity && b.ticket_quantity > 1
+                                        ? `${b.ticket_quantity}x ${linkedTicket?.name || "Event Pass"}`
+                                        : `${linkedTicket?.name || "Event Pass"} Included`}
                                     </Badge>
+                                    {b.ticket_quantity && b.ticket_quantity > 1 && b.generate_vouchers !== false && (
+                                      <Badge
+                                        variant="outline"
+                                        className="border-emerald-500/30 bg-emerald-500/10 text-[10px] text-emerald-700 dark:text-emerald-400"
+                                      >
+                                        +{b.ticket_quantity - 1} Friend Vouchers (100% Free)
+                                      </Badge>
+                                    )}
                                     {b.merchandise_items.map((mItem) => {
                                       const m = availableMerchandise.find((item) => item.id === mItem.merchandise_id);
                                       return (
                                         <Badge
                                           key={mItem.merchandise_id}
                                           variant="outline"
-                                          className="gap-1 px-2 py-0.5 text-[11px] bg-background"
+                                          className="gap-1 bg-background px-2 py-0.5 text-[11px]"
                                         >
                                           <Package className="size-3 text-primary" />
                                           {mItem.quantity}x {m?.name || "Merchandise"}
@@ -2301,7 +2311,7 @@ export function EventRegistrationModal({
                                   </div>
                                 </div>
 
-                                <div className="mt-3 flex items-center justify-between border-t border-border/40 pt-2.5 text-xs">
+                                <div className="mt-3 flex items-center justify-between border-border/40 border-t pt-2.5 text-xs">
                                   <span className="text-[11px] text-muted-foreground">
                                     {isSelected
                                       ? "✓ Selected package — ticket and merchandise auto-included"
@@ -2311,7 +2321,7 @@ export function EventRegistrationModal({
                                     type="button"
                                     size="sm"
                                     variant={isSelected ? "default" : "outline"}
-                                    className="h-7 text-xs px-3"
+                                    className="h-7 px-3 text-xs"
                                     disabled={isDisabled}
                                     onClick={() => handleSelectBundle(b)}
                                   >
@@ -2348,11 +2358,11 @@ export function EventRegistrationModal({
 
                         {availableTickets.length > 0 &&
                           availableTickets.every((t) => !getTicketSalesStatus(t).isOpen) && (
-                            <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-300">
+                            <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-amber-800 text-xs dark:text-amber-300">
                               <Clock className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
                               <div>
                                 <p className="font-semibold">Ticket Sales Currently Closed</p>
-                                <p className="mt-0.5 text-[11px] text-amber-700/90 dark:text-amber-400/90 leading-relaxed">
+                                <p className="mt-0.5 text-[11px] text-amber-700/90 leading-relaxed dark:text-amber-400/90">
                                   None of the ticket tiers are currently open for registration. Please review the sales
                                   window dates below.
                                 </p>
@@ -2455,7 +2465,7 @@ export function EventRegistrationModal({
                                       {salesStatus.state === "upcoming" && (
                                         <Badge
                                           variant="outline"
-                                          className="border-blue-500/40 bg-blue-500/10 text-[10px] font-medium text-blue-700 dark:text-blue-400"
+                                          className="border-blue-500/40 bg-blue-500/10 font-medium text-[10px] text-blue-700 dark:text-blue-400"
                                         >
                                           Opens Soon
                                         </Badge>
@@ -2578,7 +2588,7 @@ export function EventRegistrationModal({
                                   isAdded
                                     ? "border-primary/50 bg-background shadow-xs ring-1 ring-primary/20"
                                     : "border-border/70 bg-card",
-                                  !salesStatus.isOpen && !isAdded && "opacity-80 bg-muted/20",
+                                  !salesStatus.isOpen && !isAdded && "bg-muted/20 opacity-80",
                                 )}
                               >
                                 <div className="flex items-start gap-3">
@@ -2602,7 +2612,7 @@ export function EventRegistrationModal({
                                       {isIncludedInTicket ? (
                                         <Badge
                                           variant="secondary"
-                                          className="gap-1 border border-amber-500/30 bg-amber-500/10 px-1.5 py-0 text-[10px] font-semibold text-amber-700 dark:text-amber-400"
+                                          className="gap-1 border border-amber-500/30 bg-amber-500/10 px-1.5 py-0 font-semibold text-[10px] text-amber-700 dark:text-amber-400"
                                         >
                                           <Sparkles className="size-2.5 text-amber-500" />
                                           Included with Ticket (Free)
@@ -2640,7 +2650,7 @@ export function EventRegistrationModal({
 
                                     {/* Sales window message if closed or upcoming */}
                                     {!salesStatus.isOpen && (
-                                      <div className="flex items-center gap-1 text-[11px] text-muted-foreground pt-0.5">
+                                      <div className="flex items-center gap-1 pt-0.5 text-[11px] text-muted-foreground">
                                         <Clock className="size-3 shrink-0" />
                                         <span>{salesStatus.message}</span>
                                       </div>
@@ -2653,7 +2663,7 @@ export function EventRegistrationModal({
                                           <button
                                             type="button"
                                             onClick={() => setViewingGuidelineItem(item)}
-                                            className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline cursor-pointer"
+                                            className="inline-flex cursor-pointer items-center gap-1 font-medium text-[11px] text-primary hover:underline"
                                           >
                                             <Ruler className="size-3" />
                                             <span>{item.guideline.title || "View Sizing Guideline"}</span>
@@ -3016,7 +3026,7 @@ export function EventRegistrationModal({
                         <div className="flex flex-wrap items-center gap-2">
                           <Badge
                             variant="outline"
-                            className="border-primary/30 bg-primary/10 text-[10px] font-semibold text-primary"
+                            className="border-primary/30 bg-primary/10 font-semibold text-[10px] text-primary"
                           >
                             Selected Pass
                           </Badge>
@@ -3039,7 +3049,7 @@ export function EventRegistrationModal({
                           </Badge>
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground text-xs">
                           {selectedSession && (
                             <span className="flex items-center gap-1">
                               <Layers className="size-3 text-primary" />
@@ -3066,7 +3076,7 @@ export function EventRegistrationModal({
                               </span>
                             </span>
                           )}
-                          <span className="font-mono font-medium text-foreground">
+                          <span className="font-medium font-mono text-foreground">
                             Total: {grandTotal === 0 ? "Free (Rp 0)" : `Rp ${grandTotal.toLocaleString("id-ID")}`}
                           </span>
                         </div>
@@ -3102,7 +3112,7 @@ export function EventRegistrationModal({
 
                     {/* Waitlist Notice Banner */}
                     {isWaitlistActive && (
-                      <div className="flex items-start gap-3 rounded-lg border border-blue-500/30 bg-blue-500/10 p-3.5 text-xs text-blue-900 dark:text-blue-200">
+                      <div className="flex items-start gap-3 rounded-lg border border-blue-500/30 bg-blue-500/10 p-3.5 text-blue-900 text-xs dark:text-blue-200">
                         <Clock className="mt-0.5 size-4 shrink-0 text-blue-600 dark:text-blue-400" />
                         <div className="space-y-1">
                           <p className="font-semibold text-blue-800 dark:text-blue-300">
@@ -3169,7 +3179,7 @@ export function EventRegistrationModal({
                                           unoptimized
                                           className="h-auto max-h-56 w-auto rounded object-contain transition-transform group-hover:scale-[1.01]"
                                         />
-                                        <div className="absolute right-2 bottom-2 flex items-center gap-1 rounded bg-background/85 px-2 py-0.5 font-medium text-[11px] text-foreground shadow-xs backdrop-blur-xs opacity-0 transition-opacity group-hover:opacity-100">
+                                        <div className="absolute right-2 bottom-2 flex items-center gap-1 rounded bg-background/85 px-2 py-0.5 font-medium text-[11px] text-foreground opacity-0 shadow-xs backdrop-blur-xs transition-opacity group-hover:opacity-100">
                                           <ExternalLink className="size-3" />
                                           <span>Open Full Size</span>
                                         </div>
@@ -3731,7 +3741,7 @@ export function EventRegistrationModal({
                         setRegistrationStep("tickets");
                         if (modalBodyRef.current) modalBodyRef.current.scrollTop = 0;
                       }}
-                      className="gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+                      className="gap-1.5 text-muted-foreground text-xs hover:text-foreground"
                     >
                       <ArrowLeft className="size-3.5" />
                       <span>Back to Pass &amp; Perks</span>
@@ -3820,13 +3830,13 @@ export function EventRegistrationModal({
                 <img
                   src={viewingGuidelineItem.guideline.image_url}
                   alt="Size Chart Graphic"
-                  className="max-h-60 w-auto rounded object-contain mx-auto"
+                  className="mx-auto max-h-60 w-auto rounded object-contain"
                 />
               </div>
             )}
 
             {viewingGuidelineItem?.guideline?.text && (
-              <div className="rounded-lg border bg-muted/30 p-3 font-mono text-xs whitespace-pre-wrap leading-relaxed">
+              <div className="whitespace-pre-wrap rounded-lg border bg-muted/30 p-3 font-mono text-xs leading-relaxed">
                 {viewingGuidelineItem.guideline.text}
               </div>
             )}
