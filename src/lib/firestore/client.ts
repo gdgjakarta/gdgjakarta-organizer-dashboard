@@ -1058,10 +1058,15 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
     member_id: effectiveMemberId,
     event_picture_url: safePictureUrl,
     event_banner_url: safeBannerUrl,
-    ticket_id: registration.ticket_id ?? DEFAULT_REGULAR_TICKET_ID,
+    ticket_id: registration.ticket_id != null ? String(registration.ticket_id) : DEFAULT_REGULAR_TICKET_ID,
     ticket_name: registration.ticket_name ?? DEFAULT_REGULAR_TICKET_NAME,
     ticket_type: registration.ticket_type ?? "free",
-    ticket_price: registration.ticket_price ?? 0,
+    ticket_price: typeof registration.ticket_price === "number" ? registration.ticket_price : 0,
+    session_id: registration.session_id != null ? String(registration.session_id) : undefined,
+    bundle_id: registration.bundle_id != null ? String(registration.bundle_id) : undefined,
+    payment_amount: typeof registration.payment_amount === "number" ? registration.payment_amount : undefined,
+    payment_expired_datetime:
+      registration.payment_expired_datetime != null ? String(registration.payment_expired_datetime) : undefined,
     status: resolvedStatus,
     answers: updatedAnswers,
     event_id: eventIdStr,
@@ -1070,7 +1075,17 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
     status_logs: [initialStatusLog],
   });
 
-  await setDoc(docRef, cleanPayload, { merge: true });
+  try {
+    await setDoc(docRef, cleanPayload, { merge: true });
+  } catch (setErr) {
+    console.error("[registerMemberForEvent] Failed to write registration document:", setErr, {
+      regId,
+      effectiveMemberId,
+      status: resolvedStatus,
+      payloadKeys: Object.keys(cleanPayload as Record<string, unknown>),
+    });
+    throw setErr;
+  }
 
   // Update event registration counter, waitlisted counter & session total if available
   try {

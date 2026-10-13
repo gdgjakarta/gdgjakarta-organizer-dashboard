@@ -65,18 +65,18 @@ service cloud.firestore {
     //   - member_avatar: string|null (optional, <= 3000 chars) - Avatar URL
     //   - member_role: string|null (optional, <= 100 chars) - Member role
     //   - status: string (required) - Registration status ('pending'|'approved'|'registered'|'rejected'|'waitlisted'|'attended'|'waiting_for_payment'|'paid_and_registered'|'expired'|'failed'|'canceled'|'cancelled')
-    //   - answers: map|null (optional, <= 50 keys) - Custom question answers
+    //   - answers: map|null (optional, <= 500 keys) - Custom question answers
     //   - notes: string|null (optional, <= 2000 chars) - Registration notes
     //   - ticket_tier: string|null (optional, <= 100 chars) - Ticket tier name
-    //   - ticket_id: string|null (optional, <= 128 chars) - Selected ticket tier ID
+    //   - ticket_id: string|int|float|null (optional, <= 128 chars if string) - Selected ticket tier ID
     //   - ticket_name: string|null (optional, <= 200 chars) - Selected ticket tier name
     //   - ticket_type: string|null (optional, <= 50 chars) - Ticket type ('free'|'paid'|'commitment_fee')
     //   - ticket_price: int|float|null (optional, >= 0) - Ticket price
-    //   - bundle_id: string|null (optional, <= 128 chars)
+    //   - bundle_id: string|int|float|null (optional, <= 128 chars if string)
     //   - bundle_name: string|null (optional, <= 200 chars)
     //   - bundle_price: int|float|null (optional, >= 0)
     //   - selected_merchandise: list|null (optional, <= 50 items) - Selected merchandise orders
-    //   - session_id: string|null (optional, <= 128 chars) - Selected session identifier
+    //   - session_id: string|int|float|null (optional, <= 128 chars if string) - Selected session identifier
     //   - session_title: string|null (optional, <= 200 chars) - Selected session title
     //   - registered_at: string (required, <= 50 chars) - Registration timestamp
     //   - reviewed_at: string|null (optional, immutable for members, <= 50 chars) - Review timestamp
@@ -93,7 +93,7 @@ service cloud.firestore {
     //   - payment_url: string|null (optional, <= 2000 chars) - DOKU payment redirect URL
     //   - payment_invoice_number: string|null (optional, <= 128 chars) - DOKU invoice number
     //   - payment_amount: int|float|null (optional, >= 0) - Total payment amount in IDR
-    //   - payment_expired_datetime: string|null (optional, <= 50 chars) - DOKU invoice expiry timestamp
+    //   - payment_expired_datetime: string|int|float|null (optional, <= 100 chars if string) - DOKU invoice expiry timestamp
     //   - voucher_id: string|null (optional, <= 128 chars) - Applied discount voucher ID
     //   - voucher_code: string|null (optional, <= 64 chars) - Applied discount voucher code
     //   - voucher_discount_amount: int|float|null (optional, >= 0) - Calculated voucher discount amount
@@ -568,18 +568,18 @@ service cloud.firestore {
         (!('member_phone' in data) || data.member_phone == null || (data.member_phone is string && data.member_phone.size() <= 50)) &&
         (!('member_avatar' in data) || data.member_avatar == null || (data.member_avatar is string && data.member_avatar.size() <= 3000)) &&
         (!('member_role' in data) || data.member_role == null || (data.member_role is string && data.member_role.size() <= 100)) &&
-        (!('answers' in data) || data.answers == null || (data.answers is map && data.answers.size() <= 50)) &&
+        (!('answers' in data) || data.answers == null || (data.answers is map && data.answers.size() <= 500)) &&
         (!('notes' in data) || data.notes == null || (data.notes is string && data.notes.size() <= 2000)) &&
         (!('ticket_tier' in data) || data.ticket_tier == null || (data.ticket_tier is string && data.ticket_tier.size() <= 100)) &&
-        (!('ticket_id' in data) || data.ticket_id == null || (data.ticket_id is string && data.ticket_id.size() <= 128)) &&
+        (!('ticket_id' in data) || data.ticket_id == null || (data.ticket_id is string && data.ticket_id.size() <= 128) || data.ticket_id is int || data.ticket_id is float) &&
         (!('ticket_name' in data) || data.ticket_name == null || (data.ticket_name is string && data.ticket_name.size() <= 200)) &&
         (!('ticket_type' in data) || data.ticket_type == null || (data.ticket_type is string && data.ticket_type.size() <= 50)) &&
         (!('ticket_price' in data) || data.ticket_price == null || ((data.ticket_price is int || data.ticket_price is float) && data.ticket_price >= 0)) &&
-        (!('bundle_id' in data) || data.bundle_id == null || (data.bundle_id is string && data.bundle_id.size() <= 128)) &&
+        (!('bundle_id' in data) || data.bundle_id == null || (data.bundle_id is string && data.bundle_id.size() <= 128) || data.bundle_id is int || data.bundle_id is float) &&
         (!('bundle_name' in data) || data.bundle_name == null || (data.bundle_name is string && data.bundle_name.size() <= 200)) &&
         (!('bundle_price' in data) || data.bundle_price == null || ((data.bundle_price is int || data.bundle_price is float) && data.bundle_price >= 0)) &&
         (!('selected_merchandise' in data) || data.selected_merchandise == null || (data.selected_merchandise is list && data.selected_merchandise.size() <= 50)) &&
-        (!('session_id' in data) || data.session_id == null || (data.session_id is string && data.session_id.size() <= 128)) &&
+        (!('session_id' in data) || data.session_id == null || (data.session_id is string && data.session_id.size() <= 128) || data.session_id is int || data.session_id is float) &&
         (!('session_title' in data) || data.session_title == null || (data.session_title is string && data.session_title.size() <= 200)) &&
         (!('reviewed_at' in data) || data.reviewed_at == null || (data.reviewed_at is string && data.reviewed_at.size() <= 50)) &&
         (!('reviewed_by_id' in data) || data.reviewed_by_id == null || (data.reviewed_by_id is string && data.reviewed_by_id.size() <= 128)) &&
@@ -597,7 +597,7 @@ service cloud.firestore {
         (!('payment_url' in data) || data.payment_url == null || (data.payment_url is string && data.payment_url.size() <= 2000)) &&
         (!('payment_invoice_number' in data) || data.payment_invoice_number == null || (data.payment_invoice_number is string && data.payment_invoice_number.size() <= 128)) &&
         (!('payment_amount' in data) || data.payment_amount == null || ((data.payment_amount is int || data.payment_amount is float) && data.payment_amount >= 0)) &&
-        (!('payment_expired_datetime' in data) || data.payment_expired_datetime == null || (data.payment_expired_datetime is string && data.payment_expired_datetime.size() <= 50)) &&
+        (!('payment_expired_datetime' in data) || data.payment_expired_datetime == null || (data.payment_expired_datetime is string && data.payment_expired_datetime.size() <= 100) || data.payment_expired_datetime is int || data.payment_expired_datetime is float) &&
         (!('voucher_id' in data) || data.voucher_id == null || (data.voucher_id is string && data.voucher_id.size() <= 128)) &&
         (!('voucher_code' in data) || data.voucher_code == null || (data.voucher_code is string && data.voucher_code.size() <= 64)) &&
         (!('voucher_discount_amount' in data) || data.voucher_discount_amount == null || ((data.voucher_discount_amount is int || data.voucher_discount_amount is float) && data.voucher_discount_amount >= 0)) &&
@@ -791,7 +791,7 @@ service cloud.firestore {
         (!('referee_name' in data) || data.referee_name == null || (data.referee_name is string && data.referee_name.size() <= 150)) &&
         (!('referee_email' in data) || data.referee_email == null || (data.referee_email is string && isValidEmail(data.referee_email) && data.referee_email.size() <= 150)) &&
         (!('event_title' in data) || data.event_title == null || (data.event_title is string && data.event_title.size() <= 300)) &&
-        (!('ticket_id' in data) || data.ticket_id == null || (data.ticket_id is string && data.ticket_id.size() <= 128)) &&
+        (!('ticket_id' in data) || data.ticket_id == null || (data.ticket_id is string && data.ticket_id.size() <= 128) || data.ticket_id is int || data.ticket_id is float) &&
         (!('ticket_name' in data) || data.ticket_name == null || (data.ticket_name is string && data.ticket_name.size() <= 200)) &&
         (!('ticket_type' in data) || data.ticket_type == null || (data.ticket_type is string && data.ticket_type.size() <= 50)) &&
         (!('ticket_price' in data) || data.ticket_price == null || ((data.ticket_price is int || data.ticket_price is float) && data.ticket_price >= 0)) &&
@@ -907,7 +907,7 @@ service cloud.firestore {
       );
 
       // Update: Team access (Organizers & Staff for attendee curation, status review, check-in, delivery fulfillment) or the registrant updating payment fields, answers, delivery request, status logs, and RSVP details.
-      // Registrants cannot alter review fields, check-in status/timestamps, or event/member identifiers. Registrants can cancel their registration by setting status to 'canceled' or 'cancelled'.
+      // Registrants cannot alter review fields, check-in status/timestamps, or event/member identifiers. Registrants can update their status to 'pending', 'waiting_for_payment', 'registered', or cancel with 'canceled' or 'cancelled'.
       // For merchandise delivery requests, registrants can submit delivery address & fee payment (pending_payment / pending_review), while organizers/staff handle review, approval, rejection, and fulfillment.
       allow update: if isValidRegistration(request.resource.data) && (
         hasTeamAccess() ||
@@ -916,13 +916,13 @@ service cloud.firestore {
           (
             !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status']) ||
             request.resource.data.status == resource.data.status ||
-            (request.resource.data.status in ['canceled', 'cancelled'])
+            (request.resource.data.status in ['canceled', 'cancelled', 'pending', 'waiting_for_payment', 'registered'])
           ) &&
           !request.resource.data.diff(resource.data).affectedKeys().hasAny([
             'reviewed_at', 'reviewed_by_id', 'reviewed_by_name',
             'reviewed_by_email',
             'checked_in_at', 'is_checked_in', 'bevy_attendee_id', 'attendee_code',
-            'member_id', 'event_id', 'id'
+            'member_id', 'event_id'
           ]) &&
           isValidMemberDeliveryUpdate(resource.data, request.resource.data)
         )
