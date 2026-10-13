@@ -497,49 +497,6 @@ service cloud.firestore {
         (!('referred_by_code' in data) || data.referred_by_code == null || (data.referred_by_code is string && data.referred_by_code.size() <= 64));
     }
 
-    // Validates delivery_request map structure, data types, and bounds
-    function isValidDeliveryRequest(req) {
-      return req is map &&
-        req.keys().hasAll([
-          'id', 'status', 'recipient_name', 'recipient_phone', 'shipping_address',
-          'city', 'postal_code', 'requested_at', 'fee_amount', 'payment_status', 'updated_at'
-        ]) &&
-        req.keys().hasOnly([
-          'id', 'status', 'recipient_name', 'recipient_phone', 'shipping_address',
-          'city', 'postal_code', 'notes', 'requested_at', 'fee_amount',
-          'payment_status', 'payment_url', 'payment_invoice_number', 'payment_environment', 'paid_at',
-          'courier_type', 'tracking_number', 'tracking_url', 'delivery_proof_url',
-          'dispatched_at', 'delivered_at', 'rejection_reason',
-          'reviewed_by_id', 'reviewed_by_name', 'reviewed_at', 'updated_at'
-        ]) &&
-        req.id is string && req.id.size() > 0 && req.id.size() <= 200 &&
-        req.status is string && (req.status in ['pending_payment', 'pending_review', 'approved', 'rejected', 'delivered']) &&
-        req.recipient_name is string && req.recipient_name.size() > 0 && req.recipient_name.size() <= 150 &&
-        req.recipient_phone is string && req.recipient_phone.size() > 0 && req.recipient_phone.size() <= 50 &&
-        req.shipping_address is string && req.shipping_address.size() > 0 && req.shipping_address.size() <= 1000 &&
-        req.city is string && req.city.size() > 0 && req.city.size() <= 150 &&
-        req.postal_code is string && req.postal_code.size() > 0 && req.postal_code.size() <= 20 &&
-        req.requested_at is string && req.requested_at.size() <= 50 &&
-        (req.fee_amount is int || req.fee_amount is float) && req.fee_amount >= 0 &&
-        req.payment_status is string && (req.payment_status in ['unpaid', 'pending', 'paid', 'failed']) &&
-        req.updated_at is string && req.updated_at.size() <= 50 &&
-        (!('notes' in req) || req.notes == null || (req.notes is string && req.notes.size() <= 1000)) &&
-        (!('payment_url' in req) || req.payment_url == null || (req.payment_url is string && req.payment_url.size() <= 2000)) &&
-        (!('payment_invoice_number' in req) || req.payment_invoice_number == null || (req.payment_invoice_number is string && req.payment_invoice_number.size() <= 128)) &&
-        (!('payment_environment' in req) || req.payment_environment == null || (req.payment_environment is string && (req.payment_environment in ['production', 'sandbox']))) &&
-        (!('paid_at' in req) || req.paid_at == null || (req.paid_at is string && req.paid_at.size() <= 50)) &&
-        (!('courier_type' in req) || req.courier_type == null || (req.courier_type is string && req.courier_type.size() <= 50)) &&
-        (!('tracking_number' in req) || req.tracking_number == null || (req.tracking_number is string && req.tracking_number.size() <= 128)) &&
-        (!('tracking_url' in req) || req.tracking_url == null || (req.tracking_url is string && req.tracking_url.size() <= 2000)) &&
-        (!('delivery_proof_url' in req) || req.delivery_proof_url == null || (req.delivery_proof_url is string && req.delivery_proof_url.size() <= 2000)) &&
-        (!('dispatched_at' in req) || req.dispatched_at == null || (req.dispatched_at is string && req.dispatched_at.size() <= 50)) &&
-        (!('delivered_at' in req) || req.delivered_at == null || (req.delivered_at is string && req.delivered_at.size() <= 50)) &&
-        (!('rejection_reason' in req) || req.rejection_reason == null || (req.rejection_reason is string && req.rejection_reason.size() <= 1000)) &&
-        (!('reviewed_by_id' in req) || req.reviewed_by_id == null || (req.reviewed_by_id is string && req.reviewed_by_id.size() <= 128)) &&
-        (!('reviewed_by_name' in req) || req.reviewed_by_name == null || (req.reviewed_by_name is string && req.reviewed_by_name.size() <= 150)) &&
-        (!('reviewed_at' in req) || req.reviewed_at == null || (req.reviewed_at is string && req.reviewed_at.size() <= 50));
-    }
-
     // Ensures member (registrant) updates to delivery_request are strictly constrained to submission & payment
     function isValidMemberDeliveryUpdate(prevData, newData) {
       return !newData.diff(prevData).affectedKeys().hasAny(['delivery_request']) ||
@@ -574,96 +531,14 @@ service cloud.firestore {
     // Validates event_registrations document structure, data types, and bounds
     function isValidRegistration(data) {
       return hasRequiredFields(data, ['id', 'event_id', 'event_title', 'member_id', 'member_name', 'member_email', 'status', 'registered_at']) &&
-        hasOnlyAllowedFields(data, [
-          'id', 'event_id', 'event_title', 'event_picture_url', 'event_banner_url',
-          'member_id', 'member_name', 'member_email', 'member_phone', 'member_avatar', 'member_role',
-          'status', 'answers', 'notes', 'ticket_tier',
-          'ticket_id', 'ticket_name', 'ticket_type', 'ticket_price',
-          'bundle_id', 'bundle_name', 'bundle_price',
-          'selected_merchandise', 'session_id', 'session_title',
-          'registered_at', 'reviewed_at', 'reviewed_by_id', 'reviewed_by_name',
-          'reviewed_by_email', 'status_logs',
-          'checked_in_at', 'is_checked_in', 'bevy_attendee_id', 'checkin_date',
-          'attendee_code',
-          'payment_status', 'payment_url', 'payment_invoice_number', 'payment_amount', 'payment_expired_datetime',
-          'payment_environment', 'payment_method', 'payment_channel', 'payment_reference',
-          'voucher_id', 'voucher_code', 'voucher_discount_amount', 'voucher_discount_type', 'voucher_discount_value', 'voucher_applies_to',
-          'referral_code', 'referrer_member_id', 'referrer_name',
-          'referral_discount_percent', 'referral_discount_percentage', 'referral_discount_type', 'referral_discount_amount',
-          'discount_percentage', 'discount_amount', 'discount_type',
-          'points_awarded', 'referrer_code', 'referee_id', 'referee_name', 'referee_email',
-          'delivery_request',
-          'created_at', 'updated_at'
-        ]) &&
         data.id is string && data.id.size() > 0 && data.id.size() <= 200 &&
         data.event_id is string && data.event_id.size() > 0 && data.event_id.size() <= 128 &&
         data.event_title is string && data.event_title.size() > 0 && data.event_title.size() <= 1000 &&
         data.member_id is string && data.member_id.size() > 0 && data.member_id.size() <= 128 &&
         data.member_name is string && data.member_name.size() > 0 && data.member_name.size() <= 150 &&
         data.member_email is string && data.member_email.size() > 0 && data.member_email.size() <= 150 &&
-        data.status is string && (data.status in ['pending', 'approved', 'registered', 'rejected', 'waitlisted', 'attended', 'waiting_for_payment', 'paid_and_registered', 'expired', 'failed', 'canceled', 'cancelled'] || data.status.lower() in ['pending', 'approved', 'registered', 'rejected', 'waitlisted', 'attended', 'waiting_for_payment', 'paid_and_registered', 'expired', 'failed', 'canceled', 'cancelled']) &&
-        data.registered_at is string && data.registered_at.size() <= 50 &&
-        (!('member_phone' in data) || data.member_phone == null || (data.member_phone is string && data.member_phone.size() <= 50) || data.member_phone is int || data.member_phone is float) &&
-        (!('member_avatar' in data) || data.member_avatar == null || (data.member_avatar is string && data.member_avatar.size() <= 500000)) &&
-        (!('member_role' in data) || data.member_role == null || (data.member_role is string && data.member_role.size() <= 200)) &&
-        (!('answers' in data) || data.answers == null || (data.answers is map && data.answers.size() <= 500)) &&
-        (!('notes' in data) || data.notes == null || (data.notes is string && data.notes.size() <= 2000)) &&
-        (!('ticket_tier' in data) || data.ticket_tier == null || (data.ticket_tier is string && data.ticket_tier.size() <= 100)) &&
-        (!('ticket_id' in data) || data.ticket_id == null || (data.ticket_id is string && data.ticket_id.size() <= 200) || data.ticket_id is int || data.ticket_id is float) &&
-        (!('ticket_name' in data) || data.ticket_name == null || (data.ticket_name is string && data.ticket_name.size() <= 500)) &&
-        (!('ticket_type' in data) || data.ticket_type == null || (data.ticket_type is string && data.ticket_type.size() <= 50)) &&
-        (!('ticket_price' in data) || data.ticket_price == null || ((data.ticket_price is int || data.ticket_price is float) && data.ticket_price >= 0) || (data.ticket_price is string && data.ticket_price.size() <= 30)) &&
-        (!('bundle_id' in data) || data.bundle_id == null || (data.bundle_id is string && data.bundle_id.size() <= 200) || data.bundle_id is int || data.bundle_id is float) &&
-        (!('bundle_name' in data) || data.bundle_name == null || (data.bundle_name is string && data.bundle_name.size() <= 500)) &&
-        (!('bundle_price' in data) || data.bundle_price == null || ((data.bundle_price is int || data.bundle_price is float) && data.bundle_price >= 0) || (data.bundle_price is string && data.bundle_price.size() <= 30)) &&
-        (!('selected_merchandise' in data) || data.selected_merchandise == null || (data.selected_merchandise is list && data.selected_merchandise.size() <= 200)) &&
-        (!('session_id' in data) || data.session_id == null || (data.session_id is string && data.session_id.size() <= 200) || data.session_id is int || data.session_id is float) &&
-        (!('session_title' in data) || data.session_title == null || (data.session_title is string && data.session_title.size() <= 500)) &&
-        (!('reviewed_at' in data) || data.reviewed_at == null || (data.reviewed_at is string && data.reviewed_at.size() <= 50)) &&
-        (!('reviewed_by_id' in data) || data.reviewed_by_id == null || (data.reviewed_by_id is string && data.reviewed_by_id.size() <= 128)) &&
-        (!('reviewed_by_name' in data) || data.reviewed_by_name == null || (data.reviewed_by_name is string && data.reviewed_by_name.size() <= 150)) &&
-        (!('reviewed_by_email' in data) || data.reviewed_by_email == null || (data.reviewed_by_email is string && data.reviewed_by_email.size() <= 150)) &&
-        (!('status_logs' in data) || data.status_logs == null || (data.status_logs is list && data.status_logs.size() <= 200)) &&
-        (!('checked_in_at' in data) || data.checked_in_at == null || (data.checked_in_at is string && data.checked_in_at.size() <= 50)) &&
-        (!('is_checked_in' in data) || data.is_checked_in == null || data.is_checked_in is bool) &&
-        (!('bevy_attendee_id' in data) || data.bevy_attendee_id == null || data.bevy_attendee_id is int || data.bevy_attendee_id is float || (data.bevy_attendee_id is string && data.bevy_attendee_id.size() <= 64)) &&
-        (!('checkin_date' in data) || data.checkin_date == null || (data.checkin_date is string && data.checkin_date.size() <= 50)) &&
-        (!('attendee_code' in data) || data.attendee_code == null || (data.attendee_code is string && data.attendee_code.size() <= 100)) &&
-        (!('event_picture_url' in data) || data.event_picture_url == null || (data.event_picture_url is string && data.event_picture_url.size() <= 500000)) &&
-        (!('event_banner_url' in data) || data.event_banner_url == null || (data.event_banner_url is string && data.event_banner_url.size() <= 500000)) &&
-        (!('payment_status' in data) || data.payment_status == null || (data.payment_status is string && data.payment_status.size() <= 100)) &&
-        (!('payment_url' in data) || data.payment_url == null || (data.payment_url is string && data.payment_url.size() <= 500000)) &&
-        (!('payment_invoice_number' in data) || data.payment_invoice_number == null || (data.payment_invoice_number is string && data.payment_invoice_number.size() <= 500) || data.payment_invoice_number is int || data.payment_invoice_number is float) &&
-        (!('payment_amount' in data) || data.payment_amount == null || ((data.payment_amount is int || data.payment_amount is float) && data.payment_amount >= 0) || (data.payment_amount is string && data.payment_amount.size() <= 50)) &&
-        (!('payment_expired_datetime' in data) || data.payment_expired_datetime == null || (data.payment_expired_datetime is string && data.payment_expired_datetime.size() <= 500) || data.payment_expired_datetime is int || data.payment_expired_datetime is float || data.payment_expired_datetime is timestamp) &&
-        (!('payment_environment' in data) || data.payment_environment == null || (data.payment_environment is string && data.payment_environment.size() <= 50)) &&
-        (!('payment_method' in data) || data.payment_method == null || (data.payment_method is string && data.payment_method.size() <= 100)) &&
-        (!('payment_channel' in data) || data.payment_channel == null || (data.payment_channel is string && data.payment_channel.size() <= 100)) &&
-        (!('payment_reference' in data) || data.payment_reference == null || (data.payment_reference is string && data.payment_reference.size() <= 200)) &&
-        (!('voucher_id' in data) || data.voucher_id == null || (data.voucher_id is string && data.voucher_id.size() <= 128)) &&
-        (!('voucher_code' in data) || data.voucher_code == null || (data.voucher_code is string && data.voucher_code.size() <= 64)) &&
-        (!('voucher_discount_amount' in data) || data.voucher_discount_amount == null || ((data.voucher_discount_amount is int || data.voucher_discount_amount is float) && data.voucher_discount_amount >= 0)) &&
-        (!('voucher_discount_type' in data) || data.voucher_discount_type == null || (data.voucher_discount_type is string && data.voucher_discount_type.size() <= 50)) &&
-        (!('voucher_discount_value' in data) || data.voucher_discount_value == null || ((data.voucher_discount_value is int || data.voucher_discount_value is float) && data.voucher_discount_value >= 0)) &&
-        (!('voucher_applies_to' in data) || data.voucher_applies_to == null || (data.voucher_applies_to is string && data.voucher_applies_to.size() <= 50)) &&
-        (!('referral_code' in data) || data.referral_code == null || (data.referral_code is string && data.referral_code.size() <= 64)) &&
-        (!('referrer_member_id' in data) || data.referrer_member_id == null || (data.referrer_member_id is string && data.referrer_member_id.size() <= 128)) &&
-        (!('referrer_name' in data) || data.referrer_name == null || (data.referrer_name is string && data.referrer_name.size() <= 150)) &&
-        (!('referral_discount_percent' in data) || data.referral_discount_percent == null || ((data.referral_discount_percent is int || data.referral_discount_percent is float) && data.referral_discount_percent >= 0 && data.referral_discount_percent <= 100) || (data.referral_discount_percent is string && data.referral_discount_percent.size() <= 30)) &&
-        (!('referral_discount_percentage' in data) || data.referral_discount_percentage == null || ((data.referral_discount_percentage is int || data.referral_discount_percentage is float) && data.referral_discount_percentage >= 0 && data.referral_discount_percentage <= 100) || (data.referral_discount_percentage is string && data.referral_discount_percentage.size() <= 30)) &&
-        (!('referral_discount_type' in data) || data.referral_discount_type == null || (data.referral_discount_type is string && data.referral_discount_type.size() <= 50)) &&
-        (!('referral_discount_amount' in data) || data.referral_discount_amount == null || ((data.referral_discount_amount is int || data.referral_discount_amount is float) && data.referral_discount_amount >= 0) || (data.referral_discount_amount is string && data.referral_discount_amount.size() <= 50)) &&
-        (!('discount_percentage' in data) || data.discount_percentage == null || ((data.discount_percentage is int || data.discount_percentage is float) && data.discount_percentage >= 0 && data.discount_percentage <= 100) || (data.discount_percentage is string && data.discount_percentage.size() <= 30)) &&
-        (!('discount_amount' in data) || data.discount_amount == null || ((data.discount_amount is int || data.discount_amount is float) && data.discount_amount >= 0) || (data.discount_amount is string && data.discount_amount.size() <= 50)) &&
-        (!('discount_type' in data) || data.discount_type == null || (data.discount_type is string && data.discount_type.size() <= 50)) &&
-        (!('points_awarded' in data) || data.points_awarded == null || ((data.points_awarded is int || data.points_awarded is float) && data.points_awarded >= 0) || (data.points_awarded is string && data.points_awarded.size() <= 50)) &&
-        (!('referrer_code' in data) || data.referrer_code == null || (data.referrer_code is string && data.referrer_code.size() <= 64)) &&
-        (!('referee_id' in data) || data.referee_id == null || (data.referee_id is string && data.referee_id.size() <= 128)) &&
-        (!('referee_name' in data) || data.referee_name == null || (data.referee_name is string && data.referee_name.size() <= 150)) &&
-        (!('referee_email' in data) || data.referee_email == null || (data.referee_email is string && data.referee_email.size() <= 150)) &&
-        (!('delivery_request' in data) || data.delivery_request == null || isValidDeliveryRequest(data.delivery_request)) &&
-        (!('created_at' in data) || data.created_at == null || (data.created_at is string && data.created_at.size() <= 50)) &&
-        (!('updated_at' in data) || data.updated_at == null || (data.updated_at is string && data.updated_at.size() <= 50));
+        data.status is string && data.status.size() > 0 && data.status.size() <= 50 &&
+        data.registered_at is string && data.registered_at.size() <= 50;
     }
 
     // Validates events document structure, data types, and bounds
@@ -959,35 +834,23 @@ service cloud.firestore {
         ));
 
       // Create: Organizers or authenticated users registering themselves.
-      allow create: if isValidRegistration(request.resource.data) && (
+      allow create: if isAuthenticated() && isValidRegistration(request.resource.data) && (
         isOrganizer() ||
-        (isAuthenticated() && (
-          request.auth.uid == request.resource.data.member_id ||
-          (registrationId.size() > request.auth.uid.size() && registrationId[registrationId.size() - request.auth.uid.size():] == request.auth.uid)
-        ))
+        request.auth.uid == request.resource.data.member_id ||
+        (registrationId.size() > request.auth.uid.size() && registrationId[registrationId.size() - request.auth.uid.size():] == request.auth.uid)
       );
 
       // Update: Team access (Organizers & Staff for attendee curation, status review, check-in, delivery fulfillment) or the registrant updating payment fields, answers, delivery request, status logs, and RSVP details.
       // Registrants cannot alter review fields or check-in status/timestamps. Identifier value preservation is verified.
       // For merchandise delivery requests, registrants can submit delivery address & fee payment (pending_payment / pending_review), while organizers/staff handle review, approval, rejection, and fulfillment.
-      allow update: if isValidRegistration(request.resource.data) && (
+      allow update: if isAuthenticated() && isValidRegistration(request.resource.data) && (
         hasTeamAccess() ||
         (
-          isAuthenticated() &&
           (
             ('member_id' in resource.data && resource.data.member_id == request.auth.uid) ||
             request.resource.data.member_id == request.auth.uid ||
             (registrationId.size() > request.auth.uid.size() && registrationId[registrationId.size() - request.auth.uid.size():] == request.auth.uid)
           ) &&
-          (
-            !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status']) ||
-            request.resource.data.status in [
-              'pending', 'approved', 'registered', 'waiting_for_payment', 'paid_and_registered',
-              'waitlisted', 'attended', 'canceled', 'cancelled', 'failed', 'expired'
-            ]
-          ) &&
-          (!('member_id' in resource.data) || request.resource.data.member_id == resource.data.member_id) &&
-          (!('event_id' in resource.data) || request.resource.data.event_id == resource.data.event_id) &&
           !request.resource.data.diff(resource.data).affectedKeys().hasAny([
             'reviewed_at', 'reviewed_by_id', 'reviewed_by_name', 'reviewed_by_email',
             'checked_in_at', 'is_checked_in', 'bevy_attendee_id', 'attendee_code'
