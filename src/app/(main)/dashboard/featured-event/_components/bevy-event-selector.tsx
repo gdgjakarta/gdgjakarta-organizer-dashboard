@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 
-import { Calendar, Check, ChevronsUpDown, Loader2, Sparkles, X } from "lucide-react";
+import { Calendar, ChevronsUpDown, Loader2, Sparkles, X } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -99,18 +99,18 @@ export function BevyEventSelector({
               <CommandGroup heading="Options">
                 <CommandItem
                   value="custom no event clear none"
+                  data-checked={!selectedEventId}
                   onSelect={() => {
                     onSelectEvent(null);
                     setOpen(false);
                   }}
-                  className="flex cursor-pointer items-center gap-2.5 px-3 py-2 text-muted-foreground transition-colors hover:text-foreground aria-selected:bg-accent"
+                  className="flex cursor-pointer items-center gap-2.5 px-3 py-2 text-muted-foreground transition-colors hover:text-foreground aria-selected:bg-accent group-data-[checked=true]/command-item:[&>svg:last-child]:text-primary"
                 >
-                  <Sparkles className="size-4 text-amber-500" />
-                  <div className="flex flex-col text-left">
-                    <span className="font-medium text-xs">Custom Spotlight (No linked Bevy event)</span>
+                  <Sparkles className="size-4 shrink-0 text-amber-500" />
+                  <div className="flex min-w-0 flex-1 flex-col text-left">
+                    <span className="font-medium text-foreground text-xs">Custom Spotlight (No linked Bevy event)</span>
                     <span className="text-[11px] text-muted-foreground">Fill in title, banner, and links manually</span>
                   </div>
-                  {!selectedEventId && <Check className="ml-auto size-4 shrink-0 text-primary" />}
                 </CommandItem>
               </CommandGroup>
 
@@ -121,11 +121,12 @@ export function BevyEventSelector({
                     <CommandItem
                       key={event.id}
                       value={`${event.title} ${event.formattedDate} ${event.venueName ?? ""}`}
+                      data-checked={isSelected}
                       onSelect={() => {
                         onSelectEvent(event);
                         setOpen(false);
                       }}
-                      className="flex cursor-pointer items-center justify-between gap-3 px-3 py-2.5 transition-colors aria-selected:bg-accent"
+                      className="flex cursor-pointer items-center justify-between gap-3 px-3 py-2.5 transition-colors aria-selected:bg-accent group-data-[checked=true]/command-item:[&>svg:last-child]:text-primary"
                     >
                       <div className="flex min-w-0 flex-1 items-center gap-3">
                         <Avatar className="size-8.5 shrink-0 rounded-lg border bg-muted/40">
@@ -146,7 +147,6 @@ export function BevyEventSelector({
                           )}
                         </div>
                       </div>
-                      {isSelected && <Check className="size-4 shrink-0 text-primary" />}
                     </CommandItem>
                   );
                 })}

@@ -30,21 +30,14 @@ export async function fetchPublishedEventsAction(): Promise<{
   error?: string;
 }> {
   try {
-    // 1. Fetch all Bevy events
-    const { results: bevyEvents } = await getAllBevyChapterEvents(undefined, false, "All");
+    // 1. Fetch all Bevy events (including hidden events)
+    const { results: bevyEvents } = await getAllBevyChapterEvents(undefined, true, "All");
 
-    // 2. Filter strictly for published events
-    const publishedBevy = bevyEvents.filter((e) => {
-      const status = (e.status || "").toLowerCase();
-      // An event is published if status is "published" or not draft/canceled
-      return (
-        status === "published" ||
-        (!e.is_hidden && status !== "draft" && status !== "canceled" && status !== "cancelled")
-      );
-    });
+    // 2. Return all chapter events with no filter
+    const allEvents = bevyEvents.filter((e) => Boolean(e.id));
 
     // 3. Map to unified format
-    const events: PublishedEventOption[] = publishedBevy.map((bevy) => {
+    const events: PublishedEventOption[] = allEvents.map((bevy) => {
       const idStr = String(bevy.id);
 
       let formattedDate = "DATE TBD";

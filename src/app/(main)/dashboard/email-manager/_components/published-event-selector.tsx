@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 
-import { Calendar, Check, ChevronsUpDown, Loader2 } from "lucide-react";
+import { Calendar, ChevronsUpDown, Loader2 } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -40,7 +40,7 @@ export function PublishedEventSelector({
       return (
         <div className="flex items-center gap-2 py-1 text-muted-foreground text-sm">
           <Loader2 className="size-4 animate-spin text-primary" />
-          <span>Loading published events...</span>
+          <span>Loading Bevy chapter events...</span>
         </div>
       );
     }
@@ -68,8 +68,8 @@ export function PublishedEventSelector({
 
     return (
       <div className="flex items-center gap-2 py-1 text-muted-foreground text-sm">
-        <Calendar className="size-4" />
-        <span>Select target published event...</span>
+        <Calendar className="size-4 text-muted-foreground" />
+        <span>Select Bevy event...</span>
       </div>
     );
   };
@@ -94,21 +94,22 @@ export function PublishedEventSelector({
       </PopoverTrigger>
       <PopoverContent className="w-(--radix-popover-trigger-width) p-0" align="start">
         <Command>
-          <CommandInput placeholder="Search published events by title or date..." />
+          <CommandInput placeholder="Search Bevy events by title or date..." />
           <CommandList className="max-h-80">
-            <CommandEmpty>No published events found.</CommandEmpty>
-            <CommandGroup heading="Published Events">
+            <CommandEmpty>No events found on Bevy.</CommandEmpty>
+            <CommandGroup heading={`Bevy Chapter Events (${events.length})`}>
               {events.map((event) => {
                 const isSelected = event.id === selectedEventId;
                 return (
                   <CommandItem
                     key={event.id}
-                    value={`${event.title} ${event.formattedDate}`}
+                    value={`${event.title} ${event.formattedDate} ${event.venueName ?? ""}`}
+                    data-checked={isSelected}
                     onSelect={() => {
                       onSelectEvent(event);
                       setOpen(false);
                     }}
-                    className="flex cursor-pointer items-center justify-between gap-3 px-3 py-2.5 transition-colors aria-selected:bg-accent"
+                    className="flex cursor-pointer items-center justify-between gap-3 px-3 py-2.5 transition-colors aria-selected:bg-accent group-data-[checked=true]/command-item:[&>svg:last-child]:text-primary"
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-3">
                       <Avatar className="size-8.5 shrink-0 rounded-lg border bg-muted/40">
@@ -120,14 +121,16 @@ export function PublishedEventSelector({
                         </AvatarFallback>
                       </Avatar>
                       <div className="flex min-w-0 flex-1 flex-col text-left">
-                        {/* Styled Uppercase Date matching Screenshot 3 */}
+                        {/* Styled Uppercase Date matching Bevy UI */}
                         <span className="font-semibold text-[11px] text-sky-600 uppercase tracking-wider dark:text-sky-400">
                           {event.formattedDate}
                         </span>
                         <span className="truncate font-medium text-foreground text-sm">{event.title}</span>
+                        {event.venueName && (
+                          <span className="truncate text-[11px] text-muted-foreground">{event.venueName}</span>
+                        )}
                       </div>
                     </div>
-                    {isSelected && <Check className="size-4 shrink-0 text-primary" />}
                   </CommandItem>
                 );
               })}

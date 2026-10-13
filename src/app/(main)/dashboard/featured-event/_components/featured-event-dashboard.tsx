@@ -44,6 +44,7 @@ import { cn } from "@/lib/utils";
 
 import { fetchFeaturedEventBevyListAction, type PublishedEventOption } from "../_actions/fetch-bevy-events";
 import { BevyEventSelector } from "./bevy-event-selector";
+import { DateTimePicker } from "./date-time-picker";
 
 interface FeaturedEventDashboardProps {
   initialEvents?: PublishedEventOption[];
@@ -747,12 +748,12 @@ export function FeaturedEventDashboard({ initialEvents = [] }: FeaturedEventDash
 
                 <div className="space-y-1.5">
                   <Label htmlFor="event-date" className="font-medium text-xs">
-                    Date & Time Display
+                    Date &amp; Time Display
                   </Label>
-                  <Input
+                  <DateTimePicker
                     id="event-date"
                     value={content.dateString || ""}
-                    onChange={(e) => setContent({ ...content, dateString: e.target.value })}
+                    onChange={(value) => setContent({ ...content, dateString: value })}
                     placeholder="e.g. Saturday, Nov 14, 2026 • 09:00 WIB"
                   />
                 </div>

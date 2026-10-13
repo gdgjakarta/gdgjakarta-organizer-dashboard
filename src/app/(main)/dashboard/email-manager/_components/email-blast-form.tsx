@@ -27,7 +27,7 @@ import { HtmlEditorPreview } from "./html-editor-preview";
 import { PublishedEventSelector } from "./published-event-selector";
 
 const formSchema = z.object({
-  eventId: z.string().min(1, { message: "Published event is required." }),
+  eventId: z.string().min(1, { message: "Event is required." }),
   recipientSource: z.enum(["audience", "spreadsheet"]),
   audienceType: z.string().optional(),
   spreadsheetUrl: z.string().optional(),
@@ -106,12 +106,12 @@ export function EmailBlastForm({ onSuccess, showHeader = true }: EmailBlastFormP
             setValue("eventId", first.id, { shouldValidate: true });
           }
         } else {
-          toast.error("Could not load published events", {
+          toast.error("Could not load Bevy events", {
             description: res.error,
           });
         }
       } catch (err) {
-        console.error("Failed to fetch published events:", err);
+        console.error("Failed to fetch Bevy events:", err);
       } finally {
         setIsLoadingEvents(false);
       }
@@ -254,9 +254,9 @@ export function EmailBlastForm({ onSuccess, showHeader = true }: EmailBlastFormP
           </CardHeader>
         )}
         <CardContent className="space-y-6 pt-6">
-          {/* 1. Published Event Selector (Screenshot 3 design) */}
+          {/* 1. Bevy Event Selector */}
           <Field>
-            <FieldLabel htmlFor="eventId">Published Event Target</FieldLabel>
+            <FieldLabel htmlFor="eventId">Target Bevy Event</FieldLabel>
             <FieldContent>
               <PublishedEventSelector
                 events={publishedEvents}
@@ -267,7 +267,7 @@ export function EmailBlastForm({ onSuccess, showHeader = true }: EmailBlastFormP
                 error={!!errors.eventId}
               />
               <FieldDescription>
-                Select the published event this communication campaign is associated with.
+                Select the Bevy chapter event this communication campaign is associated with.
               </FieldDescription>
               {errors.eventId && <FieldError>{errors.eventId.message}</FieldError>}
             </FieldContent>
