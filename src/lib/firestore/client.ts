@@ -1082,7 +1082,7 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
       regId,
       effectiveMemberId,
       status: resolvedStatus,
-      payloadKeys: Object.keys(cleanPayload as Record<string, unknown>),
+      payloadKeys: Object.keys(cleanPayload),
     });
     throw setErr;
   }
