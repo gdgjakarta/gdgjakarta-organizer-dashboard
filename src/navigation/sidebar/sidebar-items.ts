@@ -12,6 +12,7 @@ import {
   Mail,
   QrCode,
   ShoppingBag,
+  Sparkles,
   SquareArrowUpRight,
   Trophy,
   Users,
@@ -119,6 +120,13 @@ export const organizerSidebarItems: NavGroup[] = [
         title: "Bucket Storage",
         url: "/dashboard/media",
         icon: HardDrive,
+      },
+      {
+        id: "featured-event",
+        title: "Featured Event",
+        url: "/dashboard/featured-event",
+        icon: Sparkles,
+        badge: "new",
       },
       {
         id: "partnership",

@@ -414,9 +414,9 @@ export async function updateMediaMetadata(
 /**
  * Retrieves a media object stream and metadata for HTTP response streaming.
  */
-export async function getMediaObjectStream(key: string): Promise<R2ObjectBody | null> {
+export async function getMediaObjectStream(key: string, options?: R2GetOptions): Promise<R2ObjectBody | null> {
   const bucket = await getMediaBucket();
-  const obj = await bucket.get(key);
+  const obj = await bucket.get(key, options);
   return obj;
 }
 

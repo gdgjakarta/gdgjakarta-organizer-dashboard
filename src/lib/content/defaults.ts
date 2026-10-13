@@ -1,4 +1,4 @@
-import type { FaqContent, PartnershipContent } from "./types";
+import type { FaqContent, FeaturedEventContent, PartnershipContent } from "./types";
 
 export const DEFAULT_FAQ_CONTENT: FaqContent = {
   header: {
@@ -522,4 +522,25 @@ export const DEFAULT_PARTNERSHIP_CONTENT: PartnershipContent = {
       "Custom Bespoke Collaboration",
     ],
   },
+};
+
+export const DEFAULT_FEATURED_EVENT_CONTENT: FeaturedEventContent = {
+  enabled: true,
+  badge: "Flagship Gathering",
+  title: "DevFest Jakarta 2026",
+  description:
+    "Join Google Developer Groups Jakarta for the largest annual community developer conference in Indonesia, featuring keynotes, hands-on workshops, and tech breakouts.",
+  dateString: "Saturday, Nov 14, 2026 • 09:00 WIB",
+  location: "Auditorium Google Indonesia, Jakarta",
+  ctaText: "RSVP & Get Tickets",
+  ctaUrl: "/events",
+  secondaryCtaText: "Browse All Gatherings",
+  secondaryCtaUrl: "/events",
+  videoSourceType: "url",
+  videoUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+  videoPosterUrl: "",
+  autoplay: true,
+  muted: true,
+  loop: true,
+  showControls: true,
 };

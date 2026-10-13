@@ -45,15 +45,18 @@ export function FolderCard({ folder, onOpen, onDelete }: FolderCardProps) {
   return (
     <Card
       onClick={() => onOpen(folder.prefix)}
-      className="group relative cursor-pointer border-dashed transition-all hover:border-primary/50 hover:bg-accent/40"
+      className="group relative cursor-pointer border-dashed transition-all hover:border-primary hover:border-solid hover:bg-primary/10 hover:shadow-xs"
     >
       <CardContent className="flex items-center justify-between p-3.5">
         <div className="flex items-center gap-3 overflow-hidden">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <Folder className="h-5 w-5 fill-primary/20" />
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-all group-hover:scale-105 group-hover:bg-primary group-hover:text-primary-foreground group-hover:shadow-xs">
+            <Folder className="h-5 w-5 fill-primary/20 transition-all group-hover:fill-primary-foreground/30" />
           </div>
           <div className="overflow-hidden">
-            <p className="truncate font-medium text-foreground text-sm" title={folder.name}>
+            <p
+              className="truncate font-medium text-foreground text-sm transition-colors group-hover:text-primary"
+              title={folder.name}
+            >
               {folder.name}
             </p>
             <p className="text-muted-foreground text-xs">Folder</p>
@@ -145,7 +148,7 @@ export function MediaCard({ item, isSelected, onToggleSelect, onPreview, onRenam
     <Card
       onClick={() => onPreview(item)}
       className={`group relative flex cursor-pointer flex-col overflow-hidden transition-all hover:shadow-md ${
-        isSelected ? "border-primary bg-primary/[0.02] ring-2 ring-primary/20" : "hover:border-primary/40"
+        isSelected ? "border-primary bg-primary/10 shadow-xs ring-2 ring-primary/20" : "hover:border-primary/40"
       }`}
     >
       {/* Checkbox overlay */}
@@ -158,6 +161,7 @@ export function MediaCard({ item, isSelected, onToggleSelect, onPreview, onRenam
           checked={isSelected}
           onCheckedChange={() => onToggleSelect(item.key)}
           onClick={(e) => e.stopPropagation()}
+          className="border-muted-foreground/70 shadow-xs data-checked:border-primary"
         />
       </div>
 

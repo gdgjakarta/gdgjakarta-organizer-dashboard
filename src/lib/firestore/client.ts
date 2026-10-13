@@ -23,7 +23,7 @@ import {
 export { deleteField };
 
 import { app, auth } from "@/config/firebase";
-import type { FaqContent, PartnershipContent } from "@/lib/content/types";
+import type { FaqContent, FeaturedEventContent, PartnershipContent } from "@/lib/content/types";
 
 export const db: Firestore = typeof window !== "undefined" ? getFirestore(app) : (null as unknown as Firestore);
 
@@ -2084,6 +2084,55 @@ export function subscribePartnershipContentDoc(
     },
     (err) => {
       console.warn("[Firestore] subscribePartnershipContentDoc error:", err);
+      onError?.(err);
+    },
+  );
+}
+
+// ── Featured Event (Home Public Page Spotlight) ───────────────────────────
+
+export async function getFeaturedEventContentDoc(): Promise<FeaturedEventContent | null> {
+  if (typeof window === "undefined") return null;
+  try {
+    const docRef = doc(db, "content_settings", "featured_event");
+    const snap = await getDoc(docRef);
+    if (!snap.exists()) return null;
+    return snap.data() as FeaturedEventContent;
+  } catch (error) {
+    console.error("[Firestore] getFeaturedEventContentDoc error:", error);
+    return null;
+  }
+}
+
+export async function saveFeaturedEventContentDoc(content: FeaturedEventContent): Promise<void> {
+  if (typeof window === "undefined") return;
+  const docRef = doc(db, "content_settings", "featured_event");
+  const sanitized = sanitizeFirestoreData({
+    ...content,
+    updatedAt: new Date().toISOString(),
+  });
+  await setDoc(docRef, sanitized, { merge: true });
+}
+
+export function subscribeFeaturedEventContentDoc(
+  onUpdate: (content: FeaturedEventContent) => void,
+  onError?: (error: Error) => void,
+): () => void {
+  if (typeof window === "undefined") {
+    return () => {
+      // noop in server or non-window environment
+    };
+  }
+  const docRef = doc(db, "content_settings", "featured_event");
+  return onSnapshot(
+    docRef,
+    (snap) => {
+      if (snap.exists()) {
+        onUpdate(snap.data() as FeaturedEventContent);
+      }
+    },
+    (err) => {
+      console.warn("[Firestore] subscribeFeaturedEventContentDoc error:", err);
       onError?.(err);
     },
   );

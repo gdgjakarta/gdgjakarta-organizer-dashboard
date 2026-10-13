@@ -27,7 +27,9 @@ export async function GET(request: NextRequest, context: RouteParams) {
   const isDownload = request.nextUrl.searchParams.get("download") === "1";
 
   try {
-    const object = await getMediaObjectStream(rawKey);
+    const object = await getMediaObjectStream(rawKey, {
+      range: request.headers,
+    });
 
     if (!object) {
       return NextResponse.json({ error: "Media file not found in R2" }, { status: 404 });
@@ -39,7 +41,7 @@ export async function GET(request: NextRequest, context: RouteParams) {
 
     const headers = new Headers();
     headers.set("Content-Type", contentType);
-    headers.set("Content-Length", object.size.toString());
+    headers.set("Accept-Ranges", "bytes");
     headers.set("Content-Disposition", `${dispositionType}; filename="${encodeURIComponent(name)}"`);
     headers.set("Cache-Control", "public, max-age=31536000, immutable");
 
@@ -47,9 +49,21 @@ export async function GET(request: NextRequest, context: RouteParams) {
       headers.set("ETag", `"${object.etag}"`);
     }
 
+    let status = 200;
+    const r2Range = (object as unknown as { range?: { offset: number; length: number } }).range;
+    if (r2Range && typeof r2Range.offset === "number" && typeof r2Range.length === "number") {
+      status = 206;
+      const start = r2Range.offset;
+      const end = r2Range.offset + r2Range.length - 1;
+      headers.set("Content-Range", `bytes ${start}-${end}/${object.size}`);
+      headers.set("Content-Length", r2Range.length.toString());
+    } else {
+      headers.set("Content-Length", object.size.toString());
+    }
+
     // Workerd / R2 stream response
     return new Response(object.body as unknown as ReadableStream, {
-      status: 200,
+      status,
       headers,
     });
   } catch (error) {

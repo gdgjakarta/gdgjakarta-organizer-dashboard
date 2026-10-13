@@ -148,3 +148,32 @@ export interface PartnershipContent {
   updatedAt?: string;
   updatedBy?: string;
 }
+
+// ── Featured Event Types ───────────────────────────────────────────────────
+
+export interface FeaturedEventContent {
+  enabled: boolean;
+  eventId?: string; // Optional Bevy/Firestore event ID to link
+  badge: string; // e.g. "Featured Gathering", "Flagship Conference"
+  title: string; // e.g. "DevFest Jakarta 2026"
+  description: string; // Brief event summary
+  dateString?: string; // e.g. "Saturday, Nov 14, 2026 • 09:00 WIB"
+  location?: string; // e.g. "Auditorium Google Indonesia / Jakarta"
+  ctaText: string; // e.g. "RSVP & Get Tickets"
+  ctaUrl: string; // Destination URL
+  secondaryCtaText?: string; // e.g. "View Event Details"
+  secondaryCtaUrl?: string;
+
+  // Video Configuration
+  videoSourceType: "url" | "upload";
+  videoUrl: string; // External video URL or R2 streaming URL
+  videoPosterUrl?: string; // Fallback thumbnail image URL
+  videoStorageKey?: string; // R2 key if uploaded (e.g. featured-videos/devfest-teaser.mp4)
+  autoplay: boolean; // default: true
+  muted: boolean; // default: true (required for browser autoplay)
+  loop: boolean; // default: true
+  showControls?: boolean; // default: true
+
+  updatedAt?: string;
+  updatedBy?: string;
+}

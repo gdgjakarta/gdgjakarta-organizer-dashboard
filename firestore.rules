@@ -223,8 +223,8 @@ service cloud.firestore {
     //   - synced_by: string|null (optional, <= 128 chars) - UID of organizer who ran sync
     //
     // Collection: content_settings
-    // Document ID: faq, partnership
-    // Fields:
+    // Document ID: faq, partnership, featured_event
+    // Fields (faq, partnership):
     //   - header: map|null (optional, <= 20 keys)
     //   - notice: map|null (optional, <= 20 keys)
     //   - categories: list|null (optional, <= 50 items)
@@ -239,6 +239,28 @@ service cloud.firestore {
     //   - tiers: list|null (optional, <= 50 items)
     //   - partnerTiers: list|null (optional, <= 50 items)
     //   - sponsors: list|null (optional, <= 50 items)
+    //   - updatedAt: string|null (optional, <= 50 chars)
+    //   - updatedBy: string|null (optional, <= 150 chars)
+    // Fields (featured_event):
+    //   - enabled: bool|null (optional)
+    //   - eventId: string|null (optional, <= 100 chars)
+    //   - badge: string|null (optional, <= 100 chars)
+    //   - title: string|null (optional, <= 200 chars)
+    //   - description: string|null (optional, <= 2000 chars)
+    //   - dateString: string|null (optional, <= 100 chars)
+    //   - location: string|null (optional, <= 200 chars)
+    //   - ctaText: string|null (optional, <= 100 chars)
+    //   - ctaUrl: string|null (optional, <= 500 chars)
+    //   - secondaryCtaText: string|null (optional, <= 100 chars)
+    //   - secondaryCtaUrl: string|null (optional, <= 500 chars)
+    //   - videoSourceType: string|null (optional, 'url'|'upload')
+    //   - videoUrl: string|null (optional, <= 1000 chars)
+    //   - videoPosterUrl: string|null (optional, <= 1000 chars)
+    //   - videoStorageKey: string|null (optional, <= 500 chars)
+    //   - autoplay: bool|null (optional)
+    //   - muted: bool|null (optional)
+    //   - loop: bool|null (optional)
+    //   - showControls: bool|null (optional)
     //   - updatedAt: string|null (optional, <= 50 chars)
     //   - updatedBy: string|null (optional, <= 150 chars)
     //
@@ -643,30 +665,66 @@ service cloud.firestore {
         (!('synced_by' in data) || data.synced_by == null || (data.synced_by is string && data.synced_by.size() <= 128));
     }
 
+    // Validates featured_event document structure within content_settings
+    function isValidFeaturedEventSettings(data) {
+      return hasOnlyAllowedFields(data, [
+          'enabled', 'eventId', 'badge', 'title', 'description',
+          'dateString', 'location', 'ctaText', 'ctaUrl',
+          'secondaryCtaText', 'secondaryCtaUrl', 'videoSourceType',
+          'videoUrl', 'videoPosterUrl', 'videoStorageKey',
+          'autoplay', 'muted', 'loop', 'showControls',
+          'updatedAt', 'updatedBy'
+        ]) &&
+        (!('enabled' in data) || data.enabled == null || data.enabled is bool) &&
+        (!('eventId' in data) || data.eventId == null || (data.eventId is string && data.eventId.size() <= 100)) &&
+        (!('badge' in data) || data.badge == null || (data.badge is string && data.badge.size() <= 100)) &&
+        (!('title' in data) || data.title == null || (data.title is string && data.title.size() <= 200)) &&
+        (!('description' in data) || data.description == null || (data.description is string && data.description.size() <= 2000)) &&
+        (!('dateString' in data) || data.dateString == null || (data.dateString is string && data.dateString.size() <= 100)) &&
+        (!('location' in data) || data.location == null || (data.location is string && data.location.size() <= 200)) &&
+        (!('ctaText' in data) || data.ctaText == null || (data.ctaText is string && data.ctaText.size() <= 100)) &&
+        (!('ctaUrl' in data) || data.ctaUrl == null || (data.ctaUrl is string && data.ctaUrl.size() <= 500)) &&
+        (!('secondaryCtaText' in data) || data.secondaryCtaText == null || (data.secondaryCtaText is string && data.secondaryCtaText.size() <= 100)) &&
+        (!('secondaryCtaUrl' in data) || data.secondaryCtaUrl == null || (data.secondaryCtaUrl is string && data.secondaryCtaUrl.size() <= 500)) &&
+        (!('videoSourceType' in data) || data.videoSourceType == null || (data.videoSourceType is string && data.videoSourceType in ['url', 'upload'])) &&
+        (!('videoUrl' in data) || data.videoUrl == null || (data.videoUrl is string && data.videoUrl.size() <= 1000)) &&
+        (!('videoPosterUrl' in data) || data.videoPosterUrl == null || (data.videoPosterUrl is string && data.videoPosterUrl.size() <= 1000)) &&
+        (!('videoStorageKey' in data) || data.videoStorageKey == null || (data.videoStorageKey is string && data.videoStorageKey.size() <= 500)) &&
+        (!('autoplay' in data) || data.autoplay == null || data.autoplay is bool) &&
+        (!('muted' in data) || data.muted == null || data.muted is bool) &&
+        (!('loop' in data) || data.loop == null || data.loop is bool) &&
+        (!('showControls' in data) || data.showControls == null || data.showControls is bool) &&
+        (!('updatedAt' in data) || data.updatedAt == null || (data.updatedAt is string && data.updatedAt.size() <= 50)) &&
+        (!('updatedBy' in data) || data.updatedBy == null || (data.updatedBy is string && data.updatedBy.size() <= 150));
+    }
+
     // Validates content_settings document structure
     function isValidContentSettings(data, docId) {
-      return docId in ['faq', 'partnership'] &&
-        hasOnlyAllowedFields(data, [
-          'header', 'notice', 'categories', 'items', 'contact', 'faqs',
-          'hero', 'whyUs', 'devfest', 'formats', 'benefits', 'tiers',
-          'partnerTiers', 'sponsors', 'updatedAt', 'updatedBy'
-        ]) &&
-        (!('updatedAt' in data) || data.updatedAt == null || (data.updatedAt is string && data.updatedAt.size() <= 50)) &&
-        (!('updatedBy' in data) || data.updatedBy == null || (data.updatedBy is string && data.updatedBy.size() <= 150)) &&
-        (!('header' in data) || data.header == null || (data.header is map && data.header.size() <= 20)) &&
-        (!('notice' in data) || data.notice == null || (data.notice is map && data.notice.size() <= 20)) &&
-        (!('contact' in data) || data.contact == null || (data.contact is map && data.contact.size() <= 20)) &&
-        (!('hero' in data) || data.hero == null || (data.hero is map && data.hero.size() <= 20)) &&
-        (!('devfest' in data) || data.devfest == null || (data.devfest is map && data.devfest.size() <= 20)) &&
-        (!('categories' in data) || data.categories == null || (data.categories is list && data.categories.size() <= 50)) &&
-        (!('items' in data) || data.items == null || (data.items is list && data.items.size() <= 100)) &&
-        (!('faqs' in data) || data.faqs == null || (data.faqs is list && data.faqs.size() <= 100)) &&
-        (!('whyUs' in data) || data.whyUs == null || (data.whyUs is list && data.whyUs.size() <= 50)) &&
-        (!('formats' in data) || data.formats == null || (data.formats is list && data.formats.size() <= 50)) &&
-        (!('benefits' in data) || data.benefits == null || (data.benefits is list && data.benefits.size() <= 50)) &&
-        (!('tiers' in data) || data.tiers == null || (data.tiers is list && data.tiers.size() <= 50)) &&
-        (!('partnerTiers' in data) || data.partnerTiers == null || (data.partnerTiers is list && data.partnerTiers.size() <= 50)) &&
-        (!('sponsors' in data) || data.sponsors == null || (data.sponsors is list && data.sponsors.size() <= 50));
+      return (
+        (docId in ['faq', 'partnership'] &&
+          hasOnlyAllowedFields(data, [
+            'header', 'notice', 'categories', 'items', 'contact', 'faqs',
+            'hero', 'whyUs', 'devfest', 'formats', 'benefits', 'tiers',
+            'partnerTiers', 'sponsors', 'updatedAt', 'updatedBy'
+          ]) &&
+          (!('updatedAt' in data) || data.updatedAt == null || (data.updatedAt is string && data.updatedAt.size() <= 50)) &&
+          (!('updatedBy' in data) || data.updatedBy == null || (data.updatedBy is string && data.updatedBy.size() <= 150)) &&
+          (!('header' in data) || data.header == null || (data.header is map && data.header.size() <= 20)) &&
+          (!('notice' in data) || data.notice == null || (data.notice is map && data.notice.size() <= 20)) &&
+          (!('contact' in data) || data.contact == null || (data.contact is map && data.contact.size() <= 20)) &&
+          (!('hero' in data) || data.hero == null || (data.hero is map && data.hero.size() <= 20)) &&
+          (!('devfest' in data) || data.devfest == null || (data.devfest is map && data.devfest.size() <= 20)) &&
+          (!('categories' in data) || data.categories == null || (data.categories is list && data.categories.size() <= 50)) &&
+          (!('items' in data) || data.items == null || (data.items is list && data.items.size() <= 100)) &&
+          (!('faqs' in data) || data.faqs == null || (data.faqs is list && data.faqs.size() <= 100)) &&
+          (!('whyUs' in data) || data.whyUs == null || (data.whyUs is list && data.whyUs.size() <= 50)) &&
+          (!('formats' in data) || data.formats == null || (data.formats is list && data.formats.size() <= 50)) &&
+          (!('benefits' in data) || data.benefits == null || (data.benefits is list && data.benefits.size() <= 50)) &&
+          (!('tiers' in data) || data.tiers == null || (data.tiers is list && data.tiers.size() <= 50)) &&
+          (!('partnerTiers' in data) || data.partnerTiers == null || (data.partnerTiers is list && data.partnerTiers.size() <= 50)) &&
+          (!('sponsors' in data) || data.sponsors == null || (data.sponsors is list && data.sponsors.size() <= 50))) ||
+        (docId == 'featured_event' && isValidFeaturedEventSettings(data))
+      );
     }
 
     // Validates audit_logs document structure, data types, and bounds
@@ -917,10 +975,10 @@ service cloud.firestore {
     }
 
     // -------------------------------------------------------------
-    // Content Settings Collection (FAQ, Partnership)
+    // Content Settings Collection (FAQ, Partnership, Featured Event)
     // -------------------------------------------------------------
     match /content_settings/{docId} {
-      // Read: Public read for public website FAQ and partnership content.
+      // Read: Public read for public website FAQ, partnership, and featured event content.
       allow read: if true;
 
       // Write: Organizers only.

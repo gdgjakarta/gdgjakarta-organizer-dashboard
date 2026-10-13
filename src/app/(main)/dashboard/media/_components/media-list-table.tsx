@@ -101,6 +101,7 @@ export function MediaListTable({
                 onCheckedChange={onToggleSelectAll}
                 aria-label="Select all files"
                 disabled={items.length === 0}
+                className="border-muted-foreground/70 shadow-xs data-checked:border-primary"
               />
             </TableHead>
             <TableHead>Name</TableHead>
@@ -116,15 +117,15 @@ export function MediaListTable({
             <TableRow
               key={folder.prefix}
               onClick={() => onOpenFolder(folder.prefix)}
-              className="cursor-pointer hover:bg-muted/50"
+              className="group cursor-pointer transition-colors hover:bg-primary/5"
             >
               <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                 <span className="text-muted-foreground">—</span>
               </TableCell>
               <TableCell>
                 <div className="flex items-center gap-2.5 font-medium">
-                  <Folder className="h-4 w-4 shrink-0 fill-primary/20 text-primary" />
-                  <span className="truncate">{folder.name}</span>
+                  <Folder className="h-4 w-4 shrink-0 fill-primary/20 text-primary transition-all group-hover:scale-110 group-hover:fill-primary/40" />
+                  <span className="truncate transition-colors group-hover:text-primary">{folder.name}</span>
                 </div>
               </TableCell>
               <TableCell>
@@ -163,13 +164,16 @@ export function MediaListTable({
               <TableRow
                 key={item.key}
                 onClick={() => onPreview(item)}
-                className={`cursor-pointer hover:bg-muted/50 ${isSelected ? "bg-primary/[0.03]" : ""}`}
+                className={`cursor-pointer transition-colors ${
+                  isSelected ? "bg-primary/10 hover:bg-primary/15" : "hover:bg-muted/50"
+                }`}
               >
                 <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                   <Checkbox
                     checked={isSelected}
                     onCheckedChange={() => onToggleSelect(item.key)}
                     aria-label={`Select ${item.name}`}
+                    className="border-muted-foreground/70 shadow-xs data-checked:border-primary"
                   />
                 </TableCell>
                 <TableCell>

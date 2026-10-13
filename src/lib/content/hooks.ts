@@ -6,13 +6,13 @@ import { toast } from "sonner";
 
 import { revalidateDashboardPath } from "@/server/server-actions";
 
-import { DEFAULT_FAQ_CONTENT, DEFAULT_PARTNERSHIP_CONTENT } from "./defaults";
-import type { FaqContent, PartnershipContent } from "./types";
+import { DEFAULT_FAQ_CONTENT, DEFAULT_FEATURED_EVENT_CONTENT, DEFAULT_PARTNERSHIP_CONTENT } from "./defaults";
+import type { FaqContent, FeaturedEventContent, PartnershipContent } from "./types";
 
 // NOTE: `@/lib/firestore/client` is always loaded via dynamic `import()` so that
 // `firebase/firestore` never ends up in the server / Cloudflare Worker bundle (see dev-note.md).
 
-type ContentKind = "faq" | "partnership";
+type ContentKind = "faq" | "partnership" | "featuredEvent";
 
 interface ContentConfig<T> {
   cacheKey: string;
@@ -24,7 +24,11 @@ interface ContentConfig<T> {
   subscribe: (onUpdate: (content: T) => void) => Promise<() => void>;
 }
 
-const CONFIGS: { faq: ContentConfig<FaqContent>; partnership: ContentConfig<PartnershipContent> } = {
+const CONFIGS: {
+  faq: ContentConfig<FaqContent>;
+  partnership: ContentConfig<PartnershipContent>;
+  featuredEvent: ContentConfig<FeaturedEventContent>;
+} = {
   faq: {
     cacheKey: "gdg_faq_content_cache",
     defaults: DEFAULT_FAQ_CONTENT,
@@ -42,6 +46,15 @@ const CONFIGS: { faq: ContentConfig<FaqContent>; partnership: ContentConfig<Part
     load: async () => (await import("@/lib/firestore/client")).getPartnershipContentDoc(),
     save: async (content) => (await import("@/lib/firestore/client")).savePartnershipContentDoc(content),
     subscribe: async (onUpdate) => (await import("@/lib/firestore/client")).subscribePartnershipContentDoc(onUpdate),
+  },
+  featuredEvent: {
+    cacheKey: "gdg_featured_event_cache",
+    defaults: DEFAULT_FEATURED_EVENT_CONTENT,
+    revalidatePaths: ["/", "/dashboard/featured-event"],
+    label: "Featured Event",
+    load: async () => (await import("@/lib/firestore/client")).getFeaturedEventContentDoc(),
+    save: async (content) => (await import("@/lib/firestore/client")).saveFeaturedEventContentDoc(content),
+    subscribe: async (onUpdate) => (await import("@/lib/firestore/client")).subscribeFeaturedEventContentDoc(onUpdate),
   },
 };
 
@@ -188,6 +201,10 @@ export function useFaqContent() {
 
 export function usePartnershipContent() {
   return useContent(CONFIGS.partnership);
+}
+
+export function useFeaturedEventContent() {
+  return useContent(CONFIGS.featuredEvent);
 }
 
 export type { ContentKind };
