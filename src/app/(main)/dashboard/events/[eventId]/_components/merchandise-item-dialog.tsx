@@ -39,6 +39,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { VARIATION_TEMPLATES } from "@/lib/events/merchandise-templates";
 import type { EventMerchandiseItem, MerchandiseVariation } from "@/lib/firestore/types";
+import { cn } from "@/lib/utils";
 
 interface MerchandiseItemDialogProps {
   open: boolean;
@@ -108,7 +109,7 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
   const [productImageMode, setProductImageMode] = useState<"upload" | "url">("upload");
   const [isUploadingProduct, setIsUploadingProduct] = useState(false);
   const [isDraggingProduct, setIsDraggingProduct] = useState(false);
-  const productFileInputRef = useRef<HTMLInputElement>(null);
+  const productFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [hasStockLimit, setHasStockLimit] = useState(false);
   const [stock, setStock] = useState<number | null>(null);
@@ -124,7 +125,7 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
   const [guidelineImageMode, setGuidelineImageMode] = useState<"upload" | "url">("upload");
   const [isUploadingGuideline, setIsUploadingGuideline] = useState(false);
   const [isDraggingGuideline, setIsDraggingGuideline] = useState(false);
-  const guidelineFileInputRef = useRef<HTMLInputElement>(null);
+  const guidelineFileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Temporary input states for adding variation options
   const [newVarName, setNewVarName] = useState("");
@@ -151,7 +152,7 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
       setHasStockLimit(item.stock !== null && item.stock !== undefined);
       setStock(item.stock ?? null);
       setMaxPerPerson(item.max_per_person ?? null);
-      setVariations(JSON.parse(JSON.stringify(item.variations || [])));
+      setVariations(JSON.parse(JSON.stringify(item.variations ?? [])));
       setStatus(item.status);
 
       // Product guideline
@@ -212,6 +213,94 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
       const [selected] = copy.splice(index, 1);
       return [selected, ...copy];
     });
+  };
+
+  const handleProductFilesUpload = async (fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return;
+    const files = Array.from(fileList);
+
+    const validFiles = files.filter((f) => f.type.startsWith("image/"));
+    if (validFiles.length === 0) {
+      toast.error("Please select valid image files (JPG, PNG, WebP).");
+      return;
+    }
+
+    setIsUploadingProduct(true);
+    try {
+      const formData = new FormData();
+      formData.append("prefix", "merchandise/products/");
+      for (const file of validFiles) {
+        formData.append("files", file);
+      }
+
+      const res = await fetch("/api/media/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = (await res.json()) as { success?: boolean; error?: string; items?: Array<{ url: string }> };
+      if (!res.ok || !data.success) {
+        throw new Error(data.error ?? "Failed to upload images");
+      }
+
+      const newUrls = (data.items ?? []).map((i) => i.url).filter(Boolean);
+      if (newUrls.length > 0) {
+        setImages((prev) => {
+          const existingSet = new Set(prev);
+          const uniqueNew = newUrls.filter((u: string) => !existingSet.has(u));
+          return [...prev, ...uniqueNew];
+        });
+        toast.success(`Successfully uploaded ${newUrls.length} ${newUrls.length === 1 ? "image" : "images"}.`);
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to upload images";
+      toast.error(message);
+    } finally {
+      setIsUploadingProduct(false);
+      if (productFileInputRef.current) {
+        productFileInputRef.current.value = "";
+      }
+    }
+  };
+
+  const handleGuidelineFileUpload = async (fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return;
+    const file = fileList[0];
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select a valid image file (PNG, JPG, WebP).");
+      return;
+    }
+
+    setIsUploadingGuideline(true);
+    try {
+      const formData = new FormData();
+      formData.append("prefix", "merchandise/guidelines/");
+      formData.append("files", file);
+
+      const res = await fetch("/api/media/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = (await res.json()) as { success?: boolean; error?: string; items?: Array<{ url: string }> };
+      if (!res.ok || !data.success) {
+        throw new Error(data.error ?? "Failed to upload guideline image");
+      }
+
+      const uploadedUrl = data.items?.[0]?.url;
+      if (uploadedUrl) {
+        setGuidelineImageUrl(uploadedUrl);
+        toast.success("Guideline image uploaded successfully.");
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to upload image";
+      toast.error(message);
+    } finally {
+      setIsUploadingGuideline(false);
+      if (guidelineFileInputRef.current) {
+        guidelineFileInputRef.current.value = "";
+      }
+    }
   };
 
   // Variation handlers
@@ -287,7 +376,7 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
       const target = copy[varIndex];
       if (target) {
         target.options = target.options.filter((o) => o !== optionToRemove);
-        if (target.option_details && target.option_details[optionToRemove]) {
+        if (target.option_details?.[optionToRemove]) {
           const newDetails = { ...target.option_details };
           delete newDetails[optionToRemove];
           target.option_details = newDetails;
@@ -532,31 +621,111 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
                 </Badge>
               </div>
 
-              {/* Add Image Input */}
-              <div className="flex gap-2">
-                <Input
-                  id="merch-image"
-                  placeholder="Paste image URL (e.g. https://example.com/front.jpg)"
-                  value={newImageInput}
-                  onChange={(e) => setNewImageInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      handleAddImage();
-                    }
-                  }}
-                  className="h-8 text-xs"
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  className="h-8 gap-1 text-xs shrink-0"
-                  onClick={handleAddImage}
-                >
-                  <Plus className="size-3" /> Add Photo
-                </Button>
+              {/* Recommendation Note */}
+              <div className="flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 p-2.5 text-xs text-muted-foreground">
+                <Info className="size-4 shrink-0 text-primary mt-0.5" />
+                <div className="space-y-0.5">
+                  <span className="font-medium text-foreground">Image Size Recommendation:</span>
+                  <p>
+                    Square <strong>1:1 aspect ratio</strong> (recommended: <strong>1000 × 1000 px</strong>, min. 800 ×
+                    800 px). Max file size 5MB (JPG, PNG, WebP).
+                  </p>
+                </div>
               </div>
+
+              {/* Add Image: Tabs for Upload vs URL */}
+              <Tabs
+                value={productImageMode}
+                onValueChange={(val) => setProductImageMode(val as "upload" | "url")}
+                className="w-full"
+              >
+                <TabsList className="grid w-full grid-cols-2 h-8">
+                  <TabsTrigger value="upload" className="text-xs gap-1.5">
+                    <UploadCloud className="size-3.5" /> Upload Files
+                  </TabsTrigger>
+                  <TabsTrigger value="url" className="text-xs gap-1.5">
+                    <LinkIcon className="size-3.5" /> Image URL
+                  </TabsTrigger>
+                </TabsList>
+
+                {/* Upload File Tab */}
+                {productImageMode === "upload" && (
+                  <div className="mt-2.5">
+                    <input
+                      ref={productFileInputRef}
+                      type="file"
+                      multiple
+                      accept="image/png,image/jpeg,image/webp,image/gif"
+                      className="hidden"
+                      onChange={(e) => void handleProductFilesUpload(e.target.files)}
+                    />
+                    <button
+                      type="button"
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setIsDraggingProduct(true);
+                      }}
+                      onDragLeave={() => setIsDraggingProduct(false)}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setIsDraggingProduct(false);
+                        void handleProductFilesUpload(e.dataTransfer.files);
+                      }}
+                      onClick={() => productFileInputRef.current?.click()}
+                      className={cn(
+                        "flex w-full flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed p-4 text-center cursor-pointer transition-colors",
+                        isDraggingProduct
+                          ? "border-primary bg-primary/5"
+                          : "border-muted-foreground/25 hover:border-muted-foreground/50 hover:bg-muted/50",
+                        isUploadingProduct && "pointer-events-none opacity-60",
+                      )}
+                    >
+                      {isUploadingProduct ? (
+                        <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground">
+                          <Loader2 className="size-4 animate-spin text-primary" />
+                          <span>Uploading images to Cloudflare R2...</span>
+                        </div>
+                      ) : (
+                        <>
+                          <UploadCloud className="size-6 text-muted-foreground" />
+                          <div className="text-xs font-medium">Click to browse or drag and drop photos here</div>
+                          <div className="text-[11px] text-muted-foreground">
+                            Supports multiple files (PNG, JPG, WebP up to 5MB each)
+                          </div>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+
+                {/* URL Input Tab */}
+                {productImageMode === "url" && (
+                  <div className="mt-2.5 flex gap-2">
+                    <Input
+                      id="merch-image"
+                      placeholder="Paste image URL (e.g. https://example.com/front.jpg)"
+                      value={newImageInput}
+                      onChange={(e) => setNewImageInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleAddImage();
+                        }
+                      }}
+                      className="h-8 text-xs"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      className="h-8 gap-1 text-xs shrink-0"
+                      onClick={handleAddImage}
+                    >
+                      <Plus className="size-3" /> Add Photo
+                    </Button>
+                  </div>
+                )}
+              </Tabs>
 
               {/* Photos Gallery */}
               {images.length > 0 ? (
@@ -1026,18 +1195,106 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
                 />
               </div>
 
-              {/* Guideline Image / Sizing Chart Diagram URL */}
+              {/* Guideline Image / Sizing Chart Diagram */}
               <div className="space-y-2">
-                <Label htmlFor="guideline-image" className="text-xs">
-                  Guideline Image URL (e.g. Visual Size Chart Diagram)
-                </Label>
-                <Input
-                  id="guideline-image"
-                  placeholder="https://example.com/size-chart-diagram.png"
-                  value={guidelineImageUrl}
-                  onChange={(e) => setGuidelineImageUrl(e.target.value)}
-                  className="h-8 text-xs"
-                />
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="guideline-image" className="text-xs">
+                    Guideline Image / Sizing Chart Diagram
+                  </Label>
+                  {guidelineImageUrl ? (
+                    <Badge variant="secondary" className="text-[10px] h-5">
+                      Image Attached
+                    </Badge>
+                  ) : null}
+                </div>
+
+                {/* Sizing Chart Recommendation Note */}
+                <div className="flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 p-2.5 text-xs text-muted-foreground">
+                  <Info className="size-4 shrink-0 text-primary mt-0.5" />
+                  <div className="space-y-0.5">
+                    <span className="font-medium text-foreground">Sizing Chart Image Recommendation:</span>
+                    <p>
+                      Landscape <strong>16:9 or 4:3 ratio</strong> (recommended: <strong>1200 × 800 px</strong> or
+                      higher) with clear contrast for measurement tables and diagrams. Max file size 5MB (PNG, JPG,
+                      WebP).
+                    </p>
+                  </div>
+                </div>
+
+                <Tabs
+                  value={guidelineImageMode}
+                  onValueChange={(val) => setGuidelineImageMode(val as "upload" | "url")}
+                  className="w-full"
+                >
+                  <TabsList className="grid w-full grid-cols-2 h-8">
+                    <TabsTrigger value="upload" className="text-xs gap-1.5">
+                      <UploadCloud className="size-3.5" /> Upload File
+                    </TabsTrigger>
+                    <TabsTrigger value="url" className="text-xs gap-1.5">
+                      <LinkIcon className="size-3.5" /> Image URL
+                    </TabsTrigger>
+                  </TabsList>
+
+                  {/* Upload File Tab */}
+                  {guidelineImageMode === "upload" && (
+                    <div className="mt-2.5">
+                      <input
+                        ref={guidelineFileInputRef}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/gif"
+                        className="hidden"
+                        onChange={(e) => void handleGuidelineFileUpload(e.target.files)}
+                      />
+                      <button
+                        type="button"
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          setIsDraggingGuideline(true);
+                        }}
+                        onDragLeave={() => setIsDraggingGuideline(false)}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          setIsDraggingGuideline(false);
+                          void handleGuidelineFileUpload(e.dataTransfer.files);
+                        }}
+                        onClick={() => guidelineFileInputRef.current?.click()}
+                        className={cn(
+                          "flex w-full flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed p-4 text-center cursor-pointer transition-colors",
+                          isDraggingGuideline
+                            ? "border-primary bg-primary/5"
+                            : "border-muted-foreground/25 hover:border-muted-foreground/50 hover:bg-muted/50",
+                          isUploadingGuideline && "pointer-events-none opacity-60",
+                        )}
+                      >
+                        {isUploadingGuideline ? (
+                          <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground">
+                            <Loader2 className="size-4 animate-spin text-primary" />
+                            <span>Uploading size chart image to Cloudflare R2...</span>
+                          </div>
+                        ) : (
+                          <>
+                            <UploadCloud className="size-6 text-muted-foreground" />
+                            <div className="text-xs font-medium">Click to browse or drag and drop chart image</div>
+                            <div className="text-[11px] text-muted-foreground">Supports PNG, JPG, WebP (up to 5MB)</div>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* URL Input Tab */}
+                  {guidelineImageMode === "url" && (
+                    <div className="mt-2.5">
+                      <Input
+                        id="guideline-image"
+                        placeholder="https://example.com/size-chart-diagram.png"
+                        value={guidelineImageUrl}
+                        onChange={(e) => setGuidelineImageUrl(e.target.value)}
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                  )}
+                </Tabs>
 
                 {guidelineImageUrl ? (
                   <div className="relative mt-2 overflow-hidden rounded-lg border bg-muted p-3">
