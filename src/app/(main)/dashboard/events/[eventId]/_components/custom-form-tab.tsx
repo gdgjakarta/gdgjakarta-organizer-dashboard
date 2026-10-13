@@ -11,6 +11,7 @@ import {
   CalendarClock,
   CheckCircle2,
   Clock,
+  Copy,
   ExternalLink,
   FileEdit,
   Globe,
@@ -72,6 +73,7 @@ import {
 import type { CustomQuestion, EventSession, EventTicketTier, FirestoreEvent } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
+import { type CopiedFormData, CopyEventFormDialog } from "./copy-event-form-dialog";
 import { HtmlEditText } from "./html-edit-text";
 import { SortableQuestionCard } from "./sortable-question-card";
 
@@ -267,7 +269,8 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
   const isDirty =
     isInitialLoaded && initialSnapshotRef.current !== null && initialSnapshotRef.current !== currentSnapshot;
 
-  // 8. Exit confirmation modal state
+  // 8. Copy Form modal & Exit confirmation modal states
+  const [showCopyDialog, setShowCopyDialog] = useState(false);
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
   const pendingNavigationRef = useRef<(() => void) | null>(null);
 
@@ -666,6 +669,42 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
     }
   };
 
+  const handleApplyCopiedForm = (copied: CopiedFormData) => {
+    if (copied.questions.length > 0) {
+      if (copied.replaceQuestions) {
+        setQuestions(copied.questions);
+      } else {
+        // Append mode: avoid duplicate question labels/IDs
+        setQuestions((prev) => {
+          const existingLabels = new Set(prev.map((q) => q.label.trim().toLowerCase()));
+          const newToAdd = copied.questions.filter((q) => !existingLabels.has(q.label.trim().toLowerCase()));
+          return [...prev, ...newToAdd];
+        });
+      }
+    }
+
+    if (copied.policy) {
+      setRequiresApproval(copied.policy.requiresApproval);
+      setAllowWaitlist(copied.policy.allowWaitlist);
+      if (copied.policy.maxAttendees !== undefined) {
+        setMaxAttendees(copied.policy.maxAttendees);
+      }
+    }
+
+    if (copied.sessions && copied.sessions.length > 0) {
+      setSessions(copied.sessions);
+    }
+
+    if (copied.tickets && copied.tickets.length > 0) {
+      setTickets(copied.tickets);
+    }
+
+    toast.success(
+      `Copied registration configuration from "${copied.sourceEventTitle}". Review your changes and save.`,
+      { duration: 5000 },
+    );
+  };
+
   const handleDiscardChanges = () => {
     if (initialSnapshotRef.current) {
       try {
@@ -792,7 +831,18 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
             </CardDescription>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setShowCopyDialog(true)}
+              className="h-8 gap-1.5 text-xs bg-background shadow-2xs hover:bg-muted"
+            >
+              <Copy className="size-3.5 text-primary" />
+              <span>Copy from Existing Event</span>
+            </Button>
+
             <Select onValueChange={handleApplyFormatTemplate}>
               <SelectTrigger size="sm" className="h-8 w-full bg-background text-xs shadow-2xs sm:w-[280px]">
                 <SelectValue placeholder="Apply Format Template..." />
@@ -1698,6 +1748,17 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
               </SelectContent>
             </Select>
 
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setShowCopyDialog(true)}
+              className="h-8 gap-1.5 text-xs shadow-2xs"
+            >
+              <Copy className="size-3.5" />
+              Copy Existing Form
+            </Button>
+
             <Button size="sm" variant="outline" onClick={handleAddQuestion} className="h-8 gap-1.5 text-xs">
               <Plus className="size-3.5" />
               Add Question
@@ -1738,8 +1799,23 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
           )}
 
           {questions.length === 0 ? (
-            <div className="rounded-lg border border-dashed py-8 text-center text-muted-foreground text-sm">
-              No custom questions configured. Registrants will only submit their member profile.
+            <div className="flex flex-col items-center justify-center gap-2.5 rounded-lg border border-dashed py-10 text-center text-muted-foreground text-sm">
+              <p>No custom questions configured. Registrants will only submit their member profile.</p>
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="outline" onClick={handleAddQuestion} className="h-8 gap-1.5 text-xs">
+                  <Plus className="size-3.5" />
+                  Add First Question
+                </Button>
+                <Button
+                  size="sm"
+                  variant="default"
+                  onClick={() => setShowCopyDialog(true)}
+                  className="h-8 gap-1.5 text-xs shadow-xs"
+                >
+                  <Copy className="size-3.5" />
+                  Copy from Existing Event
+                </Button>
+              </div>
             </div>
           ) : (
             <DragDropProvider onDragEnd={handleDragEnd}>
@@ -1906,6 +1982,14 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── COPY FORM FROM EXISTING EVENT DIALOG ──────────────────── */}
+      <CopyEventFormDialog
+        open={showCopyDialog}
+        onOpenChange={setShowCopyDialog}
+        currentEventId={String(event.id)}
+        onApplyCopy={handleApplyCopiedForm}
+      />
     </div>
   );
 }
