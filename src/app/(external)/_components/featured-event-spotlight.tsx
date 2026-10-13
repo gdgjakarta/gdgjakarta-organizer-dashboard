@@ -21,10 +21,11 @@ export function FeaturedEventSpotlight() {
 
   // Sync muted and autoplay properties on HTML5 video element
   useEffect(() => {
-    if (videoRef.current) {
-      videoRef.current.muted = isMuted;
+    const video = videoRef.current;
+    if (video) {
+      video.muted = isMuted;
       if (content.autoplay) {
-        videoRef.current.play().catch(() => {
+        video.play().catch(() => {
           // Browser prevented autoplay without user interaction
           setIsPlaying(false);
         });
@@ -33,9 +34,10 @@ export function FeaturedEventSpotlight() {
   }, [isMuted, content.autoplay]);
 
   const toggleSound = () => {
-    if (videoRef.current) {
-      const nextMuted = !videoRef.current.muted;
-      videoRef.current.muted = nextMuted;
+    const video = videoRef.current;
+    if (video) {
+      const nextMuted = !video.muted;
+      video.muted = nextMuted;
       setIsMuted(nextMuted);
     } else {
       setIsMuted((prev) => !prev);
@@ -43,12 +45,13 @@ export function FeaturedEventSpotlight() {
   };
 
   const togglePlayback = () => {
-    if (videoRef.current) {
-      if (videoRef.current.paused) {
-        videoRef.current.play();
+    const video = videoRef.current;
+    if (video) {
+      if (video.paused) {
+        video.play();
         setIsPlaying(true);
       } else {
-        videoRef.current.pause();
+        video.pause();
         setIsPlaying(false);
       }
     } else {

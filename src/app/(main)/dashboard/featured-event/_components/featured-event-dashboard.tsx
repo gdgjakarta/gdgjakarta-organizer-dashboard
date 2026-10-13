@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 
 import Link from "next/link";
 
-import { format, parseISO } from "date-fns";
 import {
   Calendar,
   CheckCircle2,
@@ -16,6 +15,7 @@ import {
   MapPin,
   Pause,
   Play,
+  RefreshCw,
   RotateCcw,
   Sparkles,
   Trash2,
@@ -39,11 +39,17 @@ import { UnsavedChangesDialog } from "@/components/unsaved-changes-dialog";
 import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
 import { useFeaturedEventContent } from "@/lib/content/hooks";
 import { parseVideoUrl } from "@/lib/events/media-utils";
-import type { FirestoreEvent } from "@/lib/firestore/types";
 import { sanitizeStorageName } from "@/lib/r2/utils";
 import { cn } from "@/lib/utils";
 
-export function FeaturedEventDashboard() {
+import { fetchFeaturedEventBevyListAction, type PublishedEventOption } from "../_actions/fetch-bevy-events";
+import { BevyEventSelector } from "./bevy-event-selector";
+
+interface FeaturedEventDashboardProps {
+  initialEvents?: PublishedEventOption[];
+}
+
+export function FeaturedEventDashboard({ initialEvents = [] }: FeaturedEventDashboardProps) {
   const { content, setContent, hasChanges, discardChanges, saving, saveContent, resetToDefaults } =
     useFeaturedEventContent();
 
@@ -60,82 +66,95 @@ export function FeaturedEventDashboard() {
     onDiscard: discardChanges,
   });
 
-  // State for available events from Firestore to pick from
-  const [availableEvents, setAvailableEvents] = useState<FirestoreEvent[]>([]);
+  // State for available events from Bevy API
+  const [availableEvents, setAvailableEvents] = useState<PublishedEventOption[]>(initialEvents);
   const [isLoadingEvents, setIsLoadingEvents] = useState(false);
 
   // Upload state
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isDragOver, setIsDragOver] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Preview interactive state
-  const previewVideoRef = useRef<HTMLVideoElement | null>(null);
+  const previewVideoRef = useRef<HTMLVideoElement>(null);
   const [previewMuted, setPreviewMuted] = useState(true);
   const [previewPlaying, setPreviewPlaying] = useState(true);
 
-  // Load events for selection dropdown
+  // If initialEvents was empty, fetch Bevy events on mount
   useEffect(() => {
+    if (availableEvents.length > 0) return;
     async function loadEvents() {
       setIsLoadingEvents(true);
       try {
-        const { getFirestoreEvents } = await import("@/lib/firestore/client");
-        const list = await getFirestoreEvents(50);
-        setAvailableEvents(list);
+        const res = await fetchFeaturedEventBevyListAction();
+        if (res.success && res.events) {
+          setAvailableEvents(res.events);
+        }
       } catch (err) {
-        console.warn("[FeaturedEventDashboard] Could not fetch events list:", err);
+        console.warn("[FeaturedEventDashboard] Could not fetch Bevy events list:", err);
       } finally {
         setIsLoadingEvents(false);
       }
     }
     void loadEvents();
-  }, []);
+  }, [availableEvents.length]);
 
-  // Handle auto-populating fields from selected event
-  const handleSelectEvent = (eventId: string) => {
-    if (!eventId) {
-      setContent({ ...content, eventId: undefined });
-      return;
-    }
-
-    const selected = availableEvents.find((e) => String(e.id) === eventId);
-    if (!selected) {
-      setContent({ ...content, eventId });
-      return;
-    }
-
-    let dateFormatted = "";
-    if (selected.start_date) {
-      try {
-        dateFormatted = format(parseISO(selected.start_date), "EEEE, MMM d, yyyy • h:mm a");
-      } catch {
-        dateFormatted = selected.start_date;
+  // Handle manual sync from Bevy API
+  const handleRefreshBevyEvents = async () => {
+    setIsLoadingEvents(true);
+    try {
+      const res = await fetchFeaturedEventBevyListAction();
+      if (res.success && res.events) {
+        setAvailableEvents(res.events);
+        toast.success("Bevy events updated", {
+          description: `Loaded ${res.events.length} events from Bevy API.`,
+        });
+      } else {
+        toast.error("Failed to load Bevy events", {
+          description: res.error ?? "Please check your network or try again.",
+        });
       }
+    } catch (err) {
+      console.error("[FeaturedEventDashboard] Error refreshing Bevy events:", err);
+      toast.error("Error fetching Bevy events");
+    } finally {
+      setIsLoadingEvents(false);
     }
+  };
+
+  // Handle auto-populating fields from selected Bevy event
+  const handleSelectEvent = (selected: PublishedEventOption | null) => {
+    if (!selected) {
+      setContent({ ...content, eventId: undefined });
+      toast.info("Cleared linked Bevy event", {
+        description: "Switched to custom featured event details.",
+      });
+      return;
+    }
+
+    const dateFormatted = selected.formattedTime
+      ? `${selected.formattedDate} • ${selected.formattedTime}`
+      : selected.formattedDate;
 
     const locationStr =
-      selected.venue?.name ||
-      selected.venue?.address ||
-      selected.venue?.city ||
-      (selected.is_virtual ? "Virtual / Google Meet" : "Jakarta, Indonesia");
+      selected.venueName ?? selected.venueAddress ?? (selected.isVirtual ? "Virtual / Online" : "Jakarta, Indonesia");
 
-    const poster =
-      selected.picture_url || selected.picture?.url || selected.banner_url || selected.cropped_picture_url || "";
+    const poster = selected.bannerUrl ?? selected.thumbnailUrl ?? "";
 
     setContent({
       ...content,
-      eventId,
-      title: selected.title || content.title,
-      description: selected.description_short || selected.description || content.description,
-      dateString: dateFormatted || content.dateString,
-      location: locationStr || content.location,
+      eventId: selected.id,
+      title: selected.title ? selected.title : content.title,
+      description: selected.descriptionShort ? selected.descriptionShort : content.description,
+      dateString: dateFormatted ? dateFormatted : content.dateString,
+      location: locationStr ? locationStr : content.location,
       ctaUrl: `/events/${selected.id}`,
-      secondaryCtaUrl: `/events/${selected.id}`,
-      videoPosterUrl: poster || content.videoPosterUrl,
+      secondaryCtaUrl: selected.url ? selected.url : `/events/${selected.id}`,
+      videoPosterUrl: poster ? poster : content.videoPosterUrl,
     });
 
-    toast.info("Event details synchronized", {
+    toast.info("Bevy event synchronized", {
       description: `Imported title, date, venue, and links from "${selected.title}".`,
     });
   };
@@ -303,27 +322,29 @@ export function FeaturedEventDashboard() {
                 />
               </div>
 
-              {/* Event Picker Dropdown */}
+              {/* Bevy Event Picker Combobox */}
               <div className="space-y-2">
-                <Label htmlFor="select-event" className="font-medium text-sm">
-                  Link with Existing Event (Optional)
-                </Label>
-                <select
-                  id="select-event"
-                  value={content.eventId || ""}
-                  onChange={(e) => handleSelectEvent(e.target.value)}
-                  disabled={isLoadingEvents}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus:outline-hidden focus:ring-2 focus:ring-ring"
-                >
-                  <option value="">-- Custom (No linked event) --</option>
-                  {availableEvents.map((evt) => (
-                    <option key={evt.id} value={String(evt.id)}>
-                      {evt.title} ({evt.status || "Published"})
-                    </option>
-                  ))}
-                </select>
+                <div className="flex items-center justify-between">
+                  <Label className="font-medium text-sm">Link with Bevy Event (Optional)</Label>
+                  <button
+                    type="button"
+                    onClick={() => void handleRefreshBevyEvents()}
+                    disabled={isLoadingEvents}
+                    className="inline-flex items-center gap-1.5 font-medium text-[11px] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+                    title="Refresh official GDG chapter events from Bevy API"
+                  >
+                    <RefreshCw className={cn("size-3", isLoadingEvents && "animate-spin")} />
+                    <span>Sync Bevy</span>
+                  </button>
+                </div>
+                <BevyEventSelector
+                  events={availableEvents}
+                  selectedEventId={content.eventId}
+                  onSelectEvent={handleSelectEvent}
+                  isLoading={isLoadingEvents}
+                />
                 <p className="text-muted-foreground text-xs">
-                  Selecting an event will auto-fill the title, date, venue, description, and link below.
+                  Selecting an event will auto-fill the title, date, venue, description, and link directly from Bevy.
                 </p>
               </div>
             </CardContent>
@@ -731,12 +752,13 @@ export function FeaturedEventDashboard() {
                     <button
                       type="button"
                       onClick={() => {
-                        if (previewVideoRef.current) {
-                          if (previewVideoRef.current.paused) {
-                            previewVideoRef.current.play();
+                        const previewVideo = previewVideoRef.current;
+                        if (previewVideo) {
+                          if (previewVideo.paused) {
+                            previewVideo.play();
                             setPreviewPlaying(true);
                           } else {
-                            previewVideoRef.current.pause();
+                            previewVideo.pause();
                             setPreviewPlaying(false);
                           }
                         } else {
@@ -751,9 +773,10 @@ export function FeaturedEventDashboard() {
                     <button
                       type="button"
                       onClick={() => {
-                        if (previewVideoRef.current) {
-                          const next = !previewVideoRef.current.muted;
-                          previewVideoRef.current.muted = next;
+                        const previewVideo = previewVideoRef.current;
+                        if (previewVideo) {
+                          const next = !previewVideo.muted;
+                          previewVideo.muted = next;
                           setPreviewMuted(next);
                         } else {
                           setPreviewMuted((m) => !m);
