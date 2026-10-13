@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   ChevronDown,
   ChevronUp,
+  Clock,
   Image as ImageIcon,
   Info,
   Link as LinkIcon,
@@ -21,6 +22,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { DatePicker } from "@/components/date-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -96,12 +98,26 @@ Material: Heavyweight 330gsm Cotton Fleece with warm inner brushed lining.`,
   },
 };
 
+/**
+ * Converts a stored ISO timestamp (UTC) into the local `YYYY-MM-DDTHH:mm` format
+ * expected by `<input type="datetime-local">` and the DatePicker component.
+ */
+function toDateTimeLocalValue(iso?: string | null): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: MerchandiseItemDialogProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [isFree, setIsFree] = useState(true);
   const [price, setPrice] = useState<number>(0);
   const [tag, setTag] = useState("Free Perk");
+  const [salesStartDate, setSalesStartDate] = useState("");
+  const [salesEndDate, setSalesEndDate] = useState("");
 
   // Multiple product images
   const [images, setImages] = useState<string[]>([]);
@@ -159,12 +175,18 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
       setGuidelineTitle(item.guideline?.title ?? "");
       setGuidelineText(item.guideline?.text ?? "");
       setGuidelineImageUrl(item.guideline?.image_url ?? "");
+
+      // Sales window dates
+      setSalesStartDate(toDateTimeLocalValue(item.sales_start_date));
+      setSalesEndDate(toDateTimeLocalValue(item.sales_end_date));
     } else {
       setName("");
       setDescription("");
       setIsFree(true);
       setPrice(0);
       setTag("Free Perk");
+      setSalesStartDate("");
+      setSalesEndDate("");
       setImages([]);
       setHasStockLimit(false);
       setStock(null);
@@ -441,6 +463,15 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
       return;
     }
 
+    if (salesStartDate && salesEndDate) {
+      const startMs = new Date(salesStartDate).getTime();
+      const endMs = new Date(salesEndDate).getTime();
+      if (!Number.isNaN(startMs) && !Number.isNaN(endMs) && endMs <= startMs) {
+        toast.error("Sales Close date must be after Sales Open date.");
+        return;
+      }
+    }
+
     const cleanedImages = images.map((img) => img.trim()).filter((img) => img.length > 0);
     const primaryImage = cleanedImages[0] || "";
 
@@ -460,6 +491,8 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
       max_per_person: maxPerPerson && maxPerPerson > 0 ? Number(maxPerPerson) : null,
       variations: variations.filter((v) => v.name.trim().length > 0),
       status,
+      sales_start_date: salesStartDate ? new Date(salesStartDate).toISOString() : null,
+      sales_end_date: salesEndDate ? new Date(salesEndDate).toISOString() : null,
       guideline: hasGuidelineContent
         ? {
             title: guidelineTitle.trim() || "Product Guideline",
@@ -848,6 +881,50 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
                     value={maxPerPerson ?? ""}
                     onChange={(e) => setMaxPerPerson(e.target.value ? Number(e.target.value) : null)}
                     className="h-8 text-xs"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Listing Sales Window (Optional) */}
+            <div className="space-y-3 rounded-xl border p-4">
+              <div>
+                <div className="flex items-center gap-1.5 font-semibold text-sm">
+                  <Clock className="size-4 text-primary" />
+                  <span>Listing Sales Window (Optional)</span>
+                </div>
+                <p className="text-muted-foreground text-xs leading-normal">
+                  Configure when sales open and close for this merchandise item. Leave blank to open immediately and
+                  remain available indefinitely while active.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="merch-sales-start" className="font-medium text-xs">
+                    Sales Open (Optional)
+                  </Label>
+                  <DatePicker
+                    id="merch-sales-start"
+                    withTime
+                    value={salesStartDate}
+                    onChange={setSalesStartDate}
+                    size="sm"
+                    placeholder="Open immediately"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="merch-sales-end" className="font-medium text-xs">
+                    Sales Close (Optional)
+                  </Label>
+                  <DatePicker
+                    id="merch-sales-end"
+                    withTime
+                    value={salesEndDate}
+                    onChange={setSalesEndDate}
+                    size="sm"
+                    placeholder="Close when out of stock"
                   />
                 </div>
               </div>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 
-import { Copy, CreditCard, Edit2, Package, PackageOpen, Plus, Ruler, Sparkles, Tag, Trash2 } from "lucide-react";
+import { Clock, Copy, CreditCard, Edit2, Package, PackageOpen, Plus, Ruler, Sparkles, Tag, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { FloatingSaveBar } from "@/app/(main)/dashboard/_components/floating-save-bar";
@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { getMerchandiseSalesStatus } from "@/lib/events/merchandise-templates";
 import { updateEventMerchandiseAction } from "@/lib/firestore/actions";
 import type { EventMerchandiseItem, FirestoreEvent } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
@@ -29,6 +30,19 @@ import { MerchandiseTemplateDialog } from "./merchandise-template-dialog";
 
 interface MerchandiseTabProps {
   event: FirestoreEvent;
+}
+
+function getSalesWindowSummary(salesStatus: ReturnType<typeof getMerchandiseSalesStatus>): string {
+  if (salesStatus.state === "upcoming" && salesStatus.formattedStart) {
+    return `Sales starts ${salesStatus.formattedStart}`;
+  }
+  if (salesStatus.state === "ended" && salesStatus.formattedEnd) {
+    return `Sales closed ${salesStatus.formattedEnd}`;
+  }
+  if (salesStatus.formattedEnd) {
+    return `Sales until ${salesStatus.formattedEnd}`;
+  }
+  return "Sales Scheduled";
 }
 
 export function MerchandiseTab({ event }: MerchandiseTabProps) {
@@ -247,183 +261,217 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
           ) : (
             /* Marketplace Grid of Items */
             <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
-              {items.map((item) => (
-                <div
-                  key={item.id}
-                  className={cn(
-                    "group flex flex-col justify-between overflow-hidden rounded-xl border bg-card text-card-foreground shadow-xs transition-all hover:border-primary/50 hover:shadow-md",
-                    item.status === "draft" && "border-dashed opacity-75",
-                  )}
-                >
-                  {/* Image & Price Header */}
-                  <div className="relative aspect-video w-full overflow-hidden bg-muted">
-                    {item.image_url ? (
-                      // biome-ignore lint/a11y/useAltText: item thumbnail
-                      // biome-ignore lint/performance/noImgElement: item thumbnail
-                      <img
-                        src={item.image_url}
-                        className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
-                      />
-                    ) : (
-                      <div className="flex size-full items-center justify-center bg-muted/60 text-muted-foreground">
-                        <Package className="size-10 opacity-30" />
-                      </div>
+              {items.map((item) => {
+                const salesStatus = getMerchandiseSalesStatus(item);
+
+                return (
+                  <div
+                    key={item.id}
+                    className={cn(
+                      "group flex flex-col justify-between overflow-hidden rounded-xl border bg-card text-card-foreground shadow-xs transition-all hover:border-primary/50 hover:shadow-md",
+                      item.status === "draft" && "border-dashed opacity-75",
                     )}
+                  >
+                    {/* Image & Price Header */}
+                    <div className="relative aspect-video w-full overflow-hidden bg-muted">
+                      {item.image_url ? (
+                        // biome-ignore lint/a11y/useAltText: item thumbnail
+                        // biome-ignore lint/performance/noImgElement: item thumbnail
+                        <img
+                          src={item.image_url}
+                          className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        />
+                      ) : (
+                        <div className="flex size-full items-center justify-center bg-muted/60 text-muted-foreground">
+                          <Package className="size-10 opacity-30" />
+                        </div>
+                      )}
 
-                    {/* Overlay status & price pills */}
-                    <div className="absolute top-2.5 left-2.5 flex flex-wrap gap-1.5">
-                      <Badge
-                        variant="secondary"
-                        className={cn(
-                          "font-semibold text-xs shadow-xs backdrop-blur-md",
-                          item.is_free
-                            ? "border-emerald-500/20 bg-emerald-500/90 text-white"
-                            : "border-blue-500/20 bg-blue-600/90 text-white",
-                        )}
-                      >
-                        {item.is_free ? "Free Perk" : `IDR ${(item.price || 0).toLocaleString("id-ID")}`}
-                      </Badge>
-                      <Badge variant="outline" className="bg-background/90 text-[10px] backdrop-blur-md">
-                        {item.tag || "Perk"}
-                      </Badge>
-                    </div>
-
-                    {/* Photos count pill if multiple */}
-                    {item.images && item.images.length > 1 && (
-                      <div className="absolute bottom-2.5 right-2.5">
+                      {/* Overlay status & price pills */}
+                      <div className="absolute top-2.5 left-2.5 flex flex-wrap gap-1.5">
                         <Badge
                           variant="secondary"
-                          className="bg-background/90 text-foreground text-[10px] backdrop-blur-md shadow-xs"
-                        >
-                          📷 {item.images.length} photos
-                        </Badge>
-                      </div>
-                    )}
-
-                    {item.status && item.status !== "active" && (
-                      <div className="absolute top-2.5 right-2.5">
-                        <Badge
-                          variant="outline"
                           className={cn(
-                            "bg-background/95 font-medium text-[10px] backdrop-blur-md",
-                            item.status === "draft" && "border-amber-500/30 text-amber-600",
-                            item.status === "out_of_stock" && "border-destructive/30 text-destructive",
+                            "font-semibold text-xs shadow-xs backdrop-blur-md",
+                            item.is_free
+                              ? "border-emerald-500/20 bg-emerald-500/90 text-white"
+                              : "border-blue-500/20 bg-blue-600/90 text-white",
                           )}
                         >
-                          {item.status === "draft" ? "Draft" : "Out of Stock"}
+                          {item.is_free ? "Free Perk" : `IDR ${(item.price || 0).toLocaleString("id-ID")}`}
+                        </Badge>
+                        <Badge variant="outline" className="bg-background/90 text-[10px] backdrop-blur-md">
+                          {item.tag || "Perk"}
                         </Badge>
                       </div>
-                    )}
-                  </div>
 
-                  {/* Body Content */}
-                  <div className="flex flex-1 flex-col p-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <h4 className="font-semibold text-foreground text-sm leading-snug transition-colors group-hover:text-primary">
-                        {item.name}
-                      </h4>
+                      {/* Photos count pill if multiple */}
+                      {item.images && item.images.length > 1 && (
+                        <div className="absolute bottom-2.5 right-2.5">
+                          <Badge
+                            variant="secondary"
+                            className="bg-background/90 text-foreground text-[10px] backdrop-blur-md shadow-xs"
+                          >
+                            📷 {item.images.length} photos
+                          </Badge>
+                        </div>
+                      )}
+
+                      {item.status && item.status !== "active" ? (
+                        <div className="absolute top-2.5 right-2.5">
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "bg-background/95 font-medium text-[10px] backdrop-blur-md",
+                              item.status === "draft" && "border-amber-500/30 text-amber-600",
+                              item.status === "out_of_stock" && "border-destructive/30 text-destructive",
+                            )}
+                          >
+                            {item.status === "draft" ? "Draft" : "Out of Stock"}
+                          </Badge>
+                        </div>
+                      ) : (
+                        (salesStatus.state === "upcoming" || salesStatus.state === "ended") && (
+                          <div className="absolute top-2.5 right-2.5">
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "bg-background/95 font-medium text-[10px] backdrop-blur-md",
+                                salesStatus.badgeColor,
+                              )}
+                            >
+                              {salesStatus.badgeLabel}
+                            </Badge>
+                          </div>
+                        )
+                      )}
                     </div>
 
-                    <p className="mt-1.5 line-clamp-2 flex-1 text-muted-foreground text-xs leading-relaxed">
-                      {item.description || "No description provided."}
-                    </p>
+                    {/* Body Content */}
+                    <div className="flex flex-1 flex-col p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <h4 className="font-semibold text-foreground text-sm leading-snug transition-colors group-hover:text-primary">
+                          {item.name}
+                        </h4>
+                      </div>
 
-                    {/* Product Guideline Pill if available */}
-                    {item.guideline && (item.guideline.title || item.guideline.text || item.guideline.image_url) && (
-                      <div className="mt-2.5">
-                        <button
-                          type="button"
-                          onClick={() => setViewingGuidelineItem(item)}
-                          className="inline-flex items-center gap-1.5 rounded-md border border-primary/20 bg-primary/5 px-2 py-1 text-[11px] font-medium text-primary hover:bg-primary/10 transition-colors"
+                      <p className="mt-1.5 line-clamp-2 flex-1 text-muted-foreground text-xs leading-relaxed">
+                        {item.description || "No description provided."}
+                      </p>
+
+                      {/* Product Guideline Pill if available */}
+                      {item.guideline && (item.guideline.title || item.guideline.text || item.guideline.image_url) && (
+                        <div className="mt-2.5">
+                          <button
+                            type="button"
+                            onClick={() => setViewingGuidelineItem(item)}
+                            className="inline-flex items-center gap-1.5 rounded-md border border-primary/20 bg-primary/5 px-2 py-1 text-[11px] font-medium text-primary hover:bg-primary/10 transition-colors"
+                          >
+                            <Ruler className="size-3" />
+                            <span>{item.guideline.title || "Size & Product Guideline"}</span>
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Variations Preview */}
+                      {item.variations && item.variations.length > 0 && (
+                        <div className="mt-3.5 space-y-1.5 rounded-lg border border-border/60 bg-muted/30 p-2.5 text-xs">
+                          <div className="flex items-center gap-1 font-medium text-[11px] text-muted-foreground">
+                            <Tag className="size-3" />
+                            <span>Variations:</span>
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            {item.variations.map((v) => {
+                              const optionCount = v.options.length;
+                              const hasOverrides = v.option_details && Object.keys(v.option_details).length > 0;
+
+                              return (
+                                <div key={v.name} className="flex items-center gap-1">
+                                  <Badge
+                                    variant="outline"
+                                    className="border-border/70 bg-background font-normal text-[10px] text-foreground"
+                                  >
+                                    {v.name}: {v.options.slice(0, 3).join(", ")}
+                                    {optionCount > 3 ? ` +${optionCount - 3}` : ""}
+                                    {hasOverrides && " ⚙️"}
+                                  </Badge>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Sales Window Scheduled Info */}
+                      {(item.sales_start_date || item.sales_end_date) && (
+                        <div
+                          className={cn(
+                            "mt-3 flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px]",
+                            salesStatus.state === "available" &&
+                              "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+                            salesStatus.state === "upcoming" && "bg-blue-500/10 text-blue-700 dark:text-blue-400",
+                            salesStatus.state === "ended" && "bg-muted/80 text-muted-foreground",
+                          )}
                         >
-                          <Ruler className="size-3" />
-                          <span>{item.guideline.title || "Size & Product Guideline"}</span>
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Variations Preview */}
-                    {item.variations && item.variations.length > 0 && (
-                      <div className="mt-3.5 space-y-1.5 rounded-lg border border-border/60 bg-muted/30 p-2.5 text-xs">
-                        <div className="flex items-center gap-1 font-medium text-[11px] text-muted-foreground">
-                          <Tag className="size-3" />
-                          <span>Variations:</span>
+                          <Clock className="size-3.5 shrink-0" />
+                          <span className="truncate">{getSalesWindowSummary(salesStatus)}</span>
                         </div>
-                        <div className="flex flex-wrap gap-1">
-                          {item.variations.map((v) => {
-                            const optionCount = v.options.length;
-                            const hasOverrides = v.option_details && Object.keys(v.option_details).length > 0;
+                      )}
 
-                            return (
-                              <div key={v.name} className="flex items-center gap-1">
-                                <Badge
-                                  variant="outline"
-                                  className="border-border/70 bg-background font-normal text-[10px] text-foreground"
-                                >
-                                  {v.name}: {v.options.slice(0, 3).join(", ")}
-                                  {optionCount > 3 ? ` +${optionCount - 3}` : ""}
-                                  {hasOverrides && " ⚙️"}
-                                </Badge>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
+                      {/* Footer stock & quick actions */}
+                      <div className="mt-4 flex items-center justify-between border-border/60 border-t pt-3">
+                        <span className="text-[11px] text-muted-foreground">
+                          {item.stock !== null && item.stock !== undefined ? `Quota: ${item.stock} units` : "Unlimited"}
+                        </span>
 
-                    {/* Footer stock & quick actions */}
-                    <div className="mt-4 flex items-center justify-between border-border/60 border-t pt-3">
-                      <span className="text-[11px] text-muted-foreground">
-                        {item.stock !== null && item.stock !== undefined ? `Quota: ${item.stock} units` : "Unlimited"}
-                      </span>
-
-                      <div className="flex items-center gap-1">
-                        {!item.is_free && (
+                        <div className="flex items-center gap-1">
+                          {!item.is_free && (
+                            <Button
+                              size="icon-xs"
+                              variant="ghost"
+                              onClick={() => {
+                                setPaymentItem(item);
+                                setIsPaymentDialogOpen(true);
+                              }}
+                              title="Generate DOKU payment link"
+                              className="text-muted-foreground hover:text-primary"
+                            >
+                              <CreditCard className="size-3.5" />
+                            </Button>
+                          )}
                           <Button
                             size="icon-xs"
                             variant="ghost"
-                            onClick={() => {
-                              setPaymentItem(item);
-                              setIsPaymentDialogOpen(true);
-                            }}
-                            title="Generate DOKU payment link"
-                            className="text-muted-foreground hover:text-primary"
+                            onClick={() => handleDuplicate(item)}
+                            title="Duplicate item"
+                            className="text-muted-foreground hover:text-foreground"
                           >
-                            <CreditCard className="size-3.5" />
+                            <Copy className="size-3.5" />
                           </Button>
-                        )}
-                        <Button
-                          size="icon-xs"
-                          variant="ghost"
-                          onClick={() => handleDuplicate(item)}
-                          title="Duplicate item"
-                          className="text-muted-foreground hover:text-foreground"
-                        >
-                          <Copy className="size-3.5" />
-                        </Button>
-                        <Button
-                          size="icon-xs"
-                          variant="ghost"
-                          onClick={() => handleEdit(item)}
-                          title="Edit variations & details"
-                          className="text-muted-foreground hover:text-foreground"
-                        >
-                          <Edit2 className="size-3.5" />
-                        </Button>
-                        <Button
-                          size="icon-xs"
-                          variant="ghost"
-                          onClick={() => handleDelete(item.id, item.name)}
-                          title="Delete item"
-                          className="text-muted-foreground hover:text-destructive"
-                        >
-                          <Trash2 className="size-3.5" />
-                        </Button>
+                          <Button
+                            size="icon-xs"
+                            variant="ghost"
+                            onClick={() => handleEdit(item)}
+                            title="Edit variations & details"
+                            className="text-muted-foreground hover:text-foreground"
+                          >
+                            <Edit2 className="size-3.5" />
+                          </Button>
+                          <Button
+                            size="icon-xs"
+                            variant="ghost"
+                            onClick={() => handleDelete(item.id, item.name)}
+                            title="Delete item"
+                            className="text-muted-foreground hover:text-destructive"
+                          >
+                            <Trash2 className="size-3.5" />
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 

@@ -114,6 +114,8 @@ export interface EventMerchandiseItem {
   max_per_person?: number | null; // Limit items per person (null = unlimited or event-level limit)
   status: "active" | "draft" | "out_of_stock";
   guideline?: MerchandiseGuideline; // Dedicated field notes / size chart
+  sales_start_date?: string | null; // ISO string when sales/ordering opens
+  sales_end_date?: string | null; // ISO string when sales/ordering closes
   created_at?: string;
   updated_at?: string;
 }
@@ -165,6 +167,15 @@ export interface EventVoucher {
   start_date?: string | null; // ISO string
   end_date?: string | null; // ISO string
   status: VoucherStatus;
+  source_bundle_id?: string; // ID of bundle package that generated this voucher
+  source_registration_id?: string; // Buyer's registration ID
+  purchaser_member_id?: string; // Member ID who purchased the bundle
+  purchaser_name?: string; // Buyer's name
+  purchaser_email?: string; // Buyer's email
+  redeemed_by_member_id?: string; // Friend's member ID when claimed
+  redeemed_by_name?: string; // Friend's name when claimed
+  redeemed_by_email?: string; // Friend's email when claimed
+  redeemed_at?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -180,15 +191,19 @@ export interface EventBundlePackage {
   name: string; // e.g. "VIP Swag & Conference Pass"
   description?: string;
   ticket_id: string; // The primary ticket tier included (references EventTicketTier.id)
+  ticket_quantity?: number; // Total tickets in bundle (e.g. 5, default 1)
   merchandise_items: BundleMerchandiseItem[]; // Bundled merchandise items
   price: number; // Bundled price in IDR
   original_price?: number; // Calculated or custom compare-at total price
+  discount_type?: "percentage" | "fixed" | "custom";
+  discount_value?: number;
   capacity?: number | null; // Quota cap (null = unlimited)
   total_registered?: number;
   status: "active" | "sold_out" | "hidden";
   sales_start_date?: string | null; // ISO string
   sales_end_date?: string | null; // ISO string
   badge?: string; // e.g. "Best Value", "Save 25%", "Limited Edition"
+  generate_vouchers?: boolean; // Whether to generate friend vouchers for additional tickets
   created_at?: string;
   updated_at?: string;
 }
@@ -518,6 +533,9 @@ export interface FirestoreRegistration {
   voucher_discount_type?: VoucherDiscountType;
   voucher_discount_value?: number;
   voucher_applies_to?: VoucherAppliesTo;
+
+  // Bundle issued vouchers for friends
+  bundle_vouchers?: BundleIssuedVoucher[];
 
   // Referral tracking
   referral_code?: string;

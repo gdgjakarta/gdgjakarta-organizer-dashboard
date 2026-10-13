@@ -1018,6 +1018,33 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
         }
       }
     }
+
+    // 5. Merchandise sales window and availability check
+    if (registration.selected_merchandise && registration.selected_merchandise.length > 0 && eventData.merchandise) {
+      for (const order of registration.selected_merchandise) {
+        const matchingMerch = eventData.merchandise.find((m) => m.id === order.id);
+        if (matchingMerch) {
+          if (matchingMerch.status === "out_of_stock") {
+            throw new Error(`The merchandise item "${matchingMerch.name}" is out of stock.`);
+          }
+          if (matchingMerch.status === "draft") {
+            throw new Error(`The merchandise item "${matchingMerch.name}" is currently not available.`);
+          }
+          if (matchingMerch.sales_start_date && matchingMerch.sales_start_date.trim() !== "") {
+            const startTime = new Date(matchingMerch.sales_start_date).getTime();
+            if (!Number.isNaN(startTime) && Date.now() < startTime) {
+              throw new Error(`Sales for merchandise "${matchingMerch.name}" have not started yet.`);
+            }
+          }
+          if (matchingMerch.sales_end_date && matchingMerch.sales_end_date.trim() !== "") {
+            const endTime = new Date(matchingMerch.sales_end_date).getTime();
+            if (!Number.isNaN(endTime) && Date.now() > endTime) {
+              throw new Error(`Sales for merchandise "${matchingMerch.name}" have ended.`);
+            }
+          }
+        }
+      }
+    }
   }
 
   // 3. Enforce registration status:

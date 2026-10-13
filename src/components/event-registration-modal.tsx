@@ -63,6 +63,7 @@ import {
   hasRegistrationPaymentRequirements,
 } from "@/lib/events/doku-payment";
 import { extractEventImageUrl } from "@/lib/events/media-utils";
+import { getMerchandiseSalesStatus } from "@/lib/events/merchandise-templates";
 import { isEventCurationMode } from "@/lib/events/payment-deadline";
 import {
   formatOtherAnswer,
@@ -731,6 +732,12 @@ export function EventRegistrationModal({
 
       // Check max limits
       if (delta > 0) {
+        const salesStatus = getMerchandiseSalesStatus(item);
+        if (!salesStatus.isOpen) {
+          toast.error(salesStatus.message ?? `"${item.name}" is not open for purchase.`);
+          return prev;
+        }
+
         // Event-level max check
         if (maxMerchandiseAllowed !== null && totalMerchandiseItems >= maxMerchandiseAllowed) {
           toast.error(`You can select at most ${maxMerchandiseAllowed} merchandise item(s) for this event.`);
@@ -1263,6 +1270,12 @@ export function EventRegistrationModal({
           if (order.quantity > 0) {
             const item = availableMerchandise.find((m) => m.id === itemId);
             if (item) {
+              const salesStatus = getMerchandiseSalesStatus(item);
+              if (!salesStatus.isOpen) {
+                toast.error(salesStatus.message ?? `Merchandise "${item.name}" is not open for purchase.`);
+                return;
+              }
+
               const unitPrice = getMerchEffectivePrice(item, order.selectedVariations);
               const isIncludedInTicket = Boolean(selectedTicket?.perks?.some((p) => p.merchandise_id === item.id));
               const bundledRecord = selectedBundle?.merchandise_items.find((bi) => bi.merchandise_id === item.id);
@@ -2541,6 +2554,7 @@ export function EventRegistrationModal({
 
                         <div className="space-y-3 pt-1">
                           {availableMerchandise.map((item) => {
+                            const salesStatus = getMerchandiseSalesStatus(item);
                             const order = selectedMerch[item.id] ?? { quantity: 0, selectedVariations: {} };
                             const isAdded = order.quantity > 0;
                             const isIncludedInTicket = Boolean(
@@ -2564,6 +2578,7 @@ export function EventRegistrationModal({
                                   isAdded
                                     ? "border-primary/50 bg-background shadow-xs ring-1 ring-primary/20"
                                     : "border-border/70 bg-card",
+                                  !salesStatus.isOpen && !isAdded && "opacity-80 bg-muted/20",
                                 )}
                               >
                                 <div className="flex items-start gap-3">
@@ -2607,12 +2622,28 @@ export function EventRegistrationModal({
                                             : `Rp ${effectiveUnitPrice.toLocaleString("id-ID")}`}
                                         </Badge>
                                       )}
+                                      {!salesStatus.isOpen && (
+                                        <Badge
+                                          variant="outline"
+                                          className={cn("px-1.5 py-0 text-[10px]", salesStatus.badgeColor)}
+                                        >
+                                          {salesStatus.badgeLabel}
+                                        </Badge>
+                                      )}
                                     </div>
 
                                     {item.description && (
                                       <p className="line-clamp-2 text-[11px] text-muted-foreground leading-relaxed">
                                         {item.description}
                                       </p>
+                                    )}
+
+                                    {/* Sales window message if closed or upcoming */}
+                                    {!salesStatus.isOpen && (
+                                      <div className="flex items-center gap-1 text-[11px] text-muted-foreground pt-0.5">
+                                        <Clock className="size-3 shrink-0" />
+                                        <span>{salesStatus.message}</span>
+                                      </div>
                                     )}
 
                                     {/* Product Guideline link if available */}
@@ -2688,7 +2719,7 @@ export function EventRegistrationModal({
                                       variant="outline"
                                       size="icon-xs"
                                       onClick={() => handleUpdateMerchQuantity(item.id, 1)}
-                                      disabled={reachedLimit}
+                                      disabled={reachedLimit || !salesStatus.isOpen}
                                       className="size-7"
                                     >
                                       <Plus className="size-3" />

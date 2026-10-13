@@ -294,3 +294,116 @@ export const GDG_MERCHANDISE_TEMPLATES: EventMerchandiseItem[] = [
     status: "active",
   },
 ];
+
+export type MerchandiseSalesState = "available" | "upcoming" | "ended" | "sold_out";
+
+export interface MerchandiseSalesStatus {
+  isOpen: boolean;
+  state: MerchandiseSalesState;
+  badgeLabel: string;
+  badgeColor: string;
+  message?: string;
+  formattedStart?: string | null;
+  formattedEnd?: string | null;
+}
+
+/**
+ * Formats a merchandise sales date string for display.
+ */
+export function formatMerchandiseDate(dateStr: string): string {
+  try {
+    const d = new Date(dateStr);
+    if (Number.isNaN(d.getTime())) return dateStr;
+    return d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return dateStr;
+  }
+}
+
+/**
+ * Evaluates the sales window status of an event merchandise item.
+ * An item is open/available for purchase only between sales_start_date and sales_end_date (if configured)
+ * and when status is active.
+ */
+export function getMerchandiseSalesStatus(
+  item: EventMerchandiseItem,
+  now: number = Date.now(),
+): MerchandiseSalesStatus {
+  if (item.status === "draft") {
+    return {
+      isOpen: false,
+      state: "ended",
+      badgeLabel: "Draft",
+      badgeColor: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400",
+      message: `The item "${item.name}" is a draft and not available for purchase.`,
+    };
+  }
+
+  if (item.status === "out_of_stock") {
+    return {
+      isOpen: false,
+      state: "sold_out",
+      badgeLabel: "Out of Stock",
+      badgeColor: "border-destructive/30 bg-destructive/10 text-destructive",
+      message: `The item "${item.name}" is out of stock.`,
+    };
+  }
+
+  const formattedStart =
+    item.sales_start_date && item.sales_start_date.trim() !== "" ? formatMerchandiseDate(item.sales_start_date) : null;
+  const formattedEnd =
+    item.sales_end_date && item.sales_end_date.trim() !== "" ? formatMerchandiseDate(item.sales_end_date) : null;
+
+  if (item.sales_start_date && item.sales_start_date.trim() !== "") {
+    try {
+      const startTime = new Date(item.sales_start_date).getTime();
+      if (!Number.isNaN(startTime) && now < startTime) {
+        return {
+          isOpen: false,
+          state: "upcoming",
+          badgeLabel: "Sales Opens Soon",
+          badgeColor: "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-400",
+          message: formattedStart ? `Sales starts on ${formattedStart}.` : "Sales has not opened yet.",
+          formattedStart,
+          formattedEnd,
+        };
+      }
+    } catch {
+      // ignore invalid date
+    }
+  }
+
+  if (item.sales_end_date && item.sales_end_date.trim() !== "") {
+    try {
+      const endTime = new Date(item.sales_end_date).getTime();
+      if (!Number.isNaN(endTime) && now > endTime) {
+        return {
+          isOpen: false,
+          state: "ended",
+          badgeLabel: "Sales Closed",
+          badgeColor: "border-muted-foreground/30 bg-muted text-muted-foreground",
+          message: formattedEnd ? `Sales ended on ${formattedEnd}.` : "Sales has ended.",
+          formattedStart,
+          formattedEnd,
+        };
+      }
+    } catch {
+      // ignore invalid date
+    }
+  }
+
+  return {
+    isOpen: true,
+    state: "available",
+    badgeLabel: "Available",
+    badgeColor: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+    formattedStart,
+    formattedEnd,
+  };
+}
