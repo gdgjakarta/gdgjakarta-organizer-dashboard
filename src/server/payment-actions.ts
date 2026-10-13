@@ -73,6 +73,24 @@ export async function generatePaymentLinkAction(input: DokuPaymentRequestInput):
   const isProduction =
     parsed.data.isProduction !== undefined ? parsed.data.isProduction : process.env.NODE_ENV === "production";
 
+  const itemsTotal = parsed.data.items.reduce((acc, it) => acc + it.price * it.quantity, 0);
+  const feesTotal = (parsed.data.fees ?? []).reduce((acc, f) => {
+    if (f.type === "fixed") return acc + f.value;
+    if (f.type === "percent") return acc + Math.round((itemsTotal * f.value) / 100);
+    return acc;
+  }, 0);
+  const totalAmount = itemsTotal + feesTotal;
+
+  if (totalAmount <= 0) {
+    console.log(
+      `[DOKU Payment Action] Skipped generate payment link for ${parsed.data.customer.email}: Total amount is Rp 0 or free.`,
+    );
+    return {
+      success: false,
+      error: "Payment link cannot be generated for zero or free total amount.",
+    };
+  }
+
   const webhookUrl = resolvePaymentLinkWebhookUrl(parsed.data.webhookUrl, isProduction);
   const apiKey =
     process.env.N8N_PAYMENT_LINK_API_KEY || process.env.N8N_WEBHOOK_API_KEY || process.env.N8N_AUTH_SECRET || "";

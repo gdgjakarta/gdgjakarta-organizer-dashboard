@@ -190,9 +190,9 @@ export interface EventBundlePackage {
   id: string;
   name: string; // e.g. "VIP Swag & Conference Pass"
   description?: string;
-  ticket_id: string; // The primary ticket tier included (references EventTicketTier.id)
-  ticket_quantity?: number; // Total tickets in bundle (e.g. 5, default 1)
-  merchandise_items: BundleMerchandiseItem[]; // Bundled merchandise items
+  ticket_id?: string; // The primary ticket tier included (optional, undefined for merchandise-only bundles)
+  ticket_quantity?: number; // Total tickets in bundle (e.g. 5, default 1 if ticket included)
+  merchandise_items: BundleMerchandiseItem[]; // Bundled merchandise items (empty for ticket-only bundles)
   price: number; // Bundled price in IDR
   original_price?: number; // Calculated or custom compare-at total price
   discount_type?: "percentage" | "fixed" | "custom";

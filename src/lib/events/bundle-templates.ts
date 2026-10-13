@@ -23,19 +23,21 @@ export const CUSTOM_BUNDLE_TEMPLATES_STORAGE_KEY = "gdg_custom_bundle_templates"
  * Calculates total standalone price, savings amount, and discount percentage for a bundle.
  */
 export function calculateBundlePricing(
-  bundle: Pick<EventBundlePackage, "price" | "ticket_id" | "merchandise_items"> & {
+  bundle: Pick<EventBundlePackage, "price" | "merchandise_items"> & {
+    ticket_id?: string | null;
     ticket_quantity?: number;
   },
   tickets: EventTicketTier[] = [],
   merchandise: EventMerchandiseItem[] = [],
 ): BundlePricingDetails {
-  const matchingTicket = tickets.find((t) => t.id === bundle.ticket_id);
-  const ticketQuantity = Math.max(1, bundle.ticket_quantity ?? 1);
+  const hasTicket = Boolean(bundle.ticket_id && bundle.ticket_id !== "none");
+  const matchingTicket = hasTicket ? tickets.find((t) => t.id === bundle.ticket_id) : undefined;
+  const ticketQuantity = hasTicket ? Math.max(1, bundle.ticket_quantity ?? 1) : 0;
   const ticketPrice = matchingTicket?.price ?? 0;
   const ticketSubtotal = ticketPrice * ticketQuantity;
 
   let merchTotal = 0;
-  for (const item of bundle.merchandise_items) {
+  for (const item of bundle.merchandise_items ?? []) {
     const matchingMerch = merchandise.find((m) => m.id === item.merchandise_id);
     if (matchingMerch && !matchingMerch.is_free) {
       merchTotal += (matchingMerch.price || 0) * (item.quantity || 1);
@@ -131,11 +133,27 @@ export function ensureEventBundles(bundles?: EventBundlePackage[] | null): Event
 export const GDG_BUNDLE_TEMPLATES: Array<
   Omit<EventBundlePackage, "id" | "ticket_id" | "merchandise_items"> & {
     id: string;
-    ticketTypeHint: "paid" | "free";
-    merchandiseTagsHint: string[];
+    ticketTypeHint?: "paid" | "free" | "none";
+    ticketQuantityHint?: number;
+    merchandiseTagsHint?: string[];
     suggestedSavingsPercent: number;
   }
 > = [
+  {
+    id: "tpl-bundle-group-5x-pass",
+    name: "Group Admission Pack (5x Passes)",
+    description:
+      "Buy 5 tickets at a special promotional rate. Includes 1 attendee pass and 4 single-use friend vouchers (100% free) for your team.",
+    price: 600000,
+    original_price: 750000,
+    badge: "5x Group Pass",
+    status: "active",
+    capacity: 20,
+    ticketTypeHint: "paid",
+    ticketQuantityHint: 5,
+    merchandiseTagsHint: [],
+    suggestedSavingsPercent: 20,
+  },
   {
     id: "tpl-bundle-vip-swag-pass",
     name: "VIP Conference Pass & Full Swag Kit",
@@ -147,6 +165,7 @@ export const GDG_BUNDLE_TEMPLATES: Array<
     status: "active",
     capacity: 50,
     ticketTypeHint: "paid",
+    ticketQuantityHint: 1,
     merchandiseTagsHint: ["T-Shirt", "Hoodie", "Swag Kit"],
     suggestedSavingsPercent: 25,
   },
@@ -161,7 +180,23 @@ export const GDG_BUNDLE_TEMPLATES: Array<
     status: "active",
     capacity: 100,
     ticketTypeHint: "paid",
+    ticketQuantityHint: 1,
     merchandiseTagsHint: ["T-Shirt"],
+    suggestedSavingsPercent: 25,
+  },
+  {
+    id: "tpl-bundle-deluxe-swag-only",
+    name: "Official GDG Swag & Apparel Collector Pack",
+    description:
+      "Merchandise-only combo package. Includes official commemorative t-shirt, stickers, and collector pin at bundle savings.",
+    price: 120000,
+    original_price: 160000,
+    badge: "Merch Only",
+    status: "active",
+    capacity: null,
+    ticketTypeHint: "none",
+    ticketQuantityHint: 0,
+    merchandiseTagsHint: ["T-Shirt", "Stickers", "Pin"],
     suggestedSavingsPercent: 25,
   },
   {
@@ -175,6 +210,7 @@ export const GDG_BUNDLE_TEMPLATES: Array<
     status: "active",
     capacity: null,
     ticketTypeHint: "free",
+    ticketQuantityHint: 1,
     merchandiseTagsHint: ["Stickers", "Pin"],
     suggestedSavingsPercent: 33,
   },

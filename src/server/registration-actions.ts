@@ -195,10 +195,24 @@ export async function dispatchRegistrationWebhookAction(
       } else {
         emailError = emailRes.error ?? "Failed to send interest email";
         console.warn(`[Registration Curation Flow] Failed to send interest email:`, emailRes.error);
+        return {
+          success: false,
+          dispatched: false,
+          error: emailError,
+          emailDispatched: false,
+          emailError,
+        };
       }
     } catch (err) {
       emailError = err instanceof Error ? err.message : "Failed to dispatch interest email";
       console.warn("[Registration Curation Flow] Failed to dispatch interest email:", err);
+      return {
+        success: false,
+        dispatched: false,
+        error: emailError,
+        emailDispatched: false,
+        emailError,
+      };
     }
   }
 
@@ -248,7 +262,7 @@ export async function dispatchRegistrationWebhookAction(
       const responseText = await response.text().catch(() => "");
       console.warn(`[Registration Webhook] Webhook returned status ${response.status}:`, responseText.slice(0, 500));
       return {
-        success: true,
+        success: false,
         dispatched: true,
         status: response.status,
         error: `Webhook returned status ${response.status}: ${responseText.slice(0, 200)}`,
@@ -277,9 +291,8 @@ export async function dispatchRegistrationWebhookAction(
 
     console.error("[Registration Webhook] Network error dispatching webhook:", errorMsg);
 
-    // Registration itself succeeded; we return soft failure for the webhook call
     return {
-      success: true,
+      success: false,
       dispatched: false,
       error: errorMsg,
       emailDispatched,

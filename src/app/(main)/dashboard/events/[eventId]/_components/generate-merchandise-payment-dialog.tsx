@@ -235,6 +235,11 @@ export function GenerateMerchandisePaymentDialog({
     const finalMerchTotal = Math.max(0, merchSubtotal - voucherDiscount);
     const chargedUnitPrice = Math.max(0, Math.round(finalMerchTotal / quantity));
     const finalItemName = selectedVoucher ? `${itemName} (Promo: ${selectedVoucher.code})` : itemName;
+    const totalAmount = finalMerchTotal + (includeCommitmentFee ? commitmentFeeAmount : 0);
+    if (totalAmount <= 0) {
+      toast.error("Cannot generate payment link: Total amount is Rp 0 or free.");
+      return;
+    }
 
     startTransition(async () => {
       try {

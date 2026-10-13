@@ -93,9 +93,9 @@ export function BundleDialog({
       setName(bundle.name);
       setDescription(bundle.description ?? "");
       setBadge(bundle.badge ?? "");
-      setTicketId(bundle.ticket_id);
+      setTicketId(bundle.ticket_id ?? "none");
       setTicketQuantity(bundle.ticket_quantity ?? 1);
-      setBundledMerch(JSON.parse(JSON.stringify(bundle.merchandise_items)));
+      setBundledMerch(bundle.merchandise_items ? JSON.parse(JSON.stringify(bundle.merchandise_items)) : []);
       setPrice(bundle.price);
       setDiscountMode(bundle.discount_type ?? "percentage");
       setDiscountValue(bundle.discount_value ?? 20);
@@ -109,7 +109,7 @@ export function BundleDialog({
       setName("");
       setDescription("");
       setBadge("Best Value");
-      setTicketId(activeTickets[0]?.id ?? "");
+      setTicketId(activeTickets[0]?.id ?? "none");
       setTicketQuantity(1);
       setBundledMerch([]);
       setPrice(0);
@@ -129,8 +129,8 @@ export function BundleDialog({
   const pricing = useMemo(() => {
     return calculateBundlePricing(
       {
-        ticket_id: ticketId,
-        ticket_quantity: ticketQuantity,
+        ticket_id: ticketId && ticketId !== "none" ? ticketId : undefined,
+        ticket_quantity: ticketId && ticketId !== "none" ? ticketQuantity : 0,
         merchandise_items: bundledMerch,
         price,
       },
@@ -216,12 +216,12 @@ export function BundleDialog({
       toast.error("Please provide a name for this bundling package.");
       return;
     }
-    if (!ticketId) {
-      toast.error("Please select a ticket tier to include in the package.");
-      return;
-    }
-    if (bundledMerch.length === 0) {
-      toast.error("Please include at least one merchandise item in the bundle.");
+
+    const hasTicket = Boolean(ticketId && ticketId !== "none");
+    const hasMerch = bundledMerch.length > 0;
+
+    if (!hasTicket && !hasMerch) {
+      toast.error("Please include at least a ticket tier or at least one merchandise item in the bundle.");
       return;
     }
 
@@ -239,14 +239,14 @@ export function BundleDialog({
       name: name.trim(),
       description: description.trim() || undefined,
       badge: badge.trim() || undefined,
-      ticket_id: ticketId,
-      ticket_quantity: Math.max(1, Number(ticketQuantity) || 1),
+      ticket_id: hasTicket ? ticketId : undefined,
+      ticket_quantity: hasTicket ? Math.max(1, Number(ticketQuantity) || 1) : 0,
       merchandise_items: bundledMerch,
       price: Math.max(0, Number(price) || 0),
       original_price: pricing.standaloneTotal > 0 ? pricing.standaloneTotal : undefined,
       discount_type: discountMode,
       discount_value: Number(discountValue) || undefined,
-      generate_vouchers: generateVouchers,
+      generate_vouchers: hasTicket ? generateVouchers : false,
       capacity: hasCapacityLimit && capacity && capacity > 0 ? Number(capacity) : null,
       total_registered: bundle?.total_registered ?? 0,
       status,
@@ -278,7 +278,8 @@ export function BundleDialog({
                 {bundle ? "Edit Bundling Package" : "Create Bundling Package"}
               </DialogTitle>
               <DialogDescription className="text-xs">
-                Combine a ticket tier and event merchandise items into a high-value combo package.
+                Combine ticket tiers and/or merchandise items into discounted combo packages, group ticket passes, or
+                merchandise bundles.
               </DialogDescription>
             </div>
           </div>
@@ -340,7 +341,8 @@ export function BundleDialog({
                 <div className="flex items-center gap-2">
                   <Ticket className="size-4 text-primary" />
                   <Label className="font-semibold text-foreground">
-                    1. Included Ticket Tier & Quantity <span className="text-destructive">*</span>
+                    1. Included Ticket Tier & Quantity{" "}
+                    <span className="font-normal text-muted-foreground text-xs">(Optional)</span>
                   </Label>
                 </div>
                 {pricing.ticketSubtotal > 0 && (
@@ -352,7 +354,7 @@ export function BundleDialog({
 
               {eventTickets.length === 0 ? (
                 <div className="rounded-lg border border-dashed p-3 text-center text-muted-foreground text-xs">
-                  No ticket tiers configured. Please create a ticket tier in the Tickets tab first.
+                  No ticket tiers configured. You can still create a merchandise-only package.
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -362,9 +364,12 @@ export function BundleDialog({
                     </Label>
                     <Select value={ticketId} onValueChange={setTicketId}>
                       <SelectTrigger id="ticket-select" className="w-full">
-                        <SelectValue placeholder="Select ticket tier" />
+                        <SelectValue placeholder="Select ticket tier (or None)" />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="none">
+                          <span className="text-muted-foreground italic">None (Merchandise-only package)</span>
+                        </SelectItem>
                         {eventTickets.map((t) => (
                           <SelectItem key={t.id} value={t.id}>
                             <div className="flex items-center justify-between gap-4">
@@ -390,7 +395,7 @@ export function BundleDialog({
                         size="icon"
                         className="size-9 shrink-0"
                         onClick={() => setTicketQuantity((q) => Math.max(1, q - 1))}
-                        disabled={ticketQuantity <= 1}
+                        disabled={!ticketId || ticketId === "none" || ticketQuantity <= 1}
                       >
                         -
                       </Button>
@@ -398,7 +403,8 @@ export function BundleDialog({
                         id="ticket-quantity"
                         type="number"
                         min={1}
-                        value={ticketQuantity}
+                        value={ticketId && ticketId !== "none" ? ticketQuantity : 0}
+                        disabled={!ticketId || ticketId === "none"}
                         onChange={(e) => setTicketQuantity(Math.max(1, Number(e.target.value) || 1))}
                         className="text-center font-bold"
                       />
@@ -408,6 +414,7 @@ export function BundleDialog({
                         size="icon"
                         className="size-9 shrink-0"
                         onClick={() => setTicketQuantity((q) => q + 1)}
+                        disabled={!ticketId || ticketId === "none"}
                       >
                         +
                       </Button>
@@ -416,7 +423,7 @@ export function BundleDialog({
                 </div>
               )}
 
-              {ticketQuantity > 1 && (
+              {ticketId && ticketId !== "none" && ticketQuantity > 1 && (
                 <div className="space-y-1.5 rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs">
                   <div className="flex items-center justify-between">
                     <span className="font-medium text-primary">
@@ -452,11 +459,14 @@ export function BundleDialog({
                 <div className="flex items-center gap-2">
                   <Package className="size-4 text-primary" />
                   <Label className="font-semibold text-foreground">
-                    2. Bundled Merchandise Items <span className="text-destructive">*</span>
+                    2. Bundled Merchandise Items{" "}
+                    <span className="font-normal text-muted-foreground text-xs">(Optional)</span>
                   </Label>
                 </div>
                 <span className="text-muted-foreground text-xs">
-                  {bundledMerch.length} item{bundledMerch.length === 1 ? "" : "s"} selected
+                  {bundledMerch.length === 0
+                    ? "0 items (Ticket-only package)"
+                    : `${bundledMerch.length} item${bundledMerch.length === 1 ? "" : "s"} selected`}
                 </span>
               </div>
 

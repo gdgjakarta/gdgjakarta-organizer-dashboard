@@ -1,5 +1,6 @@
 import { format, parseISO } from "date-fns";
 
+import { calculateRegistrationTotalAmount } from "@/lib/events/doku-payment";
 import type { FirestoreEvent, FirestoreRegistration, RegistrationStatus } from "@/lib/firestore/types";
 
 /**
@@ -20,8 +21,12 @@ export function isEventCurationMode(event?: Partial<FirestoreEvent> | null): boo
 
 /**
  * Checks if an event registration has payable elements (paid ticket tier, merchandise, or bundle).
+ * Returns false if the net total amount is zero or free.
  */
 export function isPaidRegistration(reg: Partial<FirestoreRegistration>): boolean {
+  if (calculateRegistrationTotalAmount(reg) <= 0) {
+    return false;
+  }
   if (reg.ticket_price && reg.ticket_price > 0) return true;
   if (reg.ticket_type === "paid" || reg.ticket_type === "commitment_fee") return true;
   if (reg.bundle_price && reg.bundle_price > 0) return true;

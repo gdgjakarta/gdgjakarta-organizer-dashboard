@@ -135,13 +135,20 @@ export function BundlesTab({ event }: BundlesTabProps) {
 
   const handleAddTemplate = (tpl: (typeof GDG_BUNDLE_TEMPLATES)[number]) => {
     // Pick first matching ticket tier and merchandise items if available
-    const primaryTicket = eventTickets.find((t) => t.type === tpl.ticketTypeHint) || eventTickets[0];
-    const ticketId = primaryTicket?.id || "ticket-regular";
+    const isMerchOnly = tpl.ticketTypeHint === "none";
+    const primaryTicket = isMerchOnly
+      ? undefined
+      : eventTickets.find((t) => t.type === tpl.ticketTypeHint) || eventTickets[0];
+    const ticketId = primaryTicket?.id;
+    const ticketQuantity = isMerchOnly ? 0 : (tpl.ticketQuantityHint ?? 1);
 
-    const includedMerch = eventMerchandise.slice(0, 2).map((m) => ({
-      merchandise_id: m.id,
-      quantity: 1,
-    }));
+    const isTicketOnly = tpl.merchandiseTagsHint && tpl.merchandiseTagsHint.length === 0;
+    const includedMerch = isTicketOnly
+      ? []
+      : eventMerchandise.slice(0, 2).map((m) => ({
+          merchandise_id: m.id,
+          quantity: 1,
+        }));
 
     const newBundle: EventBundlePackage = {
       id: `bundle-tpl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -149,6 +156,7 @@ export function BundlesTab({ event }: BundlesTabProps) {
       description: tpl.description,
       badge: tpl.badge,
       ticket_id: ticketId,
+      ticket_quantity: ticketQuantity,
       merchandise_items: includedMerch,
       price: tpl.price,
       original_price: tpl.original_price,
@@ -448,27 +456,34 @@ export function BundlesTab({ event }: BundlesTabProps) {
                       {/* Included Items Details */}
                       <div className="mt-4 space-y-2.5 rounded-lg bg-muted/40 p-3 text-xs">
                         {/* Included Ticket */}
-                        <div className="flex items-center gap-2">
-                          <Ticket className="size-3.5 shrink-0 text-primary" />
-                          <span className="shrink-0 font-medium text-muted-foreground">Ticket:</span>
-                          <span className="truncate font-semibold text-foreground">
-                            {b.ticket_quantity && b.ticket_quantity > 1 ? (
-                              <span className="inline-flex items-center gap-1">
-                                <Badge variant="secondary" className="px-1 py-0 font-bold text-[10px]">
-                                  {b.ticket_quantity}x
-                                </Badge>
-                                {linkedTicket?.name || "Regular Admission Ticket"}
-                                {b.generate_vouchers !== false && (
-                                  <span className="font-normal text-[10px] text-muted-foreground">
-                                    ({b.ticket_quantity - 1} friend vouchers)
-                                  </span>
-                                )}
-                              </span>
-                            ) : (
-                              linkedTicket?.name || "Regular Admission Ticket"
-                            )}
-                          </span>
-                        </div>
+                        {b.ticket_id ? (
+                          <div className="flex items-center gap-2">
+                            <Ticket className="size-3.5 shrink-0 text-primary" />
+                            <span className="shrink-0 font-medium text-muted-foreground">Ticket:</span>
+                            <span className="truncate font-semibold text-foreground">
+                              {b.ticket_quantity && b.ticket_quantity > 1 ? (
+                                <span className="inline-flex items-center gap-1">
+                                  <Badge variant="secondary" className="px-1 py-0 font-bold text-[10px]">
+                                    {b.ticket_quantity}x
+                                  </Badge>
+                                  {linkedTicket?.name || "Regular Admission Ticket"}
+                                  {b.generate_vouchers !== false && (
+                                    <span className="font-normal text-[10px] text-muted-foreground">
+                                      ({b.ticket_quantity - 1} friend vouchers)
+                                    </span>
+                                  )}
+                                </span>
+                              ) : (
+                                linkedTicket?.name || "Regular Admission Ticket"
+                              )}
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 text-[11px] text-muted-foreground italic">
+                            <Ticket className="size-3.5 shrink-0 opacity-40" />
+                            <span>Merchandise-only package (no admission ticket)</span>
+                          </div>
+                        )}
 
                         {/* Included Merchandise Items */}
                         <div className="flex items-start gap-2">
@@ -476,7 +491,7 @@ export function BundlesTab({ event }: BundlesTabProps) {
                           <div className="min-w-0 flex-1">
                             <span className="font-medium text-muted-foreground">Merch: </span>
                             {b.merchandise_items.length === 0 ? (
-                              <span className="text-muted-foreground italic">None</span>
+                              <span className="text-muted-foreground italic">None (Ticket-only package)</span>
                             ) : (
                               <div className="mt-1 flex flex-wrap gap-1">
                                 {b.merchandise_items.map((mItem) => {

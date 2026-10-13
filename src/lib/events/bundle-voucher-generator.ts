@@ -18,6 +18,10 @@ export function generateBundleFriendVouchers(params: {
 } {
   const { bundle, buyerRegistrationId, buyerMemberId, buyerName, buyerEmail, ticketTier, eventStartDate } = params;
 
+  if (!bundle.ticket_id || bundle.ticket_id === "none") {
+    return { newEventVouchers: [], registrationVouchers: [] };
+  }
+
   const totalTickets = Math.max(1, bundle.ticket_quantity ?? 1);
   // Extra tickets given to friends
   const vouchersToGenerate = Math.max(0, totalTickets - 1);

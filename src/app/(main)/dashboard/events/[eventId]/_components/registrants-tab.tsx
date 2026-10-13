@@ -58,7 +58,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import type { BevyAttendee } from "@/lib/bevy/types";
 import { buildApprovedAttendeePayload } from "@/lib/events/approved-attendee-webhook";
 import { validateAttendeeApprovalCapacity, validateBatchApprovalCapacity } from "@/lib/events/capacity-validator";
-import { buildRegistrationPaymentPayload, hasRegistrationPaymentRequirements } from "@/lib/events/doku-payment";
+import {
+  buildRegistrationPaymentPayload,
+  calculateRegistrationTotalAmount,
+  hasRegistrationPaymentRequirements,
+} from "@/lib/events/doku-payment";
 import {
   getEffectiveRegistrationStatus,
   getRegistrationPaymentDeadline,
@@ -1488,7 +1492,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     try {
       const reviewerPayload = user ? { id: user.id, name: user.name, email: user.email } : undefined;
       const now = new Date().toISOString();
-      const requiresPayment = hasRegistrationPaymentRequirements(registration);
+      const requiresPayment =
+        hasRegistrationPaymentRequirements(registration) && calculateRegistrationTotalAmount(registration) > 0;
 
       if (requiresPayment) {
         // If event ticket is paid or free with merchandise:
@@ -1837,7 +1842,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       const failedErrors: string[] = [];
 
       for (const reg of toApprove) {
-        const requiresPayment = hasRegistrationPaymentRequirements(reg);
+        const requiresPayment = hasRegistrationPaymentRequirements(reg) && calculateRegistrationTotalAmount(reg) > 0;
         if (requiresPayment) {
           try {
             const paymentPayload = buildRegistrationPaymentPayload(reg, currentEvent, { sendEmail: true });

@@ -79,7 +79,11 @@ import {
 } from "@/lib/events/registration-defaults";
 import { createDefaultRegularTicket, ensureEventTickets, getTicketSalesStatus } from "@/lib/events/ticket-templates";
 import { calculateVoucherDiscount, validateVoucherForCart } from "@/lib/events/voucher-utils";
-import { checkEventRegistrationAction, registerForEventAction } from "@/lib/firestore/actions";
+import {
+  checkEventRegistrationAction,
+  deleteEventRegistrationAction,
+  registerForEventAction,
+} from "@/lib/firestore/actions";
 import type {
   CustomQuestion,
   EventBundlePackage,
@@ -370,28 +374,30 @@ export function EventRegistrationModal({
       setSelectedTicketId(bundle.ticket_id);
     }
 
-    setSelectedMerch((prev) => {
-      const updated = { ...prev };
-      for (const bItem of bundle.merchandise_items) {
-        const existing = updated[bItem.merchandise_id] ?? { quantity: 0, selectedVariations: {} };
-        const targetMerch = availableMerchandise.find((m) => m.id === bItem.merchandise_id);
+    if (bundle.merchandise_items.length > 0) {
+      setSelectedMerch((prev) => {
+        const updated = { ...prev };
+        for (const bItem of bundle.merchandise_items) {
+          const existing = updated[bItem.merchandise_id] ?? { quantity: 0, selectedVariations: {} };
+          const targetMerch = availableMerchandise.find((m) => m.id === bItem.merchandise_id);
 
-        const defaultVars: Record<string, string> = { ...existing.selectedVariations };
-        if (targetMerch?.variations) {
-          for (const v of targetMerch.variations) {
-            if (!defaultVars[v.name] && v.options?.length) {
-              defaultVars[v.name] = bItem.default_variations?.[v.name] || v.options[0];
+          const defaultVars: Record<string, string> = { ...existing.selectedVariations };
+          if (targetMerch?.variations) {
+            for (const v of targetMerch.variations) {
+              if (!defaultVars[v.name] && v.options?.length) {
+                defaultVars[v.name] = bItem.default_variations?.[v.name] || v.options[0];
+              }
             }
           }
-        }
 
-        updated[bItem.merchandise_id] = {
-          quantity: Math.max(bItem.quantity, existing.quantity || bItem.quantity),
-          selectedVariations: defaultVars,
-        };
-      }
-      return updated;
-    });
+          updated[bItem.merchandise_id] = {
+            quantity: Math.max(bItem.quantity, existing.quantity || bItem.quantity),
+            selectedVariations: defaultVars,
+          };
+        }
+        return updated;
+      });
+    }
   };
 
   // Auto-select session if only 1 session track exists
@@ -425,7 +431,14 @@ export function EventRegistrationModal({
   }, [eventConfig.sessions, selectedSessionId]);
 
   const ticketPrice = selectedTicket ? selectedTicket.price || 0 : 0;
-  const effectiveBasePrice = selectedBundle ? selectedBundle.price : ticketPrice;
+  const effectiveBasePrice = useMemo(() => {
+    if (!selectedBundle) return ticketPrice;
+    if (selectedBundle.ticket_id) {
+      return selectedBundle.price;
+    }
+    // Merchandise-only bundle: combines ticket admission price with bundle price
+    return ticketPrice + selectedBundle.price;
+  }, [selectedBundle, ticketPrice]);
 
   const isPaymentRequired = useMemo(() => {
     const isTicketPaid =
@@ -1252,6 +1265,8 @@ export function EventRegistrationModal({
     }
 
     startTransition(async () => {
+      let createdRegistrationId: string | null = null;
+      let targetAttendeeEmail: string | undefined = user.email;
       try {
         const isWaitlistMode = Boolean(
           capacityValidation.isWaitlist ??
@@ -1300,6 +1315,7 @@ export function EventRegistrationModal({
           ((combinedAnswers as Record<string, unknown>).email as string) ||
           ((combinedAnswers as Record<string, unknown>).work_email as string) ||
           user.email;
+        targetAttendeeEmail = attendeeEmail;
         const attendeeName =
           ((combinedAnswers as Record<string, unknown>).full_name as string) ||
           ((combinedAnswers as Record<string, unknown>).name as string) ||
@@ -1396,10 +1412,16 @@ export function EventRegistrationModal({
               generatedPaymentAmount = payRes.amount;
               generatedExpiredDatetime = payRes.expiredDatetime;
             } else {
-              console.warn("[Registration Modal] Failed to generate payment link:", payRes.error);
+              const errorMsg = payRes.error ?? "Failed to generate payment link via DOKU.";
+              console.warn("[Registration Modal] Failed to generate payment link:", errorMsg);
+              toast.error(`Payment gateway error: ${errorMsg}. Registration cancelled.`);
+              return;
             }
           } catch (payErr) {
-            console.warn("[Registration Modal] Payment link generation error:", payErr);
+            const errorMsg = payErr instanceof Error ? payErr.message : "Payment link generation error";
+            console.warn("[Registration Modal] Payment link generation error:", errorMsg);
+            toast.error(`Payment gateway error: ${errorMsg}. Registration cancelled.`);
+            return;
           }
         }
 
@@ -1442,18 +1464,27 @@ export function EventRegistrationModal({
           payment_status: !isWaitlistMode && requiresPayment ? "unpaid" : undefined,
           payment_url: isWaitlistMode ? undefined : generatedPaymentUrl,
           payment_invoice_number: isWaitlistMode ? undefined : generatedInvoiceNumber,
-          payment_amount: isWaitlistMode
-            ? undefined
-            : (generatedPaymentAmount ?? (requiresPayment ? grandTotal : undefined)),
+          payment_amount: isWaitlistMode ? undefined : (generatedPaymentAmount ?? (requiresPayment ? grandTotal : 0)),
           payment_expired_datetime: isWaitlistMode ? undefined : generatedExpiredDatetime,
+        };
+
+        const rollbackRegistration = async (regId?: string | null) => {
+          if (!regId) return;
+          try {
+            await deleteEventRegistrationAction(regId, String(event.id), undefined, targetAttendeeEmail);
+          } catch (rbErr) {
+            console.warn("[Registration Modal] Failed to rollback registration:", rbErr);
+          }
         };
 
         const result = await registerForEventAction(registrationPayload);
 
-        if (!result.success) {
+        if (!result.success || !result.registrationId) {
           toast.error(result.error || "Failed to register. Please try again.");
           return;
         }
+
+        createdRegistrationId = result.registrationId;
 
         // If the event ticket is free and no curation: call Add Bevy Attendee API directly!
         if (!isWaitlistMode && !isCurated && !requiresPayment) {
@@ -1461,17 +1492,101 @@ export function EventRegistrationModal({
             const approvePayload = buildApprovedAttendeePayload(
               {
                 ...registrationPayload,
-                id: result.registrationId || `${event.id}_${user.id}`,
+                id: createdRegistrationId,
               } as FirestoreRegistration,
               eventConfig,
             );
             const approveRes = await approveAttendeeWebhookAction(approvePayload);
             if (!approveRes.success) {
-              console.warn("[Registration Modal] Add Bevy Attendee API warning:", approveRes.error);
+              console.error("[Registration Modal] Add Bevy Attendee API error:", approveRes.error);
+              await rollbackRegistration(createdRegistrationId);
+              createdRegistrationId = null;
+              setLocalReg(null);
+              toast.error(
+                `Registration automation failed: ${approveRes.error ?? "Failed to issue ticket and confirmation email"}. Registration cancelled.`,
+              );
+              return;
             }
           } catch (approveErr) {
-            console.warn("[Registration Modal] Add Bevy Attendee API error:", approveErr);
+            console.error("[Registration Modal] Add Bevy Attendee API error:", approveErr);
+            await rollbackRegistration(createdRegistrationId);
+            createdRegistrationId = null;
+            setLocalReg(null);
+            const errMsg =
+              approveErr instanceof Error ? approveErr.message : "Failed to complete automated registration workflow";
+            toast.error(`Registration automation error: ${errMsg}. Registration cancelled.`);
+            return;
           }
+        }
+
+        // Dispatch Webhook / Curation Interest Email
+        const webhookPayload: RegistrationWebhookPayload = {
+          Session: sessionKey,
+          event: {
+            id: String(event.id),
+            title: event.title,
+            status: event.status,
+            start_date: event.start_date,
+            end_date: event.end_date,
+            venue_name: event.venue?.name,
+            audience_type: event.audience_type,
+            is_virtual: event.is_virtual,
+            webhook_url: eventConfig.webhook_url ?? undefined,
+            requires_approval: Boolean(eventConfig.requires_approval),
+            curation_mode: Boolean(eventConfig.curation_mode),
+            banner_url: eventConfig.banner_url ?? event.banner_url ?? cachedImg ?? undefined,
+            picture_url: eventConfig.picture_url ?? event.picture_url ?? cachedImg ?? undefined,
+            email_templates: eventConfig.email_templates,
+          },
+          registration: {
+            id: createdRegistrationId,
+            status: initialStatus,
+            registered_at: registrationPayload.registered_at,
+            session_id: selectedSession?.id,
+            session_title: selectedSession?.title ?? sessionKey,
+            session_location: selectedSession?.location,
+            session_location_url: selectedSession?.location_url,
+            Session: sessionKey,
+            ticket_id: selectedTicket?.id,
+            ticket_name: selectedTicket?.name,
+            ticket_type: selectedTicket?.type,
+            ticket_price: selectedTicket?.price,
+            selected_merchandise: selectedMerchOrders.length > 0 ? selectedMerchOrders : undefined,
+            payment_url: generatedPaymentUrl,
+            payment_amount: generatedPaymentAmount ?? (requiresPayment ? grandTotal : 0),
+            voucher_code: appliedVoucher?.code,
+            voucher_discount_amount: voucherDiscount.totalDiscount > 0 ? voucherDiscount.totalDiscount : undefined,
+          },
+          member: {
+            id: user.id,
+            name: user.name,
+            email: attendeeEmail,
+            role: user.role,
+            avatar: user.avatar,
+          },
+          answers: combinedAnswers,
+          timestamp: new Date().toISOString(),
+        };
+
+        try {
+          const webhookResult = await dispatchRegistrationWebhookAction(webhookPayload);
+          if (!webhookResult.success) {
+            console.error("[Registration Modal] Webhook / email workflow error:", webhookResult.error);
+            await rollbackRegistration(createdRegistrationId);
+            createdRegistrationId = null;
+            setLocalReg(null);
+            const errText = webhookResult.error ?? "Failed to process email automation workflow.";
+            toast.error(`Automation error: ${errText}. Registration cancelled.`);
+            return;
+          }
+        } catch (webhookErr) {
+          console.error("[Registration Modal] Webhook dispatch error:", webhookErr);
+          await rollbackRegistration(createdRegistrationId);
+          createdRegistrationId = null;
+          setLocalReg(null);
+          const errMsg = webhookErr instanceof Error ? webhookErr.message : "Failed to process registration workflow.";
+          toast.error(`Automation error: ${errMsg}. Registration cancelled.`);
+          return;
         }
 
         if (isWaitlistMode) {
@@ -1495,66 +1610,8 @@ export function EventRegistrationModal({
           });
         }
 
-        // Dispatch Webhook in background
-        const webhookPayload: RegistrationWebhookPayload = {
-          Session: sessionKey,
-          event: {
-            id: String(event.id),
-            title: event.title,
-            status: event.status,
-            start_date: event.start_date,
-            end_date: event.end_date,
-            venue_name: event.venue?.name,
-            audience_type: event.audience_type,
-            is_virtual: event.is_virtual,
-            webhook_url: eventConfig.webhook_url ?? undefined,
-            requires_approval: Boolean(eventConfig.requires_approval),
-            curation_mode: Boolean(eventConfig.curation_mode),
-            banner_url: eventConfig.banner_url ?? event.banner_url ?? cachedImg ?? undefined,
-            picture_url: eventConfig.picture_url ?? event.picture_url ?? cachedImg ?? undefined,
-            email_templates: eventConfig.email_templates,
-          },
-          registration: {
-            id: result.registrationId || `${event.id}_${user.id}`,
-            status: initialStatus,
-            registered_at: registrationPayload.registered_at,
-            session_id: selectedSession?.id,
-            session_title: selectedSession?.title ?? sessionKey,
-            session_location: selectedSession?.location,
-            session_location_url: selectedSession?.location_url,
-            Session: sessionKey,
-            ticket_id: selectedTicket?.id,
-            ticket_name: selectedTicket?.name,
-            ticket_type: selectedTicket?.type,
-            ticket_price: selectedTicket?.price,
-            selected_merchandise: selectedMerchOrders.length > 0 ? selectedMerchOrders : undefined,
-            payment_url: generatedPaymentUrl,
-            payment_amount: generatedPaymentAmount ?? (requiresPayment ? grandTotal : undefined),
-            voucher_code: appliedVoucher?.code,
-            voucher_discount_amount: voucherDiscount.totalDiscount > 0 ? voucherDiscount.totalDiscount : undefined,
-          },
-          member: {
-            id: user.id,
-            name: user.name,
-            email: attendeeEmail,
-            role: user.role,
-            avatar: user.avatar,
-          },
-          answers: combinedAnswers,
-          timestamp: new Date().toISOString(),
-        };
-
-        try {
-          const webhookResult = await dispatchRegistrationWebhookAction(webhookPayload);
-          if (webhookResult.dispatched && webhookResult.error) {
-            console.warn("[Registration Modal] Webhook warning:", webhookResult.error);
-          }
-        } catch (webhookErr) {
-          console.warn("[Registration Modal] Webhook dispatch error:", webhookErr);
-        }
-
         const newReg: FirestoreRegistration = {
-          id: result.registrationId || `${event.id}_${user?.id || Date.now()}`,
+          id: createdRegistrationId,
           event_id: String(event.id),
           event_title: event.title,
           member_id: user?.id || "",
@@ -1573,7 +1630,7 @@ export function EventRegistrationModal({
           payment_status: requiresPayment ? "unpaid" : undefined,
           payment_url: generatedPaymentUrl,
           payment_invoice_number: generatedInvoiceNumber,
-          payment_amount: generatedPaymentAmount ?? (requiresPayment ? grandTotal : undefined),
+          payment_amount: generatedPaymentAmount ?? (requiresPayment ? grandTotal : 0),
           payment_expired_datetime: generatedExpiredDatetime,
         };
 
@@ -1595,6 +1652,19 @@ export function EventRegistrationModal({
         setOpen(false);
         router.refresh();
       } catch (err) {
+        if (createdRegistrationId) {
+          try {
+            await deleteEventRegistrationAction(
+              createdRegistrationId,
+              String(event.id),
+              undefined,
+              targetAttendeeEmail,
+            );
+          } catch (delErr) {
+            console.warn("[Registration Modal] Failed to rollback registration on exception:", delErr);
+          }
+          setLocalReg(null);
+        }
         const msg = err instanceof Error ? err.message : "Failed to register. Please try again.";
         toast.error(msg);
       }
@@ -2281,20 +2351,25 @@ export function EventRegistrationModal({
 
                                   {/* Included breakdown preview */}
                                   <div className="flex flex-wrap items-center gap-1.5 pt-1 text-xs">
-                                    <Badge variant="secondary" className="gap-1 px-2 py-0.5 font-medium text-[11px]">
-                                      <Ticket className="size-3 text-primary" />
-                                      {b.ticket_quantity && b.ticket_quantity > 1
-                                        ? `${b.ticket_quantity}x ${linkedTicket?.name || "Event Pass"}`
-                                        : `${linkedTicket?.name || "Event Pass"} Included`}
-                                    </Badge>
-                                    {b.ticket_quantity && b.ticket_quantity > 1 && b.generate_vouchers !== false && (
-                                      <Badge
-                                        variant="outline"
-                                        className="border-emerald-500/30 bg-emerald-500/10 text-[10px] text-emerald-700 dark:text-emerald-400"
-                                      >
-                                        +{b.ticket_quantity - 1} Friend Vouchers (100% Free)
+                                    {b.ticket_id && (
+                                      <Badge variant="secondary" className="gap-1 px-2 py-0.5 font-medium text-[11px]">
+                                        <Ticket className="size-3 text-primary" />
+                                        {b.ticket_quantity && b.ticket_quantity > 1
+                                          ? `${b.ticket_quantity}x ${linkedTicket?.name || "Event Pass"}`
+                                          : `${linkedTicket?.name || "Event Pass"} Included`}
                                       </Badge>
                                     )}
+                                    {b.ticket_id &&
+                                      b.ticket_quantity &&
+                                      b.ticket_quantity > 1 &&
+                                      b.generate_vouchers !== false && (
+                                        <Badge
+                                          variant="outline"
+                                          className="border-emerald-500/30 bg-emerald-500/10 text-[10px] text-emerald-700 dark:text-emerald-400"
+                                        >
+                                          +{b.ticket_quantity - 1} Friend Vouchers (100% Free)
+                                        </Badge>
+                                      )}
                                     {b.merchandise_items.map((mItem) => {
                                       const m = availableMerchandise.find((item) => item.id === mItem.merchandise_id);
                                       return (

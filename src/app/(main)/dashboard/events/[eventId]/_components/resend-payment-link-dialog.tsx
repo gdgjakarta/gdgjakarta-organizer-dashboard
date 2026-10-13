@@ -142,6 +142,11 @@ export function ResendPaymentLinkDialog({
   const handleGenerateAndResend = async () => {
     if (!registration || !event) return;
 
+    if (payableAmount <= 0) {
+      toast.error("Cannot generate payment link: Total payable amount is Rp 0 or free.");
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const paymentPayload = buildRegistrationPaymentPayload(registration, event, {
@@ -325,6 +330,12 @@ export function ResendPaymentLinkDialog({
               </div>
             </div>
 
+            {payableAmount <= 0 && (
+              <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-3 text-xs text-blue-700 dark:text-blue-300">
+                This registration has a net total of Rp 0 (free) and does not require a payment link.
+              </div>
+            )}
+
             {/* Expiration Deadline Selection */}
             <div className="space-y-2.5">
               <div className="flex items-center justify-between">
@@ -465,7 +476,7 @@ export function ResendPaymentLinkDialog({
                 size="sm"
                 className="gap-1.5 bg-primary text-primary-foreground shadow-xs"
                 onClick={handleGenerateAndResend}
-                disabled={isSubmitting || activeMinutes <= 0}
+                disabled={isSubmitting || activeMinutes <= 0 || payableAmount <= 0}
               >
                 {isSubmitting ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
                 {isSubmitting ? "Generating Link..." : "Regenerate Payment Link"}

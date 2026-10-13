@@ -117,11 +117,34 @@ export function resolvePaymentLinkWebhookUrl(customBaseUrl?: string, isProductio
 }
 
 /**
+ * Calculates the net total payable amount for a registration taking into account:
+ * - payment_amount (if explicitly defined as a number)
+ * - ticket price or bundle price
+ * - merchandise items total
+ * - voucher discount amount
+ * - referral discount amount
+ */
+export function calculateRegistrationTotalAmount(registration?: Partial<FirestoreRegistration> | null): number {
+  if (!registration) return 0;
+  if (typeof registration.payment_amount === "number") {
+    return Math.max(0, registration.payment_amount);
+  }
+  const ticketPrice = registration.bundle_id ? (registration.bundle_price ?? 0) : (registration.ticket_price ?? 0);
+  const merchTotal = (registration.selected_merchandise ?? []).reduce(
+    (acc, m) => acc + (m.price ?? 0) * (m.quantity ?? 1),
+    0,
+  );
+  const discountTotal = (registration.voucher_discount_amount ?? 0) + (registration.referral_discount_amount ?? 0);
+  return Math.max(0, ticketPrice + merchTotal - discountTotal);
+}
+
+/**
  * Checks whether a registration requires payment (paid ticket, commitment fee, or merchandise).
+ * Returns false if the net total price is zero or free.
  */
 export function hasRegistrationPaymentRequirements(registration?: Partial<FirestoreRegistration> | null): boolean {
   if (!registration) return false;
-  if (registration.payment_amount !== undefined && registration.payment_amount <= 0) return false;
+  if (calculateRegistrationTotalAmount(registration) <= 0) return false;
   const hasMerch = Boolean(registration.selected_merchandise?.some((m) => (m.price ?? 0) > 0));
   const hasPaidTicket = registration.ticket_type === "paid" && (registration.ticket_price ?? 0) > 0;
   const hasCommitmentFee = registration.ticket_type === "commitment_fee" && (registration.ticket_price ?? 0) > 0;
