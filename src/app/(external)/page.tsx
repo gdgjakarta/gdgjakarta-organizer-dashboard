@@ -11,7 +11,6 @@ import { CommunityCtaBanner } from "./_components/community-cta-banner";
 import { CommunityHero } from "./_components/community-hero";
 import { CommunityPillarsSection } from "./_components/community-pillars-section";
 import { CommunityQuoteSection } from "./_components/community-quote-section";
-import { FeaturedEventSpotlight } from "./_components/featured-event-spotlight";
 import { FeaturedEventsSection } from "./_components/featured-events-section";
 import { HomepageThemeContainer } from "./_components/homepage-theme-container";
 import { OrganizersSpotlightSection } from "./_components/organizers-spotlight-section";
@@ -67,14 +66,11 @@ export default async function Home(props: HomeProps) {
 
   return (
     <HomepageThemeContainer initialTheme={initialTheme}>
-      {/* 1. Hero Section */}
+      {/* 1. Hero Section (Includes dynamic Featured Event card with autoplay video) */}
       <CommunityHero />
 
       {/* 2. Category Pill Filter Bar */}
       <CategoryPillFilter />
-
-      {/* 2.5. Featured Event with Autoplay Video Spotlight */}
-      <FeaturedEventSpotlight />
 
       {/* 3. Featured Events Grid */}
       <FeaturedEventsSection events={upcomingEvents} />
