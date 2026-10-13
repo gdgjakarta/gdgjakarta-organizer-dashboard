@@ -1,3 +1,7 @@
+import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
+
+void initOpenNextCloudflareForDev();
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactCompiler: true,
@@ -25,6 +29,14 @@ const nextConfig = {
       {
         protocol: "https",
         hostname: "lh3.googleusercontent.com",
+      },
+      {
+        protocol: "https",
+        hostname: "assets.gdgjakarta.org",
+      },
+      {
+        protocol: "https",
+        hostname: "*.r2.dev",
       },
     ],
   },

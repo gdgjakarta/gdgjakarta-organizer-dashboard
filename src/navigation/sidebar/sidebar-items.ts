@@ -4,6 +4,7 @@ import {
   CreditCard,
   ExternalLink,
   Handshake,
+  HardDrive,
   HelpCircle,
   House,
   Link2,
@@ -124,6 +125,13 @@ export const organizerSidebarItems: NavGroup[] = [
         title: "FAQ & Policy",
         url: "/dashboard/faq",
         icon: HelpCircle,
+      },
+      {
+        id: "media-bucket",
+        title: "Bucket Storage",
+        url: "/dashboard/media",
+        icon: HardDrive,
+        badge: "new",
       },
       {
         id: "others",
