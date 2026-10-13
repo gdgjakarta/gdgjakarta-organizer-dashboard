@@ -770,7 +770,11 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
                         </div>
                       </div>
 
-                      {imgIdx > 0 && (
+                      {imgIdx === 0 ? (
+                        <div className="border-t bg-card px-2 py-1 text-[10px] font-medium text-primary text-center flex items-center justify-center gap-1 select-none">
+                          <Star className="size-2.5 fill-current" /> Cover
+                        </div>
+                      ) : (
                         <button
                           type="button"
                           onClick={() => handleSetPrimaryImage(imgIdx)}
