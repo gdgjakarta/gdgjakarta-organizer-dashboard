@@ -372,6 +372,11 @@ export interface SelectedMerchandiseOrder {
   quantity: number;
   price: number;
   selected_variations?: Record<string, string>;
+  // Optional compatibility fields for legacy or alternate merchandise payload structures
+  merchandise_id?: string;
+  merchandise_title?: string;
+  selected_size?: string;
+  selected_variant?: string;
 }
 
 export type MerchandiseDeliveryStatus = "pending_payment" | "pending_review" | "approved" | "rejected" | "delivered";

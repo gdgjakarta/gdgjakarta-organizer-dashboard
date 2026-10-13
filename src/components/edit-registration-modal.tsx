@@ -746,23 +746,31 @@ export function EditRegistrationModal({
                             Selected Merchandise:
                           </span>
                           <div className="space-y-1.5">
-                            {registration.selected_merchandise.map((item, idx) => (
-                              <div
-                                key={item.merchandise_id || item.id || `${item.merchandise_title || item.name}-${idx}`}
-                                className="flex items-center justify-between text-xs"
-                              >
-                                <span className="text-foreground">
-                                  {item.merchandise_title || item.name}
-                                  {item.selected_size ? ` (${item.selected_size})` : ""}
-                                  {item.selected_variant ? ` • ${item.selected_variant}` : ""}
-                                  {" × "}
-                                  {item.quantity || 1}
-                                </span>
-                                <span className="font-medium text-muted-foreground">
-                                  {formatRupiah((item.price || 0) * (item.quantity || 1))}
-                                </span>
-                              </div>
-                            ))}
+                            {registration.selected_merchandise.map((item, idx) => {
+                              const variationText =
+                                item.selected_variations && Object.keys(item.selected_variations).length > 0
+                                  ? Object.values(item.selected_variations).join(", ")
+                                  : [item.selected_size, item.selected_variant].filter(Boolean).join(" • ");
+
+                              return (
+                                <div
+                                  key={
+                                    item.merchandise_id || item.id || `${item.merchandise_title || item.name}-${idx}`
+                                  }
+                                  className="flex items-center justify-between text-xs"
+                                >
+                                  <span className="text-foreground">
+                                    {item.merchandise_title || item.name}
+                                    {variationText ? ` (${variationText})` : ""}
+                                    {" × "}
+                                    {item.quantity || 1}
+                                  </span>
+                                  <span className="font-medium text-muted-foreground">
+                                    {formatRupiah((item.price || 0) * (item.quantity || 1))}
+                                  </span>
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       )}
@@ -886,23 +894,31 @@ export function EditRegistrationModal({
                             Selected Merchandise:
                           </span>
                           <div className="space-y-1.5">
-                            {registration.selected_merchandise.map((item, idx) => (
-                              <div
-                                key={item.merchandise_id || item.id || `${item.merchandise_title || item.name}-${idx}`}
-                                className="flex items-center justify-between text-xs"
-                              >
-                                <span className="text-foreground">
-                                  {item.merchandise_title || item.name}
-                                  {item.selected_size ? ` (${item.selected_size})` : ""}
-                                  {item.selected_variant ? ` • ${item.selected_variant}` : ""}
-                                  {" × "}
-                                  {item.quantity || 1}
-                                </span>
-                                <span className="font-medium text-muted-foreground">
-                                  {formatRupiah((item.price || 0) * (item.quantity || 1))}
-                                </span>
-                              </div>
-                            ))}
+                            {registration.selected_merchandise.map((item, idx) => {
+                              const variationText =
+                                item.selected_variations && Object.keys(item.selected_variations).length > 0
+                                  ? Object.values(item.selected_variations).join(", ")
+                                  : [item.selected_size, item.selected_variant].filter(Boolean).join(" • ");
+
+                              return (
+                                <div
+                                  key={
+                                    item.merchandise_id || item.id || `${item.merchandise_title || item.name}-${idx}`
+                                  }
+                                  className="flex items-center justify-between text-xs"
+                                >
+                                  <span className="text-foreground">
+                                    {item.merchandise_title || item.name}
+                                    {variationText ? ` (${variationText})` : ""}
+                                    {" × "}
+                                    {item.quantity || 1}
+                                  </span>
+                                  <span className="font-medium text-muted-foreground">
+                                    {formatRupiah((item.price || 0) * (item.quantity || 1))}
+                                  </span>
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       )}
