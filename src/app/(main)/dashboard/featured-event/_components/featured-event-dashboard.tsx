@@ -27,7 +27,7 @@ import { toast } from "sonner";
 
 import { FloatingSaveBar } from "@/app/(main)/dashboard/_components/floating-save-bar";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -70,11 +70,15 @@ export function FeaturedEventDashboard({ initialEvents = [] }: FeaturedEventDash
   const [availableEvents, setAvailableEvents] = useState<PublishedEventOption[]>(initialEvents);
   const [isLoadingEvents, setIsLoadingEvents] = useState(false);
 
-  // Upload state
+  // Video upload state
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Poster image upload state
+  const posterFileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploadingPoster, setIsUploadingPoster] = useState(false);
 
   // Preview interactive state
   const previewVideoRef = useRef<HTMLVideoElement>(null);
@@ -180,6 +184,7 @@ export function FeaturedEventDashboard({ initialEvents = [] }: FeaturedEventDash
       const sanitizedName = sanitizeStorageName(file.name, false);
       const formData = new FormData();
       formData.append("prefix", "featured-videos");
+      formData.append("files", file, sanitizedName);
       formData.append("file", file, sanitizedName);
 
       setUploadProgress(45);
@@ -226,8 +231,70 @@ export function FeaturedEventDashboard({ initialEvents = [] }: FeaturedEventDash
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
+      const fileInput = fileInputRef.current;
+      if (fileInput) {
+        fileInput.value = "";
+      }
+    }
+  };
+
+  // Upload poster / fallback image directly to Cloudflare R2 bucket
+  const handlePosterUpload = async (file: File) => {
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Format gambar tidak didukung", {
+        description: "Harap unggah file gambar (.jpg, .png, .webp).",
+      });
+      return;
+    }
+
+    setIsUploadingPoster(true);
+    try {
+      const sanitizedName = sanitizeStorageName(file.name, false);
+      const formData = new FormData();
+      formData.append("prefix", "featured-posters");
+      formData.append("files", file, sanitizedName);
+      formData.append("file", file, sanitizedName);
+
+      const res = await fetch("/api/media/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errorData = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(errorData.error ?? `Upload failed with HTTP status ${res.status}`);
+      }
+
+      const data = (await res.json()) as {
+        success: boolean;
+        items?: Array<{ url: string; key: string; name: string }>;
+      };
+
+      const uploadedItem = data.items?.[0];
+      if (!uploadedItem) {
+        throw new Error("No media item returned by R2 upload service.");
+      }
+
+      setContent({
+        ...content,
+        videoPosterUrl: uploadedItem.url,
+      });
+
+      toast.success("Poster gambar berhasil diunggah ke R2!", {
+        description: `Disimpan dengan nama: ${uploadedItem.name}`,
+      });
+    } catch (err) {
+      console.error("[FeaturedEventDashboard] Poster upload error:", err);
+      toast.error("Gagal mengunggah poster ke R2", {
+        description: err instanceof Error ? err.message : "Periksa koneksi Anda dan coba lagi.",
+      });
+    } finally {
+      setIsUploadingPoster(false);
+      const posterInput = posterFileInputRef.current;
+      if (posterInput) {
+        posterInput.value = "";
       }
     }
   };
@@ -366,6 +433,32 @@ export function FeaturedEventDashboard({ initialEvents = [] }: FeaturedEventDash
               </div>
             </CardHeader>
             <CardContent className="space-y-5">
+              {/* Hidden file inputs placed outside clickable containers */}
+              <input
+                id="featured-video-input"
+                ref={fileInputRef}
+                type="file"
+                accept="video/mp4,video/webm,video/quicktime,video/*"
+                onChange={(e) => {
+                  if (e.target.files?.[0]) {
+                    void handleFileUpload(e.target.files[0]);
+                  }
+                }}
+                className="hidden"
+              />
+              <input
+                id="featured-poster-input"
+                ref={posterFileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                onChange={(e) => {
+                  if (e.target.files?.[0]) {
+                    void handlePosterUpload(e.target.files[0]);
+                  }
+                }}
+                className="hidden"
+              />
+
               <Tabs
                 value={content.videoSourceType || "upload"}
                 onValueChange={(val) => setContent({ ...content, videoSourceType: val as "url" | "upload" })}
@@ -383,15 +476,14 @@ export function FeaturedEventDashboard({ initialEvents = [] }: FeaturedEventDash
 
                 {/* Tab: Upload to R2 Bucket */}
                 <TabsContent value="upload" className="space-y-4 pt-4">
-                  <button
-                    type="button"
+                  <label
+                    htmlFor="featured-video-input"
                     onDragOver={(e) => {
                       e.preventDefault();
                       setIsDragOver(true);
                     }}
                     onDragLeave={() => setIsDragOver(false)}
                     onDrop={handleDrop}
-                    onClick={() => fileInputRef.current?.click()}
                     className={cn(
                       "flex w-full cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 text-center transition-all",
                       isDragOver
@@ -399,18 +491,6 @@ export function FeaturedEventDashboard({ initialEvents = [] }: FeaturedEventDash
                         : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/20",
                     )}
                   >
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="video/mp4,video/webm,video/quicktime,video/*"
-                      onChange={(e) => {
-                        if (e.target.files?.[0]) {
-                          void handleFileUpload(e.target.files[0]);
-                        }
-                      }}
-                      className="hidden"
-                    />
-
                     {isUploading ? (
                       <div className="w-full max-w-xs space-y-3 py-4 text-center">
                         <Loader2 className="mx-auto size-8 animate-spin text-primary" />
@@ -428,9 +508,19 @@ export function FeaturedEventDashboard({ initialEvents = [] }: FeaturedEventDash
                         <p className="mt-1 text-muted-foreground text-xs">
                           Mendukung .mp4, .webm, dan .mov (disimpan otomatis di R2 Bucket gdgjakarta-assets)
                         </p>
+                        <span
+                          className={buttonVariants({
+                            variant: "secondary",
+                            size: "sm",
+                            className: "mt-4 gap-1.5 cursor-pointer pointer-events-none",
+                          })}
+                        >
+                          <UploadCloud className="size-4" />
+                          <span>Pilih File Video</span>
+                        </span>
                       </>
                     )}
-                  </button>
+                  </label>
 
                   {/* Active Uploaded R2 Video Badge */}
                   {content.videoSourceType === "upload" && content.videoUrl && (
@@ -443,52 +533,122 @@ export function FeaturedEventDashboard({ initialEvents = [] }: FeaturedEventDash
                         </div>
                       </div>
 
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-8 text-muted-foreground hover:text-destructive"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setContent({ ...content, videoUrl: "", videoStorageKey: undefined });
-                        }}
-                        title="Remove video"
-                      >
-                        <Trash2 className="size-4" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 gap-1 text-xs"
+                          onClick={() => fileInputRef.current?.click()}
+                        >
+                          <UploadCloud className="size-3.5" />
+                          <span>Replace</span>
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="size-8 text-muted-foreground hover:text-destructive"
+                          onClick={() => {
+                            setContent({ ...content, videoUrl: "", videoStorageKey: undefined });
+                          }}
+                          title="Remove video"
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </div>
                     </div>
                   )}
                 </TabsContent>
 
-                {/* Tab: External Video URL */}
+                {/* Tab: External Video URL with inline upload option */}
                 <TabsContent value="url" className="space-y-3 pt-4">
                   <div className="space-y-1.5">
-                    <Label htmlFor="video-url" className="font-medium text-xs">
-                      Video URL (YouTube, Vimeo, or direct MP4/WebM)
-                    </Label>
-                    <Input
-                      id="video-url"
-                      placeholder="https://www.youtube.com/watch?v=... or https://cdn.example.com/video.mp4"
-                      value={content.videoUrl}
-                      onChange={(e) => setContent({ ...content, videoUrl: e.target.value })}
-                    />
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="video-url" className="font-medium text-xs">
+                        Video URL (YouTube, Vimeo, or direct MP4/WebM)
+                      </Label>
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isUploading}
+                        className="inline-flex items-center gap-1 font-medium text-[11px] text-primary hover:underline disabled:opacity-50"
+                      >
+                        <UploadCloud className="size-3" />
+                        <span>Upload video to R2</span>
+                      </button>
+                    </div>
+                    <div className="flex gap-2">
+                      <Input
+                        id="video-url"
+                        placeholder="https://www.youtube.com/watch?v=... or https://cdn.example.com/video.mp4"
+                        value={content.videoUrl}
+                        onChange={(e) => setContent({ ...content, videoUrl: e.target.value })}
+                        className="flex-1"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isUploading}
+                        className="shrink-0 gap-1.5"
+                      >
+                        {isUploading ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : (
+                          <UploadCloud className="size-3.5 text-primary" />
+                        )}
+                        <span>Upload Video</span>
+                      </Button>
+                    </div>
                     <p className="text-[11px] text-muted-foreground">
-                      Paste a public video link. Direct HTML5 video files or YouTube/Vimeo links will autoplay muted.
+                      Paste a public video link, or click Upload Video to store directly in Cloudflare R2.
                     </p>
                   </div>
                 </TabsContent>
               </Tabs>
 
-              {/* Poster thumbnail (Optional) */}
+              {/* Poster thumbnail (Optional) with inline upload option */}
               <div className="space-y-1.5 border-t pt-2">
-                <Label htmlFor="video-poster" className="font-medium text-xs">
-                  Video Poster / Fallback Image URL (Optional)
-                </Label>
-                <Input
-                  id="video-poster"
-                  placeholder="https://..."
-                  value={content.videoPosterUrl || ""}
-                  onChange={(e) => setContent({ ...content, videoPosterUrl: e.target.value })}
-                />
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="video-poster" className="font-medium text-xs">
+                    Video Poster / Fallback Image URL (Optional)
+                  </Label>
+                  <button
+                    type="button"
+                    onClick={() => posterFileInputRef.current?.click()}
+                    disabled={isUploadingPoster}
+                    className="inline-flex items-center gap-1 font-medium text-[11px] text-primary hover:underline disabled:opacity-50"
+                  >
+                    <UploadCloud className="size-3" />
+                    <span>Upload poster to R2</span>
+                  </button>
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    id="video-poster"
+                    placeholder="https://..."
+                    value={content.videoPosterUrl || ""}
+                    onChange={(e) => setContent({ ...content, videoPosterUrl: e.target.value })}
+                    className="flex-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => posterFileInputRef.current?.click()}
+                    disabled={isUploadingPoster}
+                    className="shrink-0 gap-1.5"
+                  >
+                    {isUploadingPoster ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <UploadCloud className="size-3.5 text-primary" />
+                    )}
+                    <span>Upload Poster</span>
+                  </Button>
+                </div>
                 <p className="text-[11px] text-muted-foreground">
                   Displayed as a thumbnail image while the video stream is buffering.
                 </p>
