@@ -131,7 +131,6 @@ export const organizerSidebarItems: NavGroup[] = [
         title: "Bucket Management",
         url: "/dashboard/media",
         icon: HardDrive,
-        badge: "new",
       },
       {
         id: "others",
