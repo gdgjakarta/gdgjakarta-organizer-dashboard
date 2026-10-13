@@ -3,6 +3,7 @@
 import { z } from "zod";
 
 import {
+  DEFAULT_PAYMENT_HEADER_EMAIL_URL,
   type DokuPaymentLinkRequest,
   type DokuPaymentLinkResponse,
   type PaymentDispatchResult,
@@ -36,7 +37,10 @@ const dokuPaymentRequestSchema = z.object({
   event: z.object({
     id: z.string().optional(),
     title: z.string().min(1, "Event title is required"),
-    headerEmailUrl: z.string().optional(),
+    headerEmailUrl: z
+      .string()
+      .optional()
+      .transform((val) => (val && val.trim().length > 0 ? val.trim() : DEFAULT_PAYMENT_HEADER_EMAIL_URL)),
     paymentDeadlineMinutes: z.number().int().positive().optional().default(1440),
   }),
   items: z.array(paymentItemSchema).min(1, "At least one item is required"),

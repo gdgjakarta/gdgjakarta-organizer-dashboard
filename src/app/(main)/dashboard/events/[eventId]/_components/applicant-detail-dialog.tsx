@@ -41,7 +41,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { extractCustomerPhone } from "@/lib/events/doku-payment";
+import { DEFAULT_PAYMENT_HEADER_EMAIL_URL, extractCustomerPhone } from "@/lib/events/doku-payment";
 import { getRegistrationPaymentDeadline, isRegistrationPaymentOverdue } from "@/lib/events/payment-deadline";
 import { DEFAULT_COMBINED_QUESTIONS } from "@/lib/events/registration-defaults";
 import type { CustomQuestion, FirestoreEvent, FirestoreRegistration, RegistrationStatus } from "@/lib/firestore/types";
@@ -636,12 +636,7 @@ export function ApplicantDetailDialog({
           id: registration.event_id,
           title: registration.event_title,
           headerEmailUrl:
-            event?.headerEmailUrl ??
-            event?.header_email_url ??
-            event?.picture_url ??
-            event?.banner_url ??
-            registration.event_picture_url ??
-            registration.event_banner_url,
+            event?.headerEmailUrl?.trim() || event?.header_email_url?.trim() || DEFAULT_PAYMENT_HEADER_EMAIL_URL,
           paymentDeadlineMinutes:
             event?.paymentDeadlinesInMinutes ??
             event?.paymentDeadlineMinutes ??

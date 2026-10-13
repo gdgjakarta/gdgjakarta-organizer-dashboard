@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { DEFAULT_PAYMENT_HEADER_EMAIL_URL } from "@/lib/events/doku-payment";
 import { calculateVoucherDiscount, formatVoucherDiscountDisplay } from "@/lib/events/voucher-utils";
 import type { EventMerchandiseItem, FirestoreEvent } from "@/lib/firestore/types";
 import { generatePaymentLinkAction } from "@/server/payment-actions";
@@ -172,7 +173,8 @@ export function GenerateMerchandisePaymentDialog({
           event: {
             id: event.id,
             title: event.title,
-            headerEmailUrl: event.headerEmailUrl ?? event.header_email_url ?? event.picture_url ?? event.banner_url,
+            headerEmailUrl:
+              event.headerEmailUrl?.trim() || event.header_email_url?.trim() || DEFAULT_PAYMENT_HEADER_EMAIL_URL,
             paymentDeadlineMinutes:
               event.paymentDeadlinesInMinutes ?? event.paymentDeadlineMinutes ?? event.payment_deadline_minutes ?? 1440,
           },

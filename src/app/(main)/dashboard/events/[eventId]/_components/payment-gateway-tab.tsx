@@ -37,6 +37,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DEFAULT_PAYMENT_HEADER_EMAIL_URL } from "@/lib/events/doku-payment";
 import { updateEventMerchandiseDeliveryConfigAction, updateEventPaymentConfigAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
@@ -59,7 +60,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
   );
   const [merchandiseDeliveryFee, setMerchandiseDeliveryFee] = useState<number>(event.merchandise_delivery_fee ?? 50000);
   const [headerEmailUrl, setHeaderEmailUrl] = useState<string>(
-    event.headerEmailUrl ?? event.header_email_url ?? event.picture_url ?? event.banner_url ?? "",
+    event.headerEmailUrl ?? event.header_email_url ?? DEFAULT_PAYMENT_HEADER_EMAIL_URL,
   );
   const [paymentDeadlinesInMinutes, setPaymentDeadlinesInMinutes] = useState<number>(
     event.paymentDeadlinesInMinutes ?? event.paymentDeadlineMinutes ?? event.payment_deadline_minutes ?? 1440,
@@ -108,9 +109,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
           docData?.header_email_url ??
           event.headerEmailUrl ??
           event.header_email_url ??
-          event.picture_url ??
-          event.banner_url ??
-          "";
+          DEFAULT_PAYMENT_HEADER_EMAIL_URL;
         const loadedPaymentDeadlines =
           docData?.paymentDeadlinesInMinutes ??
           docData?.paymentDeadlineMinutes ??
@@ -138,8 +137,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
         const fallbackEnv = event.payment_environment ?? (event.is_test ? "sandbox" : "production");
         const fallbackDeliveryEnv = event.merchandise_delivery_payment_environment ?? fallbackEnv;
         const fallbackDeliveryFee = event.merchandise_delivery_fee ?? 50000;
-        const fallbackHeaderEmail =
-          event.headerEmailUrl ?? event.header_email_url ?? event.picture_url ?? event.banner_url ?? "";
+        const fallbackHeaderEmail = event.headerEmailUrl ?? event.header_email_url ?? DEFAULT_PAYMENT_HEADER_EMAIL_URL;
         const fallbackPaymentDeadlines =
           event.paymentDeadlinesInMinutes ?? event.paymentDeadlineMinutes ?? event.payment_deadline_minutes ?? 1440;
         initialSnapshotRef.current ??= JSON.stringify({
@@ -424,12 +422,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
       setMerchandiseDeliveryEnv(parsed.merchandiseDeliveryEnv ?? parsed.paymentEnvironment);
       setMerchandiseDeliveryFee(parsed.merchandiseDeliveryFee ?? 50000);
       setHeaderEmailUrl(
-        parsed.headerEmailUrl ??
-          event.headerEmailUrl ??
-          event.header_email_url ??
-          event.picture_url ??
-          event.banner_url ??
-          "",
+        parsed.headerEmailUrl ?? event.headerEmailUrl ?? event.header_email_url ?? DEFAULT_PAYMENT_HEADER_EMAIL_URL,
       );
       setPaymentDeadlinesInMinutes(
         parsed.paymentDeadlinesInMinutes ??
@@ -447,7 +440,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
           (event.is_test ? "sandbox" : "production"),
       );
       setMerchandiseDeliveryFee(event.merchandise_delivery_fee ?? 50000);
-      setHeaderEmailUrl(event.headerEmailUrl ?? event.header_email_url ?? event.picture_url ?? event.banner_url ?? "");
+      setHeaderEmailUrl(event.headerEmailUrl ?? event.header_email_url ?? DEFAULT_PAYMENT_HEADER_EMAIL_URL);
       setPaymentDeadlinesInMinutes(
         event.paymentDeadlinesInMinutes ?? event.paymentDeadlineMinutes ?? event.payment_deadline_minutes ?? 1440,
       );
@@ -798,30 +791,42 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
                 <FieldLabel htmlFor="header-email-url" className="font-semibold text-xs">
                   Header Email Image URL (Banner)
                 </FieldLabel>
-                {(event.picture_url ?? event.banner_url) && (
+                <div className="flex items-center gap-1">
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
-                    onClick={() => setHeaderEmailUrl(event.picture_url ?? event.banner_url ?? "")}
+                    onClick={() => setHeaderEmailUrl(DEFAULT_PAYMENT_HEADER_EMAIL_URL)}
                     className="h-6 gap-1 px-2 text-[10px] text-muted-foreground hover:text-foreground"
                   >
                     <RotateCcw className="size-2.5" />
-                    Reset to Event Banner
+                    Reset to Default Banner
                   </Button>
-                )}
+                  {(event.picture_url ?? event.banner_url) && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setHeaderEmailUrl(event.picture_url ?? event.banner_url ?? "")}
+                      className="h-6 gap-1 px-2 text-[10px] text-muted-foreground hover:text-foreground"
+                    >
+                      <RotateCcw className="size-2.5" />
+                      Event Banner
+                    </Button>
+                  )}
+                </div>
               </div>
               <Input
                 id="header-email-url"
                 type="url"
                 value={headerEmailUrl}
                 onChange={(e) => setHeaderEmailUrl(e.target.value)}
-                placeholder="https://res.cloudinary.com/... or image URL"
+                placeholder={DEFAULT_PAYMENT_HEADER_EMAIL_URL}
                 className="text-xs"
               />
               <p className="text-[11px] text-muted-foreground">
-                Embedded at the top of invoice emails sent by DOKU / n8n. If empty, falls back to the event picture or
-                GDG banner.
+                Embedded at the top of invoice emails sent by DOKU / n8n. If empty, falls back to the default GDG
+                Jakarta banner.
               </p>
 
               {headerEmailUrl ? (

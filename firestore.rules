@@ -43,6 +43,12 @@ service cloud.firestore {
     //   - referrals_count: int|float|null (optional, >= 0) - Successful referrals count
     //   - has_used_referral: bool|null (optional) - Whether member has redeemed a referral code
     //   - referred_by_code: string|null (optional, <= 64 chars) - Referral code redeemed by member
+    // Permissions:
+    //   - get: Team access, profile owner, or authenticated user looking up a profile with a referral_code.
+    //   - list: Team access, profile owner, or authenticated user querying by referral_code with limit <= 5.
+    //   - create: Team access or profile owner initializing account with 0 referral points/count.
+    //   - update: Team access, profile owner (cannot touch privilege fields), or authenticated users awarding referral points (restricted to referral_points, referrals_count, updated_at).
+    //   - delete: Organizers only.
     //
     // Collection: event_registrations
     // Document ID: registrationId (e.g. eventId_memberId)
@@ -827,18 +833,24 @@ service cloud.firestore {
     // Members Collection
     // -------------------------------------------------------------
     match /members/{memberId} {
-      // Individual profile lookup: Organizers, staff members, or the document owner (by ID or UID).
+      // Individual profile lookup: Organizers, staff members, document owner (by ID or UID), or profiles containing a referral_code.
       // Safely handles non-existent doc lookup when resource == null (snap.exists() == false).
       allow get: if hasTeamAccess() ||
         (isAuthenticated() && (
           resource == null ||
           request.auth.uid == memberId ||
-          (('uid' in resource.data) && resource.data.uid == request.auth.uid)
+          (('uid' in resource.data) && resource.data.uid == request.auth.uid) ||
+          ('referral_code' in resource.data)
         ));
 
-      // Listing members: Organizers and staff members (e.g. for attendee lookup and curation).
-      // Eliminates public or unprivileged member dumps of emails, phone numbers, and notes.
-      allow list: if hasTeamAccess();
+      // Listing members: Organizers, staff members, user querying their own doc, or authenticated query by referral_code with limit <= 5.
+      // Eliminates public bulk dumps while permitting attendee referral code verification.
+      allow list: if hasTeamAccess() ||
+        (isAuthenticated() && (
+          resource.data.id == request.auth.uid ||
+          (('uid' in resource.data) && resource.data.uid == request.auth.uid) ||
+          (('referral_code' in resource.data) && request.query.limit <= 5)
+        ));
 
       // Creation: Organizers, staff members (hasTeamAccess), or authenticated owners creating their initial profile.
       // Solves bootstrap deadlock while strictly requiring valid member schema and identity ownership.
@@ -853,13 +865,19 @@ service cloud.firestore {
         )
       );
 
-      // Update: Organizers and staff members (hasTeamAccess), or members updating their own profile.
-      // Members are strictly prevented from altering privilege fields ('role', 'team', 'uid', 'id', 'referral_points', 'referrals_count').
+      // Update: Organizers and staff members (hasTeamAccess), profile owners (cannot alter privilege fields),
+      // or authenticated attendees awarding referral points upon redemption (strictly restricted to referral_points, referrals_count, updated_at).
       allow update: if isValidMember(request.resource.data) && (
         hasTeamAccess() ||
         (
           isOwner(memberId) &&
           !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'team', 'uid', 'id', 'referral_points', 'referrals_count'])
+        ) ||
+        (
+          isAuthenticated() &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['referral_points', 'referrals_count', 'updated_at']) &&
+          (!('referral_points' in request.resource.data) || ((request.resource.data.referral_points is int || request.resource.data.referral_points is float) && request.resource.data.referral_points >= 0)) &&
+          (!('referrals_count' in request.resource.data) || ((request.resource.data.referrals_count is int || request.resource.data.referrals_count is float) && request.resource.data.referrals_count >= 0))
         )
       );
 

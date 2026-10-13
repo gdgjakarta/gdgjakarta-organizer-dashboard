@@ -5,6 +5,9 @@
 
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
 
+export const DEFAULT_PAYMENT_HEADER_EMAIL_URL =
+  "https://assets.gdgjakarta.org/gdg-jakarta/gdg-jakarta-emailheaders-1244x388-blue.png";
+
 export interface PaymentCustomer {
   name: string;
   email: string;
@@ -311,13 +314,7 @@ export function buildRegistrationPaymentPayload(
       id: event.id ? String(event.id) : undefined,
       title: event.title ?? registration.event_title ?? "GDG Jakarta Event",
       headerEmailUrl:
-        event.headerEmailUrl ??
-        event.header_email_url ??
-        event.picture_url ??
-        event.banner_url ??
-        registration.event_picture_url ??
-        registration.event_banner_url ??
-        "",
+        event.headerEmailUrl?.trim() || event.header_email_url?.trim() || DEFAULT_PAYMENT_HEADER_EMAIL_URL,
       paymentDeadlineMinutes:
         options?.paymentDeadlineMinutes ??
         event.paymentDeadlinesInMinutes ??

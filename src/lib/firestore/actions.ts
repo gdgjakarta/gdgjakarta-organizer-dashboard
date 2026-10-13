@@ -1,5 +1,6 @@
 "use client";
 
+import { DEFAULT_PAYMENT_HEADER_EMAIL_URL } from "@/lib/events/doku-payment";
 import { revalidateDashboardPath } from "@/server/server-actions";
 
 import type { FirestoreEvent, FirestoreRegistration, ReferralProgramSettings, RegistrationStatus } from "./types";
@@ -522,7 +523,8 @@ export async function submitMerchandiseDeliveryRequestAction(input: SubmitMercha
       event: {
         id: String(input.eventId),
         title: input.eventTitle ?? "GDG Jakarta Event",
-        headerEmailUrl: eventDoc?.headerEmailUrl ?? eventDoc?.header_email_url ?? input.eventPictureUrl,
+        headerEmailUrl:
+          eventDoc?.headerEmailUrl?.trim() || eventDoc?.header_email_url?.trim() || DEFAULT_PAYMENT_HEADER_EMAIL_URL,
         paymentDeadlineMinutes:
           eventDoc?.paymentDeadlinesInMinutes ??
           eventDoc?.paymentDeadlineMinutes ??
