@@ -142,7 +142,10 @@ export function EventShortLinkButton({ event, isOrganizer = true }: EventShortLi
           {!isLoading && hasAnyLink && <Copy className="size-3.5 text-emerald-500" />}
           {!isLoading && !hasAnyLink && <Sparkles className="size-3.5 text-primary" />}
 
-          <span>{hasAnyLink ? "Copy Short Link" : "Generate Short Link"}</span>
+          <span>
+            <span className="hidden sm:inline">{hasAnyLink ? "Copy Short Link" : "Generate Short Link"}</span>
+            <span className="sm:hidden">{hasAnyLink ? "Short Link" : "Generate Link"}</span>
+          </span>
 
           {hasAnyLink && (
             <Badge variant="secondary" className="px-1 py-0 font-mono text-[10px]">

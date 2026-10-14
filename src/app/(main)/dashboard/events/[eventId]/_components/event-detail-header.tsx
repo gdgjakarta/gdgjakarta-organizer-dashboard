@@ -416,7 +416,7 @@ export function EventDetailHeader({
         </div>
 
         {/* Action Buttons */}
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 lg:shrink-0 lg:justify-end">
           <Button variant="outline" size="sm" onClick={handleSync} disabled={isPending} className="gap-1.5">
             <RefreshCw className={cn("size-3.5", isPending && "animate-spin")} />
             Sync
@@ -429,7 +429,8 @@ export function EventDetailHeader({
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" className="gap-1.5">
                   <Eye className="size-3.5" />
-                  Preview & Share
+                  <span className="hidden sm:inline">Preview & Share</span>
+                  <span className="sm:hidden">Preview</span>
                   <ChevronDown className="size-3 opacity-60" />
                 </Button>
               </DropdownMenuTrigger>
@@ -479,7 +480,8 @@ export function EventDetailHeader({
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" className="gap-1.5">
                   <CreditCard className="size-3.5" />
-                  DOKU Portals
+                  <span className="hidden sm:inline">DOKU Portals</span>
+                  <span className="sm:hidden">DOKU</span>
                   <ChevronDown className="size-3 opacity-60" />
                 </Button>
               </DropdownMenuTrigger>
@@ -516,7 +518,8 @@ export function EventDetailHeader({
           <Button size="sm" asChild className="gap-1.5">
             <a href={getBevyManageEventUrl(event.id)} target="_blank" rel="noopener noreferrer">
               <ExternalLink className="size-3.5" />
-              Manage in Bevy
+              <span className="hidden sm:inline">Manage in Bevy</span>
+              <span className="sm:hidden">Bevy</span>
             </a>
           </Button>
         </div>
