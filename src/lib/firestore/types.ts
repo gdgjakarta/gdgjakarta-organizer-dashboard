@@ -116,7 +116,7 @@ export interface EventMerchandiseItem {
   stock?: number | null; // null or undefined means unlimited
   variations: MerchandiseVariation[];
   max_per_person?: number | null; // Limit items per person (null = unlimited or event-level limit)
-  status: "active" | "draft" | "out_of_stock";
+  status: "active" | "draft" | "hidden" | "out_of_stock";
   guideline?: MerchandiseGuideline; // Dedicated field notes / size chart
   sales_start_date?: string | null; // ISO string when sales/ordering opens
   sales_end_date?: string | null; // ISO string when sales/ordering closes

@@ -8,6 +8,8 @@ import {
   CheckCircle2,
   Copy,
   Edit2,
+  Eye,
+  EyeOff,
   Package,
   PackageCheck,
   Plus,
@@ -192,6 +194,22 @@ export function BundlesTab({ event }: BundlesTabProps) {
     toast.success(`Duplicated "${bundle.name}"`);
   };
 
+  const handleToggleVisibility = (bundleId: string) => {
+    const target = bundles.find((b) => b.id === bundleId);
+    if (!target) return;
+    const willBeHidden = target.status !== "hidden";
+    const nextStatus = willBeHidden ? "hidden" : "active";
+    setBundles((prev) =>
+      prev.map((b) => (b.id === bundleId ? { ...b, status: nextStatus, updated_at: new Date().toISOString() } : b)),
+    );
+    setIsDirty(true);
+    toast.success(
+      willBeHidden
+        ? `Hidden bundle "${target.name}". Remember to save changes.`
+        : `Bundle "${target.name}" is now visible. Remember to save changes.`,
+    );
+  };
+
   const handleDelete = (bundleId: string, bundleName: string) => {
     setBundles((prev) => prev.filter((b) => b.id !== bundleId));
     setIsDirty(true);
@@ -319,7 +337,14 @@ export function BundlesTab({ event }: BundlesTabProps) {
             <CheckCircle2 className="size-4 text-emerald-600 dark:text-emerald-400" />
             <span className="font-medium text-muted-foreground text-xs">Active Packages</span>
           </div>
-          <p className="mt-2 font-bold text-2xl text-foreground tracking-tight">{activeCount}</p>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="font-bold text-2xl text-foreground tracking-tight">{activeCount}</span>
+            {bundles.some((b) => b.status === "hidden") && (
+              <span className="text-muted-foreground text-xs">
+                ({bundles.filter((b) => b.status === "hidden").length} hidden)
+              </span>
+            )}
+          </div>
         </Card>
 
         <Card className="p-4">
@@ -466,7 +491,10 @@ export function BundlesTab({ event }: BundlesTabProps) {
                 return (
                   <div
                     key={b.id}
-                    className="group relative flex flex-col justify-between rounded-xl border bg-card p-5 shadow-xs transition-all hover:border-primary/40 hover:shadow-md"
+                    className={cn(
+                      "group relative flex flex-col justify-between rounded-xl border bg-card p-5 shadow-xs transition-all hover:border-primary/40 hover:shadow-md",
+                      b.status === "hidden" && "border-dashed opacity-60 bg-muted/20",
+                    )}
                   >
                     {/* Top Row: Badges & Actions */}
                     <div>
@@ -491,6 +519,23 @@ export function BundlesTab({ event }: BundlesTabProps) {
                             title="Duplicate"
                           >
                             <Copy className="size-3.5" />
+                          </Button>
+                          <Button
+                            size="icon-xs"
+                            variant="ghost"
+                            onClick={() => handleToggleVisibility(b.id)}
+                            title={
+                              b.status === "hidden"
+                                ? "Show bundle (Make visible to attendees)"
+                                : "Hide bundle (Hide from attendees)"
+                            }
+                            aria-label={b.status === "hidden" ? `Show ${b.name}` : `Hide ${b.name}`}
+                            className={cn(
+                              "size-7 text-muted-foreground hover:text-foreground",
+                              b.status === "hidden" && "text-amber-600 hover:text-amber-500 dark:text-amber-400",
+                            )}
+                          >
+                            {b.status === "hidden" ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
                           </Button>
                           <Button
                             size="icon-xs"
@@ -636,7 +681,9 @@ export function BundlesTab({ event }: BundlesTabProps) {
               <div className="flex items-center gap-2 text-muted-foreground text-xs">
                 <CheckCircle2 className="size-4 text-emerald-600 dark:text-emerald-400" />
                 <span>
-                  <strong>{bundles.length}</strong> bundling packages configured. Attendees will see these package
+                  <strong>{bundles.length}</strong> bundling packages configured (
+                  {bundles.filter((b) => b.status !== "hidden").length} visible,{" "}
+                  {bundles.filter((b) => b.status === "hidden").length} hidden). Attendees will see visible package
                   options highlighted during registration.
                 </span>
               </div>

@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 
 import {
+  AlertCircle,
   Banknote,
   Bookmark,
   BookmarkPlus,
@@ -10,6 +11,8 @@ import {
   Clock,
   Copy,
   Edit2,
+  Eye,
+  EyeOff,
   Plus,
   ShieldCheck,
   Sparkles,
@@ -164,6 +167,22 @@ export function TicketsTab({ event }: TicketsTabProps) {
     setTickets((prev) => [...prev, cloned]);
     setIsDirty(true);
     toast.success(`Duplicated "${ticket.name}"`);
+  };
+
+  const handleToggleVisibility = (ticketId: string) => {
+    const target = tickets.find((t) => t.id === ticketId);
+    if (!target) return;
+    const willBeHidden = target.status !== "hidden";
+    const nextStatus = willBeHidden ? "hidden" : "active";
+    setTickets((prev) =>
+      prev.map((t) => (t.id === ticketId ? { ...t, status: nextStatus, updated_at: new Date().toISOString() } : t)),
+    );
+    setIsDirty(true);
+    toast.success(
+      willBeHidden
+        ? `Hidden "${target.name}". Remember to save changes.`
+        : `Ticket "${target.name}" is now visible. Remember to save changes.`,
+    );
   };
 
   const handleDelete = (ticketId: string, ticketName: string) => {
@@ -418,15 +437,14 @@ export function TicketsTab({ event }: TicketsTabProps) {
               <span className="text-xs font-semibold">Configured Ticket Options</span>
               <div className="flex h-8 items-center gap-2 rounded-md border border-border/70 bg-background px-3 text-xs font-medium text-foreground">
                 <Ticket className="size-3.5 text-primary" />
-                <span>
-                  {tickets.length} tier{tickets.length === 1 ? "" : "s"} (
-                  {tickets.filter((t) => t.type === "free").length} Free,{" "}
-                  {tickets.filter((t) => t.type === "commitment_fee").length} Commitment,{" "}
-                  {tickets.filter((t) => t.type === "paid").length} Paid)
+                <span className="truncate">
+                  {tickets.length} tier{tickets.length === 1 ? "" : "s"} &bull;{" "}
+                  {tickets.filter((t) => t.status !== "hidden").length} Visible,{" "}
+                  {tickets.filter((t) => t.status === "hidden").length} Hidden
                 </span>
               </div>
               <p className="text-[11px] text-muted-foreground leading-normal">
-                Attendees will select from these options upon clicking Register.
+                Attendees will select from visible options upon clicking Register.
               </p>
             </div>
 
@@ -440,6 +458,16 @@ export function TicketsTab({ event }: TicketsTabProps) {
               </div>
             </div>
           </div>
+
+          {tickets.length > 0 && tickets.every((t) => t.status === "hidden") && (
+            <div className="flex items-center gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-300">
+              <AlertCircle className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+              <span>
+                <strong>All ticket tiers are currently hidden.</strong> Attendees clicking &quot;Register&quot; will see
+                fallback general admission passes. Unhide at least one tier to present custom passes.
+              </span>
+            </div>
+          )}
 
           {/* Ticket Tier Cards Grid */}
           {tickets.length === 0 ? (
@@ -641,6 +669,23 @@ export function TicketsTab({ event }: TicketsTabProps) {
                           className="text-muted-foreground hover:text-foreground"
                         >
                           <Copy className="size-3.5" />
+                        </Button>
+                        <Button
+                          size="icon-xs"
+                          variant="ghost"
+                          onClick={() => handleToggleVisibility(t.id)}
+                          title={
+                            t.status === "hidden"
+                              ? "Show ticket (Make visible to attendees)"
+                              : "Hide ticket (Hide from attendees)"
+                          }
+                          aria-label={t.status === "hidden" ? `Show ${t.name}` : `Hide ${t.name}`}
+                          className={cn(
+                            "text-muted-foreground hover:text-foreground",
+                            t.status === "hidden" && "text-amber-600 hover:text-amber-500 dark:text-amber-400",
+                          )}
+                        >
+                          {t.status === "hidden" ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
                         </Button>
                         <Button
                           size="icon-xs"

@@ -335,6 +335,16 @@ export function getMerchandiseSalesStatus(
   item: EventMerchandiseItem,
   now: number = Date.now(),
 ): MerchandiseSalesStatus {
+  if (item.status === "hidden") {
+    return {
+      isOpen: false,
+      state: "ended",
+      badgeLabel: "Hidden",
+      badgeColor: "border-muted-foreground/30 bg-muted text-muted-foreground",
+      message: `The item "${item.name}" is hidden and not available for purchase.`,
+    };
+  }
+
   if (item.status === "draft") {
     return {
       isOpen: false,

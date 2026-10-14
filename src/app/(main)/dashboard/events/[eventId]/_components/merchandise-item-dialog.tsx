@@ -132,7 +132,7 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
   const [maxPerPerson, setMaxPerPerson] = useState<number | null>(null);
   const [variations, setVariations] = useState<MerchandiseVariation[]>([]);
   const [expandedVarDetails, setExpandedVarDetails] = useState<Record<number, boolean>>({});
-  const [status, setStatus] = useState<"active" | "draft" | "out_of_stock">("active");
+  const [status, setStatus] = useState<"active" | "draft" | "hidden" | "out_of_stock">("active");
 
   // Product Guideline fields (Text and/or Image, e.g. T-Shirt Size Guideline)
   const [guidelineTitle, setGuidelineTitle] = useState("");
@@ -615,13 +615,17 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
 
               <div className="space-y-1.5">
                 <Label htmlFor="merch-status">Listing Status</Label>
-                <Select value={status} onValueChange={(val: "active" | "draft" | "out_of_stock") => setStatus(val)}>
+                <Select
+                  value={status}
+                  onValueChange={(val: "active" | "draft" | "hidden" | "out_of_stock") => setStatus(val)}
+                >
                   <SelectTrigger id="merch-status">
                     <SelectValue placeholder="Select status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="active">Active (Available)</SelectItem>
-                    <SelectItem value="draft">Draft (Hidden)</SelectItem>
+                    <SelectItem value="active">Active (Available for purchase)</SelectItem>
+                    <SelectItem value="hidden">Hidden (Organizer view only)</SelectItem>
+                    <SelectItem value="draft">Draft (Inactive)</SelectItem>
                     <SelectItem value="out_of_stock">Out of Stock</SelectItem>
                   </SelectContent>
                 </Select>

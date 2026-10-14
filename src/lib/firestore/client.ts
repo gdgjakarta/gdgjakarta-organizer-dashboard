@@ -1404,6 +1404,9 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
     if (!isWaitlisted && registration.ticket_id && eventData.tickets) {
       const matchingTicket = eventData.tickets.find((t) => t.id === registration.ticket_id);
       if (matchingTicket) {
+        if (matchingTicket.status === "hidden") {
+          throw new Error(`The ticket tier "${matchingTicket.name}" is not open for registration.`);
+        }
         if (matchingTicket.status === "sold_out") {
           throw new Error(`The ticket tier "${matchingTicket.name}" is sold out.`);
         }
@@ -1438,6 +1441,9 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
     if (!isWaitlisted && registration.bundle_id && eventData.bundles) {
       const matchingBundle = eventData.bundles.find((b) => b.id === registration.bundle_id);
       if (matchingBundle) {
+        if (matchingBundle.status === "hidden") {
+          throw new Error(`The bundling package "${matchingBundle.name}" is not open for registration.`);
+        }
         if (matchingBundle.status === "sold_out") {
           throw new Error(`The bundling package "${matchingBundle.name}" is sold out.`);
         }
@@ -1476,7 +1482,7 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
           if (matchingMerch.status === "out_of_stock") {
             throw new Error(`The merchandise item "${matchingMerch.name}" is out of stock.`);
           }
-          if (matchingMerch.status === "draft") {
+          if (matchingMerch.status === "draft" || matchingMerch.status === "hidden") {
             throw new Error(`The merchandise item "${matchingMerch.name}" is currently not available.`);
           }
           if (matchingMerch.sales_start_date && matchingMerch.sales_start_date.trim() !== "") {

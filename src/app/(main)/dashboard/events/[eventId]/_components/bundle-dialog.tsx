@@ -88,8 +88,8 @@ export function BundleDialog({
 
   // Available tickets
   const activeTickets = useMemo(() => {
-    return eventTickets.filter((t) => t.status !== "hidden");
-  }, [eventTickets]);
+    return eventTickets.filter((t) => t.status !== "hidden" || t.id === bundle?.ticket_id);
+  }, [eventTickets, bundle?.ticket_id]);
 
   useEffect(() => {
     if (!open) return;
@@ -317,7 +317,10 @@ export function BundleDialog({
               {eventTickets.map((t) => (
                 <SelectItem key={t.id} value={t.id}>
                   <div className="flex items-center justify-between gap-4">
-                    <span className="font-medium">{t.name}</span>
+                    <span className="font-medium">
+                      {t.name}
+                      {t.status === "hidden" && " (Hidden)"}
+                    </span>
                     <span className="text-muted-foreground text-xs">
                       {t.type === "free" ? "Free" : `Rp ${(t.price || 0).toLocaleString("id-ID")}`}
                     </span>
@@ -410,7 +413,12 @@ export function BundleDialog({
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium text-foreground text-xs sm:text-sm">{item.name}</p>
+                  <p className="truncate font-medium text-foreground text-xs sm:text-sm">
+                    {item.name}
+                    {(item.status === "hidden" || item.status === "draft") && (
+                      <span className="ml-1.5 font-normal text-[10px] text-muted-foreground">(Hidden)</span>
+                    )}
+                  </p>
                   <p className="text-[11px] text-muted-foreground">
                     {item.is_free ? "Free Perk" : `Rp ${item.price.toLocaleString("id-ID")}`}
                     {item.variations?.length ? ` • ${item.variations.map((v) => v.name).join(", ")}` : ""}

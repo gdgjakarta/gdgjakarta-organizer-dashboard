@@ -451,7 +451,7 @@ export function EventRegistrationModal({
   const hasTickets = availableTickets.length > 0;
 
   const availableMerchandise = useMemo(() => {
-    return (eventConfig.merchandise ?? []).filter((m) => m.status === "active");
+    return (eventConfig.merchandise ?? []).filter((m) => m.status !== "hidden" && m.status !== "draft");
   }, [eventConfig.merchandise]);
   const hasMerchandise = availableMerchandise.length > 0;
 

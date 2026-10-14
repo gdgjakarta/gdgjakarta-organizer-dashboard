@@ -2,7 +2,21 @@
 
 import { useEffect, useState, useTransition } from "react";
 
-import { Clock, Copy, CreditCard, Edit2, Package, PackageOpen, Plus, Ruler, Sparkles, Tag, Trash2 } from "lucide-react";
+import {
+  Clock,
+  Copy,
+  CreditCard,
+  Edit2,
+  Eye,
+  EyeOff,
+  Package,
+  PackageOpen,
+  Plus,
+  Ruler,
+  Sparkles,
+  Tag,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { FloatingSaveBar } from "@/app/(main)/dashboard/_components/floating-save-bar";
@@ -43,6 +57,13 @@ function getSalesWindowSummary(salesStatus: ReturnType<typeof getMerchandiseSale
     return `Sales until ${salesStatus.formattedEnd}`;
   }
   return "Sales Scheduled";
+}
+
+function getMerchandiseStatusBadgeLabel(status?: "active" | "draft" | "hidden" | "out_of_stock"): string {
+  if (status === "hidden") return "Hidden";
+  if (status === "draft") return "Draft";
+  if (status === "out_of_stock") return "Out of Stock";
+  return "Active";
 }
 
 export function MerchandiseTab({ event }: MerchandiseTabProps) {
@@ -103,6 +124,24 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
     setItems((prev) => [...prev, cloned]);
     setIsDirty(true);
     toast.success(`Duplicated "${item.name}"`);
+  };
+
+  const handleToggleVisibility = (itemId: string) => {
+    const target = items.find((i) => String(i.id) === String(itemId));
+    if (!target) return;
+    const willBeHidden = target.status !== "hidden" && target.status !== "draft";
+    const nextStatus = willBeHidden ? "hidden" : "active";
+    setItems((prev) =>
+      prev.map((i) =>
+        String(i.id) === String(itemId) ? { ...i, status: nextStatus, updated_at: new Date().toISOString() } : i,
+      ),
+    );
+    setIsDirty(true);
+    toast.success(
+      willBeHidden
+        ? `Hidden "${target.name}". Remember to save changes.`
+        : `Merchandise "${target.name}" is now visible. Remember to save changes.`,
+    );
   };
 
   const handleDelete = (itemId: string, itemName: string) => {
@@ -230,9 +269,10 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
               <span className="font-semibold text-xs">Configured Swag & Merchandise</span>
               <div className="flex h-8 items-center gap-2 rounded-md border border-border/70 bg-background px-3 font-medium text-foreground text-xs">
                 <Package className="size-3.5 text-primary" />
-                <span>
-                  {items.length} item{items.length === 1 ? "" : "s"} ({items.filter((i) => i.is_free).length} Free,{" "}
-                  {items.filter((i) => !i.is_free).length} Paid)
+                <span className="truncate">
+                  {items.length} item{items.length === 1 ? "" : "s"} &bull;{" "}
+                  {items.filter((i) => i.status !== "hidden" && i.status !== "draft").length} Visible,{" "}
+                  {items.filter((i) => i.status === "hidden" || i.status === "draft").length} Hidden
                 </span>
               </div>
               <p className="text-[11px] text-muted-foreground leading-normal">
@@ -274,7 +314,7 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
                     key={item.id}
                     className={cn(
                       "group flex flex-col justify-between overflow-hidden rounded-xl border bg-card text-card-foreground shadow-xs transition-all hover:border-primary/50 hover:shadow-md",
-                      item.status === "draft" && "border-dashed opacity-75",
+                      (item.status === "draft" || item.status === "hidden") && "border-dashed opacity-60 bg-muted/20",
                     )}
                   >
                     {/* Image & Price Header */}
@@ -329,10 +369,11 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
                             className={cn(
                               "bg-background/95 font-medium text-[10px] backdrop-blur-md",
                               item.status === "draft" && "border-amber-500/30 text-amber-600",
+                              item.status === "hidden" && "border-muted-foreground/30 bg-muted text-muted-foreground",
                               item.status === "out_of_stock" && "border-destructive/30 text-destructive",
                             )}
                           >
-                            {item.status === "draft" ? "Draft" : "Out of Stock"}
+                            {getMerchandiseStatusBadgeLabel(item.status)}
                           </Badge>
                         </div>
                       ) : (
@@ -452,6 +493,32 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
                             className="text-muted-foreground hover:text-foreground"
                           >
                             <Copy className="size-3.5" />
+                          </Button>
+                          <Button
+                            size="icon-xs"
+                            variant="ghost"
+                            onClick={() => handleToggleVisibility(item.id)}
+                            title={
+                              item.status === "hidden" || item.status === "draft"
+                                ? "Show merchandise (Make visible to attendees)"
+                                : "Hide merchandise (Hide from attendees)"
+                            }
+                            aria-label={
+                              item.status === "hidden" || item.status === "draft"
+                                ? `Show ${item.name}`
+                                : `Hide ${item.name}`
+                            }
+                            className={cn(
+                              "text-muted-foreground hover:text-foreground",
+                              (item.status === "hidden" || item.status === "draft") &&
+                                "text-amber-600 hover:text-amber-500 dark:text-amber-400",
+                            )}
+                          >
+                            {item.status === "hidden" || item.status === "draft" ? (
+                              <EyeOff className="size-3.5" />
+                            ) : (
+                              <Eye className="size-3.5" />
+                            )}
                           </Button>
                           <Button
                             size="icon-xs"
