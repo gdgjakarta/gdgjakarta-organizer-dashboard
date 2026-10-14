@@ -1462,7 +1462,13 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   };
 
   const handleApproveAttendee = async (registration: FirestoreRegistration) => {
-    if (registration.status === "approved") {
+    const effectiveStatus = getEffectiveRegistrationStatus(registration, currentEvent);
+    if (
+      registration.status === "approved" ||
+      effectiveStatus === "approved" ||
+      effectiveStatus === "paid_and_registered" ||
+      effectiveStatus === "waiting_for_payment"
+    ) {
       return;
     }
 
@@ -1815,9 +1821,18 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
 
   const handleBatchApprove = async () => {
     if (selectedIds.size === 0) return;
-    const toApprove = registrationsList.filter((r) => selectedIds.has(r.id) && r.status !== "approved");
+    const toApprove = registrationsList.filter((r) => {
+      if (!selectedIds.has(r.id)) return false;
+      const effective = getEffectiveRegistrationStatus(r, currentEvent);
+      return (
+        r.status !== "approved" &&
+        effective !== "approved" &&
+        effective !== "paid_and_registered" &&
+        effective !== "waiting_for_payment"
+      );
+    });
     if (toApprove.length === 0) {
-      toast.info("All selected attendees are already approved.");
+      toast.info("All selected attendees are already approved or waiting for payment.");
       return;
     }
 
@@ -3388,7 +3403,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                     if (rawStatus === "approved" || rawStatus === "paid_and_registered") {
                       approveTitle = rawStatus === "paid_and_registered" ? "Paid & Registered" : "Approved";
                     } else if (rawStatus === "waiting_for_payment") {
-                      approveTitle = "Waiting for Payment";
+                      approveTitle = "Waiting for payment (Disabled until expired)";
                     } else if (rawStatus === "expired") {
                       approveTitle = "Payment Expired (Click to regenerate payment link)";
                     } else if (approvingRegistrationId === reg.id) {
@@ -3702,6 +3717,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                       rawStatus === "approved" || rawStatus === "paid_and_registered"
                                         ? "cursor-default bg-emerald-600 text-white opacity-90 shadow-xs hover:bg-emerald-600"
                                         : "text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700",
+                                      rawStatus === "waiting_for_payment" &&
+                                        "disabled:pointer-events-auto disabled:cursor-not-allowed",
                                     )}
                                     title={approveTitle}
                                     onClick={() => handleApproveAttendee(reg)}
@@ -3709,7 +3726,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                       isPending ||
                                       approvingRegistrationId === reg.id ||
                                       rawStatus === "approved" ||
-                                      rawStatus === "paid_and_registered"
+                                      rawStatus === "paid_and_registered" ||
+                                      rawStatus === "waiting_for_payment"
                                     }
                                   >
                                     {approvingRegistrationId === reg.id ? (

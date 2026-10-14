@@ -44,9 +44,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import {
+  getEffectiveRegistrationStatus,
   getRegistrationPaymentDeadline,
   isEventCurationMode,
-  isRegistrationPaymentOverdue,
 } from "@/lib/events/payment-deadline";
 import { DEFAULT_COMBINED_QUESTIONS } from "@/lib/events/registration-defaults";
 import type { CustomQuestion, FirestoreEvent, FirestoreRegistration, RegistrationStatus } from "@/lib/firestore/types";
@@ -351,7 +351,8 @@ export function ApplicantDetailDialog({
   if (!registration) return null;
 
   const deadlineInfo = getRegistrationPaymentDeadline(registration, event);
-  const rawStatus = (registration.status as string).toLowerCase().trim();
+  const effectiveStatus = getEffectiveRegistrationStatus(registration, event);
+  const rawStatus = ((effectiveStatus as string) || "").toLowerCase().trim();
   const statusMeta =
     STATUS_VARIANTS[rawStatus as RegistrationStatus] ||
     (rawStatus === "confirmed" || rawStatus === "registered" ? STATUS_VARIANTS.approved : STATUS_VARIANTS.pending);
@@ -1248,38 +1249,58 @@ export function ApplicantDetailDialog({
                   )}
 
                   {isCuration &&
-                    (registration.status === "approved" ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled
-                        className="cursor-default border-emerald-500/30 bg-emerald-500/10 text-emerald-600 text-xs dark:text-emerald-400"
-                      >
-                        <CheckCircle className="mr-1.5 size-3.5" />
-                        Approved
-                      </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        className="bg-emerald-600 text-white text-xs shadow-xs hover:bg-emerald-700"
-                        disabled={isActionBlocked}
-                        onClick={() => {
-                          if (onApprove) {
-                            onApprove(registration);
-                          } else {
-                            onStatusChange(registration.id, "approved");
-                            onClose();
-                          }
-                        }}
-                      >
-                        {isApproving ? (
-                          <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                        ) : (
+                    (() => {
+                      let approveButtonText = "Approve Applicant";
+                      if (isApproving) {
+                        approveButtonText = "Approving...";
+                      } else if (rawStatus === "waiting_for_payment") {
+                        approveButtonText = "Waiting for Payment";
+                      } else if (rawStatus === "expired") {
+                        approveButtonText = "Re-approve Applicant";
+                      }
+
+                      return registration.status === "approved" ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled
+                          className="cursor-default border-emerald-500/30 bg-emerald-500/10 text-emerald-600 text-xs dark:text-emerald-400"
+                        >
                           <CheckCircle className="mr-1.5 size-3.5" />
-                        )}
-                        {isApproving ? "Approving..." : "Approve Applicant"}
-                      </Button>
-                    ))}
+                          Approved
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          className={cn(
+                            "bg-emerald-600 text-white text-xs shadow-xs hover:bg-emerald-700",
+                            rawStatus === "waiting_for_payment" &&
+                              "disabled:pointer-events-auto disabled:cursor-not-allowed",
+                          )}
+                          disabled={isActionBlocked || rawStatus === "waiting_for_payment"}
+                          title={
+                            rawStatus === "waiting_for_payment"
+                              ? "Waiting for payment (Disabled until expired)"
+                              : undefined
+                          }
+                          onClick={() => {
+                            if (onApprove) {
+                              onApprove(registration);
+                            } else {
+                              onStatusChange(registration.id, "approved");
+                              onClose();
+                            }
+                          }}
+                        >
+                          {isApproving ? (
+                            <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                          ) : (
+                            <CheckCircle className="mr-1.5 size-3.5" />
+                          )}
+                          {approveButtonText}
+                        </Button>
+                      );
+                    })()}
 
                   <Button size="sm" variant="secondary" className="text-xs" onClick={onClose}>
                     Close
