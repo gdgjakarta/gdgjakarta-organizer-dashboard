@@ -73,8 +73,9 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
     () => buildUnifiedAgenda(event.agenda, event.speakers, firestoreSessions),
     [event.agenda, event.speakers, firestoreSessions],
   );
-  const hasAgenda = unifiedAgenda.totalItemsCount > 0;
-  const agendaBadgeCount = unifiedAgenda.totalItemsCount;
+  const hasAgenda = unifiedAgenda.sessionGroups.length > 0;
+  const agendaBadgeCount =
+    unifiedAgenda.totalItemsCount > 0 ? unifiedAgenda.totalItemsCount : unifiedAgenda.sessionGroups.length;
 
   // Post-Event Recap & Media
   const highlightVideoUrl = firestoreEvent?.highlight_video_url ?? event.highlight_video_url ?? event.video_url;

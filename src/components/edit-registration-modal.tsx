@@ -446,7 +446,7 @@ export function EditRegistrationModal({
         <div className="space-y-0.5">
           <p className="font-semibold">Awaiting Payment Confirmation</p>
           <p className="text-[11px] leading-relaxed opacity-90">
-            You can still update your application answers and session track below while waiting for payment. Ticket and
+            You can still update your application answers and session below while waiting for payment. Ticket and
             merchandise selections are locked. If you wish to change your ticket or merchandise, please cancel your RSVP
             and re-register.
           </p>
@@ -460,7 +460,7 @@ export function EditRegistrationModal({
         <div className="space-y-0.5">
           <p className="font-semibold">Application Pending Organizer Review</p>
           <p className="text-[11px] leading-relaxed opacity-90">
-            You can freely update your selected track and form answers below before the organizing committee finalizes
+            You can freely update your selected session and form answers below before the organizing committee finalizes
             attendee approvals.
           </p>
         </div>
@@ -704,7 +704,7 @@ export function EditRegistrationModal({
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
                         <Layers className="size-4 text-primary" />
-                        <h4 className="font-semibold text-foreground text-sm">Assigned Session Track</h4>
+                        <h4 className="font-semibold text-foreground text-sm">Assigned Session</h4>
                         <Badge variant="secondary" className="text-[10px] uppercase tracking-wider">
                           Confirmed
                         </Badge>
@@ -983,9 +983,9 @@ export function EditRegistrationModal({
                     <div className="flex items-center gap-2">
                       <Layers className="size-4 text-primary" />
                       <div>
-                        <h4 className="font-semibold text-foreground text-sm">Select Session / Track</h4>
+                        <h4 className="font-semibold text-foreground text-sm">Select Session</h4>
                         <p className="text-[11px] text-muted-foreground">
-                          Choose your preferred participation track for this event.
+                          Choose your preferred session for this event.
                         </p>
                       </div>
                     </div>

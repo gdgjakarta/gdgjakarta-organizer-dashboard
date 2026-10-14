@@ -2400,11 +2400,11 @@ export function EventRegistrationModal({
                       <div className="space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
                         <div className="flex items-center gap-2">
                           <Layers className="size-4 text-primary" />
-                          <h3 className="font-semibold text-foreground text-sm">Choose Your Session Track</h3>
+                          <h3 className="font-semibold text-foreground text-sm">Choose Your Session</h3>
                           <span className="text-destructive">*</span>
                         </div>
                         <p className="text-muted-foreground text-xs">
-                          This event has limited capacity per session track. Please select the track you plan to attend.
+                          This event has limited capacity per session. Please select the session you plan to attend.
                         </p>
 
                         <RadioGroup
@@ -3603,7 +3603,7 @@ export function EventRegistrationModal({
                             <span className="flex items-center gap-1">
                               <Layers className="size-3 text-primary" />
                               <span>
-                                Track: <strong className="text-foreground">{selectedSession.title}</strong>
+                                Session: <strong className="text-foreground">{selectedSession.title}</strong>
                               </span>
                             </span>
                           )}

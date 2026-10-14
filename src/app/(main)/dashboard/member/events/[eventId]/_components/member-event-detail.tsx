@@ -753,9 +753,7 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
                   <Calendar className="size-4 text-primary" />
                   <CardTitle className="text-lg">Event Agenda & Sessions</CardTitle>
                 </div>
-                <CardDescription>
-                  Full event schedule, breakout tracks, speaker sessions, and presentation slides.
-                </CardDescription>
+                <CardDescription>Full event schedule, speaker sessions, and presentation slides.</CardDescription>
               </CardHeader>
               <CardContent>
                 <UnifiedAgendaTimeline

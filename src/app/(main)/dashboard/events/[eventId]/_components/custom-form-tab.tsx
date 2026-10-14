@@ -947,7 +947,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
                         </span>
                       )}
                     </div>
-                    {tmpl.sessions && <span className="font-mono text-[10px] text-muted-foreground">3 Tracks</span>}
+                    {tmpl.sessions && <span className="font-mono text-[10px] text-muted-foreground">3 Sessions</span>}
                   </div>
                   <span className="block hyphens-auto break-words font-semibold text-foreground text-xs leading-snug">
                     {tmpl.name}
@@ -1291,7 +1291,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
               <CardTitle className="text-lg">Event Sessions & Limited Capacities</CardTitle>
             </div>
             <CardDescription className="pt-1">
-              Split this event into concurrent or sequential sessions/tracks with independent attendee limits.
+              Split this event into sessions with independent attendee limits.
             </CardDescription>
           </div>
 
@@ -1312,7 +1312,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
               className="gap-1.5 self-start text-xs"
             >
               <Plus className="size-3.5" />
-              {showAddSession ? "Cancel" : "Add Session Track"}
+              {showAddSession ? "Cancel" : "Add Session"}
             </Button>
           </div>
         </CardHeader>
@@ -1321,7 +1321,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
           {/* Add Session Form Drawer/Box */}
           {showAddSession && (
             <div className="space-y-3 rounded-lg border border-primary/20 bg-primary/5 p-4">
-              <h4 className="font-semibold text-foreground text-sm">Create New Session Track</h4>
+              <h4 className="font-semibold text-foreground text-sm">Create New Session</h4>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <Field className="sm:col-span-2">
                   <FieldLabel>Session Title *</FieldLabel>
@@ -1378,7 +1378,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
                     onChange={(e) => setNewSession({ ...newSession, location_url: e.target.value })}
                   />
                   <p className="pt-0.5 text-[10px] text-muted-foreground">
-                    Direct Google Maps or venue directions link for attendees joining this specific session track.
+                    Direct Google Maps or venue directions link for attendees joining this specific session.
                   </p>
                 </Field>
 
