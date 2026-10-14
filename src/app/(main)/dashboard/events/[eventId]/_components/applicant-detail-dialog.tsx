@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 
 import Image from "next/image";
 
-import { format, parseISO } from "date-fns";
 import {
   Briefcase,
   Check,
@@ -43,6 +42,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { formatFirestoreDate } from "@/lib/date-utils";
 import {
   getEffectiveRegistrationStatus,
   getRegistrationPaymentDeadline,
@@ -357,12 +357,7 @@ export function ApplicantDetailDialog({
     STATUS_VARIANTS[rawStatus as RegistrationStatus] ||
     (rawStatus === "confirmed" || rawStatus === "registered" ? STATUS_VARIANTS.approved : STATUS_VARIANTS.pending);
 
-  let formattedDate = registration.registered_at;
-  try {
-    formattedDate = format(parseISO(registration.registered_at), "dd MMM yyyy, h:mm a");
-  } catch {
-    // Keep raw
-  }
+  const formattedDate = formatFirestoreDate(registration.registered_at, "dd MMM yyyy, h:mm a");
 
   const handleCopy = (text: string, labelText: string, key: string) => {
     void navigator.clipboard.writeText(text);
@@ -378,6 +373,21 @@ export function ApplicantDetailDialog({
       `Status: ${statusMeta.label}`,
       `Registered At: ${formattedDate}`,
     ];
+
+    const currentInvoice =
+      paymentLinkInfo?.invoiceNumber ||
+      registration.payment_invoice_number ||
+      (registration.answers?.payment_invoice_number as string | undefined) ||
+      (registration.answers?.invoice_number as string | undefined) ||
+      `INV-${registration.id}`;
+
+    if (currentInvoice) {
+      lines.push(`Invoice Number: ${currentInvoice}`);
+    }
+
+    if (registration.attendee_code || registration.bevy_attendee_id) {
+      lines.push(`Ticket Code: ${registration.attendee_code ?? `#${registration.bevy_attendee_id}`}`);
+    }
 
     if (registration.session_title || (registration.answers?.session_title as string)) {
       lines.push(`Session Track: ${registration.session_title ?? String(registration.answers?.session_title ?? "")}`);
@@ -643,6 +653,15 @@ export function ApplicantDetailDialog({
       (registration?.ticket_type === "commitment_fee" && (registration.ticket_price ?? 0) > 0),
   );
 
+  const invoiceNumber =
+    paymentLinkInfo?.invoiceNumber ||
+    registration?.payment_invoice_number ||
+    (registration?.answers?.payment_invoice_number as string | undefined) ||
+    (registration?.answers?.invoice_number as string | undefined) ||
+    (hasPayableItems || registration?.payment_amount ? `INV-${registration?.id}` : undefined);
+
+  const effectivePaymentUrl = paymentLinkInfo?.url || registration?.payment_url;
+
   return (
     <>
       <Dialog open={Boolean(registration)} onOpenChange={(open) => !open && onClose()}>
@@ -747,6 +766,73 @@ export function ApplicantDetailDialog({
                   >
                     {getTicketTierLabel(registration.ticket_type, registration.ticket_price)}
                   </Badge>
+                </div>
+              )}
+
+              {/* Invoice Number Reference */}
+              {Boolean(invoiceNumber) && (
+                <div className="flex items-center justify-between rounded-lg border border-border/80 bg-muted/30 px-3 py-2 text-xs">
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <FileText className="size-3.5 shrink-0 text-primary" />
+                    <span className="shrink-0 text-[11px] text-muted-foreground">Invoice:</span>
+                    <span className="truncate font-mono font-semibold text-[11px] text-foreground">
+                      {invoiceNumber}
+                    </span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    className="size-6 shrink-0 text-muted-foreground hover:text-foreground"
+                    title="Copy invoice number"
+                    onClick={() => handleCopy(invoiceNumber ?? "", "Invoice number", "invoice_number")}
+                  >
+                    {copiedKey === "invoice_number" ? (
+                      <Check className="size-3 text-emerald-600" />
+                    ) : (
+                      <Copy className="size-3" />
+                    )}
+                  </Button>
+                </div>
+              )}
+
+              {/* Bevy Ticket Code & Attendee ID */}
+              {Boolean(registration.attendee_code ?? registration.bevy_attendee_id) && (
+                <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <QrCode className="size-3.5 shrink-0 text-primary" />
+                    <span className="shrink-0 text-[11px] text-muted-foreground">Ticket Code:</span>
+                    <span className="truncate font-mono font-semibold text-[11px] text-primary">
+                      {registration.attendee_code ?? `#${registration.bevy_attendee_id}`}
+                    </span>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    {registration.bevy_attendee_id && (
+                      <Badge variant="secondary" className="px-1.5 py-0 font-mono text-[10px]">
+                        Bevy #{registration.bevy_attendee_id}
+                      </Badge>
+                    )}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-xs"
+                      className="size-6 text-muted-foreground hover:text-foreground"
+                      title="Copy ticket code"
+                      onClick={() =>
+                        handleCopy(
+                          registration.attendee_code ?? String(registration.bevy_attendee_id),
+                          "Ticket code",
+                          "ticket_code",
+                        )
+                      }
+                    >
+                      {copiedKey === "ticket_code" ? (
+                        <Check className="size-3 text-emerald-600" />
+                      ) : (
+                        <Copy className="size-3" />
+                      )}
+                    </Button>
+                  </div>
                 </div>
               )}
 
@@ -916,13 +1002,7 @@ export function ApplicantDetailDialog({
                   </div>
                   {registration.reviewed_at && (
                     <span className="shrink-0 text-[10px] text-muted-foreground">
-                      {(() => {
-                        try {
-                          return format(parseISO(registration.reviewed_at), "dd MMM, HH:mm");
-                        } catch {
-                          return registration.reviewed_at;
-                        }
-                      })()}
+                      {formatFirestoreDate(registration.reviewed_at, "dd MMM, HH:mm")}
                     </span>
                   )}
                 </div>
@@ -956,14 +1036,19 @@ export function ApplicantDetailDialog({
               </div>
             )}
 
-            {/* DOKU Payment Link Generated Banner */}
-            {paymentLinkInfo && (
+            {/* Active DOKU Payment Link Banner (Waiting for Payment) */}
+            {effectivePaymentUrl && rawStatus === "waiting_for_payment" && (
               <div className="mt-3 flex items-center justify-between rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs">
                 <div className="flex min-w-0 items-center gap-2">
                   <QrCode className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                  <span className="truncate font-semibold text-emerald-800 dark:text-emerald-300">
-                    DOKU Link: {paymentLinkInfo.invoiceNumber}
-                  </span>
+                  <div className="min-w-0 truncate">
+                    <span className="font-semibold text-emerald-800 dark:text-emerald-300">Payment Link Ready</span>
+                    {invoiceNumber && (
+                      <span className="ml-1.5 font-mono text-[11px] text-emerald-700/80 dark:text-emerald-400/80">
+                        ({invoiceNumber})
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">
                   <Button
@@ -972,7 +1057,7 @@ export function ApplicantDetailDialog({
                     variant="ghost"
                     className="h-6 px-2 text-[11px] text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300"
                     onClick={() => {
-                      void navigator.clipboard.writeText(paymentLinkInfo.url);
+                      void navigator.clipboard.writeText(effectivePaymentUrl);
                       toast.success("Payment URL copied to clipboard!");
                     }}
                   >
@@ -986,12 +1071,51 @@ export function ApplicantDetailDialog({
                     className="h-6 border-emerald-500/40 px-2 text-[11px] text-emerald-700 dark:text-emerald-300"
                     asChild
                   >
-                    <a href={paymentLinkInfo.url} target="_blank" rel="noopener noreferrer">
+                    <a href={effectivePaymentUrl} target="_blank" rel="noopener noreferrer">
                       <ExternalLink className="mr-1 size-3" />
                       Open
                     </a>
                   </Button>
                 </div>
+              </div>
+            )}
+
+            {/* Paid & Verified Banner */}
+            {(rawStatus === "paid_and_registered" || registration.payment_status === "paid") && (
+              <div className="mt-3 flex items-center justify-between rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs">
+                <div className="flex min-w-0 items-center gap-2">
+                  <CheckCircle className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                  <div className="min-w-0 truncate">
+                    <span className="font-semibold text-emerald-800 dark:text-emerald-300">
+                      Payment Received & Verified
+                    </span>
+                    {registration.payment_amount !== undefined && (
+                      <span className="ml-1.5 font-medium text-[11px] text-emerald-700/90 dark:text-emerald-400/90">
+                        • Rp {Number(registration.payment_amount).toLocaleString("id-ID")}
+                      </span>
+                    )}
+                    {Boolean(registration.payment_channel) && (
+                      <Badge
+                        variant="outline"
+                        className="ml-1.5 border-emerald-500/30 bg-background/50 text-[10px] text-emerald-700 dark:text-emerald-300"
+                      >
+                        {registration.payment_channel}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+                {invoiceNumber && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-2 font-mono text-[11px] text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300"
+                    onClick={() => handleCopy(invoiceNumber, "Invoice number", "invoice_banner")}
+                  >
+                    <Copy className="mr-1 size-3" />
+                    {invoiceNumber}
+                  </Button>
+                )}
               </div>
             )}
           </div>
@@ -1069,12 +1193,7 @@ export function ApplicantDetailDialog({
                         badgeClass: "border-muted bg-muted",
                         dotClass: "bg-muted-foreground",
                       };
-                      let logTime = log.changed_at;
-                      try {
-                        logTime = format(parseISO(log.changed_at), "dd MMM yyyy, HH:mm");
-                      } catch {
-                        // Keep raw
-                      }
+                      const logTime = formatFirestoreDate(log.changed_at, "dd MMM yyyy, HH:mm");
 
                       return (
                         <div

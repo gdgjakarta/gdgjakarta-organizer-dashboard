@@ -3,6 +3,7 @@
 import { ExternalLink, FileText, Image as ImageIcon } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { formatFirestoreDate, parseFirestoreDate } from "@/lib/date-utils";
 
 interface QuestionColumnValueCellProps {
   value: unknown;
@@ -11,6 +12,18 @@ interface QuestionColumnValueCellProps {
 export function QuestionColumnValueCell({ value }: QuestionColumnValueCellProps) {
   if (value === undefined || value === null || value === "") {
     return <span className="font-mono text-muted-foreground/40 text-xs">—</span>;
+  }
+
+  // Firestore Timestamp object
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    const parsed = parseFirestoreDate(value);
+    if (parsed && ("seconds" in value || "_seconds" in value || "toDate" in value)) {
+      return (
+        <span className="font-mono text-muted-foreground text-xs">
+          {formatFirestoreDate(parsed, "dd MMM yyyy, h:mm a")}
+        </span>
+      );
+    }
   }
 
   // Boolean

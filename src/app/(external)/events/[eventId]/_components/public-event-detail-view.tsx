@@ -102,7 +102,7 @@ export function PublicEventDetailView({ event, initialFirestoreEvent = null }: P
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
           {/* Main Content Column (Desktop 8 cols) */}
           <div className="space-y-6 lg:col-span-8">
-            <PublicEventHeader event={event} />
+            <PublicEventHeader event={event} firestoreEvent={firestoreEvent} />
 
             <PublicEventHero event={event} />
 

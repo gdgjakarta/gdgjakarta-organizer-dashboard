@@ -65,6 +65,7 @@ export function sanitizeFirestoreData<T>(data: T): T {
   return data;
 }
 
+import { parseFirestoreDate } from "@/lib/date-utils";
 import { generateBundleFriendVouchers } from "@/lib/events/bundle-voucher-generator";
 import { isRegistrationInSession } from "@/lib/events/capacity-validator";
 import {
@@ -72,6 +73,10 @@ import {
   DEFAULT_REGULAR_TICKET_NAME,
   ensureEventTickets,
 } from "@/lib/events/ticket-templates";
+
+import { normalizeEventDoc, normalizeRegistrationDoc } from "./normalization";
+
+export { normalizeEventDoc, normalizeRegistrationDoc };
 
 import type {
   AuditLogEntry,
@@ -105,16 +110,9 @@ export async function getFirestoreEvents(maxResults = 100): Promise<FirestoreEve
     const q = query(eventsRef, orderBy("start_date", "desc"), limit(maxResults));
     const snapshot = await getDocs(q);
 
-    return (
-      snapshot.docs.map((docSnap) => {
-        const data = docSnap.data() as FirestoreEvent;
-        return {
-          ...data,
-          id: docSnap.id,
-          tickets: ensureEventTickets(data.tickets),
-        };
-      }) as FirestoreEvent[]
-    ).filter((e) => !e.is_hidden && !(e as { hidden?: boolean }).hidden);
+    return snapshot.docs
+      .map((docSnap) => normalizeEventDoc(docSnap.data() as Record<string, unknown>, docSnap.id))
+      .filter((e) => !e.is_hidden && !(e as { hidden?: boolean }).hidden);
   } catch (error) {
     console.error("[Firestore] getFirestoreEvents error:", error);
     return [];
@@ -127,12 +125,7 @@ export async function getFirestoreEventById(eventId: string): Promise<FirestoreE
     const docRef = doc(db, "events", eventId);
     const snap = await getDoc(docRef);
     if (!snap.exists()) return null;
-    const data = snap.data() as FirestoreEvent;
-    return {
-      ...data,
-      id: snap.id,
-      tickets: ensureEventTickets(data.tickets),
-    };
+    return normalizeEventDoc(snap.data() as Record<string, unknown>, snap.id);
   } catch (error) {
     console.error(`[Firestore] getFirestoreEventById error for ${eventId}:`, error);
     return null;
@@ -1131,14 +1124,14 @@ export async function getEventRegistrations(eventId: string): Promise<FirestoreR
     const map = new Map<string, FirestoreRegistration>();
 
     for (const docSnap of snapshot.docs) {
-      map.set(docSnap.id, { id: docSnap.id, ...docSnap.data() } as FirestoreRegistration);
+      map.set(docSnap.id, normalizeRegistrationDoc(docSnap.data() as Record<string, unknown>, docSnap.id));
     }
 
     if (hasNum) {
       try {
         const snapNum = await getDocs(query(regRef, where("event_id", "==", numId)));
         for (const docSnap of snapNum.docs) {
-          map.set(docSnap.id, { id: docSnap.id, ...docSnap.data() } as FirestoreRegistration);
+          map.set(docSnap.id, normalizeRegistrationDoc(docSnap.data() as Record<string, unknown>, docSnap.id));
         }
       } catch {
         // Numeric query fallback ignored if index requires exact type
@@ -1147,8 +1140,8 @@ export async function getEventRegistrations(eventId: string): Promise<FirestoreR
 
     const list = Array.from(map.values());
     return list.sort((a, b) => {
-      const timeA = new Date(a.registered_at || 0).getTime();
-      const timeB = new Date(b.registered_at || 0).getTime();
+      const timeA = parseFirestoreDate(a.registered_at)?.getTime() ?? 0;
+      const timeB = parseFirestoreDate(b.registered_at)?.getTime() ?? 0;
       return timeB - timeA;
     });
   } catch (error) {
@@ -1181,14 +1174,13 @@ export function subscribeEventRegistrations(
     return onSnapshot(
       q,
       (snapshot) => {
-        const list = snapshot.docs.map((docSnap) => ({
-          id: docSnap.id,
-          ...docSnap.data(),
-        })) as FirestoreRegistration[];
+        const list = snapshot.docs.map((docSnap) =>
+          normalizeRegistrationDoc(docSnap.data() as Record<string, unknown>, docSnap.id),
+        );
 
         list.sort((a, b) => {
-          const timeA = new Date(a.registered_at || 0).getTime();
-          const timeB = new Date(b.registered_at || 0).getTime();
+          const timeA = parseFirestoreDate(a.registered_at)?.getTime() ?? 0;
+          const timeB = parseFirestoreDate(b.registered_at)?.getTime() ?? 0;
           return timeB - timeA;
         });
 
@@ -1220,22 +1212,20 @@ export async function getMemberRegistrations(
       const normalizedEmail = memberEmail.trim().toLowerCase();
       const q = query(regRef, where("member_email", "==", normalizedEmail));
       const snapshot = await getDocs(q);
-      registrations = snapshot.docs.map((docSnap) => ({
-        id: docSnap.id,
-        ...docSnap.data(),
-      })) as FirestoreRegistration[];
+      registrations = snapshot.docs.map((docSnap) =>
+        normalizeRegistrationDoc(docSnap.data() as Record<string, unknown>, docSnap.id),
+      );
     } else if (memberId) {
       const q = query(regRef, where("member_id", "==", memberId));
       const snapshot = await getDocs(q);
-      registrations = snapshot.docs.map((docSnap) => ({
-        id: docSnap.id,
-        ...docSnap.data(),
-      })) as FirestoreRegistration[];
+      registrations = snapshot.docs.map((docSnap) =>
+        normalizeRegistrationDoc(docSnap.data() as Record<string, unknown>, docSnap.id),
+      );
     }
 
     return registrations.sort((a, b) => {
-      const timeA = new Date(a.registered_at || 0).getTime();
-      const timeB = new Date(b.registered_at || 0).getTime();
+      const timeA = parseFirestoreDate(a.registered_at)?.getTime() ?? 0;
+      const timeB = parseFirestoreDate(b.registered_at)?.getTime() ?? 0;
       return timeB - timeA;
     });
   } catch (error) {
@@ -1260,7 +1250,7 @@ export async function checkExistingRegistration(
       const docId = `${eventIdStr}_${memberId}`;
       const directDoc = await getDoc(doc(db, "event_registrations", docId));
       if (directDoc.exists()) {
-        return { id: directDoc.id, ...directDoc.data() } as FirestoreRegistration;
+        return normalizeRegistrationDoc(directDoc.data() as Record<string, unknown>, directDoc.id);
       }
     }
 
@@ -1273,7 +1263,7 @@ export async function checkExistingRegistration(
       );
       const snap = await getDocs(memberQuery);
       if (!snap.empty) {
-        return { id: snap.docs[0].id, ...snap.docs[0].data() } as FirestoreRegistration;
+        return normalizeRegistrationDoc(snap.docs[0].data() as Record<string, unknown>, snap.docs[0].id);
       }
     }
 
@@ -1286,7 +1276,7 @@ export async function checkExistingRegistration(
       );
       const snap = await getDocs(emailQuery);
       if (!snap.empty) {
-        return { id: snap.docs[0].id, ...snap.docs[0].data() } as FirestoreRegistration;
+        return normalizeRegistrationDoc(snap.docs[0].data() as Record<string, unknown>, snap.docs[0].id);
       }
     }
 
@@ -1303,7 +1293,7 @@ export async function getRegistrationById(registrationId: string): Promise<Fires
     const docRef = doc(db, "event_registrations", registrationId);
     const snap = await getDoc(docRef);
     if (snap.exists()) {
-      return { id: snap.id, ...snap.data() } as FirestoreRegistration;
+      return normalizeRegistrationDoc(snap.data() as Record<string, unknown>, snap.id);
     }
   } catch (err) {
     console.warn(`[Firestore] getRegistrationById error for ${registrationId}:`, err);
@@ -2973,12 +2963,7 @@ export function subscribeFirestoreEventDoc(
     eventRef,
     (snap) => {
       if (snap.exists()) {
-        const data = snap.data() as FirestoreEvent;
-        onUpdate({
-          ...data,
-          id: snap.id,
-          tickets: ensureEventTickets(data.tickets),
-        });
+        onUpdate(normalizeEventDoc(snap.data() as Record<string, unknown>, snap.id));
       }
     },
     (err) => {

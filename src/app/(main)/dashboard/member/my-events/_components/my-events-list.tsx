@@ -5,7 +5,6 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { format, parseISO } from "date-fns";
 import {
   CalendarCheck,
   CheckCircle2,
@@ -39,6 +38,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { resolveEventAudience } from "@/lib/bevy/audience";
+import { formatFirestoreDate } from "@/lib/date-utils";
 import { extractEventImageUrl } from "@/lib/events/media-utils";
 import {
   getEffectiveRegistrationStatus,
@@ -436,15 +436,11 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
             (reg.answers?.session_title as string | undefined) ||
             (reg.session_id ? `Track ID: ${reg.session_id}` : null);
 
-          let formattedDate = ev?.start_date || reg.registered_at;
-          try {
-            if (ev?.start_date) {
-              formattedDate = format(parseISO(ev.start_date), "dd MMM yyyy • h:mm a");
-            } else if (reg.registered_at) {
-              formattedDate = format(parseISO(reg.registered_at), "dd MMM yyyy");
-            }
-          } catch {
-            // Keep raw string
+          let formattedDate = ev?.start_date
+            ? formatFirestoreDate(ev.start_date, "dd MMM yyyy • h:mm a", "")
+            : formatFirestoreDate(reg.registered_at, "dd MMM yyyy", "—");
+          if (!formattedDate && reg.registered_at) {
+            formattedDate = formatFirestoreDate(reg.registered_at, "dd MMM yyyy", "—");
           }
 
           const imageUrl = extractEventImageUrl(

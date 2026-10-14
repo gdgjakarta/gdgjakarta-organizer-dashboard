@@ -1,5 +1,6 @@
-import { format, parseISO } from "date-fns";
+import { format } from "date-fns";
 
+import { parseFirestoreDate } from "@/lib/date-utils";
 import { calculateRegistrationTotalAmount } from "@/lib/events/doku-payment";
 import type { FirestoreEvent, FirestoreRegistration, RegistrationStatus } from "@/lib/firestore/types";
 
@@ -111,31 +112,20 @@ export function getRegistrationPaymentDeadline(
 
   // 1. Check explicit payment_expired_datetime (from DOKU / Mayar checkout generation)
   if (reg.payment_expired_datetime) {
-    try {
-      const parsed =
-        typeof reg.payment_expired_datetime === "string"
-          ? parseISO(reg.payment_expired_datetime)
-          : new Date(reg.payment_expired_datetime);
-      if (!Number.isNaN(parsed.getTime())) {
-        deadlineDate = parsed;
-      }
-    } catch {
-      // Fall through to calculation
+    const parsed = parseFirestoreDate(reg.payment_expired_datetime);
+    if (parsed) {
+      deadlineDate = parsed;
     }
   }
 
   // 2. Fall back to event payment deadline minutes based on reviewed_at / registered_at / updated_at
   if (!deadlineDate) {
     const deadlineMinutes = getEventPaymentDeadlineMinutes(event);
-    const baseDateStr = reg.reviewed_at ?? reg.registered_at ?? reg.updated_at;
-    if (baseDateStr) {
-      try {
-        const baseDate = typeof baseDateStr === "string" ? parseISO(baseDateStr) : new Date(baseDateStr);
-        if (!Number.isNaN(baseDate.getTime())) {
-          deadlineDate = new Date(baseDate.getTime() + deadlineMinutes * 60 * 1000);
-        }
-      } catch {
-        // Fallback
+    const baseDateVal = reg.reviewed_at ?? reg.registered_at ?? reg.updated_at;
+    if (baseDateVal) {
+      const baseDate = parseFirestoreDate(baseDateVal);
+      if (baseDate) {
+        deadlineDate = new Date(baseDate.getTime() + deadlineMinutes * 60 * 1000);
       }
     }
   }

@@ -5,7 +5,6 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { format, parseISO } from "date-fns";
 import {
   ArrowLeft,
   Calendar,
@@ -42,6 +41,7 @@ import {
 import { getBevyLiveEventUrl, getBevyManageEventUrl } from "@/config/remote-config-utils";
 import { isExecutiveOrganizer } from "@/lib/auth-roles";
 import { resolveEventAudience } from "@/lib/bevy/audience";
+import { formatFirestoreDate } from "@/lib/date-utils";
 import { isEventCurationMode } from "@/lib/events/payment-deadline";
 import { triggerEventsSyncAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent } from "@/lib/firestore/types";
@@ -242,12 +242,7 @@ export function EventDetailHeader({
     });
   };
 
-  let formattedDate = event.start_date;
-  try {
-    formattedDate = format(parseISO(event.start_date), "EEEE, dd MMMM yyyy • h:mm a");
-  } catch {
-    // Keep raw string
-  }
+  const formattedDate = formatFirestoreDate(event.start_date, "EEEE, dd MMMM yyyy • h:mm a");
 
   const { isVirtual, isHybrid } = resolveEventAudience(event.audience_type, event.is_virtual);
   const liveBevyUrl = getBevyLiveEventUrl(event);

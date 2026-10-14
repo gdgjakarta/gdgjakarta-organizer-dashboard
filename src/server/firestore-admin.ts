@@ -1,7 +1,19 @@
-import { collection, doc, getDoc, getDocs, getFirestore, increment, query, updateDoc, where } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  getFirestore,
+  increment,
+  query,
+  setDoc,
+  updateDoc,
+  where,
+} from "firebase/firestore";
 
 import { app } from "@/config/firebase";
 import { buildApprovedAttendeePayload } from "@/lib/events/approved-attendee-webhook";
+import { normalizeEventDoc } from "@/lib/firestore/normalization";
 import type {
   FirestoreEvent,
   FirestoreRegistration,
@@ -81,6 +93,70 @@ function splitName(fullName: string): { firstName: string; lastName: string } {
 }
 
 /**
+ * Finds an event registration document by invoice number, checking:
+ * 1. Direct document ID (e.g. without "INV-" prefix or exact)
+ * 2. payment_invoice_number field
+ * 3. answers.invoice_number field
+ * 4. answers.payment_invoice_number field
+ * 5. top-level invoice_number field
+ */
+async function findRegistrationDocSnap(regCollection: ReturnType<typeof collection>, invoiceNumber: string) {
+  // 1. Direct document ID checks
+  const strippedId = invoiceNumber.replace(/^INV-/, "");
+  try {
+    const snap = await getDoc(doc(regCollection, strippedId));
+    if (snap.exists()) return snap;
+  } catch {
+    // Ignore and proceed to alternate lookup
+  }
+
+  try {
+    const snap = await getDoc(doc(regCollection, invoiceNumber));
+    if (snap.exists()) return snap;
+  } catch {
+    // Ignore and proceed to alternate lookup
+  }
+
+  // 2. Query payment_invoice_number
+  try {
+    const qPayment = query(regCollection, where("payment_invoice_number", "==", invoiceNumber));
+    const snapPayment = await getDocs(qPayment);
+    if (!snapPayment.empty) return snapPayment.docs[0];
+  } catch {
+    // Ignore and proceed to alternate lookup
+  }
+
+  // 3. Query answers.invoice_number
+  try {
+    const qAnswers = query(regCollection, where("answers.invoice_number", "==", invoiceNumber));
+    const snapAnswers = await getDocs(qAnswers);
+    if (!snapAnswers.empty) return snapAnswers.docs[0];
+  } catch {
+    // Ignore and proceed to alternate lookup
+  }
+
+  // 4. Query answers.payment_invoice_number
+  try {
+    const qAnswersPayment = query(regCollection, where("answers.payment_invoice_number", "==", invoiceNumber));
+    const snapAnswersPayment = await getDocs(qAnswersPayment);
+    if (!snapAnswersPayment.empty) return snapAnswersPayment.docs[0];
+  } catch {
+    // Ignore and proceed to alternate lookup
+  }
+
+  // 5. Query top-level invoice_number
+  try {
+    const qTop = query(regCollection, where("invoice_number", "==", invoiceNumber));
+    const snapTop = await getDocs(qTop);
+    if (!snapTop.empty) return snapTop.docs[0];
+  } catch {
+    // Ignore and proceed to alternate lookup
+  }
+
+  return null;
+}
+
+/**
  * Looks up an event registration in Firestore using the unique invoiceNumber.
  * Resolves event metadata and constructs the ApprovedAttendeeWebhookPayload.
  */
@@ -93,21 +169,7 @@ export async function getAttendeeByInvoiceNumber(rawInvoiceNumber: string): Prom
   const db = getFirestore(app);
   const regCollection = collection(db, "event_registrations");
 
-  // 1. Query registration document by answers.invoice_number
-  let targetDocSnap = null;
-  const qAnswers = query(regCollection, where("answers.invoice_number", "==", invoiceNumber));
-  const snapAnswers = await getDocs(qAnswers);
-
-  if (!snapAnswers.empty) {
-    targetDocSnap = snapAnswers.docs[0];
-  } else {
-    // Fallback: check top-level invoice_number or alternate key
-    const qTop = query(regCollection, where("invoice_number", "==", invoiceNumber));
-    const snapTop = await getDocs(qTop);
-    if (!snapTop.empty) {
-      targetDocSnap = snapTop.docs[0];
-    }
-  }
+  const targetDocSnap = await findRegistrationDocSnap(regCollection, invoiceNumber);
 
   if (!targetDocSnap) {
     return { success: false, error: `Registration with invoice number "${invoiceNumber}" was not found.` };
@@ -177,19 +239,7 @@ export async function updateRegistrationFromPayment(input: UpdateRegistrationFro
   const regCollection = collection(db, "event_registrations");
 
   // 1. Locate registration document
-  let targetDocSnap = null;
-  const qAnswers = query(regCollection, where("answers.invoice_number", "==", invoiceNumber));
-  const snapAnswers = await getDocs(qAnswers);
-
-  if (!snapAnswers.empty) {
-    targetDocSnap = snapAnswers.docs[0];
-  } else {
-    const qTop = query(regCollection, where("invoice_number", "==", invoiceNumber));
-    const snapTop = await getDocs(qTop);
-    if (!snapTop.empty) {
-      targetDocSnap = snapTop.docs[0];
-    }
-  }
+  const targetDocSnap = await findRegistrationDocSnap(regCollection, invoiceNumber);
 
   if (!targetDocSnap) {
     return { success: false, error: `Registration with invoice number "${invoiceNumber}" was not found.` };
@@ -235,9 +285,12 @@ export async function updateRegistrationFromPayment(input: UpdateRegistrationFro
   const updatePayload = sanitizePayload<Record<string, unknown>>({
     status: resolvedStatus,
     payment_status: input.errorReason ? "failed" : "paid",
+    payment_invoice_number: invoiceNumber,
     ...(input.amount !== undefined ? { payment_amount: input.amount } : {}),
+    ...(input.paymentChannel ? { payment_channel: input.paymentChannel } : {}),
+    ...(input.paidAt ? { paid_at: input.paidAt } : { paid_at: now }),
     reviewed_at: now,
-    reviewed_by_name: "DOKU Payment Automation",
+    reviewed_by_name: "DOKU Payment Automation (n8n)",
     ...(input.bevyAttendeeId ? { bevy_attendee_id: input.bevyAttendeeId } : {}),
     ...(input.attendeeCode ? { attendee_code: input.attendeeCode } : {}),
     answers: {
@@ -332,12 +385,46 @@ export async function getFirestoreEventByIdServer(eventId: string): Promise<Fire
     const eventRef = doc(db, "events", String(eventId));
     const snap = await getDoc(eventRef);
     if (!snap.exists()) return null;
-    return {
-      ...(snap.data() as FirestoreEvent),
-      id: snap.id,
-    };
+    return normalizeEventDoc(snap.data() as Record<string, unknown>, snap.id);
   } catch (err) {
     console.error(`[Firestore Server] getFirestoreEventByIdServer error for ${eventId}:`, err);
     return null;
+  }
+}
+
+/**
+ * Updates an event's short link properties in Firestore on the server.
+ */
+export async function updateFirestoreEventShortLinksServer(
+  eventId: string,
+  links: {
+    liveShortURL?: string;
+    liveShortPath?: string;
+    bevyShortURL?: string;
+    bevyShortPath?: string;
+  },
+): Promise<void> {
+  try {
+    const db = getFirestore(app);
+    const eventRef = doc(db, "events", String(eventId));
+    const payload: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
+    if (links.liveShortURL) {
+      payload.short_url = links.liveShortURL;
+      payload.live_short_url = links.liveShortURL;
+    }
+    if (links.liveShortPath) {
+      payload.live_short_path = links.liveShortPath;
+    }
+    if (links.bevyShortURL) {
+      payload.bevy_short_url = links.bevyShortURL;
+    }
+    if (links.bevyShortPath) {
+      payload.bevy_short_path = links.bevyShortPath;
+    }
+    await setDoc(eventRef, payload, { merge: true });
+  } catch (err) {
+    console.warn(`[Firestore Server] updateFirestoreEventShortLinksServer error for ${eventId}:`, err);
   }
 }

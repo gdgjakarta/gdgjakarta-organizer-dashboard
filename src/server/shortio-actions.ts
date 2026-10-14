@@ -7,6 +7,7 @@ import {
   createShortFolder,
   createShortLink,
   deleteShortLink,
+  findShortLinkByOriginalUrl,
   getEventShortLinks,
   listAllShortLinks,
   listShortFolders,
@@ -171,6 +172,99 @@ export async function deleteShortLinkAction(linkId: string): Promise<{ success: 
   }
 }
 
+/**
+ * Public action to retrieve short links for an event (Live Page and Bevy Page).
+ * Accessible without organizer session so public event pages can show the short link.
+ */
+export async function getPublicEventShortLinksAction(params: {
+  eventId: string;
+  liveUrl?: string;
+  bevyUrl?: string;
+}): Promise<{ success: boolean; data?: EventShortLinksStatus; error?: string }> {
+  try {
+    const { getFirestoreEventByIdServer, updateFirestoreEventShortLinksServer } = await import(
+      "@/server/firestore-admin"
+    );
+    const eventDoc = await getFirestoreEventByIdServer(params.eventId);
+
+    let liveShortLink: ShortLinkItem | null = null;
+    let bevyShortLink: ShortLinkItem | null = null;
+
+    const firestoreLiveShortUrl = eventDoc?.live_short_url ?? eventDoc?.short_url;
+    if (firestoreLiveShortUrl) {
+      const shortURL = firestoreLiveShortUrl;
+      const path = eventDoc?.live_short_path ?? shortURL.split("/").filter(Boolean).pop() ?? "";
+      liveShortLink = {
+        id: "",
+        idString: "",
+        shortURL,
+        secureShortURL: shortURL,
+        originalURL: params.liveUrl ?? `https://gdgjakarta.org/events/${params.eventId}`,
+        path,
+        createdAt: eventDoc?.updated_at ?? new Date().toISOString(),
+      };
+    }
+
+    if (eventDoc?.bevy_short_url) {
+      const shortURL = eventDoc.bevy_short_url;
+      const path = eventDoc.bevy_short_path ?? shortURL.split("/").filter(Boolean).pop() ?? "";
+      bevyShortLink = {
+        id: "",
+        idString: "",
+        shortURL,
+        secureShortURL: shortURL,
+        originalURL: params.bevyUrl ?? "",
+        path,
+        createdAt: eventDoc.updated_at ?? new Date().toISOString(),
+      };
+    }
+
+    // If live short link was already found from Firestore and bevy short link not strictly requested or found, return early
+    if (liveShortLink && (!params.bevyUrl || bevyShortLink)) {
+      return { success: true, data: { liveShortLink, bevyShortLink } };
+    }
+
+    // Otherwise, check Short.io directly
+    const canonicalLiveUrl = `https://gdgjakarta.org/events/${params.eventId}`;
+    const [fetchedLive, fetchedBevy] = await Promise.all([
+      !liveShortLink
+        ? (params.liveUrl ? findShortLinkByOriginalUrl(params.liveUrl) : Promise.resolve(null)).then((res) => {
+            if (res) return res;
+            if (params.liveUrl !== canonicalLiveUrl) {
+              return findShortLinkByOriginalUrl(canonicalLiveUrl);
+            }
+            return null;
+          })
+        : Promise.resolve(liveShortLink),
+      !bevyShortLink && params.bevyUrl ? findShortLinkByOriginalUrl(params.bevyUrl) : Promise.resolve(bevyShortLink),
+    ]);
+
+    const finalLive = liveShortLink ?? fetchedLive;
+    const finalBevy = bevyShortLink ?? fetchedBevy;
+
+    // Cache newly discovered links to Firestore in background
+    if ((fetchedLive && !eventDoc?.live_short_url) || (fetchedBevy && !eventDoc?.bevy_short_url)) {
+      void updateFirestoreEventShortLinksServer(params.eventId, {
+        liveShortURL: fetchedLive?.shortURL,
+        liveShortPath: fetchedLive?.path,
+        bevyShortURL: fetchedBevy?.shortURL,
+        bevyShortPath: fetchedBevy?.path,
+      });
+    }
+
+    return {
+      success: true,
+      data: {
+        liveShortLink: finalLive,
+        bevyShortLink: finalBevy,
+      },
+    };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to fetch public short links";
+    return { success: false, error: message };
+  }
+}
+
 export async function getEventShortLinksAction(params: {
   liveUrl?: string;
   bevyUrl?: string;
@@ -251,9 +345,23 @@ export async function generateEventShortLinkAction(params: {
       return { success: false, error: "Failed to generate event short link" };
     }
 
+    // Cache to Firestore
+    try {
+      const { updateFirestoreEventShortLinksServer } = await import("@/server/firestore-admin");
+      await updateFirestoreEventShortLinksServer(params.eventId, {
+        liveShortURL: params.type === "live" ? link.shortURL : undefined,
+        liveShortPath: params.type === "live" ? link.path : undefined,
+        bevyShortURL: params.type === "bevy" ? link.shortURL : undefined,
+        bevyShortPath: params.type === "bevy" ? link.path : undefined,
+      });
+    } catch (saveErr) {
+      console.warn("[generateEventShortLinkAction] Failed to cache short link in Firestore:", saveErr);
+    }
+
     revalidatePath("/dashboard/links");
     revalidatePath(`/dashboard/events/${params.eventId}`);
     revalidatePath("/dashboard/events");
+    revalidatePath(`/events/${params.eventId}`);
 
     return { success: true, data: link };
   } catch (err) {

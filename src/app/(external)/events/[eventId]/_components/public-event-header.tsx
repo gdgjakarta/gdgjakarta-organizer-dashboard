@@ -5,15 +5,35 @@ import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 
-import { ArrowLeft, Check, Copy, ExternalLink, EyeOff, FlaskConical, Globe, MapPin, Radio, Share2 } from "lucide-react";
+import {
+  ArrowLeft,
+  Check,
+  ChevronDown,
+  Copy,
+  ExternalLink,
+  EyeOff,
+  FlaskConical,
+  Globe,
+  Link2,
+  MapPin,
+  Radio,
+  Share2,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { getBevyLiveEventUrl } from "@/config/remote-config-utils";
 import { resolveEventAudience } from "@/lib/bevy/audience";
 import type { BevyEvent } from "@/lib/bevy/types";
+import type { FirestoreEvent } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
 function isSelfChapter(title?: string): boolean {
@@ -93,10 +113,11 @@ function getCohostedChapters(event: BevyEvent): Array<{
 
 interface PublicEventHeaderProps {
   event: BevyEvent;
+  firestoreEvent?: FirestoreEvent | null;
 }
 
-export function PublicEventHeader({ event }: PublicEventHeaderProps) {
-  const [copied, setCopied] = useState(false);
+export function PublicEventHeader({ event, firestoreEvent }: PublicEventHeaderProps) {
+  const [copiedType, setCopiedType] = useState<"short" | "full" | null>(null);
   const { isVirtual, isHybrid } = resolveEventAudience(event.audience_type, event.is_virtual_event);
 
   const isHidden = Boolean(event.is_hidden ?? (event as { hidden?: boolean }).hidden);
@@ -105,18 +126,30 @@ export function PublicEventHeader({ event }: PublicEventHeaderProps) {
   const cohostedChapters = getCohostedChapters(event);
   const thumbnailImageUrl = event.cropped_picture_url ?? event.picture?.url ?? event.picture?.thumbnail_url;
 
-  const handleCopyLink = () => {
+  const shortUrl = firestoreEvent?.live_short_url ?? firestoreEvent?.short_url;
+  const shortPath =
+    firestoreEvent?.live_short_path ?? (shortUrl ? shortUrl.split("/").filter(Boolean).pop() : undefined);
+
+  let copyHeaderLabel = "Copy Link";
+  if (copiedType === "short") {
+    copyHeaderLabel = "Short Link Copied!";
+  } else if (copiedType) {
+    copyHeaderLabel = "Event Link Copied!";
+  }
+
+  const handleCopyLink = (type: "short" | "full" = shortUrl ? "short" : "full") => {
     if (typeof window !== "undefined") {
-      void navigator.clipboard.writeText(window.location.href);
-      setCopied(true);
-      toast.success("Event link copied to clipboard");
-      setTimeout(() => setCopied(false), 2000);
+      const urlToCopy = type === "short" && shortUrl ? shortUrl : window.location.href;
+      void navigator.clipboard.writeText(urlToCopy);
+      setCopiedType(type);
+      toast.success(type === "short" && shortUrl ? `Short link copied: ${shortUrl}` : "Event link copied to clipboard");
+      setTimeout(() => setCopiedType(null), 2000);
     }
   };
 
   const handleShare = async () => {
     if (typeof window !== "undefined") {
-      const shareUrl = window.location.href;
+      const shareUrl = shortUrl ?? window.location.href;
       if (navigator.share) {
         try {
           await navigator.share({
@@ -129,7 +162,7 @@ export function PublicEventHeader({ event }: PublicEventHeaderProps) {
           // Fall back to copy
         }
       }
-      handleCopyLink();
+      handleCopyLink(shortUrl ? "short" : "full");
     }
   };
 
@@ -160,13 +193,59 @@ export function PublicEventHeader({ event }: PublicEventHeaderProps) {
 
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={handleShare} className="gap-1.5 text-xs">
-            {copied ? <Check className="size-3.5 text-emerald-500" /> : <Share2 className="size-3.5" />}
+            {copiedType ? <Check className="size-3.5 text-emerald-500" /> : <Share2 className="size-3.5" />}
             Share
           </Button>
-          <Button variant="outline" size="sm" onClick={handleCopyLink} className="gap-1.5 text-xs">
-            <Copy className="size-3.5" />
-            Copy Link
-          </Button>
+
+          {shortUrl ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-1.5 text-xs">
+                  {copiedType ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
+                  <span>{copyHeaderLabel}</span>
+                  {shortPath && (
+                    <Badge variant="secondary" className="px-1 py-0 font-mono text-[9px] text-muted-foreground">
+                      /{shortPath}
+                    </Badge>
+                  )}
+                  <ChevronDown className="size-3 opacity-60" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem
+                  onClick={() => handleCopyLink("short")}
+                  className="flex cursor-pointer items-center justify-between"
+                >
+                  <div className="flex items-center gap-2">
+                    {copiedType === "short" ? (
+                      <Check className="size-3.5 text-emerald-500" />
+                    ) : (
+                      <Link2 className="size-3.5 text-primary" />
+                    )}
+                    <span className="font-medium text-xs">Copy Short Link</span>
+                  </div>
+                  {shortPath && <span className="font-mono text-[10px] text-muted-foreground">/{shortPath}</span>}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => handleCopyLink("full")}
+                  className="flex cursor-pointer items-center gap-2"
+                >
+                  {copiedType === "full" ? (
+                    <Check className="size-3.5 text-emerald-500" />
+                  ) : (
+                    <Copy className="size-3.5 text-muted-foreground" />
+                  )}
+                  <span className="text-xs">Copy Full Event Link</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <Button variant="outline" size="sm" onClick={() => handleCopyLink("full")} className="gap-1.5 text-xs">
+              {copiedType === "full" ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
+              {copiedType === "full" ? "Link Copied!" : "Copy Link"}
+            </Button>
+          )}
+
           {liveBevyUrl && (
             <Button variant="outline" size="sm" asChild className="gap-1.5 text-xs">
               <a href={liveBevyUrl} target="_blank" rel="noopener noreferrer">

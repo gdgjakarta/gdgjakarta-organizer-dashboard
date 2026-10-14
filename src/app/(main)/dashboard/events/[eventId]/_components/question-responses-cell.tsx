@@ -4,10 +4,23 @@ import { useMemo } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { formatFirestoreDate, parseFirestoreDate } from "@/lib/date-utils";
 
 interface QuestionResponsesCellProps {
   answers?: Record<string, unknown>;
   formatQuestionLabel: (key: string) => string;
+}
+
+function formatAnswerValue(v: unknown): string {
+  if (v === null || v === undefined) return "—";
+  if (Array.isArray(v)) return v.join(", ");
+  if (typeof v === "object") {
+    const parsed = parseFirestoreDate(v);
+    if (parsed && ("seconds" in v || "_seconds" in v || "toDate" in v)) {
+      return formatFirestoreDate(parsed, "dd MMM yyyy, h:mm a");
+    }
+  }
+  return String(v);
 }
 
 function getFieldPriority(key: string, value: string): number {
@@ -88,8 +101,8 @@ export function QuestionResponsesCell({ answers, formatQuestionLabel }: Question
 
     // Sort entries deterministically based on priority weight, then length, then alphabetical key
     const sorted = [...entries].sort((a, b) => {
-      const valStrA = Array.isArray(a[1]) ? a[1].join(", ") : String(a[1]);
-      const valStrB = Array.isArray(b[1]) ? b[1].join(", ") : String(b[1]);
+      const valStrA = formatAnswerValue(a[1]);
+      const valStrB = formatAnswerValue(b[1]);
       const prioA = getFieldPriority(a[0], valStrA);
       const prioB = getFieldPriority(b[0], valStrB);
 
@@ -109,7 +122,7 @@ export function QuestionResponsesCell({ answers, formatQuestionLabel }: Question
     const display = sorted.slice(0, 2).map(([key, val]) => {
       const fullLabel = formatQuestionLabel(key);
       const compactLabel = getCompactLabel(key, fullLabel);
-      const value = Array.isArray(val) ? val.join(", ") : String(val);
+      const value = formatAnswerValue(val);
       const keyLower = key.toLowerCase();
       const isPill =
         value === "Tech" ||
@@ -195,9 +208,7 @@ export function QuestionResponsesCell({ answers, formatQuestionLabel }: Question
           {validEntries.map(([k, v]) => (
             <div key={k} className="flex flex-col text-xs">
               <span className="font-medium text-[11px] text-muted-foreground">{formatQuestionLabel(k)}</span>
-              <span className="break-words font-medium text-foreground">
-                {Array.isArray(v) ? v.join(", ") : String(v)}
-              </span>
+              <span className="break-words font-medium text-foreground">{formatAnswerValue(v)}</span>
             </div>
           ))}
         </div>

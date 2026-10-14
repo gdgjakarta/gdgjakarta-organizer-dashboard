@@ -4,7 +4,19 @@ import { useEffect, useState } from "react";
 
 import Image from "next/image";
 
-import { Camera, Check, Clock, Copy, ExternalLink, Share2, Sparkles, Users, Video } from "lucide-react";
+import {
+  Camera,
+  Check,
+  ChevronDown,
+  Clock,
+  Copy,
+  ExternalLink,
+  Link2,
+  Share2,
+  Sparkles,
+  Users,
+  Video,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import googleFavicon from "@/app/Google_Favicon.webp";
@@ -12,12 +24,21 @@ import { EventRegistrationModal } from "@/components/event-registration-modal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { getBevyLiveEventUrl } from "@/config/remote-config-utils";
 import type { BevyEvent } from "@/lib/bevy/types";
 import { parsePhotoAlbum } from "@/lib/events/media-utils";
 import { getRegistrationWindowStatus } from "@/lib/events/registration-defaults";
 import { ensureEventTickets } from "@/lib/events/ticket-templates";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
+import { getPublicEventShortLinksAction } from "@/server/shortio-actions";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
 interface PublicEventRsvpCardProps {
@@ -45,7 +66,37 @@ export function PublicEventRsvpCard({
   isCheckingRegistration = false,
 }: PublicEventRsvpCardProps) {
   const user = useAuthStore((s) => s.user);
-  const [copied, setCopied] = useState(false);
+  const [copiedType, setCopiedType] = useState<"short" | "full" | "bevy" | null>(null);
+  const [liveShortLink, setLiveShortLink] = useState<{ shortURL: string; path: string } | null>(() => {
+    const shortURL = firestoreEvent?.live_short_url ?? firestoreEvent?.short_url;
+    if (shortURL) {
+      const path = firestoreEvent?.live_short_path ?? shortURL.split("/").filter(Boolean).pop() ?? "";
+      return { shortURL, path };
+    }
+    return null;
+  });
+  const [bevyShortLink, setBevyShortLink] = useState<{ shortURL: string; path: string } | null>(() => {
+    const shortURL = firestoreEvent?.bevy_short_url;
+    if (shortURL) {
+      const path = firestoreEvent?.bevy_short_path ?? shortURL.split("/").filter(Boolean).pop() ?? "";
+      return { shortURL, path };
+    }
+    return null;
+  });
+
+  useEffect(() => {
+    const shortURL = firestoreEvent?.live_short_url ?? firestoreEvent?.short_url;
+    if (shortURL) {
+      const path = firestoreEvent?.live_short_path ?? shortURL.split("/").filter(Boolean).pop() ?? "";
+      setLiveShortLink({ shortURL, path });
+    }
+    if (firestoreEvent?.bevy_short_url) {
+      const bevyURL = firestoreEvent.bevy_short_url;
+      const path = firestoreEvent.bevy_short_path ?? bevyURL.split("/").filter(Boolean).pop() ?? "";
+      setBevyShortLink({ shortURL: bevyURL, path });
+    }
+  }, [firestoreEvent]);
+
   const [currentRegistration, setCurrentRegistration] = useState<FirestoreRegistration | null | undefined>(
     existingRegistration,
   );
@@ -115,14 +166,67 @@ export function PublicEventRsvpCard({
     updated_at: new Date().toISOString(),
   };
 
-  const handleCopyLink = () => {
-    if (typeof window !== "undefined") {
-      void navigator.clipboard.writeText(window.location.href);
-      setCopied(true);
-      toast.success("Event link copied to clipboard");
-      setTimeout(() => setCopied(false), 2000);
+  useEffect(() => {
+    let isMounted = true;
+    async function loadShortLinks() {
+      try {
+        const origin = typeof window !== "undefined" ? window.location.origin : "https://gdgjakarta.org";
+        const liveUrl = `${origin}/events/${event.id}`;
+        const res = await getPublicEventShortLinksAction({
+          eventId: String(event.id),
+          liveUrl,
+          bevyUrl: liveBevyUrl || undefined,
+        });
+        if (isMounted && res.success && res.data) {
+          if (res.data.liveShortLink) {
+            setLiveShortLink({
+              shortURL: res.data.liveShortLink.shortURL,
+              path: res.data.liveShortLink.path,
+            });
+          }
+          if (res.data.bevyShortLink) {
+            setBevyShortLink({
+              shortURL: res.data.bevyShortLink.shortURL,
+              path: res.data.bevyShortLink.path,
+            });
+          }
+        }
+      } catch (err) {
+        console.warn("[PublicEventRsvpCard] Error loading short links:", err);
+      }
     }
+    void loadShortLinks();
+    return () => {
+      isMounted = false;
+    };
+  }, [event.id, liveBevyUrl]);
+
+  const handleCopyLink = (type: "short" | "full" | "bevy" = "full") => {
+    if (typeof window === "undefined") return;
+
+    let textToCopy = window.location.href;
+    let label = "Event link copied to clipboard";
+
+    if (type === "short" && liveShortLink) {
+      textToCopy = liveShortLink.shortURL;
+      label = `Short link copied: ${liveShortLink.shortURL}`;
+    } else if (type === "bevy" && bevyShortLink) {
+      textToCopy = bevyShortLink.shortURL;
+      label = `Bevy short link copied: ${bevyShortLink.shortURL}`;
+    }
+
+    void navigator.clipboard.writeText(textToCopy);
+    setCopiedType(type);
+    toast.success(label);
+    setTimeout(() => setCopiedType(null), 2000);
   };
+
+  let copyButtonLabel = "Copy Event Link";
+  if (copiedType === "short") {
+    copyButtonLabel = "Short Link Copied!";
+  } else if (copiedType) {
+    copyButtonLabel = "Event Link Copied!";
+  }
 
   const windowStatus = getRegistrationWindowStatus(registrationEvent);
 
@@ -280,10 +384,91 @@ export function PublicEventRsvpCard({
 
           {/* Secondary Actions */}
           <div className="space-y-2 pt-1">
-            <Button variant="outline" size="sm" onClick={handleCopyLink} className="w-full gap-1.5 text-xs">
-              {copied ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
-              {copied ? "Link Copied!" : "Copy Event Link"}
-            </Button>
+            {liveShortLink ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="w-full justify-between gap-1.5 text-xs">
+                    <div className="flex items-center gap-1.5 truncate">
+                      {copiedType ? <Check className="size-3.5 text-emerald-500" /> : <Copy className="size-3.5" />}
+                      <span>{copyButtonLabel}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Badge variant="secondary" className="px-1.5 py-0 font-mono text-[10px] text-muted-foreground">
+                        /{liveShortLink.path}
+                      </Badge>
+                      <ChevronDown className="size-3 opacity-60" />
+                    </div>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-64">
+                  <DropdownMenuLabel className="font-normal text-muted-foreground text-xs">
+                    Share Event Links
+                  </DropdownMenuLabel>
+                  <DropdownMenuItem
+                    onClick={() => handleCopyLink("short")}
+                    className="flex cursor-pointer items-center justify-between"
+                  >
+                    <div className="flex items-center gap-2">
+                      {copiedType === "short" ? (
+                        <Check className="size-3.5 text-emerald-500" />
+                      ) : (
+                        <Link2 className="size-3.5 text-primary" />
+                      )}
+                      <span className="font-medium">Copy Short Link</span>
+                    </div>
+                    <span className="max-w-[100px] truncate font-mono text-[10px] text-muted-foreground">
+                      /{liveShortLink.path}
+                    </span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => handleCopyLink("full")}
+                    className="flex cursor-pointer items-center gap-2"
+                  >
+                    {copiedType === "full" ? (
+                      <Check className="size-3.5 text-emerald-500" />
+                    ) : (
+                      <Copy className="size-3.5 text-muted-foreground" />
+                    )}
+                    <span>Copy Full Event Link</span>
+                  </DropdownMenuItem>
+                  {bevyShortLink && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => handleCopyLink("bevy")}
+                        className="flex cursor-pointer items-center justify-between"
+                      >
+                        <div className="flex items-center gap-2">
+                          {copiedType === "bevy" ? (
+                            <Check className="size-3.5 text-emerald-500" />
+                          ) : (
+                            <ExternalLink className="size-3.5 text-muted-foreground" />
+                          )}
+                          <span>Copy Bevy Short Link</span>
+                        </div>
+                        <span className="max-w-[100px] truncate font-mono text-[10px] text-muted-foreground">
+                          /{bevyShortLink.path}
+                        </span>
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleCopyLink("full")}
+                className="w-full gap-1.5 text-xs"
+              >
+                {copiedType === "full" ? (
+                  <Check className="size-3.5 text-emerald-500" />
+                ) : (
+                  <Copy className="size-3.5" />
+                )}
+                {copiedType === "full" ? "Link Copied!" : "Copy Event Link"}
+              </Button>
+            )}
 
             {liveBevyUrl && (
               <Button
@@ -332,9 +517,44 @@ export function PublicEventRsvpCard({
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
-            <Button variant="outline" size="icon" onClick={handleCopyLink} title="Copy Link" className="size-9">
-              {copied ? <Check className="size-4 text-emerald-500" /> : <Share2 className="size-4" />}
-            </Button>
+            {liveShortLink ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon" title="Share or Copy Link" className="size-9">
+                    {copiedType ? <Check className="size-4 text-emerald-500" /> : <Share2 className="size-4" />}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="mb-2 w-56">
+                  <DropdownMenuItem
+                    onClick={() => handleCopyLink("short")}
+                    className="flex cursor-pointer items-center justify-between"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Link2 className="size-3.5 text-primary" />
+                      <span className="font-medium text-xs">Copy Short Link</span>
+                    </div>
+                    <span className="font-mono text-[10px] text-muted-foreground">/{liveShortLink.path}</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => handleCopyLink("full")}
+                    className="flex cursor-pointer items-center gap-2"
+                  >
+                    <Copy className="size-3.5 text-muted-foreground" />
+                    <span className="text-xs">Copy Full Event Link</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => handleCopyLink("full")}
+                title="Copy Link"
+                className="size-9"
+              >
+                {copiedType === "full" ? <Check className="size-4 text-emerald-500" /> : <Share2 className="size-4" />}
+              </Button>
+            )}
 
             {(() => {
               if (!isPast) {

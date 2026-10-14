@@ -56,6 +56,7 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/in
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { BevyAttendee } from "@/lib/bevy/types";
+import { formatFirestoreDate, parseFirestoreDate } from "@/lib/date-utils";
 import { buildApprovedAttendeePayload } from "@/lib/events/approved-attendee-webhook";
 import { validateAttendeeApprovalCapacity, validateBatchApprovalCapacity } from "@/lib/events/capacity-validator";
 import {
@@ -78,6 +79,7 @@ import {
   updateRegistrationCheckInAction,
   updateRegistrationStatusAction,
 } from "@/lib/firestore/actions";
+import { normalizeRegistrationDoc } from "@/lib/firestore/normalization";
 import type {
   CustomQuestion,
   EventSession,
@@ -386,7 +388,9 @@ function RegistrantsTableSkeleton({
 
 export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTabProps) {
   const user = useAuthStore((s) => s.user);
-  const [registrationsList, setRegistrationsList] = useState<FirestoreRegistration[]>(registrations);
+  const [registrationsList, setRegistrationsList] = useState<FirestoreRegistration[]>(() =>
+    registrations.map((r) => normalizeRegistrationDoc(r as unknown as Record<string, unknown>, r.id)),
+  );
   const [isLoading, setIsLoading] = useState(registrations.length === 0);
   const [isFiltering, setIsFiltering] = useState(false);
   const [search, setSearch] = useState("");
@@ -458,7 +462,9 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
 
   useEffect(() => {
     if (registrations.length > 0) {
-      setRegistrationsList(registrations);
+      setRegistrationsList(
+        registrations.map((r) => normalizeRegistrationDoc(r as unknown as Record<string, unknown>, r.id)),
+      );
       setIsLoading(false);
     }
   }, [registrations]);
@@ -2467,7 +2473,10 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         `"${(r.member_email || "").replace(/"/g, '""')}"`,
         `"${(r.status || "").replace(/"/g, '""')}"`,
         ...(isCurationMode
-          ? [`"${(r.reviewed_by_name || "").replace(/"/g, '""')}"`, `"${(r.reviewed_at || "").replace(/"/g, '""')}"`]
+          ? [
+              `"${(r.reviewed_by_name || "").replace(/"/g, '""')}"`,
+              `"${formatFirestoreDate(r.reviewed_at, "yyyy-MM-dd HH:mm:ss", "").replace(/"/g, '""')}"`,
+            ]
           : []),
         ...(hasTickets
           ? [
@@ -2484,7 +2493,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         `"${r.is_checked_in ? "Checked In" : "Not Checked In"}"`,
         `"${sessionTitle.replace(/"/g, '""')}"`,
         ...questionColsData,
-        `"${(r.registered_at || "").replace(/"/g, '""')}"`,
+        `"${formatFirestoreDate(r.registered_at, "yyyy-MM-dd HH:mm:ss", "").replace(/"/g, '""')}"`,
         `"${cleanAnswers.replace(/"/g, '""')}"`,
       ].join(",");
     });
@@ -3421,12 +3430,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                       (reg.answers?.session_title as string) ||
                       (reg.session_id ? `Track: ${reg.session_id}` : null);
 
-                    let regDate = reg.registered_at;
-                    try {
-                      regDate = format(parseISO(reg.registered_at), "dd MMM yyyy, h:mm a");
-                    } catch {
-                      // Keep raw string
-                    }
+                    const regDate = formatFirestoreDate(reg.registered_at, "dd MMM yyyy, h:mm a");
 
                     let approveTitle = "Approve application";
                     if (rawStatus === "approved" || rawStatus === "paid_and_registered") {
@@ -3521,13 +3525,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                 </div>
                                 {reg.reviewed_at && (
                                   <span className="text-[11px] text-muted-foreground">
-                                    {(() => {
-                                      try {
-                                        return format(parseISO(reg.reviewed_at), "dd MMM, HH:mm");
-                                      } catch {
-                                        return reg.reviewed_at;
-                                      }
-                                    })()}
+                                    {formatFirestoreDate(reg.reviewed_at, "dd MMM, HH:mm")}
                                   </span>
                                 )}
                               </div>

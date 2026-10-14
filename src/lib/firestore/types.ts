@@ -373,6 +373,13 @@ export interface FirestoreEvent {
   // Email Automation Templates (n8n workflows)
   email_templates?: EventEmailTemplates;
 
+  // Short.io Generated Links
+  short_url?: string;
+  live_short_url?: string;
+  live_short_path?: string;
+  bevy_short_url?: string;
+  bevy_short_path?: string;
+
   // Metadata
   synced_from_bevy_at?: string;
   created_at: string;
@@ -552,9 +559,11 @@ export interface FirestoreRegistration {
 
   // Payment tracking (DOKU Checkout API)
   payment_status?: "unpaid" | "pending" | "paid" | "expired" | "failed" | "canceled" | "cancelled" | "refunded";
+  payment_channel?: string;
   payment_url?: string;
   payment_invoice_number?: string;
   payment_amount?: number;
+  paid_at?: string;
   payment_expired_datetime?: string;
   payment_fee_amount?: number;
   payment_fee_bearer?: PaymentFeeBearer;

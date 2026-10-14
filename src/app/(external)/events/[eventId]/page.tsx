@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 
 import { getPublicEventById } from "@/lib/bevy/client";
+import { getFirestoreEventByIdServer } from "@/server/firestore-admin";
 
 import { PublicEventDetailView } from "./_components/public-event-detail-view";
 
@@ -68,11 +69,14 @@ export async function generateMetadata({ params }: PublicEventDetailPageProps): 
 
 export default async function PublicEventDetailPage({ params }: PublicEventDetailPageProps) {
   const { eventId } = await params;
-  const event = await getPublicEventById(eventId);
+  const [event, firestoreEvent] = await Promise.all([
+    getPublicEventById(eventId),
+    getFirestoreEventByIdServer(eventId),
+  ]);
 
   if (!event) {
     notFound();
   }
 
-  return <PublicEventDetailView event={event} />;
+  return <PublicEventDetailView event={event} initialFirestoreEvent={firestoreEvent} />;
 }
