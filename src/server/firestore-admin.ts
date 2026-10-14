@@ -9,7 +9,7 @@ import {
   setDoc,
   updateDoc,
   where,
-} from "firebase/firestore";
+} from "firebase/firestore/lite";
 
 import { app } from "@/config/firebase";
 import { buildApprovedAttendeePayload } from "@/lib/events/approved-attendee-webhook";

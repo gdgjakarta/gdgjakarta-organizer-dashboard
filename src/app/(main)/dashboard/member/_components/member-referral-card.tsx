@@ -17,7 +17,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { getMemberReferralDataAction } from "@/lib/firestore/actions";
-import { generateUserReferralCode } from "@/lib/firestore/client";
+import { generateUserReferralCode } from "@/lib/firestore/referral-utils";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
 interface MemberReferralInfo {
