@@ -277,15 +277,26 @@ export function buildRegistrationPaymentPayload(
     type: "Merchandise",
   }));
 
+  const bundleRecord = event.bundles?.find((b) => b.id === registration.bundle_id);
+  const bundleHasTicket = Boolean(bundleRecord ? bundleRecord.ticket_id : registration.ticket_price === 0);
+
   if (registration.bundle_id && (registration.bundle_price ?? 0) > 0) {
     items.unshift({
       id: registration.bundle_id,
-      name: `${registration.bundle_name ?? "Bundling Package"} (${registration.ticket_name ?? "Event Ticket"})`,
+      name: bundleHasTicket
+        ? `${registration.bundle_name ?? "Bundling Package"} (${registration.ticket_name ?? "Event Ticket"})`
+        : (registration.bundle_name ?? "Bundling Package"),
       quantity: 1,
       price: registration.bundle_price ?? 0,
-      type: "Ticket",
+      type: bundleHasTicket ? "Ticket" : "Merchandise",
     });
-  } else if (registration.ticket_type === "paid" && (registration.ticket_price ?? 0) > 0) {
+  }
+
+  if (
+    (!registration.bundle_id || !bundleHasTicket) &&
+    registration.ticket_type === "paid" &&
+    (registration.ticket_price ?? 0) > 0
+  ) {
     items.unshift({
       id: registration.ticket_id ?? "ticket",
       name: registration.ticket_name ?? "Event Ticket",
