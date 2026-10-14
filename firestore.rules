@@ -313,6 +313,10 @@ service cloud.firestore {
     //   - registration_id: string|null (optional, <= 200 chars) - Associated registration ID
     //   - created_at: string (required, <= 50 chars) - Creation timestamp ISO string
     //   - updated_at: string|null (optional, <= 50 chars) - Last update timestamp
+    // Permissions:
+    //   - get, list: Team access (Organizers & Staff), or authenticated participants (referrer or referee).
+    //   - create, update: Team access (Organizers & Staff), or authenticated participants (as referee).
+    //   - delete: Team access (Organizers & Staff).
     //
     // Collection: system_settings
     // Document ID: settingId (e.g. 'referral')
@@ -324,10 +328,13 @@ service cloud.firestore {
     //   - points_per_referral: int|float|null (optional, >= 0) - Points awarded per referral
     //   - is_active: bool|null (optional) - Program toggle
     //   - merch_prize_description: string|null (optional, <= 1000 chars) - Prize description
-    //   - excluded_member_ids: list|null (optional, <= 1000 items) - Member IDs excluded from referral program
+    //   - excluded_member_ids: list|null (optional, <= 5000 items) - Member IDs excluded from referral program
     //   - auto_exclude_organizers: bool|null (optional) - Automatically exclude organizers from leaderboard/rewards
-    //   - updated_at: string|null (optional, <= 50 chars) - Last update timestamp
-    //   - updated_by_name: string|null (optional, <= 150 chars) - Updater display name
+    //   - updated_at: string|null (optional, <= 100 chars) - Last update timestamp
+    //   - updated_by_name: string|null (optional, <= 200 chars) - Updater display name
+    // Permissions:
+    //   - read: Allowed for authenticated users and public visitors.
+    //   - create, update, delete: Team access (Organizers & Staff / Core Team).
     //
     // ===============================================================
 
@@ -787,12 +794,7 @@ service cloud.firestore {
 
     // Validates system_settings document structure, data types, and bounds
     function isValidSystemSetting(data) {
-      return hasOnlyAllowedFields(data, [
-          'id', 'default_discount_type', 'default_discount_percentage', 'default_discount_amount',
-          'points_per_referral', 'is_active', 'merch_prize_description',
-          'excluded_member_ids', 'auto_exclude_organizers',
-          'updated_at', 'updated_by_name'
-        ]) &&
+      return (
         (!('id' in data) || data.id == null || (data.id is string && data.id.size() <= 128)) &&
         (!('default_discount_type' in data) || data.default_discount_type == null || (data.default_discount_type is string && (data.default_discount_type in ['percentage', 'fixed']))) &&
         (!('default_discount_percentage' in data) || data.default_discount_percentage == null || ((data.default_discount_percentage is int || data.default_discount_percentage is float) && data.default_discount_percentage >= 0 && data.default_discount_percentage <= 100)) &&
@@ -800,10 +802,11 @@ service cloud.firestore {
         (!('points_per_referral' in data) || data.points_per_referral == null || ((data.points_per_referral is int || data.points_per_referral is float) && data.points_per_referral >= 0)) &&
         (!('is_active' in data) || data.is_active == null || data.is_active is bool) &&
         (!('merch_prize_description' in data) || data.merch_prize_description == null || (data.merch_prize_description is string && data.merch_prize_description.size() <= 1000)) &&
-        (!('excluded_member_ids' in data) || data.excluded_member_ids == null || (data.excluded_member_ids is list && data.excluded_member_ids.size() <= 1000)) &&
+        (!('excluded_member_ids' in data) || data.excluded_member_ids == null || (data.excluded_member_ids is list && data.excluded_member_ids.size() <= 5000)) &&
         (!('auto_exclude_organizers' in data) || data.auto_exclude_organizers == null || data.auto_exclude_organizers is bool) &&
-        (!('updated_at' in data) || data.updated_at == null || (data.updated_at is string && data.updated_at.size() <= 50)) &&
-        (!('updated_by_name' in data) || data.updated_by_name == null || (data.updated_by_name is string && data.updated_by_name.size() <= 150));
+        (!('updated_at' in data) || data.updated_at == null || (data.updated_at is string && data.updated_at.size() <= 100)) &&
+        (!('updated_by_name' in data) || data.updated_by_name == null || (data.updated_by_name is string && data.updated_by_name.size() <= 200))
+      );
     }
 
     // ===============================================================
@@ -996,39 +999,39 @@ service cloud.firestore {
     // Referral Redemptions Collection
     // -------------------------------------------------------------
     match /referral_redemptions/{redemptionId} {
-      // Read: Organizers, or authenticated participants (referrer or referee).
+      // Read: Team access (Organizers & Staff), or authenticated participants (referrer or referee).
       // Gracefully allows non-existent doc lookup (resource == null) and scoped collection queries.
-      allow get: if isOrganizer() ||
+      allow get: if hasTeamAccess() || isOrganizer() ||
         (isAuthenticated() && (
           resource == null ||
           (('referee_id' in resource.data) && resource.data.referee_id == request.auth.uid) ||
           (('referrer_id' in resource.data) && resource.data.referrer_id == request.auth.uid)
         ));
 
-      allow list: if isOrganizer() ||
+      allow list: if hasTeamAccess() || isOrganizer() ||
         (isAuthenticated() && (
           (('referee_id' in resource.data) && resource.data.referee_id == request.auth.uid) ||
           (('referrer_id' in resource.data) && resource.data.referrer_id == request.auth.uid)
         ));
 
-      // Create: Organizers, or authenticated users creating their own redemption (as referee).
+      // Create: Team access (Organizers & Staff), or authenticated users creating their own redemption (as referee).
       allow create: if isValidReferralRedemption(request.resource.data) && (
-        isOrganizer() ||
+        hasTeamAccess() || isOrganizer() ||
         (isAuthenticated() && (
           request.auth.uid == request.resource.data.referee_id ||
           (('referee_member_id' in request.resource.data) && request.auth.uid == request.resource.data.referee_member_id)
         ))
       );
 
-      // Update: Organizers, or authenticated referee updating their own redemption record.
+      // Update: Team access (Organizers & Staff), or authenticated referee updating their own redemption record.
       allow update: if isValidReferralRedemption(request.resource.data) && (
-        isOrganizer() ||
+        hasTeamAccess() || isOrganizer() ||
         (isAuthenticated() && (
           (('referee_id' in resource.data) && resource.data.referee_id == request.auth.uid) ||
           (('referee_member_id' in resource.data) && resource.data.referee_member_id == request.auth.uid)
         ))
       );
-      allow delete: if isOrganizer();
+      allow delete: if hasTeamAccess() || isOrganizer();
     }
 
     // -------------------------------------------------------------
@@ -1038,9 +1041,9 @@ service cloud.firestore {
       // Read: Allowed for authenticated users and public visitors (for attendee checkout code validation & program perks).
       allow read: if true;
 
-      // Write: Organizers only, validating settings structure and limits.
-      allow create, update: if isOrganizer() && isValidSystemSetting(request.resource.data);
-      allow delete: if isOrganizer();
+      // Write: Team access (Organizers & Staff), validating settings structure and limits.
+      allow create, update: if (hasTeamAccess() || isOrganizer()) && isValidSystemSetting(request.resource.data);
+      allow delete: if hasTeamAccess() || isOrganizer();
     }
   }
 }
