@@ -838,10 +838,11 @@ export async function validateReferralCodeAction(
   currentMemberId: string,
   currentMemberEmail: string,
   eventId?: string,
+  ticketPrice?: number,
 ) {
   try {
     const { validateReferralCode } = await import("./client");
-    return await validateReferralCode(code, currentMemberId, currentMemberEmail, eventId);
+    return await validateReferralCode(code, currentMemberId, currentMemberEmail, eventId, ticketPrice);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to validate referral code.";
     console.error("[validateReferralCodeAction] error:", message);

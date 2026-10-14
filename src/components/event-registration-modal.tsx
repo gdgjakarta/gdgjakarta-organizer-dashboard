@@ -94,6 +94,7 @@ import type {
   EventVoucher,
   FirestoreEvent,
   FirestoreRegistration,
+  ReferralProgramSettings,
   RegistrationStatus,
   SelectedMerchandiseOrder,
 } from "@/lib/firestore/types";
@@ -708,17 +709,62 @@ export function EventRegistrationModal({
   } | null>(null);
   const [referralError, setReferralError] = useState<string | null>(null);
   const [isValidatingReferral, setIsValidatingReferral] = useState(false);
+  const [referralSettings, setReferralSettings] = useState<ReferralProgramSettings | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadReferralSettings() {
+      try {
+        const { getReferralProgramSettingsAction } = await import("@/lib/firestore/actions");
+        const settings = await getReferralProgramSettingsAction();
+        if (isMounted && settings) {
+          setReferralSettings(settings);
+        }
+      } catch (err) {
+        console.warn("[EventRegistrationModal] Failed to load referral settings:", err);
+      }
+    }
+    void loadReferralSettings();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const isReferralEnabled = useMemo(() => {
+    if (event.referral_enabled === false) return false;
+    if (!referralSettings) {
+      return hasPaidPass;
+    }
+    if (!referralSettings.is_active) return false;
+    if (referralSettings.excluded_event_ids?.includes(String(event.id))) return false;
+
+    const condition = referralSettings.enabled_condition ?? "paid_events_only";
+    if (condition === "all") return true;
+    if (condition === "paid_events_only") return hasPaidPass;
+    if (condition === "paid_tickets_only") {
+      return effectiveBasePrice > 0;
+    }
+    return true;
+  }, [event.referral_enabled, event.id, referralSettings, hasPaidPass, effectiveBasePrice]);
+
+  // Remove applied referral if selection changes such that referral conditions are no longer met
+  useEffect(() => {
+    if (appliedReferral && !isReferralEnabled) {
+      setAppliedReferral(null);
+      setReferralError("Referral code removed as current selection does not meet referral conditions.");
+    }
+  }, [appliedReferral, isReferralEnabled]);
 
   // Auto-detect referral code from URL search parameters on mount
   useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const refParam = params.get("ref");
-      if (refParam && !appliedReferral && event.referral_enabled !== false && hasPaidPass) {
+      if (refParam && !appliedReferral && isReferralEnabled) {
         setReferralInput(refParam.toUpperCase());
       }
     }
-  }, [appliedReferral, event.referral_enabled, hasPaidPass]);
+  }, [appliedReferral, isReferralEnabled]);
 
   const totalMerchandiseItems = useMemo(() => {
     return Object.values(selectedMerch).reduce((sum, item) => sum + (item.quantity || 0), 0);
@@ -830,7 +876,13 @@ export function EventRegistrationModal({
     setReferralError(null);
     try {
       const { validateReferralCodeAction } = await import("@/lib/firestore/actions");
-      const res = await validateReferralCodeAction(cleanCode, user.id, user.email, String(event.id));
+      const res = await validateReferralCodeAction(
+        cleanCode,
+        user.id,
+        user.email,
+        String(event.id),
+        effectiveBasePrice,
+      );
       if (!res.valid) {
         setReferralError(res.error || "Invalid referral code.");
         return;
@@ -3255,7 +3307,7 @@ export function EventRegistrationModal({
                     )}
 
                     {/* ── REFERRAL CODE SECTION ───────────────────────────────── */}
-                    {hasTickets && hasPaidPass && event.referral_enabled !== false && (
+                    {hasTickets && isReferralEnabled && (
                       <div className="space-y-2 rounded-xl border bg-card p-3.5 shadow-2xs">
                         <div className="flex items-center justify-between font-semibold text-foreground text-xs">
                           <span className="flex items-center gap-1.5">

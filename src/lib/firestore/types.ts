@@ -567,12 +567,15 @@ export interface FirestoreRegistration {
   updated_at?: string;
 }
 
+export type ReferralEnabledCondition = "all" | "paid_events_only" | "paid_tickets_only";
+
 export interface ReferralProgramSettings {
   default_discount_type?: "percentage" | "fixed"; // Master default discount type ("percentage" | "fixed")
   default_discount_percentage: number; // e.g. 10 (10% discount on tickets)
   default_discount_amount?: number; // e.g. 25000 (Rp 25.000 discount on tickets)
   points_per_referral: number; // e.g. 10 points awarded per referral
   is_active: boolean; // Master referral program toggle
+  enabled_condition?: ReferralEnabledCondition; // Condition when referral codes are enabled ("all" | "paid_events_only" | "paid_tickets_only")
   merch_prize_description?: string; // "Exclusive GDG Jakarta merchandise"
   excluded_member_ids?: string[]; // IDs of members excluded from leaderboard
   excluded_event_ids?: string[]; // IDs of events excluded from the referral program

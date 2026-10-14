@@ -10,6 +10,7 @@ import {
   Copy,
   Edit2,
   Filter,
+  Info,
   Layers,
   Loader2,
   Package,
@@ -80,22 +81,32 @@ export function VouchersTab({ event }: VouchersTabProps) {
   );
   const [isSavingReferral, setIsSavingReferral] = useState(false);
   const [isGloballyExcluded, setIsGloballyExcluded] = useState(false);
+  const [globalIneligibilityReason, setGlobalIneligibilityReason] = useState<string | null>(null);
 
   useEffect(() => {
     if (!event.id) return;
-    async function checkGlobalExclusion() {
+    async function checkGlobalReferralStatus() {
       try {
         const { getReferralProgramSettingsAction } = await import("@/lib/firestore/actions");
         const settings = await getReferralProgramSettingsAction();
-        if (settings?.excluded_event_ids && settings.excluded_event_ids.includes(String(event.id))) {
-          setIsGloballyExcluded(true);
+        if (!settings) return;
+
+        const isExcluded = Boolean(settings.excluded_event_ids?.includes(String(event.id)));
+        setIsGloballyExcluded(isExcluded);
+
+        const { isReferralEligibleForEvent } = await import("@/lib/firestore/client");
+        const eligibility = isReferralEligibleForEvent(settings, event);
+        if (!eligibility.eligible && !isExcluded) {
+          setGlobalIneligibilityReason(eligibility.reason ?? null);
+        } else {
+          setGlobalIneligibilityReason(null);
         }
       } catch (err) {
         console.warn("[VouchersTab] Failed to check global referral settings:", err);
       }
     }
-    void checkGlobalExclusion();
-  }, [event.id]);
+    void checkGlobalReferralStatus();
+  }, [event]);
 
   const handleSaveReferralConfig = async () => {
     setIsSavingReferral(true);
@@ -362,7 +373,7 @@ export function VouchersTab({ event }: VouchersTabProps) {
           </div>
         </CardHeader>
 
-        {isGloballyExcluded && (
+        {isGloballyExcluded ? (
           <div className="mx-4 mb-2 flex items-center gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-300">
             <CalendarX className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
             <div className="flex-1">
@@ -371,7 +382,15 @@ export function VouchersTab({ event }: VouchersTabProps) {
               referral codes for this event.
             </div>
           </div>
-        )}
+        ) : globalIneligibilityReason ? (
+          <div className="mx-4 mb-2 flex items-center gap-2.5 rounded-lg border border-border bg-muted/40 p-2.5 text-xs text-muted-foreground">
+            <Info className="size-4 shrink-0 text-primary" />
+            <div className="flex-1">
+              <span className="font-semibold text-foreground">Global Condition Notice: </span>
+              {globalIneligibilityReason} Attendees will not see the referral code input during registration.
+            </div>
+          </div>
+        ) : null}
 
         <CardContent className="flex flex-col gap-4 p-4 pt-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">

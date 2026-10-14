@@ -234,6 +234,7 @@ const DEFAULT_REFERRAL_SETTINGS: ReferralProgramSettings = {
   default_discount_amount: 25000,
   points_per_referral: 10,
   is_active: true,
+  enabled_condition: "paid_events_only",
   merch_prize_description: "Exclusive GDG Jakarta merchandise bundle",
   excluded_member_ids: [],
   excluded_event_ids: [],
@@ -241,6 +242,69 @@ const DEFAULT_REFERRAL_SETTINGS: ReferralProgramSettings = {
   auto_exclude_organizers: false,
   updated_at: new Date().toISOString(),
 };
+
+/**
+ * Evaluates whether an event (and optionally the selected ticket) is eligible for referral code redemption
+ * based on master active toggle, chapter excluded events list, event-level referral toggle,
+ * and the configured referral enablement condition (all, paid_events_only, or paid_tickets_only).
+ */
+export function isReferralEligibleForEvent(
+  settings: ReferralProgramSettings,
+  event: FirestoreEvent | null | undefined,
+  selectedTicketPrice?: number,
+): { eligible: boolean; reason?: string } {
+  if (!settings.is_active) {
+    return { eligible: false, reason: "Referral program is currently not active." };
+  }
+  if (event?.referral_enabled === false) {
+    return { eligible: false, reason: "Referral discounts are not enabled for this event." };
+  }
+  if (event?.id && settings.excluded_event_ids?.includes(String(event.id))) {
+    return { eligible: false, reason: "Referral code redemption is not eligible for this event." };
+  }
+
+  const condition = settings.enabled_condition ?? "paid_events_only";
+  if (condition === "all") {
+    return { eligible: true };
+  }
+
+  const rawEvent = event as { tickets?: EventTicketTier[]; ticket_types?: EventTicketTier[] } | null | undefined;
+  const eventTickets = ensureEventTickets(rawEvent?.tickets ?? rawEvent?.ticket_types);
+  const hasPaidPass =
+    eventTickets.some(
+      (t) => t.type === "paid" || t.type === "commitment_fee" || (typeof t.price === "number" && t.price > 0),
+    ) ||
+    (Array.isArray(event?.bundles) && event.bundles.some((b) => typeof b.price === "number" && b.price > 0));
+
+  if (condition === "paid_events_only") {
+    if (!hasPaidPass) {
+      return {
+        eligible: false,
+        reason: "Referral codes are only eligible for events with paid passes.",
+      };
+    }
+    return { eligible: true };
+  }
+
+  if (condition === "paid_tickets_only") {
+    if (typeof selectedTicketPrice === "number") {
+      if (selectedTicketPrice <= 0) {
+        return {
+          eligible: false,
+          reason: "Referral codes are only eligible when purchasing a paid ticket pass.",
+        };
+      }
+    } else if (!hasPaidPass) {
+      return {
+        eligible: false,
+        reason: "Referral codes are only eligible for events with paid passes.",
+      };
+    }
+    return { eligible: true };
+  }
+
+  return { eligible: true };
+}
 
 export async function getReferralProgramSettings(): Promise<ReferralProgramSettings> {
   if (typeof window === "undefined") return DEFAULT_REFERRAL_SETTINGS;
@@ -266,6 +330,12 @@ export async function getReferralProgramSettings(): Promise<ReferralProgramSetti
       default_discount_amount: typeof data.default_discount_amount === "number" ? data.default_discount_amount : 25000,
       points_per_referral: typeof data.points_per_referral === "number" ? data.points_per_referral : 10,
       is_active: data.is_active !== false,
+      enabled_condition:
+        data.enabled_condition === "all" ||
+        data.enabled_condition === "paid_events_only" ||
+        data.enabled_condition === "paid_tickets_only"
+          ? data.enabled_condition
+          : "paid_events_only",
       merch_prize_description: data.merch_prize_description ?? "Exclusive GDG Jakarta merchandise bundle",
       excluded_member_ids: Array.isArray(data.excluded_member_ids) ? data.excluded_member_ids : [],
       excluded_event_ids: Array.isArray(data.excluded_event_ids) ? data.excluded_event_ids : [],
@@ -471,6 +541,7 @@ export async function validateReferralCode(
   currentMemberId: string,
   currentMemberEmail: string,
   eventId?: string,
+  ticketPrice?: number,
 ): Promise<{
   valid: boolean;
   error?: string;
@@ -555,22 +626,11 @@ export async function validateReferralCode(
         const evSnap = await getDoc(doc(db, "events", String(eventId)));
         if (evSnap.exists()) {
           const evData = evSnap.data() as FirestoreEvent;
-          if (evData.referral_enabled === false) {
+          const eligibility = isReferralEligibleForEvent(settings, evData, ticketPrice);
+          if (!eligibility.eligible) {
             return {
               valid: false,
-              error: "Referral discounts are not enabled for this event.",
-            };
-          }
-          const eventTickets = ensureEventTickets(evData.tickets);
-          const hasPaidPass =
-            eventTickets.some(
-              (t) => t.type === "paid" || t.type === "commitment_fee" || (typeof t.price === "number" && t.price > 0),
-            ) ||
-            (Array.isArray(evData.bundles) && evData.bundles.some((b) => typeof b.price === "number" && b.price > 0));
-          if (!hasPaidPass) {
-            return {
-              valid: false,
-              error: "Referral codes can only be used for events with paid passes.",
+              error: eligibility.reason ?? "Referral code is not eligible for this event.",
             };
           }
           if (evData.referral_discount_type === "fixed") {
@@ -1493,20 +1553,13 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
     }
   }
 
-  const eventTickets = ensureEventTickets(eventData?.tickets);
-  const eventHasPaidPass =
-    eventTickets.some(
-      (t) => t.type === "paid" || t.type === "commitment_fee" || (typeof t.price === "number" && t.price > 0),
-    ) ||
-    (Array.isArray(eventData?.bundles) && eventData.bundles.some((b) => typeof b.price === "number" && b.price > 0));
-
   const refSettings = await getReferralProgramSettings();
-  const isEventExcludedFromReferral = Boolean(
-    !refSettings.is_active ||
-      (refSettings.excluded_event_ids && refSettings.excluded_event_ids.includes(eventIdStr)) ||
-      eventData?.referral_enabled === false ||
-      !eventHasPaidPass,
-  );
+  const selectedTicketTier = registration.ticket_id
+    ? eventData?.tickets?.find((t) => t.id === registration.ticket_id)
+    : undefined;
+  const selectedTicketPrice = selectedTicketTier ? selectedTicketTier.price : undefined;
+  const eligibility = isReferralEligibleForEvent(refSettings, eventData, selectedTicketPrice);
+  const isEventExcludedFromReferral = !eligibility.eligible;
 
   const cleanPayload = sanitizeFirestoreData<FirestoreRegistration>({
     ...registration,

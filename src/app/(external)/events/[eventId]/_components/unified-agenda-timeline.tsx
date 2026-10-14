@@ -69,9 +69,16 @@ function TrackCard({ track }: TrackCardProps) {
         )}
       </div>
 
-      {track.description && (
-        <p className="line-clamp-3 text-muted-foreground text-xs leading-relaxed">{track.description}</p>
-      )}
+      {track.description &&
+        (track.description.includes("<") && track.description.includes(">") ? (
+          <div
+            className="prose prose-sm dark:prose-invert max-w-none line-clamp-3 text-muted-foreground text-xs leading-relaxed break-words [&_p]:my-1 [&_a]:text-primary [&_a]:underline"
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: Session description HTML content
+            dangerouslySetInnerHTML={{ __html: track.description }}
+          />
+        ) : (
+          <p className="line-clamp-3 text-muted-foreground text-xs leading-relaxed break-words">{track.description}</p>
+        ))}
 
       {/* Location / Check-in deadline */}
       <div className="flex flex-wrap items-center gap-2.5 text-[11px] text-muted-foreground">
@@ -242,9 +249,18 @@ function AgendaItemCard({ item, selectedTrack }: AgendaItemCardProps) {
           )}
 
           {/* Activity Description */}
-          {item.description && (
-            <p className="whitespace-pre-line text-muted-foreground text-xs leading-relaxed">{item.description}</p>
-          )}
+          {item.description &&
+            (item.description.includes("<") && item.description.includes(">") ? (
+              <div
+                className="prose prose-sm dark:prose-invert max-w-none text-muted-foreground text-xs leading-relaxed break-words [&_p]:my-1 [&_a]:text-primary [&_a]:underline"
+                // biome-ignore lint/security/noDangerouslySetInnerHtml: Bevy verified agenda HTML content
+                dangerouslySetInnerHTML={{ __html: item.description }}
+              />
+            ) : (
+              <p className="whitespace-pre-line text-muted-foreground text-xs leading-relaxed break-words">
+                {item.description}
+              </p>
+            ))}
 
           {/* Location details */}
           {(item.location ?? item.locationUrl) && (

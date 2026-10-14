@@ -310,8 +310,8 @@ export function buildUnifiedAgenda(
     } else {
       // Append remaining sessions to the last group or appropriate group
       const targetGroup = sessionGroups[sessionGroups.length - 1];
-      remainingSessions.forEach((sess, idx) => {
-        const track = getOrRegisterTrack(sess, allTracksMap.size + idx);
+      remainingSessions.forEach((sess) => {
+        const track = getOrRegisterTrack(sess, allTracksMap.size);
         targetGroup.items.push({
           id: `fs-sess-${sess.id}`,
           time: sess.time_slot || `Track #${track.trackNumber}`,

@@ -585,7 +585,13 @@ function SpeakerCard({ speaker }: { speaker: BevySpeaker }) {
           </div>
         </div>
 
-        {speaker.bio && <p className="line-clamp-3 text-muted-foreground text-xs leading-relaxed">{speaker.bio}</p>}
+        {speaker.bio && (
+          <div
+            className="line-clamp-3 text-muted-foreground text-xs leading-relaxed break-words prose prose-sm dark:prose-invert max-w-none [&_h1]:my-0.5 [&_h1]:text-xs [&_h1]:font-semibold [&_h1]:text-foreground [&_h2]:my-0.5 [&_h2]:text-xs [&_h2]:font-semibold [&_h2]:text-foreground [&_h3]:my-0.5 [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:text-foreground [&_h4]:my-0.5 [&_h4]:text-xs [&_h4]:font-semibold [&_h4]:text-foreground [&_p]:my-0.5 [&_strong]:font-semibold [&_strong]:text-foreground [&_a]:text-primary hover:[&_a]:underline"
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: Bevy verified speaker bio HTML
+            dangerouslySetInnerHTML={{ __html: speaker.bio }}
+          />
+        )}
       </div>
 
       {hasSocials && (

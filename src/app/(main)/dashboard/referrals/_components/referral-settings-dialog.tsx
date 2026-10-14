@@ -7,12 +7,16 @@ import {
   CalendarX,
   Check,
   ChevronsUpDown,
+  Coins,
+  CreditCard,
   Loader2,
   Percent,
   Plus,
   Settings,
+  Sliders,
   Sparkles,
   Tag,
+  Ticket,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -37,7 +41,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { fetchEventsForReferralConfigAction, saveReferralProgramSettingsAction } from "@/lib/firestore/actions";
-import type { ReferralProgramSettings } from "@/lib/firestore/types";
+import type { ReferralEnabledCondition, ReferralProgramSettings } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
 interface ReferralSettingsDialogProps {
@@ -56,6 +60,9 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
   const [discountAmount, setDiscountAmount] = useState<number>(initialSettings?.default_discount_amount ?? 25000);
   const [pointsPerReferral, setPointsPerReferral] = useState<number>(initialSettings?.points_per_referral ?? 10);
   const [isActive, setIsActive] = useState<boolean>(initialSettings?.is_active ?? true);
+  const [enabledCondition, setEnabledCondition] = useState<ReferralEnabledCondition>(
+    initialSettings?.enabled_condition ?? "paid_events_only",
+  );
   const [autoExcludeRoles, setAutoExcludeRoles] = useState<string[]>(() => {
     if (Array.isArray(initialSettings?.auto_exclude_roles)) {
       return initialSettings.auto_exclude_roles;
@@ -73,12 +80,15 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
     initialSettings?.merch_prize_description ?? "Exclusive GDG Jakarta merchandise bundle",
   );
 
-  // Sync excludedEventIds when initialSettings change
+  // Sync excludedEventIds and enabledCondition when initialSettings change
   useEffect(() => {
     if (initialSettings?.excluded_event_ids) {
       setExcludedEventIds(initialSettings.excluded_event_ids);
     }
-  }, [initialSettings?.excluded_event_ids]);
+    if (initialSettings?.enabled_condition) {
+      setEnabledCondition(initialSettings.enabled_condition);
+    }
+  }, [initialSettings?.excluded_event_ids, initialSettings?.enabled_condition]);
 
   // Load events when dialog opens
   useEffect(() => {
@@ -131,6 +141,7 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
         default_discount_amount: Number(discountAmount) || 0,
         points_per_referral: Number(pointsPerReferral) || 0,
         is_active: isActive,
+        enabled_condition: enabledCondition,
         auto_exclude_roles: autoExcludeRoles,
         auto_exclude_organizers: autoExcludeRoles.includes("organizer"),
         excluded_member_ids: initialSettings?.excluded_member_ids ?? [],
@@ -151,6 +162,7 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
           default_discount_amount: Number(discountAmount) || 0,
           points_per_referral: Number(pointsPerReferral) || 0,
           is_active: isActive,
+          enabled_condition: enabledCondition,
           auto_exclude_roles: autoExcludeRoles,
           auto_exclude_organizers: autoExcludeRoles.includes("organizer"),
           excluded_member_ids: initialSettings?.excluded_member_ids ?? [],
@@ -201,6 +213,90 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
               </p>
             </div>
             <Switch checked={isActive} onCheckedChange={setIsActive} />
+          </div>
+
+          {/* Referral Enablement Condition */}
+          <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-1.5">
+                <Sliders className="size-4 text-primary" />
+                <p className="text-xs font-medium text-foreground">Referral Enablement Condition</p>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Define the event and ticket criteria required for referral codes to appear and be redeemable.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              {/* All Events */}
+              <button
+                type="button"
+                onClick={() => setEnabledCondition("all")}
+                className={cn(
+                  "flex flex-col gap-1 rounded-lg border p-2.5 text-left transition-all",
+                  enabledCondition === "all"
+                    ? "border-primary bg-primary/10 text-primary shadow-xs font-semibold ring-1 ring-primary/30"
+                    : "border-border/80 bg-background/80 hover:bg-muted/40 text-muted-foreground",
+                )}
+              >
+                <div className="flex w-full items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Ticket className="size-3.5" />
+                    <span className="text-xs font-semibold">All Events</span>
+                  </div>
+                  {enabledCondition === "all" && <Check className="size-3 text-primary" />}
+                </div>
+                <p className="text-[10px] text-muted-foreground leading-snug">
+                  Available on all active events, free &amp; paid.
+                </p>
+              </button>
+
+              {/* Paid Events Only */}
+              <button
+                type="button"
+                onClick={() => setEnabledCondition("paid_events_only")}
+                className={cn(
+                  "flex flex-col gap-1 rounded-lg border p-2.5 text-left transition-all",
+                  enabledCondition === "paid_events_only"
+                    ? "border-primary bg-primary/10 text-primary shadow-xs font-semibold ring-1 ring-primary/30"
+                    : "border-border/80 bg-background/80 hover:bg-muted/40 text-muted-foreground",
+                )}
+              >
+                <div className="flex w-full items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Coins className="size-3.5" />
+                    <span className="text-xs font-semibold">Paid Events</span>
+                  </div>
+                  {enabledCondition === "paid_events_only" && <Check className="size-3 text-primary" />}
+                </div>
+                <p className="text-[10px] text-muted-foreground leading-snug">
+                  Only events with at least 1 paid pass or bundle.
+                </p>
+              </button>
+
+              {/* Paid Tickets Only */}
+              <button
+                type="button"
+                onClick={() => setEnabledCondition("paid_tickets_only")}
+                className={cn(
+                  "flex flex-col gap-1 rounded-lg border p-2.5 text-left transition-all",
+                  enabledCondition === "paid_tickets_only"
+                    ? "border-primary bg-primary/10 text-primary shadow-xs font-semibold ring-1 ring-primary/30"
+                    : "border-border/80 bg-background/80 hover:bg-muted/40 text-muted-foreground",
+                )}
+              >
+                <div className="flex w-full items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <CreditCard className="size-3.5" />
+                    <span className="text-xs font-semibold">Paid Passes</span>
+                  </div>
+                  {enabledCondition === "paid_tickets_only" && <Check className="size-3 text-primary" />}
+                </div>
+                <p className="text-[10px] text-muted-foreground leading-snug">
+                  Only when attendee selects a paid pass (&gt; Rp 0).
+                </p>
+              </button>
+            </div>
           </div>
 
           {/* Role Auto-Exclusion Controls */}
