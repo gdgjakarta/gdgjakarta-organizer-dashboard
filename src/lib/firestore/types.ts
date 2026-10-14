@@ -28,6 +28,8 @@ export type QuestionValidationType =
   | "isNumber"
   | "customRegex";
 
+export type CheckboxRequirementRule = "all" | "at_least_one" | "min_count";
+
 export interface CustomQuestion {
   id: string;
   label: string;
@@ -56,6 +58,11 @@ export interface CustomQuestion {
   min_length?: number;
   max_length?: number;
   custom_error_message?: string;
+
+  // Checkbox & multi-select requirement settings
+  checkbox_requirement?: CheckboxRequirementRule;
+  min_selected?: number;
+  max_selected?: number;
 
   // Other option with custom text input (Google Forms style)
   allow_other?: boolean;

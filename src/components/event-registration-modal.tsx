@@ -71,6 +71,7 @@ import { isEventCurationMode } from "@/lib/events/payment-deadline";
 import { calculatePaymentGatewayFee } from "@/lib/events/payment-fee";
 import {
   formatOtherAnswer,
+  getCheckboxRequirement,
   isOtherOption,
   parseOtherAnswer,
   validateQuestionAnswer,
@@ -1058,23 +1059,15 @@ export function EventRegistrationModal({
       const updated = current.includes(option) ? current.filter((item) => item !== option) : [...current, option];
       const question = questions.find((q) => q.id === questionId);
       if (question) {
-        if (updated.length > 0) {
-          const result = validateQuestionAnswer(question, updated);
-          setFieldErrors((errs) => {
-            if (result.isValid) {
-              const next = { ...errs };
-              delete next[questionId];
-              return next;
-            }
-            return { ...errs, [questionId]: result.error ?? "Invalid input" };
-          });
-        } else {
-          setFieldErrors((errs) => {
+        const result = validateQuestionAnswer(question, updated);
+        setFieldErrors((errs) => {
+          if (result.isValid) {
             const next = { ...errs };
             delete next[questionId];
             return next;
-          });
-        }
+          }
+          return { ...errs, [questionId]: result.error ?? "Invalid input" };
+        });
       }
       return { ...prev, [questionId]: updated };
     });
@@ -1244,23 +1237,15 @@ export function EventRegistrationModal({
         (it) => typeof it === "string" && !isOtherOption(it) && !it.toLowerCase().startsWith("other:"),
       );
       const updated = [...filtered, formatted];
-      if (text.trim().length > 0) {
-        const result = validateQuestionAnswer(question, updated);
-        setFieldErrors((errs) => {
-          if (result.isValid) {
-            const next = { ...errs };
-            delete next[question.id];
-            return next;
-          }
-          return { ...errs, [question.id]: result.error ?? "Invalid input" };
-        });
-      } else {
-        setFieldErrors((errs) => {
+      const result = validateQuestionAnswer(question, updated);
+      setFieldErrors((errs) => {
+        if (result.isValid) {
           const next = { ...errs };
           delete next[question.id];
           return next;
-        });
-      }
+        }
+        return { ...errs, [question.id]: result.error ?? "Invalid input" };
+      });
       return { ...prev, [question.id]: updated };
     });
   };
@@ -3753,6 +3738,16 @@ export function EventRegistrationModal({
                                 <Field key={q.id}>
                                   <FieldLabel htmlFor={fieldId} className="font-medium text-xs">
                                     {q.label} {q.required && <span className="text-destructive">*</span>}
+                                    {["checkbox", "multiselect"].includes(q.type) && q.required && (
+                                      <span className="ml-1.5 font-normal text-[10px] text-muted-foreground">
+                                        {(() => {
+                                          const req = getCheckboxRequirement(q);
+                                          if (req.rule === "all") return "(All checkboxes required)";
+                                          if (req.rule === "min_count") return `(Select at least ${req.minSelected})`;
+                                          return "(Select at least 1)";
+                                        })()}
+                                      </span>
+                                    )}
                                   </FieldLabel>
 
                                   {q.description && (
@@ -4179,48 +4174,51 @@ export function EventRegistrationModal({
                                                   onCheckedChange={(checked) => {
                                                     if (checked) {
                                                       const formatted = formatOtherAnswer(currentOtherText);
-                                                      setAnswers((prev) => {
-                                                        const cur = Array.isArray(prev[q.id])
-                                                          ? (prev[q.id] as string[])
-                                                          : [];
-                                                        const filtered = cur.filter(
-                                                          (it) =>
-                                                            typeof it === "string" &&
-                                                            !isOtherOption(it) &&
-                                                            !it.toLowerCase().startsWith("other:"),
-                                                        );
-                                                        return { ...prev, [q.id]: [...filtered, formatted] };
-                                                      });
+                                                      const cur = Array.isArray(answers[q.id])
+                                                        ? (answers[q.id] as string[])
+                                                        : [];
+                                                      const filtered = cur.filter(
+                                                        (it) =>
+                                                          typeof it === "string" &&
+                                                          !isOtherOption(it) &&
+                                                          !it.toLowerCase().startsWith("other:"),
+                                                      );
+                                                      const nextUpdated = [...filtered, formatted];
+                                                      setAnswers((prev) => ({ ...prev, [q.id]: nextUpdated }));
+                                                      const valRes = validateQuestionAnswer(q, nextUpdated);
                                                       setFieldErrors((prev) => {
-                                                        const next = { ...prev };
-                                                        delete next[q.id];
-                                                        return next;
+                                                        if (valRes.isValid) {
+                                                          const next = { ...prev };
+                                                          delete next[q.id];
+                                                          return next;
+                                                        }
+                                                        return { ...prev, [q.id]: valRes.error ?? "Invalid input" };
                                                       });
                                                       setTimeout(() => otherInputRefs.current[q.id]?.focus(), 50);
                                                     } else {
-                                                      setAnswers((prev) => {
-                                                        const cur = Array.isArray(prev[q.id])
-                                                          ? (prev[q.id] as string[])
-                                                          : [];
-                                                        return {
-                                                          ...prev,
-                                                          [q.id]: cur.filter(
-                                                            (it) =>
-                                                              typeof it === "string" &&
-                                                              !isOtherOption(it) &&
-                                                              !it.toLowerCase().startsWith("other:"),
-                                                          ),
-                                                        };
-                                                      });
+                                                      const cur = Array.isArray(answers[q.id])
+                                                        ? (answers[q.id] as string[])
+                                                        : [];
+                                                      const nextUpdated = cur.filter(
+                                                        (it) =>
+                                                          typeof it === "string" &&
+                                                          !isOtherOption(it) &&
+                                                          !it.toLowerCase().startsWith("other:"),
+                                                      );
+                                                      setAnswers((prev) => ({ ...prev, [q.id]: nextUpdated }));
                                                       setOtherInputs((prev) => {
                                                         const next = { ...prev };
                                                         delete next[q.id];
                                                         return next;
                                                       });
+                                                      const valRes = validateQuestionAnswer(q, nextUpdated);
                                                       setFieldErrors((prev) => {
-                                                        const next = { ...prev };
-                                                        delete next[q.id];
-                                                        return next;
+                                                        if (valRes.isValid) {
+                                                          const next = { ...prev };
+                                                          delete next[q.id];
+                                                          return next;
+                                                        }
+                                                        return { ...prev, [q.id]: valRes.error ?? "Invalid input" };
                                                       });
                                                     }
                                                   }}

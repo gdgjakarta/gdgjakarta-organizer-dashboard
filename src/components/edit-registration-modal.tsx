@@ -50,6 +50,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import {
   formatOtherAnswer,
+  getCheckboxRequirement,
   isOtherOption,
   parseOtherAnswer,
   validateQuestionAnswer,
@@ -262,23 +263,15 @@ export function EditRegistrationModal({
       const updated = current.includes(option) ? current.filter((item) => item !== option) : [...current, option];
       const question = activeQuestions.find((q) => q.id === questionId);
       if (question) {
-        if (updated.length > 0) {
-          const result = validateQuestionAnswer(question, updated);
-          setFieldErrors((errs) => {
-            if (result.isValid) {
-              const next = { ...errs };
-              delete next[questionId];
-              return next;
-            }
-            return { ...errs, [questionId]: result.error ?? "Invalid input" };
-          });
-        } else {
-          setFieldErrors((errs) => {
+        const result = validateQuestionAnswer(question, updated);
+        setFieldErrors((errs) => {
+          if (result.isValid) {
             const next = { ...errs };
             delete next[questionId];
             return next;
-          });
-        }
+          }
+          return { ...errs, [questionId]: result.error ?? "Invalid input" };
+        });
       }
       return { ...prev, [questionId]: updated };
     });
@@ -1065,6 +1058,16 @@ export function EditRegistrationModal({
                             <Field key={q.id}>
                               <FieldLabel htmlFor={fieldId} className="font-medium text-xs">
                                 {q.label} {q.required && <span className="text-destructive">*</span>}
+                                {["checkbox", "multiselect"].includes(q.type) && q.required && (
+                                  <span className="ml-1.5 font-normal text-[10px] text-muted-foreground">
+                                    {(() => {
+                                      const req = getCheckboxRequirement(q);
+                                      if (req.rule === "all") return "(All checkboxes required)";
+                                      if (req.rule === "min_count") return `(Select at least ${req.minSelected})`;
+                                      return "(Select at least 1)";
+                                    })()}
+                                  </span>
+                                )}
                               </FieldLabel>
 
                               {q.description && (
@@ -1444,6 +1447,7 @@ export function EditRegistrationModal({
                                                 isChecked
                                                   ? "border-primary bg-primary/10 font-medium text-foreground shadow-xs"
                                                   : "border-border bg-card text-foreground hover:bg-muted/40",
+                                                errorMessage && !isChecked && "border-destructive/60",
                                               )}
                                             >
                                               <Checkbox
@@ -1465,6 +1469,7 @@ export function EditRegistrationModal({
                                               isOtherChecked
                                                 ? "border-primary bg-primary/5 text-foreground shadow-2xs ring-1 ring-primary/30"
                                                 : "border-border bg-card hover:bg-muted/40",
+                                              errorMessage && !isOtherChecked && "border-destructive/60",
                                             )}
                                           >
                                             <div className="flex shrink-0 items-center gap-2">
@@ -1551,6 +1556,17 @@ export function EditRegistrationModal({
                                     </div>
                                   );
                                 })()}
+
+                              {/* Error message for select, radio, checkbox, multiselect */}
+                              {errorMessage &&
+                                (q.type === "select" ||
+                                  q.type === "radio" ||
+                                  q.type === "checkbox" ||
+                                  q.type === "multiselect") && (
+                                  <p className="pt-1 font-medium text-[11px] text-destructive leading-tight">
+                                    {errorMessage}
+                                  </p>
+                                )}
                             </Field>
                           );
                         })}

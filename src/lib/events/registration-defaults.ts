@@ -410,6 +410,7 @@ export const DEFAULT_COMBINED_QUESTIONS: CustomQuestion[] = [
       "I understand that any sprint/hackathon submissions must be newly built during the event timeline.",
     ],
     required: true,
+    checkbox_requirement: "all",
     description: "Please check all boxes to confirm your commitment.",
     section: "Consent & Code of Conduct",
   },
@@ -617,6 +618,7 @@ export const FREE_REGISTRATION_TEMPLATE: CustomQuestion[] = [
       "I agree that event photos and videos may be taken for GDG community coverage.",
     ],
     required: true,
+    checkbox_requirement: "all",
     section: "Consent & Code of Conduct",
   },
 ];
@@ -686,6 +688,7 @@ export const PAID_REGISTRATION_TEMPLATE: CustomQuestion[] = [
       "I agree to adhere to the GDG Community Guidelines and Code of Conduct.",
     ],
     required: true,
+    checkbox_requirement: "all",
     section: "Consent & Code of Conduct",
   },
 ];
@@ -738,6 +741,7 @@ export const COMMITMENT_FEE_TEMPLATE: CustomQuestion[] = [
       "I agree to adhere to the GDG Community Guidelines and Code of Conduct.",
     ],
     required: true,
+    checkbox_requirement: "all",
     section: "Consent & Code of Conduct",
   },
 ];
@@ -849,6 +853,7 @@ export const MULTI_TRACK_TEMPLATE: CustomQuestion[] = [
       "I agree that photos and videos taken during the event may be shared for community highlights.",
     ],
     required: true,
+    checkbox_requirement: "all",
     section: "Consent & Code of Conduct",
   },
 ];
@@ -969,6 +974,7 @@ export const CURATED_FREE_TEMPLATE: CustomQuestion[] = [
       "I agree to adhere to the GDG Community Guidelines and Code of Conduct.",
     ],
     required: true,
+    checkbox_requirement: "all",
     section: "Consent & Code of Conduct",
   },
 ];
@@ -1076,6 +1082,7 @@ export const CURATED_COMMITMENT_FEE_TEMPLATE: CustomQuestion[] = [
       "I agree to adhere to the GDG Community Guidelines and Code of Conduct.",
     ],
     required: true,
+    checkbox_requirement: "all",
     section: "Consent & Code of Conduct",
   },
 ];
@@ -1211,6 +1218,7 @@ export const CURATED_MULTI_FREE_TEMPLATE: CustomQuestion[] = [
       "I agree to adhere to the GDG Community Guidelines and Code of Conduct.",
     ],
     required: true,
+    checkbox_requirement: "all",
     section: "Consent & Code of Conduct",
   },
 ];
@@ -1318,6 +1326,7 @@ export const CURATED_MULTI_COMMITMENT_TEMPLATE: CustomQuestion[] = [
       "I agree to adhere to the GDG Community Guidelines and Code of Conduct.",
     ],
     required: true,
+    checkbox_requirement: "all",
     section: "Consent & Code of Conduct",
   },
 ];
@@ -1440,6 +1449,7 @@ export const CURATED_MULTI_PAID_TEMPLATE: CustomQuestion[] = [
       "I agree to adhere to the GDG Community Guidelines and Code of Conduct.",
     ],
     required: true,
+    checkbox_requirement: "all",
     section: "Consent & Code of Conduct",
   },
 ];

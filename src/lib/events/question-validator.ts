@@ -1,4 +1,4 @@
-import type { CustomQuestion, QuestionValidationType } from "@/lib/firestore/types";
+import type { CheckboxRequirementRule, CustomQuestion, QuestionValidationType } from "@/lib/firestore/types";
 
 /**
  * Common consumer/personal webmail domains disallowed for Work Email validation.
@@ -30,6 +30,30 @@ export const DISALLOWED_PERSONAL_EMAIL_DOMAINS = new Set([
   "tutanota.com",
   "tutamail.com",
 ]);
+
+export interface CheckboxRequirementOption {
+  value: CheckboxRequirementRule;
+  label: string;
+  description: string;
+}
+
+export const CHECKBOX_REQUIREMENT_OPTIONS: CheckboxRequirementOption[] = [
+  {
+    value: "all",
+    label: "All Checkboxes Required",
+    description: "Must check all options (ideal for Terms & Conditions, Code of Conduct, and Consent)",
+  },
+  {
+    value: "at_least_one",
+    label: "At Least One Option",
+    description: "Must check at least one box (just input one of it)",
+  },
+  {
+    value: "min_count",
+    label: "Some Checkboxes (At Least N)",
+    description: "Must check at least a specified number of boxes (some of it)",
+  },
+];
 
 export interface ValidationTypeOption {
   value: QuestionValidationType;
@@ -222,6 +246,69 @@ export function formatOtherAnswer(text: string): string {
 }
 
 /**
+ * Detects whether a question is a Terms, Consent, or Code of Conduct agreement.
+ */
+export function isTermsOrConsentQuestion(question: CustomQuestion): boolean {
+  if (question.section === "Consent & Code of Conduct") return true;
+  const idLower = question.id.toLowerCase();
+  if (
+    idLower.includes("terms") ||
+    idLower.includes("agreement") ||
+    idLower.includes("consent") ||
+    idLower.includes("conduct") ||
+    idLower.includes("commitment_policy")
+  ) {
+    return true;
+  }
+  const labelLower = question.label.toLowerCase();
+  if (
+    labelLower.includes("terms") ||
+    labelLower.includes("code of conduct") ||
+    labelLower.includes("guidelines") ||
+    labelLower.includes("consent") ||
+    labelLower.includes("agreement")
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Resolves the effective checkbox requirement rule and counts for a question.
+ */
+export function getCheckboxRequirement(question: CustomQuestion): {
+  rule: CheckboxRequirementRule;
+  minSelected: number;
+  maxSelected?: number;
+} {
+  const optionsCount = question.options?.length ?? 1;
+
+  if (question.checkbox_requirement) {
+    return {
+      rule: question.checkbox_requirement,
+      minSelected: question.checkbox_requirement === "all" ? optionsCount : Math.max(1, question.min_selected ?? 1),
+      maxSelected: question.max_selected,
+    };
+  }
+
+  // Automatic smart default for Terms & Code of Conduct:
+  // Requires all checkboxes by default so registrants cannot bypass compliance clauses.
+  if (isTermsOrConsentQuestion(question)) {
+    return {
+      rule: "all",
+      minSelected: optionsCount,
+      maxSelected: question.max_selected,
+    };
+  }
+
+  return {
+    rule: "at_least_one",
+    minSelected: 1,
+    maxSelected: question.max_selected,
+  };
+}
+
+/**
  * Validates a single question answer against its configuration.
  * Returns { isValid: true } or { isValid: false, error: "..." }.
  */
@@ -254,7 +341,80 @@ export function validateQuestionAnswer(question: CustomQuestion, value: unknown)
     }
   }
 
-  // 2. Required Check
+  // 2. Checkbox & Multi-select Validation
+  if (question.type === "checkbox" || question.type === "multiselect") {
+    let selectedItems: string[] = [];
+    if (Array.isArray(value)) {
+      selectedItems = value.filter((v): v is string => typeof v === "string" && v.trim().length > 0);
+    } else if (typeof value === "string" && value.trim().length > 0) {
+      selectedItems = [value.trim()];
+    } else if (typeof value === "boolean" && value) {
+      selectedItems = ["true"];
+    }
+
+    const options = question.options ?? [];
+    const totalOptions = options.length;
+    const { rule, minSelected, maxSelected } = getCheckboxRequirement(question);
+
+    // Max options limit (applies whenever max_selected is set)
+    if (typeof maxSelected === "number" && maxSelected > 0 && selectedItems.length > maxSelected) {
+      return {
+        isValid: false,
+        error:
+          customError ||
+          `You can select at most ${maxSelected} option${maxSelected > 1 ? "s" : ""} for "${question.label}".`,
+      };
+    }
+
+    if (question.required) {
+      if (rule === "all") {
+        if (totalOptions > 0) {
+          const missing = options.filter(
+            (opt) => !selectedItems.some((item) => item.trim().toLowerCase() === opt.trim().toLowerCase()),
+          );
+          if (missing.length > 0) {
+            return {
+              isValid: false,
+              error:
+                customError ||
+                (selectedItems.length === 0
+                  ? `Please check all checkboxes for "${question.label}".`
+                  : `Please check all checkboxes for "${question.label}" (${selectedItems.length} of ${totalOptions} agreed).`),
+            };
+          }
+        } else if (selectedItems.length === 0) {
+          return {
+            isValid: false,
+            error: customError || `Please check all checkboxes for "${question.label}".`,
+          };
+        }
+      } else if (rule === "min_count") {
+        const requiredCount = Math.max(1, minSelected);
+        if (selectedItems.length < requiredCount) {
+          return {
+            isValid: false,
+            error:
+              customError ||
+              (selectedItems.length === 0
+                ? `Please select at least ${requiredCount} option${requiredCount > 1 ? "s" : ""} for "${question.label}".`
+                : `Please select at least ${requiredCount} option${requiredCount > 1 ? "s" : ""} for "${question.label}" (currently ${selectedItems.length} selected).`),
+          };
+        }
+      } else {
+        // "at_least_one"
+        if (selectedItems.length === 0) {
+          return {
+            isValid: false,
+            error: customError || `Please select at least one option for "${question.label}".`,
+          };
+        }
+      }
+    }
+
+    return { isValid: true };
+  }
+
+  // 3. Required Check for other input types (text, textarea, select, radio, media)
   if (question.required) {
     if (value === undefined || value === null) {
       return {

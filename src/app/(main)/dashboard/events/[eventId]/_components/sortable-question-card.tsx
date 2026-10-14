@@ -7,6 +7,7 @@ import Image from "next/image";
 import { RestrictToVerticalAxis } from "@dnd-kit/abstract/modifiers";
 import { useSortable } from "@dnd-kit/react/sortable";
 import {
+  CheckSquare,
   ChevronDown,
   ChevronUp,
   Clipboard,
@@ -39,9 +40,15 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { isOtherOption, VALIDATION_TYPE_OPTIONS } from "@/lib/events/question-validator";
+import {
+  CHECKBOX_REQUIREMENT_OPTIONS,
+  getCheckboxRequirement,
+  isOtherOption,
+  isTermsOrConsentQuestion,
+  VALIDATION_TYPE_OPTIONS,
+} from "@/lib/events/question-validator";
 import { REGISTRATION_SECTIONS } from "@/lib/events/registration-defaults";
-import type { CustomQuestion, QuestionValidationType } from "@/lib/firestore/types";
+import type { CheckboxRequirementRule, CustomQuestion, QuestionValidationType } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
 interface SortableQuestionCardProps {
@@ -392,7 +399,7 @@ export function SortableQuestionCard({
           </Field>
         </div>
 
-        <div className="flex items-end pb-2 md:col-span-2">
+        <div className="flex flex-wrap items-center gap-2 pb-2 md:col-span-2">
           <label
             htmlFor={`required-${q.id}`}
             className={cn(
@@ -408,6 +415,16 @@ export function SortableQuestionCard({
             />
             Required
           </label>
+          {["checkbox", "multiselect"].includes(q.type) && q.required && (
+            <Badge variant="outline" className="font-normal text-[10px] text-muted-foreground">
+              {(() => {
+                const req = getCheckboxRequirement(q);
+                if (req.rule === "all") return "All Options Required";
+                if (req.rule === "min_count") return `Min ${req.minSelected} Options`;
+                return "At Least 1 Option";
+              })()}
+            </Badge>
+          )}
         </div>
       </div>
 
@@ -845,6 +862,112 @@ export function SortableQuestionCard({
           </div>
         )}
       </div>
+
+      {/* Selection Rules & Constraints for Checkboxes & Multi-select */}
+      {["checkbox", "multiselect"].includes(q.type) && (
+        <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
+          <div className="flex items-center justify-between border-b pb-1.5">
+            <div className="flex items-center gap-1.5 font-medium text-foreground text-xs">
+              <CheckSquare className="size-3.5 text-primary" />
+              <span>Checkbox Selection Rules</span>
+            </div>
+            <span className="text-[10px] text-muted-foreground">
+              {q.required
+                ? "Enforce required choices and minimum criteria"
+                : "Configure selection constraints (applied when question is required)"}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
+            {/* Requirement Rule Dropdown */}
+            <Field className={q.checkbox_requirement === "min_count" ? "" : "sm:col-span-2 md:col-span-2"}>
+              <FieldLabel className="text-xs">Required Selection Rule</FieldLabel>
+              <Select
+                value={q.checkbox_requirement ?? (isTermsOrConsentQuestion(q) ? "all" : "at_least_one")}
+                onValueChange={(val: CheckboxRequirementRule) => onUpdate(q.id, { checkbox_requirement: val })}
+              >
+                <SelectTrigger className="h-9 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {CHECKBOX_REQUIREMENT_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="pt-0.5 text-[10px] text-muted-foreground">
+                {(() => {
+                  if (q.checkbox_requirement === "all" || (!q.checkbox_requirement && isTermsOrConsentQuestion(q))) {
+                    return "Respondent must check all options (ideal for Terms & Conditions and Code of Conduct).";
+                  }
+                  if (q.checkbox_requirement === "min_count") {
+                    return "Respondent must check at least the specified number of options (some of it).";
+                  }
+                  return "Respondent only needs to check at least one box to proceed.";
+                })()}
+              </p>
+            </Field>
+
+            {/* Minimum Options Required (When rule is min_count) */}
+            {q.checkbox_requirement === "min_count" && (
+              <Field>
+                <FieldLabel className="text-xs">Min Options Required</FieldLabel>
+                <Input
+                  type="number"
+                  min="1"
+                  max={q.options?.length ? String(q.options.length) : "10"}
+                  placeholder="2"
+                  value={q.min_selected !== undefined ? String(q.min_selected) : "2"}
+                  onChange={(e) =>
+                    onUpdate(q.id, {
+                      min_selected: e.target.value ? Math.max(1, Number(e.target.value)) : 2,
+                    })
+                  }
+                  className="h-9 text-xs"
+                />
+                <p className="pt-0.5 text-[10px] text-muted-foreground">
+                  Minimum number of checkboxes that must be selected.
+                </p>
+              </Field>
+            )}
+
+            {/* Maximum Options Allowed (Optional constraint) */}
+            <Field>
+              <FieldLabel className="text-xs">Max Options Allowed (Optional)</FieldLabel>
+              <Input
+                type="number"
+                min="1"
+                placeholder="Leave blank for no limit"
+                value={q.max_selected !== undefined ? String(q.max_selected) : ""}
+                onChange={(e) =>
+                  onUpdate(q.id, {
+                    max_selected: e.target.value ? Math.max(1, Number(e.target.value)) : undefined,
+                  })
+                }
+                className="h-9 text-xs"
+              />
+              <p className="pt-0.5 text-[10px] text-muted-foreground">Optional limit on maximum number of choices.</p>
+            </Field>
+          </div>
+
+          {/* Custom Error Message */}
+          <Field>
+            <FieldLabel className="text-xs">Custom Error Message (Optional)</FieldLabel>
+            <Input
+              placeholder="e.g. You must agree to all terms and community guidelines to continue"
+              value={q.custom_error_message ?? ""}
+              onChange={(e) => onUpdate(q.id, { custom_error_message: e.target.value })}
+              className="text-xs"
+            />
+            <p className="pt-0.5 text-[10px] text-muted-foreground">
+              Leave blank to automatically display intelligent progress messages (e.g. &quot;Please check all checkboxes
+              (1 of 3 agreed)&quot;).
+            </p>
+          </Field>
+        </div>
+      )}
 
       {/* Validation & Constraints for Text & Paragraph inputs */}
       {["text", "textarea"].includes(q.type) && (
