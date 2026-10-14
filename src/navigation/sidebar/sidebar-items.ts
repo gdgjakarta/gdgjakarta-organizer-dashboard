@@ -157,7 +157,7 @@ export const organizerSidebarItems: NavGroup[] = [
       {
         id: "doku-qris-simulator",
         title: "DOKU QRIS Simulator",
-        url: "https://www.doku.com/testqr/",
+        url: "https://sandbox.doku.com/qris-simulator/customer",
         icon: QrCode,
         newTab: true,
       },
