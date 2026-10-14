@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { Check, Loader2, Plus, Search, ShieldAlert, Undo2, UserCheck, UserX } from "lucide-react";
+import { Check, Loader2, Plus, Search, ShieldAlert, Undo2, UserX } from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -25,19 +25,34 @@ import {
   searchMembersForExclusionAction,
 } from "@/lib/firestore/actions";
 import type { ExcludedReferralMember } from "@/lib/firestore/types";
+import { cn } from "@/lib/utils";
 
 interface ReferralExcludedMembersDialogProps {
   onExclusionsChanged: () => void;
+  autoExcludeRoles?: string[];
   autoExcludeOrganizers?: boolean;
 }
 
 export function ReferralExcludedMembersDialog({
   onExclusionsChanged,
+  autoExcludeRoles,
   autoExcludeOrganizers,
 }: ReferralExcludedMembersDialogProps) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [excludedList, setExcludedList] = useState<ExcludedReferralMember[]>([]);
+  const [filterExcludedQuery, setFilterExcludedQuery] = useState("");
+
+  const trimmedFilter = filterExcludedQuery.toLowerCase().trim();
+  const filteredExcludedList = trimmedFilter
+    ? excludedList.filter(
+        (m) =>
+          m.name.toLowerCase().includes(trimmedFilter) ||
+          m.email.toLowerCase().includes(trimmedFilter) ||
+          m.role.toLowerCase().includes(trimmedFilter) ||
+          m.member_id.toLowerCase().includes(trimmedFilter),
+      )
+    : excludedList;
 
   // Search mode to add new member to exclusion
   const [searchQuery, setSearchQuery] = useState("");
@@ -235,27 +250,79 @@ export function ReferralExcludedMembersDialog({
 
           {/* Currently Excluded Table */}
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold text-foreground">
-                Currently Excluded Members ({excludedList.length})
-              </p>
-              {autoExcludeOrganizers && (
-                <Badge variant="outline" className="text-[10px] border-amber-500/30 text-amber-700 dark:text-amber-300">
-                  Auto-exclude Organizers Enabled
-                </Badge>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-xs font-semibold text-foreground">
+                  Currently Excluded Members ({excludedList.length})
+                </p>
+                {(() => {
+                  const effectiveRoles =
+                    autoExcludeRoles ?? (autoExcludeOrganizers ? ["googler", "organizer", "team_member"] : []);
+                  if (effectiveRoles.length === 0) return null;
+
+                  return (
+                    <div className="flex flex-wrap items-center gap-1">
+                      {effectiveRoles.includes("googler") && (
+                        <Badge
+                          variant="outline"
+                          className="border-red-500/30 bg-red-500/10 text-red-700 text-[10px] dark:border-red-400/30 dark:bg-red-500/20 dark:text-red-300"
+                        >
+                          Googler Excluded
+                        </Badge>
+                      )}
+                      {effectiveRoles.includes("organizer") && (
+                        <Badge
+                          variant="outline"
+                          className="border-blue-500/30 bg-blue-500/10 text-blue-700 text-[10px] dark:border-blue-400/30 dark:bg-blue-500/20 dark:text-blue-300"
+                        >
+                          Organizer Excluded
+                        </Badge>
+                      )}
+                      {effectiveRoles.includes("team_member") && (
+                        <Badge
+                          variant="outline"
+                          className="border-purple-500/30 bg-purple-500/10 text-purple-700 text-[10px] dark:border-purple-400/30 dark:bg-purple-500/20 dark:text-purple-300"
+                        >
+                          Team Member Excluded
+                        </Badge>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+              {excludedList.length > 2 && (
+                <div className="relative w-full sm:w-48">
+                  <Search className="pointer-events-none absolute left-2.5 top-2 size-3 text-muted-foreground" />
+                  <Input
+                    placeholder="Filter excluded list..."
+                    value={filterExcludedQuery}
+                    onChange={(e) => setFilterExcludedQuery(e.target.value)}
+                    className="h-7 pl-7 text-[11px] bg-background"
+                  />
+                </div>
               )}
             </div>
 
-            {loading ? (
+            {loading && (
               <div className="flex h-32 items-center justify-center">
                 <Loader2 className="size-5 animate-spin text-muted-foreground" />
               </div>
-            ) : excludedList.length === 0 ? (
-              <div className="rounded-lg border border-dashed p-6 text-center text-xs text-muted-foreground">
+            )}
+
+            {!loading && excludedList.length === 0 && (
+              <div className="rounded-lg border border-dashed p-6 text-center text-muted-foreground text-xs">
                 No members are currently excluded from the leaderboard.
               </div>
-            ) : (
-              <div className="rounded-lg border overflow-hidden">
+            )}
+
+            {!loading && excludedList.length > 0 && filteredExcludedList.length === 0 && (
+              <div className="rounded-lg border border-dashed p-6 text-center text-muted-foreground text-xs">
+                No excluded members match &quot;{filterExcludedQuery}&quot;.
+              </div>
+            )}
+
+            {!loading && filteredExcludedList.length > 0 && (
+              <div className="overflow-hidden rounded-lg border">
                 <Table>
                   <TableHeader>
                     <TableRow className="hover:bg-transparent">
@@ -267,7 +334,7 @@ export function ReferralExcludedMembersDialog({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {excludedList.map((entry) => (
+                    {filteredExcludedList.map((entry) => (
                       <TableRow key={entry.member_id} className="text-xs">
                         <TableCell>
                           <div className="flex items-center gap-2">
@@ -289,7 +356,7 @@ export function ReferralExcludedMembersDialog({
                         </TableCell>
 
                         <TableCell>
-                          <Badge variant="outline" className="text-[10px] font-normal">
+                          <Badge variant="outline" className="font-normal text-[10px]">
                             {entry.role}
                           </Badge>
                         </TableCell>
@@ -302,9 +369,22 @@ export function ReferralExcludedMembersDialog({
                           {entry.reason === "role_auto" ? (
                             <Badge
                               variant="outline"
-                              className="border-amber-500/30 bg-amber-500/10 text-amber-700 text-[10px] dark:text-amber-300"
+                              className={cn(
+                                "text-[10px]",
+                                entry.excluded_role === "googler"
+                                  ? "border-red-500/30 bg-red-500/10 text-red-700 dark:border-red-400/30 dark:bg-red-500/20 dark:text-red-300"
+                                  : entry.excluded_role === "organizer"
+                                    ? "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:border-blue-400/30 dark:bg-blue-500/20 dark:text-blue-300"
+                                    : "border-purple-500/30 bg-purple-500/10 text-purple-700 dark:border-purple-400/30 dark:bg-purple-500/20 dark:text-purple-300",
+                              )}
                             >
-                              Role-based (Core Team)
+                              {entry.excluded_role === "googler"
+                                ? "Role (Googler)"
+                                : entry.excluded_role === "organizer"
+                                  ? "Role (Organizer)"
+                                  : entry.excluded_role === "team_member"
+                                    ? "Role (Team Member)"
+                                    : `Role (${entry.role})`}
                             </Badge>
                           ) : (
                             <Badge variant="secondary" className="text-[10px]">
@@ -333,7 +413,10 @@ export function ReferralExcludedMembersDialog({
                               )}
                             </Button>
                           ) : (
-                            <span className="text-[10px] text-muted-foreground" title="Managed via Auto-exclude switch">
+                            <span
+                              className="text-[10px] text-muted-foreground"
+                              title="Managed via Auto-exclude roles settings"
+                            >
                               Auto-managed
                             </span>
                           )}

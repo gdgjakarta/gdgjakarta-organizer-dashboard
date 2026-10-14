@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Percent, Settings, Sparkles, Tag } from "lucide-react";
 import { toast } from "sonner";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -39,12 +40,24 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
   const [discountAmount, setDiscountAmount] = useState<number>(initialSettings?.default_discount_amount ?? 25000);
   const [pointsPerReferral, setPointsPerReferral] = useState<number>(initialSettings?.points_per_referral ?? 10);
   const [isActive, setIsActive] = useState<boolean>(initialSettings?.is_active ?? true);
-  const [autoExcludeOrganizers, setAutoExcludeOrganizers] = useState<boolean>(
-    initialSettings?.auto_exclude_organizers ?? false,
-  );
+  const [autoExcludeRoles, setAutoExcludeRoles] = useState<string[]>(() => {
+    if (Array.isArray(initialSettings?.auto_exclude_roles)) {
+      return initialSettings.auto_exclude_roles;
+    }
+    if (initialSettings?.auto_exclude_organizers) {
+      return ["googler", "organizer", "team_member"];
+    }
+    return [];
+  });
   const [prizeDesc, setPrizeDesc] = useState<string>(
     initialSettings?.merch_prize_description ?? "Exclusive GDG Jakarta merchandise bundle",
   );
+
+  const handleRoleToggle = (role: "googler" | "organizer" | "team_member", checked: boolean) => {
+    setAutoExcludeRoles((prev) =>
+      checked ? (prev.includes(role) ? prev : [...prev, role]) : prev.filter((r) => r !== role),
+    );
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -55,7 +68,8 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
         default_discount_amount: Number(discountAmount) || 0,
         points_per_referral: Number(pointsPerReferral) || 0,
         is_active: isActive,
-        auto_exclude_organizers: autoExcludeOrganizers,
+        auto_exclude_roles: autoExcludeRoles,
+        auto_exclude_organizers: autoExcludeRoles.includes("organizer"),
         excluded_member_ids: initialSettings?.excluded_member_ids ?? [],
         merch_prize_description: prizeDesc.trim(),
       });
@@ -73,7 +87,8 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
           default_discount_amount: Number(discountAmount) || 0,
           points_per_referral: Number(pointsPerReferral) || 0,
           is_active: isActive,
-          auto_exclude_organizers: autoExcludeOrganizers,
+          auto_exclude_roles: autoExcludeRoles,
+          auto_exclude_organizers: autoExcludeRoles.includes("organizer"),
           excluded_member_ids: initialSettings?.excluded_member_ids ?? [],
           merch_prize_description: prizeDesc.trim(),
           updated_at: new Date().toISOString(),
@@ -96,7 +111,7 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex items-center gap-2">
             <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -123,15 +138,85 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
             <Switch checked={isActive} onCheckedChange={setIsActive} />
           </div>
 
-          {/* Auto-exclude Organizers Toggle */}
-          <div className="flex items-center justify-between rounded-lg border bg-muted/30 p-3">
+          {/* Role Auto-Exclusion Controls */}
+          <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
             <div className="space-y-0.5">
-              <p className="text-xs font-medium text-foreground">Auto-Exclude Organizers & Core Team</p>
+              <p className="text-xs font-medium text-foreground">Auto-Exclude Roles</p>
               <p className="text-[11px] text-muted-foreground">
-                Filter out chapter staff and organizers from leaderboard rankings and prizes.
+                Select chapter roles to automatically filter out from leaderboard rankings and prizes.
               </p>
             </div>
-            <Switch checked={autoExcludeOrganizers} onCheckedChange={setAutoExcludeOrganizers} />
+
+            <div className="space-y-2">
+              {/* Googler */}
+              <div className="flex items-center justify-between rounded-lg border bg-background/80 p-2.5 transition-colors hover:bg-muted/30">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-xs font-medium text-foreground">Googler</p>
+                    <Badge
+                      variant="outline"
+                      className="border-red-500/30 bg-red-500/10 text-red-700 text-[10px] dark:border-red-400/30 dark:bg-red-500/20 dark:text-red-300"
+                    >
+                      Google
+                    </Badge>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Filter out Google employees and advisors from leaderboard rankings.
+                  </p>
+                </div>
+                <Switch
+                  checked={autoExcludeRoles.includes("googler")}
+                  onCheckedChange={(checked) => handleRoleToggle("googler", checked)}
+                  aria-label="Auto-exclude Googlers"
+                />
+              </div>
+
+              {/* Organizer */}
+              <div className="flex items-center justify-between rounded-lg border bg-background/80 p-2.5 transition-colors hover:bg-muted/30">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-xs font-medium text-foreground">Organizer</p>
+                    <Badge
+                      variant="outline"
+                      className="border-blue-500/30 bg-blue-500/10 text-blue-700 text-[10px] dark:border-blue-400/30 dark:bg-blue-500/20 dark:text-blue-300"
+                    >
+                      Organizer
+                    </Badge>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Filter out chapter leads and co-organizers from leaderboard rankings.
+                  </p>
+                </div>
+                <Switch
+                  checked={autoExcludeRoles.includes("organizer")}
+                  onCheckedChange={(checked) => handleRoleToggle("organizer", checked)}
+                  aria-label="Auto-exclude Organizers"
+                />
+              </div>
+
+              {/* Team Member */}
+              <div className="flex items-center justify-between rounded-lg border bg-background/80 p-2.5 transition-colors hover:bg-muted/30">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-xs font-medium text-foreground">Team Member</p>
+                    <Badge
+                      variant="outline"
+                      className="border-purple-500/30 bg-purple-500/10 text-purple-700 text-[10px] dark:border-purple-400/30 dark:bg-purple-500/20 dark:text-purple-300"
+                    >
+                      Core Team
+                    </Badge>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Filter out core team crew and chapter staff from leaderboard rankings.
+                  </p>
+                </div>
+                <Switch
+                  checked={autoExcludeRoles.includes("team_member")}
+                  onCheckedChange={(checked) => handleRoleToggle("team_member", checked)}
+                  aria-label="Auto-exclude Team Members"
+                />
+              </div>
+            </div>
           </div>
 
           {/* Discount Configuration: Type & Value */}

@@ -235,6 +235,7 @@ const DEFAULT_REFERRAL_SETTINGS: ReferralProgramSettings = {
   is_active: true,
   merch_prize_description: "Exclusive GDG Jakarta merchandise bundle",
   excluded_member_ids: [],
+  auto_exclude_roles: [],
   auto_exclude_organizers: false,
   updated_at: new Date().toISOString(),
 };
@@ -248,6 +249,14 @@ export async function getReferralProgramSettings(): Promise<ReferralProgramSetti
       return DEFAULT_REFERRAL_SETTINGS;
     }
     const data = snap.data() as Partial<ReferralProgramSettings>;
+    const rawRoles = data.auto_exclude_roles;
+    let autoExcludeRoles: string[] = [];
+    if (Array.isArray(rawRoles)) {
+      autoExcludeRoles = rawRoles.map((r: unknown) => String(r).toLowerCase().trim());
+    } else if (data.auto_exclude_organizers) {
+      autoExcludeRoles = ["googler", "organizer", "team_member"];
+    }
+
     return {
       default_discount_type: data.default_discount_type === "fixed" ? "fixed" : "percentage",
       default_discount_percentage:
@@ -257,7 +266,8 @@ export async function getReferralProgramSettings(): Promise<ReferralProgramSetti
       is_active: data.is_active !== false,
       merch_prize_description: data.merch_prize_description ?? "Exclusive GDG Jakarta merchandise bundle",
       excluded_member_ids: Array.isArray(data.excluded_member_ids) ? data.excluded_member_ids : [],
-      auto_exclude_organizers: Boolean(data.auto_exclude_organizers),
+      auto_exclude_roles: autoExcludeRoles,
+      auto_exclude_organizers: Boolean(data.auto_exclude_organizers) || autoExcludeRoles.includes("organizer"),
       updated_at: data.updated_at ?? new Date().toISOString(),
       updated_by_name: data.updated_by_name,
     };
@@ -476,11 +486,11 @@ export async function validateReferralCode(
   }
 
   // Ensure Firebase Auth state is fully restored on client before making Firestore calls
-  if (typeof auth?.authStateReady === "function") {
+  if (typeof auth.authStateReady === "function") {
     await auth.authStateReady();
   }
-  const effectiveMemberId = auth?.currentUser?.uid ?? currentMemberId;
-  const effectiveMemberEmail = auth?.currentUser?.email ?? currentMemberEmail;
+  const effectiveMemberId = auth.currentUser?.uid ?? currentMemberId;
+  const effectiveMemberEmail = auth.currentUser?.email ?? currentMemberEmail;
 
   // 1. Fetch referral settings
   const settings = await getReferralProgramSettings();
@@ -602,12 +612,72 @@ export async function validateReferralCode(
   }
 }
 
+export type ReferralExcludedRole = "googler" | "organizer" | "team_member";
+
+/**
+ * Maps a member's role / team attributes to one of the 3 key chapter roles:
+ * - "googler": Google staff / advisor
+ * - "organizer": GDG Organizer / Lead / Co-Organizer / Admin
+ * - "team_member": Core Team / Team Member / Check-in Staff / Volunteer
+ */
+export function getMemberRoleCategory(member?: Partial<FirestoreMember> | null): ReferralExcludedRole | null {
+  if (!member) return null;
+
+  const role = (member.role ?? "").toLowerCase().trim();
+  const chapterRole = (member.chapter_role ?? "").toLowerCase().trim();
+  const str = `${role} ${chapterRole}`.trim();
+
+  // 1. Googler
+  if (str.includes("googler") || str.includes("google")) {
+    return "googler";
+  }
+
+  // 2. Organizer
+  if (str.includes("organizer") || str.includes("lead") || str === "admin") {
+    return "organizer";
+  }
+
+  // 3. Team Member (Core Team / Chapter Crew / Staff)
+  if (
+    member.team === "Core Team" ||
+    str.includes("core") ||
+    str.includes("team") ||
+    str.includes("staff") ||
+    str.includes("check-in") ||
+    str.includes("checkin") ||
+    str.includes("volunteer")
+  ) {
+    return "team_member";
+  }
+
+  return null;
+}
+
+export function isMemberExcludedByRole(
+  member?: Partial<FirestoreMember> | null,
+  autoExcludeRoles: string[] = [],
+): { excluded: boolean; matchedRole?: ReferralExcludedRole } {
+  if (!member || !autoExcludeRoles || autoExcludeRoles.length === 0) {
+    return { excluded: false };
+  }
+  const category = getMemberRoleCategory(member);
+  if (category && autoExcludeRoles.includes(category)) {
+    return { excluded: true, matchedRole: category };
+  }
+  return { excluded: false };
+}
+
+export function isExcludedOrganizerOrStaff(member?: Partial<FirestoreMember> | null): boolean {
+  return Boolean(getMemberRoleCategory(member));
+}
+
 export async function getReferralLeaderboard(limitCount = 100): Promise<ReferralLeaderboardEntry[]> {
   if (typeof window === "undefined") return [];
   try {
     const settings = await getReferralProgramSettings();
     const excludedIds = new Set(settings.excluded_member_ids ?? []);
-    const autoExcludeOrgs = Boolean(settings.auto_exclude_organizers);
+    const autoExcludeRoles =
+      settings.auto_exclude_roles ?? (settings.auto_exclude_organizers ? ["googler", "organizer", "team_member"] : []);
 
     const membersRef = collection(db, "members");
     const snapshot = await getDocs(membersRef);
@@ -620,12 +690,9 @@ export async function getReferralLeaderboard(limitCount = 100): Promise<Referral
 
       // Check exclusion
       const isExplicitlyExcluded = excludedIds.has(docSnap.id);
-      const isOrgRole =
-        autoExcludeOrgs &&
-        Boolean(data.role) &&
-        ["organizer", "core team", "check-in staff"].includes(String(data.role).trim().toLowerCase());
+      const isRoleExcluded = isMemberExcludedByRole(data, autoExcludeRoles).excluded;
 
-      if (isExplicitlyExcluded || isOrgRole) {
+      if (isExplicitlyExcluded || isRoleExcluded) {
         continue;
       }
 
@@ -638,15 +705,15 @@ export async function getReferralLeaderboard(limitCount = 100): Promise<Referral
         entries.push({
           rank: 0, // Assigned after sort
           member_id: docSnap.id,
-          name: data.name ?? "Anonymous Member",
-          email: data.email ?? "",
+          name: data.name || "Anonymous Member",
+          email: data.email || "",
           role: data.role,
           avatar_url: data.avatar_url,
           referral_code: resolvedCode,
           referral_points: points,
           referrals_count: count,
           is_prize_winner: false,
-          joined_date: data.joined_date ?? new Date().toISOString(),
+          joined_date: data.joined_date || new Date().toISOString(),
           last_active: data.last_active,
         });
       }
@@ -678,21 +745,21 @@ export async function getExcludedReferralMembers(): Promise<ExcludedReferralMemb
   try {
     const settings = await getReferralProgramSettings();
     const excludedIds = new Set(settings.excluded_member_ids ?? []);
-    const autoExcludeOrgs = Boolean(settings.auto_exclude_organizers);
+    const autoExcludeRoles =
+      settings.auto_exclude_roles ?? (settings.auto_exclude_organizers ? ["googler", "organizer", "team_member"] : []);
 
     const membersRef = collection(db, "members");
     const snapshot = await getDocs(membersRef);
     const results: ExcludedReferralMember[] = [];
+    const matchedDocIds = new Set<string>();
 
     for (const docSnap of snapshot.docs) {
       const data = docSnap.data() as FirestoreMember;
       const isExplicitlyExcluded = excludedIds.has(docSnap.id);
-      const isOrgRole =
-        autoExcludeOrgs &&
-        Boolean(data.role) &&
-        ["organizer", "core team", "check-in staff"].includes(String(data.role).trim().toLowerCase());
+      const roleCheck = isMemberExcludedByRole(data, autoExcludeRoles);
 
-      if (isExplicitlyExcluded || isOrgRole) {
+      if (isExplicitlyExcluded || roleCheck.excluded) {
+        matchedDocIds.add(docSnap.id);
         const resolvedCode =
           data.referral_code && data.referral_code !== "GDG7X9K"
             ? data.referral_code
@@ -700,16 +767,56 @@ export async function getExcludedReferralMembers(): Promise<ExcludedReferralMemb
 
         results.push({
           member_id: docSnap.id,
-          name: data.name ?? "Anonymous Member",
-          email: data.email ?? "",
-          role: data.role ?? "Member",
+          name: data.name || "Anonymous Member",
+          email: data.email || "",
+          role: data.role || (data.team === "Core Team" ? "Core Team" : "Member"),
           avatar_url: data.avatar_url,
           referral_code: resolvedCode,
           referral_points: typeof data.referral_points === "number" ? data.referral_points : 0,
           referrals_count: typeof data.referrals_count === "number" ? data.referrals_count : 0,
-          joined_date: data.joined_date ?? new Date().toISOString(),
+          joined_date: data.joined_date || new Date().toISOString(),
           reason: isExplicitlyExcluded ? "manual" : "role_auto",
+          excluded_role: roleCheck.matchedRole,
         });
+      }
+    }
+
+    // Include any explicitly excluded IDs whose doc might not have been returned in full scan
+    for (const id of excludedIds) {
+      if (!matchedDocIds.has(id)) {
+        try {
+          const directSnap = await getDoc(doc(db, "members", id));
+          if (directSnap.exists()) {
+            const data = directSnap.data() as FirestoreMember;
+            results.push({
+              member_id: directSnap.id,
+              name: data.name || "Anonymous Member",
+              email: data.email || "",
+              role: data.role || "Member",
+              avatar_url: data.avatar_url,
+              referral_code: data.referral_code ?? generateUserReferralCode(directSnap.id),
+              referral_points: typeof data.referral_points === "number" ? data.referral_points : 0,
+              referrals_count: typeof data.referrals_count === "number" ? data.referrals_count : 0,
+              joined_date: data.joined_date || new Date().toISOString(),
+              reason: "manual",
+            });
+          } else {
+            results.push({
+              member_id: id,
+              name: `Excluded Member (${id.slice(0, 8)})`,
+              email: "Unsynced Member",
+              role: "Excluded",
+              avatar_url: null,
+              referral_code: generateUserReferralCode(id),
+              referral_points: 0,
+              referrals_count: 0,
+              joined_date: new Date().toISOString(),
+              reason: "manual",
+            });
+          }
+        } catch {
+          // Ignore individual fetch failure
+        }
       }
     }
 
@@ -798,10 +905,11 @@ export async function searchMembersForExclusion(searchTerm: string): Promise<
   try {
     const [settings, membersSnap] = await Promise.all([
       getReferralProgramSettings(),
-      getDocs(query(collection(db, "members"), limit(200))),
+      getDocs(collection(db, "members")),
     ]);
     const excludedSet = new Set(settings.excluded_member_ids ?? []);
-    const autoExclude = Boolean(settings.auto_exclude_organizers);
+    const autoExcludeRoles =
+      settings.auto_exclude_roles ?? (settings.auto_exclude_organizers ? ["googler", "organizer", "team_member"] : []);
     const q = searchTerm.trim().toLowerCase();
 
     const results: Array<{
@@ -813,21 +921,32 @@ export async function searchMembersForExclusion(searchTerm: string): Promise<
       isAlreadyExcluded: boolean;
     }> = [];
 
+    const foundIds = new Set<string>();
+
     for (const docSnap of membersSnap.docs) {
       const data = docSnap.data() as FirestoreMember;
       const name = data.name || "Anonymous Member";
       const email = data.email || "";
-      const role = data.role || "Member";
+      const role = data.role || (data.team === "Core Team" ? "Core Team" : "Member");
+      const memberId = docSnap.id;
+      const refCode = data.referral_code ?? "";
 
-      if (q && !name.toLowerCase().includes(q) && !email.toLowerCase().includes(q)) {
+      if (
+        q &&
+        !name.toLowerCase().includes(q) &&
+        !email.toLowerCase().includes(q) &&
+        !memberId.toLowerCase().includes(q) &&
+        !refCode.toLowerCase().includes(q)
+      ) {
         continue;
       }
 
-      const isManual = excludedSet.has(docSnap.id);
-      const isRole = autoExclude && ["organizer", "core team", "check-in staff"].includes(role.toLowerCase());
+      foundIds.add(memberId);
+      const isManual = excludedSet.has(memberId);
+      const isRole = isMemberExcludedByRole(data, autoExcludeRoles).excluded;
 
       results.push({
-        id: docSnap.id,
+        id: memberId,
         name,
         email,
         role,
@@ -835,7 +954,33 @@ export async function searchMembersForExclusion(searchTerm: string): Promise<
         isAlreadyExcluded: isManual || isRole,
       });
 
-      if (results.length >= 20) break;
+      if (results.length >= 50) break;
+    }
+
+    // Direct document ID fallback if someone enters exact Firestore doc ID / UID that wasn't matched
+    if (results.length === 0 && q) {
+      try {
+        const directSnap = await getDoc(doc(db, "members", searchTerm.trim()));
+        if (directSnap.exists() && !foundIds.has(directSnap.id)) {
+          const data = directSnap.data() as FirestoreMember;
+          const name = data.name || "Anonymous Member";
+          const email = data.email || "";
+          const role = data.role || (data.team === "Core Team" ? "Core Team" : "Member");
+          const isManual = excludedSet.has(directSnap.id);
+          const isRole = isMemberExcludedByRole(data, autoExcludeRoles).excluded;
+
+          results.push({
+            id: directSnap.id,
+            name,
+            email,
+            role,
+            avatar_url: data.avatar_url,
+            isAlreadyExcluded: isManual || isRole,
+          });
+        }
+      } catch {
+        // Fallback quiet
+      }
     }
 
     return results;

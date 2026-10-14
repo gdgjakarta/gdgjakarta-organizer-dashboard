@@ -330,6 +330,7 @@ service cloud.firestore {
     //   - merch_prize_description: string|null (optional, <= 1000 chars) - Prize description
     //   - excluded_member_ids: list|null (optional, <= 5000 items) - Member IDs excluded from referral program
     //   - auto_exclude_organizers: bool|null (optional) - Automatically exclude organizers from leaderboard/rewards
+    //   - auto_exclude_roles: list|null (optional, <= 20 items) - Roles automatically excluded from leaderboard/rewards (e.g. ['googler', 'organizer', 'team_member'])
     //   - updated_at: string|null (optional, <= 100 chars) - Last update timestamp
     //   - updated_by_name: string|null (optional, <= 200 chars) - Updater display name
     // Permissions:
@@ -804,6 +805,7 @@ service cloud.firestore {
         (!('merch_prize_description' in data) || data.merch_prize_description == null || (data.merch_prize_description is string && data.merch_prize_description.size() <= 1000)) &&
         (!('excluded_member_ids' in data) || data.excluded_member_ids == null || (data.excluded_member_ids is list && data.excluded_member_ids.size() <= 5000)) &&
         (!('auto_exclude_organizers' in data) || data.auto_exclude_organizers == null || data.auto_exclude_organizers is bool) &&
+        (!('auto_exclude_roles' in data) || data.auto_exclude_roles == null || (data.auto_exclude_roles is list && data.auto_exclude_roles.size() <= 20)) &&
         (!('updated_at' in data) || data.updated_at == null || (data.updated_at is string && data.updated_at.size() <= 100)) &&
         (!('updated_by_name' in data) || data.updated_by_name == null || (data.updated_by_name is string && data.updated_by_name.size() <= 200))
       );

@@ -108,6 +108,7 @@ export function ReferralLeaderboardView({ initialEntries, initialSettings }: Ref
         <div className="flex flex-wrap items-center gap-2">
           <ReferralExcludedMembersDialog
             onExclusionsChanged={refreshData}
+            autoExcludeRoles={settings?.auto_exclude_roles}
             autoExcludeOrganizers={settings?.auto_exclude_organizers}
           />
           <ReferralSettingsDialog

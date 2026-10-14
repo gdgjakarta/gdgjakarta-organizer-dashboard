@@ -575,7 +575,9 @@ export interface ReferralProgramSettings {
   is_active: boolean; // Master referral program toggle
   merch_prize_description?: string; // "Exclusive GDG Jakarta merchandise"
   excluded_member_ids?: string[]; // IDs of members excluded from leaderboard
-  auto_exclude_organizers?: boolean; // When true, members with roles Organizer/Core Team are excluded
+  excluded_event_ids?: string[]; // IDs of events excluded from the referral program
+  auto_exclude_roles?: Array<"googler" | "organizer" | "team_member" | string>; // Selected roles to automatically exclude from leaderboard
+  auto_exclude_organizers?: boolean; // When true, members with roles Organizer/Core Team are excluded (legacy compatibility)
   updated_at: string;
   updated_by_name?: string;
 }
@@ -629,6 +631,7 @@ export interface ExcludedReferralMember {
   referrals_count: number;
   joined_date: string;
   reason?: "manual" | "role_auto";
+  excluded_role?: "googler" | "organizer" | "team_member" | string;
 }
 
 export interface FirestoreSyncMetadata {
