@@ -476,6 +476,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         if (directList && directList.length > 0) {
           setRegistrationsList(directList);
           setIsLoading(false);
+          const { recalculateEventCapacityCounters } = await import("@/lib/firestore/client");
+          void recalculateEventCapacityCounters(eventId, directList);
         }
 
         // 2. Real-time subscription listener
@@ -511,7 +513,12 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       try {
         const { subscribeFirestoreEventDoc } = await import("@/lib/firestore/client");
         unsub = subscribeFirestoreEventDoc(eventId, (doc) => {
-          if (doc) setFirestoreEventDoc(doc);
+          if (doc) {
+            setFirestoreEventDoc(doc);
+            if (doc.sessions && doc.sessions.length > 0) {
+              setSessions(doc.sessions);
+            }
+          }
         });
       } catch (err) {
         console.warn("[RegistrantsTab] Failed to subscribe to event doc:", err);

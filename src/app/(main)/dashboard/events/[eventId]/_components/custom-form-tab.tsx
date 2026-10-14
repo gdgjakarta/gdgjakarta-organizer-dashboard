@@ -278,8 +278,11 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
   useEffect(() => {
     async function loadSavedFirestoreConfig() {
       try {
-        const { getFirestoreEventById } = await import("@/lib/firestore/client");
-        const docData = await getFirestoreEventById(String(event.id));
+        const { getFirestoreEventById, getEventSessionRegistrationCounts } = await import("@/lib/firestore/client");
+        const [docData, liveSessionCounts] = await Promise.all([
+          getFirestoreEventById(String(event.id)),
+          getEventSessionRegistrationCounts(String(event.id)),
+        ]);
 
         const docRecord = docData as unknown as Record<string, unknown> | null;
         const loadedApproval =
@@ -296,7 +299,13 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
             : event.max_attendees
               ? String(event.max_attendees)
               : "";
-        const loadedSessions = Array.isArray(docData?.sessions) ? docData.sessions : (event.sessions ?? []);
+        let loadedSessions = Array.isArray(docData?.sessions) ? docData.sessions : (event.sessions ?? []);
+        if (Object.keys(liveSessionCounts).length > 0) {
+          loadedSessions = loadedSessions.map((sess) => ({
+            ...sess,
+            total_registered: liveSessionCounts[sess.id] ?? sess.total_registered ?? 0,
+          }));
+        }
         const loadedTickets = Array.isArray(docData?.tickets) ? docData.tickets : (event.tickets ?? []);
         const loadedQuestions =
           docData?.custom_questions && docData.custom_questions.length > 0

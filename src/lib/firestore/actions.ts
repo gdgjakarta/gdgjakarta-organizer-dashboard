@@ -971,3 +971,42 @@ export async function searchMembersForExclusionAction(query: string) {
     return [];
   }
 }
+
+export async function fetchEventsForReferralConfigAction() {
+  try {
+    const { fetchPublishedEventsAction } = await import(
+      "@/app/(main)/dashboard/email-manager/_actions/fetch-published-events"
+    );
+    const res = await fetchPublishedEventsAction();
+    return res.events || [];
+  } catch (err) {
+    console.error("[fetchEventsForReferralConfigAction] error:", err);
+    return [];
+  }
+}
+
+export async function excludeEventFromReferralsAction(eventId: string) {
+  try {
+    const { excludeEventFromReferrals } = await import("./client");
+    await excludeEventFromReferrals(eventId);
+    await revalidateDashboardPath("/dashboard/referrals");
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to exclude event from referrals.";
+    console.error("[excludeEventFromReferralsAction] error:", message);
+    return { success: false, error: message };
+  }
+}
+
+export async function includeEventInReferralsAction(eventId: string) {
+  try {
+    const { includeEventInReferrals } = await import("./client");
+    await includeEventInReferrals(eventId);
+    await revalidateDashboardPath("/dashboard/referrals");
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to include event in referrals.";
+    console.error("[includeEventInReferralsAction] error:", message);
+    return { success: false, error: message };
+  }
+}

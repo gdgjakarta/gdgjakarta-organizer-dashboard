@@ -172,12 +172,23 @@ export function EditRegistrationModal({
     async function fetchFullEvent() {
       try {
         setIsLoadingEvent(true);
-        const { getFirestoreEventById } = await import("@/lib/firestore/client");
-        const docSnap = await getFirestoreEventById(String(registration.event_id));
+        const { getFirestoreEventById, getEventSessionRegistrationCounts } = await import("@/lib/firestore/client");
+        const [docSnap, liveSessionCounts] = await Promise.all([
+          getFirestoreEventById(String(registration.event_id)),
+          getEventSessionRegistrationCounts(String(registration.event_id)),
+        ]);
         if (docSnap) {
+          let mergedSessions = docSnap.sessions;
+          if (Array.isArray(docSnap.sessions) && Object.keys(liveSessionCounts).length > 0) {
+            mergedSessions = docSnap.sessions.map((sess) => ({
+              ...sess,
+              total_registered: liveSessionCounts[sess.id] ?? sess.total_registered ?? 0,
+            }));
+          }
           setEventData((prev) => ({
             ...(prev ?? ({} as FirestoreEvent)),
             ...docSnap,
+            ...(mergedSessions ? { sessions: mergedSessions } : {}),
           }));
         }
       } catch (err) {

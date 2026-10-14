@@ -351,12 +351,23 @@ export function EventRegistrationModal({
     setEventConfig(event);
     async function loadLatestFirestoreEvent() {
       try {
-        const { getFirestoreEventById } = await import("@/lib/firestore/client");
-        const docData = await getFirestoreEventById(String(event.id));
+        const { getFirestoreEventById, getEventSessionRegistrationCounts } = await import("@/lib/firestore/client");
+        const [docData, liveSessionCounts] = await Promise.all([
+          getFirestoreEventById(String(event.id)),
+          getEventSessionRegistrationCounts(String(event.id)),
+        ]);
         if (docData) {
+          let mergedSessions = docData.sessions;
+          if (Array.isArray(docData.sessions) && Object.keys(liveSessionCounts).length > 0) {
+            mergedSessions = docData.sessions.map((sess) => ({
+              ...sess,
+              total_registered: liveSessionCounts[sess.id] ?? sess.total_registered ?? 0,
+            }));
+          }
           setEventConfig((prev) => ({
             ...prev,
             ...docData,
+            ...(mergedSessions ? { sessions: mergedSessions } : {}),
           }));
         }
       } catch (err) {
@@ -365,6 +376,45 @@ export function EventRegistrationModal({
     }
     void loadLatestFirestoreEvent();
   }, [event]);
+
+  // Real-time listener when modal is open to reflect live approved capacity decreases immediately
+  useEffect(() => {
+    if (!open) return;
+    let unsub = () => {
+      // noop initial unsubscribe
+    };
+    void (async () => {
+      try {
+        const { subscribeFirestoreEventDoc, getEventSessionRegistrationCounts } = await import(
+          "@/lib/firestore/client"
+        );
+        unsub = subscribeFirestoreEventDoc(String(event.id), async (doc) => {
+          if (doc) {
+            let mergedSessions = doc.sessions;
+            try {
+              const liveSessionCounts = await getEventSessionRegistrationCounts(String(event.id));
+              if (Array.isArray(doc.sessions) && Object.keys(liveSessionCounts).length > 0) {
+                mergedSessions = doc.sessions.map((sess) => ({
+                  ...sess,
+                  total_registered: liveSessionCounts[sess.id] ?? sess.total_registered ?? 0,
+                }));
+              }
+            } catch {
+              // ignore
+            }
+            setEventConfig((prev) => ({
+              ...prev,
+              ...doc,
+              ...(mergedSessions ? { sessions: mergedSessions } : {}),
+            }));
+          }
+        });
+      } catch (err) {
+        console.warn("[EventRegistrationModal] Failed to subscribe to event updates:", err);
+      }
+    })();
+    return () => unsub();
+  }, [open, event.id]);
 
   const activeRegistration = existingRegistration ?? localReg;
 
@@ -408,6 +458,14 @@ export function EventRegistrationModal({
     return (eventConfig.bundles ?? []).filter((b) => b.status !== "hidden");
   }, [eventConfig.bundles]);
   const hasBundles = availableBundles.length > 0;
+
+  const hasPaidPass = useMemo(() => {
+    const hasPaidTicket = availableTickets.some(
+      (t) => t.type === "paid" || t.type === "commitment_fee" || (typeof t.price === "number" && t.price > 0),
+    );
+    const hasPaidBundle = availableBundles.some((b) => typeof b.price === "number" && b.price > 0);
+    return hasPaidTicket || hasPaidBundle;
+  }, [availableTickets, availableBundles]);
 
   const selectedBundle = useMemo(() => {
     return availableBundles.find((b) => b.id === selectedBundleId) ?? null;
@@ -656,11 +714,11 @@ export function EventRegistrationModal({
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const refParam = params.get("ref");
-      if (refParam && !appliedReferral) {
+      if (refParam && !appliedReferral && event.referral_enabled !== false && hasPaidPass) {
         setReferralInput(refParam.toUpperCase());
       }
     }
-  }, [appliedReferral]);
+  }, [appliedReferral, event.referral_enabled, hasPaidPass]);
 
   const totalMerchandiseItems = useMemo(() => {
     return Object.values(selectedMerch).reduce((sum, item) => sum + (item.quantity || 0), 0);
@@ -3197,7 +3255,7 @@ export function EventRegistrationModal({
                     )}
 
                     {/* ── REFERRAL CODE SECTION ───────────────────────────────── */}
-                    {hasTickets && (
+                    {hasTickets && hasPaidPass && event.referral_enabled !== false && (
                       <div className="space-y-2 rounded-xl border bg-card p-3.5 shadow-2xs">
                         <div className="flex items-center justify-between font-semibold text-foreground text-xs">
                           <span className="flex items-center gap-1.5">

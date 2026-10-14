@@ -1,12 +1,27 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { Percent, Settings, Sparkles, Tag } from "lucide-react";
+import {
+  Calendar,
+  CalendarX,
+  Check,
+  ChevronsUpDown,
+  Loader2,
+  Percent,
+  Plus,
+  Settings,
+  Sparkles,
+  Tag,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 
+import type { PublishedEventOption } from "@/app/(main)/dashboard/email-manager/_actions/fetch-published-events";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import {
   Dialog,
   DialogContent,
@@ -18,9 +33,10 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { saveReferralProgramSettingsAction } from "@/lib/firestore/actions";
+import { fetchEventsForReferralConfigAction, saveReferralProgramSettingsAction } from "@/lib/firestore/actions";
 import type { ReferralProgramSettings } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
@@ -49,14 +65,61 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
     }
     return [];
   });
+  const [excludedEventIds, setExcludedEventIds] = useState<string[]>(initialSettings?.excluded_event_ids ?? []);
+  const [availableEvents, setAvailableEvents] = useState<PublishedEventOption[]>([]);
+  const [loadingEvents, setLoadingEvents] = useState(false);
+  const [eventSelectorOpen, setEventSelectorOpen] = useState(false);
   const [prizeDesc, setPrizeDesc] = useState<string>(
     initialSettings?.merch_prize_description ?? "Exclusive GDG Jakarta merchandise bundle",
   );
 
+  // Sync excludedEventIds when initialSettings change
+  useEffect(() => {
+    if (initialSettings?.excluded_event_ids) {
+      setExcludedEventIds(initialSettings.excluded_event_ids);
+    }
+  }, [initialSettings?.excluded_event_ids]);
+
+  // Load events when dialog opens
+  useEffect(() => {
+    if (open) {
+      setLoadingEvents(true);
+      fetchEventsForReferralConfigAction()
+        .then((events) => {
+          setAvailableEvents(events || []);
+        })
+        .catch((err) => {
+          console.error("[ReferralSettingsDialog] Error loading events:", err);
+        })
+        .finally(() => {
+          setLoadingEvents(false);
+        });
+    }
+  }, [open]);
+
+  const availableEventsMap = useMemo(() => {
+    const map = new Map<string, PublishedEventOption>();
+    for (const ev of availableEvents) {
+      map.set(String(ev.id), ev);
+    }
+    return map;
+  }, [availableEvents]);
+
+  const handleToggleExcludeEvent = (eventId: string) => {
+    setExcludedEventIds((prev) => (prev.includes(eventId) ? prev.filter((id) => id !== eventId) : [...prev, eventId]));
+  };
+
+  const handleRemoveExcludedEvent = (eventId: string) => {
+    setExcludedEventIds((prev) => prev.filter((id) => id !== eventId));
+  };
+
   const handleRoleToggle = (role: "googler" | "organizer" | "team_member", checked: boolean) => {
-    setAutoExcludeRoles((prev) =>
-      checked ? (prev.includes(role) ? prev : [...prev, role]) : prev.filter((r) => r !== role),
-    );
+    setAutoExcludeRoles((prev) => {
+      if (checked) {
+        return prev.includes(role) ? prev : [...prev, role];
+      }
+      return prev.filter((r) => r !== role);
+    });
   };
 
   const handleSave = async () => {
@@ -71,6 +134,7 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
         auto_exclude_roles: autoExcludeRoles,
         auto_exclude_organizers: autoExcludeRoles.includes("organizer"),
         excluded_member_ids: initialSettings?.excluded_member_ids ?? [],
+        excluded_event_ids: excludedEventIds,
         merch_prize_description: prizeDesc.trim(),
       });
 
@@ -90,6 +154,7 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
           auto_exclude_roles: autoExcludeRoles,
           auto_exclude_organizers: autoExcludeRoles.includes("organizer"),
           excluded_member_ids: initialSettings?.excluded_member_ids ?? [],
+          excluded_event_ids: excludedEventIds,
           merch_prize_description: prizeDesc.trim(),
           updated_at: new Date().toISOString(),
         });
@@ -111,7 +176,7 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex items-center gap-2">
             <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -217,6 +282,156 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
                 />
               </div>
             </div>
+          </div>
+
+          {/* Excluded Events Section */}
+          <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-1.5">
+                  <CalendarX className="size-4 text-amber-600 dark:text-amber-400" />
+                  <p className="text-xs font-medium text-foreground">Excluded Events</p>
+                  <Badge
+                    variant="outline"
+                    className="border-amber-500/30 bg-amber-500/10 text-amber-700 text-[10px] dark:text-amber-300"
+                  >
+                    {excludedEventIds.length} {excludedEventIds.length === 1 ? "event" : "events"} excluded
+                  </Badge>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Prevent attendees from redeeming referral codes and claiming discounts on specific events.
+                </p>
+              </div>
+            </div>
+
+            {/* Event Selector Popover */}
+            <Popover open={eventSelectorOpen} onOpenChange={setEventSelectorOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={loadingEvents}
+                  className="h-8 w-full justify-between px-3 text-xs font-normal"
+                >
+                  <span className="flex items-center gap-1.5 text-muted-foreground">
+                    {loadingEvents ? (
+                      <>
+                        <Loader2 className="size-3.5 animate-spin" />
+                        Loading chapter events...
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="size-3.5" />
+                        Exclude an event from referrals...
+                      </>
+                    )}
+                  </span>
+                  <ChevronsUpDown className="size-3.5 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="Search event by name or date..." className="text-xs" />
+                  <CommandList className="max-h-60">
+                    <CommandEmpty>No events found.</CommandEmpty>
+                    <CommandGroup heading={`All Events (${availableEvents.length})`}>
+                      {availableEvents.map((ev) => {
+                        const isExcluded = excludedEventIds.includes(String(ev.id));
+                        return (
+                          <CommandItem
+                            key={ev.id}
+                            value={`${ev.title} ${ev.formattedDate} ${ev.id}`}
+                            onSelect={() => {
+                              handleToggleExcludeEvent(String(ev.id));
+                            }}
+                            className="flex cursor-pointer items-center justify-between py-1.5 text-xs"
+                          >
+                            <div className="flex min-w-0 flex-1 items-center gap-2">
+                              <Avatar className="size-6 shrink-0 rounded-md border bg-muted/40">
+                                {ev.thumbnailUrl && (
+                                  <AvatarImage src={ev.thumbnailUrl} alt={ev.title} className="object-cover" />
+                                )}
+                                <AvatarFallback className="rounded-md bg-primary/10 text-primary text-[10px]">
+                                  <Calendar className="size-3" />
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="flex min-w-0 flex-1 flex-col">
+                                <span className="truncate font-medium">{ev.title}</span>
+                                {ev.formattedDate && (
+                                  <span className="text-[10px] text-muted-foreground">{ev.formattedDate}</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="ml-2 flex items-center">
+                              {isExcluded ? (
+                                <Badge
+                                  variant="outline"
+                                  className="border-amber-500/30 bg-amber-500/10 text-amber-700 text-[10px] dark:text-amber-300"
+                                >
+                                  <Check className="mr-0.5 size-2.5" /> Excluded
+                                </Badge>
+                              ) : (
+                                <span className="text-[10px] text-muted-foreground hover:text-foreground">
+                                  Click to exclude
+                                </span>
+                              )}
+                            </div>
+                          </CommandItem>
+                        );
+                      })}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+
+            {/* Excluded Events List */}
+            {excludedEventIds.length > 0 ? (
+              <div className="max-h-48 space-y-1.5 overflow-y-auto pr-1">
+                {excludedEventIds.map((id) => {
+                  const ev = availableEventsMap.get(id);
+                  return (
+                    <div
+                      key={id}
+                      className="flex items-center justify-between rounded-lg border bg-background/80 p-2 text-xs transition-colors hover:bg-muted/30"
+                    >
+                      <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                        <Avatar className="size-7 shrink-0 rounded-md border bg-muted/40">
+                          {ev?.thumbnailUrl && (
+                            <AvatarImage src={ev.thumbnailUrl} alt={ev.title} className="object-cover" />
+                          )}
+                          <AvatarFallback className="rounded-md bg-amber-500/10 text-amber-700 text-[10px] dark:text-amber-300">
+                            <Calendar className="size-3.5" />
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-medium text-foreground text-xs">{ev?.title || `Event #${id}`}</p>
+                          {ev?.formattedDate && <p className="text-[10px] text-muted-foreground">{ev.formattedDate}</p>}
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        onClick={() => handleRemoveExcludedEvent(id)}
+                        className="size-6 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                        title="Remove exclusion"
+                      >
+                        <X className="size-3.5" />
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed border-border/80 bg-background/40 p-3 text-center">
+                <p className="text-muted-foreground text-xs">No events excluded from referrals.</p>
+                <p className="text-[10px] text-muted-foreground/80">
+                  Attendees can redeem referral codes across all chapter events.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Discount Configuration: Type & Value */}

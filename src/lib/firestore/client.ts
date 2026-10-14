@@ -66,6 +66,7 @@ export function sanitizeFirestoreData<T>(data: T): T {
 }
 
 import { generateBundleFriendVouchers } from "@/lib/events/bundle-voucher-generator";
+import { isRegistrationInSession } from "@/lib/events/capacity-validator";
 import {
   DEFAULT_REGULAR_TICKET_ID,
   DEFAULT_REGULAR_TICKET_NAME,
@@ -235,6 +236,7 @@ const DEFAULT_REFERRAL_SETTINGS: ReferralProgramSettings = {
   is_active: true,
   merch_prize_description: "Exclusive GDG Jakarta merchandise bundle",
   excluded_member_ids: [],
+  excluded_event_ids: [],
   auto_exclude_roles: [],
   auto_exclude_organizers: false,
   updated_at: new Date().toISOString(),
@@ -266,6 +268,7 @@ export async function getReferralProgramSettings(): Promise<ReferralProgramSetti
       is_active: data.is_active !== false,
       merch_prize_description: data.merch_prize_description ?? "Exclusive GDG Jakarta merchandise bundle",
       excluded_member_ids: Array.isArray(data.excluded_member_ids) ? data.excluded_member_ids : [],
+      excluded_event_ids: Array.isArray(data.excluded_event_ids) ? data.excluded_event_ids : [],
       auto_exclude_roles: autoExcludeRoles,
       auto_exclude_organizers: Boolean(data.auto_exclude_organizers) || autoExcludeRoles.includes("organizer"),
       updated_at: data.updated_at ?? new Date().toISOString(),
@@ -498,6 +501,14 @@ export async function validateReferralCode(
     return { valid: false, error: "Referral program is currently not active." };
   }
 
+  // 1.1 Excluded event check
+  if (eventId && settings.excluded_event_ids?.includes(String(eventId))) {
+    return {
+      valid: false,
+      error: "Referral code redemption is not eligible for this event.",
+    };
+  }
+
   // 2. Query member with this referral_code
   try {
     const membersRef = collection(db, "members");
@@ -550,6 +561,18 @@ export async function validateReferralCode(
               error: "Referral discounts are not enabled for this event.",
             };
           }
+          const eventTickets = ensureEventTickets(evData.tickets);
+          const hasPaidPass =
+            eventTickets.some(
+              (t) => t.type === "paid" || t.type === "commitment_fee" || (typeof t.price === "number" && t.price > 0),
+            ) ||
+            (Array.isArray(evData.bundles) && evData.bundles.some((b) => typeof b.price === "number" && b.price > 0));
+          if (!hasPaidPass) {
+            return {
+              valid: false,
+              error: "Referral codes can only be used for events with paid passes.",
+            };
+          }
           if (evData.referral_discount_type === "fixed") {
             discountType = "fixed";
             if (typeof evData.referral_discount_amount === "number" && evData.referral_discount_amount >= 0) {
@@ -591,6 +614,9 @@ export async function validateReferralCode(
     // Graceful permission-denied fallback for regular attendee lookups:
     // If collection listing on /members is restricted, validate against GDG referral code format and self-referral
     if (cleanCode.startsWith("GDG") && cleanCode.length >= 7) {
+      if (eventId && settings.excluded_event_ids?.includes(String(eventId))) {
+        return { valid: false, error: "Referral code redemption is not eligible for this event." };
+      }
       const currentCode = generateUserReferralCode(currentMemberId || currentMemberEmail);
       if (cleanCode === currentCode) {
         return { valid: false, error: "You cannot use your own referral code." };
@@ -888,6 +914,29 @@ export async function includeMemberInLeaderboard(memberId: string): Promise<void
   const updatedList = currentList.filter((id) => id !== memberId);
   await saveReferralProgramSettings({
     excluded_member_ids: updatedList,
+  });
+}
+
+export async function excludeEventFromReferrals(eventId: string): Promise<void> {
+  if (typeof window === "undefined" || !eventId) return;
+  const settings = await getReferralProgramSettings();
+  const currentList = settings.excluded_event_ids ?? [];
+  const idStr = String(eventId);
+  if (!currentList.includes(idStr)) {
+    await saveReferralProgramSettings({
+      excluded_event_ids: [...currentList, idStr],
+    });
+  }
+}
+
+export async function includeEventInReferrals(eventId: string): Promise<void> {
+  if (typeof window === "undefined" || !eventId) return;
+  const settings = await getReferralProgramSettings();
+  const currentList = settings.excluded_event_ids ?? [];
+  const idStr = String(eventId);
+  const updatedList = currentList.filter((id) => id !== idStr);
+  await saveReferralProgramSettings({
+    excluded_event_ids: updatedList,
   });
 }
 
@@ -1444,8 +1493,33 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
     }
   }
 
+  const eventTickets = ensureEventTickets(eventData?.tickets);
+  const eventHasPaidPass =
+    eventTickets.some(
+      (t) => t.type === "paid" || t.type === "commitment_fee" || (typeof t.price === "number" && t.price > 0),
+    ) ||
+    (Array.isArray(eventData?.bundles) && eventData.bundles.some((b) => typeof b.price === "number" && b.price > 0));
+
+  const refSettings = await getReferralProgramSettings();
+  const isEventExcludedFromReferral = Boolean(
+    !refSettings.is_active ||
+      (refSettings.excluded_event_ids && refSettings.excluded_event_ids.includes(eventIdStr)) ||
+      eventData?.referral_enabled === false ||
+      !eventHasPaidPass,
+  );
+
   const cleanPayload = sanitizeFirestoreData<FirestoreRegistration>({
     ...registration,
+    ...(isEventExcludedFromReferral
+      ? {
+          referral_code: undefined,
+          referrer_member_id: undefined,
+          referrer_name: undefined,
+          referral_discount_type: undefined,
+          referral_discount_percent: undefined,
+          referral_discount_amount: undefined,
+        }
+      : {}),
     bundle_vouchers: issuedBundleVouchers ?? registration.bundle_vouchers,
     member_id: effectiveMemberId,
     event_picture_url: safePictureUrl,
@@ -1483,6 +1557,13 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
   // Update event registration counter, waitlisted counter & session total if available
   try {
     if (eventData) {
+      const isCurated = Boolean(eventData.curation_mode ?? eventData.requires_approval);
+      const isSeatConsumingRegistration =
+        resolvedStatus === "approved" ||
+        resolvedStatus === "paid_and_registered" ||
+        resolvedStatus === "registered" ||
+        (!isCurated && resolvedStatus !== "waitlisted" && resolvedStatus !== "rejected");
+
       const currentCount = typeof eventData.total_registrations === "number" ? eventData.total_registrations : 0;
       const currentWaitlistCount = typeof eventData.total_waitlisted === "number" ? eventData.total_waitlisted : 0;
 
@@ -1498,7 +1579,7 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
           if (sess.id === registration.session_id) {
             return {
               ...sess,
-              total_registered: (sess.total_registered ?? 0) + 1,
+              total_registered: (sess.total_registered ?? 0) + (isSeatConsumingRegistration ? 1 : 0),
             };
           }
           return sess;
@@ -1511,7 +1592,7 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
           if (t.id === registration.ticket_id) {
             return {
               ...t,
-              total_registered: (t.total_registered ?? 0) + 1,
+              total_registered: (t.total_registered ?? 0) + (isSeatConsumingRegistration ? 1 : 0),
             };
           }
           return t;
@@ -1585,7 +1666,7 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
           if (b.id === registration.bundle_id) {
             return {
               ...b,
-              total_registered: (b.total_registered ?? 0) + 1,
+              total_registered: (b.total_registered ?? 0) + (isSeatConsumingRegistration ? 1 : 0),
             };
           }
           return b;
@@ -1600,7 +1681,7 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
   }
 
   // 4. Process Referral Redemption & Award Points
-  if (registration.referral_code) {
+  if (registration.referral_code && !isEventExcludedFromReferral) {
     try {
       const refCode = registration.referral_code.trim().toUpperCase();
       const membersRef = collection(db, "members");
@@ -1614,8 +1695,8 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
 
         // Ensure not self-referral
         if (referrerId !== effectiveMemberId) {
-          const settings = await getReferralProgramSettings();
-          const pointsAwarded = typeof settings.points_per_referral === "number" ? settings.points_per_referral : 10;
+          const pointsAwarded =
+            typeof refSettings.points_per_referral === "number" ? refSettings.points_per_referral : 10;
 
           // 1. Increment referrer points and referrals_count
           const currentPoints = typeof referrerData.referral_points === "number" ? referrerData.referral_points : 0;
@@ -1679,18 +1760,187 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
   return regId;
 }
 
-export async function getEventSessionRegistrationCounts(eventId: string): Promise<Record<string, number>> {
+export function isRegistrationSeatOccupied(reg: FirestoreRegistration, isCurated: boolean): boolean {
+  const status = (reg.status ?? "").toLowerCase().trim();
+  if (
+    status === "rejected" ||
+    status === "waitlisted" ||
+    status === "expired" ||
+    status === "failed" ||
+    status === "canceled" ||
+    status === "cancelled"
+  ) {
+    return false;
+  }
+  if (isCurated) {
+    return (
+      status === "approved" ||
+      status === "attended" ||
+      status === "paid_and_registered" ||
+      status === "registered" ||
+      status === "waiting_for_payment"
+    );
+  }
+  return true;
+}
+
+/**
+ * Recalculates all event-level capacity and operational counters from actual registrations:
+ * - total_registrations
+ * - total_approved
+ * - total_waitlisted
+ * - total_checked_in
+ * - sessions[].total_registered (tracks capacity filled per session)
+ * - tickets[].total_registered (tracks capacity filled per ticket)
+ * - bundles[].total_registered (tracks capacity filled per bundle)
+ *
+ * For curated events (requires_approval / curation_mode):
+ * Capacity is consumed ONLY when an attendee status is approved (or attended, paid_and_registered, registered, or waiting_for_payment).
+ * Pending applicants do not consume session/ticket capacity until approved.
+ *
+ * For non-curated events:
+ * Active registrations (non-rejected, non-cancelled, non-expired, non-waitlisted) consume capacity immediately.
+ */
+export async function recalculateEventCapacityCounters(
+  eventId: string,
+  existingRegistrations?: FirestoreRegistration[],
+): Promise<{ sessions?: EventSession[]; tickets?: EventTicketTier[]; bundles?: EventBundlePackage[] } | null> {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const eventIdStr = String(eventId);
+    const eventRef = doc(db, "events", eventIdStr);
+    const eventSnap = await getDoc(eventRef);
+    if (!eventSnap.exists()) return null;
+
+    const eventData = eventSnap.data() as FirestoreEvent;
+    const registrations = existingRegistrations ?? (await getEventRegistrations(eventIdStr));
+    const isCurated = Boolean(eventData.curation_mode ?? eventData.requires_approval);
+
+    const totalRegistrations = registrations.length;
+    const totalApproved = registrations.filter(
+      (r) =>
+        r.status === "approved" ||
+        r.status === "attended" ||
+        r.status === "paid_and_registered" ||
+        r.status === "registered",
+    ).length;
+    const totalWaitlisted = registrations.filter((r) => r.status === "waitlisted").length;
+    const totalCheckedIn = registrations.filter((r) => Boolean(r.is_checked_in) || r.status === "attended").length;
+
+    // Filter registrations that occupy session/ticket capacity
+    const occupiedRegs = registrations.filter((r) => isRegistrationSeatOccupied(r, isCurated));
+
+    const updatePayload: Record<string, unknown> = {
+      total_registrations: totalRegistrations,
+      total_approved: totalApproved,
+      total_waitlisted: totalWaitlisted,
+      total_checked_in: totalCheckedIn,
+      updated_at: new Date().toISOString(),
+    };
+
+    let updatedSessions: EventSession[] | undefined;
+    if (Array.isArray(eventData.sessions) && eventData.sessions.length > 0) {
+      updatedSessions = eventData.sessions.map((sess) => {
+        const count = occupiedRegs.filter((reg) =>
+          isRegistrationInSession(reg, { sessionId: sess.id, sessionTitle: sess.title }),
+        ).length;
+
+        return {
+          ...sess,
+          total_registered: count,
+        };
+      });
+      updatePayload.sessions = updatedSessions;
+    }
+
+    let updatedTickets: EventTicketTier[] | undefined;
+    if (Array.isArray(eventData.tickets) && eventData.tickets.length > 0) {
+      updatedTickets = eventData.tickets.map((t) => {
+        const count = occupiedRegs.filter((reg) => {
+          if (reg.ticket_id && reg.ticket_id === t.id) return true;
+          const regTicket =
+            reg.ticket_name ??
+            reg.ticket_tier ??
+            (reg.answers?.Ticket as string | undefined) ??
+            (reg.answers?.ticket as string | undefined) ??
+            "";
+          if (!regTicket) return false;
+          const regClean = regTicket.toLowerCase().split(",")[0].trim();
+          const targetClean = t.name.toLowerCase().trim();
+          return regClean === targetClean || regClean.includes(targetClean) || targetClean.includes(regClean);
+        }).length;
+
+        return {
+          ...t,
+          total_registered: count,
+        };
+      });
+      updatePayload.tickets = updatedTickets;
+    }
+
+    let updatedBundles: EventBundlePackage[] | undefined;
+    if (Array.isArray(eventData.bundles) && eventData.bundles.length > 0) {
+      updatedBundles = eventData.bundles.map((b) => {
+        const count = occupiedRegs.filter((reg) => {
+          if (reg.bundle_id && reg.bundle_id === b.id) return true;
+          const regBundle = reg.bundle_name ?? (reg.answers?.Bundle as string | undefined) ?? "";
+          if (!regBundle) return false;
+          return regBundle.toLowerCase().trim() === b.name.toLowerCase().trim();
+        }).length;
+
+        return {
+          ...b,
+          total_registered: count,
+        };
+      });
+      updatePayload.bundles = updatedBundles;
+    }
+
+    await updateDoc(eventRef, sanitizeFirestoreData(updatePayload));
+
+    return {
+      sessions: updatedSessions,
+      tickets: updatedTickets,
+      bundles: updatedBundles,
+    };
+  } catch (err) {
+    console.warn("[Firestore] Failed to recalculate event capacity counters:", err);
+    return null;
+  }
+}
+
+export async function getEventSessionRegistrationCounts(
+  eventId: string,
+  isCurated?: boolean,
+): Promise<Record<string, number>> {
   if (typeof window === "undefined") return {};
   try {
-    const registrations = await getEventRegistrations(eventId);
+    const [eventDoc, registrations] = await Promise.all([
+      getFirestoreEventById(eventId),
+      getEventRegistrations(eventId),
+    ]);
+    const eventData = eventDoc;
+    const effectiveIsCurated =
+      typeof isCurated === "boolean" ? isCurated : Boolean(eventData?.curation_mode ?? eventData?.requires_approval);
+    const sessions = eventData?.sessions ?? [];
+
     const counts: Record<string, number> = {};
-    for (const reg of registrations) {
-      if (reg.status === "rejected") continue;
-      const sId = reg.session_id ?? (reg.answers?.session_id as string | undefined);
-      if (sId) {
-        counts[sId] = (counts[sId] ?? 0) + 1;
+    for (const sess of sessions) {
+      counts[sess.id] = 0;
+    }
+
+    const occupiedRegs = registrations.filter((r) => isRegistrationSeatOccupied(r, effectiveIsCurated));
+
+    for (const reg of occupiedRegs) {
+      for (const sess of sessions) {
+        if (isRegistrationInSession(reg, { sessionId: sess.id, sessionTitle: sess.title })) {
+          counts[sess.id] = (counts[sess.id] ?? 0) + 1;
+          break;
+        }
       }
     }
+
     return counts;
   } catch (error) {
     console.warn("[Firestore] getEventSessionRegistrationCounts error:", error);
@@ -1798,19 +2048,11 @@ export async function updateRegistrationStatus(
     console.warn("[updateRegistrationStatus] Failed to write audit log entry:", auditErr);
   }
 
-  // Recalculate event approved & waitlisted counters
+  // Recalculate event counters, session capacities & ticket counters
   try {
-    const allRegs = await getEventRegistrations(eventId);
-    const approvedCount = allRegs.filter((r) => r.status === "approved" || r.status === "attended").length;
-    const waitlistedCount = allRegs.filter((r) => r.status === "waitlisted").length;
-    const eventRef = doc(db, "events", eventId);
-    await updateDoc(eventRef, {
-      total_approved: approvedCount,
-      total_waitlisted: waitlistedCount,
-      updated_at: new Date().toISOString(),
-    });
+    await recalculateEventCapacityCounters(eventId);
   } catch (err) {
-    console.warn("[Firestore] Failed to recalculate approved/waitlisted counters:", err);
+    console.warn("[Firestore] Failed to recalculate event counters and session capacities:", err);
   }
 }
 
@@ -1887,29 +2129,10 @@ export async function updateRegistrationAnswers(
 
   await updateDoc(docRef, updatePayload);
 
-  // If session changed, adjust session counters on event doc
+  // If session changed, recalculate event capacity counters
   if (oldSessionId !== newSessionId) {
     try {
-      const eventRef = doc(db, "events", String(eventId));
-      const eventSnap = await getDoc(eventRef);
-      if (eventSnap.exists()) {
-        const eventData = eventSnap.data() as FirestoreEvent;
-        if (eventData.sessions) {
-          const updatedSessions = eventData.sessions.map((sess) => {
-            if (oldSessionId && sess.id === oldSessionId) {
-              return { ...sess, total_registered: Math.max(0, (sess.total_registered || 1) - 1) };
-            }
-            if (newSessionId && sess.id === newSessionId) {
-              return { ...sess, total_registered: (sess.total_registered || 0) + 1 };
-            }
-            return sess;
-          });
-          await updateDoc(eventRef, {
-            sessions: updatedSessions,
-            updated_at: new Date().toISOString(),
-          });
-        }
-      }
+      await recalculateEventCapacityCounters(eventId);
     } catch (countErr) {
       console.warn("[Firestore] Failed to update session counter on session change:", countErr);
     }
@@ -1965,56 +2188,9 @@ export async function deleteEventRegistration(registrationId: string, eventId: s
   // 1. Delete registration doc
   await deleteDoc(docRef);
 
-  // 2. Decrement or recalculate event counters
+  // 2. Recalculate event counters and capacity
   try {
-    const eventIdStr = String(eventId);
-    const eventRef = doc(db, "events", eventIdStr);
-    const eventSnap = await getDoc(eventRef);
-    if (eventSnap.exists()) {
-      const eventData = eventSnap.data() as FirestoreEvent;
-      const currentTotal = typeof eventData.total_registrations === "number" ? eventData.total_registrations : 1;
-      const now = new Date().toISOString();
-
-      const allRegs = await getEventRegistrations(eventIdStr);
-      const approvedCount = allRegs.filter((r) => r.status === "approved" || r.status === "attended").length;
-      const waitlistedCount = allRegs.filter((r) => r.status === "waitlisted").length;
-      const checkedInCount = allRegs.filter((r) => Boolean(r.is_checked_in)).length;
-
-      const updateData: Record<string, unknown> = {
-        total_registrations: Math.max(0, currentTotal - 1),
-        total_approved: approvedCount,
-        total_waitlisted: waitlistedCount,
-        total_checked_in: checkedInCount,
-        updated_at: now,
-      };
-
-      const sessionId = regData.session_id ?? (regData.answers?.session_id as string | undefined);
-      if (sessionId && Array.isArray(eventData.sessions)) {
-        updateData.sessions = eventData.sessions.map((sess) => {
-          if (sess.id === sessionId) {
-            return {
-              ...sess,
-              total_registered: Math.max(0, (sess.total_registered || 1) - 1),
-            };
-          }
-          return sess;
-        });
-      }
-
-      if (regData.ticket_id && Array.isArray(eventData.tickets)) {
-        updateData.tickets = eventData.tickets.map((t) => {
-          if (t.id === regData.ticket_id) {
-            return {
-              ...t,
-              total_registered: Math.max(0, (t.total_registered || 1) - 1),
-            };
-          }
-          return t;
-        });
-      }
-
-      await updateDoc(eventRef, sanitizeFirestoreData(updateData));
-    }
+    await recalculateEventCapacityCounters(eventId);
   } catch (err) {
     console.warn("[Firestore] Failed to update event counters on registration deletion:", err);
   }
@@ -2042,69 +2218,9 @@ export async function deleteBatchEventRegistrations(registrationIds: string[], e
 
   await batch.commit();
 
-  // Recalculate event counters
+  // Recalculate event counters and capacity
   try {
-    const eventIdStr = String(eventId);
-    const eventRef = doc(db, "events", eventIdStr);
-    const eventSnap = await getDoc(eventRef);
-    if (eventSnap.exists()) {
-      const eventData = eventSnap.data() as FirestoreEvent;
-      const currentTotal =
-        typeof eventData.total_registrations === "number" ? eventData.total_registrations : regsToDelete.length;
-      const now = new Date().toISOString();
-
-      const allRegs = await getEventRegistrations(eventIdStr);
-      const approvedCount = allRegs.filter((r) => r.status === "approved" || r.status === "attended").length;
-      const waitlistedCount = allRegs.filter((r) => r.status === "waitlisted").length;
-      const checkedInCount = allRegs.filter((r) => Boolean(r.is_checked_in)).length;
-
-      const updateData: Record<string, unknown> = {
-        total_registrations: Math.max(0, currentTotal - regsToDelete.length),
-        total_approved: approvedCount,
-        total_waitlisted: waitlistedCount,
-        total_checked_in: checkedInCount,
-        updated_at: now,
-      };
-
-      if (Array.isArray(eventData.sessions)) {
-        const sessionCountsToRemove = new Map<string, number>();
-        for (const reg of regsToDelete) {
-          const sId = reg.session_id ?? (reg.answers?.session_id as string | undefined);
-          if (sId) {
-            sessionCountsToRemove.set(sId, (sessionCountsToRemove.get(sId) ?? 0) + 1);
-          }
-        }
-        if (sessionCountsToRemove.size > 0) {
-          updateData.sessions = eventData.sessions.map((sess) => {
-            const countToRemove = sessionCountsToRemove.get(sess.id) || 0;
-            return {
-              ...sess,
-              total_registered: Math.max(0, (sess.total_registered || 0) - countToRemove),
-            };
-          });
-        }
-      }
-
-      if (Array.isArray(eventData.tickets)) {
-        const ticketCountsToRemove = new Map<string, number>();
-        for (const reg of regsToDelete) {
-          if (reg.ticket_id) {
-            ticketCountsToRemove.set(reg.ticket_id, (ticketCountsToRemove.get(reg.ticket_id) ?? 0) + 1);
-          }
-        }
-        if (ticketCountsToRemove.size > 0) {
-          updateData.tickets = eventData.tickets.map((t) => {
-            const countToRemove = ticketCountsToRemove.get(t.id) || 0;
-            return {
-              ...t,
-              total_registered: Math.max(0, (t.total_registered || 0) - countToRemove),
-            };
-          });
-        }
-      }
-
-      await updateDoc(eventRef, sanitizeFirestoreData(updateData));
-    }
+    await recalculateEventCapacityCounters(eventId);
   } catch (err) {
     console.warn("[Firestore] Failed to update event counters on batch registration deletion:", err);
   }

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 
 import {
   Calendar,
+  CalendarX,
   Check,
   CheckCircle2,
   Copy,
@@ -78,6 +79,23 @@ export function VouchersTab({ event }: VouchersTabProps) {
     typeof event.referral_discount_amount === "number" ? String(event.referral_discount_amount) : "",
   );
   const [isSavingReferral, setIsSavingReferral] = useState(false);
+  const [isGloballyExcluded, setIsGloballyExcluded] = useState(false);
+
+  useEffect(() => {
+    if (!event.id) return;
+    async function checkGlobalExclusion() {
+      try {
+        const { getReferralProgramSettingsAction } = await import("@/lib/firestore/actions");
+        const settings = await getReferralProgramSettingsAction();
+        if (settings?.excluded_event_ids && settings.excluded_event_ids.includes(String(event.id))) {
+          setIsGloballyExcluded(true);
+        }
+      } catch (err) {
+        console.warn("[VouchersTab] Failed to check global referral settings:", err);
+      }
+    }
+    void checkGlobalExclusion();
+  }, [event.id]);
 
   const handleSaveReferralConfig = async () => {
     setIsSavingReferral(true);
@@ -343,6 +361,18 @@ export function VouchersTab({ event }: VouchersTabProps) {
             </div>
           </div>
         </CardHeader>
+
+        {isGloballyExcluded && (
+          <div className="mx-4 mb-2 flex items-center gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-300">
+            <CalendarX className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+            <div className="flex-1">
+              <span className="font-semibold">Globally Excluded: </span>
+              This event is in the chapter-wide Referral Excluded Events list. Attendees are prevented from redeeming
+              referral codes for this event.
+            </div>
+          </div>
+        )}
+
         <CardContent className="flex flex-col gap-4 p-4 pt-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
             {/* Segmented selector for Discount Type */}

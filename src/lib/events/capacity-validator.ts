@@ -230,6 +230,9 @@ export function isRegistrationInSession(
   if (sessionInfo.sessionId && reg.session_id && reg.session_id === sessionInfo.sessionId) {
     return true;
   }
+  if (sessionInfo.sessionId && reg.answers?.session_id && reg.answers.session_id === sessionInfo.sessionId) {
+    return true;
+  }
 
   const regSession =
     reg.session_title ??
@@ -237,6 +240,7 @@ export function isRegistrationInSession(
     reg.ticket_tier ??
     (reg.answers?.Session as string | undefined) ??
     (reg.answers?.session as string | undefined) ??
+    (reg.answers?.session_title as string | undefined) ??
     "";
 
   if (!regSession) return false;
