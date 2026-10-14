@@ -94,101 +94,107 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
 
   const isDirty =
     isInitialLoaded && initialSnapshotRef.current !== null && initialSnapshotRef.current !== currentSnapshot;
+  const isDirtyRef = useRef(false);
+  isDirtyRef.current = isDirty;
 
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
   const pendingNavigationRef = useRef<(() => void) | null>(null);
 
-  // Load latest values from Firestore on mount
+  const eventRef = useRef(event);
+  eventRef.current = event;
+
+  // Load latest values from Firestore on mount (scoped to event.id, never on every event reference change)
   useEffect(() => {
     async function loadConfig() {
+      const currentEvent = eventRef.current;
       try {
         const { getFirestoreEventById } = await import("@/lib/firestore/client");
         const docData = await getFirestoreEventById(String(event.id));
 
         const loadedEnv = (docData?.payment_environment ??
-          event.payment_environment ??
-          (event.is_test ? "sandbox" : "production")) as "production" | "sandbox";
+          currentEvent.payment_environment ??
+          (currentEvent.is_test ? "sandbox" : "production")) as "production" | "sandbox";
         const loadedDeliveryEnv = (docData?.merchandise_delivery_payment_environment ??
-          event.merchandise_delivery_payment_environment ??
+          currentEvent.merchandise_delivery_payment_environment ??
           loadedEnv) as "production" | "sandbox";
         let loadedDeliveryFee = 50000;
         if (typeof docData?.merchandise_delivery_fee === "number") {
           loadedDeliveryFee = docData.merchandise_delivery_fee;
-        } else if (typeof event.merchandise_delivery_fee === "number") {
-          loadedDeliveryFee = event.merchandise_delivery_fee;
+        } else if (typeof currentEvent.merchandise_delivery_fee === "number") {
+          loadedDeliveryFee = currentEvent.merchandise_delivery_fee;
         }
         const loadedHeaderEmail =
           docData?.headerEmailUrl ??
           docData?.header_email_url ??
-          event.headerEmailUrl ??
-          event.header_email_url ??
+          currentEvent.headerEmailUrl ??
+          currentEvent.header_email_url ??
           DEFAULT_PAYMENT_HEADER_EMAIL_URL;
         const loadedPaymentDeadlines =
           docData?.paymentDeadlinesInMinutes ??
           docData?.paymentDeadlineMinutes ??
           docData?.payment_deadline_minutes ??
-          event.paymentDeadlinesInMinutes ??
-          event.paymentDeadlineMinutes ??
-          event.payment_deadline_minutes ??
+          currentEvent.paymentDeadlinesInMinutes ??
+          currentEvent.paymentDeadlineMinutes ??
+          currentEvent.payment_deadline_minutes ??
           1440;
         const loadedEmailTemplate =
           docData?.payment_email_template ??
           docData?.paymentEmailTemplate ??
-          event.payment_email_template ??
-          event.paymentEmailTemplate ??
-          (event.tickets?.some((t) => t.type === "commitment_fee") ? "Commitment Fee" : "Ticketing");
+          currentEvent.payment_email_template ??
+          currentEvent.paymentEmailTemplate ??
+          (currentEvent.tickets?.some((t) => t.type === "commitment_fee") ? "Commitment Fee" : "Ticketing");
 
-        setPaymentEnvironment(loadedEnv);
-        setMerchandiseDeliveryEnv(loadedDeliveryEnv);
-        setMerchandiseDeliveryFee(loadedDeliveryFee);
-        setHeaderEmailUrl(loadedHeaderEmail);
-        setPaymentDeadlinesInMinutes(loadedPaymentDeadlines);
-        setEmailTemplate(loadedEmailTemplate);
+        if (!isDirtyRef.current) {
+          setPaymentEnvironment(loadedEnv);
+          setMerchandiseDeliveryEnv(loadedDeliveryEnv);
+          setMerchandiseDeliveryFee(loadedDeliveryFee);
+          setHeaderEmailUrl(loadedHeaderEmail);
+          setPaymentDeadlinesInMinutes(loadedPaymentDeadlines);
+          setEmailTemplate(loadedEmailTemplate);
 
-        if (typeof window !== "undefined") {
-          window.dispatchEvent(
-            new CustomEvent("gdg:payment-env-change", {
-              detail: { eventId: String(event.id), environment: loadedEnv },
-            }),
-          );
+          initialSnapshotRef.current = JSON.stringify({
+            paymentEnvironment: loadedEnv,
+            merchandiseDeliveryEnv: loadedDeliveryEnv,
+            merchandiseDeliveryFee: loadedDeliveryFee,
+            headerEmailUrl: loadedHeaderEmail,
+            paymentDeadlinesInMinutes: loadedPaymentDeadlines,
+            emailTemplate: loadedEmailTemplate,
+          });
         }
-
-        initialSnapshotRef.current = JSON.stringify({
-          paymentEnvironment: loadedEnv,
-          merchandiseDeliveryEnv: loadedDeliveryEnv,
-          merchandiseDeliveryFee: loadedDeliveryFee,
-          headerEmailUrl: loadedHeaderEmail,
-          paymentDeadlinesInMinutes: loadedPaymentDeadlines,
-          emailTemplate: loadedEmailTemplate,
-        });
       } catch (err) {
         console.warn("[PaymentGatewayTab] Failed to fetch latest Firestore config:", err);
-        const fallbackEnv = event.payment_environment ?? (event.is_test ? "sandbox" : "production");
-        const fallbackDeliveryEnv = event.merchandise_delivery_payment_environment ?? fallbackEnv;
-        const fallbackDeliveryFee = event.merchandise_delivery_fee ?? 50000;
-        const fallbackHeaderEmail = event.headerEmailUrl ?? event.header_email_url ?? DEFAULT_PAYMENT_HEADER_EMAIL_URL;
+        const fallbackEnv = currentEvent.payment_environment ?? (currentEvent.is_test ? "sandbox" : "production");
+        const fallbackDeliveryEnv = currentEvent.merchandise_delivery_payment_environment ?? fallbackEnv;
+        const fallbackDeliveryFee = currentEvent.merchandise_delivery_fee ?? 50000;
+        const fallbackHeaderEmail =
+          currentEvent.headerEmailUrl ?? currentEvent.header_email_url ?? DEFAULT_PAYMENT_HEADER_EMAIL_URL;
         const fallbackPaymentDeadlines =
-          event.paymentDeadlinesInMinutes ?? event.paymentDeadlineMinutes ?? event.payment_deadline_minutes ?? 1440;
+          currentEvent.paymentDeadlinesInMinutes ??
+          currentEvent.paymentDeadlineMinutes ??
+          currentEvent.payment_deadline_minutes ??
+          1440;
         const fallbackEmailTemplate =
-          event.payment_email_template ??
-          event.paymentEmailTemplate ??
-          (event.tickets?.some((t) => t.type === "commitment_fee") ? "Commitment Fee" : "Ticketing");
-        initialSnapshotRef.current ??= JSON.stringify({
-          paymentEnvironment: fallbackEnv,
-          merchandiseDeliveryEnv: fallbackDeliveryEnv,
-          merchandiseDeliveryFee: fallbackDeliveryFee,
-          headerEmailUrl: fallbackHeaderEmail,
-          paymentDeadlinesInMinutes: fallbackPaymentDeadlines,
-          emailTemplate: fallbackEmailTemplate,
-        });
+          currentEvent.payment_email_template ??
+          currentEvent.paymentEmailTemplate ??
+          (currentEvent.tickets?.some((t) => t.type === "commitment_fee") ? "Commitment Fee" : "Ticketing");
+        if (!isDirtyRef.current) {
+          initialSnapshotRef.current ??= JSON.stringify({
+            paymentEnvironment: fallbackEnv,
+            merchandiseDeliveryEnv: fallbackDeliveryEnv,
+            merchandiseDeliveryFee: fallbackDeliveryFee,
+            headerEmailUrl: fallbackHeaderEmail,
+            paymentDeadlinesInMinutes: fallbackPaymentDeadlines,
+            emailTemplate: fallbackEmailTemplate,
+          });
+        }
       } finally {
         setIsInitialLoaded(true);
       }
     }
     void loadConfig();
-  }, [event]);
+  }, [event.id]);
 
-  // Real-time synchronization across tabs in the same window
+  // Real-time synchronization of merchandise delivery environment across tabs in the same window
   useEffect(() => {
     const handleEnvChange = (e: Event) => {
       const customEvent = e as CustomEvent<{ eventId: string; environment: "production" | "sandbox" }>;
@@ -206,27 +212,9 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
         }
       }
     };
-    const handlePaymentEnvChange = (e: Event) => {
-      const customEvent = e as CustomEvent<{ eventId: string; environment: "production" | "sandbox" }>;
-      if (customEvent.detail && String(customEvent.detail.eventId) === String(event.id)) {
-        const nextEnv = customEvent.detail.environment;
-        setPaymentEnvironment(nextEnv);
-        if (initialSnapshotRef.current) {
-          try {
-            const parsed = JSON.parse(initialSnapshotRef.current);
-            parsed.paymentEnvironment = nextEnv;
-            initialSnapshotRef.current = JSON.stringify(parsed);
-          } catch {
-            // ignore
-          }
-        }
-      }
-    };
     window.addEventListener("gdg:merchandise-delivery-env-change", handleEnvChange);
-    window.addEventListener("gdg:payment-env-change", handlePaymentEnvChange);
     return () => {
       window.removeEventListener("gdg:merchandise-delivery-env-change", handleEnvChange);
-      window.removeEventListener("gdg:payment-env-change", handlePaymentEnvChange);
     };
   }, [event.id]);
 
@@ -237,18 +225,16 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
       try {
         const { subscribeFirestoreEventDoc } = await import("@/lib/firestore/client");
         unsubscribe = subscribeFirestoreEventDoc(String(event.id), (docData) => {
+          // If the user has active unsaved form edits, do NOT overwrite their inputs with remote state
+          if (isDirtyRef.current) {
+            return;
+          }
+
           if (docData.merchandise_delivery_payment_environment) {
             setMerchandiseDeliveryEnv(docData.merchandise_delivery_payment_environment);
           }
           if (docData.payment_environment) {
             setPaymentEnvironment(docData.payment_environment);
-            if (typeof window !== "undefined") {
-              window.dispatchEvent(
-                new CustomEvent("gdg:payment-env-change", {
-                  detail: { eventId: String(event.id), environment: docData.payment_environment },
-                }),
-              );
-            }
           }
           if (typeof docData.merchandise_delivery_fee === "number") {
             setMerchandiseDeliveryFee(docData.merchandise_delivery_fee);
@@ -516,13 +502,6 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
     } catch {
       const fallbackPaymentEnv = event.payment_environment ?? (event.is_test ? "sandbox" : "production");
       setPaymentEnvironment(fallbackPaymentEnv);
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(
-          new CustomEvent("gdg:payment-env-change", {
-            detail: { eventId: String(event.id), environment: fallbackPaymentEnv },
-          }),
-        );
-      }
       setMerchandiseDeliveryEnv(
         event.merchandise_delivery_payment_environment ??
           event.payment_environment ??
@@ -691,9 +670,14 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
                 </Badge>
               )}
               {isDirty && (
-                <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-600 text-xs">
-                  Unsaved Changes
-                </Badge>
+                <>
+                  <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-600 text-xs">
+                    Unsaved Changes
+                  </Badge>
+                  <Button size="sm" onClick={handleSave} disabled={isSaving} className="h-7 px-2.5 text-xs">
+                    {isSaving ? "Saving..." : "Save Settings"}
+                  </Button>
+                </>
               )}
             </div>
           </div>
@@ -706,15 +690,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
           <RadioGroup
             value={paymentEnvironment}
             onValueChange={(val) => {
-              const nextEnv = val as "production" | "sandbox";
-              setPaymentEnvironment(nextEnv);
-              if (typeof window !== "undefined") {
-                window.dispatchEvent(
-                  new CustomEvent("gdg:payment-env-change", {
-                    detail: { eventId: String(event.id), environment: nextEnv },
-                  }),
-                );
-              }
+              setPaymentEnvironment(val as "production" | "sandbox");
             }}
             className="grid grid-cols-1 gap-3 sm:grid-cols-2"
           >
