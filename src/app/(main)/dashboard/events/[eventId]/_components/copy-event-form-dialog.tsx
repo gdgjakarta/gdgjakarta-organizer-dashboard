@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { format, isPast, parseISO } from "date-fns";
 import {
   AlertCircle,
+  ArrowLeft,
   Calendar,
   Check,
   CheckCircle2,
@@ -84,6 +85,7 @@ export function CopyEventFormDialog({ open, onOpenChange, currentEventId, onAppl
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<"all" | "completed" | "upcoming" | "has_form">("all");
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [mobileTab, setMobileTab] = useState<"select" | "preview">("select");
 
   // Copy customization states
   const [copyMode, setCopyMode] = useState<"replace" | "append">("replace");
@@ -100,8 +102,11 @@ export function CopyEventFormDialog({ open, onOpenChange, currentEventId, onAppl
     if (!open) {
       setSelectedEventId(null);
       setSearchQuery("");
+      setMobileTab("select");
       return;
     }
+
+    setMobileTab("select");
 
     let isMounted = true;
     async function loadEventsData() {
@@ -367,25 +372,65 @@ export function CopyEventFormDialog({ open, onOpenChange, currentEventId, onAppl
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl p-0 gap-0 overflow-hidden sm:max-h-[90vh]">
+      <DialogContent className="flex flex-col w-[calc(100%-1.5rem)] sm:w-full max-w-none sm:max-w-4xl lg:max-w-5xl p-0 gap-0 overflow-hidden h-[90vh] sm:h-[720px] max-h-[92vh]">
         {/* Header */}
-        <DialogHeader className="px-6 pt-5 pb-4 border-b border-border/60 bg-muted/20">
+        <DialogHeader className="shrink-0 px-4 pt-4 pb-3 sm:px-6 sm:pt-5 sm:pb-4 border-b border-border/60 bg-muted/20 pr-12 sm:pr-12">
           <div className="flex items-center gap-2 text-primary">
-            <Sparkles className="size-4" />
+            <Sparkles className="size-4 shrink-0" />
             <DialogTitle className="text-base font-semibold">Copy Registration Form from Existing Event</DialogTitle>
           </div>
-          <DialogDescription className="text-xs text-muted-foreground mt-1">
+          <DialogDescription className="text-xs text-muted-foreground mt-1 line-clamp-2 sm:line-clamp-none">
             Import custom questionnaire fields, attendance policies, breakout sessions, and ticket tiers from any
             completed or published GDG Jakarta event.
           </DialogDescription>
         </DialogHeader>
 
-        {/* Main Content: Split layout */}
-        <div className="grid grid-cols-1 md:grid-cols-12 min-h-[460px] max-h-[calc(90vh-140px)] overflow-hidden">
+        {/* Mobile Navigation Tabs */}
+        <div className="flex items-center border-b border-border/60 bg-muted/30 p-1 md:hidden shrink-0">
+          <button
+            type="button"
+            onClick={() => setMobileTab("select")}
+            className={cn(
+              "flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 text-xs font-medium rounded-md transition-all",
+              mobileTab === "select"
+                ? "bg-background text-foreground shadow-2xs"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <Search className="size-3.5" />
+            <span>1. Select Event</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileTab("preview")}
+            className={cn(
+              "flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 text-xs font-medium rounded-md transition-all",
+              mobileTab === "preview"
+                ? "bg-background text-foreground shadow-2xs"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <ListChecks className="size-3.5" />
+            <span>2. Options & Preview</span>
+            {selectedEvent && (
+              <Badge variant="secondary" className="h-4 px-1 text-[9px] shrink-0">
+                {selectedEvent.questions.length}
+              </Badge>
+            )}
+          </button>
+        </div>
+
+        {/* Main Content: Split layout on desktop, tabbed on mobile */}
+        <div className="flex-1 min-h-0 overflow-hidden md:grid md:grid-cols-12 flex flex-col">
           {/* Left Column: Event Picker (5 cols) */}
-          <div className="md:col-span-5 border-r border-border/60 flex flex-col bg-card">
+          <div
+            className={cn(
+              "bg-card flex-col min-h-0 overflow-hidden md:col-span-5 md:border-r md:border-border/60",
+              mobileTab === "select" ? "flex flex-1" : "hidden md:flex",
+            )}
+          >
             {/* Search and Filters */}
-            <div className="p-3 border-b border-border/50 space-y-2.5">
+            <div className="p-3 border-b border-border/50 space-y-2.5 shrink-0">
               <div className="relative">
                 <Search className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
                 <Input
@@ -403,7 +448,7 @@ export function CopyEventFormDialog({ open, onOpenChange, currentEventId, onAppl
                   size="sm"
                   variant={activeFilter === "all" ? "secondary" : "ghost"}
                   onClick={() => setActiveFilter("all")}
-                  className="h-6 px-2 text-[11px] rounded-full"
+                  className="h-6 px-2 text-[11px] rounded-full shrink-0"
                 >
                   All ({events.length})
                 </Button>
@@ -412,7 +457,7 @@ export function CopyEventFormDialog({ open, onOpenChange, currentEventId, onAppl
                   size="sm"
                   variant={activeFilter === "completed" ? "secondary" : "ghost"}
                   onClick={() => setActiveFilter("completed")}
-                  className="h-6 px-2 text-[11px] rounded-full"
+                  className="h-6 px-2 text-[11px] rounded-full shrink-0"
                 >
                   Completed ({events.filter((e) => e.isCompleted).length})
                 </Button>
@@ -421,7 +466,7 @@ export function CopyEventFormDialog({ open, onOpenChange, currentEventId, onAppl
                   size="sm"
                   variant={activeFilter === "has_form" ? "secondary" : "ghost"}
                   onClick={() => setActiveFilter("has_form")}
-                  className="h-6 px-2 text-[11px] rounded-full"
+                  className="h-6 px-2 text-[11px] rounded-full shrink-0"
                 >
                   With Form ({events.filter((e) => e.questions.length > 0).length})
                 </Button>
@@ -430,7 +475,7 @@ export function CopyEventFormDialog({ open, onOpenChange, currentEventId, onAppl
                   size="sm"
                   variant={activeFilter === "upcoming" ? "secondary" : "ghost"}
                   onClick={() => setActiveFilter("upcoming")}
-                  className="h-6 px-2 text-[11px] rounded-full"
+                  className="h-6 px-2 text-[11px] rounded-full shrink-0"
                 >
                   Upcoming ({events.filter((e) => !e.isCompleted).length})
                 </Button>
@@ -438,7 +483,7 @@ export function CopyEventFormDialog({ open, onOpenChange, currentEventId, onAppl
             </div>
 
             {/* Event List */}
-            <ScrollArea className="flex-1">
+            <ScrollArea className="flex-1 min-h-0">
               {isLoading && (
                 <div className="flex flex-col items-center justify-center gap-2 py-16 text-muted-foreground">
                   <Loader2 className="size-5 animate-spin text-primary" />
@@ -460,7 +505,10 @@ export function CopyEventFormDialog({ open, onOpenChange, currentEventId, onAppl
                       <button
                         key={evt.id}
                         type="button"
-                        onClick={() => setSelectedEventId(evt.id)}
+                        onClick={() => {
+                          setSelectedEventId(evt.id);
+                          setMobileTab("preview");
+                        }}
                         className={cn(
                           "flex w-full flex-col gap-1.5 rounded-lg border p-2.5 text-left transition-all",
                           isSelected
@@ -524,7 +572,31 @@ export function CopyEventFormDialog({ open, onOpenChange, currentEventId, onAppl
           </div>
 
           {/* Right Column: Preview & Options (7 cols) */}
-          <div className="flex flex-col md:col-span-7 bg-muted/10">
+          <div
+            className={cn(
+              "bg-muted/10 flex-col min-h-0 overflow-hidden md:col-span-7",
+              mobileTab === "preview" ? "flex flex-1" : "hidden md:flex",
+            )}
+          >
+            {/* Mobile Quick Switch Bar */}
+            <div className="flex items-center justify-between border-b border-border/60 bg-muted/20 px-3.5 py-2 md:hidden shrink-0">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setMobileTab("select")}
+                className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
+              >
+                <ArrowLeft className="size-3.5" />
+                <span>Change Event</span>
+              </Button>
+              {selectedEvent && (
+                <span className="text-xs font-medium text-foreground truncate max-w-[200px]">
+                  {selectedEvent.title}
+                </span>
+              )}
+            </div>
+
             {!selectedEvent && (
               <div className="flex flex-1 flex-col items-center justify-center p-8 text-center text-muted-foreground">
                 <Copy className="mb-2 size-8 text-muted-foreground/60 stroke-[1.5]" />
@@ -533,6 +605,16 @@ export function CopyEventFormDialog({ open, onOpenChange, currentEventId, onAppl
                   Choose any existing or completed event to preview its registration questions and select what you want
                   to copy.
                 </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setMobileTab("select")}
+                  className="mt-4 md:hidden text-xs gap-1"
+                >
+                  <ArrowLeft className="size-3.5" />
+                  <span>Browse Events</span>
+                </Button>
               </div>
             )}
             {selectedEvent && selectedEvent.questions.length === 0 && (
@@ -543,231 +625,254 @@ export function CopyEventFormDialog({ open, onOpenChange, currentEventId, onAppl
                   &ldquo;{selectedEvent.title}&rdquo; used Bevy&apos;s standard RSVP without custom registration
                   questions. Please select an event with configured form questions.
                 </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setMobileTab("select")}
+                  className="mt-4 md:hidden text-xs gap-1"
+                >
+                  <ArrowLeft className="size-3.5" />
+                  <span>Choose Another Event</span>
+                </Button>
               </div>
             )}
             {selectedEvent && selectedEvent.questions.length > 0 && (
-              <div className="flex h-full flex-col overflow-hidden">
-                <ScrollArea className="flex-1 space-y-5 p-5">
-                  {/* Selected Event Card Summary */}
-                  <div className="rounded-lg border border-border bg-card p-3.5 space-y-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <span className="text-[11px] font-semibold text-primary uppercase tracking-wider">
-                          Source Event
-                        </span>
-                        <h4 className="font-semibold text-sm text-foreground line-clamp-1">{selectedEvent.title}</h4>
-                      </div>
-                      <Badge variant={selectedEvent.isCompleted ? "secondary" : "default"} className="text-[10px]">
-                        {selectedEvent.status}
-                      </Badge>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground pt-1">
-                      <div className="flex items-center gap-1.5">
-                        <Clock className="size-3.5 text-muted-foreground" />
-                        <span>{selectedEvent.formattedDate}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <ListChecks className="size-3.5 text-emerald-500" />
-                        <span className="font-medium text-foreground">{selectedEvent.questions.length} Questions</span>
-                      </div>
-                      {selectedEvent.sessions.length > 0 && (
-                        <div className="flex items-center gap-1.5">
-                          <Layers className="size-3.5 text-sky-500" />
-                          <span>{selectedEvent.sessions.length} Sessions</span>
+              <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
+                <ScrollArea className="flex-1 min-h-0">
+                  <div className="p-4 sm:p-5 space-y-4 sm:space-y-5">
+                    {/* Selected Event Card Summary */}
+                    <div className="rounded-lg border border-border bg-card p-3.5 space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <span className="text-[11px] font-semibold text-primary uppercase tracking-wider">
+                            Source Event
+                          </span>
+                          <h4 className="font-semibold text-sm text-foreground truncate">{selectedEvent.title}</h4>
                         </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Copy Configuration Controls */}
-                  <div className="rounded-lg border border-border bg-card p-4 space-y-4">
-                    <div className="space-y-1">
-                      <h4 className="font-medium text-xs text-foreground uppercase tracking-wider">Import Strategy</h4>
-                      <RadioGroup
-                        value={copyMode}
-                        onValueChange={(val) => setCopyMode(val as "replace" | "append")}
-                        className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1"
-                      >
-                        <Label
-                          htmlFor="mode-replace"
-                          className={cn(
-                            "flex items-start gap-2.5 rounded-lg border p-2.5 cursor-pointer text-xs transition-all",
-                            copyMode === "replace"
-                              ? "border-primary bg-primary/5 text-foreground font-medium"
-                              : "border-border text-muted-foreground hover:bg-muted/40",
-                          )}
+                        <Badge
+                          variant={selectedEvent.isCompleted ? "secondary" : "default"}
+                          className="text-[10px] shrink-0"
                         >
-                          <RadioGroupItem value="replace" id="mode-replace" className="mt-0.5" />
-                          <div>
-                            <span className="block font-medium">Replace Existing Form</span>
-                            <span className="block text-[11px] text-muted-foreground font-normal">
-                              Overwrite current questions with source event&apos;s questionnaire.
-                            </span>
-                          </div>
-                        </Label>
+                          {selectedEvent.status}
+                        </Badge>
+                      </div>
 
-                        <Label
-                          htmlFor="mode-append"
-                          className={cn(
-                            "flex items-start gap-2.5 rounded-lg border p-2.5 cursor-pointer text-xs transition-all",
-                            copyMode === "append"
-                              ? "border-primary bg-primary/5 text-foreground font-medium"
-                              : "border-border text-muted-foreground hover:bg-muted/40",
-                          )}
-                        >
-                          <RadioGroupItem value="append" id="mode-append" className="mt-0.5" />
-                          <div>
-                            <span className="block font-medium">Append to Existing</span>
-                            <span className="block text-[11px] text-muted-foreground font-normal">
-                              Keep your current questions and add source questions to the end.
-                            </span>
-                          </div>
-                        </Label>
-                      </RadioGroup>
-                    </div>
-
-                    {/* Components Selection Checkboxes */}
-                    <div className="space-y-2 pt-1 border-t border-border/60">
-                      <span className="font-medium text-xs text-foreground uppercase tracking-wider">
-                        Components to Copy
-                      </span>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-                        <Label className="flex items-center gap-2 text-xs font-normal cursor-pointer">
-                          <Checkbox
-                            checked={copyQuestions}
-                            onCheckedChange={(checked) => setCopyQuestions(Boolean(checked))}
-                          />
-                          <span>
-                            Registration Questions{" "}
-                            <strong className="font-semibold text-primary">({selectedEvent.questions.length})</strong>
+                      <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground pt-1">
+                        <div className="flex items-center gap-1.5">
+                          <Clock className="size-3.5 text-muted-foreground shrink-0" />
+                          <span>{selectedEvent.formattedDate}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <ListChecks className="size-3.5 text-emerald-500 shrink-0" />
+                          <span className="font-medium text-foreground">
+                            {selectedEvent.questions.length} Questions
                           </span>
-                        </Label>
-
-                        <Label className="flex items-center gap-2 text-xs font-normal cursor-pointer">
-                          <Checkbox
-                            checked={copyPolicy}
-                            onCheckedChange={(checked) => setCopyPolicy(Boolean(checked))}
-                          />
-                          <span>
-                            Attendance Policies{" "}
-                            <span className="text-[11px] text-muted-foreground">
-                              ({selectedEvent.requiresApproval ? "Curated" : "Open RSVP"})
-                            </span>
-                          </span>
-                        </Label>
-
+                        </div>
                         {selectedEvent.sessions.length > 0 && (
-                          <Label className="flex items-center gap-2 text-xs font-normal cursor-pointer">
-                            <Checkbox
-                              checked={copySessions}
-                              onCheckedChange={(checked) => setCopySessions(Boolean(checked))}
-                            />
-                            <span>
-                              Breakout Sessions{" "}
-                              <strong className="font-semibold text-sky-600">({selectedEvent.sessions.length})</strong>
-                            </span>
-                          </Label>
-                        )}
-
-                        {selectedEvent.tickets.length > 0 && (
-                          <Label className="flex items-center gap-2 text-xs font-normal cursor-pointer">
-                            <Checkbox
-                              checked={copyTickets}
-                              onCheckedChange={(checked) => setCopyTickets(Boolean(checked))}
-                            />
-                            <span>
-                              Ticket Tiers{" "}
-                              <strong className="font-semibold text-amber-600">({selectedEvent.tickets.length})</strong>
-                            </span>
-                          </Label>
+                          <div className="flex items-center gap-1.5">
+                            <Layers className="size-3.5 text-sky-500 shrink-0" />
+                            <span>{selectedEvent.sessions.length} Sessions</span>
+                          </div>
                         )}
                       </div>
                     </div>
-                  </div>
 
-                  {/* Questionnaire Live Preview */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-foreground uppercase tracking-wider">
-                        Questions Preview ({selectedEvent.questions.length})
-                      </span>
-                      <span className="text-[11px] text-muted-foreground">
-                        {Object.keys(questionsBySection).length} Sections
-                      </span>
+                    {/* Copy Configuration Controls */}
+                    <div className="rounded-lg border border-border bg-card p-4 space-y-4">
+                      <div className="space-y-1">
+                        <h4 className="font-medium text-xs text-foreground uppercase tracking-wider">
+                          Import Strategy
+                        </h4>
+                        <RadioGroup
+                          value={copyMode}
+                          onValueChange={(val) => setCopyMode(val as "replace" | "append")}
+                          className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1"
+                        >
+                          <Label
+                            htmlFor="mode-replace"
+                            className={cn(
+                              "flex items-start gap-2.5 rounded-lg border p-2.5 cursor-pointer text-xs transition-all",
+                              copyMode === "replace"
+                                ? "border-primary bg-primary/5 text-foreground font-medium"
+                                : "border-border text-muted-foreground hover:bg-muted/40",
+                            )}
+                          >
+                            <RadioGroupItem value="replace" id="mode-replace" className="mt-0.5" />
+                            <div>
+                              <span className="block font-medium">Replace Existing Form</span>
+                              <span className="block text-[11px] text-muted-foreground font-normal">
+                                Overwrite current questions with source event&apos;s questionnaire.
+                              </span>
+                            </div>
+                          </Label>
+
+                          <Label
+                            htmlFor="mode-append"
+                            className={cn(
+                              "flex items-start gap-2.5 rounded-lg border p-2.5 cursor-pointer text-xs transition-all",
+                              copyMode === "append"
+                                ? "border-primary bg-primary/5 text-foreground font-medium"
+                                : "border-border text-muted-foreground hover:bg-muted/40",
+                            )}
+                          >
+                            <RadioGroupItem value="append" id="mode-append" className="mt-0.5" />
+                            <div>
+                              <span className="block font-medium">Append to Existing</span>
+                              <span className="block text-[11px] text-muted-foreground font-normal">
+                                Keep your current questions and add source questions to the end.
+                              </span>
+                            </div>
+                          </Label>
+                        </RadioGroup>
+                      </div>
+
+                      {/* Components Selection Checkboxes */}
+                      <div className="space-y-2 pt-1 border-t border-border/60">
+                        <span className="font-medium text-xs text-foreground uppercase tracking-wider">
+                          Components to Copy
+                        </span>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                          <Label className="flex items-center gap-2 text-xs font-normal cursor-pointer">
+                            <Checkbox
+                              checked={copyQuestions}
+                              onCheckedChange={(checked) => setCopyQuestions(Boolean(checked))}
+                            />
+                            <span>
+                              Registration Questions{" "}
+                              <strong className="font-semibold text-primary">({selectedEvent.questions.length})</strong>
+                            </span>
+                          </Label>
+
+                          <Label className="flex items-center gap-2 text-xs font-normal cursor-pointer">
+                            <Checkbox
+                              checked={copyPolicy}
+                              onCheckedChange={(checked) => setCopyPolicy(Boolean(checked))}
+                            />
+                            <span>
+                              Attendance Policies{" "}
+                              <span className="text-[11px] text-muted-foreground">
+                                ({selectedEvent.requiresApproval ? "Curated" : "Open RSVP"})
+                              </span>
+                            </span>
+                          </Label>
+
+                          {selectedEvent.sessions.length > 0 && (
+                            <Label className="flex items-center gap-2 text-xs font-normal cursor-pointer">
+                              <Checkbox
+                                checked={copySessions}
+                                onCheckedChange={(checked) => setCopySessions(Boolean(checked))}
+                              />
+                              <span>
+                                Breakout Sessions{" "}
+                                <strong className="font-semibold text-sky-600">
+                                  ({selectedEvent.sessions.length})
+                                </strong>
+                              </span>
+                            </Label>
+                          )}
+
+                          {selectedEvent.tickets.length > 0 && (
+                            <Label className="flex items-center gap-2 text-xs font-normal cursor-pointer">
+                              <Checkbox
+                                checked={copyTickets}
+                                onCheckedChange={(checked) => setCopyTickets(Boolean(checked))}
+                              />
+                              <span>
+                                Ticket Tiers{" "}
+                                <strong className="font-semibold text-amber-600">
+                                  ({selectedEvent.tickets.length})
+                                </strong>
+                              </span>
+                            </Label>
+                          )}
+                        </div>
+                      </div>
                     </div>
 
-                    <div className="space-y-2.5">
-                      {Object.entries(questionsBySection).map(([sectionName, sectionQuestions]) => {
-                        const isCollapsed = Boolean(collapsedSections[sectionName]);
-                        return (
-                          <div
-                            key={sectionName}
-                            className="rounded-lg border border-border/80 bg-card overflow-hidden shadow-2xs"
-                          >
-                            <button
-                              type="button"
-                              onClick={() => toggleSection(sectionName)}
-                              className="w-full flex items-center justify-between p-2.5 bg-muted/30 text-left hover:bg-muted/50 transition-colors"
-                            >
-                              <div className="flex items-center gap-2">
-                                {isCollapsed ? (
-                                  <ChevronRight className="size-3.5 text-muted-foreground" />
-                                ) : (
-                                  <ChevronDown className="size-3.5 text-muted-foreground" />
-                                )}
-                                <span className="font-semibold text-xs text-foreground">{sectionName}</span>
-                              </div>
-                              <span className="text-[11px] text-muted-foreground">
-                                {sectionQuestions.length} questions
-                              </span>
-                            </button>
+                    {/* Questionnaire Live Preview */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-foreground uppercase tracking-wider">
+                          Questions Preview ({selectedEvent.questions.length})
+                        </span>
+                        <span className="text-[11px] text-muted-foreground">
+                          {Object.keys(questionsBySection).length} Sections
+                        </span>
+                      </div>
 
-                            {!isCollapsed && (
-                              <div className="p-2.5 divide-y divide-border/40 space-y-1.5">
-                                {sectionQuestions.map((q, qIdx) => (
-                                  <div
-                                    key={q.id || qIdx}
-                                    className="pt-1.5 first:pt-0 flex items-start justify-between gap-3 text-xs"
-                                  >
-                                    <div className="space-y-0.5">
-                                      <div className="flex items-center gap-1.5">
-                                        <span className="font-medium text-foreground">{q.label}</span>
-                                        {q.required && (
-                                          <span className="text-rose-500 font-bold text-xs" title="Required">
-                                            *
-                                          </span>
+                      <div className="space-y-2.5">
+                        {Object.entries(questionsBySection).map(([sectionName, sectionQuestions]) => {
+                          const isCollapsed = Boolean(collapsedSections[sectionName]);
+                          return (
+                            <div
+                              key={sectionName}
+                              className="rounded-lg border border-border/80 bg-card overflow-hidden shadow-2xs"
+                            >
+                              <button
+                                type="button"
+                                onClick={() => toggleSection(sectionName)}
+                                className="w-full flex items-center justify-between p-2.5 bg-muted/30 text-left hover:bg-muted/50 transition-colors"
+                              >
+                                <div className="flex items-center gap-2">
+                                  {isCollapsed ? (
+                                    <ChevronRight className="size-3.5 text-muted-foreground" />
+                                  ) : (
+                                    <ChevronDown className="size-3.5 text-muted-foreground" />
+                                  )}
+                                  <span className="font-semibold text-xs text-foreground">{sectionName}</span>
+                                </div>
+                                <span className="text-[11px] text-muted-foreground">
+                                  {sectionQuestions.length} questions
+                                </span>
+                              </button>
+
+                              {!isCollapsed && (
+                                <div className="p-2.5 divide-y divide-border/40 space-y-1.5">
+                                  {sectionQuestions.map((q, qIdx) => (
+                                    <div
+                                      key={q.id || qIdx}
+                                      className="pt-1.5 first:pt-0 flex items-start justify-between gap-3 text-xs"
+                                    >
+                                      <div className="space-y-0.5 min-w-0 flex-1">
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                          <span className="font-medium text-foreground break-words">{q.label}</span>
+                                          {q.required && (
+                                            <span className="text-rose-500 font-bold text-xs" title="Required">
+                                              *
+                                            </span>
+                                          )}
+                                        </div>
+                                        {q.description && (
+                                          <p className="text-[11px] text-muted-foreground line-clamp-2">
+                                            {q.description}
+                                          </p>
                                         )}
                                       </div>
-                                      {q.description && (
-                                        <p className="text-[11px] text-muted-foreground line-clamp-1">
-                                          {q.description}
-                                        </p>
-                                      )}
-                                    </div>
-                                    <div className="flex items-center gap-1 shrink-0">
-                                      <Badge
-                                        variant="outline"
-                                        className="text-[9px] px-1.5 py-0 h-4 uppercase font-mono"
-                                      >
-                                        {q.type}
-                                      </Badge>
-                                      {q.validation_type && q.validation_type !== "none" && (
+                                      <div className="flex items-center gap-1 shrink-0">
                                         <Badge
-                                          variant="secondary"
-                                          className="text-[9px] px-1 py-0 h-4 text-muted-foreground"
+                                          variant="outline"
+                                          className="text-[9px] px-1.5 py-0 h-4 uppercase font-mono"
                                         >
-                                          {q.validation_type}
+                                          {q.type}
                                         </Badge>
-                                      )}
+                                        {q.validation_type && q.validation_type !== "none" && (
+                                          <Badge
+                                            variant="secondary"
+                                            className="text-[9px] px-1 py-0 h-4 text-muted-foreground"
+                                          >
+                                            {q.validation_type}
+                                          </Badge>
+                                        )}
+                                      </div>
                                     </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 </ScrollArea>
@@ -777,8 +882,8 @@ export function CopyEventFormDialog({ open, onOpenChange, currentEventId, onAppl
         </div>
 
         {/* Footer */}
-        <DialogFooter className="px-6 py-3 border-t border-border/60 bg-muted/20 flex items-center justify-between sm:justify-between">
-          <div className="text-[11px] text-muted-foreground hidden sm:block">
+        <DialogFooter className="m-0 px-4 py-3 sm:px-6 border-t border-border/60 bg-muted/20 flex flex-row items-center justify-between sm:justify-between shrink-0">
+          <div className="text-[11px] text-muted-foreground hidden lg:block max-w-md truncate">
             {selectedEvent && selectedEvent.questions.length > 0 && (
               <span>
                 Changes will be applied to the form editor. You can review and save before committing to Firestore.
@@ -786,10 +891,22 @@ export function CopyEventFormDialog({ open, onOpenChange, currentEventId, onAppl
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 ml-auto">
             <Button type="button" variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
+            {mobileTab === "select" && selectedEvent && selectedEvent.questions.length > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setMobileTab("preview")}
+                className="md:hidden text-xs gap-1"
+              >
+                <span>Review</span>
+                <ChevronRight className="size-3.5" />
+              </Button>
+            )}
             <Button
               type="button"
               variant="default"
@@ -803,7 +920,8 @@ export function CopyEventFormDialog({ open, onOpenChange, currentEventId, onAppl
               className="gap-1.5 text-xs shadow-xs"
             >
               <Copy className="size-3.5" />
-              <span>Copy Registration Form</span>
+              <span className="hidden sm:inline">Copy Registration Form</span>
+              <span className="sm:hidden">Copy Form</span>
             </Button>
           </div>
         </DialogFooter>
