@@ -876,7 +876,7 @@ export function BundleDialog({
           </div>
         </div>
 
-        <DialogFooter className="gap-2 sm:gap-0">
+        <DialogFooter className="gap-2">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>

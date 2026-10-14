@@ -1086,6 +1086,34 @@ export function EditRegistrationModal({
                                 </div>
                               )}
 
+                              {/* Helper / Reference Link */}
+                              {q.helper_link_url && (
+                                <div className="my-1.5 flex items-center">
+                                  <a
+                                    href={
+                                      q.helper_link_url.startsWith("http://") ||
+                                      q.helper_link_url.startsWith("https://")
+                                        ? q.helper_link_url
+                                        : `https://${q.helper_link_url}`
+                                    }
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="group inline-flex items-center gap-1.5 rounded-md border border-primary/25 bg-primary/5 px-2.5 py-1 text-xs font-medium text-primary shadow-2xs transition-all hover:border-primary/50 hover:bg-primary/10"
+                                    title={`Open ${q.helper_link_label || "Reference Link"} in new tab`}
+                                  >
+                                    <ExternalLink className="size-3.5 shrink-0 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                                    <span className="truncate max-w-[280px] sm:max-w-md">
+                                      {q.helper_link_label?.trim()
+                                        ? q.helper_link_label
+                                        : "Reference Link / Guidelines"}
+                                    </span>
+                                    <span className="font-normal text-[10px] text-muted-foreground">
+                                      (opens in new tab)
+                                    </span>
+                                  </a>
+                                </div>
+                              )}
+
                               {/* Short Text */}
                               {q.type === "text" && (
                                 <Input

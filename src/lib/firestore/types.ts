@@ -43,6 +43,10 @@ export interface CustomQuestion {
   helper_image_url?: string;
   image_url?: string;
 
+  // Question helper link (external URL / reference documentation)
+  helper_link_url?: string;
+  helper_link_label?: string;
+
   // Question validation & constraint settings
   validation_type?: QuestionValidationType;
   regex_pattern?: string;

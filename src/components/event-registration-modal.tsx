@@ -365,6 +365,11 @@ export function EventRegistrationModal({
   const handleSelectBundle = (bundle: EventBundlePackage) => {
     if (selectedBundleId === bundle.id) {
       setSelectedBundleId("");
+      setSelectedMerch({});
+      const openTickets = availableTickets.filter((t) => getTicketSalesStatus(t).isOpen);
+      if (openTickets.length > 0) {
+        setSelectedTicketId(openTickets[0].id);
+      }
       return;
     }
 
@@ -374,30 +379,23 @@ export function EventRegistrationModal({
       setSelectedTicketId(bundle.ticket_id);
     }
 
+    const bundleMerch: Record<string, { quantity: number; selectedVariations: Record<string, string> }> = {};
     if (bundle.merchandise_items.length > 0) {
-      setSelectedMerch((prev) => {
-        const updated = { ...prev };
-        for (const bItem of bundle.merchandise_items) {
-          const existing = updated[bItem.merchandise_id] ?? { quantity: 0, selectedVariations: {} };
-          const targetMerch = availableMerchandise.find((m) => m.id === bItem.merchandise_id);
-
-          const defaultVars: Record<string, string> = { ...existing.selectedVariations };
-          if (targetMerch?.variations) {
-            for (const v of targetMerch.variations) {
-              if (!defaultVars[v.name] && v.options?.length) {
-                defaultVars[v.name] = bItem.default_variations?.[v.name] || v.options[0];
-              }
-            }
+      for (const bItem of bundle.merchandise_items) {
+        const targetMerch = availableMerchandise.find((m) => m.id === bItem.merchandise_id);
+        const defaultVars: Record<string, string> = {};
+        if (targetMerch?.variations) {
+          for (const v of targetMerch.variations) {
+            defaultVars[v.name] = bItem.default_variations?.[v.name] || v.options[0] || "";
           }
-
-          updated[bItem.merchandise_id] = {
-            quantity: Math.max(bItem.quantity, existing.quantity || bItem.quantity),
-            selectedVariations: defaultVars,
-          };
         }
-        return updated;
-      });
+        bundleMerch[bItem.merchandise_id] = {
+          quantity: bItem.quantity,
+          selectedVariations: defaultVars,
+        };
+      }
     }
+    setSelectedMerch(bundleMerch);
   };
 
   // Auto-select session if only 1 session track exists
@@ -409,6 +407,7 @@ export function EventRegistrationModal({
 
   // Auto-select first open ticket if none selected or if currently selected ticket is closed/unavailable
   useEffect(() => {
+    if (selectedBundleId) return;
     const openTickets = availableTickets.filter((t) => getTicketSalesStatus(t).isOpen);
     const currentTicket = availableTickets.find((t) => t.id === selectedTicketId);
     const isCurrentTicketOpen = currentTicket ? getTicketSalesStatus(currentTicket).isOpen : false;
@@ -420,7 +419,7 @@ export function EventRegistrationModal({
         setSelectedTicketId("");
       }
     }
-  }, [availableTickets, selectedTicketId]);
+  }, [availableTickets, selectedTicketId, selectedBundleId]);
 
   const selectedTicket = useMemo(() => {
     return availableTickets.find((t) => t.id === selectedTicketId) ?? null;
@@ -433,11 +432,7 @@ export function EventRegistrationModal({
   const ticketPrice = selectedTicket ? selectedTicket.price || 0 : 0;
   const effectiveBasePrice = useMemo(() => {
     if (!selectedBundle) return ticketPrice;
-    if (selectedBundle.ticket_id) {
-      return selectedBundle.price;
-    }
-    // Merchandise-only bundle: combines ticket admission price with bundle price
-    return ticketPrice + selectedBundle.price;
+    return selectedBundle.price;
   }, [selectedBundle, ticketPrice]);
 
   const isPaymentRequired = useMemo(() => {
@@ -593,19 +588,16 @@ export function EventRegistrationModal({
   const maxMerchandiseAllowed = eventConfig.max_merchandise_per_person ?? null;
 
   const merchandiseTotalPrice = useMemo(() => {
+    if (selectedBundle) return 0;
     let total = 0;
     for (const [itemId, order] of Object.entries(selectedMerch)) {
       if (order.quantity > 0) {
         const item = availableMerchandise.find((m) => m.id === itemId);
         const isIncludedInTicket = Boolean(selectedTicket?.perks?.some((p) => p.merchandise_id === item?.id));
 
-        const bundledRecord = selectedBundle?.merchandise_items.find((bi) => bi.merchandise_id === itemId);
-        const bundledQty = bundledRecord?.quantity || 0;
-        const billableQty = Math.max(0, order.quantity - bundledQty);
-
-        if (item && !item.is_free && !isIncludedInTicket && billableQty > 0) {
+        if (item && !item.is_free && !isIncludedInTicket) {
           const unitPrice = getMerchEffectivePrice(item, order.selectedVariations);
-          total += unitPrice * billableQty;
+          total += unitPrice * order.quantity;
         }
       }
     }
@@ -1112,13 +1104,23 @@ export function EventRegistrationModal({
         toast.error("Please choose an available ticket tier to attend.");
         return;
       }
-      const ticketSales = getTicketSalesStatus(selectedTicket);
-      if (!ticketSales.isOpen) {
-        toast.error(
-          ticketSales.message ??
-            `The ticket tier "${selectedTicket.name}" is currently not available for selection (${ticketSales.badgeLabel}).`,
-        );
-        return;
+      if (selectedBundle) {
+        const bundleSales = getBundleSalesStatus(selectedBundle);
+        if (!bundleSales.isAvailable) {
+          toast.error(
+            `The bundling package "${selectedBundle.name}" is currently not available (${bundleSales.badgeLabel}).`,
+          );
+          return;
+        }
+      } else {
+        const ticketSales = getTicketSalesStatus(selectedTicket);
+        if (!ticketSales.isOpen) {
+          toast.error(
+            ticketSales.message ??
+              `The ticket tier "${selectedTicket.name}" is currently not available for selection (${ticketSales.badgeLabel}).`,
+          );
+          return;
+        }
       }
     }
 
@@ -1195,14 +1197,25 @@ export function EventRegistrationModal({
         setRegistrationStep("tickets");
         return;
       }
-      const ticketSales = getTicketSalesStatus(selectedTicket);
-      if (!ticketSales.isOpen) {
-        toast.error(
-          ticketSales.message ??
-            `The ticket tier "${selectedTicket.name}" is currently not available for selection (${ticketSales.badgeLabel}).`,
-        );
-        setRegistrationStep("tickets");
-        return;
+      if (selectedBundle) {
+        const bundleSales = getBundleSalesStatus(selectedBundle);
+        if (!bundleSales.isAvailable) {
+          toast.error(
+            `The bundling package "${selectedBundle.name}" is currently not available (${bundleSales.badgeLabel}).`,
+          );
+          setRegistrationStep("tickets");
+          return;
+        }
+      } else {
+        const ticketSales = getTicketSalesStatus(selectedTicket);
+        if (!ticketSales.isOpen) {
+          toast.error(
+            ticketSales.message ??
+              `The ticket tier "${selectedTicket.name}" is currently not available for selection (${ticketSales.badgeLabel}).`,
+          );
+          setRegistrationStep("tickets");
+          return;
+        }
       }
     }
 
@@ -1286,15 +1299,16 @@ export function EventRegistrationModal({
             const item = availableMerchandise.find((m) => m.id === itemId);
             if (item) {
               const salesStatus = getMerchandiseSalesStatus(item);
-              if (!salesStatus.isOpen) {
-                toast.error(salesStatus.message ?? `Merchandise "${item.name}" is not open for purchase.`);
-                return;
-              }
-
               const unitPrice = getMerchEffectivePrice(item, order.selectedVariations);
               const isIncludedInTicket = Boolean(selectedTicket?.perks?.some((p) => p.merchandise_id === item.id));
               const bundledRecord = selectedBundle?.merchandise_items.find((bi) => bi.merchandise_id === item.id);
               const isCoveredByBundle = Boolean(bundledRecord && order.quantity <= bundledRecord.quantity);
+
+              if (!isCoveredByBundle && !salesStatus.isOpen) {
+                toast.error(salesStatus.message ?? `Merchandise "${item.name}" is not open for purchase.`);
+                return;
+              }
+
               selectedMerchOrders.push({
                 id: item.id,
                 name: item.name,
@@ -2417,21 +2431,50 @@ export function EventRegistrationModal({
                           <div className="flex items-center gap-2">
                             <Ticket className="size-4 text-primary" />
                             <h3 className="font-semibold text-foreground text-sm">
-                              {hasBundles ? "Or Select Standard Ticket Pass" : "Select Your Registration Ticket"}
+                              {selectedBundle
+                                ? "Included Ticket Pass (Locked to Bundle)"
+                                : hasBundles
+                                  ? "Or Select Standard Ticket Pass"
+                                  : "Select Your Registration Ticket"}
                             </h3>
                             <span className="text-destructive">*</span>
                           </div>
-                          {eventConfig.max_tickets_per_person && (
-                            <Badge variant="outline" className="text-[10px]">
-                              Max {eventConfig.max_tickets_per_person} / person
+                          {selectedBundle ? (
+                            <Badge
+                              variant="outline"
+                              className="border-primary/40 bg-primary/10 font-semibold text-[10px] text-primary"
+                            >
+                              Bundle Active
                             </Badge>
+                          ) : (
+                            eventConfig.max_tickets_per_person && (
+                              <Badge variant="outline" className="text-[10px]">
+                                Max {eventConfig.max_tickets_per_person} / person
+                              </Badge>
+                            )
                           )}
                         </div>
-                        <p className="text-muted-foreground text-xs">
-                          Select your preferred pass type. Free RSVP, Commitment Deposit, and Paid tiers are supported.
-                        </p>
 
-                        {availableTickets.length > 0 &&
+                        {selectedBundle ? (
+                          <div className="flex items-start gap-2.5 rounded-lg border border-primary/30 bg-primary/10 p-3 text-primary text-xs">
+                            <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />
+                            <div>
+                              <p className="font-semibold">Ticket Pass Included in Bundle</p>
+                              <p className="mt-0.5 text-[11px] leading-relaxed text-primary/90">
+                                Your registration pass is auto-selected by the chosen bundle package (
+                                <strong>{selectedBundle.name}</strong>). Standalone pass selection is disabled.
+                              </p>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-muted-foreground text-xs">
+                            Select your preferred pass type. Free RSVP, Commitment Deposit, and Paid tiers are
+                            supported.
+                          </p>
+                        )}
+
+                        {!selectedBundle &&
+                          availableTickets.length > 0 &&
                           availableTickets.every((t) => !getTicketSalesStatus(t).isOpen) && (
                             <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-amber-800 text-xs dark:text-amber-300">
                               <Clock className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
@@ -2447,7 +2490,9 @@ export function EventRegistrationModal({
 
                         <RadioGroup
                           value={selectedTicketId}
+                          disabled={Boolean(selectedBundle)}
                           onValueChange={(val) => {
+                            if (selectedBundle) return;
                             const target = availableTickets.find((t) => t.id === val);
                             if (target && !getTicketSalesStatus(target).isOpen) {
                               return;
@@ -2458,14 +2503,25 @@ export function EventRegistrationModal({
                         >
                           {availableTickets.map((t) => {
                             const salesStatus = getTicketSalesStatus(t);
-                            const isDisabled = !salesStatus.isOpen;
-                            const isSelected = selectedTicketId === t.id && !isDisabled;
+                            const isTicketInBundle = Boolean(selectedBundle && selectedBundle.ticket_id === t.id);
+                            const isDisabled = selectedBundle ? !isTicketInBundle : !salesStatus.isOpen;
+                            const isSelected = selectedTicketId === t.id;
 
                             return (
                               <label
                                 key={t.id}
                                 htmlFor={`ticket-opt-${t.id}`}
                                 onClick={(e) => {
+                                  if (selectedBundle) {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    if (!isTicketInBundle) {
+                                      toast.info(
+                                        `Ticket pass is locked to bundle "${selectedBundle.name}". Deselect the bundle above to choose another pass.`,
+                                      );
+                                    }
+                                    return;
+                                  }
                                   if (isDisabled) {
                                     e.preventDefault();
                                     e.stopPropagation();
@@ -2475,26 +2531,45 @@ export function EventRegistrationModal({
                                   }
                                 }}
                                 onKeyDown={(e) => {
-                                  if ((e.key === "Enter" || e.key === " ") && isDisabled) {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    if (salesStatus.message) {
-                                      toast.info(salesStatus.message);
+                                  if (e.key === "Enter" || e.key === " ") {
+                                    if (selectedBundle) {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      if (!isTicketInBundle) {
+                                        toast.info(
+                                          `Ticket pass is locked to bundle "${selectedBundle.name}". Deselect the bundle above to choose another pass.`,
+                                        );
+                                      }
+                                      return;
+                                    }
+                                    if (isDisabled) {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      if (salesStatus.message) {
+                                        toast.info(salesStatus.message);
+                                      }
                                     }
                                   }
                                 }}
                                 className={cn(
                                   "relative flex items-start gap-3 rounded-lg border p-3.5 transition-colors",
-                                  isDisabled
-                                    ? "cursor-not-allowed border-border/60 bg-muted/30 opacity-60 hover:bg-muted/30"
-                                    : "cursor-pointer border-border bg-card hover:bg-muted/30",
-                                  isSelected && "border-primary bg-primary/10 shadow-xs ring-1 ring-primary/40",
+                                  selectedBundle
+                                    ? isTicketInBundle
+                                      ? "cursor-default border-primary bg-primary/10 shadow-xs ring-1 ring-primary/40"
+                                      : "cursor-not-allowed border-border/40 bg-muted/20 opacity-50"
+                                    : isDisabled
+                                      ? "cursor-not-allowed border-border/60 bg-muted/30 opacity-60 hover:bg-muted/30"
+                                      : "cursor-pointer border-border bg-card hover:bg-muted/30",
+                                  !selectedBundle &&
+                                    isSelected &&
+                                    !isDisabled &&
+                                    "border-primary bg-primary/10 shadow-xs ring-1 ring-primary/40",
                                 )}
                               >
                                 <RadioGroupItem
                                   value={t.id}
                                   id={`ticket-opt-${t.id}`}
-                                  disabled={isDisabled}
+                                  disabled={Boolean(selectedBundle) || isDisabled}
                                   className="mt-0.5 shrink-0"
                                 />
                                 <div className="flex-1 space-y-1">
@@ -2503,7 +2578,7 @@ export function EventRegistrationModal({
                                       <span
                                         className={cn(
                                           "font-medium text-sm",
-                                          isDisabled ? "text-muted-foreground" : "text-foreground",
+                                          isDisabled && !isTicketInBundle ? "text-muted-foreground" : "text-foreground",
                                         )}
                                       >
                                         {t.name}
@@ -2522,22 +2597,39 @@ export function EventRegistrationModal({
                                       >
                                         {getTicketTypeBadge(t.type)}
                                       </Badge>
+                                      {isTicketInBundle && (
+                                        <Badge
+                                          variant="outline"
+                                          className="border-primary/40 bg-primary/20 font-semibold text-[10px] text-primary"
+                                        >
+                                          ✓ Included in Bundle
+                                        </Badge>
+                                      )}
                                     </div>
                                     <div className="flex items-center gap-1.5">
-                                      <span
-                                        className={cn(
-                                          "font-bold text-sm",
-                                          isDisabled ? "text-muted-foreground" : "text-foreground",
-                                        )}
-                                      >
-                                        {t.type === "free" ? "Free" : `Rp ${(t.price || 0).toLocaleString("id-ID")}`}
-                                      </span>
-                                      {salesStatus.state === "sold_out" && (
+                                      {selectedBundle && isTicketInBundle ? (
+                                        <Badge
+                                          variant="secondary"
+                                          className="border border-emerald-500/30 bg-emerald-500/10 font-bold text-[11px] text-emerald-700 dark:text-emerald-400"
+                                        >
+                                          Included (Rp 0)
+                                        </Badge>
+                                      ) : (
+                                        <span
+                                          className={cn(
+                                            "font-bold text-sm",
+                                            isDisabled ? "text-muted-foreground" : "text-foreground",
+                                          )}
+                                        >
+                                          {t.type === "free" ? "Free" : `Rp ${(t.price || 0).toLocaleString("id-ID")}`}
+                                        </span>
+                                      )}
+                                      {!selectedBundle && salesStatus.state === "sold_out" && (
                                         <Badge variant="destructive" className="text-[10px]">
                                           Sold Out
                                         </Badge>
                                       )}
-                                      {salesStatus.state === "upcoming" && (
+                                      {!selectedBundle && salesStatus.state === "upcoming" && (
                                         <Badge
                                           variant="outline"
                                           className="border-blue-500/40 bg-blue-500/10 font-medium text-[10px] text-blue-700 dark:text-blue-400"
@@ -2545,7 +2637,7 @@ export function EventRegistrationModal({
                                           Opens Soon
                                         </Badge>
                                       )}
-                                      {salesStatus.state === "ended" && (
+                                      {!selectedBundle && salesStatus.state === "ended" && (
                                         <Badge
                                           variant="secondary"
                                           className="bg-muted text-[10px] text-muted-foreground"
@@ -2561,19 +2653,21 @@ export function EventRegistrationModal({
                                   )}
 
                                   {/* Sales schedule info */}
-                                  {salesStatus.state === "upcoming" && salesStatus.formattedStart && (
-                                    <div className="mt-1 flex items-center gap-1.5 text-[11px] text-blue-600 dark:text-blue-400">
-                                      <Clock className="size-3.5 shrink-0" />
-                                      <span>Sales starts: {salesStatus.formattedStart}</span>
-                                    </div>
-                                  )}
-                                  {salesStatus.state === "ended" && salesStatus.formattedEnd && (
+                                  {!selectedBundle &&
+                                    salesStatus.state === "upcoming" &&
+                                    salesStatus.formattedStart && (
+                                      <div className="mt-1 flex items-center gap-1.5 text-[11px] text-blue-600 dark:text-blue-400">
+                                        <Clock className="size-3.5 shrink-0" />
+                                        <span>Sales starts: {salesStatus.formattedStart}</span>
+                                      </div>
+                                    )}
+                                  {!selectedBundle && salesStatus.state === "ended" && salesStatus.formattedEnd && (
                                     <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
                                       <Clock className="size-3.5 shrink-0" />
                                       <span>Sales ended: {salesStatus.formattedEnd}</span>
                                     </div>
                                   )}
-                                  {salesStatus.state === "available" && salesStatus.formattedEnd && (
+                                  {!selectedBundle && salesStatus.state === "available" && salesStatus.formattedEnd && (
                                     <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
                                       <Clock className="size-3.5 shrink-0" />
                                       <span>Sales closes: {salesStatus.formattedEnd}</span>
@@ -2624,24 +2718,54 @@ export function EventRegistrationModal({
                           <div className="flex items-center gap-2">
                             <ShoppingBag className="size-4 text-primary" />
                             <h3 className="font-semibold text-foreground text-sm">
-                              Official Merchandise & Swag (Optional)
+                              {selectedBundle
+                                ? "Included Merchandise (Bundled with Package)"
+                                : "Official Merchandise & Swag (Optional)"}
                             </h3>
                           </div>
-                          {maxMerchandiseAllowed && (
-                            <Badge variant="outline" className="text-[10px]">
-                              {totalMerchandiseItems}/{maxMerchandiseAllowed} items selected
+                          {selectedBundle ? (
+                            <Badge
+                              variant="outline"
+                              className="border-primary/40 bg-primary/10 font-semibold text-[10px] text-primary"
+                            >
+                              Bundle Active
                             </Badge>
+                          ) : (
+                            maxMerchandiseAllowed && (
+                              <Badge variant="outline" className="text-[10px]">
+                                {totalMerchandiseItems}/{maxMerchandiseAllowed} items selected
+                              </Badge>
+                            )
                           )}
                         </div>
-                        <p className="text-muted-foreground text-xs">
-                          Add exclusive community swag, apparel, and event merchandise to your registration.
-                        </p>
+
+                        {selectedBundle ? (
+                          <div className="flex items-start gap-2.5 rounded-lg border border-primary/30 bg-primary/10 p-3 text-primary text-xs">
+                            <Package className="mt-0.5 size-4 shrink-0 text-primary" />
+                            <div>
+                              <p className="font-semibold">Official Merchandise Bundled with Package</p>
+                              <p className="mt-0.5 text-[11px] leading-relaxed text-primary/90">
+                                Official merchandise items are included in your chosen bundle package (
+                                <strong>{selectedBundle.name}</strong>). Purchasing additional standalone merchandise is
+                                disabled.
+                              </p>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-muted-foreground text-xs">
+                            Add exclusive community swag, apparel, and event merchandise to your registration.
+                          </p>
+                        )}
 
                         <div className="space-y-3 pt-1">
                           {availableMerchandise.map((item) => {
                             const salesStatus = getMerchandiseSalesStatus(item);
                             const order = selectedMerch[item.id] ?? { quantity: 0, selectedVariations: {} };
                             const isAdded = order.quantity > 0;
+                            const bundledItemRecord = selectedBundle?.merchandise_items?.find(
+                              (bi) => bi.merchandise_id === item.id,
+                            );
+                            const isItemInBundle = Boolean(bundledItemRecord && (bundledItemRecord.quantity || 0) > 0);
                             const isIncludedInTicket = Boolean(
                               selectedTicket?.perks?.some((p) => p.merchandise_id === item.id),
                             );
@@ -2660,10 +2784,14 @@ export function EventRegistrationModal({
                                 key={item.id}
                                 className={cn(
                                   "flex flex-col gap-3 rounded-lg border p-3.5 transition-all sm:flex-row sm:items-center sm:justify-between",
-                                  isAdded
-                                    ? "border-primary/50 bg-background shadow-xs ring-1 ring-primary/20"
-                                    : "border-border/70 bg-card",
-                                  !salesStatus.isOpen && !isAdded && "bg-muted/20 opacity-80",
+                                  selectedBundle
+                                    ? isItemInBundle
+                                      ? "border-primary/50 bg-background shadow-xs ring-1 ring-primary/20"
+                                      : "cursor-not-allowed border-border/40 bg-muted/10 opacity-50"
+                                    : isAdded
+                                      ? "border-primary/50 bg-background shadow-xs ring-1 ring-primary/20"
+                                      : "border-border/70 bg-card",
+                                  !selectedBundle && !salesStatus.isOpen && !isAdded && "bg-muted/20 opacity-80",
                                 )}
                               >
                                 <div className="flex items-start gap-3">
@@ -2684,7 +2812,23 @@ export function EventRegistrationModal({
                                       <span className="font-medium text-foreground text-xs sm:text-sm">
                                         {item.name}
                                       </span>
-                                      {isIncludedInTicket ? (
+                                      {selectedBundle && isItemInBundle ? (
+                                        <>
+                                          <Badge
+                                            variant="secondary"
+                                            className="gap-1 border border-primary/30 bg-primary/10 px-1.5 py-0 font-semibold text-[10px] text-primary"
+                                          >
+                                            <Package className="size-2.5 text-primary" />
+                                            Included in Bundle ({bundledItemRecord?.quantity}x)
+                                          </Badge>
+                                          <Badge
+                                            variant="secondary"
+                                            className="border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0 font-bold text-[10px] text-emerald-700 dark:text-emerald-400"
+                                          >
+                                            Included (Rp 0)
+                                          </Badge>
+                                        </>
+                                      ) : isIncludedInTicket ? (
                                         <Badge
                                           variant="secondary"
                                           className="gap-1 border border-amber-500/30 bg-amber-500/10 px-1.5 py-0 font-semibold text-[10px] text-amber-700 dark:text-amber-400"
@@ -2707,7 +2851,7 @@ export function EventRegistrationModal({
                                             : `Rp ${effectiveUnitPrice.toLocaleString("id-ID")}`}
                                         </Badge>
                                       )}
-                                      {!salesStatus.isOpen && (
+                                      {!selectedBundle && !salesStatus.isOpen && (
                                         <Badge
                                           variant="outline"
                                           className={cn("px-1.5 py-0 text-[10px]", salesStatus.badgeColor)}
@@ -2724,7 +2868,7 @@ export function EventRegistrationModal({
                                     )}
 
                                     {/* Sales window message if closed or upcoming */}
-                                    {!salesStatus.isOpen && (
+                                    {!selectedBundle && !salesStatus.isOpen && (
                                       <div className="flex items-center gap-1 pt-0.5 text-[11px] text-muted-foreground">
                                         <Clock className="size-3 shrink-0" />
                                         <span>{salesStatus.message}</span>
@@ -2777,12 +2921,14 @@ export function EventRegistrationModal({
                                 {/* Stepper Quantity Buttons */}
                                 <div className="flex items-center justify-between gap-2 border-t pt-2 sm:justify-end sm:border-t-0 sm:pt-0">
                                   <span className="font-semibold text-xs sm:hidden">
-                                    {getMerchPriceDisplay(
-                                      item,
-                                      order.quantity,
-                                      order.selectedVariations,
-                                      isIncludedInTicket,
-                                    )}
+                                    {selectedBundle && isItemInBundle
+                                      ? "Included"
+                                      : getMerchPriceDisplay(
+                                          item,
+                                          order.quantity,
+                                          order.selectedVariations,
+                                          isIncludedInTicket,
+                                        )}
                                   </span>
 
                                   <div className="flex items-center gap-1.5 self-end sm:self-auto">
@@ -2791,7 +2937,7 @@ export function EventRegistrationModal({
                                       variant="outline"
                                       size="icon-xs"
                                       onClick={() => handleUpdateMerchQuantity(item.id, -1)}
-                                      disabled={order.quantity === 0}
+                                      disabled={Boolean(selectedBundle) || order.quantity === 0}
                                       className="size-7"
                                     >
                                       <Minus className="size-3" />
@@ -2804,7 +2950,7 @@ export function EventRegistrationModal({
                                       variant="outline"
                                       size="icon-xs"
                                       onClick={() => handleUpdateMerchQuantity(item.id, 1)}
-                                      disabled={reachedLimit || !salesStatus.isOpen}
+                                      disabled={Boolean(selectedBundle) || reachedLimit || !salesStatus.isOpen}
                                       className="size-7"
                                     >
                                       <Plus className="size-3" />
@@ -2997,51 +3143,86 @@ export function EventRegistrationModal({
                           <span>Amount</span>
                         </div>
 
-                        {selectedTicket && (
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="text-foreground">
-                              Ticket: <strong>{selectedTicket.name}</strong>
-                            </span>
-                            <span className="font-mono">
-                              {selectedTicket.type === "free"
-                                ? "Rp 0"
-                                : `Rp ${(selectedTicket.price || 0).toLocaleString("id-ID")}`}
-                            </span>
-                          </div>
-                        )}
-
-                        {Object.entries(selectedMerch).map(([itemId, order]) => {
-                          if (order.quantity <= 0) return null;
-                          const m = availableMerchandise.find((it) => it.id === itemId);
-                          if (!m) return null;
-                          const varText = Object.values(order.selectedVariations).join(", ");
-                          const isIncludedInTicket = Boolean(
-                            selectedTicket?.perks?.some((p) => p.merchandise_id === m.id),
-                          );
-                          const bundledRecord = selectedBundle?.merchandise_items.find(
-                            (bi) => bi.merchandise_id === itemId,
-                          );
-                          const bundledQty = bundledRecord?.quantity || 0;
-                          const billableQty = Math.max(0, order.quantity - bundledQty);
-                          const effectiveUnitPrice = getMerchEffectivePrice(m, order.selectedVariations);
-                          const linePrice = effectiveUnitPrice * billableQty;
-
-                          return (
-                            <div
-                              key={itemId}
-                              className="flex items-center justify-between text-muted-foreground text-xs"
-                            >
-                              <span>
-                                {order.quantity}x {m.name} {varText ? `(${varText})` : ""}
+                        {selectedBundle ? (
+                          <>
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="font-semibold text-foreground">
+                                Bundle Package: <strong>{selectedBundle.name}</strong>
                               </span>
-                              <span className="font-mono">
-                                {m.is_free || isIncludedInTicket || linePrice === 0
-                                  ? "Free"
-                                  : `Rp ${linePrice.toLocaleString("id-ID")}`}
+                              <span className="font-bold font-mono">
+                                {selectedBundle.price === 0
+                                  ? "Free (Rp 0)"
+                                  : `Rp ${selectedBundle.price.toLocaleString("id-ID")}`}
                               </span>
                             </div>
-                          );
-                        })}
+                            {selectedTicket && (
+                              <div className="flex items-center justify-between pl-2 text-muted-foreground text-xs">
+                                <span>↳ Pass: {selectedTicket.name}</span>
+                                <span className="font-mono text-emerald-600 dark:text-emerald-400">Included</span>
+                              </div>
+                            )}
+                            {Object.entries(selectedMerch).map(([itemId, order]) => {
+                              if (order.quantity <= 0) return null;
+                              const m = availableMerchandise.find((it) => it.id === itemId);
+                              if (!m) return null;
+                              const varText = Object.values(order.selectedVariations).join(", ");
+                              return (
+                                <div
+                                  key={itemId}
+                                  className="flex items-center justify-between pl-2 text-muted-foreground text-xs"
+                                >
+                                  <span>
+                                    ↳ Swag: {order.quantity}x {m.name} {varText ? `(${varText})` : ""}
+                                  </span>
+                                  <span className="font-mono text-emerald-600 dark:text-emerald-400">Included</span>
+                                </div>
+                              );
+                            })}
+                          </>
+                        ) : (
+                          <>
+                            {selectedTicket && (
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-foreground">
+                                  Ticket: <strong>{selectedTicket.name}</strong>
+                                </span>
+                                <span className="font-mono">
+                                  {selectedTicket.type === "free"
+                                    ? "Rp 0"
+                                    : `Rp ${(selectedTicket.price || 0).toLocaleString("id-ID")}`}
+                                </span>
+                              </div>
+                            )}
+
+                            {Object.entries(selectedMerch).map(([itemId, order]) => {
+                              if (order.quantity <= 0) return null;
+                              const m = availableMerchandise.find((it) => it.id === itemId);
+                              if (!m) return null;
+                              const varText = Object.values(order.selectedVariations).join(", ");
+                              const isIncludedInTicket = Boolean(
+                                selectedTicket?.perks?.some((p) => p.merchandise_id === m.id),
+                              );
+                              const effectiveUnitPrice = getMerchEffectivePrice(m, order.selectedVariations);
+                              const linePrice = effectiveUnitPrice * order.quantity;
+
+                              return (
+                                <div
+                                  key={itemId}
+                                  className="flex items-center justify-between text-muted-foreground text-xs"
+                                >
+                                  <span>
+                                    {order.quantity}x {m.name} {varText ? `(${varText})` : ""}
+                                  </span>
+                                  <span className="font-mono">
+                                    {m.is_free || isIncludedInTicket || linePrice === 0
+                                      ? "Free"
+                                      : `Rp ${linePrice.toLocaleString("id-ID")}`}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </>
+                        )}
 
                         {/* Subtotal & Discounts */}
                         {(appliedVoucher || (appliedReferral && referralDiscount > 0)) && (
@@ -3258,6 +3439,34 @@ export function EventRegistrationModal({
                                           <ExternalLink className="size-3" />
                                           <span>Open Full Size</span>
                                         </div>
+                                      </a>
+                                    </div>
+                                  )}
+
+                                  {/* Helper / Reference Link */}
+                                  {q.helper_link_url && (
+                                    <div className="my-1.5 flex items-center">
+                                      <a
+                                        href={
+                                          q.helper_link_url.startsWith("http://") ||
+                                          q.helper_link_url.startsWith("https://")
+                                            ? q.helper_link_url
+                                            : `https://${q.helper_link_url}`
+                                        }
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="group inline-flex items-center gap-1.5 rounded-md border border-primary/25 bg-primary/5 px-2.5 py-1 text-xs font-medium text-primary shadow-2xs transition-all hover:border-primary/50 hover:bg-primary/10"
+                                        title={`Open ${q.helper_link_label || "Reference Link"} in new tab`}
+                                      >
+                                        <ExternalLink className="size-3.5 shrink-0 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                                        <span className="truncate max-w-[280px] sm:max-w-md">
+                                          {q.helper_link_label?.trim()
+                                            ? q.helper_link_label
+                                            : "Reference Link / Guidelines"}
+                                        </span>
+                                        <span className="font-normal text-[10px] text-muted-foreground">
+                                          (opens in new tab)
+                                        </span>
                                       </a>
                                     </div>
                                   )}
@@ -3796,7 +4005,12 @@ export function EventRegistrationModal({
                           handleProceedToForm(e);
                         }}
                         disabled={
-                          isPending || (hasTickets && (!selectedTicket || !getTicketSalesStatus(selectedTicket).isOpen))
+                          isPending ||
+                          (hasTickets &&
+                            (!selectedTicket ||
+                              (selectedBundle
+                                ? !getBundleSalesStatus(selectedBundle).isAvailable
+                                : !getTicketSalesStatus(selectedTicket).isOpen)))
                         }
                         className="gap-2 shadow-xs"
                       >

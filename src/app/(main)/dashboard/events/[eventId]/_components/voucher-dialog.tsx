@@ -534,7 +534,7 @@ export function VoucherDialog({ open, onOpenChange, voucher, onSave }: VoucherDi
             </div>
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter className="gap-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>

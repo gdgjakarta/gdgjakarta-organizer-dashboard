@@ -461,7 +461,7 @@ export function ResendPaymentLinkDialog({
           </div>
         )}
 
-        <DialogFooter className="gap-2 sm:gap-0">
+        <DialogFooter className="gap-2">
           {generatedResult ? (
             <Button type="button" size="sm" onClick={handleClose}>
               Done

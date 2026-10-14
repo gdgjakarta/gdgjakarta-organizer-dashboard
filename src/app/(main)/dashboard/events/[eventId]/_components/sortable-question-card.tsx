@@ -15,6 +15,7 @@ import {
   GripVertical,
   HardDrive,
   Image as ImageIcon,
+  Link2,
   Loader2,
   Maximize2,
   Trash2,
@@ -144,6 +145,38 @@ export function SortableQuestionCard({
     } catch (err) {
       console.warn("Clipboard access:", err);
       toast.info("Clipboard access restricted. Press Cmd+V / Ctrl+V to paste your copied image.");
+    }
+  };
+
+  const handlePasteLinkFromClipboard = async () => {
+    if (isLocked) return;
+    try {
+      if (!navigator.clipboard?.readText) {
+        toast.info("Please paste the link directly into the URL input.");
+        return;
+      }
+      const text = await navigator.clipboard.readText();
+      const trimmed = text?.trim();
+      if (!trimmed) {
+        toast.error("Clipboard is empty.");
+        return;
+      }
+
+      let url = trimmed;
+      if (!/^https?:\/\//i.test(url)) {
+        if (url.startsWith("www.") || url.includes(".")) {
+          url = `https://${url}`;
+        } else {
+          toast.error("Clipboard does not contain a valid web URL.");
+          return;
+        }
+      }
+
+      onUpdate(q.id, { helper_link_url: url });
+      toast.success("Reference link pasted from clipboard!");
+    } catch (err) {
+      console.warn("Clipboard access:", err);
+      toast.info("Clipboard access restricted. Please paste the link directly into the URL input.");
     }
   };
 
@@ -687,6 +720,128 @@ export function SortableQuestionCard({
                 Browse...
               </Button>
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* Link Helper (Reference Link / External Documentation) */}
+      <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5 font-medium text-foreground text-xs">
+            <Link2 className="size-3.5 text-primary" />
+            <span>Link Helper (Reference URL / External Guide)</span>
+          </div>
+          {q.helper_link_url && (
+            <Badge variant="outline" className="border-primary/20 bg-primary/10 font-normal text-[10px] text-primary">
+              Link Configured
+            </Badge>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-12">
+          <div className="sm:col-span-7">
+            <Field>
+              <FieldLabel className="text-xs">Reference URL</FieldLabel>
+              <div className="relative flex items-center">
+                <Link2 className="pointer-events-none absolute left-2.5 size-3.5 text-muted-foreground" />
+                <Input
+                  type="url"
+                  placeholder="https://example.com/guidelines-or-docs"
+                  value={q.helper_link_url ?? ""}
+                  disabled={isLocked}
+                  onChange={(e) => onUpdate(q.id, { helper_link_url: e.target.value })}
+                  className="h-8 pl-8 text-xs"
+                />
+              </div>
+            </Field>
+          </div>
+
+          <div className="sm:col-span-5">
+            <Field>
+              <FieldLabel className="text-xs">Link Label / Title (Optional)</FieldLabel>
+              <div className="flex items-center gap-1.5">
+                <Input
+                  placeholder="e.g. View Guidelines (Default: Reference Link)"
+                  value={q.helper_link_label ?? ""}
+                  disabled={isLocked}
+                  onChange={(e) => onUpdate(q.id, { helper_link_label: e.target.value })}
+                  className="h-8 text-xs"
+                />
+                {q.helper_link_url && (
+                  <>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-xs"
+                      className="size-8 shrink-0 text-muted-foreground hover:text-foreground"
+                      asChild
+                      title="Test open link in new tab"
+                    >
+                      <a
+                        href={
+                          q.helper_link_url.startsWith("http://") || q.helper_link_url.startsWith("https://")
+                            ? q.helper_link_url
+                            : `https://${q.helper_link_url}`
+                        }
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <ExternalLink className="size-3.5" />
+                      </a>
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-xs"
+                      className="size-8 shrink-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                      disabled={isLocked}
+                      onClick={() => onUpdate(q.id, { helper_link_url: undefined, helper_link_label: undefined })}
+                      title="Remove helper link"
+                      aria-label="Remove helper link"
+                    >
+                      <X className="size-3.5" />
+                    </Button>
+                  </>
+                )}
+              </div>
+            </Field>
+          </div>
+        </div>
+
+        {q.helper_link_url ? (
+          <div className="flex items-center gap-2 pt-0.5 text-[11px] text-muted-foreground">
+            <span>Preview for respondents:</span>
+            <a
+              href={
+                q.helper_link_url.startsWith("http://") || q.helper_link_url.startsWith("https://")
+                  ? q.helper_link_url
+                  : `https://${q.helper_link_url}`
+              }
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
+            >
+              <ExternalLink className="size-3" />
+              <span>{q.helper_link_label?.trim() || "Reference Link"}</span>
+            </a>
+          </div>
+        ) : (
+          <div className="flex flex-col justify-between gap-2 rounded-md border border-border/60 border-dashed bg-background/50 px-2.5 py-1.5 sm:flex-row sm:items-center">
+            <span className="text-[11px] text-muted-foreground">
+              Provide an external reference, documentation, or tutorial link for respondents filling this question.
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              className="h-6 shrink-0 gap-1 text-[11px]"
+              disabled={isLocked}
+              onClick={handlePasteLinkFromClipboard}
+              title="Paste URL from clipboard"
+            >
+              <Clipboard className="size-3" />
+              <span>Paste URL</span>
+            </Button>
           </div>
         )}
       </div>
