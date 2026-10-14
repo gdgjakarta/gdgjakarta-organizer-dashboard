@@ -5,6 +5,8 @@
 
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
 
+import { calculatePaymentGatewayFee } from "./payment-fee";
+
 export const DEFAULT_PAYMENT_HEADER_EMAIL_URL =
   "https://assets.gdgjakarta.org/gdg-jakarta/gdg-jakarta-emailheaders-1244x388-blue.png";
 
@@ -124,7 +126,10 @@ export function resolvePaymentLinkWebhookUrl(customBaseUrl?: string, isProductio
  * - voucher discount amount
  * - referral discount amount
  */
-export function calculateRegistrationTotalAmount(registration?: Partial<FirestoreRegistration> | null): number {
+export function calculateRegistrationTotalAmount(
+  registration?: Partial<FirestoreRegistration> | null,
+  event?: FirestoreEvent,
+): number {
   if (!registration) return 0;
   if (typeof registration.payment_amount === "number") {
     return Math.max(0, registration.payment_amount);
@@ -135,7 +140,17 @@ export function calculateRegistrationTotalAmount(registration?: Partial<Firestor
     0,
   );
   const discountTotal = (registration.voucher_discount_amount ?? 0) + (registration.referral_discount_amount ?? 0);
-  return Math.max(0, ticketPrice + merchTotal - discountTotal);
+  const subtotal = Math.max(0, ticketPrice + merchTotal - discountTotal);
+  if (registration.payment_fee_bearer === "attendee" && typeof registration.payment_fee_amount === "number") {
+    return subtotal + registration.payment_fee_amount;
+  }
+  if (event) {
+    const feeResult = calculatePaymentGatewayFee(subtotal, event);
+    if (feeResult.isEnabled && feeResult.isPassedToAttendee) {
+      return subtotal + feeResult.feeAmount;
+    }
+  }
+  return subtotal;
 }
 
 /**
@@ -325,17 +340,30 @@ export function buildRegistrationPaymentPayload(
     }
   }
 
-  const fees: PaymentFee[] =
-    registration.ticket_type === "commitment_fee" && (registration.ticket_price ?? 0) > 0
-      ? [
-          {
-            label: registration.ticket_name ?? "Commitment Fee",
-            type: "fixed",
-            value: registration.ticket_price ?? 50000,
-            desc: "Refundable upon attendance.",
-          },
-        ]
-      : [];
+  const fees: PaymentFee[] = [];
+
+  // If items array is empty but registration is a commitment fee, ensure it is added to items
+  if (items.length === 0 && registration.ticket_type === "commitment_fee" && (registration.ticket_price ?? 0) > 0) {
+    items.push({
+      name: registration.ticket_name ?? "Commitment Fee",
+      quantity: 1,
+      price: registration.ticket_price ?? 50000,
+      type: "Ticket",
+    });
+  }
+
+  // Calculate payment gateway fee based on event fee configuration
+  const orderSubtotal = items.reduce((acc, it) => acc + it.price * it.quantity, 0);
+  const feeCalc = calculatePaymentGatewayFee(orderSubtotal, event);
+
+  if (feeCalc.feeAmount > 0 && feeCalc.isPassedToAttendee) {
+    fees.push({
+      label: feeCalc.feeLabel,
+      type: "fixed",
+      value: feeCalc.feeAmount,
+      desc: feeCalc.feeDescription,
+    });
+  }
 
   let isProduction: boolean | undefined;
   if (event.payment_environment === "production") {
@@ -373,13 +401,13 @@ export function buildRegistrationPaymentPayload(
         ? items
         : [
             {
-              name: fees[0]?.label ?? "Commitment Fee",
+              name: "Commitment Fee",
               quantity: 1,
-              price: fees[0]?.value ?? 50000,
+              price: 50000,
               type: "Ticket",
             },
           ],
-    fees: items.length > 0 ? fees : [],
+    fees,
     payment: {
       paymentMethodTypes: options?.paymentMethodTypes ?? ["QRIS"],
       sendEmail: options?.sendEmail ?? true,

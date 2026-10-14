@@ -2854,6 +2854,15 @@ export async function updateEventPaymentConfig(
     payment_deadline_minutes?: number | null;
     payment_email_template?: string | null;
     paymentEmailTemplate?: string | null;
+    payment_fee_enabled?: boolean;
+    payment_fee_bearer?: import("@/lib/events/payment-fee").PaymentFeeBearer;
+    payment_fee_type?: import("@/lib/events/payment-fee").PaymentFeeType;
+    payment_fee_fixed_amount?: number;
+    payment_fee_percentage?: number;
+    payment_fee_threshold?: number;
+    payment_fee_tier_below_amount?: number;
+    payment_fee_tier_above_percent?: number;
+    payment_fee_label?: string | null;
   },
   baseEvent?: Partial<FirestoreEvent>,
 ): Promise<void> {
@@ -2907,6 +2916,32 @@ export async function updateEventPaymentConfig(
           paymentEmailTemplate:
             resolvedEmailTemplate && resolvedEmailTemplate.trim().length > 0
               ? resolvedEmailTemplate.trim()
+              : deleteField(),
+        }
+      : {}),
+    ...(config.payment_fee_enabled !== undefined ? { payment_fee_enabled: config.payment_fee_enabled } : {}),
+    ...(config.payment_fee_bearer !== undefined ? { payment_fee_bearer: config.payment_fee_bearer } : {}),
+    ...(config.payment_fee_type !== undefined ? { payment_fee_type: config.payment_fee_type } : {}),
+    ...(typeof config.payment_fee_fixed_amount === "number"
+      ? { payment_fee_fixed_amount: config.payment_fee_fixed_amount }
+      : {}),
+    ...(typeof config.payment_fee_percentage === "number"
+      ? { payment_fee_percentage: config.payment_fee_percentage }
+      : {}),
+    ...(typeof config.payment_fee_threshold === "number"
+      ? { payment_fee_threshold: config.payment_fee_threshold }
+      : {}),
+    ...(typeof config.payment_fee_tier_below_amount === "number"
+      ? { payment_fee_tier_below_amount: config.payment_fee_tier_below_amount }
+      : {}),
+    ...(typeof config.payment_fee_tier_above_percent === "number"
+      ? { payment_fee_tier_above_percent: config.payment_fee_tier_above_percent }
+      : {}),
+    ...(config.payment_fee_label !== undefined
+      ? {
+          payment_fee_label:
+            config.payment_fee_label && config.payment_fee_label.trim().length > 0
+              ? config.payment_fee_label.trim()
               : deleteField(),
         }
       : {}),

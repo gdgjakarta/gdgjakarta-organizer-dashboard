@@ -68,6 +68,7 @@ import {
 import { extractEventImageUrl } from "@/lib/events/media-utils";
 import { getMerchandiseSalesStatus } from "@/lib/events/merchandise-templates";
 import { isEventCurationMode } from "@/lib/events/payment-deadline";
+import { calculatePaymentGatewayFee } from "@/lib/events/payment-fee";
 import {
   formatOtherAnswer,
   isOtherOption,
@@ -828,7 +829,11 @@ export function EventRegistrationModal({
   }, [appliedReferral, effectiveBasePrice]);
 
   const rawSubtotal = effectiveBasePrice + merchandiseTotalPrice;
-  const grandTotal = Math.max(0, rawSubtotal - voucherDiscount.totalDiscount - referralDiscount);
+  const netSubtotal = Math.max(0, rawSubtotal - voucherDiscount.totalDiscount - referralDiscount);
+  const gatewayFeeCalc = useMemo(() => {
+    return calculatePaymentGatewayFee(netSubtotal, eventConfig);
+  }, [netSubtotal, eventConfig]);
+  const grandTotal = Math.max(0, netSubtotal + (gatewayFeeCalc.isPassedToAttendee ? gatewayFeeCalc.feeAmount : 0));
 
   const handleApplyVoucher = () => {
     const cleanCode = voucherInput.trim().toUpperCase();
@@ -1566,6 +1571,9 @@ export function EventRegistrationModal({
           bundle_price: selectedBundle ? selectedBundle.price : undefined,
           selected_merchandise: selectedMerchOrders.length > 0 ? selectedMerchOrders : undefined,
           payment_amount: grandTotal,
+          payment_subtotal_amount: netSubtotal,
+          payment_fee_amount: gatewayFeeCalc.feeAmount,
+          payment_fee_bearer: gatewayFeeCalc.feeBearer,
           voucher_id: appliedVoucher?.id,
           voucher_code: appliedVoucher?.code,
           voucher_discount_amount: voucherDiscount.totalDiscount > 0 ? voucherDiscount.totalDiscount : undefined,
@@ -1694,6 +1702,9 @@ export function EventRegistrationModal({
           payment_invoice_number: isWaitlistMode ? undefined : generatedInvoiceNumber,
           payment_amount: isWaitlistMode ? undefined : (generatedPaymentAmount ?? (requiresPayment ? grandTotal : 0)),
           payment_expired_datetime: isWaitlistMode ? undefined : generatedExpiredDatetime,
+          payment_fee_amount: isWaitlistMode ? undefined : requiresPayment ? gatewayFeeCalc.feeAmount : undefined,
+          payment_fee_bearer: isWaitlistMode ? undefined : requiresPayment ? gatewayFeeCalc.feeBearer : undefined,
+          payment_subtotal_amount: isWaitlistMode ? undefined : requiresPayment ? netSubtotal : undefined,
         };
 
         const rollbackRegistration = async (regId?: string | null) => {
@@ -1863,6 +1874,9 @@ export function EventRegistrationModal({
           payment_invoice_number: generatedInvoiceNumber,
           payment_amount: generatedPaymentAmount ?? (requiresPayment ? grandTotal : 0),
           payment_expired_datetime: generatedExpiredDatetime,
+          payment_fee_amount: requiresPayment ? gatewayFeeCalc.feeAmount : undefined,
+          payment_fee_bearer: requiresPayment ? gatewayFeeCalc.feeBearer : undefined,
+          payment_subtotal_amount: requiresPayment ? netSubtotal : undefined,
         };
 
         setIsTransitioning(true);
@@ -3551,6 +3565,32 @@ export function EventRegistrationModal({
                           </div>
                         )}
 
+                        {gatewayFeeCalc.isEnabled && netSubtotal > 0 && gatewayFeeCalc.feeAmount > 0 && (
+                          <div className="flex items-center justify-between text-muted-foreground text-xs">
+                            <span className="flex items-center gap-1.5">
+                              <CreditCard className="size-3 text-muted-foreground" />
+                              <span>{gatewayFeeCalc.feeLabel}</span>
+                              {gatewayFeeCalc.isAbsorbedByOrganizer ? (
+                                <Badge
+                                  variant="outline"
+                                  className="h-4 border-emerald-500/30 bg-emerald-500/10 px-1 font-normal text-[9px] text-emerald-600 dark:text-emerald-400"
+                                >
+                                  Absorbed
+                                </Badge>
+                              ) : (
+                                <span className="text-[10px] text-muted-foreground">
+                                  ({gatewayFeeCalc.rateDescription})
+                                </span>
+                              )}
+                            </span>
+                            <span className="font-mono">
+                              {gatewayFeeCalc.isPassedToAttendee
+                                ? `+Rp ${gatewayFeeCalc.feeAmount.toLocaleString("id-ID")}`
+                                : "Free for Attendee"}
+                            </span>
+                          </div>
+                        )}
+
                         <div className="flex items-center justify-between border-t pt-2 font-bold text-foreground text-sm">
                           <span>Total Amount</span>
                           <span className="font-mono text-primary">
@@ -3625,6 +3665,15 @@ export function EventRegistrationModal({
                               </span>
                             </span>
                           )}
+                          {gatewayFeeCalc.isEnabled &&
+                            netSubtotal > 0 &&
+                            gatewayFeeCalc.feeAmount > 0 &&
+                            gatewayFeeCalc.isPassedToAttendee && (
+                              <span className="flex items-center gap-1 font-mono text-muted-foreground">
+                                <CreditCard className="size-3 text-primary" />
+                                <span>Fee: +Rp {gatewayFeeCalc.feeAmount.toLocaleString("id-ID")}</span>
+                              </span>
+                            )}
                           <span className="font-medium font-mono text-foreground">
                             Total: {grandTotal === 0 ? "Free (Rp 0)" : `Rp ${grandTotal.toLocaleString("id-ID")}`}
                           </span>

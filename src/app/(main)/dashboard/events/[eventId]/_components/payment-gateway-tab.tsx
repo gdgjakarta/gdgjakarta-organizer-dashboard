@@ -7,12 +7,14 @@ import { useRouter } from "next/navigation";
 
 import {
   AlertTriangle,
+  Calculator,
   CheckCircle2,
   Clock,
   CreditCard,
   ExternalLink,
   Info,
   Mail,
+  Percent,
   QrCode,
   RotateCcw,
   ShieldCheck,
@@ -37,7 +39,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { DEFAULT_PAYMENT_HEADER_EMAIL_URL } from "@/lib/events/doku-payment";
+import {
+  calculatePaymentGatewayFee,
+  DEFAULT_DOKU_TIER_ABOVE_PERCENT,
+  DEFAULT_DOKU_TIER_BELOW_FEE,
+  DEFAULT_DOKU_TIER_THRESHOLD,
+  DEFAULT_FIXED_FEE,
+  DEFAULT_PAYMENT_FEE_LABEL,
+  DEFAULT_PERCENT_FEE,
+  type PaymentFeeBearer,
+  type PaymentFeeType,
+} from "@/lib/events/payment-fee";
 import { updateEventMerchandiseDeliveryConfigAction, updateEventPaymentConfigAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
@@ -71,6 +85,30 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
       (event.tickets?.some((t) => t.type === "commitment_fee") ? "Commitment Fee" : "Ticketing"),
   );
 
+  // Payment Gateway Fee Configuration States
+  const [paymentFeeEnabled, setPaymentFeeEnabled] = useState<boolean>(event.payment_fee_enabled ?? true);
+  const [paymentFeeBearer, setPaymentFeeBearer] = useState<PaymentFeeBearer>(event.payment_fee_bearer ?? "attendee");
+  const [paymentFeeType, setPaymentFeeType] = useState<PaymentFeeType>(event.payment_fee_type ?? "tiered");
+  const [paymentFeeFixedAmount, setPaymentFeeFixedAmount] = useState<number>(
+    event.payment_fee_fixed_amount ?? DEFAULT_FIXED_FEE,
+  );
+  const [paymentFeePercentage, setPaymentFeePercentage] = useState<number>(
+    event.payment_fee_percentage ?? DEFAULT_PERCENT_FEE,
+  );
+  const [paymentFeeThreshold, setPaymentFeeThreshold] = useState<number>(
+    event.payment_fee_threshold ?? DEFAULT_DOKU_TIER_THRESHOLD,
+  );
+  const [paymentFeeTierBelowAmount, setPaymentFeeTierBelowAmount] = useState<number>(
+    event.payment_fee_tier_below_amount ?? DEFAULT_DOKU_TIER_BELOW_FEE,
+  );
+  const [paymentFeeTierAbovePercent, setPaymentFeeTierAbovePercent] = useState<number>(
+    event.payment_fee_tier_above_percent ?? DEFAULT_DOKU_TIER_ABOVE_PERCENT,
+  );
+  const [paymentFeeLabel, setPaymentFeeLabel] = useState<string>(event.payment_fee_label ?? DEFAULT_PAYMENT_FEE_LABEL);
+
+  // Test amount for the interactive fee preview sandbox
+  const [previewTestAmount, setPreviewTestAmount] = useState<number>(100000);
+
   const [isInitialLoaded, setIsInitialLoaded] = useState(false);
   const initialSnapshotRef = useRef<string | null>(null);
 
@@ -82,6 +120,15 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
       headerEmailUrl,
       paymentDeadlinesInMinutes,
       emailTemplate,
+      paymentFeeEnabled,
+      paymentFeeBearer,
+      paymentFeeType,
+      paymentFeeFixedAmount,
+      paymentFeePercentage,
+      paymentFeeThreshold,
+      paymentFeeTierBelowAmount,
+      paymentFeeTierAbovePercent,
+      paymentFeeLabel,
     });
   }, [
     paymentEnvironment,
@@ -90,6 +137,40 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
     headerEmailUrl,
     paymentDeadlinesInMinutes,
     emailTemplate,
+    paymentFeeEnabled,
+    paymentFeeBearer,
+    paymentFeeType,
+    paymentFeeFixedAmount,
+    paymentFeePercentage,
+    paymentFeeThreshold,
+    paymentFeeTierBelowAmount,
+    paymentFeeTierAbovePercent,
+    paymentFeeLabel,
+  ]);
+
+  const simulatedCalculation = useMemo(() => {
+    return calculatePaymentGatewayFee(previewTestAmount, {
+      payment_fee_enabled: paymentFeeEnabled,
+      payment_fee_bearer: paymentFeeBearer,
+      payment_fee_type: paymentFeeType,
+      payment_fee_fixed_amount: paymentFeeFixedAmount,
+      payment_fee_percentage: paymentFeePercentage,
+      payment_fee_threshold: paymentFeeThreshold,
+      payment_fee_tier_below_amount: paymentFeeTierBelowAmount,
+      payment_fee_tier_above_percent: paymentFeeTierAbovePercent,
+      payment_fee_label: paymentFeeLabel,
+    });
+  }, [
+    previewTestAmount,
+    paymentFeeEnabled,
+    paymentFeeBearer,
+    paymentFeeType,
+    paymentFeeFixedAmount,
+    paymentFeePercentage,
+    paymentFeeThreshold,
+    paymentFeeTierBelowAmount,
+    paymentFeeTierAbovePercent,
+    paymentFeeLabel,
   ]);
 
   const isDirty =
@@ -144,6 +225,36 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
           currentEvent.paymentEmailTemplate ??
           (currentEvent.tickets?.some((t) => t.type === "commitment_fee") ? "Commitment Fee" : "Ticketing");
 
+        const loadedFeeEnabled = docData?.payment_fee_enabled ?? currentEvent.payment_fee_enabled ?? true;
+        const loadedFeeBearer = (docData?.payment_fee_bearer ??
+          currentEvent.payment_fee_bearer ??
+          "attendee") as PaymentFeeBearer;
+        const loadedFeeType = (docData?.payment_fee_type ??
+          currentEvent.payment_fee_type ??
+          "tiered") as PaymentFeeType;
+        const loadedFeeFixed =
+          typeof docData?.payment_fee_fixed_amount === "number"
+            ? docData.payment_fee_fixed_amount
+            : (currentEvent.payment_fee_fixed_amount ?? DEFAULT_FIXED_FEE);
+        const loadedFeePercentage =
+          typeof docData?.payment_fee_percentage === "number"
+            ? docData.payment_fee_percentage
+            : (currentEvent.payment_fee_percentage ?? DEFAULT_PERCENT_FEE);
+        const loadedFeeThreshold =
+          typeof docData?.payment_fee_threshold === "number"
+            ? docData.payment_fee_threshold
+            : (currentEvent.payment_fee_threshold ?? DEFAULT_DOKU_TIER_THRESHOLD);
+        const loadedFeeTierBelow =
+          typeof docData?.payment_fee_tier_below_amount === "number"
+            ? docData.payment_fee_tier_below_amount
+            : (currentEvent.payment_fee_tier_below_amount ?? DEFAULT_DOKU_TIER_BELOW_FEE);
+        const loadedFeeTierAbove =
+          typeof docData?.payment_fee_tier_above_percent === "number"
+            ? docData.payment_fee_tier_above_percent
+            : (currentEvent.payment_fee_tier_above_percent ?? DEFAULT_DOKU_TIER_ABOVE_PERCENT);
+        const loadedFeeLabel =
+          docData?.payment_fee_label ?? currentEvent.payment_fee_label ?? DEFAULT_PAYMENT_FEE_LABEL;
+
         if (!isDirtyRef.current) {
           setPaymentEnvironment(loadedEnv);
           setMerchandiseDeliveryEnv(loadedDeliveryEnv);
@@ -151,6 +262,15 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
           setHeaderEmailUrl(loadedHeaderEmail);
           setPaymentDeadlinesInMinutes(loadedPaymentDeadlines);
           setEmailTemplate(loadedEmailTemplate);
+          setPaymentFeeEnabled(loadedFeeEnabled);
+          setPaymentFeeBearer(loadedFeeBearer);
+          setPaymentFeeType(loadedFeeType);
+          setPaymentFeeFixedAmount(loadedFeeFixed);
+          setPaymentFeePercentage(loadedFeePercentage);
+          setPaymentFeeThreshold(loadedFeeThreshold);
+          setPaymentFeeTierBelowAmount(loadedFeeTierBelow);
+          setPaymentFeeTierAbovePercent(loadedFeeTierAbove);
+          setPaymentFeeLabel(loadedFeeLabel);
 
           initialSnapshotRef.current = JSON.stringify({
             paymentEnvironment: loadedEnv,
@@ -159,6 +279,15 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
             headerEmailUrl: loadedHeaderEmail,
             paymentDeadlinesInMinutes: loadedPaymentDeadlines,
             emailTemplate: loadedEmailTemplate,
+            paymentFeeEnabled: loadedFeeEnabled,
+            paymentFeeBearer: loadedFeeBearer,
+            paymentFeeType: loadedFeeType,
+            paymentFeeFixedAmount: loadedFeeFixed,
+            paymentFeePercentage: loadedFeePercentage,
+            paymentFeeThreshold: loadedFeeThreshold,
+            paymentFeeTierBelowAmount: loadedFeeTierBelow,
+            paymentFeeTierAbovePercent: loadedFeeTierAbove,
+            paymentFeeLabel: loadedFeeLabel,
           });
         }
       } catch (err) {
@@ -177,6 +306,16 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
           currentEvent.payment_email_template ??
           currentEvent.paymentEmailTemplate ??
           (currentEvent.tickets?.some((t) => t.type === "commitment_fee") ? "Commitment Fee" : "Ticketing");
+        const fallbackFeeEnabled = currentEvent.payment_fee_enabled ?? true;
+        const fallbackFeeBearer = (currentEvent.payment_fee_bearer ?? "attendee") as PaymentFeeBearer;
+        const fallbackFeeType = (currentEvent.payment_fee_type ?? "tiered") as PaymentFeeType;
+        const fallbackFeeFixed = currentEvent.payment_fee_fixed_amount ?? DEFAULT_FIXED_FEE;
+        const fallbackFeePercentage = currentEvent.payment_fee_percentage ?? DEFAULT_PERCENT_FEE;
+        const fallbackFeeThreshold = currentEvent.payment_fee_threshold ?? DEFAULT_DOKU_TIER_THRESHOLD;
+        const fallbackFeeTierBelow = currentEvent.payment_fee_tier_below_amount ?? DEFAULT_DOKU_TIER_BELOW_FEE;
+        const fallbackFeeTierAbove = currentEvent.payment_fee_tier_above_percent ?? DEFAULT_DOKU_TIER_ABOVE_PERCENT;
+        const fallbackFeeLabel = currentEvent.payment_fee_label ?? DEFAULT_PAYMENT_FEE_LABEL;
+
         if (!isDirtyRef.current) {
           initialSnapshotRef.current ??= JSON.stringify({
             paymentEnvironment: fallbackEnv,
@@ -185,6 +324,15 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
             headerEmailUrl: fallbackHeaderEmail,
             paymentDeadlinesInMinutes: fallbackPaymentDeadlines,
             emailTemplate: fallbackEmailTemplate,
+            paymentFeeEnabled: fallbackFeeEnabled,
+            paymentFeeBearer: fallbackFeeBearer,
+            paymentFeeType: fallbackFeeType,
+            paymentFeeFixedAmount: fallbackFeeFixed,
+            paymentFeePercentage: fallbackFeePercentage,
+            paymentFeeThreshold: fallbackFeeThreshold,
+            paymentFeeTierBelowAmount: fallbackFeeTierBelow,
+            paymentFeeTierAbovePercent: fallbackFeeTierAbove,
+            paymentFeeLabel: fallbackFeeLabel,
           });
         }
       } finally {
@@ -252,6 +400,34 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
           if (incomingEmailTemplate) {
             setEmailTemplate(incomingEmailTemplate);
           }
+          if (docData.payment_fee_enabled !== undefined) {
+            setPaymentFeeEnabled(docData.payment_fee_enabled);
+          }
+          if (docData.payment_fee_bearer) {
+            setPaymentFeeBearer(docData.payment_fee_bearer);
+          }
+          if (docData.payment_fee_type) {
+            setPaymentFeeType(docData.payment_fee_type);
+          }
+          if (typeof docData.payment_fee_fixed_amount === "number") {
+            setPaymentFeeFixedAmount(docData.payment_fee_fixed_amount);
+          }
+          if (typeof docData.payment_fee_percentage === "number") {
+            setPaymentFeePercentage(docData.payment_fee_percentage);
+          }
+          if (typeof docData.payment_fee_threshold === "number") {
+            setPaymentFeeThreshold(docData.payment_fee_threshold);
+          }
+          if (typeof docData.payment_fee_tier_below_amount === "number") {
+            setPaymentFeeTierBelowAmount(docData.payment_fee_tier_below_amount);
+          }
+          if (typeof docData.payment_fee_tier_above_percent === "number") {
+            setPaymentFeeTierAbovePercent(docData.payment_fee_tier_above_percent);
+          }
+          if (docData.payment_fee_label) {
+            setPaymentFeeLabel(docData.payment_fee_label);
+          }
+
           if (initialSnapshotRef.current) {
             try {
               const parsed = JSON.parse(initialSnapshotRef.current);
@@ -272,6 +448,33 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
               }
               if (incomingEmailTemplate) {
                 parsed.emailTemplate = incomingEmailTemplate;
+              }
+              if (docData.payment_fee_enabled !== undefined) {
+                parsed.paymentFeeEnabled = docData.payment_fee_enabled;
+              }
+              if (docData.payment_fee_bearer) {
+                parsed.paymentFeeBearer = docData.payment_fee_bearer;
+              }
+              if (docData.payment_fee_type) {
+                parsed.paymentFeeType = docData.payment_fee_type;
+              }
+              if (typeof docData.payment_fee_fixed_amount === "number") {
+                parsed.paymentFeeFixedAmount = docData.payment_fee_fixed_amount;
+              }
+              if (typeof docData.payment_fee_percentage === "number") {
+                parsed.paymentFeePercentage = docData.payment_fee_percentage;
+              }
+              if (typeof docData.payment_fee_threshold === "number") {
+                parsed.paymentFeeThreshold = docData.payment_fee_threshold;
+              }
+              if (typeof docData.payment_fee_tier_below_amount === "number") {
+                parsed.paymentFeeTierBelowAmount = docData.payment_fee_tier_below_amount;
+              }
+              if (typeof docData.payment_fee_tier_above_percent === "number") {
+                parsed.paymentFeeTierAbovePercent = docData.payment_fee_tier_above_percent;
+              }
+              if (docData.payment_fee_label) {
+                parsed.paymentFeeLabel = docData.payment_fee_label;
               }
               initialSnapshotRef.current = JSON.stringify(parsed);
             } catch {
@@ -430,6 +633,15 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
             payment_deadline_minutes: paymentDeadlinesInMinutes,
             payment_email_template: emailTemplate,
             paymentEmailTemplate: emailTemplate,
+            payment_fee_enabled: paymentFeeEnabled,
+            payment_fee_bearer: paymentFeeBearer,
+            payment_fee_type: paymentFeeType,
+            payment_fee_fixed_amount: paymentFeeFixedAmount,
+            payment_fee_percentage: paymentFeePercentage,
+            payment_fee_threshold: paymentFeeThreshold,
+            payment_fee_tier_below_amount: paymentFeeTierBelowAmount,
+            payment_fee_tier_above_percent: paymentFeeTierAbovePercent,
+            payment_fee_label: paymentFeeLabel.trim(),
           },
           event,
         );
@@ -454,6 +666,15 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
             headerEmailUrl,
             paymentDeadlinesInMinutes,
             emailTemplate,
+            paymentFeeEnabled,
+            paymentFeeBearer,
+            paymentFeeType,
+            paymentFeeFixedAmount,
+            paymentFeePercentage,
+            paymentFeeThreshold,
+            paymentFeeTierBelowAmount,
+            paymentFeeTierAbovePercent,
+            paymentFeeLabel,
           });
           toast.success("Payment gateway settings saved successfully!");
           router.refresh();
@@ -478,6 +699,15 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
         headerEmailUrl?: string;
         paymentDeadlinesInMinutes?: number;
         emailTemplate?: string;
+        paymentFeeEnabled?: boolean;
+        paymentFeeBearer?: PaymentFeeBearer;
+        paymentFeeType?: PaymentFeeType;
+        paymentFeeFixedAmount?: number;
+        paymentFeePercentage?: number;
+        paymentFeeThreshold?: number;
+        paymentFeeTierBelowAmount?: number;
+        paymentFeeTierAbovePercent?: number;
+        paymentFeeLabel?: string;
       };
       setPaymentEnvironment(parsed.paymentEnvironment);
       setMerchandiseDeliveryEnv(parsed.merchandiseDeliveryEnv ?? parsed.paymentEnvironment);
@@ -498,6 +728,19 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
           event.paymentEmailTemplate ??
           (event.tickets?.some((t) => t.type === "commitment_fee") ? "Commitment Fee" : "Ticketing"),
       );
+      setPaymentFeeEnabled(parsed.paymentFeeEnabled ?? event.payment_fee_enabled ?? true);
+      setPaymentFeeBearer(parsed.paymentFeeBearer ?? event.payment_fee_bearer ?? "attendee");
+      setPaymentFeeType(parsed.paymentFeeType ?? event.payment_fee_type ?? "tiered");
+      setPaymentFeeFixedAmount(parsed.paymentFeeFixedAmount ?? event.payment_fee_fixed_amount ?? DEFAULT_FIXED_FEE);
+      setPaymentFeePercentage(parsed.paymentFeePercentage ?? event.payment_fee_percentage ?? DEFAULT_PERCENT_FEE);
+      setPaymentFeeThreshold(parsed.paymentFeeThreshold ?? event.payment_fee_threshold ?? DEFAULT_DOKU_TIER_THRESHOLD);
+      setPaymentFeeTierBelowAmount(
+        parsed.paymentFeeTierBelowAmount ?? event.payment_fee_tier_below_amount ?? DEFAULT_DOKU_TIER_BELOW_FEE,
+      );
+      setPaymentFeeTierAbovePercent(
+        parsed.paymentFeeTierAbovePercent ?? event.payment_fee_tier_above_percent ?? DEFAULT_DOKU_TIER_ABOVE_PERCENT,
+      );
+      setPaymentFeeLabel(parsed.paymentFeeLabel ?? event.payment_fee_label ?? DEFAULT_PAYMENT_FEE_LABEL);
       toast.info("Unsaved payment settings discarded.");
     } catch {
       const fallbackPaymentEnv = event.payment_environment ?? (event.is_test ? "sandbox" : "production");
@@ -517,6 +760,15 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
           event.paymentEmailTemplate ??
           (event.tickets?.some((t) => t.type === "commitment_fee") ? "Commitment Fee" : "Ticketing"),
       );
+      setPaymentFeeEnabled(event.payment_fee_enabled ?? true);
+      setPaymentFeeBearer(event.payment_fee_bearer ?? "attendee");
+      setPaymentFeeType(event.payment_fee_type ?? "tiered");
+      setPaymentFeeFixedAmount(event.payment_fee_fixed_amount ?? DEFAULT_FIXED_FEE);
+      setPaymentFeePercentage(event.payment_fee_percentage ?? DEFAULT_PERCENT_FEE);
+      setPaymentFeeThreshold(event.payment_fee_threshold ?? DEFAULT_DOKU_TIER_THRESHOLD);
+      setPaymentFeeTierBelowAmount(event.payment_fee_tier_below_amount ?? DEFAULT_DOKU_TIER_BELOW_FEE);
+      setPaymentFeeTierAbovePercent(event.payment_fee_tier_above_percent ?? DEFAULT_DOKU_TIER_ABOVE_PERCENT);
+      setPaymentFeeLabel(event.payment_fee_label ?? DEFAULT_PAYMENT_FEE_LABEL);
     }
   };
 
@@ -849,7 +1101,585 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
         </CardContent>
       </Card>
 
-      {/* ── 1. EMAIL INVOICE & PAYMENT EXPIRATION ─────────────────────── */}
+      {/* ── 2. PAYMENT GATEWAY FEE CONFIGURATION (DOKU QRIS) ─────────────── */}
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2">
+              <Percent className="size-4 text-primary" />
+              <CardTitle className="text-lg">Payment Gateway Fee Configuration (DOKU QRIS)</CardTitle>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge
+                variant="outline"
+                className="border-primary/30 bg-primary/10 text-[10px] font-semibold text-primary"
+              >
+                Nov 1, 2026 Ready
+              </Badge>
+              {paymentFeeEnabled ? (
+                <Badge className="border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
+                  Fee Active ({paymentFeeBearer === "attendee" ? "Passed to Attendee" : "Absorbed by Organizer"})
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="border-muted-foreground/30 text-muted-foreground">
+                  Fee Disabled (0 Fee)
+                </Badge>
+              )}
+            </div>
+          </div>
+          <CardDescription>
+            Configure transaction fee rules applied to QRIS checkouts via DOKU. Supports fixed price, percentage rates,
+            combined structures, and DOKU&apos;s tiered policy. Specify whether attendees or organizers cover the fee.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Policy Notice Box */}
+          <div className="flex items-start gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3.5 text-xs">
+            <Info className="mt-0.5 size-4 shrink-0 text-primary" />
+            <div className="space-y-1">
+              <span className="font-semibold text-foreground">
+                Official DOKU Fee Adjustment (Effective Nov 1, 2026)
+              </span>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                The DOKU Fee for each QRIS transaction of up to <strong>IDR 100,000</strong> is adjusted to{" "}
+                <strong>IDR 500</strong> per transaction. For transactions above IDR 100,000, standard QRIS 0.7% MDR or
+                previously agreed merchant pricing terms apply.
+              </p>
+            </div>
+          </div>
+
+          {/* Master Enable Toggle */}
+          <div className="flex items-center justify-between rounded-lg border p-3.5">
+            <div className="space-y-0.5">
+              <Label htmlFor="toggle-payment-fee" className="cursor-pointer font-semibold text-xs text-foreground">
+                Enable Payment Gateway Fee
+              </Label>
+              <p className="text-[11px] text-muted-foreground">
+                Apply gateway transaction fees to paid tickets, bundles, and merchandise checkouts.
+              </p>
+            </div>
+            <Switch id="toggle-payment-fee" checked={paymentFeeEnabled} onCheckedChange={setPaymentFeeEnabled} />
+          </div>
+
+          {paymentFeeEnabled && (
+            <>
+              {/* Fee Bearer Selection */}
+              <div className="space-y-2">
+                <Label className="font-semibold text-xs">Fee Bearer (Who pays the fee?)</Label>
+                <RadioGroup
+                  value={paymentFeeBearer}
+                  onValueChange={(val) => setPaymentFeeBearer(val as PaymentFeeBearer)}
+                  className="grid grid-cols-1 gap-3 sm:grid-cols-2"
+                >
+                  <Label
+                    htmlFor="bearer-attendee"
+                    className={cn(
+                      "relative flex cursor-pointer flex-col gap-2 rounded-lg border p-3.5 transition-colors",
+                      paymentFeeBearer === "attendee"
+                        ? "border-primary bg-primary/5 ring-1 ring-primary"
+                        : "border-border hover:bg-muted/50",
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <RadioGroupItem value="attendee" id="bearer-attendee" />
+                        <span className="font-semibold text-xs">Pass Fee to Attendee (Recommended)</span>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className="border-blue-500/30 text-[10px] text-blue-600 dark:text-blue-400"
+                      >
+                        Cost Recovery
+                      </Badge>
+                    </div>
+                    <p className="font-normal text-muted-foreground text-xs leading-relaxed">
+                      The gateway fee is added as an itemized line item to the attendee invoice at checkout. Organizers
+                      receive 100% of nominal ticket and merchandise revenue.
+                    </p>
+                  </Label>
+
+                  <Label
+                    htmlFor="bearer-organizer"
+                    className={cn(
+                      "relative flex cursor-pointer flex-col gap-2 rounded-lg border p-3.5 transition-colors",
+                      paymentFeeBearer === "organizer"
+                        ? "border-primary bg-primary/5 ring-1 ring-primary"
+                        : "border-border hover:bg-muted/50",
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <RadioGroupItem value="organizer" id="bearer-organizer" />
+                        <span className="font-semibold text-xs">Absorb Fee by Organizer</span>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className="border-emerald-500/30 text-[10px] text-emerald-600 dark:text-emerald-400"
+                      >
+                        Zero Added Fee
+                      </Badge>
+                    </div>
+                    <p className="font-normal text-muted-foreground text-xs leading-relaxed">
+                      Attendees pay only the nominal price. The transaction fee is absorbed by GDG Jakarta and deducted
+                      from organizer settlement payouts.
+                    </p>
+                  </Label>
+                </RadioGroup>
+              </div>
+
+              {/* Fee Calculation Strategy */}
+              <div className="space-y-3 pt-2">
+                <Label className="font-semibold text-xs">Fee Calculation Strategy</Label>
+                <RadioGroup
+                  value={paymentFeeType}
+                  onValueChange={(val) => setPaymentFeeType(val as PaymentFeeType)}
+                  className="grid grid-cols-1 gap-2.5 sm:grid-cols-2"
+                >
+                  {/* Tiered Option */}
+                  <Label
+                    htmlFor="fee-type-tiered"
+                    className={cn(
+                      "relative flex cursor-pointer flex-col gap-1.5 rounded-lg border p-3 transition-colors",
+                      paymentFeeType === "tiered"
+                        ? "border-primary bg-primary/5 ring-1 ring-primary"
+                        : "border-border hover:bg-muted/50",
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <RadioGroupItem value="tiered" id="fee-type-tiered" />
+                        <span className="font-semibold text-xs">Tiered DOKU QRIS (Official)</span>
+                      </div>
+                      <Badge variant="outline" className="border-primary/30 text-[9px] text-primary">
+                        Recommended
+                      </Badge>
+                    </div>
+                    <p className="font-normal text-muted-foreground text-[11px] leading-relaxed">
+                      Fixed price (Rp {paymentFeeTierBelowAmount.toLocaleString("id-ID")}) for amounts ≤ Rp{" "}
+                      {paymentFeeThreshold.toLocaleString("id-ID")}, and {paymentFeeTierAbovePercent}% MDR above
+                      threshold.
+                    </p>
+                  </Label>
+
+                  {/* Fixed Fee Option */}
+                  <Label
+                    htmlFor="fee-type-fixed"
+                    className={cn(
+                      "relative flex cursor-pointer flex-col gap-1.5 rounded-lg border p-3 transition-colors",
+                      paymentFeeType === "fixed"
+                        ? "border-primary bg-primary/5 ring-1 ring-primary"
+                        : "border-border hover:bg-muted/50",
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <RadioGroupItem value="fee-type-fixed" id="fee-type-fixed" />
+                        <span className="font-semibold text-xs">Fixed Price Only (Flat Fee)</span>
+                      </div>
+                      <Badge variant="outline" className="text-[9px]">
+                        Flat Rate
+                      </Badge>
+                    </div>
+                    <p className="font-normal text-muted-foreground text-[11px] leading-relaxed">
+                      Charges a fixed nominal fee (Rp {paymentFeeFixedAmount.toLocaleString("id-ID")}) per transaction
+                      regardless of order total.
+                    </p>
+                  </Label>
+
+                  {/* Percentage Fee Option */}
+                  <Label
+                    htmlFor="fee-type-percent"
+                    className={cn(
+                      "relative flex cursor-pointer flex-col gap-1.5 rounded-lg border p-3 transition-colors",
+                      paymentFeeType === "percent"
+                        ? "border-primary bg-primary/5 ring-1 ring-primary"
+                        : "border-border hover:bg-muted/50",
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <RadioGroupItem value="fee-type-percent" id="fee-type-percent" />
+                        <span className="font-semibold text-xs">Percentage Rate Only (MDR)</span>
+                      </div>
+                      <Badge variant="outline" className="text-[9px]">
+                        Standard MDR
+                      </Badge>
+                    </div>
+                    <p className="font-normal text-muted-foreground text-[11px] leading-relaxed">
+                      Charges a flat percentage ({paymentFeePercentage}%) of the total order subtotal.
+                    </p>
+                  </Label>
+
+                  {/* Combined Option */}
+                  <Label
+                    htmlFor="fee-type-combined"
+                    className={cn(
+                      "relative flex cursor-pointer flex-col gap-1.5 rounded-lg border p-3 transition-colors",
+                      paymentFeeType === "combined"
+                        ? "border-primary bg-primary/5 ring-1 ring-primary"
+                        : "border-border hover:bg-muted/50",
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <RadioGroupItem value="fee-type-combined" id="fee-type-combined" />
+                        <span className="font-semibold text-xs">Combined (Fixed + Percentage)</span>
+                      </div>
+                      <Badge variant="outline" className="text-[9px]">
+                        Hybrid
+                      </Badge>
+                    </div>
+                    <p className="font-normal text-muted-foreground text-[11px] leading-relaxed">
+                      Charges base fixed price (Rp {paymentFeeFixedAmount.toLocaleString("id-ID")}) plus a percentage
+                      rate ({paymentFeePercentage}%).
+                    </p>
+                  </Label>
+                </RadioGroup>
+              </div>
+
+              {/* Strategy Parameters Inputs */}
+              <div className="space-y-4 rounded-lg border bg-muted/20 p-4">
+                {paymentFeeType === "tiered" && (
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    <Field>
+                      <FieldLabel htmlFor="fee-tier-threshold" className="font-semibold text-xs">
+                        Tier 1 Threshold Amount (IDR)
+                      </FieldLabel>
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-0 flex items-center pl-3 font-semibold text-muted-foreground text-xs">
+                          Rp
+                        </span>
+                        <Input
+                          id="fee-tier-threshold"
+                          type="number"
+                          min={0}
+                          step={10000}
+                          value={paymentFeeThreshold}
+                          onChange={(e) => {
+                            const val = Number.parseInt(e.target.value, 10);
+                            setPaymentFeeThreshold(Number.isNaN(val) ? 0 : Math.max(0, val));
+                          }}
+                          className="pl-9 font-semibold text-xs"
+                          placeholder="100000"
+                        />
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                        <span className="text-[10px] text-muted-foreground">Presets:</span>
+                        {[50000, 100000, 200000].map((preset) => (
+                          <Button
+                            key={preset}
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setPaymentFeeThreshold(preset)}
+                            className={cn(
+                              "h-5 px-1.5 text-[10px]",
+                              paymentFeeThreshold === preset &&
+                                "border-primary bg-primary/10 font-semibold text-primary",
+                            )}
+                          >
+                            Rp {preset.toLocaleString("id-ID")}
+                          </Button>
+                        ))}
+                      </div>
+                    </Field>
+
+                    <Field>
+                      <FieldLabel htmlFor="fee-tier-below" className="font-semibold text-xs">
+                        Tier 1 Fee (Fixed for ≤ Threshold)
+                      </FieldLabel>
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-0 flex items-center pl-3 font-semibold text-muted-foreground text-xs">
+                          Rp
+                        </span>
+                        <Input
+                          id="fee-tier-below"
+                          type="number"
+                          min={0}
+                          step={100}
+                          value={paymentFeeTierBelowAmount}
+                          onChange={(e) => {
+                            const val = Number.parseInt(e.target.value, 10);
+                            setPaymentFeeTierBelowAmount(Number.isNaN(val) ? 0 : Math.max(0, val));
+                          }}
+                          className="pl-9 font-semibold text-xs"
+                          placeholder="500"
+                        />
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                        <span className="text-[10px] text-muted-foreground">Presets:</span>
+                        {[0, 500, 750, 1000].map((preset) => (
+                          <Button
+                            key={preset}
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setPaymentFeeTierBelowAmount(preset)}
+                            className={cn(
+                              "h-5 px-1.5 text-[10px]",
+                              paymentFeeTierBelowAmount === preset &&
+                                "border-primary bg-primary/10 font-semibold text-primary",
+                            )}
+                          >
+                            Rp {preset.toLocaleString("id-ID")}
+                          </Button>
+                        ))}
+                      </div>
+                    </Field>
+
+                    <Field>
+                      <FieldLabel htmlFor="fee-tier-above" className="font-semibold text-xs">
+                        Tier 2 Rate (% MDR for &gt; Threshold)
+                      </FieldLabel>
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-0 flex items-center pl-3 font-semibold text-muted-foreground text-xs">
+                          %
+                        </span>
+                        <Input
+                          id="fee-tier-above"
+                          type="number"
+                          min={0}
+                          max={100}
+                          step={0.1}
+                          value={paymentFeeTierAbovePercent}
+                          onChange={(e) => {
+                            const val = Number.parseFloat(e.target.value);
+                            setPaymentFeeTierAbovePercent(Number.isNaN(val) ? 0 : Math.max(0, val));
+                          }}
+                          className="pl-9 font-semibold text-xs"
+                          placeholder="0.7"
+                        />
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                        <span className="text-[10px] text-muted-foreground">Presets:</span>
+                        {[0.7, 1.0, 1.5].map((preset) => (
+                          <Button
+                            key={preset}
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setPaymentFeeTierAbovePercent(preset)}
+                            className={cn(
+                              "h-5 px-1.5 text-[10px]",
+                              paymentFeeTierAbovePercent === preset &&
+                                "border-primary bg-primary/10 font-semibold text-primary",
+                            )}
+                          >
+                            {preset}%
+                          </Button>
+                        ))}
+                      </div>
+                    </Field>
+                  </div>
+                )}
+
+                {(paymentFeeType === "fixed" || paymentFeeType === "combined") && (
+                  <Field>
+                    <FieldLabel htmlFor="fee-fixed-amount" className="font-semibold text-xs">
+                      Fixed Price Amount (IDR)
+                    </FieldLabel>
+                    <div className="relative">
+                      <span className="absolute inset-y-0 left-0 flex items-center pl-3 font-semibold text-muted-foreground text-xs">
+                        Rp
+                      </span>
+                      <Input
+                        id="fee-fixed-amount"
+                        type="number"
+                        min={0}
+                        step={500}
+                        value={paymentFeeFixedAmount}
+                        onChange={(e) => {
+                          const val = Number.parseInt(e.target.value, 10);
+                          setPaymentFeeFixedAmount(Number.isNaN(val) ? 0 : Math.max(0, val));
+                        }}
+                        className="pl-9 font-semibold text-xs"
+                        placeholder="500"
+                      />
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                      <span className="text-[10px] text-muted-foreground">Presets:</span>
+                      {[500, 1000, 1500, 2000, 2500].map((preset) => (
+                        <Button
+                          key={preset}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setPaymentFeeFixedAmount(preset)}
+                          className={cn(
+                            "h-5 px-1.5 text-[10px]",
+                            paymentFeeFixedAmount === preset &&
+                              "border-primary bg-primary/10 font-semibold text-primary",
+                          )}
+                        >
+                          Rp {preset.toLocaleString("id-ID")}
+                        </Button>
+                      ))}
+                    </div>
+                  </Field>
+                )}
+
+                {(paymentFeeType === "percent" || paymentFeeType === "combined") && (
+                  <Field>
+                    <FieldLabel htmlFor="fee-percentage" className="font-semibold text-xs">
+                      Percentage Rate (% MDR)
+                    </FieldLabel>
+                    <div className="relative">
+                      <span className="absolute inset-y-0 left-0 flex items-center pl-3 font-semibold text-muted-foreground text-xs">
+                        %
+                      </span>
+                      <Input
+                        id="fee-percentage"
+                        type="number"
+                        min={0}
+                        max={100}
+                        step={0.1}
+                        value={paymentFeePercentage}
+                        onChange={(e) => {
+                          const val = Number.parseFloat(e.target.value);
+                          setPaymentFeePercentage(Number.isNaN(val) ? 0 : Math.max(0, val));
+                        }}
+                        className="pl-9 font-semibold text-xs"
+                        placeholder="0.7"
+                      />
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                      <span className="text-[10px] text-muted-foreground">Presets:</span>
+                      {[0.7, 1.0, 1.5, 2.0].map((preset) => (
+                        <Button
+                          key={preset}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setPaymentFeePercentage(preset)}
+                          className={cn(
+                            "h-5 px-1.5 text-[10px]",
+                            paymentFeePercentage === preset &&
+                              "border-primary bg-primary/10 font-semibold text-primary",
+                          )}
+                        >
+                          {preset}%
+                        </Button>
+                      ))}
+                    </div>
+                  </Field>
+                )}
+
+                {/* Custom Fee Label */}
+                <Field className="border-t pt-2">
+                  <div className="flex items-center justify-between">
+                    <FieldLabel htmlFor="fee-display-label" className="font-semibold text-xs">
+                      Invoice Line Item Display Label
+                    </FieldLabel>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setPaymentFeeLabel(DEFAULT_PAYMENT_FEE_LABEL)}
+                      className="h-5 gap-1 px-1.5 text-[10px] text-muted-foreground hover:text-foreground"
+                    >
+                      <RotateCcw className="size-2.5" />
+                      Reset to Default
+                    </Button>
+                  </div>
+                  <Input
+                    id="fee-display-label"
+                    value={paymentFeeLabel}
+                    onChange={(e) => setPaymentFeeLabel(e.target.value)}
+                    placeholder={DEFAULT_PAYMENT_FEE_LABEL}
+                    className="text-xs"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    This text is shown on attendee checkout breakdown and DOKU payment link invoices.
+                  </p>
+                </Field>
+              </div>
+
+              {/* Interactive Fee Preview / Simulator Sandbox Widget */}
+              <div className="space-y-3 rounded-lg border border-primary/20 bg-muted/10 p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Calculator className="size-4 text-primary" />
+                    <span className="font-semibold text-xs text-foreground">Interactive Fee Simulator</span>
+                  </div>
+                  <Badge variant="outline" className="font-mono text-[10px] text-muted-foreground">
+                    Sandbox Tester
+                  </Badge>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Simulate transaction amounts to preview how fees, attendee invoice totals, and organizer settlements
+                  are calculated in real time.
+                </p>
+
+                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                  <span className="text-[10px] text-muted-foreground">Sample amounts:</span>
+                  {[25000, 50000, 100000, 150000, 350000].map((sample) => (
+                    <Button
+                      key={sample}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPreviewTestAmount(sample)}
+                      className={cn(
+                        "h-6 px-2 text-[10px]",
+                        previewTestAmount === sample && "border-primary bg-primary/10 font-semibold text-primary",
+                      )}
+                    >
+                      Rp {sample.toLocaleString("id-ID")}
+                    </Button>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-1 gap-2 pt-2 sm:grid-cols-4">
+                  <div className="rounded-md border bg-background p-2.5">
+                    <span className="block text-[10px] text-muted-foreground">Order Subtotal</span>
+                    <span className="font-mono font-semibold text-foreground text-sm">
+                      Rp {previewTestAmount.toLocaleString("id-ID")}
+                    </span>
+                  </div>
+
+                  <div className="rounded-md border bg-background p-2.5">
+                    <span className="block text-[10px] text-muted-foreground">Calculated Gateway Fee</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-mono font-semibold text-primary text-sm">
+                        Rp {simulatedCalculation.feeAmount.toLocaleString("id-ID")}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">
+                        ({simulatedCalculation.effectiveRatePercent}%)
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="rounded-md border bg-background p-2.5">
+                    <span className="block text-[10px] text-muted-foreground">Attendee Invoiced Total</span>
+                    <span className="font-mono font-bold text-blue-600 text-sm dark:text-blue-400">
+                      Rp {simulatedCalculation.totalWithFee.toLocaleString("id-ID")}
+                    </span>
+                  </div>
+
+                  <div className="rounded-md border bg-background p-2.5">
+                    <span className="block text-[10px] text-muted-foreground">Organizer Net Settlement</span>
+                    <span className="font-mono font-bold text-emerald-600 text-sm dark:text-emerald-400">
+                      Rp{" "}
+                      {paymentFeeBearer === "attendee"
+                        ? previewTestAmount.toLocaleString("id-ID")
+                        : (previewTestAmount - simulatedCalculation.feeAmount).toLocaleString("id-ID")}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 pt-1 text-[10px] text-muted-foreground">
+                  <CheckCircle2 className="size-3 text-emerald-600 dark:text-emerald-400" />
+                  <span>
+                    Applied Rule: <strong className="text-foreground">{simulatedCalculation.feeDescription}</strong>
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── 3. EMAIL INVOICE & PAYMENT EXPIRATION ─────────────────────── */}
       <Card>
         <CardHeader>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -1256,8 +2086,8 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
         saveLabel="Save Payment Settings"
         savingLabel="Saving Settings..."
         savedLabel="Settings Saved"
-        statusInfo={`Env: ${paymentEnvironment === "production" ? "Production" : "Sandbox"} | Template: ${emailTemplate} | Deadline: ${paymentDeadlinesInMinutes}m | Merch Fee: Rp ${merchandiseDeliveryFee.toLocaleString("id-ID")}`}
-        helperText="Payment environment, email template, banner, deadline, and delivery fees take effect immediately for new payment links."
+        statusInfo={`Env: ${paymentEnvironment === "production" ? "Production" : "Sandbox"} | Fee: ${paymentFeeEnabled ? `${paymentFeeType} (${paymentFeeBearer})` : "Off"} | Template: ${emailTemplate} | Deadline: ${paymentDeadlinesInMinutes}m`}
+        helperText="Payment environment, gateway fee rules, email template, banner, deadline, and delivery fees take effect immediately for new payment links."
       />
     </div>
   );

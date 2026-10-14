@@ -70,6 +70,7 @@ import {
   isPaidRegistration,
   isRegistrationPaymentOverdue,
 } from "@/lib/events/payment-deadline";
+import { calculatePaymentGatewayFee } from "@/lib/events/payment-fee";
 import { DEFAULT_COMBINED_QUESTIONS } from "@/lib/events/registration-defaults";
 import {
   deleteBatchEventRegistrationsAction,
@@ -1506,13 +1507,24 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       const reviewerPayload = user ? { id: user.id, name: user.name, email: user.email } : undefined;
       const now = new Date().toISOString();
       const requiresPayment =
-        hasRegistrationPaymentRequirements(registration) && calculateRegistrationTotalAmount(registration) > 0;
+        hasRegistrationPaymentRequirements(registration) &&
+        calculateRegistrationTotalAmount(registration, currentEvent) > 0;
 
       if (requiresPayment) {
         // If event ticket is paid or free with merchandise:
         // Curation accepted -> Call API Payment Link -> Attendee Status Waiting for Payment
         let paymentFields: Partial<FirestoreRegistration> = {};
         try {
+          const ticketPrice = registration.ticket_price ?? 0;
+          const merchTotal = (registration.selected_merchandise ?? []).reduce(
+            (acc, m) => acc + (m.price ?? 0) * (m.quantity ?? 1),
+            0,
+          );
+          const bundlePrice = registration.bundle_price ?? 0;
+          const discount = (registration.voucher_discount_amount ?? 0) + (registration.referral_discount_amount ?? 0);
+          const subtotal = Math.max(0, ticketPrice + merchTotal + bundlePrice - discount);
+          const feeResult = calculatePaymentGatewayFee(subtotal, currentEvent);
+
           const paymentPayload = buildRegistrationPaymentPayload(registration, currentEvent, { sendEmail: true });
           const payRes = await generatePaymentLinkAction(paymentPayload);
           if (payRes.success && payRes.paymentUrl) {
@@ -1521,6 +1533,9 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
               payment_url: payRes.paymentUrl,
               payment_invoice_number: payRes.invoiceNumber,
               payment_amount: payRes.amount,
+              payment_subtotal_amount: subtotal,
+              payment_fee_amount: feeResult.feeAmount,
+              payment_fee_bearer: feeResult.feeBearer,
               payment_expired_datetime: payRes.expiredDatetime,
             };
             toast.info(`Payment link generated and emailed to ${registration.member_name}`);
@@ -1864,9 +1879,20 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       const failedErrors: string[] = [];
 
       for (const reg of toApprove) {
-        const requiresPayment = hasRegistrationPaymentRequirements(reg) && calculateRegistrationTotalAmount(reg) > 0;
+        const requiresPayment =
+          hasRegistrationPaymentRequirements(reg) && calculateRegistrationTotalAmount(reg, currentEvent) > 0;
         if (requiresPayment) {
           try {
+            const ticketPrice = reg.ticket_price ?? 0;
+            const merchTotal = (reg.selected_merchandise ?? []).reduce(
+              (acc, m) => acc + (m.price ?? 0) * (m.quantity ?? 1),
+              0,
+            );
+            const bundlePrice = reg.bundle_price ?? 0;
+            const discount = (reg.voucher_discount_amount ?? 0) + (reg.referral_discount_amount ?? 0);
+            const subtotal = Math.max(0, ticketPrice + merchTotal + bundlePrice - discount);
+            const feeResult = calculatePaymentGatewayFee(subtotal, currentEvent);
+
             const paymentPayload = buildRegistrationPaymentPayload(reg, currentEvent, { sendEmail: true });
             const payRes = await generatePaymentLinkAction(paymentPayload);
             if (payRes.success && payRes.paymentUrl) {
@@ -1875,6 +1901,9 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 payment_url: payRes.paymentUrl,
                 payment_invoice_number: payRes.invoiceNumber,
                 payment_amount: payRes.amount,
+                payment_subtotal_amount: subtotal,
+                payment_fee_amount: feeResult.feeAmount,
+                payment_fee_bearer: feeResult.feeBearer,
                 payment_expired_datetime: payRes.expiredDatetime,
               };
               await updateRegistrationStatusAction(

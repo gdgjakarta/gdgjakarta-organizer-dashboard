@@ -33,6 +33,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { buildRegistrationPaymentPayload } from "@/lib/events/doku-payment";
 import { getRegistrationPaymentDeadline } from "@/lib/events/payment-deadline";
+import { calculatePaymentGatewayFee } from "@/lib/events/payment-fee";
 import { updateRegistrationStatusAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
 import { generatePaymentLinkAction } from "@/server/payment-actions";
@@ -96,11 +97,11 @@ export function ResendPaymentLinkDialog({
     return getRegistrationPaymentDeadline(registration, event);
   }, [registration, event]);
 
-  // Total payable amount
-  const payableAmount = useMemo(() => {
+  // Net subtotal before payment gateway fee
+  const netSubtotal = useMemo(() => {
     if (!registration) return 0;
-    if (registration.payment_amount && registration.payment_amount > 0) {
-      return registration.payment_amount;
+    if (registration.payment_subtotal_amount !== undefined && registration.payment_subtotal_amount > 0) {
+      return registration.payment_subtotal_amount;
     }
     const ticketPrice = registration.ticket_price ?? 0;
     const merchTotal = (registration.selected_merchandise ?? []).reduce(
@@ -111,6 +112,21 @@ export function ResendPaymentLinkDialog({
     const discount = (registration.voucher_discount_amount ?? 0) + (registration.referral_discount_amount ?? 0);
     return Math.max(0, ticketPrice + merchTotal + bundlePrice - discount);
   }, [registration]);
+
+  // Payment gateway fee calculation
+  const gatewayFeeCalc = useMemo(() => {
+    if (!event) return null;
+    return calculatePaymentGatewayFee(netSubtotal, event);
+  }, [netSubtotal, event]);
+
+  // Total payable amount
+  const payableAmount = useMemo(() => {
+    if (!registration) return 0;
+    const feeAddon = gatewayFeeCalc?.isPassedToAttendee ? gatewayFeeCalc.feeAmount : 0;
+    const computedTotal = netSubtotal + feeAddon;
+    if (computedTotal > 0) return computedTotal;
+    return registration.payment_amount ?? 0;
+  }, [registration, netSubtotal, gatewayFeeCalc]);
 
   const defaultTemplate = useMemo(() => {
     return (
@@ -172,6 +188,9 @@ export function ResendPaymentLinkDialog({
         payment_url: res.paymentUrl,
         payment_invoice_number: invoiceNum,
         payment_amount: res.amount ?? payableAmount,
+        payment_subtotal_amount: netSubtotal,
+        payment_fee_amount: gatewayFeeCalc?.feeAmount ?? 0,
+        payment_fee_bearer: gatewayFeeCalc?.feeBearer ?? "attendee",
         payment_expired_datetime: newExpiredDatetime,
       };
 
@@ -196,6 +215,9 @@ export function ResendPaymentLinkDialog({
         payment_url: res.paymentUrl,
         payment_invoice_number: invoiceNum,
         payment_amount: res.amount ?? payableAmount,
+        payment_subtotal_amount: netSubtotal,
+        payment_fee_amount: gatewayFeeCalc?.feeAmount ?? 0,
+        payment_fee_bearer: gatewayFeeCalc?.feeBearer ?? "attendee",
         payment_expired_datetime: newExpiredDatetime,
         reviewed_at: now,
       };
@@ -316,6 +338,14 @@ export function ResendPaymentLinkDialog({
                 {registration.selected_merchandise && registration.selected_merchandise.length > 0 && (
                   <Badge variant="secondary" className="text-[10px] font-normal">
                     {registration.selected_merchandise.length} Merch Item(s)
+                  </Badge>
+                )}
+                {gatewayFeeCalc && gatewayFeeCalc.isEnabled && gatewayFeeCalc.feeAmount > 0 && (
+                  <Badge variant="outline" className="text-[10px] font-normal">
+                    {gatewayFeeCalc.feeLabel}:{" "}
+                    {gatewayFeeCalc.isPassedToAttendee
+                      ? `+Rp ${gatewayFeeCalc.feeAmount.toLocaleString("id-ID")}`
+                      : "Absorbed"}
                   </Badge>
                 )}
                 {existingDeadlineInfo?.formattedDeadline && (

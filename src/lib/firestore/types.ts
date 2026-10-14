@@ -1,4 +1,7 @@
 import type { BevyAgenda, BevySpeaker } from "@/lib/bevy/types";
+import type { PaymentFeeBearer, PaymentFeeConfig, PaymentFeeType } from "@/lib/events/payment-fee";
+
+export type { PaymentFeeBearer, PaymentFeeConfig, PaymentFeeType };
 
 export type RegistrationStatus =
   | "pending"
@@ -344,6 +347,18 @@ export interface FirestoreEvent {
   payment_deadline_minutes?: number | null;
   payment_email_template?: "Commitment Fee" | "Ticketing" | string | null;
   paymentEmailTemplate?: "Commitment Fee" | "Ticketing" | string | null;
+
+  // Payment Gateway Fee Configuration (DOKU QRIS)
+  payment_fee_enabled?: boolean;
+  payment_fee_bearer?: PaymentFeeBearer;
+  payment_fee_type?: PaymentFeeType;
+  payment_fee_fixed_amount?: number;
+  payment_fee_percentage?: number;
+  payment_fee_threshold?: number;
+  payment_fee_tier_below_amount?: number;
+  payment_fee_tier_above_percent?: number;
+  payment_fee_label?: string;
+
   registration_status?: "Draft" | "Published" | "Closed";
   registration_start_date?: string | null;
   registration_end_date?: string | null;
@@ -541,6 +556,9 @@ export interface FirestoreRegistration {
   payment_invoice_number?: string;
   payment_amount?: number;
   payment_expired_datetime?: string;
+  payment_fee_amount?: number;
+  payment_fee_bearer?: PaymentFeeBearer;
+  payment_subtotal_amount?: number;
 
   // Voucher tracking
   voucher_id?: string;

@@ -20,6 +20,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { DEFAULT_PAYMENT_HEADER_EMAIL_URL } from "@/lib/events/doku-payment";
+import { calculatePaymentGatewayFee } from "@/lib/events/payment-fee";
 import { calculateVoucherDiscount, formatVoucherDiscountDisplay } from "@/lib/events/voucher-utils";
 import type { EventMerchandiseItem, FirestoreEvent } from "@/lib/firestore/types";
 import { generatePaymentLinkAction } from "@/server/payment-actions";
@@ -235,7 +236,19 @@ export function GenerateMerchandisePaymentDialog({
     const finalMerchTotal = Math.max(0, merchSubtotal - voucherDiscount);
     const chargedUnitPrice = Math.max(0, Math.round(finalMerchTotal / quantity));
     const finalItemName = selectedVoucher ? `${itemName} (Promo: ${selectedVoucher.code})` : itemName;
-    const totalAmount = finalMerchTotal + (includeCommitmentFee ? commitmentFeeAmount : 0);
+    const effectiveEvent = { ...event, ...latestEventConfig } as FirestoreEvent;
+    const rawTotal = finalMerchTotal + (includeCommitmentFee ? commitmentFeeAmount : 0);
+    const feeResult = calculatePaymentGatewayFee(rawTotal, effectiveEvent);
+    if (feeResult.isEnabled && feeResult.isPassedToAttendee && feeResult.feeAmount > 0) {
+      fees.push({
+        label: feeResult.feeLabel,
+        type: "fixed" as const,
+        value: feeResult.feeAmount,
+        desc: feeResult.rateDescription,
+      });
+    }
+
+    const totalAmount = rawTotal + (feeResult.isEnabled && feeResult.isPassedToAttendee ? feeResult.feeAmount : 0);
     if (totalAmount <= 0) {
       toast.error("Cannot generate payment link: Total amount is Rp 0 or free.");
       return;
@@ -339,7 +352,10 @@ export function GenerateMerchandisePaymentDialog({
         merchandiseTotal: itemTotal,
       }).merchandiseDiscount
     : 0;
-  const grandTotal = Math.max(0, itemTotal - voucherDiscount) + (includeCommitmentFee ? commitmentFeeAmount : 0);
+  const effectiveEvent = { ...event, ...latestEventConfig } as FirestoreEvent;
+  const rawTotal = Math.max(0, itemTotal - voucherDiscount) + (includeCommitmentFee ? commitmentFeeAmount : 0);
+  const gatewayFeeCalc = calculatePaymentGatewayFee(rawTotal, effectiveEvent);
+  const grandTotal = Math.max(0, rawTotal + (gatewayFeeCalc.isPassedToAttendee ? gatewayFeeCalc.feeAmount : 0));
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -495,7 +511,17 @@ export function GenerateMerchandisePaymentDialog({
               </div>
 
               <div className="space-y-1">
-                <Label className="font-medium text-xs">Estimated Total</Label>
+                <div className="flex items-center justify-between">
+                  <Label className="font-medium text-xs">Estimated Total</Label>
+                  {gatewayFeeCalc.isEnabled && rawTotal > 0 && gatewayFeeCalc.feeAmount > 0 && (
+                    <span className="text-[10px] text-muted-foreground">
+                      Fee:{" "}
+                      {gatewayFeeCalc.isPassedToAttendee
+                        ? `+Rp ${gatewayFeeCalc.feeAmount.toLocaleString("id-ID")}`
+                        : "Absorbed"}
+                    </span>
+                  )}
+                </div>
                 <div className="flex h-8 items-center rounded-md border bg-muted/40 px-3 font-semibold text-foreground text-xs">
                   Rp {grandTotal.toLocaleString("id-ID")}
                 </div>
