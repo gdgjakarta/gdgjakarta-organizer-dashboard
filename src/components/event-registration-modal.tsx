@@ -13,9 +13,11 @@ import {
   CreditCard,
   ExternalLink,
   FileEdit,
+  Images,
   Layers,
   Loader2,
   MapPin,
+  Maximize2,
   Minus,
   Package,
   PackageCheck,
@@ -33,6 +35,7 @@ import { toast } from "sonner";
 import { GoogleButton } from "@/app/(main)/auth/_components/social-auth/google-button";
 import googleFavicon from "@/app/Google_Favicon.webp";
 import { CapacityFullDialog } from "@/components/capacity-full-dialog";
+import { MerchandiseGalleryDialog } from "@/components/events/merchandise-gallery-dialog";
 import { QuestionMediaUpload } from "@/components/events/question-media-upload";
 import { GdgLogo } from "@/components/gdg-logo";
 import { RoleBadge } from "@/components/role-badge";
@@ -159,6 +162,53 @@ function getMerchEffectiveImage(item: EventMerchandiseItem, selectedVariations?:
   return item.image_url || (item.images?.[0] ?? "");
 }
 
+function getMerchAllImages(item: EventMerchandiseItem, selectedVariations?: Record<string, string>): string[] {
+  const list: string[] = [];
+
+  // If a variation option is selected and has an image, put it first
+  if (selectedVariations && item.variations) {
+    for (const v of item.variations) {
+      const selectedOpt = selectedVariations[v.name];
+      if (selectedOpt) {
+        const varImg = v.option_details?.[selectedOpt]?.image_url;
+        if (varImg && !list.includes(varImg)) {
+          list.push(varImg);
+        }
+      }
+    }
+  }
+
+  // Primary image
+  if (item.image_url && !list.includes(item.image_url)) {
+    list.push(item.image_url);
+  }
+
+  // Additional product gallery images
+  if (item.images && item.images.length > 0) {
+    for (const img of item.images) {
+      if (img && !list.includes(img)) {
+        list.push(img);
+      }
+    }
+  }
+
+  // Other variation images
+  if (item.variations) {
+    for (const v of item.variations) {
+      if (v.option_details) {
+        for (const optKey of Object.keys(v.option_details)) {
+          const optImg = v.option_details[optKey]?.image_url;
+          if (optImg && !list.includes(optImg)) {
+            list.push(optImg);
+          }
+        }
+      }
+    }
+  }
+
+  return list;
+}
+
 function getMerchPriceDisplay(
   item: EventMerchandiseItem,
   quantity: number,
@@ -201,6 +251,7 @@ export function EventRegistrationModal({
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [viewingGuidelineItem, setViewingGuidelineItem] = useState<EventMerchandiseItem | null>(null);
+  const [viewingGalleryItem, setViewingGalleryItem] = useState<EventMerchandiseItem | null>(null);
   const [otherInputs, setOtherInputs] = useState<Record<string, string>>({});
   const otherInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const [registrationStep, setRegistrationStep] = useState<"tickets" | "form">("tickets");
@@ -2779,11 +2830,14 @@ export function EventRegistrationModal({
                               ? 0
                               : getMerchEffectivePrice(item, order.selectedVariations);
 
+                            const allImages = getMerchAllImages(item, order.selectedVariations);
+                            const hasMultipleImages = allImages.length > 1;
+
                             return (
                               <div
                                 key={item.id}
                                 className={cn(
-                                  "flex flex-col gap-3 rounded-lg border p-3.5 transition-all sm:flex-row sm:items-center sm:justify-between",
+                                  "flex flex-col gap-3.5 rounded-xl border p-3.5 transition-all sm:flex-row sm:items-center sm:justify-between",
                                   selectedBundle
                                     ? isItemInBundle
                                       ? "border-primary/50 bg-background shadow-xs ring-1 ring-primary/20"
@@ -2794,24 +2848,55 @@ export function EventRegistrationModal({
                                   !selectedBundle && !salesStatus.isOpen && !isAdded && "bg-muted/20 opacity-80",
                                 )}
                               >
-                                <div className="flex items-start gap-3">
-                                  <div className="relative size-12 shrink-0 overflow-hidden rounded-md bg-muted">
+                                <div className="flex items-start gap-3.5">
+                                  {/* Enlarged Interactive Thumbnail */}
+                                  <button
+                                    type="button"
+                                    onClick={() => setViewingGalleryItem(item)}
+                                    className="group relative size-20 shrink-0 cursor-pointer overflow-hidden rounded-xl border border-border/70 bg-muted/30 shadow-2xs transition-all hover:border-primary/60 hover:shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:size-24"
+                                    title="Click to view full photos"
+                                  >
                                     {effectiveImg ? (
                                       // biome-ignore lint/performance/noImgElement: merchandise preview
                                       // biome-ignore lint/a11y/useAltText: thumbnail
-                                      <img src={effectiveImg} className="size-full object-cover" />
+                                      <img
+                                        src={effectiveImg}
+                                        className="size-full object-cover transition-transform duration-300 group-hover:scale-105"
+                                      />
                                     ) : (
                                       <div className="flex size-full items-center justify-center text-muted-foreground">
-                                        <Package className="size-5 opacity-40" />
+                                        <Package className="size-6 opacity-40" />
                                       </div>
                                     )}
-                                  </div>
 
-                                  <div className="space-y-1">
+                                    {/* Hover overlay hint */}
+                                    <div className="absolute inset-0 flex items-center justify-center bg-black/35 opacity-0 backdrop-blur-[1px] transition-opacity duration-200 group-hover:opacity-100">
+                                      <Maximize2 className="size-4 text-white drop-shadow-xs" />
+                                    </div>
+
+                                    {/* Photo count pill when multiple photos available */}
+                                    {hasMultipleImages && (
+                                      <div className="absolute right-1 bottom-1">
+                                        <Badge
+                                          variant="secondary"
+                                          className="h-4.5 gap-1 border-none bg-background/90 px-1.5 py-0 font-medium text-[9px] text-foreground shadow-xs backdrop-blur-xs"
+                                        >
+                                          <Images className="size-2.5" />
+                                          {allImages.length}
+                                        </Badge>
+                                      </div>
+                                    )}
+                                  </button>
+
+                                  <div className="min-w-0 flex-1 space-y-1">
                                     <div className="flex flex-wrap items-center gap-1.5">
-                                      <span className="font-medium text-foreground text-xs sm:text-sm">
+                                      <button
+                                        type="button"
+                                        onClick={() => setViewingGalleryItem(item)}
+                                        className="cursor-pointer text-left font-semibold text-foreground text-xs hover:text-primary hover:underline sm:text-sm"
+                                      >
                                         {item.name}
-                                      </span>
+                                      </button>
                                       {selectedBundle && isItemInBundle ? (
                                         <>
                                           <Badge
@@ -2875,20 +2960,29 @@ export function EventRegistrationModal({
                                       </div>
                                     )}
 
-                                    {/* Product Guideline link if available */}
-                                    {item.guideline &&
-                                      (item.guideline.title || item.guideline.text || item.guideline.image_url) && (
-                                        <div className="pt-0.5">
+                                    {/* Actions Row: View Photos and Sizing Guideline */}
+                                    <div className="flex flex-wrap items-center gap-3 pt-0.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => setViewingGalleryItem(item)}
+                                        className="inline-flex cursor-pointer items-center gap-1 font-medium text-[11px] text-primary hover:underline"
+                                      >
+                                        <Images className="size-3" />
+                                        <span>View {hasMultipleImages ? `${allImages.length} photos` : "photo"}</span>
+                                      </button>
+
+                                      {item.guideline &&
+                                        (item.guideline.title || item.guideline.text || item.guideline.image_url) && (
                                           <button
                                             type="button"
                                             onClick={() => setViewingGuidelineItem(item)}
-                                            className="inline-flex cursor-pointer items-center gap-1 font-medium text-[11px] text-primary hover:underline"
+                                            className="inline-flex cursor-pointer items-center gap-1 font-medium text-[11px] text-muted-foreground hover:text-foreground hover:underline"
                                           >
                                             <Ruler className="size-3" />
                                             <span>{item.guideline.title || "View Sizing Guideline"}</span>
                                           </button>
-                                        </div>
-                                      )}
+                                        )}
+                                    </div>
 
                                     {/* Variations Selectors (e.g. Size, Color) */}
                                     {isAdded && item.variations && item.variations.length > 0 && (
@@ -4099,6 +4193,18 @@ export function EventRegistrationModal({
           }}
         />
       )}
+
+      {/* Merchandise Image Gallery Carousel Dialog */}
+      <MerchandiseGalleryDialog
+        item={viewingGalleryItem}
+        open={Boolean(viewingGalleryItem)}
+        onOpenChange={(isOpen) => !isOpen && setViewingGalleryItem(null)}
+        selectedVariations={viewingGalleryItem ? selectedMerch[viewingGalleryItem.id]?.selectedVariations : undefined}
+        isIncludedInTicket={Boolean(
+          viewingGalleryItem && selectedTicket?.perks?.some((p) => p.merchandise_id === viewingGalleryItem.id),
+        )}
+        onOpenGuideline={(targetItem) => setViewingGuidelineItem(targetItem)}
+      />
 
       {/* Sizing & Product Guideline Dialog */}
       <Dialog open={Boolean(viewingGuidelineItem)} onOpenChange={(isOpen) => !isOpen && setViewingGuidelineItem(null)}>
