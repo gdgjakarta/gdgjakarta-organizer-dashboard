@@ -64,15 +64,18 @@ export function MoveFolderDialog({ open, onOpenChange, link, folders, onLinkMove
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[400px]">
-        <DialogHeader>
-          <div className="flex items-center gap-2 pr-6">
+      <DialogContent className="overflow-hidden sm:max-w-[400px]">
+        <DialogHeader className="w-full min-w-0 overflow-hidden">
+          <div className="flex w-full min-w-0 items-center gap-2 pr-6">
             <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
               <FolderSymlink className="size-4" />
             </div>
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 overflow-hidden">
               <DialogTitle className="truncate">Move to Folder</DialogTitle>
-              <DialogDescription className="truncate" title={link ? link.shortURL : undefined}>
+              <DialogDescription
+                className="block max-w-[270px] truncate sm:max-w-[290px]"
+                title={link ? link.shortURL : undefined}
+              >
                 {link ? link.shortURL : "Organize short link"}
               </DialogDescription>
             </div>

@@ -346,6 +346,15 @@ export const eventsColumns: ColumnDef<DataTableFeatures, EventRow>[] = [
     enableHiding: true,
   },
   {
+    id: "eventType",
+    accessorKey: "eventType",
+    filterFn: (row, columnId, filterValue) => {
+      if (!filterValue || filterValue === "All") return true;
+      return row.getValue(columnId) === filterValue;
+    },
+    enableHiding: true,
+  },
+  {
     accessorKey: "title",
     header: "Event",
     cell: ({ row }) => (

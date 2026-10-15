@@ -37,6 +37,7 @@ export function Events({ events, totalCount }: { events: EventRow[]; totalCount?
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
   const [columnVisibility, setColumnVisibility] = React.useState<ColumnVisibilityState>({
     search: false,
+    eventType: false,
   });
   const [pagination, setPagination] = React.useState<PaginationState>({
     pageIndex: 0,

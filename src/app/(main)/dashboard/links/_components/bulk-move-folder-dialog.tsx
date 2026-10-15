@@ -63,15 +63,15 @@ export function BulkMoveFolderDialog({ open, onOpenChange, links, folders, onLin
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[460px]">
-        <DialogHeader>
-          <div className="flex items-center gap-2">
-            <div className="flex size-8 items-center justify-center rounded-md bg-primary/10 text-primary">
+      <DialogContent className="overflow-hidden sm:max-w-[460px]">
+        <DialogHeader className="w-full min-w-0 overflow-hidden">
+          <div className="flex w-full min-w-0 items-center gap-2 pr-6">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
               <FolderSymlink className="size-4" />
             </div>
-            <div>
-              <DialogTitle>Move Links to Folder</DialogTitle>
-              <DialogDescription>
+            <div className="min-w-0 flex-1 overflow-hidden">
+              <DialogTitle className="truncate">Move Links to Folder</DialogTitle>
+              <DialogDescription className="truncate">
                 Assign {links.length} selected link{links.length === 1 ? "" : "s"} to a category folder.
               </DialogDescription>
             </div>
