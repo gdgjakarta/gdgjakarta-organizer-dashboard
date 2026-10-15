@@ -277,7 +277,7 @@ export async function handleUserPostLoginAction(params: UserAuthSyncParams): Pro
         await setAuthSessionCookie(token, role, true);
       }
 
-      let chapterRoleType = ChapterRole.MEMBER;
+      let chapterRoleType: ChapterRole = ChapterRole.MEMBER;
       if (isExecutive) {
         chapterRoleType = ChapterRole.ORGANIZER;
       } else if (isCoreStaff) {
@@ -342,7 +342,7 @@ export async function handleUserPostLoginAction(params: UserAuthSyncParams): Pro
 
     console.log(`[Auth Step 4 - Server] Completed post-login sync for ${verifiedEmail}`);
     // 3. Return ONLY a plain, cleanly serializable object to prevent RSC flight serialization failures
-    let resolvedRoleType = ChapterRole.MEMBER;
+    let resolvedRoleType: ChapterRole = ChapterRole.MEMBER;
     if (isExecutive) {
       resolvedRoleType = ChapterRole.ORGANIZER;
     } else if (isCoreStaff) {

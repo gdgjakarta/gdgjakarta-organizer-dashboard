@@ -1,3 +1,4 @@
+import { getApps, initializeApp } from "firebase/app";
 import {
   collection,
   doc,
@@ -11,7 +12,7 @@ import {
   where,
 } from "firebase/firestore/lite";
 
-import { app } from "@/config/firebase";
+import { firebaseConfig } from "@/config/firebase";
 import { buildApprovedAttendeePayload } from "@/lib/events/approved-attendee-webhook";
 import { normalizeEventDoc } from "@/lib/firestore/normalization";
 import type {
@@ -20,6 +21,17 @@ import type {
   RegistrationStatus,
   RegistrationStatusLog,
 } from "@/lib/firestore/types";
+
+/**
+ * Returns a dedicated Firestore Lite instance for server-side operations.
+ * Uses a dedicated named FirebaseApp to completely isolate it from standard
+ * client Firestore instances initialized on the default app.
+ */
+function getServerFirestoreLite() {
+  const existingApp = getApps().find((a) => a.name === "server-firestore-lite");
+  const serverApp = existingApp || initializeApp(firebaseConfig, "server-firestore-lite");
+  return getFirestore(serverApp);
+}
 
 /**
  * Pure utility function to strip undefined values before writing to Firestore.
@@ -166,7 +178,7 @@ export async function getAttendeeByInvoiceNumber(rawInvoiceNumber: string): Prom
     return { success: false, error: "invoiceNumber parameter is required." };
   }
 
-  const db = getFirestore(app);
+  const db = getServerFirestoreLite();
   const regCollection = collection(db, "event_registrations");
 
   const targetDocSnap = await findRegistrationDocSnap(regCollection, invoiceNumber);
@@ -235,7 +247,7 @@ export async function updateRegistrationFromPayment(input: UpdateRegistrationFro
     return { success: false, error: "invoiceNumber is required." };
   }
 
-  const db = getFirestore(app);
+  const db = getServerFirestoreLite();
   const regCollection = collection(db, "event_registrations");
 
   // 1. Locate registration document
@@ -381,7 +393,7 @@ export async function updateRegistrationFromPayment(input: UpdateRegistrationFro
  */
 export async function getFirestoreEventByIdServer(eventId: string): Promise<FirestoreEvent | null> {
   try {
-    const db = getFirestore(app);
+    const db = getServerFirestoreLite();
     const eventRef = doc(db, "events", String(eventId));
     const snap = await getDoc(eventRef);
     if (!snap.exists()) return null;
@@ -405,7 +417,7 @@ export async function updateFirestoreEventShortLinksServer(
   },
 ): Promise<void> {
   try {
-    const db = getFirestore(app);
+    const db = getServerFirestoreLite();
     const eventRef = doc(db, "events", String(eventId));
     const payload: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
