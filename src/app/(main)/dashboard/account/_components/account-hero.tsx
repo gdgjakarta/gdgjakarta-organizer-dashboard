@@ -5,7 +5,6 @@ import { Calendar, CheckCircle2, QrCode, Sparkles, Trophy } from "lucide-react";
 import { GdgLogo } from "@/components/gdg-logo";
 import { RoleBadge } from "@/components/role-badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import type { FirestoreMember } from "@/lib/firestore/types";
 import { getInitials } from "@/lib/utils";
@@ -21,7 +20,6 @@ export function AccountHero({ user, member }: AccountHeroProps) {
   const email = member?.email ?? user.email;
   const avatarUrl = member?.avatar_url ?? user.avatar;
   const rawRole = member?.chapter_role ?? user.chapterRole ?? member?.role ?? user.role;
-  const teamLabel = member?.team ?? (rawRole.toLowerCase().includes("organizer") ? "Core Team" : "Community");
 
   const registeredCount = member?.events_registered_count ?? 0;
   const attendedCount = member?.events_attended_count ?? 0;
@@ -54,9 +52,6 @@ export function AccountHero({ user, member }: AccountHeroProps) {
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="font-bold text-2xl text-foreground tracking-tight">{displayName}</h1>
                 <RoleBadge role={rawRole} size="default" />
-                <Badge variant="outline" className="text-xs">
-                  {teamLabel}
-                </Badge>
               </div>
 
               <div className="flex flex-wrap items-center gap-3 text-muted-foreground text-sm">
