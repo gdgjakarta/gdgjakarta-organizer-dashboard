@@ -2,6 +2,7 @@ import { format, isFuture, parseISO } from "date-fns";
 import type { Metadata } from "next";
 
 import { getAllBevyChapterEvents, resolveEventAudience } from "@/lib/bevy/client";
+import { toTimezoneDate } from "@/lib/date-utils";
 
 import { type EventRow, type EventStatus, fallbackEvents } from "./_components/data";
 import { Events } from "./_components/events";
@@ -30,7 +31,7 @@ export default async function Page() {
         if (event.start_date) {
           try {
             const parsedStart = parseISO(event.start_date);
-            startDateFormatted = format(parsedStart, "dd MMM yyyy, h:mm a");
+            startDateFormatted = format(toTimezoneDate(parsedStart), "dd MMM yyyy, h:mm a");
             isUpcomingEvent = isFuture(parsedStart);
           } catch {
             startDateFormatted = event.start_date;
@@ -39,7 +40,7 @@ export default async function Page() {
 
         if (event.end_date) {
           try {
-            endDateFormatted = format(parseISO(event.end_date), "dd MMM yyyy, h:mm a");
+            endDateFormatted = format(toTimezoneDate(parseISO(event.end_date)), "dd MMM yyyy, h:mm a");
           } catch {
             endDateFormatted = event.end_date;
           }
@@ -68,6 +69,8 @@ export default async function Page() {
           title: event.title || "Untitled Event",
           startDate: startDateFormatted,
           endDate: endDateFormatted,
+          rawStartDate: event.start_date,
+          rawEndDate: event.end_date,
           status,
           eventType: event.event_type_title || "Standard Event",
           audienceType,

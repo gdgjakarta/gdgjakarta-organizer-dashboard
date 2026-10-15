@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { resolveEventAudience } from "@/lib/bevy/audience";
+import { toTimezoneDate } from "@/lib/date-utils";
 import { extractEventImageUrl } from "@/lib/events/media-utils";
 import { getEffectiveRegistrationStatus } from "@/lib/events/payment-deadline";
 import { fetchMemberRegistrationsAction } from "@/lib/firestore/actions";
@@ -93,7 +94,7 @@ export function MemberEventsList({ events, myRegistrations = [] }: MemberEventsL
 
           let formattedDate = event.start_date;
           try {
-            formattedDate = format(parseISO(event.start_date), "dd MMM yyyy • h:mm a");
+            formattedDate = format(toTimezoneDate(parseISO(event.start_date)), "dd MMM yyyy • h:mm a");
           } catch {
             // Keep raw string
           }

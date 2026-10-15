@@ -2,6 +2,7 @@ import { format, parseISO } from "date-fns";
 import type { Metadata } from "next";
 
 import { getBevyChapterMembers, getBevyChapterTeams } from "@/lib/bevy/client";
+import { toTimezoneDate } from "@/lib/date-utils";
 import { splitFullName } from "@/lib/utils";
 
 import { members as fallbackMembers, type MemberRow } from "./_components/data";
@@ -69,7 +70,7 @@ export default async function Page() {
         let joinedDateFormatted = "Recent";
         if (m.created_date) {
           try {
-            joinedDateFormatted = format(parseISO(m.created_date), "dd MMM yyyy, h:mm a");
+            joinedDateFormatted = format(toTimezoneDate(parseISO(m.created_date)), "dd MMM yyyy, h:mm a");
           } catch {
             joinedDateFormatted = m.created_date;
           }

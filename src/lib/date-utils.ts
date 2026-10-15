@@ -1,5 +1,16 @@
 import { format, parseISO } from "date-fns";
 
+export const DEFAULT_TIMEZONE = "Asia/Jakarta";
+
+/**
+ * Converts a Date to match the wall-clock time in the given timezone (default Asia/Jakarta).
+ * This allows date-fns `format(...)` and local getters to be timezone-accurate even on UTC servers.
+ */
+export function toTimezoneDate(date: Date, timeZone = DEFAULT_TIMEZONE): Date {
+  if (Number.isNaN(date.getTime())) return date;
+  return new Date(date.toLocaleString("en-US", { timeZone }));
+}
+
 export interface FirestoreTimestampLike {
   seconds?: number;
   nanoseconds?: number;
@@ -96,7 +107,12 @@ export function parseFirestoreDate(value: unknown): Date | null {
  * Returns the fallback string if the value cannot be parsed, ensuring that
  * raw objects (such as { seconds, nanoseconds }) are NEVER returned and cannot crash React.
  */
-export function formatFirestoreDate(value: unknown, formatPattern = "dd MMM yyyy, h:mm a", fallback = "—"): string {
+export function formatFirestoreDate(
+  value: unknown,
+  formatPattern = "dd MMM yyyy, h:mm a",
+  fallback = "—",
+  timeZone = DEFAULT_TIMEZONE,
+): string {
   const date = parseFirestoreDate(value);
   if (!date) {
     if (typeof value === "string" && value.trim()) {
@@ -105,7 +121,8 @@ export function formatFirestoreDate(value: unknown, formatPattern = "dd MMM yyyy
     return fallback;
   }
   try {
-    return format(date, formatPattern);
+    const tzDate = toTimezoneDate(date, timeZone);
+    return format(tzDate, formatPattern);
   } catch {
     return fallback;
   }
@@ -124,16 +141,17 @@ export function toISOStringSafe(value: unknown): string | null {
 
 /**
  * Safely formats any date representation into the `YYYY-MM-DDTHH:mm` format
- * required by `<input type="datetime-local">`.
+ * required by `<input type="datetime-local">`, converted to the specified timezone (default Asia/Jakarta).
  */
-export function toDateTimeLocalValue(value: unknown): string {
+export function toDateTimeLocalValue(value: unknown, timeZone = DEFAULT_TIMEZONE): string {
   const date = parseFirestoreDate(value);
   if (!date) return "";
+  const tzDate = toTimezoneDate(date, timeZone);
   const pad = (n: number) => String(n).padStart(2, "0");
-  const year = date.getFullYear();
-  const month = pad(date.getMonth() + 1);
-  const day = pad(date.getDate());
-  const hours = pad(date.getHours());
-  const minutes = pad(date.getMinutes());
+  const year = tzDate.getFullYear();
+  const month = pad(tzDate.getMonth() + 1);
+  const day = pad(tzDate.getDate());
+  const hours = pad(tzDate.getHours());
+  const minutes = pad(tzDate.getMinutes());
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 }

@@ -450,6 +450,10 @@ export const eventsColumns: ColumnDef<DataTableFeatures, EventRow>[] = [
   {
     id: "startDate",
     accessorFn: (row) => {
+      if (row.rawStartDate) {
+        const time = new Date(row.rawStartDate).getTime();
+        if (!Number.isNaN(time)) return time;
+      }
       try {
         return parse(row.startDate, "dd MMM yyyy, h:mm a", new Date()).getTime();
       } catch {

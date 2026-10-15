@@ -5,6 +5,7 @@ import { ArrowRight, Globe, MapPin, Radio, Users } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { toTimezoneDate } from "@/lib/date-utils";
 import type { FirestoreEvent } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
@@ -117,8 +118,8 @@ export function GDGUpcomingEvents({ events }: GDGUpcomingEventsProps) {
             if (event.start_date) {
               try {
                 const parsed = parseISO(event.start_date);
-                monthStr = format(parsed, "MMM");
-                dayStr = format(parsed, "d");
+                monthStr = format(toTimezoneDate(parsed), "MMM");
+                dayStr = format(toTimezoneDate(parsed), "d");
                 isUpcoming = event.status !== "Completed" && isFuture(parsed);
               } catch {
                 // Ignore parse errors

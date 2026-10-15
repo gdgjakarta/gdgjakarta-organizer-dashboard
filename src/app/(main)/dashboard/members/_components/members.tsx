@@ -25,6 +25,7 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/in
 import { Kbd } from "@/components/ui/kbd";
 import { getBevyDashboardUrl } from "@/config/remote-config-utils";
 import { dataTableFeatures } from "@/lib/data-table-features";
+import { toTimezoneDate } from "@/lib/date-utils";
 import { splitFullName } from "@/lib/utils";
 
 import type { MemberRow, MemberStatus } from "./data";
@@ -82,7 +83,7 @@ export function Members({ members, totalCount }: { members: MemberRow[]; totalCo
               let joinedDateFormatted = "Recent";
               if (fs.joined_date) {
                 try {
-                  joinedDateFormatted = format(parseISO(fs.joined_date), "dd MMM yyyy, h:mm a");
+                  joinedDateFormatted = format(toTimezoneDate(parseISO(fs.joined_date)), "dd MMM yyyy, h:mm a");
                 } catch {
                   joinedDateFormatted = fs.joined_date;
                 }

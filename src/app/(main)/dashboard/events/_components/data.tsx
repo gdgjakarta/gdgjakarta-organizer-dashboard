@@ -7,6 +7,8 @@ export type EventRow = {
   title: string;
   startDate: string;
   endDate: string;
+  rawStartDate?: string;
+  rawEndDate?: string;
   status: EventStatus;
   eventType: string;
   audienceType: string;

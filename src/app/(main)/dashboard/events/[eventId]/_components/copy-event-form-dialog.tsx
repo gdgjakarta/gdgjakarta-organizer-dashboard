@@ -38,6 +38,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { toTimezoneDate } from "@/lib/date-utils";
 import type { CustomQuestion, EventSession, EventTicketTier, FirestoreEvent } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
@@ -150,7 +151,7 @@ export function CopyEventFormDialog({ open, onOpenChange, currentEventId, onAppl
           if (rawStart) {
             try {
               const parsed = parseISO(rawStart);
-              formattedDate = format(parsed, "dd MMM yyyy, h:mm a");
+              formattedDate = format(toTimezoneDate(parsed), "dd MMM yyyy, h:mm a");
               if (!isCompleted && isPast(parsed)) {
                 isCompleted = true;
               }
@@ -208,7 +209,7 @@ export function CopyEventFormDialog({ open, onOpenChange, currentEventId, onAppl
           if (be.startDate) {
             try {
               const parsed = parseISO(be.startDate);
-              formattedDate = format(parsed, "dd MMM yyyy, h:mm a");
+              formattedDate = format(toTimezoneDate(parsed), "dd MMM yyyy, h:mm a");
               if (isPast(parsed)) {
                 isCompleted = true;
               }

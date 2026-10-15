@@ -40,6 +40,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Separator } from "@/components/ui/separator";
 import { getDashboardHomeUrl } from "@/lib/auth-roles";
 import { resolveEventAudience } from "@/lib/bevy/audience";
+import { toTimezoneDate } from "@/lib/date-utils";
 import { extractEventImageUrl } from "@/lib/events/media-utils";
 import {
   getEffectiveRegistrationStatus,
@@ -267,9 +268,9 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
   let formattedStartDate = event.start_date;
   let formattedEndDate = event.end_date;
   try {
-    formattedStartDate = format(parseISO(event.start_date), "EEEE, dd MMMM yyyy • h:mm a");
+    formattedStartDate = format(toTimezoneDate(parseISO(event.start_date)), "EEEE, dd MMMM yyyy • h:mm a");
     if (event.end_date) {
-      formattedEndDate = format(parseISO(event.end_date), "h:mm a (zzz)");
+      formattedEndDate = format(toTimezoneDate(parseISO(event.end_date)), "h:mm a (zzz)");
     }
   } catch {
     // Keep raw

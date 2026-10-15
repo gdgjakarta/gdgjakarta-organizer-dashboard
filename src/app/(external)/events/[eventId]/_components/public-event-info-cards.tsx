@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { resolveEventAudience } from "@/lib/bevy/audience";
 import type { BevyEvent } from "@/lib/bevy/types";
+import { toTimezoneDate } from "@/lib/date-utils";
 import type { FirestoreEvent } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
@@ -27,8 +28,8 @@ export function PublicEventInfoCards({ event, firestoreEvent }: PublicEventInfoC
   try {
     const start = parseISO(event.start_date);
     const end = parseISO(event.end_date);
-    formattedDateRange = format(start, "EEEE, dd MMMM yyyy");
-    formattedTime = `${format(start, "h:mm a")} - ${format(end, "h:mm a")}`;
+    formattedDateRange = format(toTimezoneDate(start), "EEEE, dd MMMM yyyy");
+    formattedTime = `${format(toTimezoneDate(start), "h:mm a")} - ${format(toTimezoneDate(end), "h:mm a")}`;
   } catch {
     // Keep raw
   }

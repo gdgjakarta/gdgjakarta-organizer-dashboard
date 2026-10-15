@@ -108,6 +108,7 @@ export function EventsDirectory({ initialEvents, totalCount, pageSize = 15 }: Ev
           let formattedDate = "";
           try {
             formattedDate = new Date(event.start_date).toLocaleDateString("en-US", {
+              timeZone: "Asia/Jakarta",
               weekday: "short",
               month: "short",
               day: "numeric",

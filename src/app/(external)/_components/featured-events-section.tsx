@@ -53,6 +53,7 @@ export function FeaturedEventsSection({ events }: FeaturedEventsSectionProps) {
         <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
           {visibleEvents.map((event) => {
             const dateStr = new Date(event.start_date).toLocaleDateString("en-US", {
+              timeZone: "Asia/Jakarta",
               weekday: "short",
               month: "short",
               day: "numeric",
