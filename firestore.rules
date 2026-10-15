@@ -44,10 +44,10 @@ service cloud.firestore {
     //   - has_used_referral: bool|null (optional) - Whether member has redeemed a referral code
     //   - referred_by_code: string|null (optional, <= 64 chars) - Referral code redeemed by member
     // Permissions:
-    //   - get: Team access, profile owner, or authenticated user looking up a profile with a referral_code.
+    //   - get: Profile self-reads (by UID, non-existent doc, or referral_code) evaluated before team access (Organizers & Staff).
     //   - list: Team access or authenticated users with limit <= 5 (for referral lookup).
-    //   - create: Team access or profile owner initializing account with 0 referral points/count.
-    //   - update: Team access, profile owner (cannot touch privilege fields), or authenticated users awarding referral points (restricted to referral_points, referrals_count, updated_at).
+    //   - create: Team access or profile owner initializing account with 0 referral points/count (syncing Bevy role/team).
+    //   - update: Team access, profile owner (cannot touch uid, id, referral_points, referrals_count), or authenticated users awarding referral points (restricted to referral_points, referrals_count, updated_at).
     //   - delete: Organizers only.
     //
     // Collection: event_registrations
@@ -373,9 +373,14 @@ service cloud.firestore {
             ) ||
             (
               'chapter_role' in get(/databases/$(database)/documents/members/$(request.auth.uid)).data &&
-              get(/databases/$(database)/documents/members/$(request.auth.uid)).data.chapter_role in [
-                'organizer', 'Organizer', 'Core Team', 'core team', 'core_team', 'googler', 'Googler'
-              ]
+              get(/databases/$(database)/documents/members/$(request.auth.uid)).data.chapter_role is string &&
+              (
+                get(/databases/$(database)/documents/members/$(request.auth.uid)).data.chapter_role in [
+                  'organizer', 'Organizer', 'Core Team', 'core team', 'core_team', 'googler', 'Googler'
+                ] ||
+                get(/databases/$(database)/documents/members/$(request.auth.uid)).data.chapter_role.matches('.*[oO]rganizer.*') ||
+                get(/databases/$(database)/documents/members/$(request.auth.uid)).data.chapter_role.matches('.*Core Team.*')
+              )
             )
           )
         )
@@ -411,12 +416,17 @@ service cloud.firestore {
             ) ||
             (
               'chapter_role' in get(/databases/$(database)/documents/members/$(request.auth.uid)).data &&
-              get(/databases/$(database)/documents/members/$(request.auth.uid)).data.chapter_role in [
-                'Core Team', 'core team', 'Core team',
-                'Team Member', 'team member', 'Team member',
-                'Check-in Staff', 'check-in staff', 'Check-In Staff',
-                'Check-in', 'Staff'
-              ]
+              get(/databases/$(database)/documents/members/$(request.auth.uid)).data.chapter_role is string &&
+              (
+                get(/databases/$(database)/documents/members/$(request.auth.uid)).data.chapter_role in [
+                  'Core Team', 'core team', 'Core team',
+                  'Team Member', 'team member', 'Team member',
+                  'Check-in Staff', 'check-in staff', 'Check-In Staff',
+                  'Check-in', 'Staff'
+                ] ||
+                get(/databases/$(database)/documents/members/$(request.auth.uid)).data.chapter_role.matches('.*Team Member.*') ||
+                get(/databases/$(database)/documents/members/$(request.auth.uid)).data.chapter_role.matches('.*Staff.*')
+              )
             )
           )
         )
@@ -796,15 +806,13 @@ service cloud.firestore {
     // Members Collection
     // -------------------------------------------------------------
     match /members/{memberId} {
-      // Individual profile lookup: Organizers, staff members, document owner (by ID or UID), or profiles containing a referral_code.
-      // Safely handles non-existent doc lookup when resource == null (snap.exists() == false).
-      allow get: if hasTeamAccess() ||
-        (isAuthenticated() && (
-          resource == null ||
+      // Individual profile lookup: Self-read by auth UID, non-existent doc lookup, UID field match, or profiles containing referral_code evaluated BEFORE hasTeamAccess to prevent circular role evaluations.
+      allow get: if (isAuthenticated() && (
           request.auth.uid == memberId ||
+          resource == null ||
           (('uid' in resource.data) && resource.data.uid == request.auth.uid) ||
           ('referral_code' in resource.data)
-        ));
+        )) || hasTeamAccess();
 
       // Listing members: Team access (Organizers & Staff), or authenticated users running strictly bounded queries (limit <= 5) such as referral code lookup.
       allow list: if hasTeamAccess() ||
@@ -812,7 +820,7 @@ service cloud.firestore {
 
       // Creation: Organizers, staff members (hasTeamAccess), or authenticated owners creating their initial profile.
       // Solves bootstrap deadlock while strictly requiring valid member schema and identity ownership.
-      // Prevents privilege escalation by ensuring unprivileged owners can only create standard member/community profiles with zero referral points.
+      // Allows Bevy API role sync without restricting role and team to standard member, while strictly protecting id, uid, and requiring referral rewards == 0.
       allow create: if isValidMember(request.resource.data) && (
         hasTeamAccess() ||
         (
@@ -820,20 +828,17 @@ service cloud.firestore {
           request.resource.data.id == request.auth.uid &&
           (!('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid) &&
           (!('referral_points' in request.resource.data) || request.resource.data.referral_points == 0) &&
-          (!('referrals_count' in request.resource.data) || request.resource.data.referrals_count == 0) &&
-          request.resource.data.role in ['Member', 'member'] &&
-          request.resource.data.team == 'Community' &&
-          (!('chapter_role' in request.resource.data) || request.resource.data.chapter_role == null || request.resource.data.chapter_role in ['Member', 'member'])
+          (!('referrals_count' in request.resource.data) || request.resource.data.referrals_count == 0)
         )
       );
 
-      // Update: Organizers and staff members (hasTeamAccess), profile owners (cannot alter privilege fields),
-      // or authenticated attendees awarding referral points upon redemption (strictly restricted to referral_points, referrals_count, updated_at).
+      // Update: Organizers and staff members (hasTeamAccess), profile owners (strictly prevented from tampering with uid, id, referral_points, referrals_count,
+      // while permitting Bevy role/team login synchronization), or authenticated attendees awarding referral points upon redemption.
       allow update: if isValidMember(request.resource.data) && (
         hasTeamAccess() ||
         (
           isOwner(memberId) &&
-          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'team', 'chapter_role', 'uid', 'id', 'referral_points', 'referrals_count'])
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['uid', 'id', 'referral_points', 'referrals_count'])
         ) ||
         (
           isAuthenticated() &&
