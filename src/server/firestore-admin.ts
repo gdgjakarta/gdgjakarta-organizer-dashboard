@@ -461,6 +461,9 @@ export async function getMaintenanceConfigServer(): Promise<MaintenanceConfig> {
 
 /**
  * Saves maintenance settings to Firestore on the server.
+ * Note: Firestore Security Rules require Organizer authentication (request.auth).
+ * Since server-firestore-lite runs without client user session, writes should
+ * be dispatched via saveMaintenanceConfigDoc in `@/lib/firestore/client` from an authenticated client.
  */
 export async function saveMaintenanceConfigServer(config: Partial<MaintenanceConfig>): Promise<void> {
   try {
@@ -472,7 +475,9 @@ export async function saveMaintenanceConfigServer(config: Partial<MaintenanceCon
     });
     await setDoc(docRef, payload, { merge: true });
   } catch (err) {
-    console.error("[Firestore Server] saveMaintenanceConfigServer error:", err);
-    throw err;
+    console.warn(
+      "[Firestore Server] saveMaintenanceConfigServer warning (write should be performed via client SDK with auth session):",
+      err,
+    );
   }
 }

@@ -39,6 +39,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { DEFAULT_MAINTENANCE_CONFIG, type MaintenanceConfig } from "@/config/maintenance-config";
+import { saveMaintenanceConfigDoc } from "@/lib/firestore/client";
 import { saveMaintenanceConfigAction } from "@/server/maintenance-actions";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
@@ -85,6 +86,10 @@ export function MaintenanceDashboard({ initialConfig }: MaintenanceDashboardProp
         updatedByName: user?.name,
       };
 
+      // 1. Persist directly to Cloud Firestore using client SDK with active Organizer credentials
+      await saveMaintenanceConfigDoc(payload);
+
+      // 2. Sync server-side cookies (gdg_maintenance) and trigger Next.js cache revalidation
       const result = await saveMaintenanceConfigAction(payload);
       if (result.success && result.config) {
         setSavedConfig(result.config);

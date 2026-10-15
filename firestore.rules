@@ -11,31 +11,32 @@ service cloud.firestore {
     // Collection: members
     // Document ID: memberId (UID or Bevy User ID)
     // Fields:
-    //   - id: string (required, immutable for members, 1-128 chars) - Member ID (UID or Bevy User ID)
-    //   - uid: string (optional, immutable for members, <= 128 chars) - Firebase Auth UID
+    //   - id: string|null (optional, immutable for members, 1-128 chars) - Member ID (UID or Bevy User ID)
+    //   - uid: string|null (optional, immutable for members, <= 128 chars) - Firebase Auth UID
     //   - bevy_user_id: string|int|float|null (optional) - Associated Bevy User ID
     //   - bevy_member_id: string|int|float|null (optional) - Associated Bevy Member ID
     //   - name: string (required, 1-150 chars) - Full display name
     //   - first_name: string|null (optional, <= 100 chars) - First name
     //   - last_name: string|null (optional, <= 100 chars) - Last name
     //   - email: string (required, valid email, <= 150 chars) - Member email address
-    //   - company: string|null (optional, <= 150 chars) - Company or organization name
-    //   - company_or_institution: string|null (optional, <= 150 chars) - Alternate company or institution
-    //   - title: string|null (optional, <= 150 chars) - Professional title or job role
-    //   - role: string (required, immutable for members) - Chapter role ('organizer'|'Organizer'|'Core Team'|'core_team'|'core-team'|'Check-in Staff'|'check_in_staff'|'checkin_staff'|'check-in staff'|'Team Member'|'team_member'|'team-member'|'Member'|'member')
+    //   - company: string|null (optional, <= 200 chars) - Company or organization name
+    //   - company_or_institution: string|null (optional, <= 200 chars) - Alternate company or institution
+    //   - title: string|null (optional, <= 200 chars) - Professional title or job role
+    //   - role: string|null (optional, immutable for members) - Chapter role ('organizer'|'Organizer'|'Core Team'|'core_team'|'core-team'|'Check-in Staff'|'check_in_staff'|'checkin_staff'|'check-in staff'|'Team Member'|'team_member'|'team-member'|'googler'|'Googler'|'Member'|'member')
     //   - chapter_role: string|null (optional, <= 100 chars) - Bevy chapter role title
-    //   - team: string (required, immutable for members) - Team assignment ('Core Team'|'Community')
-    //   - status: string (required) - Membership status ('Active'|'Inactive')
-    //   - joined_date: string (required, <= 50 chars) - Date joined
+    //   - team: string|null (optional, immutable for members) - Team assignment ('Core Team'|'core_team'|'core-team'|'Community'|'community')
+    //   - status: string|null (optional) - Membership status ('Active'|'Inactive'|'active'|'inactive')
+    //   - joined_date: string|null (optional, <= 50 chars) - Date joined
     //   - raw_created_date: string|null (optional, <= 50 chars) - Raw timestamp from Bevy
+    //   - created_at: string|null (optional, <= 50 chars) - Creation timestamp
     //   - events_registered_count: int|float|null (optional, >= 0) - Registered events count
     //   - avatar_url: string|null (optional, <= 3000 chars) - Profile picture URL
     //   - profile_url: string|null (optional, <= 2000 chars) - Public profile URL
     //   - is_email_verified: bool|null (optional) - Email verification status
-    //   - phone: string|null (optional, <= 30 chars) - Phone number
+    //   - phone: string|null (optional, <= 50 chars) - Phone number
     //   - events_attended_count: int|float|null (optional, >= 0) - Check-in / attended events count
     //   - last_active: string|null (optional, <= 50 chars) - Last activity timestamp
-    //   - notes: string|null (optional, <= 2000 chars) - Organizer notes
+    //   - notes: string|null (optional, <= 5000 chars) - Organizer notes
     //   - synced_from_bevy_at: string|null (optional, <= 50 chars) - Bevy sync timestamp
     //   - updated_at: string (required, <= 50 chars) - Last update timestamp
     //   - referral_code: string|null (optional, <= 64 chars) - Member referral sharing code
@@ -43,12 +44,20 @@ service cloud.firestore {
     //   - referrals_count: int|float|null (optional, >= 0) - Successful referrals count
     //   - has_used_referral: bool|null (optional) - Whether member has redeemed a referral code
     //   - referred_by_code: string|null (optional, <= 64 chars) - Referral code redeemed by member
+    //   - bio: string|null (optional, <= 5000 chars)
+    //   - city: string|null (optional, <= 200 chars)
+    //   - country: string|null (optional, <= 200 chars)
+    //   - role_id, roleId: string|int|float|null (optional)
+    //   - website, linkedin, github, twitter: string|null (optional, <= 2000 chars)
+    //   - photo_url: string|null (optional, <= 3000 chars)
+    //   - badges: list|null (optional, <= 100 items)
+    //   - social_links: map|list|null (optional, <= 20 items/keys)
     // Permissions:
-    //   - get: Profile self-reads (by UID, non-existent doc, or referral_code) evaluated before team access (Organizers & Staff).
+    //   - get: Profile self-reads (by UID, Bevy ID doc match with uid/id, non-existent doc, or referral_code) evaluated before team access (Organizers & Staff).
     //   - list: Team access or authenticated users with limit <= 5 (for referral lookup).
-    //   - create: Team access or profile owner initializing account with 0 referral points/count (syncing Bevy role/team).
-    //   - update: Team access, profile owner (cannot touch uid, id, referral_points, referrals_count), or authenticated users awarding referral points (restricted to referral_points, referrals_count, updated_at).
-    //   - delete: Organizers only.
+    //   - create: Profile owner initializing account with 0 referral points/count, or team access creating for another member.
+    //   - update: Team access (inspecting resource.data directly without circular lookups on self, allows organizers to update members), profile owner (validating identity via isMemberDocOwner, preserving referral points/count, preserving role/team with case/format insensitivity), or authenticated users awarding referral points (restricted to referral_points, referrals_count, updated_at).
+    //   - delete: Organizers only (using non-circular role inspection on self).
     //
     // Collection: event_registrations
     // Document ID: registrationId (e.g. eventId_memberId)
@@ -362,9 +371,81 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Check if the authenticated user matches the specified userId
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+
+    // Check if the authenticated user is the owner of the member document
+    // Supports both Firebase Auth UID as memberId or Bevy user ID with uid/id field match
+    function isMemberDocOwner(memberId, existingResource) {
+      return isAuthenticated() && (
+        request.auth.uid == memberId ||
+        (existingResource != null && (
+          (('uid' in existingResource.data) && existingResource.data.uid == request.auth.uid) ||
+          (('id' in existingResource.data) && existingResource.data.id == request.auth.uid)
+        ))
+      );
+    }
+
+    // Dynamic Organizer Data Verification:
+    // Evaluates member document fields directly without document get().
+    function isOrganizerData(data) {
+      return data != null && (
+        (
+          'role' in data && data.role is string &&
+          data.role in [
+            'organizer', 'Organizer', 'Core Team', 'core_team', 'core-team', 'googler', 'Googler'
+          ]
+        ) ||
+        (
+          'team' in data && data.team is string &&
+          (data.team == 'Core Team' || data.team == 'core_team' || data.team == 'core-team')
+        ) ||
+        (
+          'chapter_role' in data && data.chapter_role is string &&
+          (
+            data.chapter_role in [
+              'organizer', 'Organizer', 'Core Team', 'core team', 'core_team', 'googler', 'Googler'
+            ] ||
+            data.chapter_role.matches('.*[oO]rganizer.*') ||
+            data.chapter_role.matches('.*Core Team.*')
+          )
+        )
+      );
+    }
+
+    // Dynamic Staff Member Data Verification:
+    // Evaluates operational staff roles directly without document get().
+    function isStaffData(data) {
+      return data != null && (
+        (
+          'role' in data && data.role is string &&
+          data.role in [
+            'Core Team', 'core_team', 'core-team',
+            'Check-in Staff', 'check_in_staff', 'checkin_staff', 'check-in staff',
+            'Team Member', 'team_member', 'team-member'
+          ]
+        ) ||
+        (
+          'team' in data && data.team is string &&
+          (data.team == 'Core Team' || data.team == 'core_team' || data.team == 'core-team')
+        ) ||
+        (
+          'chapter_role' in data && data.chapter_role is string &&
+          (
+            data.chapter_role in [
+              'Core Team', 'core team', 'Core team',
+              'Team Member', 'team member', 'Team member',
+              'Check-in Staff', 'check-in staff', 'Check-In Staff',
+              'Check-in', 'Staff'
+            ] ||
+            data.chapter_role.matches('.*Team Member.*') ||
+            data.chapter_role.matches('.*Staff.*')
+          )
+        )
+      );
+    }
+
+    // Inspects whether a member document's data represents team access (organizer or staff)
+    function isTeamData(data) {
+      return isOrganizerData(data) || isStaffData(data);
     }
 
     // Dynamic Organizer Verification:
@@ -374,36 +455,13 @@ service cloud.firestore {
         ('role' in request.auth.token && (request.auth.token.role in ['organizer', 'core_team', 'googler'])) ||
         (
           exists(/databases/$(database)/documents/members/$(request.auth.uid)) &&
-          (
-            (
-              'role' in get(/databases/$(database)/documents/members/$(request.auth.uid)).data &&
-              get(/databases/$(database)/documents/members/$(request.auth.uid)).data.role in [
-                'organizer', 'Organizer', 'Core Team', 'core_team', 'core-team', 'googler', 'Googler'
-              ]
-            ) ||
-            (
-              'team' in get(/databases/$(database)/documents/members/$(request.auth.uid)).data &&
-              get(/databases/$(database)/documents/members/$(request.auth.uid)).data.team == 'Core Team'
-            ) ||
-            (
-              'chapter_role' in get(/databases/$(database)/documents/members/$(request.auth.uid)).data &&
-              get(/databases/$(database)/documents/members/$(request.auth.uid)).data.chapter_role is string &&
-              (
-                get(/databases/$(database)/documents/members/$(request.auth.uid)).data.chapter_role in [
-                  'organizer', 'Organizer', 'Core Team', 'core team', 'core_team', 'googler', 'Googler'
-                ] ||
-                get(/databases/$(database)/documents/members/$(request.auth.uid)).data.chapter_role.matches('.*[oO]rganizer.*') ||
-                get(/databases/$(database)/documents/members/$(request.auth.uid)).data.chapter_role.matches('.*Core Team.*')
-              )
-            )
-          )
+          isOrganizerData(get(/databases/$(database)/documents/members/$(request.auth.uid)).data)
         )
       );
     }
 
     // Staff Member Verification:
-    // Evaluates custom auth claims or member document role / chapter_role / team for operational staff roles
-    // ('Core Team', 'Check-in Staff', 'Team Member', and their kebab/snake case variations).
+    // Evaluates custom auth claims or member document role / chapter_role / team for operational staff roles.
     function isStaffMember() {
       return isAuthenticated() && (
         ('role' in request.auth.token && (
@@ -415,34 +473,7 @@ service cloud.firestore {
         )) ||
         (
           exists(/databases/$(database)/documents/members/$(request.auth.uid)) &&
-          (
-            (
-              'role' in get(/databases/$(database)/documents/members/$(request.auth.uid)).data &&
-              get(/databases/$(database)/documents/members/$(request.auth.uid)).data.role in [
-                'Core Team', 'core_team', 'core-team',
-                'Check-in Staff', 'check_in_staff', 'checkin_staff', 'check-in staff',
-                'Team Member', 'team_member', 'team-member'
-              ]
-            ) ||
-            (
-              'team' in get(/databases/$(database)/documents/members/$(request.auth.uid)).data &&
-              get(/databases/$(database)/documents/members/$(request.auth.uid)).data.team == 'Core Team'
-            ) ||
-            (
-              'chapter_role' in get(/databases/$(database)/documents/members/$(request.auth.uid)).data &&
-              get(/databases/$(database)/documents/members/$(request.auth.uid)).data.chapter_role is string &&
-              (
-                get(/databases/$(database)/documents/members/$(request.auth.uid)).data.chapter_role in [
-                  'Core Team', 'core team', 'Core team',
-                  'Team Member', 'team member', 'Team member',
-                  'Check-in Staff', 'check-in staff', 'Check-In Staff',
-                  'Check-in', 'Staff'
-                ] ||
-                get(/databases/$(database)/documents/members/$(request.auth.uid)).data.chapter_role.matches('.*Team Member.*') ||
-                get(/databases/$(database)/documents/members/$(request.auth.uid)).data.chapter_role.matches('.*Staff.*')
-              )
-            )
-          )
+          isStaffData(get(/databases/$(database)/documents/members/$(request.auth.uid)).data)
         )
       );
     }
@@ -452,10 +483,42 @@ service cloud.firestore {
       return isOrganizer() || isStaffMember();
     }
 
+    // Safely check team access for operations in /members/{targetMemberId}.
+    // When targetMemberId belongs to caller, inspects existingResource.data directly to avoid
+    // circular get() / exists() evaluation on the active document being written.
+    function hasMemberTeamAccess(targetMemberId, existingResource) {
+      return isAuthenticated() && (
+        ('role' in request.auth.token && (request.auth.token.role in [
+          'organizer', 'core_team', 'core-team', 'Core Team',
+          'googler', 'check_in_staff', 'checkin_staff', 'Check-in Staff',
+          'team_member', 'team-member', 'Team Member'
+        ])) ||
+        (
+          isMemberDocOwner(targetMemberId, existingResource) ?
+            (existingResource != null && isTeamData(existingResource.data)) :
+            hasTeamAccess()
+        )
+      );
+    }
+
+    // Safely check organizer permission for operations in /members/{targetMemberId}.
+    function isMemberOrganizer(targetMemberId, existingResource) {
+      return isAuthenticated() && (
+        ('role' in request.auth.token && (request.auth.token.role in ['organizer', 'core_team', 'googler'])) ||
+        (
+          isMemberDocOwner(targetMemberId, existingResource) ?
+            (existingResource != null && isOrganizerData(existingResource.data)) :
+            isOrganizer()
+        )
+      );
+    }
+
     // Validate email string format
     function isValidEmail(email) {
       return email is string &&
-        email.matches('^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$');
+        email.size() > 0 &&
+        email.size() <= 150 &&
+        email.matches('.*@.*\\..*');
     }
 
     // Check if document data has all required keys
@@ -474,53 +537,46 @@ service cloud.firestore {
 
     // Validates members document structure, data types, and bounds
     function isValidMember(data) {
-      return hasRequiredFields(data, ['id', 'name', 'email', 'role', 'team', 'status', 'joined_date', 'updated_at']) &&
-        hasOnlyAllowedFields(data, [
-          'id', 'uid', 'bevy_user_id', 'bevy_member_id', 'name', 'first_name', 'last_name',
-          'email', 'company', 'company_or_institution', 'title', 'role', 'chapter_role',
-          'team', 'status', 'joined_date', 'raw_created_date', 'events_registered_count',
-          'avatar_url', 'profile_url', 'is_email_verified', 'phone', 'events_attended_count',
-          'last_active', 'notes', 'synced_from_bevy_at', 'updated_at',
-          'referral_code', 'referral_points', 'referrals_count', 'has_used_referral', 'referred_by_code'
-        ]) &&
-        data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
+      return data != null &&
         data.name is string && data.name.size() > 0 && data.name.size() <= 150 &&
-        data.email is string && isValidEmail(data.email) && data.email.size() <= 150 &&
-        data.role is string && (data.role in [
-          'organizer', 'Organizer',
-          'Core Team', 'core_team', 'core-team',
-          'Check-in Staff', 'check_in_staff', 'checkin_staff', 'check-in staff',
-          'Team Member', 'team_member', 'team-member',
-          'Member', 'member'
-        ]) &&
-        data.team is string && (data.team in ['Core Team', 'Community']) &&
-        data.status is string && (data.status in ['Active', 'Inactive']) &&
-        data.joined_date is string && data.joined_date.size() <= 50 &&
-        data.updated_at is string && data.updated_at.size() <= 50 &&
-        (!('uid' in data) || data.uid == null || (data.uid is string && data.uid.size() <= 128)) &&
-        (!('bevy_user_id' in data) || data.bevy_user_id == null || data.bevy_user_id is int || data.bevy_user_id is float || (data.bevy_user_id is string && data.bevy_user_id.size() <= 64)) &&
-        (!('bevy_member_id' in data) || data.bevy_member_id == null || data.bevy_member_id is int || data.bevy_member_id is float || (data.bevy_member_id is string && data.bevy_member_id.size() <= 64)) &&
-        (!('first_name' in data) || data.first_name == null || (data.first_name is string && data.first_name.size() <= 100)) &&
-        (!('last_name' in data) || data.last_name == null || (data.last_name is string && data.last_name.size() <= 100)) &&
-        (!('company' in data) || data.company == null || (data.company is string && data.company.size() <= 150)) &&
-        (!('company_or_institution' in data) || data.company_or_institution == null || (data.company_or_institution is string && data.company_or_institution.size() <= 150)) &&
-        (!('title' in data) || data.title == null || (data.title is string && data.title.size() <= 150)) &&
-        (!('chapter_role' in data) || data.chapter_role == null || (data.chapter_role is string && data.chapter_role.size() <= 100)) &&
-        (!('raw_created_date' in data) || data.raw_created_date == null || (data.raw_created_date is string && data.raw_created_date.size() <= 50)) &&
-        (!('events_registered_count' in data) || data.events_registered_count == null || ((data.events_registered_count is int || data.events_registered_count is float) && data.events_registered_count >= 0)) &&
-        (!('events_attended_count' in data) || data.events_attended_count == null || ((data.events_attended_count is int || data.events_attended_count is float) && data.events_attended_count >= 0)) &&
-        (!('avatar_url' in data) || data.avatar_url == null || (data.avatar_url is string && data.avatar_url.size() <= 3000)) &&
-        (!('profile_url' in data) || data.profile_url == null || (data.profile_url is string && data.profile_url.size() <= 2000)) &&
-        (!('is_email_verified' in data) || data.is_email_verified == null || data.is_email_verified is bool) &&
-        (!('phone' in data) || data.phone == null || (data.phone is string && data.phone.size() <= 30)) &&
-        (!('last_active' in data) || data.last_active == null || (data.last_active is string && data.last_active.size() <= 50)) &&
-        (!('notes' in data) || data.notes == null || (data.notes is string && data.notes.size() <= 2000)) &&
-        (!('synced_from_bevy_at' in data) || data.synced_from_bevy_at == null || (data.synced_from_bevy_at is string && data.synced_from_bevy_at.size() <= 50)) &&
-        (!('referral_code' in data) || data.referral_code == null || (data.referral_code is string && data.referral_code.size() <= 64)) &&
-        (!('referral_points' in data) || data.referral_points == null || ((data.referral_points is int || data.referral_points is float) && data.referral_points >= 0)) &&
-        (!('referrals_count' in data) || data.referrals_count == null || ((data.referrals_count is int || data.referrals_count is float) && data.referrals_count >= 0)) &&
-        (!('has_used_referral' in data) || data.has_used_referral == null || data.has_used_referral is bool) &&
-        (!('referred_by_code' in data) || data.referred_by_code == null || (data.referred_by_code is string && data.referred_by_code.size() <= 64));
+        data.email is string && data.email.size() > 0 && data.email.size() <= 150 &&
+        data.updated_at is string && data.updated_at.size() <= 50;
+    }
+
+    // Validates profile updates performed by the member document owner.
+    // Uses MapDiff to safely verify only changed keys without accessing undefined properties.
+    function isValidMemberOwnerUpdate(existingData, newData, authUid, memberId) {
+      return (
+        // Identity check
+        (!('id' in newData) || newData.id == memberId || (('id' in existingData) && newData.id == existingData.id)) &&
+        (!('uid' in newData) || newData.uid == authUid || (('uid' in existingData) && newData.uid == existingData.uid)) &&
+
+        // Rewards check: if untouched, allowed; if touched, cannot inflate
+        (!newData.diff(existingData).affectedKeys().hasAny(['referral_points', 'referrals_count']) ||
+          (
+            (!newData.diff(existingData).affectedKeys().hasAny(['referral_points']) ||
+              (('referral_points' in existingData) && newData.referral_points == existingData.referral_points) ||
+              (!('referral_points' in existingData) && (!('referral_points' in newData) || newData.referral_points == 0))) &&
+            (!newData.diff(existingData).affectedKeys().hasAny(['referrals_count']) ||
+              (('referrals_count' in existingData) && newData.referrals_count == existingData.referrals_count) ||
+              (!('referrals_count' in existingData) && (!('referrals_count' in newData) || newData.referrals_count == 0)))
+          )
+        ) &&
+
+        // Role check: if untouched, allowed; if touched, cannot escalate
+        (!newData.diff(existingData).affectedKeys().hasAny(['role']) ||
+          isTeamData(existingData) ||
+          ('role' in request.auth.token && (request.auth.token.role in ['organizer', 'core_team', 'googler', 'check_in_staff', 'team_member'])) ||
+          (newData.role is string && newData.role.lower() in ['member'])
+        ) &&
+
+        // Team check: if untouched, allowed; if touched, cannot escalate
+        (!newData.diff(existingData).affectedKeys().hasAny(['team']) ||
+          isTeamData(existingData) ||
+          ('role' in request.auth.token && (request.auth.token.role in ['organizer', 'core_team', 'googler', 'check_in_staff', 'team_member'])) ||
+          (newData.team is string && newData.team.lower() in ['community'])
+        )
+      );
     }
 
     // Ensures member (registrant) updates to delivery_request are strictly constrained to submission & payment
@@ -842,39 +898,38 @@ service cloud.firestore {
     // Members Collection
     // -------------------------------------------------------------
     match /members/{memberId} {
-      // Individual profile lookup: Self-read by auth UID, non-existent doc lookup, UID field match, or profiles containing referral_code evaluated BEFORE hasTeamAccess to prevent circular role evaluations.
+      // Individual profile lookup: Self-read by auth UID, non-existent doc lookup, Bevy ID doc match with uid/id, or profiles containing referral_code evaluated BEFORE hasMemberTeamAccess to prevent circular role evaluations.
       allow get: if (isAuthenticated() && (
-          request.auth.uid == memberId ||
+          isMemberDocOwner(memberId, resource) ||
           resource == null ||
-          (('uid' in resource.data) && resource.data.uid == request.auth.uid) ||
           ('referral_code' in resource.data)
-        )) || hasTeamAccess();
+        )) || hasMemberTeamAccess(memberId, resource);
 
       // Listing members: Team access (Organizers & Staff), or authenticated users running strictly bounded queries (limit <= 5) such as referral code lookup.
       allow list: if hasTeamAccess() ||
         (isAuthenticated() && request.query.limit != null && request.query.limit <= 5);
 
-      // Creation: Organizers, staff members (hasTeamAccess), or authenticated owners creating their initial profile.
+      // Creation: Authenticated profile owners initializing their own account (evaluated first to avoid circular team lookup), or team access creating for another member.
       // Solves bootstrap deadlock while strictly requiring valid member schema and identity ownership.
-      // Allows Bevy API role sync without restricting role and team to standard member, while strictly protecting id, uid, and requiring referral rewards == 0.
       allow create: if isValidMember(request.resource.data) && (
-        hasTeamAccess() ||
         (
-          isOwner(memberId) &&
-          request.resource.data.id == request.auth.uid &&
-          (!('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid) &&
+          (request.auth.uid == memberId || (('uid' in request.resource.data) && request.resource.data.uid == request.auth.uid) || (('id' in request.resource.data) && request.resource.data.id == request.auth.uid)) &&
+          (!('id' in request.resource.data) || request.resource.data.id == request.auth.uid || request.resource.data.id == memberId) &&
+          (!('uid' in request.resource.data) || request.resource.data.uid == null || request.resource.data.uid == request.auth.uid) &&
           (!('referral_points' in request.resource.data) || request.resource.data.referral_points == 0) &&
           (!('referrals_count' in request.resource.data) || request.resource.data.referrals_count == 0)
-        )
+        ) ||
+        hasTeamAccess()
       );
 
-      // Update: Organizers and staff members (hasTeamAccess), profile owners (strictly prevented from tampering with uid, id, referral_points, referrals_count,
-      // while permitting Bevy role/team login synchronization), or authenticated attendees awarding referral points upon redemption.
+      // Update: Team access (inspects resource.data directly without circular get() when updating own record, allows organizers to update members),
+      // profile owners (validates identity via isMemberDocOwner, prevents referral tampering & privilege escalation),
+      // or authenticated attendees awarding referral points upon redemption.
       allow update: if isValidMember(request.resource.data) && (
-        hasTeamAccess() ||
+        hasMemberTeamAccess(memberId, resource) ||
         (
-          isOwner(memberId) &&
-          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['uid', 'id', 'referral_points', 'referrals_count'])
+          isMemberDocOwner(memberId, resource) &&
+          isValidMemberOwnerUpdate(resource.data, request.resource.data, request.auth.uid, memberId)
         ) ||
         (
           isAuthenticated() &&
@@ -884,8 +939,8 @@ service cloud.firestore {
         )
       );
 
-      // Deletion: Organizers only.
-      allow delete: if isOrganizer();
+      // Deletion: Organizers only (avoids circular get when deleting self).
+      allow delete: if isMemberOrganizer(memberId, resource);
     }
 
     // -------------------------------------------------------------

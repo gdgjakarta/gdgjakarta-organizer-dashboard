@@ -55,6 +55,8 @@ export function AccountProfileTab({ user, member, onProfileUpdated }: AccountPro
         company: company.trim(),
         company_or_institution: company.trim(),
         notes: notes.trim(),
+        ...(member?.role ? { role: member.role } : {}),
+        ...(member?.team ? { team: member.team } : {}),
       };
 
       await saveFirestoreMember(payload);

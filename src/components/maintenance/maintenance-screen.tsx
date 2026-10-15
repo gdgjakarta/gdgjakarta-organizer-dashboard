@@ -111,7 +111,7 @@ export function MaintenanceScreen({ config, onRefresh }: MaintenanceScreenProps)
             <span className="font-semibold text-foreground text-sm tracking-tight sm:text-base">
               Google Developer Groups
             </span>
-            <span className="font-medium text-muted-foreground text-xs">Jakarta Chapter</span>
+            <span className="font-medium text-muted-foreground text-xs">Jakarta</span>
           </div>
         </div>
 

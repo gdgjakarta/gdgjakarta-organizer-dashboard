@@ -185,31 +185,98 @@ export async function getFirestoreMemberById(memberId: string): Promise<Firestor
 
 export async function saveFirestoreMember(member: Partial<FirestoreMember> | Record<string, unknown>): Promise<void> {
   if (typeof window === "undefined") return;
-  const docRef = doc(db, "members", String(member.id));
+  if (typeof auth.authStateReady === "function") {
+    await auth.authStateReady();
+  }
+  const currentUid = auth.currentUser?.uid;
+  const memberId = String(member.id ?? currentUid ?? "");
+  if (!memberId) return;
+
+  const docRef = doc(db, "members", memberId);
+  const now = new Date().toISOString();
+
   try {
     const snap = await getDoc(docRef);
     if (snap.exists()) {
       const existing = snap.data() as FirestoreMember;
+      // Strip immutable fields so owner diff check strictly passes
+      const {
+        id: _ignoredId,
+        uid: _ignoredUid,
+        referral_points: _ignoredPoints,
+        referrals_count: _ignoredCount,
+        ...allowedUpdateFields
+      } = member as Partial<FirestoreMember>;
+
       const updatePayload: Record<string, unknown> = {
-        ...member,
-        joined_date: existing.joined_date,
-        referral_code: existing.referral_code ?? member.referral_code ?? generateUserReferralCode(String(member.id)),
-        updated_at: new Date().toISOString(),
+        ...allowedUpdateFields,
+        id: existing.id ?? memberId,
+        uid: existing.uid ?? currentUid ?? memberId,
+        joined_date: existing.joined_date || (member.joined_date as string) || now,
+        referral_code: existing.referral_code ?? member.referral_code ?? generateUserReferralCode(memberId),
+        updated_at: now,
       };
+
+      if (existing.role) {
+        updatePayload.role = existing.role;
+      }
+      if (existing.team) {
+        updatePayload.team = existing.team;
+      }
+      if (typeof existing.referral_points === "number") {
+        updatePayload.referral_points = existing.referral_points;
+      }
+      if (typeof existing.referrals_count === "number") {
+        updatePayload.referrals_count = existing.referrals_count;
+      }
+      if (existing.bevy_user_id !== undefined && existing.bevy_user_id !== null) {
+        updatePayload.bevy_user_id = existing.bevy_user_id;
+      }
+      if (existing.bevy_member_id !== undefined && existing.bevy_member_id !== null) {
+        updatePayload.bevy_member_id = existing.bevy_member_id;
+      }
       if (typeof existing.events_registered_count === "number") {
         updatePayload.events_registered_count = existing.events_registered_count;
       }
       if (typeof existing.events_attended_count === "number") {
         updatePayload.events_attended_count = existing.events_attended_count;
       }
+
       const sanitized = sanitizeFirestoreData(updatePayload);
       await setDoc(docRef, sanitized, { merge: true });
       return;
     }
   } catch (err) {
-    console.warn("[Firestore] saveFirestoreMember check error:", err);
+    console.warn("[Firestore] saveFirestoreMember update error:", err);
+    throw err;
   }
-  const sanitized = sanitizeFirestoreData(member);
+
+  // Document does not exist yet: create conforming strictly to isValidMember schema
+  const createPayload: Record<string, unknown> = {
+    id: memberId,
+    uid: currentUid ?? memberId,
+    name: (member.name as string) ?? (member.email as string)?.split("@")[0] ?? "Community Member",
+    email: (member.email as string) ?? auth.currentUser?.email ?? "",
+    role: (member.role as string) ?? "Member",
+    team: (member.team as string) ?? "Community",
+    status: (member.status as string) ?? "Active",
+    joined_date: (member.joined_date as string) ?? now,
+    referral_code: (member.referral_code as string) ?? generateUserReferralCode(memberId),
+    referral_points: 0,
+    referrals_count: 0,
+    has_used_referral: false,
+    updated_at: now,
+    ...member,
+  };
+
+  createPayload.id = memberId;
+  if (currentUid) {
+    createPayload.uid = currentUid;
+  }
+  createPayload.referral_points = 0;
+  createPayload.referrals_count = 0;
+
+  const sanitized = sanitizeFirestoreData(createPayload);
   await setDoc(docRef, sanitized, { merge: true });
 }
 
@@ -3037,6 +3104,9 @@ export async function getMaintenanceConfigDoc(): Promise<MaintenanceConfig> {
 
 export async function saveMaintenanceConfigDoc(config: Partial<MaintenanceConfig>): Promise<void> {
   if (typeof window === "undefined") return;
+  if (typeof auth.authStateReady === "function") {
+    await auth.authStateReady();
+  }
   const docRef = doc(db, "system_settings", "maintenance");
   const sanitized = sanitizeFirestoreData({
     ...config,

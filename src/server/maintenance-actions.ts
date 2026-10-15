@@ -5,7 +5,7 @@ import { cookies } from "next/headers";
 
 import type { MaintenanceConfig } from "@/config/maintenance-config";
 import { isExecutiveOrganizer } from "@/lib/auth-roles";
-import { getMaintenanceConfigServer, saveMaintenanceConfigServer } from "@/server/firestore-admin";
+import { getMaintenanceConfigServer } from "@/server/firestore-admin";
 
 const AUTH_ROLE_COOKIE = "auth_role";
 const AUTH_TOKEN_COOKIE = "auth_token";
@@ -30,8 +30,6 @@ export async function saveMaintenanceConfigAction(
           "Unauthorized: Only Executive Organizers (Leads, Co-Organizers, Googlers) can modify maintenance settings.",
       };
     }
-
-    await saveMaintenanceConfigServer(config);
 
     // Set or clear the fast edge cookie for middleware / initial response
     if (config.enabled) {
