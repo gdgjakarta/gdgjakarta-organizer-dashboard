@@ -21,7 +21,7 @@ export const DEFAULT_MAINTENANCE_CONFIG: MaintenanceConfig = {
     "Our team is currently performing scheduled system updates and improvements. All community services and event registration will resume shortly.",
   estimatedEndTime: null,
   allowOrganizerBypass: true,
-  contactEmail: "organizer@gdgjakarta.org",
+  contactEmail: "info@gdgjakarta.org",
   supportLink: "https://instagram.com/gdgjakarta",
   showSocialLinks: true,
 };

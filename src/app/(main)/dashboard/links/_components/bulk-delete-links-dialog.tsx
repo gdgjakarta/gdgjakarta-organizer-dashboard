@@ -55,7 +55,7 @@ export function BulkDeleteLinksDialog({ open, onOpenChange, links, onLinksDelete
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="sm:max-w-[460px]">
+      <AlertDialogContent className="data-[size=default]:max-w-[calc(100%-2rem)] data-[size=default]:sm:max-w-[460px] sm:max-w-[460px]">
         <AlertDialogHeader>
           <div className="flex items-center gap-2 text-destructive">
             <div className="flex size-8 items-center justify-center rounded-md bg-destructive/10">

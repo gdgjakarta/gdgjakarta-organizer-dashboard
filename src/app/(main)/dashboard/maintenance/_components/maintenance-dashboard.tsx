@@ -421,7 +421,7 @@ export function MaintenanceDashboard({ initialConfig }: MaintenanceDashboardProp
                       type="email"
                       value={config.contactEmail}
                       onChange={(e) => setConfig((prev) => ({ ...prev, contactEmail: e.target.value }))}
-                      placeholder="organizer@gdgjakarta.org"
+                      placeholder="info@gdgjakarta.org"
                     />
                   </div>
 

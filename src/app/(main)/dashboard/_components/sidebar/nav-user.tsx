@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import Link from "next/link";
+
 import {
   CircleUser,
   EllipsisVertical,
@@ -160,9 +162,11 @@ export function NavUser({
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem>
-                <CircleUser />
-                Account
+              <DropdownMenuItem asChild className="cursor-pointer">
+                <Link href="/dashboard/account">
+                  <CircleUser className="size-4" />
+                  <span>Account</span>
+                </Link>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleRefreshCache} disabled={isRefreshing} className="cursor-pointer">
                 <RotateCcw className={`size-4 ${isRefreshing ? "animate-spin" : ""}`} />

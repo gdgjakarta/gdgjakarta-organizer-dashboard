@@ -101,7 +101,7 @@ export function CancelRegistrationDialog({
 
   return (
     <AlertDialog open={open} onOpenChange={(val) => !isCancelling && onOpenChange(val)}>
-      <AlertDialogContent className="max-w-md">
+      <AlertDialogContent className="data-[size=default]:max-w-[calc(100%-2rem)] data-[size=default]:sm:max-w-md sm:max-w-md">
         <AlertDialogHeader>
           <div className="flex items-center gap-2.5 text-destructive">
             <div className="rounded-full bg-destructive/10 p-2">

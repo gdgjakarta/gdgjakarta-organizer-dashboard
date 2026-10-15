@@ -127,7 +127,6 @@ export const organizerSidebarItems: NavGroup[] = [
         title: "Featured Event",
         url: "/dashboard/featured-event",
         icon: Sparkles,
-        badge: "new",
       },
       {
         id: "partnership",

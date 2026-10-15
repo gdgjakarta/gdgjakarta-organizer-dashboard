@@ -89,7 +89,7 @@ export function CapacityFullDialog({
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="z-[70] max-w-lg border-destructive/20 bg-background sm:p-6">
+      <AlertDialogContent className="z-[70] data-[size=default]:max-w-[calc(100%-2rem)] data-[size=default]:sm:max-w-lg max-w-lg sm:max-w-lg border-destructive/20 bg-background sm:p-6">
         <AlertDialogHeader className="space-y-3">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
