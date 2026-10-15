@@ -1,4 +1,3 @@
-import { isAuthorizedOrganizerEmail } from "@/config/auth-config";
 import { BEVY_CONFIG, getBevyAuthCredentials, getBevyRefererUrl } from "@/config/bevy-config";
 import { extractApiMessage, splitFullName } from "@/lib/utils";
 
@@ -23,6 +22,7 @@ import {
   type BevyAttendeesResponse,
   type BevyChapterSlim,
   type BevyChapterTeamMember,
+  type BevyChapterTeamRole,
   type BevyEvent,
   type BevyEventsResponse,
   type BevyMembersResponse,
@@ -285,12 +285,20 @@ export async function getChapterTeam(
   console.log(`[Bevy Auth] Fetching chapter team for chapterId: ${chapterId}`);
 
   // 1. Dedicated chapter team endpoint: /chapter/{chapterId}/team/
-  const teamData = await bevyFetch<{
-    count?: number;
-    results?: BevyChapterTeamMember[];
-  }>(`/chapter/${chapterId}/team/`, {}, chapterId);
+  const teamData = await bevyFetch<
+    | {
+        count?: number;
+        results?: BevyChapterTeamMember[];
+      }
+    | BevyChapterTeamMember[]
+  >(`/chapter/${chapterId}/team/`, {}, chapterId);
 
-  if (teamData?.results && Array.isArray(teamData.results) && teamData.results.length > 0) {
+  if (Array.isArray(teamData) && teamData.length > 0) {
+    console.log(`[Bevy Auth] Retrieved ${teamData.length} team members from /chapter/${chapterId}/team/`);
+    return teamData;
+  }
+
+  if (teamData && "results" in teamData && Array.isArray(teamData.results) && teamData.results.length > 0) {
     console.log(`[Bevy Auth] Retrieved ${teamData.results.length} team members from /chapter/${chapterId}/team/`);
     return teamData.results;
   }
@@ -305,12 +313,18 @@ export async function getChapterTeam(
   }
 
   // 3. Fallback without trailing slash
-  const altData = await bevyFetch<{
-    count?: number;
-    results?: BevyChapterTeamMember[];
-  }>(`/chapter/${chapterId}/team`, {}, chapterId);
+  const altData = await bevyFetch<
+    | {
+        count?: number;
+        results?: BevyChapterTeamMember[];
+      }
+    | BevyChapterTeamMember[]
+  >(`/chapter/${chapterId}/team`, {}, chapterId);
 
-  if (altData?.results && Array.isArray(altData.results) && altData.results.length > 0) {
+  if (Array.isArray(altData) && altData.length > 0) {
+    return altData;
+  }
+  if (altData && "results" in altData && Array.isArray(altData.results) && altData.results.length > 0) {
     return altData.results;
   }
 
@@ -326,6 +340,23 @@ export async function getChapterTeam(
   }
 
   console.warn(`[Bevy Auth] No chapter team found for chapterId: ${chapterId}`);
+  return [];
+}
+
+/**
+ * Retrieve all available chapter roles from Bevy API:
+ * GET /api/chapter_role/
+ */
+export async function getChapterRoles(
+  chapterId: string | number = BEVY_CONFIG.chapterId,
+): Promise<BevyChapterTeamRole[]> {
+  const data = await bevyFetch<{ results?: BevyChapterTeamRole[] } | BevyChapterTeamRole[]>(
+    "/chapter_role/",
+    {},
+    chapterId,
+  );
+  if (Array.isArray(data)) return data;
+  if (data && "results" in data && Array.isArray(data.results)) return data.results;
   return [];
 }
 
@@ -374,7 +405,19 @@ export async function getUserChapterRole(
   }
 
   const roleObj = matchedMember.role;
-  const roleId = typeof roleObj === "object" && roleObj !== null && typeof roleObj.id === "number" ? roleObj.id : null;
+  const roleId =
+    typeof roleObj === "object" && roleObj !== null && typeof roleObj.id === "number"
+      ? roleObj.id
+      : typeof roleObj === "number"
+        ? roleObj
+        : null;
+
+  const roleName =
+    typeof roleObj === "object" && roleObj !== null && typeof roleObj.name === "string"
+      ? roleObj.name
+      : typeof roleObj === "string"
+        ? roleObj
+        : "";
 
   const chapterRole = getChapterRoleById(roleId);
   const isOrganizer = isChapterTeamRole(chapterRole);
@@ -384,8 +427,8 @@ export async function getUserChapterRole(
   if (isOrganizer) {
     if (matchedMember.title?.trim()) {
       roleTitle = matchedMember.title.trim().replace(/\bGdg\b/gi, "GDG");
-    } else if (typeof roleObj === "object" && roleObj !== null && roleObj.name) {
-      roleTitle = roleObj.name.trim().replace(/\bGdg\b/gi, "GDG");
+    } else if (roleName.trim()) {
+      roleTitle = roleName.trim().replace(/\bGdg\b/gi, "GDG");
     } else {
       switch (chapterRole) {
         case ChapterRole.ORGANIZER:
@@ -413,13 +456,13 @@ export async function getUserChapterRole(
 }
 
 /**
- * Refactored authentication & role resolution matching KawalEvent:
+ * Authentication & role resolution matching KawalEvent:
  * 1. Calls Bevy API getMemberById(email) to resolve the user and their numerical Bevy ID.
  *    If the response from Bevy is not success or 200, member is new and hasn't registered on Bevy;
  *    dispatches GDG Jakarta API import-member webhook (same auth as Send Bulk Email).
- * 2. Uses getUserChapterRole(bevyUserId) to compare against getChapterTeam results.
- * 3. Inspects role ID: 1 -> ORGANIZER, 2/3 -> CORE_TEAM, 4 -> GOOGLER, else -> MEMBER.
- * 4. Checks whitelist isAuthorizedOrganizerEmail as a fallback safeguard.
+ * 2. Uses getUserChapterRole(bevyUserId) to match against /chapter/{chapterId}/team/ results.
+ * 3. Evaluates role dynamically from Bevy team role object (Role ID: 1 -> ORGANIZER, 2/3 -> CORE_TEAM, 4 -> GOOGLER).
+ * 4. Strictly evaluated from Bevy API with NO hardcoded email or domain whitelists.
  */
 export async function validateBevyOrganizer(
   email: string,
@@ -477,7 +520,6 @@ export async function validateBevyOrganizer(
       if (importResult.success) {
         wasImported = true;
         console.log(`[Bevy Auth Flow] Successfully triggered import-member for ${normalizedEmail}.`);
-        // Leave bevyUserId and bevyUser null so initial Firestore sync writes bevy_user_id: null
         bevyUser = null;
         bevyUserId = null;
       } else {
@@ -485,17 +527,26 @@ export async function validateBevyOrganizer(
       }
     }
 
-    // Step 2: If Bevy user found, query chapter team role using Bevy User ID (like KawalEvent getUserChapterRole)
+    // Step 2: Query chapter team role using Bevy User ID from /chapter/{chapterId}/team/
     if (bevyUserId) {
       const chapterRoleResult = await getUserChapterRole(bevyUserId);
       console.log(
-        `[Bevy Auth Flow] Chapter role resolution: ${chapterRoleResult.chapterRole} (RoleId: ${chapterRoleResult.roleId}, Title: "${chapterRoleResult.roleTitle}")`,
+        `[Bevy Auth Flow] Chapter role resolution for Bevy ID ${bevyUserId}: ${chapterRoleResult.chapterRole} (RoleId: ${chapterRoleResult.roleId}, Title: "${chapterRoleResult.roleTitle}")`,
       );
 
       if (chapterRoleResult.isValidOrganizer) {
+        let role = "core_team";
+        if (chapterRoleResult.roleId === 1 || chapterRoleResult.chapterRole === ChapterRole.ORGANIZER) {
+          role = "organizer";
+        } else if (chapterRoleResult.roleId === 3) {
+          role = "check_in_staff";
+        } else if (chapterRoleResult.chapterRole === ChapterRole.GOOGLER) {
+          role = "googler";
+        }
+
         return {
           isValidOrganizer: true,
-          role: "organizer",
+          role,
           chapterRole: chapterRoleResult.roleTitle,
           chapterRoleType: chapterRoleResult.chapterRole,
           roleId: chapterRoleResult.roleId,
@@ -508,24 +559,7 @@ export async function validateBevyOrganizer(
       }
     }
 
-    // Step 3: Whitelist fallback check (for accounts specified in cfg_organizer_emails or ORGANIZER_EMAILS)
-    const isWhitelisted = await isAuthorizedOrganizerEmail(normalizedEmail);
-    if (isWhitelisted) {
-      console.log(`[Bevy Auth Flow] Whitelist fallback MATCHED for: ${normalizedEmail}`);
-      return {
-        isValidOrganizer: true,
-        role: "organizer",
-        chapterRole: "Organizer",
-        chapterRoleType: ChapterRole.ORGANIZER,
-        roleId: 1,
-        roleTitle: "Organizer",
-        bevyUserId,
-        bevyUser: bevyUser ?? null,
-        wasImported,
-      };
-    }
-
-    // Step 4: Default regular Community Member
+    // Step 3: Regular Community Member (No hardcoded whitelist fallback!)
     console.log(`[Bevy Auth Flow] Regular community Member: ${normalizedEmail}`);
     return {
       isValidOrganizer: false,

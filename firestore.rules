@@ -354,27 +354,10 @@ service cloud.firestore {
     }
 
     // Dynamic Organizer Verification:
-    // Evaluates custom auth claims, verified bootstrap organizer emails (@gdgjakarta.org or authorized chapter organizer emails),
-    // or organizer role / chapter role / Core Team membership in the members collection.
+    // Evaluates custom auth claims or organizer role / chapter role / Core Team membership in the members collection.
     function isOrganizer() {
       return isAuthenticated() && (
         ('role' in request.auth.token && (request.auth.token.role in ['organizer', 'core_team', 'googler'])) ||
-        (
-          'email' in request.auth.token && request.auth.token.email is string &&
-          (
-            request.auth.token.email.lower().matches('^[a-z0-9._%+-]+@gdgjakarta\\.org$') ||
-            request.auth.token.email.lower() in [
-              'info@gdgjakarta.org',
-              'fachridantm@gmail.com',
-              'rizfirsy@gmail.com',
-              'anggi.hadaya@gmail.com',
-              'abadisuryo@gmail.com',
-              'anggitapinasthika@gmail.com',
-              'mukhammadnurprasaja@gmail.com',
-              'andiwijaya@gmail.com'
-            ]
-          )
-        ) ||
         (
           exists(/databases/$(database)/documents/members/$(request.auth.uid)) &&
           (
@@ -400,21 +383,10 @@ service cloud.firestore {
     }
 
     // Staff Member Verification:
-    // Evaluates verified bootstrap staff emails, custom auth claims, or member document role / chapter_role / team for operational staff roles
+    // Evaluates custom auth claims or member document role / chapter_role / team for operational staff roles
     // ('Core Team', 'Check-in Staff', 'Team Member', and their kebab/snake case variations).
     function isStaffMember() {
       return isAuthenticated() && (
-        (
-          'email' in request.auth.token && request.auth.token.email is string &&
-          (
-            request.auth.token.email.lower().matches('^[a-z0-9._%+-]+@nusantarabetastudio\\.com$') ||
-            request.auth.token.email.lower().matches('^[a-z0-9._%+-]+@bangkit\\.academy$') ||
-            request.auth.token.email.lower() in [
-              'fachridan@nusantarabetastudio.com',
-              'fachridantm@bangkit.academy'
-            ]
-          )
-        ) ||
         ('role' in request.auth.token && (
           request.auth.token.role in [
             'core_team', 'core-team', 'Core Team',
@@ -840,6 +812,7 @@ service cloud.firestore {
 
       // Creation: Organizers, staff members (hasTeamAccess), or authenticated owners creating their initial profile.
       // Solves bootstrap deadlock while strictly requiring valid member schema and identity ownership.
+      // Prevents privilege escalation by ensuring unprivileged owners can only create standard member/community profiles with zero referral points.
       allow create: if isValidMember(request.resource.data) && (
         hasTeamAccess() ||
         (
@@ -847,7 +820,10 @@ service cloud.firestore {
           request.resource.data.id == request.auth.uid &&
           (!('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid) &&
           (!('referral_points' in request.resource.data) || request.resource.data.referral_points == 0) &&
-          (!('referrals_count' in request.resource.data) || request.resource.data.referrals_count == 0)
+          (!('referrals_count' in request.resource.data) || request.resource.data.referrals_count == 0) &&
+          request.resource.data.role in ['Member', 'member'] &&
+          request.resource.data.team == 'Community' &&
+          (!('chapter_role' in request.resource.data) || request.resource.data.chapter_role == null || request.resource.data.chapter_role in ['Member', 'member'])
         )
       );
 
@@ -857,7 +833,7 @@ service cloud.firestore {
         hasTeamAccess() ||
         (
           isOwner(memberId) &&
-          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'team', 'uid', 'id', 'referral_points', 'referrals_count'])
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'team', 'chapter_role', 'uid', 'id', 'referral_points', 'referrals_count'])
         ) ||
         (
           isAuthenticated() &&

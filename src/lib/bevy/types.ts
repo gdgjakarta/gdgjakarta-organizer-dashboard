@@ -41,13 +41,35 @@ export interface BevyUser {
   }>;
 }
 
+export interface BevyChapterTeamRole {
+  id: number;
+  name: string;
+  description?: string | null;
+  permissions_display?: string | null;
+  user_count?: number;
+  name_translated?: string | null;
+  description_translated?: string | null;
+}
+
 export interface BevyChapterTeamMember {
   id: number | string;
-  user_id: number | string;
-  role: string | { id?: number; name?: string; description?: string };
+  user_id?: number | string;
+  role: string | number | BevyChapterTeamRole;
   user?: BevyUser;
   chapter_id?: number | string;
+  chapter?: {
+    id: number | string;
+    title: string;
+    chapter_location?: string;
+  };
   title?: string;
+  visible?: boolean;
+  order?: number;
+  created_date?: string;
+  activated_date?: string;
+  user_can_edit?: boolean;
+  is_chapter_leader?: boolean;
+  is_payment_lead?: boolean;
 }
 
 export interface BevyChapterMember {

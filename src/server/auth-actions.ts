@@ -238,7 +238,7 @@ export async function handleUserPostLoginAction(params: UserAuthSyncParams): Pro
       };
     }
 
-    // 1. Validate role against authorized whitelist and exact Bevy Chapter Team using the verified email
+    // 1. Validate role directly against Bevy API (/chapter/{chapterId}/team/) using verified email and Bevy User ID
     let validation: OrganizerValidationResult = {
       isValidOrganizer: false,
       role: "Member",

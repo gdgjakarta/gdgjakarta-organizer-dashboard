@@ -129,7 +129,10 @@ export async function resolveAudienceRecipientsAction(
         .filter((tm) => Boolean(tm.user?.email))
         .map((tm) => {
           const email = (tm.user?.email || "").trim().toLowerCase();
-          const roleTitle = typeof tm.role === "string" ? tm.role : tm.role?.name || tm.title || "Chapter Team";
+          const roleTitle =
+            typeof tm.role === "string"
+              ? tm.role
+              : (typeof tm.role === "object" && tm.role !== null ? tm.role.name : null) || tm.title || "Chapter Team";
           const fullName =
             tm.user?.full_name || [tm.user?.first_name, tm.user?.last_name].filter(Boolean).join(" ") || "Team Member";
           return {
