@@ -5,11 +5,10 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import {
   Calendar,
   CalendarX,
-  Check,
   CheckCircle2,
   Copy,
   Edit2,
-  Filter,
+  Eye,
   Info,
   Layers,
   Loader2,
@@ -49,10 +48,11 @@ import {
 } from "@/lib/events/voucher-templates";
 import { formatVoucherDiscountDisplay } from "@/lib/events/voucher-utils";
 import { updateEventReferralConfigAction, updateEventVouchersAction } from "@/lib/firestore/actions";
-import type { EventVoucher, FirestoreEvent, VoucherAppliesTo, VoucherStatus } from "@/lib/firestore/types";
+import type { EventVoucher, FirestoreEvent, VoucherStatus } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
 import { VoucherDialog } from "./voucher-dialog";
+import { VoucherRedemptionsDialog } from "./voucher-redemptions-dialog";
 
 interface VouchersTabProps {
   event: FirestoreEvent;
@@ -61,7 +61,9 @@ interface VouchersTabProps {
 export function VouchersTab({ event }: VouchersTabProps) {
   const [vouchers, setVouchers] = useState<EventVoucher[]>(event.vouchers ?? []);
   const [editingVoucher, setEditingVoucher] = useState<EventVoucher | null>(null);
+  const [viewingRedemptionsVoucher, setViewingRedemptionsVoucher] = useState<EventVoucher | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isRedemptionsDialogOpen, setIsRedemptionsDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [targetFilter, setTargetFilter] = useState<string>("all");
@@ -198,6 +200,11 @@ export function VouchersTab({ event }: VouchersTabProps) {
     setIsDialogOpen(true);
   };
 
+  const handleViewRedemptions = (v: EventVoucher) => {
+    setViewingRedemptionsVoucher(v);
+    setIsRedemptionsDialogOpen(true);
+  };
+
   const handleEdit = (v: EventVoucher) => {
     setEditingVoucher(v);
     setIsDialogOpen(true);
@@ -293,9 +300,9 @@ export function VouchersTab({ event }: VouchersTabProps) {
               <Tag className="size-3.5 text-primary" />
               Total Vouchers
             </CardDescription>
-            <CardTitle className="text-2xl font-bold">{metrics.total}</CardTitle>
+            <CardTitle className="font-bold text-2xl">{metrics.total}</CardTitle>
           </CardHeader>
-          <CardContent className="px-4 pb-4 pt-0">
+          <CardContent className="px-4 pt-0 pb-4">
             <p className="text-[11px] text-muted-foreground">{metrics.active} active vouchers</p>
           </CardContent>
         </Card>
@@ -306,11 +313,11 @@ export function VouchersTab({ event }: VouchersTabProps) {
               <CheckCircle2 className="size-3.5 text-emerald-500" />
               Active Codes
             </CardDescription>
-            <CardTitle className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+            <CardTitle className="font-bold text-2xl text-emerald-600 dark:text-emerald-400">
               {metrics.active}
             </CardTitle>
           </CardHeader>
-          <CardContent className="px-4 pb-4 pt-0">
+          <CardContent className="px-4 pt-0 pb-4">
             <p className="text-[11px] text-muted-foreground">Ready for redemption</p>
           </CardContent>
         </Card>
@@ -321,11 +328,11 @@ export function VouchersTab({ event }: VouchersTabProps) {
               <Users className="size-3.5 text-blue-500" />
               Total Redemptions
             </CardDescription>
-            <CardTitle className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+            <CardTitle className="font-bold text-2xl text-blue-600 dark:text-blue-400">
               {metrics.totalRedeemed}
             </CardTitle>
           </CardHeader>
-          <CardContent className="px-4 pb-4 pt-0">
+          <CardContent className="px-4 pt-0 pb-4">
             <p className="text-[11px] text-muted-foreground">Used across registrations</p>
           </CardContent>
         </Card>
@@ -336,11 +343,11 @@ export function VouchersTab({ event }: VouchersTabProps) {
               <Layers className="size-3.5 text-purple-500" />
               Coverage
             </CardDescription>
-            <CardTitle className="text-2xl font-bold text-foreground">
+            <CardTitle className="font-bold text-2xl text-foreground">
               {metrics.ticketVouchers} / {metrics.merchVouchers}
             </CardTitle>
           </CardHeader>
-          <CardContent className="px-4 pb-4 pt-0">
+          <CardContent className="px-4 pt-0 pb-4">
             <p className="text-[11px] text-muted-foreground">Tickets / Merch eligible</p>
           </CardContent>
         </Card>
@@ -355,7 +362,7 @@ export function VouchersTab({ event }: VouchersTabProps) {
                 <Share2 className="size-4" />
               </div>
               <div>
-                <CardTitle className="text-sm font-semibold">Event Referral Program</CardTitle>
+                <CardTitle className="font-semibold text-sm">Event Referral Program</CardTitle>
                 <CardDescription className="text-xs">
                   Configure whether attendee referral codes can be applied for tickets to this event and customize the
                   discount rate.
@@ -365,7 +372,7 @@ export function VouchersTab({ event }: VouchersTabProps) {
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2">
                 <Switch id="referral-enabled-toggle" checked={referralEnabled} onCheckedChange={setReferralEnabled} />
-                <label htmlFor="referral-enabled-toggle" className="cursor-pointer text-xs font-medium text-foreground">
+                <label htmlFor="referral-enabled-toggle" className="cursor-pointer font-medium text-foreground text-xs">
                   {referralEnabled ? "Enabled" : "Disabled"}
                 </label>
               </div>
@@ -374,7 +381,7 @@ export function VouchersTab({ event }: VouchersTabProps) {
         </CardHeader>
 
         {isGloballyExcluded ? (
-          <div className="mx-4 mb-2 flex items-center gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-800 dark:text-amber-300">
+          <div className="mx-4 mb-2 flex items-center gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2.5 text-amber-800 text-xs dark:text-amber-300">
             <CalendarX className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
             <div className="flex-1">
               <span className="font-semibold">Globally Excluded: </span>
@@ -383,7 +390,7 @@ export function VouchersTab({ event }: VouchersTabProps) {
             </div>
           </div>
         ) : globalIneligibilityReason ? (
-          <div className="mx-4 mb-2 flex items-center gap-2.5 rounded-lg border border-border bg-muted/40 p-2.5 text-xs text-muted-foreground">
+          <div className="mx-4 mb-2 flex items-center gap-2.5 rounded-lg border border-border bg-muted/40 p-2.5 text-muted-foreground text-xs">
             <Info className="size-4 shrink-0 text-primary" />
             <div className="flex-1">
               <span className="font-semibold text-foreground">Global Condition Notice: </span>
@@ -396,16 +403,16 @@ export function VouchersTab({ event }: VouchersTabProps) {
           <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
             {/* Segmented selector for Discount Type */}
             <div className="flex flex-col gap-1">
-              <span className="text-[11px] font-medium text-muted-foreground">Discount Type:</span>
+              <span className="font-medium text-[11px] text-muted-foreground">Discount Type:</span>
               <div className="flex items-center gap-1 rounded-lg border bg-muted/40 p-0.5">
                 <button
                   type="button"
                   disabled={!referralEnabled}
                   onClick={() => setReferralDiscountType("percentage")}
                   className={cn(
-                    "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all disabled:opacity-50",
+                    "flex items-center gap-1.5 rounded-md px-2.5 py-1 font-medium text-xs transition-all disabled:opacity-50",
                     referralDiscountType === "percentage"
-                      ? "bg-background text-foreground shadow-xs font-semibold"
+                      ? "bg-background font-semibold text-foreground shadow-xs"
                       : "text-muted-foreground hover:text-foreground",
                   )}
                 >
@@ -417,9 +424,9 @@ export function VouchersTab({ event }: VouchersTabProps) {
                   disabled={!referralEnabled}
                   onClick={() => setReferralDiscountType("fixed")}
                   className={cn(
-                    "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-all disabled:opacity-50",
+                    "flex items-center gap-1.5 rounded-md px-2.5 py-1 font-medium text-xs transition-all disabled:opacity-50",
                     referralDiscountType === "fixed"
-                      ? "bg-background text-foreground shadow-xs font-semibold"
+                      ? "bg-background font-semibold text-foreground shadow-xs"
                       : "text-muted-foreground hover:text-foreground",
                   )}
                 >
@@ -434,7 +441,7 @@ export function VouchersTab({ event }: VouchersTabProps) {
               <div className="w-full max-w-[200px]">
                 <label
                   htmlFor="event-referral-discount-input"
-                  className="text-[11px] font-medium text-muted-foreground block mb-1"
+                  className="mb-1 block font-medium text-[11px] text-muted-foreground"
                 >
                   Discount Percentage (%):
                 </label>
@@ -448,21 +455,21 @@ export function VouchersTab({ event }: VouchersTabProps) {
                     value={referralDiscountOverride}
                     onChange={(e) => setReferralDiscountOverride(e.target.value)}
                     disabled={!referralEnabled}
-                    className="h-8 text-xs pr-7 font-mono"
+                    className="h-8 pr-7 font-mono text-xs"
                   />
-                  <Percent className="absolute right-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                  <Percent className="pointer-events-none absolute top-1/2 right-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
                 </div>
               </div>
             ) : (
               <div className="w-full max-w-[200px]">
                 <label
                   htmlFor="event-referral-fixed-input"
-                  className="text-[11px] font-medium text-muted-foreground block mb-1"
+                  className="mb-1 block font-medium text-[11px] text-muted-foreground"
                 >
                   Fixed Discount (Rp):
                 </label>
                 <div className="relative">
-                  <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-medium text-muted-foreground">
+                  <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 font-medium text-muted-foreground text-xs">
                     Rp
                   </span>
                   <Input
@@ -474,13 +481,13 @@ export function VouchersTab({ event }: VouchersTabProps) {
                     value={referralDiscountAmount}
                     onChange={(e) => setReferralDiscountAmount(e.target.value)}
                     disabled={!referralEnabled}
-                    className="h-8 text-xs pl-8 font-mono"
+                    className="h-8 pl-8 font-mono text-xs"
                   />
                 </div>
               </div>
             )}
 
-            <p className="text-[11px] text-muted-foreground sm:pt-4 max-w-sm">
+            <p className="max-w-sm text-[11px] text-muted-foreground sm:pt-4">
               {referralDiscountType === "percentage"
                 ? referralDiscountOverride.trim() !== ""
                   ? `Overrides the global default with a fixed ${referralDiscountOverride}% ticket discount for this event.`
@@ -494,7 +501,7 @@ export function VouchersTab({ event }: VouchersTabProps) {
             size="sm"
             onClick={handleSaveReferralConfig}
             disabled={isSavingReferral}
-            className="h-8 self-end sm:self-center text-xs shrink-0"
+            className="h-8 shrink-0 self-end text-xs sm:self-center"
           >
             {isSavingReferral && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
             Save Referral Settings
@@ -506,7 +513,7 @@ export function VouchersTab({ event }: VouchersTabProps) {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-1 flex-wrap items-center gap-2">
           <div className="relative min-w-[200px] flex-1 sm:max-w-xs">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -554,10 +561,10 @@ export function VouchersTab({ event }: VouchersTabProps) {
                 <DropdownMenuItem
                   key={tpl.id}
                   onClick={() => handleApplyTemplate(tpl)}
-                  className="flex flex-col items-start gap-0.5 py-2 text-xs cursor-pointer"
+                  className="flex cursor-pointer flex-col items-start gap-0.5 py-2 text-xs"
                 >
                   <span className="font-semibold text-foreground">{tpl.name}</span>
-                  <span className="text-[11px] text-muted-foreground line-clamp-1">{tpl.description}</span>
+                  <span className="line-clamp-1 text-[11px] text-muted-foreground">{tpl.description}</span>
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>
@@ -577,7 +584,7 @@ export function VouchersTab({ event }: VouchersTabProps) {
             <TicketPercent className="size-6" />
           </div>
           <h3 className="mt-4 font-semibold text-foreground text-sm">No vouchers found</h3>
-          <p className="mt-1 text-muted-foreground text-xs max-w-sm mx-auto">
+          <p className="mx-auto mt-1 max-w-sm text-muted-foreground text-xs">
             {vouchers.length === 0
               ? "Create promo codes to give community discounts on event tickets and official merchandise."
               : "No vouchers match your search and filter criteria."}
@@ -603,15 +610,15 @@ export function VouchersTab({ event }: VouchersTabProps) {
               <Card
                 key={v.id}
                 className={cn(
-                  "relative flex flex-col justify-between overflow-hidden transition-all duration-200 shadow-xs",
-                  v.status === "inactive" && "opacity-75 bg-muted/20 border-dashed",
+                  "relative flex flex-col justify-between overflow-hidden shadow-xs transition-all duration-200",
+                  v.status === "inactive" && "border-dashed bg-muted/20 opacity-75",
                 )}
               >
-                <CardHeader className="p-4 pb-3 space-y-2.5">
+                <CardHeader className="space-y-2.5 p-4 pb-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold text-foreground text-sm tracking-wider">{v.code}</span>
+                        <span className="font-bold font-mono text-foreground text-sm tracking-wider">{v.code}</span>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -668,6 +675,9 @@ export function VouchersTab({ event }: VouchersTabProps) {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleViewRedemptions(v)} className="gap-2 text-xs">
+                            <Users className="size-3.5" /> View Redemptions
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleEdit(v)} className="gap-2 text-xs">
                             <Edit2 className="size-3.5" /> Edit
                           </DropdownMenuItem>
@@ -677,7 +687,7 @@ export function VouchersTab({ event }: VouchersTabProps) {
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
                             onClick={() => handleDelete(v.id, v.code)}
-                            className="gap-2 text-xs text-destructive focus:text-destructive"
+                            className="gap-2 text-destructive text-xs focus:text-destructive"
                           >
                             <Trash2 className="size-3.5" /> Delete
                           </DropdownMenuItem>
@@ -687,19 +697,32 @@ export function VouchersTab({ event }: VouchersTabProps) {
                   </div>
 
                   {v.description && (
-                    <p className="text-muted-foreground text-xs line-clamp-2 leading-relaxed">{v.description}</p>
+                    <p className="line-clamp-2 text-muted-foreground text-xs leading-relaxed">{v.description}</p>
                   )}
                 </CardHeader>
 
-                <CardContent className="p-4 pt-0 space-y-3">
+                <CardContent className="space-y-3 p-4 pt-0">
                   {/* Quota & Redemptions Progress */}
                   <div className="space-y-1">
-                    <div className="flex items-center justify-between text-[11px] text-muted-foreground font-medium">
+                    <div className="flex items-center justify-between font-medium text-[11px] text-muted-foreground">
                       <span>Redemptions</span>
-                      <span className="font-mono">
-                        {v.times_used || 0}
-                        {v.usage_limit ? ` / ${v.usage_limit}` : " used"}
-                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleViewRedemptions(v)}
+                        className={cn(
+                          "flex items-center gap-1 font-mono text-xs transition-colors hover:underline",
+                          (v.times_used || 0) > 0
+                            ? "cursor-pointer font-semibold text-primary hover:text-primary/80"
+                            : "cursor-pointer hover:text-foreground",
+                        )}
+                        title="View attendees who redeemed this voucher"
+                      >
+                        <span>
+                          {v.times_used || 0}
+                          {v.usage_limit ? ` / ${v.usage_limit}` : " used"}
+                        </span>
+                        <Eye className="ml-0.5 size-3 opacity-70" />
+                      </button>
                     </div>
                     {usagePercent !== null && (
                       <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
@@ -746,6 +769,15 @@ export function VouchersTab({ event }: VouchersTabProps) {
         onOpenChange={setIsDialogOpen}
         voucher={editingVoucher}
         onSave={handleSaveVoucher}
+      />
+
+      {/* ── VOUCHER REDEMPTIONS DIALOG ──────────────────────────────────── */}
+      <VoucherRedemptionsDialog
+        open={isRedemptionsDialogOpen}
+        onOpenChange={setIsRedemptionsDialogOpen}
+        voucher={viewingRedemptionsVoucher}
+        eventId={String(event.id)}
+        eventTitle={event.title}
       />
 
       {/* ── FLOATING SAVE BAR ────────────────────────────────────────────── */}

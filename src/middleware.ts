@@ -32,6 +32,7 @@ const EXECUTIVE_ORGANIZER_ONLY_PREFIXES = [
   "/dashboard/crm",
   "/dashboard/roles",
   "/dashboard/links",
+  "/dashboard/maintenance",
 ];
 
 /**
@@ -109,7 +110,13 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL(target, request.url));
   }
 
-  return NextResponse.next();
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-pathname", pathname);
+  return NextResponse.next({
+    request: {
+      headers: requestHeaders,
+    },
+  });
 }
 
 export const config = {

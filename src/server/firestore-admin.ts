@@ -440,3 +440,39 @@ export async function updateFirestoreEventShortLinksServer(
     console.warn(`[Firestore Server] updateFirestoreEventShortLinksServer error for ${eventId}:`, err);
   }
 }
+
+import { DEFAULT_MAINTENANCE_CONFIG, type MaintenanceConfig } from "@/config/maintenance-config";
+
+/**
+ * Loads maintenance settings from Firestore on the server (Node/RSC).
+ */
+export async function getMaintenanceConfigServer(): Promise<MaintenanceConfig> {
+  try {
+    const db = getServerFirestoreLite();
+    const docRef = doc(db, "system_settings", "maintenance");
+    const snap = await getDoc(docRef);
+    if (!snap.exists()) return DEFAULT_MAINTENANCE_CONFIG;
+    return { ...DEFAULT_MAINTENANCE_CONFIG, ...(snap.data() as Partial<MaintenanceConfig>) };
+  } catch (err) {
+    console.error("[Firestore Server] getMaintenanceConfigServer error:", err);
+    return DEFAULT_MAINTENANCE_CONFIG;
+  }
+}
+
+/**
+ * Saves maintenance settings to Firestore on the server.
+ */
+export async function saveMaintenanceConfigServer(config: Partial<MaintenanceConfig>): Promise<void> {
+  try {
+    const db = getServerFirestoreLite();
+    const docRef = doc(db, "system_settings", "maintenance");
+    const payload = sanitizePayload({
+      ...config,
+      updatedAt: new Date().toISOString(),
+    });
+    await setDoc(docRef, payload, { merge: true });
+  } catch (err) {
+    console.error("[Firestore Server] saveMaintenanceConfigServer error:", err);
+    throw err;
+  }
+}

@@ -690,3 +690,5 @@ export interface FirestoreSyncMetadata {
   error_message?: string;
   synced_by?: string;
 }
+
+export type { MaintenanceConfig } from "@/config/maintenance-config";

@@ -3026,3 +3026,56 @@ export function subscribeFirestoreEventDoc(
     },
   );
 }
+
+// ── Maintenance Settings ───────────────────────────────────────────────────
+
+import { DEFAULT_MAINTENANCE_CONFIG, type MaintenanceConfig } from "@/config/maintenance-config";
+
+export async function getMaintenanceConfigDoc(): Promise<MaintenanceConfig> {
+  if (typeof window === "undefined") return DEFAULT_MAINTENANCE_CONFIG;
+  try {
+    const docRef = doc(db, "system_settings", "maintenance");
+    const snap = await getDoc(docRef);
+    if (!snap.exists()) return DEFAULT_MAINTENANCE_CONFIG;
+    return { ...DEFAULT_MAINTENANCE_CONFIG, ...(snap.data() as Partial<MaintenanceConfig>) };
+  } catch (error) {
+    console.error("[Firestore] getMaintenanceConfigDoc error:", error);
+    return DEFAULT_MAINTENANCE_CONFIG;
+  }
+}
+
+export async function saveMaintenanceConfigDoc(config: Partial<MaintenanceConfig>): Promise<void> {
+  if (typeof window === "undefined") return;
+  const docRef = doc(db, "system_settings", "maintenance");
+  const sanitized = sanitizeFirestoreData({
+    ...config,
+    updatedAt: new Date().toISOString(),
+  });
+  await setDoc(docRef, sanitized, { merge: true });
+}
+
+export function subscribeMaintenanceConfigDoc(
+  onUpdate: (config: MaintenanceConfig) => void,
+  onError?: (error: Error) => void,
+): () => void {
+  if (typeof window === "undefined") {
+    return () => {
+      // No-op for server-side execution
+    };
+  }
+  const docRef = doc(db, "system_settings", "maintenance");
+  return onSnapshot(
+    docRef,
+    (snap) => {
+      if (snap.exists()) {
+        onUpdate({ ...DEFAULT_MAINTENANCE_CONFIG, ...(snap.data() as Partial<MaintenanceConfig>) });
+      } else {
+        onUpdate(DEFAULT_MAINTENANCE_CONFIG);
+      }
+    },
+    (err) => {
+      console.warn("[Firestore] subscribeMaintenanceConfigDoc error:", err);
+      onError?.(err);
+    },
+  );
+}

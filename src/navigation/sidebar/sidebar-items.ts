@@ -16,6 +16,7 @@ import {
   SquareArrowUpRight,
   Trophy,
   Users,
+  Wrench,
 } from "lucide-react";
 
 export type NavBadge = "new" | "soon" | "preview" | (string & {});
@@ -139,6 +140,12 @@ export const organizerSidebarItems: NavGroup[] = [
         title: "FAQ & Policy",
         url: "/dashboard/faq",
         icon: HelpCircle,
+      },
+      {
+        id: "maintenance",
+        title: "Maintenance Mode",
+        url: "/dashboard/maintenance",
+        icon: Wrench,
       },
       {
         id: "others",

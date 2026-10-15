@@ -319,8 +319,8 @@ service cloud.firestore {
     //   - delete: Team access (Organizers & Staff).
     //
     // Collection: system_settings
-    // Document ID: settingId (e.g. 'referral')
-    // Fields:
+    // Document ID: settingId (e.g. 'referral', 'maintenance')
+    // Fields ('referral'):
     //   - id: string|null (optional, <= 128 chars) - Setting document identifier
     //   - default_discount_type: string|null (optional) - Master default discount type ('percentage'|'fixed')
     //   - default_discount_percentage: int|float|null (optional, 0..100) - Default referral discount percentage
@@ -333,6 +333,20 @@ service cloud.firestore {
     //   - auto_exclude_roles: list|null (optional, <= 20 items) - Roles automatically excluded from leaderboard/rewards (e.g. ['googler', 'organizer', 'team_member'])
     //   - updated_at: string|null (optional, <= 100 chars) - Last update timestamp
     //   - updated_by_name: string|null (optional, <= 200 chars) - Updater display name
+    // Fields ('maintenance'):
+    //   - id: string|null (optional, <= 128 chars) - Setting document identifier
+    //   - enabled: bool|null (optional) - Maintenance mode toggle
+    //   - title: string|null (optional, <= 200 chars) - Maintenance page title
+    //   - headline: string|null (optional, <= 300 chars) - Maintenance page headline
+    //   - message: string|null (optional, <= 2000 chars) - Maintenance message / details
+    //   - estimatedEndTime: string|null (optional, <= 100 chars) - Estimated completion timestamp or date string
+    //   - allowOrganizerBypass: bool|null (optional) - Allow organizers to bypass maintenance mode
+    //   - contactEmail: string|null (optional, <= 200 chars) - Contact email address
+    //   - supportLink: string|null (optional, <= 500 chars) - Support / social URL
+    //   - showSocialLinks: bool|null (optional) - Display social links toggle
+    //   - updatedAt: string|null (optional, <= 100 chars) - Last update timestamp
+    //   - updatedBy: string|null (optional, <= 128 chars) - Updater UID
+    //   - updatedByName: string|null (optional, <= 200 chars) - Updater display name
     // Permissions:
     //   - read: Allowed for authenticated users and public visitors.
     //   - create, update, delete: Team access (Organizers & Staff / Core Team).
@@ -793,6 +807,28 @@ service cloud.firestore {
       );
     }
 
+    // Validates maintenance system_settings document structure, data types, and bounds
+    function isValidMaintenanceSetting(data) {
+      return hasOnlyAllowedFields(data, [
+        'id', 'enabled', 'title', 'headline', 'message', 'estimatedEndTime',
+        'allowOrganizerBypass', 'contactEmail', 'supportLink', 'showSocialLinks',
+        'updatedAt', 'updatedBy', 'updatedByName'
+      ]) &&
+        (!('id' in data) || data.id == null || (data.id is string && data.id.size() <= 128)) &&
+        (!('enabled' in data) || data.enabled == null || data.enabled is bool) &&
+        (!('title' in data) || data.title == null || (data.title is string && data.title.size() <= 200)) &&
+        (!('headline' in data) || data.headline == null || (data.headline is string && data.headline.size() <= 300)) &&
+        (!('message' in data) || data.message == null || (data.message is string && data.message.size() <= 2000)) &&
+        (!('estimatedEndTime' in data) || data.estimatedEndTime == null || (data.estimatedEndTime is string && data.estimatedEndTime.size() <= 100)) &&
+        (!('allowOrganizerBypass' in data) || data.allowOrganizerBypass == null || data.allowOrganizerBypass is bool) &&
+        (!('contactEmail' in data) || data.contactEmail == null || (data.contactEmail is string && data.contactEmail.size() <= 200)) &&
+        (!('supportLink' in data) || data.supportLink == null || (data.supportLink is string && data.supportLink.size() <= 500)) &&
+        (!('showSocialLinks' in data) || data.showSocialLinks == null || data.showSocialLinks is bool) &&
+        (!('updatedAt' in data) || data.updatedAt == null || (data.updatedAt is string && data.updatedAt.size() <= 100)) &&
+        (!('updatedBy' in data) || data.updatedBy == null || (data.updatedBy is string && data.updatedBy.size() <= 128)) &&
+        (!('updatedByName' in data) || data.updatedByName == null || (data.updatedByName is string && data.updatedByName.size() <= 200));
+    }
+
     // ===============================================================
     // Collection Security Rules
     // ===============================================================
@@ -1024,8 +1060,11 @@ service cloud.firestore {
       // Read: Allowed for authenticated users and public visitors (for attendee checkout code validation & program perks).
       allow read: if true;
 
-      // Write: Team access (Organizers & Staff), validating settings structure and limits.
-      allow create, update: if (hasTeamAccess() || isOrganizer()) && isValidSystemSetting(request.resource.data);
+      // Write: Team access (Organizers & Staff), validating settings structure and limits per settingId.
+      allow create, update: if (hasTeamAccess() || isOrganizer()) && (
+        (settingId == 'maintenance' && isValidMaintenanceSetting(request.resource.data)) ||
+        (settingId != 'maintenance' && isValidSystemSetting(request.resource.data))
+      );
       allow delete: if hasTeamAccess() || isOrganizer();
     }
   }

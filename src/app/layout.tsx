@@ -112,9 +112,28 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
+import { cookies } from "next/headers";
+
+import { MaintenanceGate } from "@/components/maintenance/maintenance-gate";
+import { DEFAULT_MAINTENANCE_CONFIG } from "@/config/maintenance-config";
+import { isExecutiveOrganizer } from "@/lib/auth-roles";
+import { getMaintenanceConfigServer } from "@/server/firestore-admin";
+
+export default async function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   const { theme_mode, theme_preset, content_layout, navbar_style, sidebar_variant, sidebar_collapsible, font } =
     PREFERENCE_DEFAULTS;
+
+  let initialMaintenance = DEFAULT_MAINTENANCE_CONFIG;
+  let isOrganizer = false;
+
+  try {
+    const cookieStore = await cookies();
+    const role = cookieStore.get("auth_role")?.value;
+    isOrganizer = isExecutiveOrganizer(role);
+    initialMaintenance = await getMaintenanceConfigServer();
+  } catch (err) {
+    console.warn("[RootLayout] Could not retrieve server maintenance config:", err);
+  }
 
   return (
     <html
@@ -137,7 +156,9 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
           <AuthStoreProvider>
             <PreferencesStoreProvider initialValues={PREFERENCE_DEFAULTS}>
               <NavigationProgressProvider>
-                {children}
+                <MaintenanceGate initialConfig={initialMaintenance} initialIsOrganizer={isOrganizer}>
+                  {children}
+                </MaintenanceGate>
                 <Toaster closeButton />
               </NavigationProgressProvider>
             </PreferencesStoreProvider>
