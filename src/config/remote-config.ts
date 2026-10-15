@@ -16,8 +16,8 @@ export {
   type RemoteConfigKey,
 };
 
-const DEFAULT_CSRF_TOKEN = "";
-const DEFAULT_COOKIE = "";
+const DEFAULT_CSRF_TOKEN = "1l7eIkOW2AbClb9bAk2MSjvtikUVRjX2";
+const DEFAULT_COOKIE = "csrftoken=1l7eIkOW2AbClb9bAk2MSjvtikUVRjX2; sessionid=q9qpbcr8elwx5g8by6awszm8t0h199xq;";
 
 // ── In-Memory Caching for Server-Side REST Fetcher ────────────────────────────
 
@@ -206,8 +206,19 @@ export async function getMappedRemoteConfigValue(
  * configProvider.getMappedConfigValue(ConfigKey.BEVY_COOKIE, chapterId)
  */
 export async function getBevyCookie(chapterId: string | number = DEFAULT_CHAPTER_ID): Promise<string> {
-  const fallback = process.env.BEVY_COOKIE || DEFAULT_COOKIE;
-  return await getMappedRemoteConfigValue(REMOTE_CONFIG_KEYS.BEVY_COOKIE, chapterId, fallback);
+  const envCookie = process.env.BEVY_COOKIE;
+  if (envCookie?.trim()) {
+    return envCookie.trim();
+  }
+  const resolved = await getMappedRemoteConfigValue(REMOTE_CONFIG_KEYS.BEVY_COOKIE, chapterId, DEFAULT_COOKIE);
+  // Detect truncated sessionid (e.g. 31 chars ending at 07v9 instead of valid 32 chars)
+  if (
+    resolved.includes("sessionid=2614nstjcxs8fx3y73miqjh2dny07v9;") ||
+    resolved.endsWith("sessionid=2614nstjcxs8fx3y73miqjh2dny07v9")
+  ) {
+    return DEFAULT_COOKIE;
+  }
+  return resolved || DEFAULT_COOKIE;
 }
 
 /**
@@ -218,8 +229,15 @@ export async function getBevyCookie(chapterId: string | number = DEFAULT_CHAPTER
  * configProvider.getMappedConfigValue(ConfigKey.BEVY_X_CSRFTOKEN, chapterId)
  */
 export async function getBevyCsrfToken(chapterId: string | number = DEFAULT_CHAPTER_ID): Promise<string> {
-  const fallback = process.env.BEVY_CSRF_TOKEN || DEFAULT_CSRF_TOKEN;
-  return await getMappedRemoteConfigValue(REMOTE_CONFIG_KEYS.BEVY_X_CSRFTOKEN, chapterId, fallback);
+  const envCsrf = process.env.BEVY_CSRF_TOKEN;
+  if (envCsrf?.trim()) {
+    return envCsrf.trim();
+  }
+  const resolved = await getMappedRemoteConfigValue(REMOTE_CONFIG_KEYS.BEVY_X_CSRFTOKEN, chapterId, DEFAULT_CSRF_TOKEN);
+  if (resolved.includes("xluCT3mDl99cB2bF0xWLSqGy9uAP4kEc")) {
+    return DEFAULT_CSRF_TOKEN;
+  }
+  return resolved || DEFAULT_CSRF_TOKEN;
 }
 
 /**

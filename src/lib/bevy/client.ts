@@ -57,7 +57,9 @@ export async function bevyFetchWithResponse<T>(
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    Accept: "application/json; version=bevy.1.0",
+    Accept: "application/json, version=bevy.1.0",
+    "Accept-Charset": "UTF-8",
+    "Auth-Type": "AUTHORIZED",
     "User-Agent": "GDGJakarta-Dashboard/1.0.0",
     ...(csrfToken ? { "X-Csrftoken": csrfToken } : {}),
     ...(cookie ? { Cookie: cookie } : {}),
@@ -127,28 +129,10 @@ export async function getMemberById(
   if (!userId) return { status: 400, ok: false, data: null };
   const cleanUserId = userId.trim().replace(/\/+$/, "");
 
-  // If identifier is an email, search directly to avoid guaranteed 404 from /user/{email}
-  if (cleanUserId.includes("@")) {
-    const searchResult = await bevyFetchWithResponse<{ results?: BevyUser[]; user?: BevyUser }>(
-      `/user/?search=${encodeURIComponent(cleanUserId)}`,
-      {},
-      chapterId,
-    );
-
-    if (searchResult.ok && searchResult.data) {
-      if (searchResult.data.results && searchResult.data.results.length > 0) {
-        return { status: 200, ok: true, data: searchResult.data.results[0] };
-      }
-      if (searchResult.data.user) {
-        return { status: 200, ok: true, data: searchResult.data.user };
-      }
-    }
-    console.warn(`[Bevy Auth] No Bevy member found for email search: ${cleanUserId}`);
-    return { status: 404, ok: false, data: null };
-  }
-
+  // If userId is all digits (numeric ID), Bevy expects a trailing slash: /user/{id}/
+  // If userId is an email, Bevy expects no trailing slash: /user/{email}
   const isAllDigits = /^\d+$/.test(cleanUserId);
-  const formattedUserId = isAllDigits ? `${cleanUserId}/` : `${encodeURIComponent(cleanUserId)}/`;
+  const formattedUserId = isAllDigits ? `${cleanUserId}/` : cleanUserId;
   const endpoint = fields
     ? `/user/${formattedUserId}?fields=${encodeURIComponent(fields)}`
     : `/user/${formattedUserId}`;
