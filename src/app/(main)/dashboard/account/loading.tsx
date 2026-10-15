@@ -14,7 +14,7 @@ export default function AccountLoading() {
       <div className="space-y-4 rounded-xl bg-card p-6 shadow-xs">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-4">
-            <Skeleton className="size-20 rounded-2xl" />
+            <Skeleton className="size-20 rounded-full" />
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <Skeleton className="h-7 w-48" />

@@ -39,9 +39,13 @@ export function AccountHero({ user, member }: AccountHeroProps) {
         <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
           {/* User identity & badges */}
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-            <Avatar className="size-20 rounded-2xl border-2 border-background shadow-md">
-              <AvatarImage src={avatarUrl || undefined} alt={displayName} />
-              <AvatarFallback className="rounded-2xl bg-primary/10 font-bold text-2xl text-primary">
+            <Avatar className="size-20 rounded-full border-2 border-background shadow-md">
+              <AvatarImage
+                src={avatarUrl || undefined}
+                alt={displayName}
+                className="size-full rounded-full object-cover"
+              />
+              <AvatarFallback className="rounded-full bg-primary/10 font-bold text-2xl text-primary">
                 {getInitials(displayName)}
               </AvatarFallback>
             </Avatar>
