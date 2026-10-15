@@ -10,7 +10,15 @@ import type { FirestoreMember } from "@/lib/firestore/types";
 import { splitFullName } from "@/lib/utils";
 import { clearAuthSessionCookie, handleUserPostLoginAction } from "@/server/auth-actions";
 
-import { type AuthOrganizer, type AuthState, createAuthStore } from "./auth-store";
+import {
+  type AuthOrganizer,
+  type AuthState,
+  createAuthStore,
+  getGlobalAuthUser,
+  setGlobalAuthStore,
+} from "./auth-store";
+
+export { getGlobalAuthUser };
 
 const AuthStoreContext = createContext<StoreApi<AuthState> | null>(null);
 
@@ -125,6 +133,7 @@ async function syncBevyUserToFirestore(uid: string, email: string) {
 export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
   const [store] = useState<StoreApi<AuthState>>(() => createAuthStore());
   globalStore = store;
+  setGlobalAuthStore(store);
 
   // Subscribe to Firebase onAuthStateChanged to persist/restore session on load or reload
   useEffect(() => {
@@ -276,6 +285,7 @@ export async function signOutOrganizer(): Promise<void> {
     globalStore.getState().setLoggingOut(true);
     globalStore.getState().setUser(null, null);
   }
+  setGlobalAuthStore(null);
   await signOut(auth);
   await clearAuthSessionCookie();
   console.log("[Auth Flow - Client] Sign out completed.");

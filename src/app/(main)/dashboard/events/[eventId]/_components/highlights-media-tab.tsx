@@ -1,21 +1,30 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { DragDropProvider, type DragEndEvent } from "@dnd-kit/react";
 import { isSortable } from "@dnd-kit/react/sortable";
-import { Camera, ExternalLink, Play, Plus, Presentation, Sparkles, Video } from "lucide-react";
+import { Camera, ChevronDown, ExternalLink, Play, Plus, Presentation, Sparkles, Video } from "lucide-react";
 import { toast } from "sonner";
 
 import { FloatingSaveBar } from "@/app/(main)/dashboard/_components/floating-save-bar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { findMatchingSpeaker, normalizeStr } from "@/lib/events/agenda-unification";
 import { parsePhotoAlbum, parseVideoUrl } from "@/lib/events/media-utils";
 import { updateEventHighlightsMediaAction } from "@/lib/firestore/actions";
 import type { EventSession, FirestoreEvent } from "@/lib/firestore/types";
@@ -237,7 +246,96 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
     );
   };
 
-  // Helper to add a new generic session for slides if none exist
+  // Extract all activity items from existing Bevy agenda
+  const agendaActivities = useMemo(() => {
+    const list: Array<{
+      id: string;
+      time: string;
+      activity: string;
+      speakerName: string;
+      description?: string;
+    }> = [];
+
+    const days = event.agenda?.days ?? [];
+    days.forEach((day, dIdx) => {
+      const items = day.items ?? day.agenda ?? [];
+      items.forEach((item, iIdx) => {
+        if (!item.activity?.trim()) return;
+        const speakerMatch =
+          findMatchingSpeaker(item.description || "", event.speakers) ??
+          findMatchingSpeaker(item.activity, event.speakers);
+        list.push({
+          id: `item-${dIdx}-${iIdx}`,
+          time: item.time,
+          activity: item.activity.trim(),
+          speakerName: speakerMatch?.speakerName ?? "",
+          description: item.description,
+        });
+      });
+    });
+
+    return list;
+  }, [event.agenda, event.speakers]);
+
+  const isActivityAdded = (activityTitle: string) => {
+    const norm = normalizeStr(activityTitle);
+    return sessions.some((s) => normalizeStr(s.title) === norm);
+  };
+
+  const handleAddFromAgenda = (act: {
+    id: string;
+    time: string;
+    activity: string;
+    speakerName: string;
+    description?: string;
+  }) => {
+    const alreadyExists = sessions.find((s) => normalizeStr(s.title) === normalizeStr(act.activity));
+    if (alreadyExists) {
+      toast.info(`"${act.activity}" is already in your slide deck list.`);
+      return;
+    }
+
+    const newSession: EventSession = {
+      id: `session-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      title: act.activity,
+      time_slot: act.time,
+      speaker_name: act.speakerName,
+      description: act.description ?? "",
+      slides_url: "",
+      slides_title: "Download Slides",
+      capacity: 0,
+      related_links: [],
+      agenda_activity_id: act.id,
+    };
+    setSessions((prev) => [...prev, newSession]);
+    toast.success(`Added slide deck for "${act.activity}".`);
+  };
+
+  const handleAddAllFromAgenda = () => {
+    const unadded = agendaActivities.filter((act) => !isActivityAdded(act.activity));
+    if (unadded.length === 0) {
+      toast.info("All agenda activities are already added.");
+      return;
+    }
+
+    const newSessions: EventSession[] = unadded.map((act, idx) => ({
+      id: `session-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
+      title: act.activity,
+      time_slot: act.time,
+      speaker_name: act.speakerName,
+      description: act.description ?? "",
+      slides_url: "",
+      slides_title: "Download Slides",
+      capacity: 0,
+      related_links: [],
+      agenda_activity_id: act.id,
+    }));
+
+    setSessions((prev) => [...prev, ...newSessions]);
+    toast.success(`Added ${newSessions.length} session${newSessions.length > 1 ? "s" : ""} from agenda.`);
+  };
+
+  // Helper to add a new generic session for slides if none exist or custom
   const handleAddNewSession = () => {
     const newSession: EventSession = {
       id: `session-${Date.now()}`,
@@ -539,15 +637,72 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
             </CardDescription>
           </div>
 
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleAddNewSession}
-            className="gap-1.5 self-start text-xs sm:self-auto"
-          >
-            <Plus className="size-3.5 text-primary" />
-            Add Slide Deck Session
-          </Button>
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            {agendaActivities.length > 0 ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="sm" variant="outline" className="gap-1.5 text-xs">
+                    <Plus className="size-3.5 text-primary" />
+                    <span>Add Slide Deck Session</span>
+                    <ChevronDown className="size-3 opacity-60" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-80 max-h-80 overflow-y-auto">
+                  <DropdownMenuLabel className="text-xs">Select from Existing Agenda</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {agendaActivities.map((act) => {
+                    const added = isActivityAdded(act.activity);
+                    return (
+                      <DropdownMenuItem
+                        key={act.id}
+                        disabled={added}
+                        onClick={() => handleAddFromAgenda(act)}
+                        className="flex flex-col items-start gap-0.5 py-2 cursor-pointer"
+                      >
+                        <div className="flex items-center justify-between w-full gap-2">
+                          <span className="font-semibold text-xs text-foreground truncate">{act.activity}</span>
+                          {added ? (
+                            <Badge variant="secondary" className="text-[10px] shrink-0 h-4 px-1.5">
+                              Added
+                            </Badge>
+                          ) : (
+                            <span className="text-[10px] text-muted-foreground shrink-0">{act.time}</span>
+                          )}
+                        </div>
+                        {act.speakerName && (
+                          <span className="text-[11px] text-muted-foreground truncate">Speaker: {act.speakerName}</span>
+                        )}
+                      </DropdownMenuItem>
+                    );
+                  })}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={handleAddAllFromAgenda}
+                    disabled={agendaActivities.every((act) => isActivityAdded(act.activity))}
+                    className="gap-2 cursor-pointer font-medium text-primary text-xs"
+                  >
+                    <Sparkles className="size-3.5" />
+                    <span>
+                      Add All from Agenda ({agendaActivities.filter((a) => !isActivityAdded(a.activity)).length}{" "}
+                      remaining)
+                    </span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={handleAddNewSession}
+                    className="gap-2 cursor-pointer text-muted-foreground text-xs"
+                  >
+                    <Plus className="size-3.5" />
+                    <span>Custom / Manual Session (Not in Agenda)</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Button size="sm" variant="outline" onClick={handleAddNewSession} className="gap-1.5 text-xs">
+                <Plus className="size-3.5 text-primary" />
+                Add Slide Deck Session
+              </Button>
+            )}
+          </div>
         </CardHeader>
 
         <CardContent className="space-y-4">
@@ -558,13 +713,65 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
               </div>
               <p className="mt-3 font-semibold text-foreground text-sm">No session presentation decks yet</p>
               <p className="mt-1 max-w-sm text-muted-foreground text-xs">
-                Click &ldquo;Add Slide Deck Session&rdquo; above to attach speaker presentation slides or codelab
-                resources.
+                {agendaActivities.length > 0
+                  ? `Select from your ${agendaActivities.length} agenda sessions to attach speaker presentation slides or codelab resources.`
+                  : "Click “Add Slide Deck Session” above to attach speaker presentation slides or codelab resources."}
               </p>
-              <Button size="sm" onClick={handleAddNewSession} className="mt-4 gap-1.5 text-xs">
-                <Plus className="size-3.5" />
-                Add Presentation Slide Deck
-              </Button>
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                {agendaActivities.length > 0 && (
+                  <Button size="sm" onClick={handleAddAllFromAgenda} className="gap-1.5 text-xs">
+                    <Sparkles className="size-3.5" />
+                    Add All from Agenda ({agendaActivities.length})
+                  </Button>
+                )}
+                {agendaActivities.length > 0 ? (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button size="sm" variant="outline" className="gap-1.5 text-xs">
+                        <Plus className="size-3.5" />
+                        Select from Agenda
+                        <ChevronDown className="size-3 opacity-60" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="center" className="w-80 max-h-80 overflow-y-auto">
+                      <DropdownMenuLabel className="text-xs">Choose Agenda Activity</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      {agendaActivities.map((act) => {
+                        const added = isActivityAdded(act.activity);
+                        return (
+                          <DropdownMenuItem
+                            key={act.id}
+                            disabled={added}
+                            onClick={() => handleAddFromAgenda(act)}
+                            className="flex flex-col items-start gap-0.5 py-2 cursor-pointer"
+                          >
+                            <div className="flex items-center justify-between w-full gap-2">
+                              <span className="font-semibold text-xs text-foreground truncate">{act.activity}</span>
+                              {added ? (
+                                <Badge variant="secondary" className="text-[10px] shrink-0 h-4 px-1.5">
+                                  Added
+                                </Badge>
+                              ) : (
+                                <span className="text-[10px] text-muted-foreground shrink-0">{act.time}</span>
+                              )}
+                            </div>
+                            {act.speakerName && (
+                              <span className="text-[11px] text-muted-foreground truncate">
+                                Speaker: {act.speakerName}
+                              </span>
+                            )}
+                          </DropdownMenuItem>
+                        );
+                      })}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                ) : (
+                  <Button size="sm" onClick={handleAddNewSession} className="gap-1.5 text-xs">
+                    <Plus className="size-3.5" />
+                    Add Presentation Slide Deck
+                  </Button>
+                )}
+              </div>
             </div>
           ) : (
             <DragDropProvider onDragEnd={handleDragEnd}>
@@ -575,6 +782,7 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
                     session={sess}
                     index={sIdx}
                     totalSessions={sessions.length}
+                    agendaActivities={agendaActivities}
                     onUpdate={handleUpdateSessionSlide}
                     onRemove={handleRemoveSession}
                     onMoveUp={handleMoveSessionUp}

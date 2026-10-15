@@ -94,6 +94,7 @@ export interface EventSession {
   slides_title?: string;
   speaker_name?: string;
   related_links?: SessionRelatedLink[];
+  agenda_activity_id?: string;
 }
 
 export interface MerchandiseVariationOptionDetail {

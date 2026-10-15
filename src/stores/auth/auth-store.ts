@@ -28,6 +28,16 @@ export interface AuthState {
   setLoggingOut: (isLoggingOut: boolean) => void;
 }
 
+let activeStore: ReturnType<typeof createAuthStore> | null = null;
+
+export const setGlobalAuthStore = (store: ReturnType<typeof createAuthStore> | null) => {
+  activeStore = store;
+};
+
+export const getGlobalAuthUser = (): AuthOrganizer | null => {
+  return activeStore?.getState().user ?? null;
+};
+
 export const createAuthStore = (initialState?: Partial<AuthState>) => {
   return createStore<AuthState>()((set) => ({
     user: null,

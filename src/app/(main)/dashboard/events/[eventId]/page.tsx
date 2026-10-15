@@ -76,6 +76,8 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
         total_checked_in: direct.checkin_count ?? 0,
         is_hidden: Boolean(direct.is_hidden ?? (direct as { hidden?: boolean }).hidden),
         is_test: Boolean(direct.is_test),
+        speakers: direct.speakers,
+        agenda: direct.agenda,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -135,6 +137,8 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
           total_checked_in: matched.checkin_count ?? 0,
           is_hidden: Boolean(matched.is_hidden || (matched as { hidden?: boolean }).hidden),
           is_test: Boolean(matched.is_test),
+          speakers: matched.speakers,
+          agenda: matched.agenda,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         };
@@ -153,6 +157,8 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
               id: String(firestoreDoc.id || event.id),
               picture_url: firestoreDoc.picture_url || firestoreDoc.banner_url || event.picture_url,
               banner_url: firestoreDoc.banner_url || firestoreDoc.picture_url || event.banner_url,
+              agenda: firestoreDoc.agenda ?? event.agenda,
+              speakers: firestoreDoc.speakers ?? event.speakers,
             }
           : firestoreDoc;
       }

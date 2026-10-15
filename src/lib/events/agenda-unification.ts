@@ -59,7 +59,7 @@ export interface UnifiedAgendaResult {
   totalItemsCount: number;
 }
 
-function normalizeStr(str?: string | null): string {
+export function normalizeStr(str?: string | null): string {
   if (!str) return "";
   return str
     .toLowerCase()
@@ -68,7 +68,7 @@ function normalizeStr(str?: string | null): string {
     .trim();
 }
 
-function findMatchingSpeaker(
+export function findMatchingSpeaker(
   text: string,
   speakers?: BevySpeaker[] | null,
 ): { speakerName?: string; speakerRole?: string; speakerAvatar?: string; cleanDescription?: string } | null {
@@ -146,75 +146,140 @@ export function buildUnifiedAgenda(
       const dayTitle = day.title?.trim() || "";
       const normDayTitle = normalizeStr(dayTitle);
 
-      // Attempt matching with an available Firestore session:
-      // (a) Exact or normalized title match
-      // (b) Substring match (e.g. "Morning Session" in "Day 1 - Morning Session")
-      let matchedSess = sessions.find((sess) => {
+      // Attempt matching with an available Firestore session for the Day Group Header:
+      // A session only matches at the Day level if it doesn't match an activity item inside the day.
+      let matchedDaySess = sessions.find((sess) => {
         if (matchedSessionIds.has(sess.id)) return false;
         const normSessTitle = normalizeStr(sess.title);
+        if (!normSessTitle || !normDayTitle) return false;
+
+        // Check if this session matches any rawItem activity instead
+        const matchesActivity = rawItems.some((item) => {
+          const normAct = normalizeStr(item.activity);
+          return normAct === normSessTitle || (normSessTitle.length >= 6 && normAct.includes(normSessTitle));
+        });
+        if (matchesActivity) return false;
+
         return (
-          normSessTitle &&
-          normDayTitle &&
-          (normDayTitle === normSessTitle ||
-            normDayTitle.includes(normSessTitle) ||
-            normSessTitle.includes(normDayTitle))
+          normDayTitle === normSessTitle || normDayTitle.includes(normSessTitle) || normSessTitle.includes(normDayTitle)
         );
       });
 
-      // (c) Position-based fallback if count matches and no match found yet
+      // Position-based fallback if count matches, day title didn't match, and session doesn't match an activity
       if (
-        !matchedSess &&
+        !matchedDaySess &&
         days.length === sessions.length &&
         sessions[dIdx] &&
         !matchedSessionIds.has(sessions[dIdx].id)
       ) {
-        matchedSess = sessions[dIdx];
+        const matchesActivity = rawItems.some((item) => {
+          const normAct = normalizeStr(item.activity);
+          const normSessTitle = normalizeStr(sessions[dIdx].title);
+          return normAct === normSessTitle || (normSessTitle.length >= 6 && normAct.includes(normSessTitle));
+        });
+        if (!matchesActivity) {
+          matchedDaySess = sessions[dIdx];
+        }
       }
 
-      if (matchedSess) {
-        matchedSessionIds.add(matchedSess.id);
+      if (matchedDaySess) {
+        matchedSessionIds.add(matchedDaySess.id);
       }
 
-      // Map raw Bevy items to UnifiedAgendaItem
+      // Map raw Bevy items to UnifiedAgendaItem and bind matching Firestore session slide decks directly
       const unifiedItems: UnifiedAgendaItem[] = rawItems.map((rawItem, iIdx) => {
+        const normActivity = normalizeStr(rawItem.activity);
+
+        // Find matching session for this specific activity
+        const matchedItemSess = sessions.find((sess) => {
+          if (matchedSessionIds.has(sess.id)) return false;
+          if (matchedDaySess && sess.id === matchedDaySess.id) return false;
+
+          // 1. Explicit ID link if set
+          if (
+            sess.agenda_activity_id &&
+            (sess.agenda_activity_id === rawItem.activity || sess.agenda_activity_id === `item-${dIdx}-${iIdx}`)
+          ) {
+            return true;
+          }
+
+          const normSessTitle = normalizeStr(sess.title);
+          if (!normActivity || !normSessTitle) return false;
+
+          // 2. Exact activity title match
+          if (normActivity === normSessTitle) return true;
+
+          // 3. Substring match (min 6 characters)
+          if (
+            normSessTitle.length >= 6 &&
+            (normActivity.includes(normSessTitle) || normSessTitle.includes(normActivity))
+          ) {
+            return true;
+          }
+
+          // 4. Time slot match + word overlap
+          if (rawItem.time && sess.time_slot) {
+            const rawTimeNorm = normalizeStr(rawItem.time);
+            const sessTimeNorm = normalizeStr(sess.time_slot);
+            if (rawTimeNorm === sessTimeNorm) {
+              const actWords = normActivity.split(" ").filter((w) => w.length > 3);
+              return actWords.some((w) => normSessTitle.includes(w));
+            }
+          }
+
+          return false;
+        });
+
+        if (matchedItemSess) {
+          matchedSessionIds.add(matchedItemSess.id);
+        }
+
         const speakerMatch =
           findMatchingSpeaker(rawItem.description || "", speakers) ??
           findMatchingSpeaker(rawItem.activity, speakers) ??
-          (matchedSess?.speaker_name ? { speakerName: matchedSess.speaker_name } : null);
+          (matchedItemSess?.speaker_name ? { speakerName: matchedItemSess.speaker_name } : null) ??
+          (matchedDaySess?.speaker_name ? { speakerName: matchedDaySess.speaker_name } : null);
+
+        const slidesUrl = matchedItemSess?.slides_url || rawItem.slides_url;
+        const slidesTitle = matchedItemSess?.slides_title || rawItem.slides_title || "Open Slides";
+        const relatedLinks =
+          matchedItemSess?.related_links && matchedItemSess.related_links.length > 0
+            ? matchedItemSess.related_links
+            : rawItem.related_links;
 
         return {
           id: `item-${dIdx}-${iIdx}-${rawItem.time}`,
           time: rawItem.time,
           activity: rawItem.activity,
-          description: rawItem.description,
+          description: rawItem.description || matchedItemSess?.description,
           audienceType: rawItem.audience_type,
           speakerName: speakerMatch?.speakerName,
           speakerRole: speakerMatch?.speakerRole,
           speakerAvatar: speakerMatch?.speakerAvatar,
-          slidesUrl: rawItem.slides_url,
-          slidesTitle: rawItem.slides_title,
-          relatedLinks: rawItem.related_links,
+          slidesUrl,
+          slidesTitle,
+          relatedLinks,
         };
       });
 
       const effectiveTitle =
-        matchedSess?.title || dayTitle || (days.length > 1 ? `Session ${dIdx + 1}` : "Agenda Schedule");
+        matchedDaySess?.title || dayTitle || (days.length > 1 ? `Session ${dIdx + 1}` : "Agenda Schedule");
 
-      const effectiveTimeRange = matchedSess?.time_slot || formatTimeRange(rawItems);
+      const effectiveTimeRange = matchedDaySess?.time_slot || formatTimeRange(rawItems);
 
       sessionGroups.push({
-        id: matchedSess ? `session-${matchedSess.id}` : `session-group-${dIdx}`,
+        id: matchedDaySess ? `session-${matchedDaySess.id}` : `session-group-${dIdx}`,
         sessionTitle: effectiveTitle,
         timeRange: effectiveTimeRange,
-        checkinDeadline: matchedSess?.checkin_deadline,
-        location: matchedSess?.location,
-        locationUrl: matchedSess?.location_url,
-        capacity: matchedSess?.capacity,
-        totalRegistered: matchedSess?.total_registered,
-        description: matchedSess?.description,
-        slidesUrl: matchedSess?.slides_url,
-        slidesTitle: matchedSess?.slides_title,
-        relatedLinks: matchedSess?.related_links,
+        checkinDeadline: matchedDaySess?.checkin_deadline,
+        location: matchedDaySess?.location,
+        locationUrl: matchedDaySess?.location_url,
+        capacity: matchedDaySess?.capacity,
+        totalRegistered: matchedDaySess?.total_registered,
+        description: matchedDaySess?.description,
+        slidesUrl: matchedDaySess?.slides_url,
+        slidesTitle: matchedDaySess?.slides_title,
+        relatedLinks: matchedDaySess?.related_links,
         items: unifiedItems,
       });
     });

@@ -880,23 +880,23 @@ service cloud.firestore {
       allow get: if hasTeamAccess() ||
         (isAuthenticated() && (
           resource == null ||
-          ('member_id' in resource.data && resource.data.member_id == request.auth.uid) ||
-          (('member_email' in resource.data) && resource.data.member_email == request.auth.token.email) ||
-          (registrationId.size() > request.auth.uid.size() && registrationId[registrationId.size() - request.auth.uid.size():] == request.auth.uid)
+          resource.data.member_id == request.auth.uid ||
+          resource.data.member_email == request.auth.token.email ||
+          (registrationId.size() >= request.auth.uid.size() && registrationId[registrationId.size() - request.auth.uid.size():] == request.auth.uid)
         ));
 
       // Listing registrations: Team access (Organizers & Staff), or authenticated users querying their own registrations.
       allow list: if hasTeamAccess() ||
         (isAuthenticated() && (
-          ('member_id' in resource.data && resource.data.member_id == request.auth.uid) ||
-          (('member_email' in resource.data) && resource.data.member_email == request.auth.token.email)
+          resource.data.member_id == request.auth.uid ||
+          resource.data.member_email == request.auth.token.email
         ));
 
       // Create: Organizers or authenticated users registering themselves.
       allow create: if isAuthenticated() && isValidRegistration(request.resource.data) && (
         isOrganizer() ||
         request.auth.uid == request.resource.data.member_id ||
-        (registrationId.size() > request.auth.uid.size() && registrationId[registrationId.size() - request.auth.uid.size():] == request.auth.uid)
+        (registrationId.size() >= request.auth.uid.size() && registrationId[registrationId.size() - request.auth.uid.size():] == request.auth.uid)
       );
 
       // Update: Team access (Organizers & Staff for attendee curation, status review, check-in, delivery fulfillment) or the registrant updating payment fields, answers, delivery request, status logs, and RSVP details.
@@ -906,9 +906,9 @@ service cloud.firestore {
         hasTeamAccess() ||
         (
           (
-            ('member_id' in resource.data && resource.data.member_id == request.auth.uid) ||
+            resource.data.member_id == request.auth.uid ||
             request.resource.data.member_id == request.auth.uid ||
-            (registrationId.size() > request.auth.uid.size() && registrationId[registrationId.size() - request.auth.uid.size():] == request.auth.uid)
+            (registrationId.size() >= request.auth.uid.size() && registrationId[registrationId.size() - request.auth.uid.size():] == request.auth.uid)
           ) &&
           !request.resource.data.diff(resource.data).affectedKeys().hasAny([
             'reviewed_at', 'reviewed_by_id', 'reviewed_by_name', 'reviewed_by_email',
@@ -921,8 +921,8 @@ service cloud.firestore {
       // Deletion: Organizers or authenticated registrants cancelling their own registration.
       allow delete: if isOrganizer() || (
         isAuthenticated() && resource != null && (
-          ('member_id' in resource.data && resource.data.member_id == request.auth.uid) ||
-          (registrationId.size() > request.auth.uid.size() && registrationId[registrationId.size() - request.auth.uid.size():] == request.auth.uid)
+          resource.data.member_id == request.auth.uid ||
+          (registrationId.size() >= request.auth.uid.size() && registrationId[registrationId.size() - request.auth.uid.size():] == request.auth.uid)
         )
       );
     }
@@ -1006,14 +1006,14 @@ service cloud.firestore {
       allow get: if hasTeamAccess() || isOrganizer() ||
         (isAuthenticated() && (
           resource == null ||
-          (('referee_id' in resource.data) && resource.data.referee_id == request.auth.uid) ||
-          (('referrer_id' in resource.data) && resource.data.referrer_id == request.auth.uid)
+          resource.data.referee_id == request.auth.uid ||
+          resource.data.referrer_id == request.auth.uid
         ));
 
       allow list: if hasTeamAccess() || isOrganizer() ||
         (isAuthenticated() && (
-          (('referee_id' in resource.data) && resource.data.referee_id == request.auth.uid) ||
-          (('referrer_id' in resource.data) && resource.data.referrer_id == request.auth.uid)
+          resource.data.referee_id == request.auth.uid ||
+          resource.data.referrer_id == request.auth.uid
         ));
 
       // Create: Team access (Organizers & Staff), or authenticated users creating their own redemption (as referee).

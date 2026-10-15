@@ -2142,7 +2142,7 @@ export function EventRegistrationModal({
   let footerSummaryBadge = <span className="text-muted-foreground text-xs">Free Registration</span>;
   if (grandTotal > 0) {
     footerSummaryBadge = (
-      <div className="flex items-baseline gap-1.5">
+      <div className="flex items-baseline gap-1.5 flex-wrap">
         <span className="text-muted-foreground text-xs">Total:</span>
         <span className="font-bold font-mono text-foreground text-sm">Rp {grandTotal.toLocaleString("id-ID")}</span>
       </div>
@@ -2151,9 +2151,9 @@ export function EventRegistrationModal({
     footerSummaryBadge = (
       <Badge
         variant="outline"
-        className="border-emerald-500/30 bg-emerald-500/10 text-emerald-700 text-xs dark:text-emerald-400"
+        className="h-auto max-w-full whitespace-normal break-words border-emerald-500/30 bg-emerald-500/10 text-emerald-700 text-xs dark:text-emerald-400 py-0.5 px-2 text-left"
       >
-        {selectedTicket.name} • Free RSVP
+        <span className="break-words">{selectedTicket.name} • Free RSVP</span>
       </Badge>
     );
   }
@@ -2187,7 +2187,7 @@ export function EventRegistrationModal({
         </DialogTrigger>
 
         <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden p-0 sm:max-w-2xl">
-          <div className="shrink-0 border-b bg-muted/20 px-6 pt-6 pb-4">
+          <div className="shrink-0 border-b bg-muted/20 px-4 pt-5 pb-4 sm:px-6 sm:pt-6">
             <DialogHeader>
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="outline" className="text-[10px]">
@@ -2223,17 +2223,17 @@ export function EventRegistrationModal({
                   </Badge>
                 )}
               </div>
-              <DialogTitle className="text-xl leading-snug">{event.title}</DialogTitle>
-              <DialogDescription className="text-xs">{modalDescription}</DialogDescription>
+              <DialogTitle className="text-xl leading-snug break-words">{event.title}</DialogTitle>
+              <DialogDescription className="text-xs break-words">{modalDescription}</DialogDescription>
 
               {/* 2-Step Flow Indicator when user is logged in */}
               {user && (
-                <div className="flex items-center gap-1.5 pt-2">
+                <div className="flex flex-wrap items-center gap-1.5 pt-2">
                   <button
                     type="button"
                     onClick={() => setRegistrationStep("tickets")}
                     className={cn(
-                      "flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1 font-medium text-xs transition-all",
+                      "flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-1 font-medium text-xs transition-all sm:px-3",
                       registrationStep === "tickets"
                         ? "bg-primary font-semibold text-primary-foreground shadow-xs"
                         : "bg-muted/80 text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -2262,7 +2262,7 @@ export function EventRegistrationModal({
                       }
                     }}
                     className={cn(
-                      "flex items-center gap-1.5 rounded-full px-3 py-1 font-medium text-xs transition-all",
+                      "flex items-center gap-1.5 rounded-full px-2.5 py-1 font-medium text-xs transition-all sm:px-3",
                       registrationStep === "form"
                         ? "cursor-default bg-primary font-semibold text-primary-foreground shadow-xs"
                         : "cursor-pointer bg-muted/80 text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -2286,7 +2286,7 @@ export function EventRegistrationModal({
           </div>
 
           {!user ? (
-            <div className="flex min-h-0 flex-1 flex-col items-center overflow-y-auto px-6 py-6 text-center">
+            <div className="flex min-h-0 flex-1 flex-col items-center overflow-y-auto px-4 py-6 text-center sm:px-6">
               {/* Header / Avatar / GDG Branding */}
               <div className="relative mb-4 flex size-16 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 shadow-xs">
                 <GdgLogo size={36} className="h-9 w-auto" />
@@ -2364,7 +2364,7 @@ export function EventRegistrationModal({
             </div>
           ) : (
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-              <div ref={modalBodyRef} className="min-h-0 flex-1 space-y-6 overflow-y-auto px-6 py-5">
+              <div ref={modalBodyRef} className="min-h-0 flex-1 space-y-6 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
                 {registrationStep === "tickets" ? (
                   <>
                     {/* Member Profile Banner */}
@@ -2427,7 +2427,7 @@ export function EventRegistrationModal({
                                 key={sess.id}
                                 htmlFor={`session-opt-${sess.id}`}
                                 className={cn(
-                                  "relative flex cursor-pointer items-start gap-3 rounded-lg border p-3.5 transition-colors",
+                                  "relative flex cursor-pointer items-start gap-3 rounded-lg border p-3.5 transition-colors overflow-hidden",
                                   isSelected
                                     ? "border-primary bg-primary/10 shadow-xs"
                                     : "border-border bg-card hover:bg-muted/30",
@@ -2440,13 +2440,15 @@ export function EventRegistrationModal({
                                   disabled={!available}
                                   className="mt-0.5 shrink-0"
                                 />
-                                <div className="flex-1 space-y-1">
+                                <div className="min-w-0 flex-1 space-y-1">
                                   <div className="flex flex-wrap items-center justify-between gap-2">
-                                    <span className="font-medium text-foreground text-sm">{sess.title}</span>
+                                    <span className="font-medium text-foreground text-sm break-words">
+                                      {sess.title}
+                                    </span>
                                     {sess.capacity > 0 && (
                                       <Badge
                                         variant={!available || remaining <= 5 ? "destructive" : "secondary"}
-                                        className="text-[10px]"
+                                        className="text-[10px] shrink-0"
                                       >
                                         {available
                                           ? `${registered}/${sess.capacity} filled (${remaining} left)`
@@ -2538,18 +2540,20 @@ export function EventRegistrationModal({
                               <div
                                 key={b.id}
                                 className={cn(
-                                  "relative flex flex-col justify-between rounded-xl border p-4 transition-all",
+                                  "relative flex flex-col justify-between rounded-xl border p-4 transition-all overflow-hidden",
                                   isSelected
                                     ? "border-primary bg-primary/10 shadow-sm ring-1 ring-primary/40"
                                     : "border-border bg-card hover:border-primary/40 hover:bg-muted/20",
                                   isDisabled && "cursor-not-allowed opacity-60",
                                 )}
                               >
-                                <div className="space-y-2">
+                                <div className="space-y-2 min-w-0">
                                   <div className="flex items-start justify-between gap-2">
-                                    <div className="space-y-0.5">
+                                    <div className="space-y-0.5 min-w-0 flex-1">
                                       <div className="flex flex-wrap items-center gap-1.5">
-                                        <span className="font-semibold text-foreground text-sm">{b.name}</span>
+                                        <span className="font-semibold text-foreground text-sm break-words">
+                                          {b.name}
+                                        </span>
                                         {b.badge && (
                                           <Badge className="border-primary/30 bg-primary/20 font-semibold text-[10px] text-primary">
                                             {b.badge}
@@ -2560,7 +2564,7 @@ export function EventRegistrationModal({
                                         </Badge>
                                       </div>
                                       {b.description && (
-                                        <p className="line-clamp-2 text-muted-foreground text-xs leading-relaxed">
+                                        <p className="line-clamp-2 text-muted-foreground text-xs leading-relaxed break-words">
                                           {b.description}
                                         </p>
                                       )}
@@ -2587,11 +2591,16 @@ export function EventRegistrationModal({
                                   {/* Included breakdown preview */}
                                   <div className="flex flex-wrap items-center gap-1.5 pt-1 text-xs">
                                     {b.ticket_id && (
-                                      <Badge variant="secondary" className="gap-1 px-2 py-0.5 font-medium text-[11px]">
-                                        <Ticket className="size-3 text-primary" />
-                                        {b.ticket_quantity && b.ticket_quantity > 1
-                                          ? `${b.ticket_quantity}x ${linkedTicket?.name || "Event Pass"}`
-                                          : `${linkedTicket?.name || "Event Pass"} Included`}
+                                      <Badge
+                                        variant="secondary"
+                                        className="h-auto max-w-full whitespace-normal break-words gap-1 px-2 py-0.5 font-medium text-[11px] text-left"
+                                      >
+                                        <Ticket className="size-3 shrink-0 text-primary" />
+                                        <span className="break-words">
+                                          {b.ticket_quantity && b.ticket_quantity > 1
+                                            ? `${b.ticket_quantity}x ${linkedTicket?.name || "Event Pass"}`
+                                            : `${linkedTicket?.name || "Event Pass"} Included`}
+                                        </span>
                                       </Badge>
                                     )}
                                     {b.ticket_id &&
@@ -2600,9 +2609,11 @@ export function EventRegistrationModal({
                                       b.generate_vouchers !== false && (
                                         <Badge
                                           variant="outline"
-                                          className="border-emerald-500/30 bg-emerald-500/10 text-[10px] text-emerald-700 dark:text-emerald-400"
+                                          className="h-auto max-w-full whitespace-normal break-words border-emerald-500/30 bg-emerald-500/10 text-[10px] text-emerald-700 dark:text-emerald-400 text-left"
                                         >
-                                          +{b.ticket_quantity - 1} Friend Vouchers (100% Free)
+                                          <span className="break-words">
+                                            +{b.ticket_quantity - 1} Friend Vouchers (100% Free)
+                                          </span>
                                         </Badge>
                                       )}
                                     {b.merchandise_items.map((mItem) => {
@@ -2611,17 +2622,19 @@ export function EventRegistrationModal({
                                         <Badge
                                           key={mItem.merchandise_id}
                                           variant="outline"
-                                          className="gap-1 bg-background px-2 py-0.5 text-[11px]"
+                                          className="h-auto max-w-full whitespace-normal break-words gap-1 bg-background px-2 py-0.5 text-[11px] text-left"
                                         >
-                                          <Package className="size-3 text-primary" />
-                                          {mItem.quantity}x {m?.name || "Merchandise"}
+                                          <Package className="size-3 shrink-0 text-primary" />
+                                          <span className="break-words">
+                                            {mItem.quantity}x {m?.name || "Merchandise"}
+                                          </span>
                                         </Badge>
                                       );
                                     })}
                                   </div>
                                 </div>
 
-                                <div className="mt-3 flex items-center justify-between border-border/40 border-t pt-2.5 text-xs">
+                                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-border/40 border-t pt-2.5 text-xs">
                                   <span className="text-[11px] text-muted-foreground">
                                     {isSelected
                                       ? "✓ Selected package — ticket and merchandise auto-included"
@@ -2773,7 +2786,7 @@ export function EventRegistrationModal({
                                   }
                                 }}
                                 className={cn(
-                                  "relative flex items-start gap-3 rounded-lg border p-3.5 transition-colors",
+                                  "relative flex items-start gap-3 rounded-lg border p-3.5 transition-colors overflow-hidden",
                                   hasBundleTicket
                                     ? isTicketInBundle
                                       ? "cursor-default border-primary bg-primary/10 shadow-xs ring-1 ring-primary/40"
@@ -2793,12 +2806,12 @@ export function EventRegistrationModal({
                                   disabled={hasBundleTicket || isDisabled}
                                   className="mt-0.5 shrink-0"
                                 />
-                                <div className="flex-1 space-y-1">
+                                <div className="min-w-0 flex-1 space-y-1">
                                   <div className="flex flex-wrap items-center justify-between gap-2">
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 min-w-0">
                                       <span
                                         className={cn(
-                                          "font-medium text-sm",
+                                          "font-medium text-sm break-words",
                                           isDisabled && !isTicketInBundle ? "text-muted-foreground" : "text-foreground",
                                         )}
                                       >
@@ -2827,7 +2840,7 @@ export function EventRegistrationModal({
                                         </Badge>
                                       )}
                                     </div>
-                                    <div className="flex items-center gap-1.5">
+                                    <div className="flex shrink-0 items-center gap-1.5">
                                       {hasBundleTicket && isTicketInBundle ? (
                                         <Badge
                                           variant="secondary"
@@ -2838,7 +2851,7 @@ export function EventRegistrationModal({
                                       ) : (
                                         <span
                                           className={cn(
-                                            "font-bold text-sm",
+                                            "font-bold text-sm whitespace-nowrap",
                                             isDisabled ? "text-muted-foreground" : "text-foreground",
                                           )}
                                         >
@@ -2870,7 +2883,9 @@ export function EventRegistrationModal({
                                   </div>
 
                                   {t.description && (
-                                    <p className="text-muted-foreground text-xs leading-relaxed">{t.description}</p>
+                                    <p className="text-muted-foreground text-xs leading-relaxed break-words">
+                                      {t.description}
+                                    </p>
                                   )}
 
                                   {/* Sales schedule info */}
@@ -2879,13 +2894,13 @@ export function EventRegistrationModal({
                                     salesStatus.formattedStart && (
                                       <div className="mt-1 flex items-center gap-1.5 text-[11px] text-blue-600 dark:text-blue-400">
                                         <Clock className="size-3.5 shrink-0" />
-                                        <span>Sales starts: {salesStatus.formattedStart}</span>
+                                        <span className="break-words">Sales starts: {salesStatus.formattedStart}</span>
                                       </div>
                                     )}
                                   {!hasBundleTicket && salesStatus.state === "ended" && salesStatus.formattedEnd && (
                                     <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
                                       <Clock className="size-3.5 shrink-0" />
-                                      <span>Sales ended: {salesStatus.formattedEnd}</span>
+                                      <span className="break-words">Sales ended: {salesStatus.formattedEnd}</span>
                                     </div>
                                   )}
                                   {!hasBundleTicket &&
@@ -2893,7 +2908,7 @@ export function EventRegistrationModal({
                                     salesStatus.formattedEnd && (
                                       <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
                                         <Clock className="size-3.5 shrink-0" />
-                                        <span>Sales closes: {salesStatus.formattedEnd}</span>
+                                        <span className="break-words">Sales closes: {salesStatus.formattedEnd}</span>
                                       </div>
                                     )}
 
@@ -2909,18 +2924,18 @@ export function EventRegistrationModal({
                                   {t.perks && t.perks.length > 0 && (
                                     <div className="mt-2 rounded-md border border-primary/20 bg-primary/[0.04] p-2 text-xs">
                                       <div className="flex items-center gap-1 font-semibold text-[11px] text-foreground">
-                                        <Sparkles className="size-3 text-amber-500" />
+                                        <Sparkles className="size-3 shrink-0 text-amber-500" />
                                         <span>Perks Included with this Pass:</span>
                                       </div>
-                                      <div className="mt-1 flex flex-wrap gap-1">
+                                      <div className="mt-1.5 flex flex-wrap gap-1.5">
                                         {t.perks.map((p) => (
                                           <Badge
                                             key={p.id}
                                             variant="secondary"
-                                            className="gap-1 px-1.5 py-0 font-normal text-[10px]"
+                                            className="h-auto max-w-full whitespace-normal break-words px-2 py-0.5 text-left font-normal text-[10px]"
                                           >
-                                            <CheckCircle2 className="size-2.5 text-emerald-600 dark:text-emerald-400" />
-                                            <span>{p.name}</span>
+                                            <CheckCircle2 className="size-2.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                                            <span className="break-words">{p.name}</span>
                                           </Badge>
                                         ))}
                                       </div>
@@ -3009,7 +3024,7 @@ export function EventRegistrationModal({
                               <div
                                 key={item.id}
                                 className={cn(
-                                  "flex flex-col gap-3.5 rounded-xl border p-3.5 transition-all sm:flex-row sm:items-center sm:justify-between",
+                                  "flex flex-col gap-3.5 rounded-xl border p-3.5 transition-all sm:flex-row sm:items-center sm:justify-between overflow-hidden",
                                   isItemInBundle
                                     ? "border-primary/50 bg-background shadow-xs ring-1 ring-primary/20"
                                     : isAdded
@@ -3018,7 +3033,7 @@ export function EventRegistrationModal({
                                   !isItemInBundle && !salesStatus.isOpen && !isAdded && "bg-muted/20 opacity-80",
                                 )}
                               >
-                                <div className="flex items-start gap-3.5">
+                                <div className="flex items-start gap-3.5 min-w-0 flex-1">
                                   {/* Enlarged Interactive Thumbnail */}
                                   <button
                                     type="button"
@@ -4334,12 +4349,14 @@ export function EventRegistrationModal({
                 )}
               </div>
 
-              <div className="flex shrink-0 items-center justify-between gap-3 border-t bg-muted/20 px-6 py-3.5">
+              <div className="flex shrink-0 flex-col gap-2.5 border-t bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:px-6 sm:py-3.5">
                 {registrationStep === "tickets" ? (
                   <>
-                    <div className="flex items-center gap-2 text-xs">{footerSummaryBadge}</div>
+                    <div className="flex items-center justify-between gap-2 text-xs sm:justify-start">
+                      {footerSummaryBadge}
+                    </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center justify-end gap-2">
                       <Button
                         key="tickets-cancel-btn"
                         type="button"
@@ -4370,31 +4387,39 @@ export function EventRegistrationModal({
                                     !getTicketSalesStatus(selectedTicket).isOpen
                                 : !getTicketSalesStatus(selectedTicket).isOpen)))
                         }
-                        className="gap-2 shadow-xs"
+                        className="flex-1 sm:flex-initial gap-2 shadow-xs"
                       >
-                        <span>Continue to Registration Form</span>
-                        <ArrowRight className="size-3.5" />
+                        <span className="truncate">
+                          <span className="hidden sm:inline">Continue to Registration Form</span>
+                          <span className="sm:hidden">Continue to Form</span>
+                        </span>
+                        <ArrowRight className="size-3.5 shrink-0" />
                       </Button>
                     </div>
                   </>
                 ) : (
                   <>
-                    <Button
-                      key="form-back-btn"
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setRegistrationStep("tickets");
-                        if (modalBodyRef.current) modalBodyRef.current.scrollTop = 0;
-                      }}
-                      className="gap-1.5 text-muted-foreground text-xs hover:text-foreground"
-                    >
-                      <ArrowLeft className="size-3.5" />
-                      <span>Back to Pass &amp; Perks</span>
-                    </Button>
+                    <div className="flex items-center justify-between gap-2 sm:justify-start">
+                      <Button
+                        key="form-back-btn"
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setRegistrationStep("tickets");
+                          if (modalBodyRef.current) modalBodyRef.current.scrollTop = 0;
+                        }}
+                        className="h-8 gap-1.5 px-2 text-muted-foreground text-xs hover:text-foreground sm:px-3"
+                      >
+                        <ArrowLeft className="size-3.5 shrink-0" />
+                        <span>
+                          <span className="hidden sm:inline">Back to Pass &amp; Perks</span>
+                          <span className="sm:hidden">Back</span>
+                        </span>
+                      </Button>
+                    </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center justify-end gap-2">
                       <Button
                         key="form-cancel-btn"
                         type="button"
@@ -4411,22 +4436,22 @@ export function EventRegistrationModal({
                         type="submit"
                         size="sm"
                         disabled={isPending}
-                        className="gap-2 shadow-xs"
+                        className="flex-1 sm:flex-initial gap-2 shadow-xs"
                       >
                         {isPending ? (
                           <>
-                            <Loader2 className="size-3.5 animate-spin" />
-                            Submitting...
+                            <Loader2 className="size-3.5 animate-spin shrink-0" />
+                            <span className="truncate">Submitting...</span>
                           </>
                         ) : isWaitlistActive ? (
                           <>
-                            <Clock className="size-3.5" />
-                            Join Waitlist
+                            <Clock className="size-3.5 shrink-0" />
+                            <span className="truncate">Join Waitlist</span>
                           </>
                         ) : (
                           <>
-                            <Sparkles className="size-3.5" />
-                            Submit Registration
+                            <Sparkles className="size-3.5 shrink-0" />
+                            <span className="truncate">Submit Registration</span>
                           </>
                         )}
                       </Button>

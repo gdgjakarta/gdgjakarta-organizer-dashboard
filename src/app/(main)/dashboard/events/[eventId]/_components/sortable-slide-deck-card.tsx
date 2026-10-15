@@ -3,8 +3,10 @@
 import { RestrictToVerticalAxis } from "@dnd-kit/abstract/modifiers";
 import { useSortable } from "@dnd-kit/react/sortable";
 import {
+  Calendar,
   ChevronDown,
   ChevronUp,
+  Clock,
   ExternalLink,
   GripVertical,
   Link2,
@@ -17,15 +19,33 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { normalizeStr } from "@/lib/events/agenda-unification";
 import type { EventSession } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
+
+export interface AgendaActivityOption {
+  id: string;
+  time: string;
+  activity: string;
+  speakerName: string;
+  description?: string;
+}
 
 interface SortableSlideDeckCardProps {
   session: EventSession;
   index: number;
   totalSessions: number;
+  agendaActivities?: AgendaActivityOption[];
   onUpdate: (id: string, updates: Partial<EventSession>) => void;
   onRemove: (id: string) => void;
   onMoveUp: (index: number) => void;
@@ -39,6 +59,7 @@ export function SortableSlideDeckCard({
   session: sess,
   index,
   totalSessions,
+  agendaActivities,
   onUpdate,
   onRemove,
   onMoveUp,
@@ -58,6 +79,13 @@ export function SortableSlideDeckCard({
 
   const links = sess.related_links ?? [];
 
+  const matchedActivity = agendaActivities?.find((act) => {
+    if (sess.agenda_activity_id) {
+      return sess.agenda_activity_id === act.id;
+    }
+    return normalizeStr(sess.title) === normalizeStr(act.activity);
+  });
+
   return (
     <Card
       ref={ref}
@@ -70,7 +98,7 @@ export function SortableSlideDeckCard({
       <div className="space-y-4">
         {/* Session Header: Drag Handle, Numbering, Title, Move Controls, Status Badge & Delete */}
         <div className="flex flex-col gap-2 border-border/50 border-b pb-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {/* Draggable Handle */}
             <Button
               ref={handleRef}
@@ -88,13 +116,65 @@ export function SortableSlideDeckCard({
               {index + 1}
             </div>
 
-            <div>
+            <div className="flex flex-wrap items-center gap-1.5">
               <Input
                 value={sess.title}
                 onChange={(e) => onUpdate(sess.id, { title: e.target.value })}
                 placeholder="Session Title (e.g. Building Agents with Gemini)"
-                className="h-8 max-w-[320px] font-semibold text-sm"
+                className="h-8 max-w-[280px] sm:max-w-[320px] font-semibold text-sm"
               />
+              {Boolean(matchedActivity ?? sess.time_slot) && (
+                <Badge
+                  variant="outline"
+                  className="gap-1 border-blue-500/30 bg-blue-500/10 text-[10px] text-blue-600 dark:text-blue-400 shrink-0"
+                >
+                  <Clock className="size-3" />
+                  <span>{sess.time_slot ?? matchedActivity?.time} • Agenda</span>
+                </Badge>
+              )}
+              {agendaActivities && agendaActivities.length > 0 && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 px-2 text-[11px] text-muted-foreground hover:text-foreground shrink-0 gap-1"
+                    >
+                      <Calendar className="size-3 text-primary" />
+                      <span>{matchedActivity ? "Re-link" : "Link to Agenda"}</span>
+                      <ChevronDown className="size-2.5 opacity-60" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-72 max-h-60 overflow-y-auto">
+                    <DropdownMenuLabel className="text-xs">Link to Agenda Activity</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {agendaActivities.map((act) => (
+                      <DropdownMenuItem
+                        key={act.id}
+                        onClick={() => {
+                          onUpdate(sess.id, {
+                            title: act.activity,
+                            time_slot: act.time,
+                            speaker_name: act.speakerName || sess.speaker_name,
+                            description: act.description || sess.description,
+                            agenda_activity_id: act.id,
+                          });
+                        }}
+                        className="flex flex-col items-start gap-0.5 py-1.5 cursor-pointer"
+                      >
+                        <div className="flex items-center justify-between w-full">
+                          <span className="font-medium text-xs truncate">{act.activity}</span>
+                          <span className="text-[10px] text-muted-foreground shrink-0">{act.time}</span>
+                        </div>
+                        {act.speakerName && (
+                          <span className="text-[10px] text-muted-foreground">Speaker: {act.speakerName}</span>
+                        )}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </div>
           </div>
 

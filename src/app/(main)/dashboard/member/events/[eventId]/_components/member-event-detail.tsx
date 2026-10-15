@@ -80,6 +80,101 @@ function isEventPast(event?: FirestoreEvent): boolean {
   }
 }
 
+function getEventEntryFeeDisplay(event: FirestoreEvent, registration?: FirestoreRegistration | null) {
+  // If user is already registered and has specific ticket information
+  if (registration) {
+    if (registration.ticket_price && registration.ticket_price > 0) {
+      return (
+        <strong className="font-semibold text-foreground text-right">
+          Rp {registration.ticket_price.toLocaleString("id-ID")}
+          {registration.ticket_name ? ` (${registration.ticket_name})` : ""}
+        </strong>
+      );
+    }
+    if (registration.payment_amount && registration.payment_amount > 0) {
+      return (
+        <strong className="font-semibold text-foreground text-right">
+          Rp {registration.payment_amount.toLocaleString("id-ID")}
+          {registration.ticket_name ? ` (${registration.ticket_name})` : ""}
+        </strong>
+      );
+    }
+    if (registration.ticket_type === "free" || registration.ticket_price === 0) {
+      return (
+        <strong className="font-semibold text-emerald-600 dark:text-emerald-400 text-right">
+          Free of Charge
+          {registration.ticket_name ? ` (${registration.ticket_name})` : ""}
+        </strong>
+      );
+    }
+  }
+
+  // Not registered or registration has no ticket details: inspect event tickets & bundles
+  const rawTickets = event.tickets ?? [];
+  const activeTickets = rawTickets.filter((t) => t.status !== "hidden");
+  const rawBundles = event.bundles ?? [];
+  const activeBundles = rawBundles.filter((b) => b.status !== "hidden");
+
+  // If no tickets or bundles configured at all, it's a default free event
+  if (activeTickets.length === 0 && activeBundles.length === 0) {
+    return <strong className="font-semibold text-emerald-600 dark:text-emerald-400 text-right">Free of Charge</strong>;
+  }
+
+  const freeTickets = activeTickets.filter((t) => t.type === "free" || (t.price ?? 0) === 0);
+  const paidTickets = activeTickets.filter(
+    (t) => t.type === "paid" || t.type === "commitment_fee" || (t.price ?? 0) > 0,
+  );
+  const paidBundles = activeBundles.filter((b) => (b.price ?? 0) > 0);
+
+  const hasFree = freeTickets.length > 0;
+  const hasPaid = paidTickets.length > 0 || paidBundles.length > 0;
+
+  // Collect all paid prices
+  const allPaidPrices = [...paidTickets.map((t) => t.price ?? 0), ...paidBundles.map((b) => b.price ?? 0)].filter(
+    (p) => p > 0,
+  );
+
+  const minPaidPrice = allPaidPrices.length > 0 ? Math.min(...allPaidPrices) : 0;
+  const maxPaidPrice = allPaidPrices.length > 0 ? Math.max(...allPaidPrices) : 0;
+  const isOnlyCommitmentFee =
+    paidTickets.length > 0 && paidTickets.every((t) => t.type === "commitment_fee") && paidBundles.length === 0;
+
+  const formattedPrice =
+    minPaidPrice === maxPaidPrice || maxPaidPrice === 0
+      ? `Rp ${minPaidPrice.toLocaleString("id-ID")}`
+      : `from Rp ${minPaidPrice.toLocaleString("id-ID")}`;
+
+  // 1. Both Free and Paid options exist: "can be free but there is a paid pass"
+  if (hasFree && hasPaid) {
+    return (
+      <strong className="font-semibold text-foreground text-right">
+        <span className="text-emerald-600 dark:text-emerald-400">Free</span>
+        <span className="font-normal text-muted-foreground"> / </span>
+        <span className="text-blue-600 dark:text-blue-400">Paid Pass ({formattedPrice})</span>
+      </strong>
+    );
+  }
+
+  // 2. Only Paid passes exist (no free tickets): "paid pass"
+  if (hasPaid && !hasFree) {
+    if (isOnlyCommitmentFee) {
+      return (
+        <strong className="font-semibold text-amber-600 dark:text-amber-400 text-right">
+          Commitment Deposit ({formattedPrice})
+        </strong>
+      );
+    }
+    return (
+      <strong className="font-semibold text-blue-600 dark:text-blue-400 text-right">
+        Paid Pass ({formattedPrice})
+      </strong>
+    );
+  }
+
+  // 3. Only Free pass exists: "free pass"
+  return <strong className="font-semibold text-emerald-600 dark:text-emerald-400 text-right">Free of Charge</strong>;
+}
+
 export function MemberEventDetail({ event, initialRegistration = null, from }: MemberEventDetailProps) {
   const user = useAuthStore((s) => s.user);
   const isAuthLoading = useAuthStore((s) => s.isLoading);
@@ -808,13 +903,15 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
               )}
 
               <div className="space-y-2 rounded-lg bg-muted/30 p-3.5 text-xs">
-                <div className="flex items-center justify-between text-muted-foreground">
-                  <span>Capacity / RSVPs</span>
-                  <strong className="text-foreground">{event.total_registrations || 0} registered</strong>
+                <div className="flex items-center justify-between gap-2 text-muted-foreground">
+                  <span className="shrink-0">Capacity / RSVPs</span>
+                  <strong className="text-foreground text-right">
+                    {currentEvent.total_registrations || event.total_registrations || 0} registered
+                  </strong>
                 </div>
-                <div className="flex items-center justify-between text-muted-foreground">
-                  <span>Entry Fee</span>
-                  <strong className="font-semibold text-emerald-600">Free of Charge</strong>
+                <div className="flex items-center justify-between gap-2 text-muted-foreground">
+                  <span className="shrink-0">Entry Fee</span>
+                  {getEventEntryFeeDisplay(currentEvent, registration)}
                 </div>
               </div>
 

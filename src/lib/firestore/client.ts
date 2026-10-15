@@ -1106,8 +1106,19 @@ export async function getEventRegistrations(eventId: string): Promise<FirestoreR
       const timeB = parseFirestoreDate(b.registered_at)?.getTime() ?? 0;
       return timeB - timeA;
     });
-  } catch (error) {
-    console.error(`[Firestore] getEventRegistrations error for ${eventId}:`, error);
+  } catch (error: unknown) {
+    const isPermissionError =
+      error &&
+      typeof error === "object" &&
+      ("code" in error
+        ? error.code === "permission-denied"
+        : "message" in error && typeof error.message === "string" && error.message.includes("permission"));
+
+    if (isPermissionError) {
+      console.warn(`[Firestore] getEventRegistrations: access restricted for event ${eventId}`);
+    } else {
+      console.error(`[Firestore] getEventRegistrations error for ${eventId}:`, error);
+    }
     return [];
   }
 }
@@ -1166,6 +1177,7 @@ export async function getMemberRegistrations(
   memberEmail?: string,
 ): Promise<FirestoreRegistration[]> {
   if (typeof window === "undefined") return [];
+  if (!auth.currentUser) return [];
   try {
     const regRef = collection(db, "event_registrations");
     let registrations: FirestoreRegistration[] = [];
@@ -1191,7 +1203,7 @@ export async function getMemberRegistrations(
       return timeB - timeA;
     });
   } catch (error) {
-    console.error("[Firestore] getMemberRegistrations error:", error);
+    console.warn("[Firestore] getMemberRegistrations warning:", error);
     return [];
   }
 }
@@ -1202,6 +1214,7 @@ export async function checkExistingRegistration(
   memberEmail?: string,
 ): Promise<FirestoreRegistration | null> {
   if (typeof window === "undefined") return null;
+  if (!auth.currentUser) return null;
   try {
     const normalizedEmail = (memberEmail ?? "").trim().toLowerCase();
     const eventIdStr = String(eventId);
@@ -1210,35 +1223,47 @@ export async function checkExistingRegistration(
     // 1. Check direct doc ID: `${eventIdStr}_${memberId}`
     if (memberId) {
       const docId = `${eventIdStr}_${memberId}`;
-      const directDoc = await getDoc(doc(db, "event_registrations", docId));
-      if (directDoc.exists()) {
-        return normalizeRegistrationDoc(directDoc.data() as Record<string, unknown>, directDoc.id);
+      try {
+        const directDoc = await getDoc(doc(db, "event_registrations", docId));
+        if (directDoc.exists()) {
+          return normalizeRegistrationDoc(directDoc.data() as Record<string, unknown>, directDoc.id);
+        }
+      } catch (docErr) {
+        console.warn(`[Firestore] directDoc lookup warning for ${docId}:`, docErr);
       }
     }
 
     // 2. Query scoped directly to the caller's member ID (avoids listing all event attendees)
     if (memberId) {
-      const memberQuery = query(
-        regRef,
-        where("event_id", "==", eventIdStr),
-        where("member_id", "==", String(memberId)),
-      );
-      const snap = await getDocs(memberQuery);
-      if (!snap.empty) {
-        return normalizeRegistrationDoc(snap.docs[0].data() as Record<string, unknown>, snap.docs[0].id);
+      try {
+        const memberQuery = query(
+          regRef,
+          where("event_id", "==", eventIdStr),
+          where("member_id", "==", String(memberId)),
+        );
+        const snap = await getDocs(memberQuery);
+        if (!snap.empty) {
+          return normalizeRegistrationDoc(snap.docs[0].data() as Record<string, unknown>, snap.docs[0].id);
+        }
+      } catch (queryErr) {
+        console.warn("[Firestore] memberQuery fallback warning:", queryErr);
       }
     }
 
     // 3. Fallback scoped query by verified email
     if (normalizedEmail) {
-      const emailQuery = query(
-        regRef,
-        where("event_id", "==", eventIdStr),
-        where("member_email", "==", normalizedEmail),
-      );
-      const snap = await getDocs(emailQuery);
-      if (!snap.empty) {
-        return normalizeRegistrationDoc(snap.docs[0].data() as Record<string, unknown>, snap.docs[0].id);
+      try {
+        const emailQuery = query(
+          regRef,
+          where("event_id", "==", eventIdStr),
+          where("member_email", "==", normalizedEmail),
+        );
+        const snap = await getDocs(emailQuery);
+        if (!snap.empty) {
+          return normalizeRegistrationDoc(snap.docs[0].data() as Record<string, unknown>, snap.docs[0].id);
+        }
+      } catch (queryErr) {
+        console.warn("[Firestore] emailQuery fallback warning:", queryErr);
       }
     }
 
@@ -1833,7 +1858,18 @@ export async function recalculateEventCapacityCounters(
     if (!eventSnap.exists()) return null;
 
     const eventData = eventSnap.data() as FirestoreEvent;
-    const registrations = existingRegistrations ?? (await getEventRegistrations(eventIdStr));
+    let registrations = existingRegistrations;
+    if (!registrations) {
+      const { getGlobalAuthUser } = await import("@/stores/auth/auth-store");
+      const { hasTeamOperationalAccess } = await import("@/lib/auth-roles");
+      const currentUser = getGlobalAuthUser();
+      if (!hasTeamOperationalAccess(currentUser)) {
+        // Non-team users lack permissions to list all event registrations in Firestore rules.
+        // Avoid attempting unauthorized queries or overwriting event counters.
+        return null;
+      }
+      registrations = await getEventRegistrations(eventIdStr);
+    }
     const isCurated = Boolean(eventData.curation_mode ?? eventData.requires_approval);
 
     const totalRegistrations = registrations.length;
@@ -1935,21 +1971,37 @@ export async function getEventSessionRegistrationCounts(
 ): Promise<Record<string, number>> {
   if (typeof window === "undefined") return {};
   try {
-    const [eventDoc, registrations] = await Promise.all([
-      getFirestoreEventById(eventId),
-      getEventRegistrations(eventId),
-    ]);
-    const eventData = eventDoc;
-    const effectiveIsCurated =
-      typeof isCurated === "boolean" ? isCurated : Boolean(eventData?.curation_mode ?? eventData?.requires_approval);
+    const eventData = await getFirestoreEventById(eventId);
     const sessions = eventData?.sessions ?? [];
 
     const counts: Record<string, number> = {};
     for (const sess of sessions) {
-      counts[sess.id] = 0;
+      counts[sess.id] = sess.total_registered ?? 0;
     }
 
+    // Only attempt full registration recalculation if the user is an organizer or staff member.
+    // Regular members/guests do not have permissions to query all registrations in Firestore rules,
+    // and eventData.sessions[].total_registered already reflects live aggregated session registrations.
+    const { getGlobalAuthUser } = await import("@/stores/auth/auth-store");
+    const { hasTeamOperationalAccess } = await import("@/lib/auth-roles");
+    const currentUser = getGlobalAuthUser();
+    if (!hasTeamOperationalAccess(currentUser)) {
+      return counts;
+    }
+
+    const registrations = await getEventRegistrations(eventId);
+    if (registrations.length === 0) {
+      return counts;
+    }
+
+    const effectiveIsCurated =
+      typeof isCurated === "boolean" ? isCurated : Boolean(eventData?.curation_mode ?? eventData?.requires_approval);
+
     const occupiedRegs = registrations.filter((r) => isRegistrationSeatOccupied(r, effectiveIsCurated));
+
+    for (const sess of sessions) {
+      counts[sess.id] = 0;
+    }
 
     for (const reg of occupiedRegs) {
       for (const sess of sessions) {
@@ -2202,7 +2254,6 @@ export async function deleteEventRegistration(registrationId: string, eventId: s
   if (!snap.exists()) {
     return;
   }
-  const regData = snap.data() as FirestoreRegistration;
 
   // 1. Delete registration doc
   await deleteDoc(docRef);

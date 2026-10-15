@@ -111,65 +111,68 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
     <div className="space-y-6">
       <Tabs defaultValue="about" className="w-full">
         {/* Tab Navigation Row */}
-        <div className="border-border/60 border-b">
-          <TabsList className="h-11 w-full justify-start gap-1 rounded-none bg-transparent p-0">
+        <div className="scrollbar-none -mx-4 w-[calc(100%+2rem)] overflow-x-auto border-border/70 border-b px-4 touch-pan-x sm:mx-0 sm:w-full sm:px-0">
+          <TabsList className="inline-flex h-12 w-max min-w-full items-center justify-start gap-1 rounded-none bg-transparent p-0 sm:gap-2">
             <TabsTrigger
               value="about"
-              className="relative h-11 rounded-none border-transparent border-b-2 bg-transparent px-4 pt-2 pb-3 font-medium text-muted-foreground text-sm shadow-none transition-all data-[state=active]:border-primary data-[state=active]:font-semibold data-[state=active]:text-primary"
+              className="group relative flex h-12 shrink-0 flex-none cursor-pointer items-center gap-2 rounded-t-lg border-0 bg-transparent px-3.5 pt-1 pb-1 font-medium text-muted-foreground text-xs shadow-none transition-colors after:hidden hover:bg-muted/30 hover:text-foreground focus-visible:ring-0 data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-none sm:px-4.5 sm:text-sm"
             >
-              About
+              <span className="relative z-10">About</span>
+              <span className="pointer-events-none absolute inset-x-2 -bottom-[1px] h-[2.5px] rounded-full bg-primary opacity-0 transition-all duration-200 group-data-[state=active]:opacity-100" />
             </TabsTrigger>
 
             <TabsTrigger
               value="agenda"
-              className="relative h-11 rounded-none border-transparent border-b-2 bg-transparent px-4 pt-2 pb-3 font-medium text-muted-foreground text-sm shadow-none transition-all data-[state=active]:border-primary data-[state=active]:font-semibold data-[state=active]:text-primary"
+              className="group relative flex h-12 shrink-0 flex-none cursor-pointer items-center gap-2 rounded-t-lg border-0 bg-transparent px-3.5 pt-1 pb-1 font-medium text-muted-foreground text-xs shadow-none transition-colors after:hidden hover:bg-muted/30 hover:text-foreground focus-visible:ring-0 data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-none sm:px-4.5 sm:text-sm"
             >
-              Agenda
+              <span className="relative z-10">Agenda</span>
               {hasAgenda && (
-                <span className="ml-1.5 rounded-full bg-primary/10 px-1.5 py-0.2 text-[10px] text-primary">
+                <span className="rounded-full bg-muted px-2 py-0.5 font-medium text-[11px] text-muted-foreground transition-colors group-hover:bg-muted/80 group-data-[state=active]:bg-primary/10 group-data-[state=active]:font-semibold group-data-[state=active]:text-primary">
                   {agendaBadgeCount}
                 </span>
               )}
+              <span className="pointer-events-none absolute inset-x-2 -bottom-[1px] h-[2.5px] rounded-full bg-primary opacity-0 transition-all duration-200 group-data-[state=active]:opacity-100" />
             </TabsTrigger>
 
             <TabsTrigger
               value="speakers"
-              className="relative h-11 rounded-none border-transparent border-b-2 bg-transparent px-4 pt-2 pb-3 font-medium text-muted-foreground text-sm shadow-none transition-all data-[state=active]:border-primary data-[state=active]:font-semibold data-[state=active]:text-primary"
+              className="group relative flex h-12 shrink-0 flex-none cursor-pointer items-center gap-2 rounded-t-lg border-0 bg-transparent px-3.5 pt-1 pb-1 font-medium text-muted-foreground text-xs shadow-none transition-colors after:hidden hover:bg-muted/30 hover:text-foreground focus-visible:ring-0 data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-none sm:px-4.5 sm:text-sm"
             >
-              Speakers
+              <span className="relative z-10">Speakers</span>
               {hasSpeakers && (
-                <span className="ml-1.5 rounded-full bg-primary/10 px-1.5 py-0.2 text-[10px] text-primary">
+                <span className="rounded-full bg-muted px-2 py-0.5 font-medium text-[11px] text-muted-foreground transition-colors group-hover:bg-muted/80 group-data-[state=active]:bg-primary/10 group-data-[state=active]:font-semibold group-data-[state=active]:text-primary">
                   {event.speakers?.length}
                 </span>
               )}
+              <span className="pointer-events-none absolute inset-x-2 -bottom-[1px] h-[2.5px] rounded-full bg-primary opacity-0 transition-all duration-200 group-data-[state=active]:opacity-100" />
             </TabsTrigger>
 
             <TabsTrigger
               value="partners"
-              className="relative h-11 rounded-none border-transparent border-b-2 bg-transparent px-4 pt-2 pb-3 font-medium text-muted-foreground text-sm shadow-none transition-all data-[state=active]:border-primary data-[state=active]:font-semibold data-[state=active]:text-primary"
+              className="group relative flex h-12 shrink-0 flex-none cursor-pointer items-center gap-2 rounded-t-lg border-0 bg-transparent px-3.5 pt-1 pb-1 font-medium text-muted-foreground text-xs shadow-none transition-colors after:hidden hover:bg-muted/30 hover:text-foreground focus-visible:ring-0 data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-none sm:px-4.5 sm:text-sm"
             >
-              Partners
+              <span className="relative z-10">Partners</span>
               {hasPartners && (
-                <span className="ml-1.5 rounded-full bg-primary/10 px-1.5 py-0.2 text-[10px] text-primary">
+                <span className="rounded-full bg-muted px-2 py-0.5 font-medium text-[11px] text-muted-foreground transition-colors group-hover:bg-muted/80 group-data-[state=active]:bg-primary/10 group-data-[state=active]:font-semibold group-data-[state=active]:text-primary">
                   {partners.length}
                 </span>
               )}
+              <span className="pointer-events-none absolute inset-x-2 -bottom-[1px] h-[2.5px] rounded-full bg-primary opacity-0 transition-all duration-200 group-data-[state=active]:opacity-100" />
             </TabsTrigger>
 
             {hasHighlights && (
               <TabsTrigger
                 value="highlights"
-                className="relative h-11 rounded-none border-transparent border-b-2 bg-transparent px-4 pt-2 pb-3 font-medium text-muted-foreground text-sm shadow-none transition-all data-[state=active]:border-primary data-[state=active]:font-semibold data-[state=active]:text-primary"
+                className="group relative flex h-12 shrink-0 flex-none cursor-pointer items-center gap-2 rounded-t-lg border-0 bg-transparent px-3.5 pt-1 pb-1 font-medium text-muted-foreground text-xs shadow-none transition-colors after:hidden hover:bg-muted/30 hover:text-foreground focus-visible:ring-0 data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-none sm:px-4.5 sm:text-sm"
               >
-                <span className="flex items-center gap-1.5">
-                  <Video className="size-3.5" />
-                  <span>Highlights</span>
-                  {(parsedVideo ?? parsedAlbum) && (
-                    <span className="ml-0.5 rounded-full bg-emerald-500/10 px-1.5 py-0.2 font-medium text-[10px] text-emerald-600 dark:text-emerald-400">
-                      Media
-                    </span>
-                  )}
-                </span>
+                <Video className="size-3.5 text-muted-foreground transition-colors group-hover:text-foreground group-data-[state=active]:text-primary" />
+                <span className="relative z-10">Highlights</span>
+                {(parsedVideo ?? parsedAlbum) && (
+                  <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 font-medium text-[10px] text-emerald-600 dark:text-emerald-400">
+                    Media
+                  </span>
+                )}
+                <span className="pointer-events-none absolute inset-x-2 -bottom-[1px] h-[2.5px] rounded-full bg-primary opacity-0 transition-all duration-200 group-data-[state=active]:opacity-100" />
               </TabsTrigger>
             )}
           </TabsList>
