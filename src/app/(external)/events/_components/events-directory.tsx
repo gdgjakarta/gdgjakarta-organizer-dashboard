@@ -95,7 +95,7 @@ export function EventsDirectory({ initialEvents, totalCount, pageSize = 15 }: Ev
     <div className="space-y-12">
       {/* Events Grid */}
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {events.map((event) => {
+        {events.map((event, index) => {
           const imageUrl =
             event.picture?.url ||
             event.picture?.thumbnail_url ||
@@ -125,7 +125,12 @@ export function EventsDirectory({ initialEvents, totalCount, pageSize = 15 }: Ev
               key={event.id}
               className="flex flex-col overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-md"
             >
-              <EventCardImage src={imageUrl} alt={event.title}>
+              <EventCardImage
+                src={imageUrl}
+                alt={event.title}
+                priority={index < 4}
+                loading={index < 4 ? "eager" : "lazy"}
+              >
                 <div className="absolute top-3 left-3 z-20 flex gap-1.5">
                   <Badge variant="secondary" className="bg-background/85 text-[10px] backdrop-blur-xs">
                     {audienceLabel}

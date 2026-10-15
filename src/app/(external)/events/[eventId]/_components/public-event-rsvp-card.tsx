@@ -282,6 +282,7 @@ export function PublicEventRsvpCard({
                 alt={event.title}
                 fill
                 priority
+                loading="eager"
                 sizes="(max-width: 1024px) 100vw, 400px"
                 className="size-full object-cover transition-transform duration-300 hover:scale-[1.02]"
                 unoptimized={!thumbnailImageUrl.includes("res.cloudinary.com")}
@@ -504,6 +505,8 @@ export function PublicEventRsvpCard({
                 src={thumbnailImageUrl}
                 alt={event.title}
                 fill
+                priority
+                loading="eager"
                 sizes="40px"
                 className="size-full object-cover"
                 unoptimized={!thumbnailImageUrl.includes("res.cloudinary.com")}

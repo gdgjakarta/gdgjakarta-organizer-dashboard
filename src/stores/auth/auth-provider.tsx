@@ -288,11 +288,9 @@ export async function signInWithGoogle(): Promise<{ organizer: AuthOrganizer; is
       lastName = split.lastName;
     }
 
-    // Step 2: Check if member already exists in Firestore with a role to avoid redundant Bevy calls
+    // Step 2: Validate against Bevy API directly upon Google Sign-In to always establish fresh permissions
     const email = user.email ?? "";
     const token = await user.getIdToken();
-    const { getFirestoreMemberById } = await import("@/lib/firestore/client");
-    const existingDoc = await getFirestoreMemberById(user.uid);
 
     console.log(`[Auth Flow Step 3 - Client] Calling handleUserPostLoginAction on server for ${email}...`);
     const validation = await handleUserPostLoginAction({
@@ -303,10 +301,6 @@ export async function signInWithGoogle(): Promise<{ organizer: AuthOrganizer; is
       token,
       firstName: firstName?.trim() ? firstName : undefined,
       lastName: lastName?.trim() ? lastName : undefined,
-      cachedRole: existingDoc?.role,
-      cachedChapterRole: existingDoc?.chapter_role ?? undefined,
-      cachedTeam: existingDoc?.team,
-      cachedBevyUserId: existingDoc?.bevy_user_id ? String(existingDoc.bevy_user_id) : undefined,
     });
 
     const organizer = mapFirebaseUserToOrganizer(user, validation);
@@ -339,16 +333,113 @@ export async function signInWithGoogle(): Promise<{ organizer: AuthOrganizer; is
 }
 
 /**
- * Signs the user out from Firebase and clears the session cookie.
+ * Signs the user out from Firebase and clears all cookies and storage.
  */
 export async function signOutOrganizer(): Promise<void> {
-  console.log("[Auth Flow - Client] Signing out from Firebase and clearing session cookie...");
+  console.log("[Auth Flow - Client] Signing out from Firebase and clearing all session cookies...");
   if (globalStore) {
     globalStore.getState().setLoggingOut(true);
     globalStore.getState().setUser(null, null);
   }
   setGlobalAuthStore(null);
-  await signOut(auth);
+
+  // Clear client-accessible cookies, localStorage, and sessionStorage
+  if (typeof document !== "undefined") {
+    try {
+      const cookiesList = document.cookie.split(";");
+      for (const c of cookiesList) {
+        const eqPos = c.indexOf("=");
+        const name = eqPos > -1 ? c.substring(0, eqPos).trim() : c.trim();
+        if (name) {
+          document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;`;
+        }
+      }
+      localStorage.clear();
+      sessionStorage.clear();
+    } catch (e) {
+      console.warn("[Sign Out] Storage clearing error:", e);
+    }
+  }
+
+  // Clear server HTTP-only session cookies
   await clearAuthSessionCookie();
+
+  // Sign out from Firebase
+  await signOut(auth);
   console.log("[Auth Flow - Client] Sign out completed.");
+}
+
+/**
+ * Forces a fresh Bevy permission evaluation for the current user,
+ * bypasses all caches, updates Firestore and session cookies,
+ * and refreshes local auth state.
+ */
+export async function refreshCurrentUserRole(): Promise<{
+  success: boolean;
+  role?: string;
+  chapterRole?: string;
+  message: string;
+}> {
+  try {
+    const firebaseUser = auth.currentUser;
+    if (!firebaseUser || !firebaseUser.email) {
+      return { success: false, message: "No active Firebase session found." };
+    }
+
+    console.log(`[Auth Flow - Client] Manually refreshing role from Bevy for: ${firebaseUser.email}...`);
+    const token = await firebaseUser.getIdToken(true);
+
+    const { refreshUserRoleAction } = await import("@/server/auth-actions");
+    const result = await refreshUserRoleAction({
+      uid: firebaseUser.uid,
+      email: firebaseUser.email,
+      token,
+      displayName: firebaseUser.displayName ?? undefined,
+    });
+
+    if (result.success) {
+      // 1. Sync fresh permissions to Firestore on client
+      await syncMemberToFirestore(firebaseUser, {
+        isValidOrganizer: result.isValidOrganizer,
+        role: result.role,
+        chapterRole: result.chapterRole,
+        bevyUserId: result.bevyUserId,
+        roleTitle: result.roleTitle,
+      });
+
+      // 2. Update local Zustand state
+      const organizer: AuthOrganizer = {
+        id: firebaseUser.uid,
+        email: firebaseUser.email,
+        name: firebaseUser.displayName ?? "",
+        avatar: firebaseUser.photoURL ?? "",
+        role: result.role,
+        chapterRole: result.chapterRole,
+        bevyUserId: result.bevyUserId,
+      };
+
+      if (globalStore) {
+        globalStore.getState().setUser(organizer, firebaseUser);
+      }
+
+      console.log(`[Auth Flow - Client] Role successfully refreshed from Bevy: ${result.roleTitle} (${result.role})`);
+      return {
+        success: true,
+        role: result.role,
+        chapterRole: result.chapterRole,
+        message: `Synced with Bevy: ${result.roleTitle}`,
+      };
+    }
+
+    return {
+      success: false,
+      message: result.message || "Failed to sync permissions from Bevy.",
+    };
+  } catch (err) {
+    console.error("[Auth Flow - Client] Error during manual role refresh:", err);
+    return {
+      success: false,
+      message: err instanceof Error ? err.message : "Unexpected error during role refresh.",
+    };
+  }
 }

@@ -34,6 +34,7 @@ export function PublicEventHero({ event }: PublicEventHeroProps) {
           alt={event.title}
           fill
           priority
+          loading="eager"
           sizes="(max-width: 768px) 100vw, (max-width: 1200px) 75vw, 1200px"
           className="object-cover"
           unoptimized={!bannerImageUrl.includes("res.cloudinary.com")}
@@ -49,6 +50,7 @@ export function PublicEventHero({ event }: PublicEventHeroProps) {
             alt={event.title}
             fill
             priority
+            loading="eager"
             sizes="(max-width: 768px) 100vw, 420px"
             className="object-cover"
             unoptimized={!thumbnailImageUrl.includes("res.cloudinary.com")}

@@ -51,7 +51,7 @@ export function FeaturedEventsSection({ events }: FeaturedEventsSectionProps) {
       {/* Events Grid */}
       {visibleEvents.length > 0 ? (
         <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
-          {visibleEvents.map((event) => {
+          {visibleEvents.map((event, index) => {
             const dateStr = new Date(event.start_date).toLocaleDateString("en-US", {
               timeZone: "Asia/Jakarta",
               weekday: "short",
@@ -82,6 +82,8 @@ export function FeaturedEventsSection({ events }: FeaturedEventsSectionProps) {
                   src={imageUrl}
                   alt={event.title}
                   aspectRatio="aspect-video"
+                  priority={index < 2}
+                  loading={index < 2 ? "eager" : "lazy"}
                   className="transition-all duration-500 group-hover:scale-105"
                 >
                   {/* Date badge */}

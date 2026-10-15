@@ -418,7 +418,7 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
 
     return (
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {items.map((reg) => {
+        {items.map((reg, index) => {
           const ev = eventMap.get(String(reg.event_id));
           const effectiveStatus = getEffectiveRegistrationStatus(reg, ev);
           const deadlineInfo = getRegistrationPaymentDeadline(reg, ev);
@@ -467,6 +467,8 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
                     src={imageUrl}
                     alt={reg.event_title}
                     isLoading={isCardLoading}
+                    priority={index < 2}
+                    loading={index < 2 ? "eager" : "lazy"}
                     className="transition-transform duration-300 group-hover:scale-105"
                   >
                     <div className="absolute top-3 left-3 z-20 flex flex-wrap gap-1.5">

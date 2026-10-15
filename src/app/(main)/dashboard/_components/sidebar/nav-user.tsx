@@ -9,7 +9,9 @@ import {
   LogOut,
   MessageSquareHeart,
   MessageSquarePlus,
+  RotateCcw,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import { formatRoleTitle } from "@/components/role-badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -33,7 +35,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from "@/components/ui/sidebar";
 import { getInitials } from "@/lib/utils";
-import { signOutOrganizer, useAuthStore } from "@/stores/auth/auth-provider";
+import { refreshCurrentUserRole, signOutOrganizer, useAuthStore } from "@/stores/auth/auth-provider";
 
 export function NavUser({
   user: fallbackUser,
@@ -46,10 +48,32 @@ export function NavUser({
 } = {}) {
   const { isMobile } = useSidebar();
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const authUser = useAuthStore((s) => s.user);
   const isLoading = useAuthStore((s) => s.isLoading);
   const isLoggingOut = useAuthStore((s) => s.isLoggingOut);
   const setLoggingOut = useAuthStore((s) => s.setLoggingOut);
+
+  const handleRefreshCache = async () => {
+    try {
+      setIsRefreshing(true);
+      toast.loading("Clearing cache and syncing role from Bevy...", { id: "refresh-role" });
+      const result = await refreshCurrentUserRole();
+      if (result.success) {
+        toast.success(result.message || "Permissions updated from Bevy!", { id: "refresh-role" });
+        setTimeout(() => {
+          window.location.reload();
+        }, 600);
+      } else {
+        toast.error(result.message || "Failed to sync role with Bevy", { id: "refresh-role" });
+      }
+    } catch (err) {
+      console.error("Error refreshing role:", err);
+      toast.error("Failed to sync role from Bevy", { id: "refresh-role" });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const handleLogout = async () => {
     setLoggingOut(true);
@@ -139,6 +163,10 @@ export function NavUser({
               <DropdownMenuItem>
                 <CircleUser />
                 Account
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleRefreshCache} disabled={isRefreshing} className="cursor-pointer">
+                <RotateCcw className={`size-4 ${isRefreshing ? "animate-spin" : ""}`} />
+                <span>Clear Cache & Sync Role</span>
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => setIsFeedbackOpen(true)} className="cursor-pointer">
                 <MessageSquarePlus className="size-4" />

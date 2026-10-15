@@ -770,6 +770,7 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
                 aspectRatio="aspect-[21/9]"
                 containerClassName="rounded-xl border shadow-xs"
                 priority
+                loading="eager"
                 isLoading={isCheckingRegistration && !imageUrl}
               >
                 <div className="absolute top-4 left-4 z-20 flex gap-2">

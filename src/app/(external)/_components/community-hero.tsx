@@ -303,6 +303,8 @@ export function CommunityHero() {
                       src={content.videoPosterUrl}
                       alt={content.title || "Featured Event"}
                       fill
+                      priority
+                      loading="eager"
                       sizes="(max-width: 768px) 100vw, 40vw"
                       className="object-cover"
                     />

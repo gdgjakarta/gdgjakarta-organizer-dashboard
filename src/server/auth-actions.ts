@@ -242,60 +242,6 @@ export async function handleUserPostLoginAction(params: UserAuthSyncParams): Pro
       };
     }
 
-    // If a cached role from Firestore is provided, restore session directly without querying Bevy API
-    if (params.cachedRole) {
-      console.log(
-        `[Auth Step 2 - Server] Using cached role from Firestore for ${verifiedEmail}: role="${params.cachedRole}", team="${params.cachedTeam ?? "N/A"}"`,
-      );
-      const isExecutive = params.cachedRole === "organizer" || params.cachedRole === "Organizer";
-      const isCoreStaff =
-        params.cachedRole === "core_team" ||
-        params.cachedRole === "Core Team" ||
-        params.cachedRole === "Check-in Staff" ||
-        params.cachedRole === "check_in_staff" ||
-        params.cachedTeam === "Core Team";
-      const isAuthorizedTeam = isExecutive || isCoreStaff;
-      let role = "member";
-      if (isExecutive) {
-        role = "organizer";
-      } else if (isCoreStaff) {
-        role = "core_team";
-      }
-
-      let defaultChapterRole = "Member";
-      if (isExecutive) {
-        defaultChapterRole = "Organizer";
-      } else if (isCoreStaff) {
-        defaultChapterRole = "Core Team";
-      }
-      const chapterRole = params.cachedChapterRole ?? defaultChapterRole;
-
-      if (token) {
-        console.log(
-          `[Auth Step 3 - Server] Setting session cookies from cache (auth_token & auth_role="${role}") for ${verifiedEmail}`,
-        );
-        await setAuthSessionCookie(token, role, true);
-      }
-
-      let chapterRoleType: ChapterRole = ChapterRole.MEMBER;
-      if (isExecutive) {
-        chapterRoleType = ChapterRole.ORGANIZER;
-      } else if (isCoreStaff) {
-        chapterRoleType = ChapterRole.CORE_TEAM;
-      }
-
-      return {
-        isValidOrganizer: isAuthorizedTeam,
-        role,
-        bevyUserId: params.cachedBevyUserId ?? null,
-        chapterRole,
-        chapterRoleType,
-        roleId: null,
-        roleTitle: chapterRole,
-        wasImported: false,
-      };
-    }
-
     // 1. Validate role directly against Bevy API (/chapter/{chapterId}/team/) using verified email and Bevy User ID
     let validation: OrganizerValidationResult = {
       isValidOrganizer: false,
@@ -425,14 +371,125 @@ export async function restoreSessionCookieAction(token: string, role: string): P
 }
 
 /**
- * Clears the auth_token cookie without redirecting.
+ * Forces a fresh role validation against Bevy API and updates the session cookies.
+ * Used by the "Clear Cache & Sync Role" feature in the user profile menu.
+ */
+export async function refreshUserRoleAction(params: {
+  uid: string;
+  email: string;
+  token?: string;
+  displayName?: string;
+}): Promise<{
+  success: boolean;
+  role: string;
+  chapterRole: string;
+  bevyUserId: string | null;
+  isValidOrganizer: boolean;
+  roleTitle: string;
+  message: string;
+}> {
+  try {
+    const { email, token, displayName } = params;
+    if (!email) {
+      return {
+        success: false,
+        role: "member",
+        chapterRole: "Member",
+        bevyUserId: null,
+        isValidOrganizer: false,
+        roleTitle: "Member",
+        message: "Email is required.",
+      };
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+    console.log(`[Clear Cache] Forcing fresh Bevy API evaluation for: ${normalizedEmail}...`);
+
+    let verifiedEmail = normalizedEmail;
+    if (token) {
+      const tokenVerification = await verifyFirebaseIdToken(token);
+      if (tokenVerification.valid && tokenVerification.email) {
+        verifiedEmail = tokenVerification.email.toLowerCase().trim();
+      }
+    }
+
+    const { firstName, lastName } = splitFullName(displayName);
+    const validation = await validateBevyOrganizer(
+      verifiedEmail,
+      displayName,
+      firstName.trim() ? firstName : undefined,
+      lastName.trim() ? lastName : undefined,
+    );
+
+    const isExecutive = isExecutiveOrganizer({
+      role: validation.role,
+      chapterRole: validation.chapterRole,
+      chapterRoleType: validation.chapterRoleType,
+      roleId: validation.roleId,
+    });
+    const isCoreStaff = isCoreTeamOrStaff({
+      role: validation.role,
+      chapterRole: validation.chapterRole,
+      chapterRoleType: validation.chapterRoleType,
+      roleId: validation.roleId,
+    });
+    const isAuthorizedTeam = isExecutive || isCoreStaff;
+
+    let role = "member";
+    if (isExecutive) {
+      role = "organizer";
+    } else if (isCoreStaff) {
+      role = "core_team";
+    }
+
+    let defaultChapterRole = "Member";
+    if (isExecutive) {
+      defaultChapterRole = "Organizer";
+    } else if (isCoreStaff) {
+      defaultChapterRole = "Core Team";
+    }
+    const chapterRole = validation.chapterRole ?? defaultChapterRole;
+
+    if (token) {
+      console.log(`[Clear Cache] Updating session cookies with fresh role "${role}" for ${verifiedEmail}`);
+      await setAuthSessionCookie(token, role, true);
+    }
+
+    return {
+      success: true,
+      role,
+      chapterRole,
+      bevyUserId: validation.bevyUserId ? String(validation.bevyUserId) : null,
+      isValidOrganizer: isAuthorizedTeam,
+      roleTitle: validation.roleTitle ?? chapterRole,
+      message: `Permissions updated: ${chapterRole}`,
+    };
+  } catch (error) {
+    console.error("[Clear Cache] Error during manual refresh:", error);
+    return {
+      success: false,
+      role: "member",
+      chapterRole: "Member",
+      bevyUserId: null,
+      isValidOrganizer: false,
+      roleTitle: "Member",
+      message: error instanceof Error ? error.message : "Failed to refresh permissions.",
+    };
+  }
+}
+
+/**
+ * Clears the auth_token cookie and all related session cookies without redirecting.
  */
 export async function clearAuthSessionCookie(): Promise<void> {
   try {
-    console.log("[Auth Cookie] Clearing auth_token and auth_role cookies");
+    console.log("[Auth Cookie] Clearing all auth and session cookies");
     const cookieStore = await cookies();
     cookieStore.delete(AUTH_COOKIE);
     cookieStore.delete(ROLE_COOKIE);
+    cookieStore.delete("bevy_session");
+    cookieStore.delete("auth_provider");
+    cookieStore.delete("auth_email");
   } catch (err) {
     console.error("[Auth Cookie] Error clearing auth cookies:", err);
   }

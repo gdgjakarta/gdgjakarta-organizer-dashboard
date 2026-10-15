@@ -87,7 +87,7 @@ export function MemberEventsList({ events, myRegistrations = [] }: MemberEventsL
 
     return (
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {items.map((event) => {
+        {items.map((event, index) => {
           const existingReg = registrationMap.get(String(event.id));
           const effectiveRegStatus = existingReg ? getEffectiveRegistrationStatus(existingReg, event) : null;
           const isPast = isEventPast(event);
@@ -115,6 +115,8 @@ export function MemberEventsList({ events, myRegistrations = [] }: MemberEventsL
                   <EventCardImage
                     src={extractEventImageUrl(event as unknown as Record<string, unknown>)}
                     alt={event.title}
+                    priority={index < 3}
+                    loading={index < 3 ? "eager" : "lazy"}
                     className="transition-transform duration-300 group-hover:scale-105"
                   >
                     <div className="absolute top-3 left-3 z-20 flex gap-1.5">

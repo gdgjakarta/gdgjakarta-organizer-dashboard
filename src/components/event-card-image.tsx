@@ -16,6 +16,7 @@ export interface EventCardImageProps {
   containerClassName?: string;
   aspectRatio?: string;
   priority?: boolean;
+  loading?: "eager" | "lazy";
   fallbackIconClassName?: string;
   children?: React.ReactNode;
   isLoading?: boolean;
@@ -29,6 +30,7 @@ export function EventCardImage({
   containerClassName,
   aspectRatio = "aspect-video",
   priority = false,
+  loading = priority ? "eager" : undefined,
   fallbackIconClassName,
   children,
   isLoading: externalIsLoading,
@@ -62,6 +64,7 @@ export function EventCardImage({
           fill={fill}
           unoptimized
           priority={priority}
+          loading={loading ?? (priority ? "eager" : undefined)}
           className={cn("object-cover transition-all duration-500", isLoading ? "opacity-0" : "opacity-100", className)}
           onLoad={() => setInternalLoading(false)}
           onError={() => {

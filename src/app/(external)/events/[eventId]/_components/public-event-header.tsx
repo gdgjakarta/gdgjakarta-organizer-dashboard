@@ -300,6 +300,8 @@ export function PublicEventHeader({ event, firestoreEvent }: PublicEventHeaderPr
               src={thumbnailImageUrl}
               alt={event.title}
               fill
+              priority
+              loading="eager"
               sizes="80px"
               className="size-full object-cover"
               unoptimized={!thumbnailImageUrl.includes("res.cloudinary.com")}
