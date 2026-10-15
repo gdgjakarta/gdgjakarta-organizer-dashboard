@@ -18,6 +18,7 @@ import {
   UserX,
 } from "lucide-react";
 
+import { Shimmer } from "@/components/shimmer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,6 +46,7 @@ interface RegistrantStatisticsProps {
   maxAttendees?: number | null;
   activeStatusFilter?: string;
   event?: FirestoreEvent;
+  isLoading?: boolean;
   onSelectStatusFilter?: (status: string) => void;
   onSelectSearchFilter?: (term: string) => void;
   onSelectSessionFilter?: (sessionId: string) => void;
@@ -91,6 +93,7 @@ export function RegistrantStatistics({
   maxAttendees,
   activeStatusFilter = "all",
   event,
+  isLoading = false,
   onSelectStatusFilter,
   onSelectSearchFilter,
   onSelectSessionFilter,
@@ -473,6 +476,43 @@ export function RegistrantStatistics({
   };
 
   const renderAnalyticsContent = () => {
+    if (isLoading) {
+      return (
+        <div className="space-y-4">
+          {/* Distribution Header & Count info skeleton */}
+          <div className="flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2">
+              <Shimmer className="h-5 w-40" />
+              <Shimmer className="h-4 w-24 rounded-full" />
+            </div>
+            <Shimmer className="hidden h-3.5 w-48 sm:block" />
+          </div>
+
+          {/* Segmented Distribution Meter Bar skeleton */}
+          <Shimmer className="h-3.5 w-full rounded-full" />
+
+          {/* Detailed Breakdown Options Grid skeleton */}
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, idx) => (
+              <div
+                // biome-ignore lint/suspicious/noArrayIndexKey: Static placeholder skeleton items
+                key={idx}
+                className="flex flex-col justify-between rounded-xl border bg-card p-3 gap-3"
+              >
+                <div className="flex w-full items-start justify-between gap-2">
+                  <Shimmer className="h-4 w-28" />
+                  <Shimmer className="h-4 w-10" />
+                </div>
+                <div className="flex items-center justify-between">
+                  <Shimmer className="h-3 w-20" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
     if (targetPool.length === 0) {
       return (
         <div className="rounded-xl border border-dashed py-8 text-center text-muted-foreground text-xs">
@@ -681,16 +721,29 @@ export function RegistrantStatistics({
               <span className="font-medium">Total Registrants</span>
               <Users className="size-4 text-primary" />
             </div>
-            <div className="mt-2 font-bold text-2xl tracking-tight sm:text-3xl">{totalRegistrations}</div>
-            <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-              {maxAttendees ? (
-                <span>
-                  Capacity: {Math.round((totalRegistrations / maxAttendees) * 100)}% of {maxAttendees}
-                </span>
-              ) : (
-                <span>All registered applicants</span>
-              )}
-            </div>
+            {isLoading ? (
+              <>
+                <div className="mt-2.5">
+                  <Shimmer className="h-7 sm:h-8 w-16" />
+                </div>
+                <div className="mt-2">
+                  <Shimmer className="h-3.5 w-28" />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="mt-2 font-bold text-2xl tracking-tight sm:text-3xl">{totalRegistrations}</div>
+                <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  {maxAttendees ? (
+                    <span>
+                      Capacity: {Math.round((totalRegistrations / maxAttendees) * 100)}% of {maxAttendees}
+                    </span>
+                  ) : (
+                    <span>All registered applicants</span>
+                  )}
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -708,18 +761,31 @@ export function RegistrantStatistics({
                 <span className="font-medium">Approved</span>
                 <UserCheck className="size-4 text-emerald-600 dark:text-emerald-400" />
               </div>
-              <div className="mt-2 font-bold text-2xl tracking-tight text-emerald-600 dark:text-emerald-400 sm:text-3xl">
-                {totalApproved}
-              </div>
-              <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                <Badge
-                  variant="outline"
-                  className="border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0 font-semibold text-[10px] text-emerald-600 dark:text-emerald-400"
-                >
-                  {approvedPercent}%
-                </Badge>
-                <span>of total</span>
-              </div>
+              {isLoading ? (
+                <>
+                  <div className="mt-2.5">
+                    <Shimmer className="h-7 sm:h-8 w-14" />
+                  </div>
+                  <div className="mt-2">
+                    <Shimmer className="h-4 w-20 rounded-xs" />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="mt-2 font-bold text-2xl tracking-tight text-emerald-600 dark:text-emerald-400 sm:text-3xl">
+                    {totalApproved}
+                  </div>
+                  <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <Badge
+                      variant="outline"
+                      className="border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0 font-semibold text-[10px] text-emerald-600 dark:text-emerald-400"
+                    >
+                      {approvedPercent}%
+                    </Badge>
+                    <span>of total</span>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         )}
@@ -737,56 +803,69 @@ export function RegistrantStatistics({
               <span className="font-medium">Checked In</span>
               <UserCheck className="size-4 text-purple-600 dark:text-purple-400" />
             </div>
-            <div className="mt-2 flex items-baseline justify-between">
-              <div className="font-bold text-2xl tracking-tight text-purple-600 dark:text-purple-400 sm:text-3xl">
-                {totalCheckedIn}
-              </div>
-              {totalApproved > 0 && (
-                <div
-                  className="flex items-center gap-0.5 text-xs"
-                  title={`${totalDropped} of ${totalApproved} approved attendees not checked in`}
-                >
-                  <TrendingDown
-                    className={cn(
-                      "size-3.5",
-                      dropRateNumber > 60
-                        ? "text-rose-500"
-                        : dropRateNumber > 35
-                          ? "text-amber-500"
-                          : "text-emerald-500",
-                    )}
-                  />
-                  <span
-                    className={cn(
-                      "font-semibold tabular-nums",
-                      dropRateNumber > 60
-                        ? "text-rose-600 dark:text-rose-400"
-                        : dropRateNumber > 35
-                          ? "text-amber-600 dark:text-amber-400"
-                          : "text-emerald-600 dark:text-emerald-400",
-                    )}
-                  >
-                    {formattedDropRate}
-                  </span>
-                  <span className="text-muted-foreground text-[10px]">drop</span>
+            {isLoading ? (
+              <>
+                <div className="mt-2.5">
+                  <Shimmer className="h-7 sm:h-8 w-14" />
                 </div>
-              )}
-            </div>
-            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
-              <Badge
-                variant="outline"
-                className="border-purple-500/20 bg-purple-500/10 px-1.5 py-0 font-semibold text-[10px] text-purple-600 dark:text-purple-400"
-              >
-                {checkedInPercent}%
-              </Badge>
-              <span>turnout</span>
-              {totalApproved > 0 && (
-                <>
-                  <span>•</span>
-                  <span>{totalDropped} no-show</span>
-                </>
-              )}
-            </div>
+                <div className="mt-2">
+                  <Shimmer className="h-4 w-24 rounded-xs" />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="mt-2 flex items-baseline justify-between">
+                  <div className="font-bold text-2xl tracking-tight text-purple-600 dark:text-purple-400 sm:text-3xl">
+                    {totalCheckedIn}
+                  </div>
+                  {totalApproved > 0 && (
+                    <div
+                      className="flex items-center gap-0.5 text-xs"
+                      title={`${totalDropped} of ${totalApproved} approved attendees not checked in`}
+                    >
+                      <TrendingDown
+                        className={cn(
+                          "size-3.5",
+                          dropRateNumber > 60
+                            ? "text-rose-500"
+                            : dropRateNumber > 35
+                              ? "text-amber-500"
+                              : "text-emerald-500",
+                        )}
+                      />
+                      <span
+                        className={cn(
+                          "font-semibold tabular-nums",
+                          dropRateNumber > 60
+                            ? "text-rose-600 dark:text-rose-400"
+                            : dropRateNumber > 35
+                              ? "text-amber-600 dark:text-amber-400"
+                              : "text-emerald-600 dark:text-emerald-400",
+                        )}
+                      >
+                        {formattedDropRate}
+                      </span>
+                      <span className="text-muted-foreground text-[10px]">drop</span>
+                    </div>
+                  )}
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <Badge
+                    variant="outline"
+                    className="border-purple-500/20 bg-purple-500/10 px-1.5 py-0 font-semibold text-[10px] text-purple-600 dark:text-purple-400"
+                  >
+                    {checkedInPercent}%
+                  </Badge>
+                  <span>turnout</span>
+                  {totalApproved > 0 && (
+                    <>
+                      <span>•</span>
+                      <span>{totalDropped} no-show</span>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -804,18 +883,31 @@ export function RegistrantStatistics({
                 <span className="font-medium">Pending Review</span>
                 <Clock className="size-4 text-amber-600 dark:text-amber-400" />
               </div>
-              <div className="mt-2 font-bold text-2xl tracking-tight text-amber-600 dark:text-amber-400 sm:text-3xl">
-                {totalPending}
-              </div>
-              <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                <Badge
-                  variant="outline"
-                  className="border-amber-500/20 bg-amber-500/10 px-1.5 py-0 font-semibold text-[10px] text-amber-600 dark:text-amber-400"
-                >
-                  {pendingPercent}%
-                </Badge>
-                <span>requires review</span>
-              </div>
+              {isLoading ? (
+                <>
+                  <div className="mt-2.5">
+                    <Shimmer className="h-7 sm:h-8 w-14" />
+                  </div>
+                  <div className="mt-2">
+                    <Shimmer className="h-4 w-28 rounded-xs" />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="mt-2 font-bold text-2xl tracking-tight text-amber-600 dark:text-amber-400 sm:text-3xl">
+                    {totalPending}
+                  </div>
+                  <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <Badge
+                      variant="outline"
+                      className="border-amber-500/20 bg-amber-500/10 px-1.5 py-0 font-semibold text-[10px] text-amber-600 dark:text-amber-400"
+                    >
+                      {pendingPercent}%
+                    </Badge>
+                    <span>requires review</span>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         )}
@@ -834,18 +926,31 @@ export function RegistrantStatistics({
                 <span className="font-medium">Waitlisted</span>
                 <Hourglass className="size-4 text-blue-600 dark:text-blue-400" />
               </div>
-              <div className="mt-2 font-bold text-2xl tracking-tight text-blue-600 dark:text-blue-400 sm:text-3xl">
-                {totalWaitlisted}
-              </div>
-              <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                <Badge
-                  variant="outline"
-                  className="border-blue-500/20 bg-blue-500/10 px-1.5 py-0 font-semibold text-[10px] text-blue-600 dark:text-blue-400"
-                >
-                  {waitlistedPercent}%
-                </Badge>
-                <span>on waitlist</span>
-              </div>
+              {isLoading ? (
+                <>
+                  <div className="mt-2.5">
+                    <Shimmer className="h-7 sm:h-8 w-14" />
+                  </div>
+                  <div className="mt-2">
+                    <Shimmer className="h-4 w-20 rounded-xs" />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="mt-2 font-bold text-2xl tracking-tight text-blue-600 dark:text-blue-400 sm:text-3xl">
+                    {totalWaitlisted}
+                  </div>
+                  <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <Badge
+                      variant="outline"
+                      className="border-blue-500/20 bg-blue-500/10 px-1.5 py-0 font-semibold text-[10px] text-blue-600 dark:text-blue-400"
+                    >
+                      {waitlistedPercent}%
+                    </Badge>
+                    <span>on waitlist</span>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         )}
@@ -864,16 +969,31 @@ export function RegistrantStatistics({
                 <span className="font-medium">Rejected</span>
                 <UserX className="size-4 text-destructive" />
               </div>
-              <div className="mt-2 font-bold text-2xl tracking-tight text-destructive sm:text-3xl">{totalRejected}</div>
-              <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                <Badge
-                  variant="outline"
-                  className="border-destructive/20 bg-destructive/10 px-1.5 py-0 font-semibold text-[10px] text-destructive"
-                >
-                  {rejectedPercent}%
-                </Badge>
-                <span>declined</span>
-              </div>
+              {isLoading ? (
+                <>
+                  <div className="mt-2.5">
+                    <Shimmer className="h-7 sm:h-8 w-14" />
+                  </div>
+                  <div className="mt-2">
+                    <Shimmer className="h-4 w-20 rounded-xs" />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="mt-2 font-bold text-2xl tracking-tight text-destructive sm:text-3xl">
+                    {totalRejected}
+                  </div>
+                  <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <Badge
+                      variant="outline"
+                      className="border-destructive/20 bg-destructive/10 px-1.5 py-0 font-semibold text-[10px] text-destructive"
+                    >
+                      {rejectedPercent}%
+                    </Badge>
+                    <span>declined</span>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         )}
@@ -887,7 +1007,11 @@ export function RegistrantStatistics({
               <CreditCard className="size-3.5 text-primary" />
               <span>Paid Registration Flow</span>
               <Badge variant="outline" className="ml-1 text-[10px] font-medium border-primary/30 text-primary">
-                {totalPaidFlow} total
+                {isLoading ? (
+                  <Shimmer className="inline-block h-3 w-8 rounded-xs align-middle" />
+                ) : (
+                  `${totalPaidFlow} total`
+                )}
               </Badge>
             </div>
             {activeStatusFilter !== "all" &&
@@ -922,18 +1046,31 @@ export function RegistrantStatistics({
                   <span className="font-medium">Waiting for Payment</span>
                   <Clock className="size-4 text-amber-600 dark:text-amber-400" />
                 </div>
-                <div className="mt-2 font-bold text-2xl tracking-tight text-amber-600 dark:text-amber-400 sm:text-3xl">
-                  {totalWaitingForPayment}
-                </div>
-                <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                  <Badge
-                    variant="outline"
-                    className="border-amber-500/20 bg-amber-500/10 px-1.5 py-0 font-semibold text-[10px] text-amber-600 dark:text-amber-400"
-                  >
-                    {totalPaidFlow > 0 ? ((totalWaitingForPayment / totalPaidFlow) * 100).toFixed(0) : 0}%
-                  </Badge>
-                  <span>pending checkout</span>
-                </div>
+                {isLoading ? (
+                  <>
+                    <div className="mt-2.5">
+                      <Shimmer className="h-7 sm:h-8 w-12" />
+                    </div>
+                    <div className="mt-2">
+                      <Shimmer className="h-4 w-28 rounded-xs" />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="mt-2 font-bold text-2xl tracking-tight text-amber-600 dark:text-amber-400 sm:text-3xl">
+                      {totalWaitingForPayment}
+                    </div>
+                    <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                      <Badge
+                        variant="outline"
+                        className="border-amber-500/20 bg-amber-500/10 px-1.5 py-0 font-semibold text-[10px] text-amber-600 dark:text-amber-400"
+                      >
+                        {totalPaidFlow > 0 ? ((totalWaitingForPayment / totalPaidFlow) * 100).toFixed(0) : 0}%
+                      </Badge>
+                      <span>pending checkout</span>
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
 
@@ -953,18 +1090,31 @@ export function RegistrantStatistics({
                   <span className="font-medium">Paid & Registered</span>
                   <CheckCircle2 className="size-4 text-emerald-600 dark:text-emerald-400" />
                 </div>
-                <div className="mt-2 font-bold text-2xl tracking-tight text-emerald-600 dark:text-emerald-400 sm:text-3xl">
-                  {totalPaidAndRegistered}
-                </div>
-                <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                  <Badge
-                    variant="outline"
-                    className="border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0 font-semibold text-[10px] text-emerald-600 dark:text-emerald-400"
-                  >
-                    {totalPaidFlow > 0 ? ((totalPaidAndRegistered / totalPaidFlow) * 100).toFixed(0) : 0}%
-                  </Badge>
-                  <span>confirmed</span>
-                </div>
+                {isLoading ? (
+                  <>
+                    <div className="mt-2.5">
+                      <Shimmer className="h-7 sm:h-8 w-14" />
+                    </div>
+                    <div className="mt-2">
+                      <Shimmer className="h-4 w-24 rounded-xs" />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="mt-2 font-bold text-2xl tracking-tight text-emerald-600 dark:text-emerald-400 sm:text-3xl">
+                      {totalPaidAndRegistered}
+                    </div>
+                    <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                      <Badge
+                        variant="outline"
+                        className="border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0 font-semibold text-[10px] text-emerald-600 dark:text-emerald-400"
+                      >
+                        {totalPaidFlow > 0 ? ((totalPaidAndRegistered / totalPaidFlow) * 100).toFixed(0) : 0}%
+                      </Badge>
+                      <span>confirmed</span>
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
 
@@ -981,12 +1131,25 @@ export function RegistrantStatistics({
                   <span className="font-medium">Expired</span>
                   <CalendarX className="size-4 text-zinc-600 dark:text-zinc-400" />
                 </div>
-                <div className="mt-2 font-bold text-2xl tracking-tight text-zinc-700 dark:text-zinc-300 sm:text-3xl">
-                  {totalExpired}
-                </div>
-                <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                  <span className="text-[10px]">deadline overdue</span>
-                </div>
+                {isLoading ? (
+                  <>
+                    <div className="mt-2.5">
+                      <Shimmer className="h-7 sm:h-8 w-10" />
+                    </div>
+                    <div className="mt-2">
+                      <Shimmer className="h-3.5 w-24" />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="mt-2 font-bold text-2xl tracking-tight text-zinc-700 dark:text-zinc-300 sm:text-3xl">
+                      {totalExpired}
+                    </div>
+                    <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                      <span className="text-[10px]">deadline overdue</span>
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
 
@@ -1003,12 +1166,25 @@ export function RegistrantStatistics({
                   <span className="font-medium">Failed</span>
                   <AlertTriangle className="size-4 text-rose-600 dark:text-rose-400" />
                 </div>
-                <div className="mt-2 font-bold text-2xl tracking-tight text-rose-600 dark:text-rose-400 sm:text-3xl">
-                  {totalFailed}
-                </div>
-                <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                  <span className="text-[10px]">payment error</span>
-                </div>
+                {isLoading ? (
+                  <>
+                    <div className="mt-2.5">
+                      <Shimmer className="h-7 sm:h-8 w-10" />
+                    </div>
+                    <div className="mt-2">
+                      <Shimmer className="h-3.5 w-20" />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="mt-2 font-bold text-2xl tracking-tight text-rose-600 dark:text-rose-400 sm:text-3xl">
+                      {totalFailed}
+                    </div>
+                    <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                      <span className="text-[10px]">payment error</span>
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
 
@@ -1025,12 +1201,25 @@ export function RegistrantStatistics({
                   <span className="font-medium">Canceled</span>
                   <Ban className="size-4 text-slate-600 dark:text-slate-400" />
                 </div>
-                <div className="mt-2 font-bold text-2xl tracking-tight text-slate-700 dark:text-slate-300 sm:text-3xl">
-                  {totalCanceled}
-                </div>
-                <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                  <span className="text-[10px]">cancelled orders</span>
-                </div>
+                {isLoading ? (
+                  <>
+                    <div className="mt-2.5">
+                      <Shimmer className="h-7 sm:h-8 w-10" />
+                    </div>
+                    <div className="mt-2">
+                      <Shimmer className="h-3.5 w-24" />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="mt-2 font-bold text-2xl tracking-tight text-slate-700 dark:text-slate-300 sm:text-3xl">
+                      {totalCanceled}
+                    </div>
+                    <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                      <span className="text-[10px]">cancelled orders</span>
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -1060,52 +1249,72 @@ export function RegistrantStatistics({
                   type="button"
                   onClick={() => setAnalysisScope("all")}
                   className={cn(
-                    "rounded-md px-2.5 py-1 font-medium transition-colors",
+                    "inline-flex items-center gap-1 rounded-md px-2.5 py-1 font-medium transition-colors",
                     analysisScope === "all"
                       ? "bg-background text-foreground shadow-xs"
                       : "text-muted-foreground hover:text-foreground",
                   )}
                 >
-                  All ({totalRegistrations})
+                  <span>All</span>
+                  {isLoading ? (
+                    <Shimmer className="inline-block h-3 w-5 rounded-xs align-middle" />
+                  ) : (
+                    <span>({totalRegistrations})</span>
+                  )}
                 </button>
                 {isCurationMode && (
                   <button
                     type="button"
                     onClick={() => setAnalysisScope("approved")}
                     className={cn(
-                      "rounded-md px-2.5 py-1 font-medium transition-colors",
+                      "inline-flex items-center gap-1 rounded-md px-2.5 py-1 font-medium transition-colors",
                       analysisScope === "approved"
                         ? "bg-background text-foreground shadow-xs"
                         : "text-muted-foreground hover:text-foreground",
                     )}
                   >
-                    Approved Only ({totalApproved})
+                    <span>Approved Only</span>
+                    {isLoading ? (
+                      <Shimmer className="inline-block h-3 w-4 rounded-xs align-middle" />
+                    ) : (
+                      <span>({totalApproved})</span>
+                    )}
                   </button>
                 )}
                 <button
                   type="button"
                   onClick={() => setAnalysisScope("checked_in")}
                   className={cn(
-                    "rounded-md px-2.5 py-1 font-medium transition-colors",
+                    "inline-flex items-center gap-1 rounded-md px-2.5 py-1 font-medium transition-colors",
                     analysisScope === "checked_in"
                       ? "bg-background text-foreground shadow-xs"
                       : "text-muted-foreground hover:text-foreground",
                   )}
                 >
-                  Checked In ({totalCheckedIn})
+                  <span>Checked In</span>
+                  {isLoading ? (
+                    <Shimmer className="inline-block h-3 w-4 rounded-xs align-middle" />
+                  ) : (
+                    <span>({totalCheckedIn})</span>
+                  )}
                 </button>
                 <button
                   type="button"
                   onClick={() => setAnalysisScope("not_checked_in")}
                   className={cn(
-                    "rounded-md px-2.5 py-1 font-medium transition-colors",
+                    "inline-flex items-center gap-1 rounded-md px-2.5 py-1 font-medium transition-colors",
                     analysisScope === "not_checked_in"
                       ? "bg-background text-foreground shadow-xs"
                       : "text-muted-foreground hover:text-foreground",
                   )}
                   title="Approved attendees who have not checked in"
                 >
-                  Not Checked In ({totalDropped})
+                  <span>Not Checked In</span>
+                  {isLoading ? (
+                    <Shimmer className="inline-block h-3 w-4 rounded-xs align-middle" />
+                  ) : (
+                    <span>({totalDropped})</span>
+                  )}
                 </button>
               </div>
 

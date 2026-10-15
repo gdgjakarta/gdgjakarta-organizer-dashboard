@@ -30,6 +30,7 @@ import {
 import { toast } from "sonner";
 
 import { CapacityFullDialog } from "@/components/capacity-full-dialog";
+import { Shimmer } from "@/components/shimmer";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -2580,6 +2581,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         maxAttendees={event?.max_attendees}
         activeStatusFilter={statusFilter}
         event={currentEvent}
+        isLoading={isLoading}
         onSelectStatusFilter={handleStatusFilterChange}
         onSelectSearchFilter={handleSearchChange}
         onSelectSessionFilter={handleSessionFilterChange}
@@ -2824,26 +2826,38 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
-                    <SelectItem value="all">All Statuses ({statusCounts.all})</SelectItem>
-                    {isCurationMode && <SelectItem value="pending">Pending Review ({statusCounts.pending})</SelectItem>}
+                    <SelectItem value="all">All Statuses ({isLoading ? "..." : statusCounts.all})</SelectItem>
+                    {isCurationMode && (
+                      <SelectItem value="pending">
+                        Pending Review ({isLoading ? "..." : statusCounts.pending})
+                      </SelectItem>
+                    )}
                     <SelectItem value="waiting_for_payment">
-                      Waiting for Payment ({statusCounts.waiting_for_payment})
+                      Waiting for Payment ({isLoading ? "..." : statusCounts.waiting_for_payment})
                     </SelectItem>
                     <SelectItem value="paid_and_registered">
-                      Paid & Registered ({statusCounts.paid_and_registered})
+                      Paid & Registered ({isLoading ? "..." : statusCounts.paid_and_registered})
                     </SelectItem>
-                    <SelectItem value="expired">Expired ({statusCounts.expired})</SelectItem>
-                    <SelectItem value="failed">Failed ({statusCounts.failed})</SelectItem>
-                    <SelectItem value="canceled">Canceled ({statusCounts.canceled})</SelectItem>
-                    {isCurationMode && <SelectItem value="approved">Approved ({statusCounts.approved})</SelectItem>}
-                    <SelectItem value="checked_in">Checked In ({statusCounts.checked_in})</SelectItem>
+                    <SelectItem value="expired">Expired ({isLoading ? "..." : statusCounts.expired})</SelectItem>
+                    <SelectItem value="failed">Failed ({isLoading ? "..." : statusCounts.failed})</SelectItem>
+                    <SelectItem value="canceled">Canceled ({isLoading ? "..." : statusCounts.canceled})</SelectItem>
+                    {isCurationMode && (
+                      <SelectItem value="approved">Approved ({isLoading ? "..." : statusCounts.approved})</SelectItem>
+                    )}
+                    <SelectItem value="checked_in">
+                      Checked In ({isLoading ? "..." : statusCounts.checked_in})
+                    </SelectItem>
                     <SelectItem value="not_checked_in">
-                      Not Checked In (Drop) ({statusCounts.not_checked_in})
+                      Not Checked In (Drop) ({isLoading ? "..." : statusCounts.not_checked_in})
                     </SelectItem>
                     {isCurationMode && (
-                      <SelectItem value="waitlisted">Waitlisted ({statusCounts.waitlisted})</SelectItem>
+                      <SelectItem value="waitlisted">
+                        Waitlisted ({isLoading ? "..." : statusCounts.waitlisted})
+                      </SelectItem>
                     )}
-                    {isCurationMode && <SelectItem value="rejected">Rejected ({statusCounts.rejected})</SelectItem>}
+                    {isCurationMode && (
+                      <SelectItem value="rejected">Rejected ({isLoading ? "..." : statusCounts.rejected})</SelectItem>
+                    )}
                   </SelectGroup>
                 </SelectContent>
               </Select>
@@ -3190,7 +3204,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                         isActive ? "bg-background/80" : "bg-muted text-foreground",
                       )}
                     >
-                      {item.count}
+                      {isLoading ? <Shimmer className="inline-block h-2.5 w-4 rounded-xs align-middle" /> : item.count}
                     </span>
                   </button>
                 );

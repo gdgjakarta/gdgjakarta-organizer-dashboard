@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { Shimmer } from "@/components/shimmer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -124,6 +125,7 @@ export function EventDetailHeader({
     totalWaitlisted,
     totalCheckedIn: initialTotalCheckedIn > 0 ? initialTotalCheckedIn : event.total_checked_in,
   });
+  const [isLoadingTotals, setIsLoadingTotals] = useState(true);
 
   useEffect(() => {
     setLiveTotals({
@@ -146,7 +148,10 @@ export function EventDetailHeader({
 
   useEffect(() => {
     const targetEventId = String(event.id || "");
-    if (!targetEventId) return;
+    if (!targetEventId) {
+      setIsLoadingTotals(false);
+      return;
+    }
     let unsubscribe: () => void = () => {
       // No-op initial cleanup
     };
@@ -184,6 +189,7 @@ export function EventDetailHeader({
             totalCheckedIn: checkedInCount,
           });
         }
+        setIsLoadingTotals(false);
 
         // 2. Real-time subscription
         unsubscribe = subscribeEventRegistrations(targetEventId, (list) => {
@@ -211,10 +217,12 @@ export function EventDetailHeader({
               totalWaitlisted: waitlistedCount,
               totalCheckedIn: checkedInCount,
             });
+            setIsLoadingTotals(false);
           }
         });
       } catch (err) {
         console.warn("[EventDetailHeader] Could not subscribe to live totals:", err);
+        setIsLoadingTotals(false);
       }
     }
 
@@ -378,23 +386,38 @@ export function EventDetailHeader({
             <span>•</span>
             <span className="flex items-center gap-1.5">
               <Users className="size-4" />
-              <strong className="text-foreground">{liveTotals.totalRegistrations}</strong> Registrants
+              {isLoadingTotals ? (
+                <Shimmer className="inline-block h-4 w-7 rounded-xs align-middle" />
+              ) : (
+                <strong className="text-foreground">{liveTotals.totalRegistrations}</strong>
+              )}{" "}
+              Registrants
             </span>
             {isCurationMode && (
               <>
                 <span>•</span>
                 <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
                   <CheckCircle2 className="size-4" />
-                  <strong>{liveTotals.totalApproved}</strong> Approved
+                  {isLoadingTotals ? (
+                    <Shimmer className="inline-block h-4 w-6 rounded-xs align-middle" />
+                  ) : (
+                    <strong>{liveTotals.totalApproved}</strong>
+                  )}{" "}
+                  Approved
                 </span>
               </>
             )}
             <span>•</span>
             <span className="flex items-center gap-1.5 text-purple-600 dark:text-purple-400">
               <UserCheck className="size-4" />
-              <strong>{liveTotals.totalCheckedIn}</strong> Checked In
+              {isLoadingTotals ? (
+                <Shimmer className="inline-block h-4 w-6 rounded-xs align-middle" />
+              ) : (
+                <strong>{liveTotals.totalCheckedIn}</strong>
+              )}{" "}
+              Checked In
             </span>
-            {isCurationMode && totalApproved > 0 && (
+            {isCurationMode && !isLoadingTotals && totalApproved > 0 && (
               <>
                 <span>•</span>
                 <span
@@ -412,17 +435,32 @@ export function EventDetailHeader({
                 <span>•</span>
                 <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
                   <Clock className="size-4" />
-                  <strong>{liveTotals.totalPending}</strong> Pending
+                  {isLoadingTotals ? (
+                    <Shimmer className="inline-block h-4 w-6 rounded-xs align-middle" />
+                  ) : (
+                    <strong>{liveTotals.totalPending}</strong>
+                  )}{" "}
+                  Pending
                 </span>
                 <span>•</span>
                 <span className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
                   <Hourglass className="size-4" />
-                  <strong>{liveTotals.totalWaitlisted}</strong> Waitlisted
+                  {isLoadingTotals ? (
+                    <Shimmer className="inline-block h-4 w-6 rounded-xs align-middle" />
+                  ) : (
+                    <strong>{liveTotals.totalWaitlisted}</strong>
+                  )}{" "}
+                  Waitlisted
                 </span>
                 <span>•</span>
                 <span className="flex items-center gap-1.5 text-destructive">
                   <XCircle className="size-4" />
-                  <strong>{liveTotals.totalRejected}</strong> Rejected
+                  {isLoadingTotals ? (
+                    <Shimmer className="inline-block h-4 w-6 rounded-xs align-middle" />
+                  ) : (
+                    <strong>{liveTotals.totalRejected}</strong>
+                  )}{" "}
+                  Rejected
                 </span>
               </>
             )}
