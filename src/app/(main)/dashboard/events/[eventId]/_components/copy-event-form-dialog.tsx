@@ -52,6 +52,11 @@ export interface CopiedFormData {
     maxAttendees: string;
   };
   sessions?: EventSession[];
+  default_session_name?: string;
+  default_session_time?: string;
+  default_session_checkin_deadline?: string;
+  default_session_location?: string;
+  default_session_location_url?: string;
   tickets?: EventTicketTier[];
 }
 
@@ -71,6 +76,11 @@ interface EnrichedEventOption {
   isCompleted: boolean;
   questions: CustomQuestion[];
   sessions: EventSession[];
+  defaultSessionName?: string;
+  defaultSessionTime?: string;
+  defaultSessionCheckinDeadline?: string;
+  defaultSessionLocation?: string;
+  defaultSessionLocationUrl?: string;
   tickets: EventTicketTier[];
   requiresApproval: boolean;
   allowWaitlist: boolean;
@@ -172,6 +182,11 @@ export function CopyEventFormDialog({ open, onOpenChange, currentEventId, onAppl
             isCompleted,
             questions,
             sessions,
+            defaultSessionName: doc.default_session_name,
+            defaultSessionTime: doc.default_session_time,
+            defaultSessionCheckinDeadline: doc.default_session_checkin_deadline,
+            defaultSessionLocation: doc.default_session_location,
+            defaultSessionLocationUrl: doc.default_session_location_url,
             tickets,
             requiresApproval: Boolean(
               doc.requires_approval || (doc as unknown as Record<string, unknown>).curation_mode,
@@ -364,6 +379,11 @@ export function CopyEventFormDialog({ open, onOpenChange, currentEventId, onAppl
       replaceQuestions: copyMode === "replace",
       policy: policyData,
       sessions: clonedSessions,
+      default_session_name: copySessions ? selectedEvent.defaultSessionName : undefined,
+      default_session_time: copySessions ? selectedEvent.defaultSessionTime : undefined,
+      default_session_checkin_deadline: copySessions ? selectedEvent.defaultSessionCheckinDeadline : undefined,
+      default_session_location: copySessions ? selectedEvent.defaultSessionLocation : undefined,
+      default_session_location_url: copySessions ? selectedEvent.defaultSessionLocationUrl : undefined,
       tickets: clonedTickets,
     });
 

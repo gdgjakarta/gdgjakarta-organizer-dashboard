@@ -332,6 +332,11 @@ export interface FirestoreEvent {
   agenda?: BevyAgenda;
   speakers?: BevySpeaker[];
   sessions?: EventSession[];
+  default_session_name?: string;
+  default_session_time?: string;
+  default_session_checkin_deadline?: string;
+  default_session_location?: string;
+  default_session_location_url?: string;
   tickets?: EventTicketTier[];
   max_tickets_per_person?: number | null; // Limit tickets per person (default 1)
   merchandise?: EventMerchandiseItem[];

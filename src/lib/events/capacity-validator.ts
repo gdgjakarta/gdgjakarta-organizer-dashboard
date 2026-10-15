@@ -152,24 +152,18 @@ export function resolveRegistrationSession(
 ): { sessionId?: string; sessionTitle: string; sessionCapacity: number | null } {
   const rawSession =
     registration.session_title ??
-    registration.ticket_name ??
-    registration.ticket_tier ??
     (registration.answers?.Session as string | undefined) ??
     (registration.answers?.session as string | undefined) ??
-    (registration.answers?.Ticket as string | undefined) ??
-    (registration.answers?.ticket as string | undefined) ??
     "";
 
-  let sessionTitle = "Regular Ticket";
+  let sessionTitle = event?.default_session_name?.trim() || "Full session";
   if (rawSession && typeof rawSession === "string") {
     const cleaned = rawSession.split(",")[0].trim();
     if (cleaned) {
       sessionTitle = cleaned;
     }
-  } else if (event?.tickets && event.tickets.length > 0) {
-    sessionTitle = event.tickets[0].name.trim() || "Regular Ticket";
   } else if (event?.sessions && event.sessions.length > 0) {
-    sessionTitle = event.sessions[0].title.trim() || "Regular Ticket";
+    sessionTitle = event.sessions[0].title.trim() || event?.default_session_name?.trim() || "Full session";
   }
 
   let matchedSessionId = registration.session_id ?? undefined;

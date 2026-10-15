@@ -48,24 +48,18 @@ export function resolveSessionInfo(
 ): { sessionName: string; sessionCapacity: number } {
   const rawSession =
     registration.session_title ??
-    registration.ticket_name ??
-    registration.ticket_tier ??
     (registration.answers?.Session as string | undefined) ??
     (registration.answers?.session as string | undefined) ??
-    (registration.answers?.Ticket as string | undefined) ??
-    (registration.answers?.ticket as string | undefined) ??
     "";
 
-  let sessionName = "Regular Ticket";
+  let sessionName = event?.default_session_name?.trim() || "Full session";
   if (rawSession && typeof rawSession === "string") {
     const cleaned = rawSession.split(",")[0].trim();
     if (cleaned) {
       sessionName = cleaned;
     }
-  } else if (event?.tickets && event.tickets.length > 0) {
-    sessionName = event.tickets[0].name.trim() || "Regular Ticket";
   } else if (event?.sessions && event.sessions.length > 0) {
-    sessionName = event.sessions[0].title.trim() || "Regular Ticket";
+    sessionName = event.sessions[0].title.trim() || event?.default_session_name?.trim() || "Full session";
   }
 
   let sessionCapacity = 100;
@@ -228,9 +222,13 @@ export function buildApprovedAttendeePayload(
 
     if (matchedSession?.time_slot) {
       simulatedData.sessionTime = matchedSession.time_slot;
+    } else if (event?.default_session_time) {
+      simulatedData.sessionTime = event.default_session_time;
     }
     if (matchedSession?.checkin_deadline) {
       simulatedData.checkinDeadline = matchedSession.checkin_deadline;
+    } else if (event?.default_session_checkin_deadline) {
+      simulatedData.checkinDeadline = event.default_session_checkin_deadline;
     }
 
     // Actual interpolated data, preserving QR Code expression tag for n8n workflow

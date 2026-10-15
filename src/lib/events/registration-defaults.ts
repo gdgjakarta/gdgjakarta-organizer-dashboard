@@ -748,7 +748,7 @@ export const COMMITMENT_FEE_TEMPLATE: CustomQuestion[] = [
 
 /**
  * Multiple Track / Session Registration Template.
- * Tailored for multi-track agendas (e.g. Morning Keynote vs Afternoon Codelabs vs Regular Ticket).
+ * Tailored for multi-track agendas (e.g. Morning Keynote vs Afternoon Codelabs vs Full session).
  */
 export const MULTI_TRACK_TEMPLATE: CustomQuestion[] = [
   {
@@ -1458,8 +1458,9 @@ export const CURATED_MULTI_PAID_TEMPLATE: CustomQuestion[] = [
  * Standard GDG Jakarta Session Tracks matching n8n workflow configurations:
  * - Morning Session: 105 seats, 08:15 WIB - 12:00 WIB (checkin deadline: 09:05 WIB)
  * - Afternoon Session: 100 seats, 13:10 WIB - 16:55 WIB (checkin deadline: 14:00 WIB)
- * - Regular Ticket: 136 seats, 12:15 WIB - 17:00 WIB (checkin deadline: 13:15 WIB)
+ * - Full session: 136 seats, 12:15 WIB - 17:00 WIB (checkin deadline: 13:15 WIB)
  */
+export const DEFAULT_GDG_SESSION_NAME = "Full session";
 export const DEFAULT_GDG_SESSION_CAPACITY = 136;
 export const DEFAULT_GDG_SESSION_TIME = "12:15 WIB - 17:00 WIB";
 export const DEFAULT_GDG_CHECKIN_DEADLINE = "13:15 WIB";
@@ -1467,19 +1468,22 @@ export const DEFAULT_GDG_CHECKIN_DEADLINE = "13:15 WIB";
 export const GDG_SESSION_CAPACITY_MAP: Record<string, number> = {
   "Morning Session": 105,
   "Afternoon Session": 100,
-  "Regular Ticket": 136,
+  "Full session": 136,
+  "Regular Ticket": 136, // Backwards compatibility for existing events & webhooks
 };
 
 export const GDG_SESSION_TIME_MAP: Record<string, string> = {
   "Morning Session": "08:15 WIB - 12:00 WIB (Morning Session)",
   "Afternoon Session": "13:10 WIB - 16:55 WIB (Afternoon Session)",
-  "Regular Ticket": "12:15 WIB - 17:00 WIB",
+  "Full session": "12:15 WIB - 17:00 WIB",
+  "Regular Ticket": "12:15 WIB - 17:00 WIB", // Backwards compatibility
 };
 
 export const GDG_SESSION_CHECKIN_DEADLINE_MAP: Record<string, string> = {
   "Morning Session": "09:05 WIB",
   "Afternoon Session": "14:00 WIB",
-  "Regular Ticket": "13:15 WIB",
+  "Full session": "13:15 WIB",
+  "Regular Ticket": "13:15 WIB", // Backwards compatibility
 };
 
 export const DEFAULT_GDG_SESSIONS: EventSession[] = [
@@ -1504,8 +1508,8 @@ export const DEFAULT_GDG_SESSIONS: EventSession[] = [
     total_registered: 0,
   },
   {
-    id: "regular-ticket",
-    title: "Regular Ticket",
+    id: "full-session",
+    title: "Full session",
     description: "General admission regular session access.",
     time_slot: "12:15 WIB - 17:00 WIB",
     checkin_deadline: "13:15 WIB",
@@ -1572,7 +1576,7 @@ export const EVENT_FORMAT_TEMPLATES: EventFormatTemplate[] = [
     name: "Free / Paid Registration with Multiple Sessions",
     badge: "Multi-Session",
     category: "standard",
-    description: "Event split into Morning, Afternoon, and Regular session tracks with independent capacity limits.",
+    description: "Event split into Morning, Afternoon, and Full session tracks with independent capacity limits.",
     requires_approval: false,
     sessions: DEFAULT_GDG_SESSIONS,
     tickets: getRecommendedTicketsForFormat("multi_track"),

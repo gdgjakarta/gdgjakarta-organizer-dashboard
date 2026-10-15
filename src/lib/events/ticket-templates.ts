@@ -16,15 +16,15 @@ export interface TicketTemplate {
 export const CUSTOM_TICKET_TEMPLATES_STORAGE_KEY = "gdg_custom_ticket_templates";
 
 /**
- * Stable identifier of the default "Regular Ticket" tier.
+ * Stable identifier of the default "Regular" tier.
  * Kept stable so registrations made against the fallback ticket still match once it is persisted.
  */
 export const DEFAULT_REGULAR_TICKET_ID = "ticket-regular";
 
 /**
- * Name matches the "Regular Ticket" session key used by n8n webhook mappings.
+ * Default ticket name when no configurable tickets are needed.
  */
-export const DEFAULT_REGULAR_TICKET_NAME = "Regular Ticket";
+export const DEFAULT_REGULAR_TICKET_NAME = "Regular";
 
 /**
  * Default ticket template applied to every event that has no ticket tiers configured.
@@ -34,14 +34,14 @@ export const REGULAR_TICKET_TEMPLATE: TicketTemplate = {
   name: DEFAULT_REGULAR_TICKET_NAME,
   type: "free",
   price: 0,
-  description: "General admission regular session access.",
+  description: "General admission regular pass access.",
   maxPerPerson: 1,
   capacity: null,
   perks: [],
 };
 
 /**
- * Builds the default "Regular Ticket" tier for an event.
+ * Builds the default "Regular" tier for an event.
  */
 export function createDefaultRegularTicket(): EventTicketTier {
   return {
@@ -59,7 +59,7 @@ export function createDefaultRegularTicket(): EventTicketTier {
 
 /**
  * Guarantees an event always has at least one ticket type.
- * Returns the configured tickets, or a single default "Regular Ticket" tier when none exist.
+ * Returns the configured tickets, or a single default "Regular" tier when none exist.
  */
 export function ensureEventTickets(tickets?: EventTicketTier[] | null): EventTicketTier[] {
   if (Array.isArray(tickets) && tickets.length > 0) return tickets;

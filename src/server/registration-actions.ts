@@ -37,6 +37,13 @@ export interface RegistrationWebhookPayload {
     banner_url?: string;
     picture_url?: string;
     email_templates?: unknown;
+    default_session_name?: string;
+    default_session_time?: string;
+    default_session_checkin_deadline?: string;
+    default_session_location?: string;
+    default_session_location_url?: string;
+    sessions?: { title?: string; capacity?: number }[];
+    max_attendees?: number | null;
   };
   registration: {
     id: string;
@@ -109,7 +116,7 @@ function resolveWebhookUrl(eventWebhookUrl?: string): string | null {
  * Automatically resolves session metadata matching GDG Jakarta n8n workflow rules:
  * - "Morning Session" (105 cap, 08:15 WIB - 12:00 WIB, deadline: 09:05 WIB)
  * - "Afternoon Session" (100 cap, 13:10 WIB - 16:55 WIB, deadline: 14:00 WIB)
- * - "Regular Ticket" (136 cap, 12:15 WIB - 17:00 WIB, deadline: 13:15 WIB)
+ * - "Full session" (136 cap, 12:15 WIB - 17:00 WIB, deadline: 13:15 WIB)
  */
 export async function dispatchRegistrationWebhookAction(
   payload: RegistrationWebhookPayload,
@@ -124,7 +131,7 @@ export async function dispatchRegistrationWebhookAction(
     (payload.answers.session as string | undefined) ??
     "";
 
-  let sessionKey = "Regular Ticket";
+  let sessionKey = payload.event.default_session_name?.trim() || "Full session";
   if (rawSession) {
     if (rawSession.includes(",")) {
       sessionKey = rawSession.split(",")[0].trim();
@@ -135,9 +142,16 @@ export async function dispatchRegistrationWebhookAction(
 
   // 2. Resolve metadata matching n8n workflow mapping
   const bevySessionName = sessionKey;
-  const bevySessionTime = GDG_SESSION_TIME_MAP[sessionKey] ?? DEFAULT_GDG_SESSION_TIME;
-  const bevyCheckinDeadline = GDG_SESSION_CHECKIN_DEADLINE_MAP[sessionKey] ?? DEFAULT_GDG_CHECKIN_DEADLINE;
-  const venueCapacity = GDG_SESSION_CAPACITY_MAP[sessionKey] ?? DEFAULT_GDG_SESSION_CAPACITY;
+  const bevySessionTime =
+    payload.event.default_session_time?.trim() || (GDG_SESSION_TIME_MAP[sessionKey] ?? DEFAULT_GDG_SESSION_TIME);
+  const bevyCheckinDeadline =
+    payload.event.default_session_checkin_deadline?.trim() ||
+    (GDG_SESSION_CHECKIN_DEADLINE_MAP[sessionKey] ?? DEFAULT_GDG_CHECKIN_DEADLINE);
+  const venueCapacity =
+    payload.event.sessions?.find((s) => s.title?.toLowerCase() === sessionKey.toLowerCase())?.capacity ??
+    GDG_SESSION_CAPACITY_MAP[sessionKey] ??
+    payload.event.max_attendees ??
+    DEFAULT_GDG_SESSION_CAPACITY;
 
   // 3. Build enriched payload with n8n-compatible Session properties
   const enrichedPayload: RegistrationWebhookPayload = {
@@ -439,7 +453,7 @@ export type { ApproveAttendeeWebhookResult, ApprovedAttendeeWebhookPayload };
  *   "status": "approved",
  *   "bevyEventId": "12345",
  *   "bevyChapterId": "678",
- *   "sessionName": "Regular Ticket",
+ *   "sessionName": "Full session",
  *   "sessionCapacity": 100,
  *   "subjectEmail": "Your Official Ticket: GDG DevFest Jakarta",
  *   "bodyEmail": "<!DOCTYPE html>...<img src=\"data:image/png;base64,{{ $('Generate QR Code').item.json.qrCode }}\">...Ref: {{ $('Add Bevy Attendee API').item.json.attendee_code }}...</html>"

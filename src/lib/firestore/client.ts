@@ -1461,11 +1461,18 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
   const regId = `${eventIdStr}_${effectiveMemberId}`;
   const docRef = doc(db, "event_registrations", regId);
 
+  const resolvedSessionTitle =
+    registration.session_title ??
+    (eventData?.sessions && eventData.sessions.length > 0
+      ? eventData.sessions[0].title
+      : eventData?.default_session_name?.trim() || "Full session");
+
   // Include session_id and session_title inside answers for backward compatibility
   const updatedAnswers = {
     ...(registration.answers ?? {}),
     ...(registration.session_id ? { session_id: registration.session_id } : {}),
-    ...(registration.session_title ? { session_title: registration.session_title } : {}),
+    session_title: resolvedSessionTitle,
+    Session: registration.answers?.Session ?? resolvedSessionTitle,
   };
 
   const initialStatusLog: RegistrationStatusLog = {
@@ -1541,6 +1548,7 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
     ticket_type: registration.ticket_type ?? "free",
     ticket_price: typeof registration.ticket_price === "number" ? registration.ticket_price : 0,
     session_id: registration.session_id != null ? String(registration.session_id) : undefined,
+    session_title: resolvedSessionTitle,
     bundle_id: registration.bundle_id != null ? String(registration.bundle_id) : undefined,
     payment_amount: typeof registration.payment_amount === "number" ? registration.payment_amount : undefined,
     payment_expired_datetime:

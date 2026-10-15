@@ -1491,7 +1491,7 @@ export function EventRegistrationModal({
         );
         const isCurated = isEventCurationMode(eventConfig);
 
-        const sessionKey = selectedSession?.title ?? "Regular Ticket";
+        const sessionKey = selectedSession?.title ?? (eventConfig.default_session_name?.trim() || "Full session");
         const combinedAnswers = {
           ...answers,
           Session: sessionKey,
@@ -1660,7 +1660,7 @@ export function EventRegistrationModal({
           status: initialStatus,
           answers: combinedAnswers,
           session_id: selectedSession?.id,
-          session_title: selectedSession?.title,
+          session_title: selectedSession?.title ?? sessionKey,
           ticket_id: selectedTicket?.id,
           ticket_name: selectedTicket?.name,
           ticket_type: selectedTicket?.type,
@@ -1761,6 +1761,11 @@ export function EventRegistrationModal({
             banner_url: eventConfig.banner_url ?? event.banner_url ?? cachedImg ?? undefined,
             picture_url: eventConfig.picture_url ?? event.picture_url ?? cachedImg ?? undefined,
             email_templates: eventConfig.email_templates,
+            default_session_name: eventConfig.default_session_name ?? undefined,
+            default_session_time: eventConfig.default_session_time ?? undefined,
+            default_session_checkin_deadline: eventConfig.default_session_checkin_deadline ?? undefined,
+            default_session_location: eventConfig.default_session_location ?? undefined,
+            default_session_location_url: eventConfig.default_session_location_url ?? undefined,
           },
           registration: {
             id: createdRegistrationId,
@@ -3605,7 +3610,7 @@ export function EventRegistrationModal({
                             Selected Pass
                           </Badge>
                           <span className="font-semibold text-foreground text-sm">
-                            {selectedTicket?.name || "Regular Ticket"}
+                            {selectedTicket?.name || "Regular"}
                           </span>
                           <Badge
                             variant="outline"
@@ -3624,14 +3629,24 @@ export function EventRegistrationModal({
                         </div>
 
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground text-xs">
-                          {selectedSession && (
+                          {hasSessions && selectedSession ? (
                             <span className="flex items-center gap-1">
                               <Layers className="size-3 text-primary" />
                               <span>
                                 Session: <strong className="text-foreground">{selectedSession.title}</strong>
                               </span>
                             </span>
-                          )}
+                          ) : !hasSessions ? (
+                            <span className="flex items-center gap-1">
+                              <Layers className="size-3 text-primary" />
+                              <span>
+                                Session:{" "}
+                                <strong className="text-foreground">
+                                  {eventConfig.default_session_name?.trim() || "Full session"}
+                                </strong>
+                              </span>
+                            </span>
+                          ) : null}
                           {totalMerchandiseItems > 0 && (
                             <span className="flex items-center gap-1">
                               <ShoppingBag className="size-3 text-primary" />

@@ -596,7 +596,7 @@ export function BundlesTab({ event }: BundlesTabProps) {
                                   <Badge variant="secondary" className="px-1 py-0 font-bold text-[10px]">
                                     {b.ticket_quantity}x
                                   </Badge>
-                                  {linkedTicket?.name || "Regular Admission Ticket"}
+                                  {linkedTicket?.name || "Regular"}
                                   {b.generate_vouchers !== false && (
                                     <span className="font-normal text-[10px] text-muted-foreground">
                                       ({b.ticket_quantity - 1} friend vouchers)
@@ -604,7 +604,7 @@ export function BundlesTab({ event }: BundlesTabProps) {
                                   )}
                                 </span>
                               ) : (
-                                linkedTicket?.name || "Regular Admission Ticket"
+                                linkedTicket?.name || "Regular"
                               )}
                             </span>
                           </div>

@@ -17,6 +17,7 @@ import {
   Globe,
   Layers,
   Link2,
+  MapPin,
   Plus,
   Sparkles,
   Trash2,
@@ -128,8 +129,19 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
   );
   const [registrationEndDate, setRegistrationEndDate] = useState<string>(toDateTimeLocal(event.registration_end_date));
 
-  // 3. Event Sessions (Split into Sessions with Limited Capacity)
+  // 3. Event Sessions (Split into Sessions with Limited Capacity or Single Session Defaults)
   const [sessions, setSessions] = useState<EventSession[]>(event.sessions ?? []);
+  const [defaultSessionName, setDefaultSessionName] = useState<string>(
+    event.default_session_name?.trim() || "Full session",
+  );
+  const [defaultSessionTime, setDefaultSessionTime] = useState<string>(event.default_session_time ?? "");
+  const [defaultSessionCheckinDeadline, setDefaultSessionCheckinDeadline] = useState<string>(
+    event.default_session_checkin_deadline ?? "",
+  );
+  const [defaultSessionLocation, setDefaultSessionLocation] = useState<string>(event.default_session_location ?? "");
+  const [defaultSessionLocationUrl, setDefaultSessionLocationUrl] = useState<string>(
+    event.default_session_location_url ?? "",
+  );
   const [newSession, setNewSession] = useState<Omit<EventSession, "id">>({
     title: "",
     description: "",
@@ -248,6 +260,11 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
       allowWaitlist,
       maxAttendees,
       sessions,
+      defaultSessionName,
+      defaultSessionTime,
+      defaultSessionCheckinDeadline,
+      defaultSessionLocation,
+      defaultSessionLocationUrl,
       tickets,
       questions,
       registrationStatus,
@@ -259,6 +276,11 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
     allowWaitlist,
     maxAttendees,
     sessions,
+    defaultSessionName,
+    defaultSessionTime,
+    defaultSessionCheckinDeadline,
+    defaultSessionLocation,
+    defaultSessionLocationUrl,
     tickets,
     questions,
     registrationStatus,
@@ -318,10 +340,24 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
           (event.status === "Draft" ? "Draft" : "Published")) as "Draft" | "Published" | "Closed";
         const loadedStartDate = toDateTimeLocal(docData?.registration_start_date ?? event.registration_start_date);
         const loadedEndDate = toDateTimeLocal(docData?.registration_end_date ?? event.registration_end_date);
+        const loadedDefaultSessionName =
+          docData?.default_session_name?.trim() || event.default_session_name?.trim() || "Full session";
+        const loadedDefaultSessionTime = docData?.default_session_time ?? event.default_session_time ?? "";
+        const loadedDefaultSessionCheckinDeadline =
+          docData?.default_session_checkin_deadline ?? event.default_session_checkin_deadline ?? "";
+        const loadedDefaultSessionLocation = docData?.default_session_location ?? event.default_session_location ?? "";
+        const loadedDefaultSessionLocationUrl =
+          docData?.default_session_location_url ?? event.default_session_location_url ?? "";
+
         setRequiresApproval(loadedApproval);
         setAllowWaitlist(loadedAllowWaitlist);
         setMaxAttendees(loadedMaxAttendees);
         setSessions(loadedSessions);
+        setDefaultSessionName(loadedDefaultSessionName);
+        setDefaultSessionTime(loadedDefaultSessionTime);
+        setDefaultSessionCheckinDeadline(loadedDefaultSessionCheckinDeadline);
+        setDefaultSessionLocation(loadedDefaultSessionLocation);
+        setDefaultSessionLocationUrl(loadedDefaultSessionLocationUrl);
         setTickets(loadedTickets);
         setQuestions(loadedQuestions);
         setRegistrationStatus(loadedStatus);
@@ -333,6 +369,11 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
           allowWaitlist: loadedAllowWaitlist,
           maxAttendees: loadedMaxAttendees,
           sessions: loadedSessions,
+          defaultSessionName: loadedDefaultSessionName,
+          defaultSessionTime: loadedDefaultSessionTime,
+          defaultSessionCheckinDeadline: loadedDefaultSessionCheckinDeadline,
+          defaultSessionLocation: loadedDefaultSessionLocation,
+          defaultSessionLocationUrl: loadedDefaultSessionLocationUrl,
           tickets: loadedTickets,
           questions: loadedQuestions,
           registrationStatus: loadedStatus,
@@ -348,6 +389,11 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
           allowWaitlist: event.allow_waitlist !== false,
           maxAttendees: event.max_attendees ? String(event.max_attendees) : "",
           sessions: event.sessions ?? [],
+          defaultSessionName: event.default_session_name?.trim() || "Full session",
+          defaultSessionTime: event.default_session_time ?? "",
+          defaultSessionCheckinDeadline: event.default_session_checkin_deadline ?? "",
+          defaultSessionLocation: event.default_session_location ?? "",
+          defaultSessionLocationUrl: event.default_session_location_url ?? "",
           tickets: event.tickets ?? [],
           questions:
             event.custom_questions && event.custom_questions.length > 0
@@ -456,7 +502,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
   // Session Handlers
   const handleLoadStandardSessions = () => {
     setSessions(DEFAULT_GDG_SESSIONS);
-    toast.success("Loaded default sessions (Morning, Afternoon, Regular Ticket).");
+    toast.success("Loaded default sessions (Morning, Afternoon, Full session).");
   };
 
   const handleAddSession = () => {
@@ -704,6 +750,22 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
       setSessions(copied.sessions);
     }
 
+    if (copied.default_session_name !== undefined) {
+      setDefaultSessionName(copied.default_session_name);
+    }
+    if (copied.default_session_time !== undefined) {
+      setDefaultSessionTime(copied.default_session_time);
+    }
+    if (copied.default_session_checkin_deadline !== undefined) {
+      setDefaultSessionCheckinDeadline(copied.default_session_checkin_deadline);
+    }
+    if (copied.default_session_location !== undefined) {
+      setDefaultSessionLocation(copied.default_session_location);
+    }
+    if (copied.default_session_location_url !== undefined) {
+      setDefaultSessionLocationUrl(copied.default_session_location_url);
+    }
+
     if (copied.tickets && copied.tickets.length > 0) {
       setTickets(copied.tickets);
     }
@@ -722,6 +784,11 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
           allowWaitlist?: boolean;
           maxAttendees: string;
           sessions: EventSession[];
+          defaultSessionName?: string;
+          defaultSessionTime?: string;
+          defaultSessionCheckinDeadline?: string;
+          defaultSessionLocation?: string;
+          defaultSessionLocationUrl?: string;
           questions: CustomQuestion[];
           registrationStatus: "Draft" | "Published" | "Closed";
           registrationStartDate: string;
@@ -731,6 +798,12 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
         if (snap.allowWaitlist !== undefined) setAllowWaitlist(snap.allowWaitlist);
         setMaxAttendees(snap.maxAttendees);
         setSessions(snap.sessions);
+        if (snap.defaultSessionName !== undefined) setDefaultSessionName(snap.defaultSessionName);
+        if (snap.defaultSessionTime !== undefined) setDefaultSessionTime(snap.defaultSessionTime);
+        if (snap.defaultSessionCheckinDeadline !== undefined)
+          setDefaultSessionCheckinDeadline(snap.defaultSessionCheckinDeadline);
+        if (snap.defaultSessionLocation !== undefined) setDefaultSessionLocation(snap.defaultSessionLocation);
+        if (snap.defaultSessionLocationUrl !== undefined) setDefaultSessionLocationUrl(snap.defaultSessionLocationUrl);
         setQuestions(snap.questions);
         setRegistrationStatus(snap.registrationStatus);
         setRegistrationStartDate(snap.registrationStartDate);
@@ -780,6 +853,15 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
             max_attendees: resolvedMaxAttendees,
             webhook_url: event.webhook_url ? event.webhook_url : deleteField(),
             sessions: sessions.length > 0 ? sessions : deleteField(),
+            default_session_name: defaultSessionName.trim() ? defaultSessionName.trim() : "Full session",
+            default_session_time: defaultSessionTime.trim() ? defaultSessionTime.trim() : deleteField(),
+            default_session_checkin_deadline: defaultSessionCheckinDeadline.trim()
+              ? defaultSessionCheckinDeadline.trim()
+              : deleteField(),
+            default_session_location: defaultSessionLocation.trim() ? defaultSessionLocation.trim() : deleteField(),
+            default_session_location_url: defaultSessionLocationUrl.trim()
+              ? defaultSessionLocationUrl.trim()
+              : deleteField(),
             tickets: tickets.length > 0 ? tickets : deleteField(),
             custom_questions: questions.filter((q) => q.label.trim().length > 0),
             updated_at: new Date().toISOString(),
@@ -797,6 +879,11 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
             allowWaitlist,
             maxAttendees,
             sessions,
+            defaultSessionName: defaultSessionName.trim() || "Full session",
+            defaultSessionTime,
+            defaultSessionCheckinDeadline,
+            defaultSessionLocation,
+            defaultSessionLocationUrl,
             tickets,
             questions,
             registrationStatus: finalStatus,
@@ -1507,8 +1594,91 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
 
           {/* Configured Sessions List */}
           {sessions.length === 0 ? (
-            <div className="rounded-lg border border-dashed py-6 text-center text-muted-foreground text-xs">
-              No breakout sessions configured. Registrants will sign up for the single main event.
+            <div className="space-y-4 rounded-xl border border-primary/20 bg-primary/5 p-4 sm:p-5">
+              <div className="flex flex-col gap-1 border-b border-primary/10 pb-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="border-primary/30 bg-primary/10 text-[10px] text-primary">
+                      Single Session
+                    </Badge>
+                    <span className="font-semibold text-foreground text-sm">Default Main Session Configuration</span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    No breakout sessions configured. Registrants will sign up for this default main session. Configure
+                    the session title and details below.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <Field className="sm:col-span-2 lg:col-span-1">
+                  <FieldLabel className="text-xs">Default Session Title *</FieldLabel>
+                  <Input
+                    placeholder="Full session"
+                    value={defaultSessionName}
+                    onChange={(e) => setDefaultSessionName(e.target.value)}
+                    className="h-9 text-xs"
+                  />
+                  <p className="pt-1 text-[10px] text-muted-foreground">
+                    Assigned session name for attendees and n8n webhook automation (defaults to{" "}
+                    <strong>Full session</strong>).
+                  </p>
+                </Field>
+
+                <Field>
+                  <FieldLabel className="text-xs">Default Time Slot (Optional)</FieldLabel>
+                  <Input
+                    placeholder="e.g. 12:15 WIB - 17:00 WIB"
+                    value={defaultSessionTime}
+                    onChange={(e) => setDefaultSessionTime(e.target.value)}
+                    className="h-9 text-xs"
+                  />
+                  <p className="pt-1 text-[10px] text-muted-foreground">
+                    Included in email confirmation and calendar reminders for the default session.
+                  </p>
+                </Field>
+
+                <Field>
+                  <FieldLabel className="text-xs">Check-in Deadline (Optional)</FieldLabel>
+                  <Input
+                    placeholder="e.g. 13:15 WIB"
+                    value={defaultSessionCheckinDeadline}
+                    onChange={(e) => setDefaultSessionCheckinDeadline(e.target.value)}
+                    className="h-9 text-xs"
+                  />
+                  <p className="pt-1 text-[10px] text-muted-foreground">
+                    Cutoff time for physical check-in at the venue.
+                  </p>
+                </Field>
+
+                <Field className="sm:col-span-2 lg:col-span-2">
+                  <FieldLabel className="text-xs">Room / Location (Optional)</FieldLabel>
+                  <Input
+                    placeholder={
+                      event.venue?.name ? `e.g. ${event.venue.name} (Main Stage)` : "e.g. Main Auditorium / Venue"
+                    }
+                    value={defaultSessionLocation}
+                    onChange={(e) => setDefaultSessionLocation(e.target.value)}
+                    className="h-9 text-xs"
+                  />
+                  <p className="pt-1 text-[10px] text-muted-foreground">
+                    Specific hall or room. Falls back to venue name if left blank.
+                  </p>
+                </Field>
+
+                <Field className="sm:col-span-1 lg:col-span-1">
+                  <FieldLabel className="text-xs">Location URL / Maps Link (Optional)</FieldLabel>
+                  <Input
+                    placeholder="https://maps.app.goo.gl/..."
+                    value={defaultSessionLocationUrl}
+                    onChange={(e) => setDefaultSessionLocationUrl(e.target.value)}
+                    className="h-9 text-xs"
+                  />
+                  <p className="pt-1 text-[10px] text-muted-foreground">
+                    Google Maps link for directions to the venue.
+                  </p>
+                </Field>
+              </div>
             </div>
           ) : (
             <div className="space-y-3">
@@ -1709,6 +1879,19 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
                   </div>
                 </div>
               ))}
+
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                <div className="flex items-center gap-1.5">
+                  <Layers className="size-3.5 text-primary" />
+                  <span>
+                    Fallback Default Session:{" "}
+                    <strong className="text-foreground">{defaultSessionName || "Full session"}</strong>
+                  </span>
+                </div>
+                <span className="text-[10px]">
+                  Applied when an attendee or automation lacks a specific breakout track.
+                </span>
+              </div>
             </div>
           )}
         </CardContent>
