@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { isExecutiveOrganizer } from "@/lib/auth-roles";
+import { hasTeamOperationalAccess, isExecutiveOrganizer } from "@/lib/auth-roles";
 import { ensureEventTickets } from "@/lib/events/ticket-templates";
 import type {
   EventBundlePackage,
@@ -132,8 +132,9 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
     };
   }, [eventId]);
 
-  // Check if current user is an Executive Organizer.
-  // Non-organizers (Core Team, Team Member, Check-in Staff) only have access to Registrants and Highlights & Media.
+  // Check if current user is an Executive Organizer or has Team Operational Access.
+  // Executive Organizers manage forms, tickets, vouchers, merch, gateway, and emails.
+  // Team members (Core Team, Team Member, Check-in Staff) have access to Registrants and Highlights & Media.
   const isOrganizer = useMemo(() => {
     if (user) {
       return isExecutiveOrganizer(user);
@@ -141,14 +142,23 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
     return isExecutiveOrganizer(initialRole);
   }, [user, initialRole]);
 
+  const hasTeamAccess = useMemo(() => {
+    if (user) {
+      return hasTeamOperationalAccess(user);
+    }
+    return hasTeamOperationalAccess(initialRole);
+  }, [user, initialRole]);
+
   return (
-    <Tabs defaultValue="registrants" className="space-y-6">
+    <Tabs defaultValue={hasTeamAccess ? "registrants" : "highlights"} className="space-y-6">
       <div className="scrollbar-none -mx-1 w-full overflow-x-auto px-1 pb-1 sm:mx-0 sm:px-0">
         <TabsList className="inline-flex h-9 w-max items-center justify-start gap-1 rounded-lg bg-muted p-1 text-muted-foreground group-data-horizontal/tabs:h-9">
-          <TabsTrigger value="registrants" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
-            <Users className="size-4" />
-            Registrants
-          </TabsTrigger>
+          {hasTeamAccess && (
+            <TabsTrigger value="registrants" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
+              <Users className="size-4" />
+              Registrants
+            </TabsTrigger>
+          )}
 
           {isOrganizer && (
             <>
@@ -197,9 +207,11 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
         </TabsList>
       </div>
 
-      <TabsContent value="registrants" className="space-y-4">
-        <RegistrantsTab eventId={eventId} registrations={registrations} event={activeEvent} />
-      </TabsContent>
+      {hasTeamAccess && (
+        <TabsContent value="registrants" className="space-y-4">
+          <RegistrantsTab eventId={eventId} registrations={registrations} event={activeEvent} />
+        </TabsContent>
+      )}
 
       {isOrganizer && (
         <>

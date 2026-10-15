@@ -36,6 +36,18 @@ export function isFirestoreFieldValue(val: unknown): boolean {
   );
 }
 
+export function isFirestorePermissionError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const err = error as { code?: unknown; message?: unknown };
+  if (typeof err.code === "string" && err.code.includes("permission-denied")) {
+    return true;
+  }
+  if (typeof err.message === "string" && err.message.toLowerCase().includes("permission")) {
+    return true;
+  }
+  return false;
+}
+
 /**
  * Recursively removes `undefined` properties from objects and arrays so Firestore writes
  * never fail with: "Unsupported field value: undefined".
@@ -714,6 +726,7 @@ export function isExcludedOrganizerOrStaff(member?: Partial<FirestoreMember> | n
 
 export async function getReferralLeaderboard(limitCount = 100): Promise<ReferralLeaderboardEntry[]> {
   if (typeof window === "undefined") return [];
+  if (!auth.currentUser) return [];
   try {
     const settings = await getReferralProgramSettings();
     const excludedIds = new Set(settings.excluded_member_ids ?? []);
@@ -721,7 +734,8 @@ export async function getReferralLeaderboard(limitCount = 100): Promise<Referral
       settings.auto_exclude_roles ?? (settings.auto_exclude_organizers ? ["googler", "organizer", "team_member"] : []);
 
     const membersRef = collection(db, "members");
-    const snapshot = await getDocs(membersRef);
+    const membersQuery = limitCount > 0 && limitCount <= 5 ? query(membersRef, limit(limitCount)) : membersRef;
+    const snapshot = await getDocs(membersQuery);
     const entries: ReferralLeaderboardEntry[] = [];
 
     for (const docSnap of snapshot.docs) {
@@ -775,14 +789,19 @@ export async function getReferralLeaderboard(limitCount = 100): Promise<Referral
     });
 
     return topEntries;
-  } catch (err) {
-    console.error("[Firestore] getReferralLeaderboard error:", err);
+  } catch (err: unknown) {
+    if (isFirestorePermissionError(err)) {
+      console.warn("[Firestore] getReferralLeaderboard: access restricted");
+    } else {
+      console.error("[Firestore] getReferralLeaderboard error:", err);
+    }
     return [];
   }
 }
 
 export async function getExcludedReferralMembers(): Promise<ExcludedReferralMember[]> {
   if (typeof window === "undefined") return [];
+  if (!auth.currentUser) return [];
   try {
     const settings = await getReferralProgramSettings();
     const excludedIds = new Set(settings.excluded_member_ids ?? []);
@@ -862,8 +881,12 @@ export async function getExcludedReferralMembers(): Promise<ExcludedReferralMemb
     }
 
     return results;
-  } catch (err) {
-    console.error("[Firestore] getExcludedReferralMembers error:", err);
+  } catch (err: unknown) {
+    if (isFirestorePermissionError(err)) {
+      console.warn("[Firestore] getExcludedReferralMembers: access restricted");
+    } else {
+      console.error("[Firestore] getExcludedReferralMembers error:", err);
+    }
     return [];
   }
 }
@@ -883,6 +906,7 @@ export async function resetMemberReferrals(memberId: string): Promise<void> {
 
 export async function resetAllMembersReferrals(): Promise<{ resetCount: number }> {
   if (typeof window === "undefined") return { resetCount: 0 };
+  if (!auth.currentUser) return { resetCount: 0 };
   const membersRef = collection(db, "members");
   const snapshot = await getDocs(membersRef);
 
@@ -966,6 +990,7 @@ export async function searchMembersForExclusion(searchTerm: string): Promise<
   }>
 > {
   if (typeof window === "undefined") return [];
+  if (!auth.currentUser) return [];
   try {
     const [settings, membersSnap] = await Promise.all([
       getReferralProgramSettings(),
@@ -1048,14 +1073,19 @@ export async function searchMembersForExclusion(searchTerm: string): Promise<
     }
 
     return results;
-  } catch (err) {
-    console.error("[Firestore] searchMembersForExclusion error:", err);
+  } catch (err: unknown) {
+    if (isFirestorePermissionError(err)) {
+      console.warn("[Firestore] searchMembersForExclusion: access restricted");
+    } else {
+      console.error("[Firestore] searchMembersForExclusion error:", err);
+    }
     return [];
   }
 }
 
 export async function getMemberReferralHistory(memberId: string): Promise<ReferralRedemption[]> {
   if (typeof window === "undefined" || !memberId) return [];
+  if (!auth.currentUser) return [];
   try {
     const redemptionsRef = collection(db, "referral_redemptions");
     const q = query(redemptionsRef, where("referrer_id", "==", memberId));
@@ -1076,6 +1106,7 @@ export async function getMemberReferralHistory(memberId: string): Promise<Referr
 
 export async function getEventRegistrations(eventId: string): Promise<FirestoreRegistration[]> {
   if (typeof window === "undefined") return [];
+  if (!auth.currentUser) return [];
   try {
     const regRef = collection(db, "event_registrations");
     const strId = String(eventId);
@@ -1107,14 +1138,7 @@ export async function getEventRegistrations(eventId: string): Promise<FirestoreR
       return timeB - timeA;
     });
   } catch (error: unknown) {
-    const isPermissionError =
-      error &&
-      typeof error === "object" &&
-      ("code" in error
-        ? error.code === "permission-denied"
-        : "message" in error && typeof error.message === "string" && error.message.includes("permission"));
-
-    if (isPermissionError) {
+    if (isFirestorePermissionError(error)) {
       console.warn(`[Firestore] getEventRegistrations: access restricted for event ${eventId}`);
     } else {
       console.error(`[Firestore] getEventRegistrations error for ${eventId}:`, error);
@@ -1131,6 +1155,11 @@ export function subscribeEventRegistrations(
   if (typeof window === "undefined") {
     return () => {
       // No-op on server
+    };
+  }
+  if (!auth.currentUser) {
+    return () => {
+      // No-op if user is not authenticated yet
     };
   }
 
@@ -1160,7 +1189,11 @@ export function subscribeEventRegistrations(
         callback(list);
       },
       (error) => {
-        console.warn(`[Firestore] subscribeEventRegistrations error for ${eventId}:`, error);
+        if (isFirestorePermissionError(error)) {
+          console.warn(`[Firestore] subscribeEventRegistrations: access restricted for event ${eventId}`);
+        } else {
+          console.warn(`[Firestore] subscribeEventRegistrations error for ${eventId}:`, error);
+        }
         onError?.(error);
       },
     );

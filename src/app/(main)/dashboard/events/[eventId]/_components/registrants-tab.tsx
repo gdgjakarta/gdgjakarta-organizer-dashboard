@@ -388,6 +388,7 @@ function RegistrantsTableSkeleton({
 
 export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTabProps) {
   const user = useAuthStore((s) => s.user);
+  const isAuthLoading = useAuthStore((s) => s.isLoading || s.isLoggingOut);
   const [registrationsList, setRegistrationsList] = useState<FirestoreRegistration[]>(() =>
     registrations.map((r) => normalizeRegistrationDoc(r as unknown as Record<string, unknown>, r.id)),
   );
@@ -470,12 +471,27 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   }, [registrations]);
 
   useEffect(() => {
+    // If auth is still resolving, hold off until credentials and session are ready
+    if (isAuthLoading) {
+      return;
+    }
+
     let unsubscribe: () => void = () => {
       // No-op initial cleanup
     };
 
     async function initRegistrations() {
       try {
+        const { getGlobalAuthUser } = await import("@/stores/auth/auth-store");
+        const { hasTeamOperationalAccess } = await import("@/lib/auth-roles");
+        const currentUser = user ?? getGlobalAuthUser();
+
+        // Non-team users lack permissions to list all event registrations in Firestore rules.
+        if (!hasTeamOperationalAccess(currentUser)) {
+          setIsLoading(false);
+          return;
+        }
+
         const { getEventRegistrations, subscribeEventRegistrations } = await import("@/lib/firestore/client");
 
         // 1. Initial direct load
@@ -495,7 +511,19 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
             setIsLoading(false);
           },
           (err) => {
-            console.warn("[RegistrantsTab] Live registrations listener warning:", err);
+            const isPermission =
+              err &&
+              typeof err === "object" &&
+              ("code" in err
+                ? (err as { code?: string }).code === "permission-denied"
+                : "message" in err &&
+                  typeof (err as { message?: string }).message === "string" &&
+                  (err as { message?: string }).message?.includes("permission"));
+            if (isPermission) {
+              console.warn(`[RegistrantsTab] Live registrations listener restricted for event: ${eventId}`);
+            } else {
+              console.warn("[RegistrantsTab] Live registrations listener warning:", err);
+            }
             setIsLoading(false);
           },
         );
@@ -510,7 +538,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     return () => {
       unsubscribe();
     };
-  }, [eventId]);
+  }, [eventId, isAuthLoading, user]);
 
   useEffect(() => {
     let unsub = () => {

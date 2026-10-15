@@ -13,21 +13,38 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 import { Skeleton } from "@/components/ui/skeleton";
 import { getReferralLeaderboardAction } from "@/lib/firestore/actions";
 import type { ReferralLeaderboardEntry } from "@/lib/firestore/types";
+import { useAuthStore } from "@/stores/auth/auth-provider";
 
 export function ReferralLeaderboardWidget() {
   const [entries, setEntries] = useState<ReferralLeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const user = useAuthStore((s) => s.user);
+  const isAuthLoading = useAuthStore((s) => s.isLoading || s.isLoggingOut);
 
   useEffect(() => {
+    if (isAuthLoading) {
+      return;
+    }
     let isMounted = true;
     async function loadData() {
       try {
+        const { getGlobalAuthUser } = await import("@/stores/auth/auth-store");
+        const { hasTeamOperationalAccess } = await import("@/lib/auth-roles");
+        const currentUser = user ?? getGlobalAuthUser();
+        if (!hasTeamOperationalAccess(currentUser)) {
+          if (isMounted) {
+            setEntries([]);
+            setLoading(false);
+          }
+          return;
+        }
+
         const data = await getReferralLeaderboardAction(5);
         if (isMounted) {
           setEntries(data);
         }
       } catch (err) {
-        console.error("[ReferralLeaderboardWidget] error:", err);
+        console.warn("[ReferralLeaderboardWidget] Warning loading leaderboard:", err);
       } finally {
         if (isMounted) {
           setLoading(false);
@@ -38,7 +55,7 @@ export function ReferralLeaderboardWidget() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [isAuthLoading, user]);
 
   const topThree = entries.slice(0, 3);
   const leader = entries.length > 0 && entries[0].referral_points > 0 ? entries[0] : null;

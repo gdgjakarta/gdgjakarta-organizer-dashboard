@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getReferralLeaderboardAction, getReferralProgramSettingsAction } from "@/lib/firestore/actions";
 import type { ReferralLeaderboardEntry, ReferralProgramSettings } from "@/lib/firestore/types";
+import { useAuthStore } from "@/stores/auth/auth-provider";
 
 import { ReferralLeaderboardSkeleton } from "../loading";
 import { ReferralExcludedMembersDialog } from "./referral-excluded-members-dialog";
@@ -26,6 +27,8 @@ export function ReferralLeaderboardView({ initialEntries, initialSettings }: Ref
   const [entries, setEntries] = useState<ReferralLeaderboardEntry[]>(initialEntries ?? []);
   const [settings, setSettings] = useState<ReferralProgramSettings | null>(initialSettings ?? null);
   const [loading, setLoading] = useState<boolean>(!initialEntries);
+  const user = useAuthStore((s) => s.user);
+  const isAuthLoading = useAuthStore((s) => s.isLoading || s.isLoggingOut);
 
   const refreshData = async () => {
     try {
@@ -38,14 +41,27 @@ export function ReferralLeaderboardView({ initialEntries, initialSettings }: Ref
         setSettings(loadedSettings);
       }
     } catch (err) {
-      console.error("[ReferralLeaderboardView] Failed to refresh referral data:", err);
+      console.warn("[ReferralLeaderboardView] Failed to refresh referral data:", err);
     }
   };
 
   useEffect(() => {
+    if (isAuthLoading) {
+      return;
+    }
     let isMounted = true;
     async function loadData() {
       try {
+        const { getGlobalAuthUser } = await import("@/stores/auth/auth-store");
+        const { hasTeamOperationalAccess } = await import("@/lib/auth-roles");
+        const currentUser = user ?? getGlobalAuthUser();
+        if (!hasTeamOperationalAccess(currentUser)) {
+          if (isMounted) {
+            setLoading(false);
+          }
+          return;
+        }
+
         const [loadedEntries, loadedSettings] = await Promise.all([
           getReferralLeaderboardAction(200),
           getReferralProgramSettingsAction(),
@@ -57,7 +73,7 @@ export function ReferralLeaderboardView({ initialEntries, initialSettings }: Ref
           }
         }
       } catch (err) {
-        console.error("[ReferralLeaderboardView] Failed to load referral data:", err);
+        console.warn("[ReferralLeaderboardView] Failed to load referral data:", err);
       } finally {
         if (isMounted) {
           setLoading(false);
@@ -71,7 +87,7 @@ export function ReferralLeaderboardView({ initialEntries, initialSettings }: Ref
     return () => {
       isMounted = false;
     };
-  }, [initialEntries]);
+  }, [initialEntries, isAuthLoading, user]);
 
   if (loading) {
     return <ReferralLeaderboardSkeleton />;
