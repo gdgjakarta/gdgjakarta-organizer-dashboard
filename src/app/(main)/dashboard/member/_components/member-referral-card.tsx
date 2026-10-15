@@ -71,7 +71,7 @@ export function MemberReferralCard() {
 
   const currentUserId = user.id;
   const immediateCode = currentUserId ? generateUserReferralCode(currentUserId) : "";
-  const referralCode = info?.code && info.code !== "GDG7X9K" ? info.code : immediateCode || "GENERATING...";
+  const referralCode = info?.code ?? immediateCode ?? "GENERATING...";
   const discountPercent = info?.discountPercentage ?? 10;
   const isFixed = info?.discountType === "fixed";
   const discountLabel = isFixed

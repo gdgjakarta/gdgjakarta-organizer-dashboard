@@ -193,10 +193,7 @@ export async function saveFirestoreMember(member: Partial<FirestoreMember> | Rec
       const updatePayload: Record<string, unknown> = {
         ...member,
         joined_date: existing.joined_date,
-        referral_code:
-          existing.referral_code && existing.referral_code !== "GDG7X9K"
-            ? existing.referral_code
-            : (member.referral_code ?? generateUserReferralCode(String(member.id))),
+        referral_code: existing.referral_code ?? member.referral_code ?? generateUserReferralCode(String(member.id)),
         updated_at: new Date().toISOString(),
       };
       if (typeof existing.events_registered_count === "number") {
@@ -413,7 +410,7 @@ export async function getOrCreateMemberReferralCode(
     const snap = await getDoc(memberRef);
     if (snap.exists()) {
       const data = snap.data() as FirestoreMember;
-      if (data.referral_code && data.referral_code !== "GDG7X9K") {
+      if (data.referral_code) {
         return {
           code: data.referral_code,
           points: data.referral_points ?? 0,
@@ -427,7 +424,7 @@ export async function getOrCreateMemberReferralCode(
         };
       }
 
-      // Member exists but has no referral code or has legacy static "GDG7X9K":
+      // Member exists but has no referral code:
       // Assign the unique deterministic referral code for this user.
       // NOTE: Only update referral_code and updated_at on existing member doc,
       // avoiding any diff rejection on restricted privilege fields like referral_points.
@@ -752,10 +749,7 @@ export async function getReferralLeaderboard(limitCount = 100): Promise<Referral
       }
 
       if (points > 0 || count > 0 || data.referral_code) {
-        const resolvedCode =
-          data.referral_code && data.referral_code !== "GDG7X9K"
-            ? data.referral_code
-            : generateUserReferralCode(docSnap.id);
+        const resolvedCode = data.referral_code ?? generateUserReferralCode(docSnap.id);
 
         entries.push({
           rank: 0, // Assigned after sort
@@ -820,10 +814,7 @@ export async function getExcludedReferralMembers(): Promise<ExcludedReferralMemb
 
       if (isExplicitlyExcluded || roleCheck.excluded) {
         matchedDocIds.add(docSnap.id);
-        const resolvedCode =
-          data.referral_code && data.referral_code !== "GDG7X9K"
-            ? data.referral_code
-            : generateUserReferralCode(docSnap.id);
+        const resolvedCode = data.referral_code ?? generateUserReferralCode(docSnap.id);
 
         results.push({
           member_id: docSnap.id,
