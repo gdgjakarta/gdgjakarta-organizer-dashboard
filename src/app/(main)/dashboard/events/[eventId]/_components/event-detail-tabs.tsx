@@ -110,6 +110,8 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
             setActiveEvent((prev) => ({
               ...prev,
               ...docData,
+              venue: prev.venue ?? docData.venue,
+              google_maps_url: docData.google_maps_url ?? prev.google_maps_url,
               tickets: ensureEventTickets(docData.tickets ?? prev.tickets),
               merchandise: docData.merchandise ?? prev.merchandise,
             }));

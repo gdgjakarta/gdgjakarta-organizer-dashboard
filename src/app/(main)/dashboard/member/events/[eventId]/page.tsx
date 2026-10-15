@@ -152,11 +152,18 @@ export default async function MemberEventDetailPage({ params, searchParams }: Me
       if (firestoreDoc) {
         event = event
           ? {
-              ...event,
               ...firestoreDoc,
-              id: String(firestoreDoc.id || event.id),
-              picture_url: firestoreDoc.picture_url || firestoreDoc.banner_url || event.picture_url,
-              banner_url: firestoreDoc.banner_url || firestoreDoc.picture_url || event.banner_url,
+              ...event,
+              id: String(event.id || firestoreDoc.id),
+              title: event.title || firestoreDoc.title,
+              venue: event.venue ?? firestoreDoc.venue,
+              start_date: event.start_date || firestoreDoc.start_date,
+              end_date: event.end_date || firestoreDoc.end_date,
+              picture_url: event.picture_url || firestoreDoc.picture_url || firestoreDoc.banner_url,
+              banner_url: event.banner_url || firestoreDoc.banner_url || firestoreDoc.picture_url,
+              agenda: event.agenda ?? firestoreDoc.agenda,
+              speakers: event.speakers ?? firestoreDoc.speakers,
+              google_maps_url: firestoreDoc.google_maps_url ?? event.google_maps_url,
             }
           : firestoreDoc;
       }

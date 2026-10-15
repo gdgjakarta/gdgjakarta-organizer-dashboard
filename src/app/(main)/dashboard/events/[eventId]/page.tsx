@@ -152,13 +152,30 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
       if (firestoreDoc) {
         event = event
           ? {
-              ...event,
               ...firestoreDoc,
-              id: String(firestoreDoc.id || event.id),
-              picture_url: firestoreDoc.picture_url || firestoreDoc.banner_url || event.picture_url,
-              banner_url: firestoreDoc.banner_url || firestoreDoc.picture_url || event.banner_url,
-              agenda: firestoreDoc.agenda ?? event.agenda,
-              speakers: firestoreDoc.speakers ?? event.speakers,
+              ...event,
+              id: String(event.id || firestoreDoc.id),
+              // Ensure core Bevy upstream fields always take precedence over stale cached Firestore data
+              title: event.title || firestoreDoc.title,
+              venue: event.venue ?? firestoreDoc.venue,
+              start_date: event.start_date || firestoreDoc.start_date,
+              end_date: event.end_date || firestoreDoc.end_date,
+              picture_url: event.picture_url || firestoreDoc.picture_url || firestoreDoc.banner_url,
+              banner_url: event.banner_url || firestoreDoc.banner_url || firestoreDoc.picture_url,
+              agenda: event.agenda ?? firestoreDoc.agenda,
+              speakers: event.speakers ?? firestoreDoc.speakers,
+              // Keep Firestore dashboard extensions that do not exist in Bevy
+              requires_approval: firestoreDoc.requires_approval ?? event.requires_approval,
+              curation_mode: firestoreDoc.curation_mode ?? event.curation_mode,
+              allow_waitlist: firestoreDoc.allow_waitlist ?? event.allow_waitlist,
+              max_attendees: firestoreDoc.max_attendees ?? event.max_attendees,
+              custom_questions: firestoreDoc.custom_questions ?? event.custom_questions,
+              sessions: firestoreDoc.sessions ?? event.sessions,
+              tickets: firestoreDoc.tickets ?? event.tickets,
+              merchandise: firestoreDoc.merchandise ?? event.merchandise,
+              vouchers: firestoreDoc.vouchers ?? event.vouchers,
+              bundles: firestoreDoc.bundles ?? event.bundles,
+              google_maps_url: firestoreDoc.google_maps_url ?? event.google_maps_url,
             }
           : firestoreDoc;
       }

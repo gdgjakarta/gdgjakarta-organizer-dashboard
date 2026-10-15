@@ -10,13 +10,15 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { resolveEventAudience } from "@/lib/bevy/audience";
 import type { BevyEvent } from "@/lib/bevy/types";
+import type { FirestoreEvent } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
 interface PublicEventInfoCardsProps {
   event: BevyEvent;
+  firestoreEvent?: FirestoreEvent | null;
 }
 
-export function PublicEventInfoCards({ event }: PublicEventInfoCardsProps) {
+export function PublicEventInfoCards({ event, firestoreEvent }: PublicEventInfoCardsProps) {
   const [addressCopied, setAddressCopied] = useState(false);
   const { isVirtual, isHybrid } = resolveEventAudience(event.audience_type, event.is_virtual_event);
 
@@ -45,12 +47,24 @@ export function PublicEventInfoCards({ event }: PublicEventInfoCardsProps) {
     .filter(Boolean)
     .join(", ");
 
-  let googleMapsUrl = "";
-  if (event.venue_latitude && event.venue_longitude) {
-    googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${event.venue_latitude},${event.venue_longitude}`;
+  // Priority 1: Custom organizer override URL configured on dashboard
+  // Priority 2: Google Maps search query using venue name and address (accurate POI lookup)
+  // Fallback: fullAddress
+  const overrideMapsUrl =
+    firestoreEvent?.google_maps_url?.trim() ||
+    firestoreEvent?.venue?.google_maps_url?.trim() ||
+    firestoreEvent?.venue?.url?.trim() ||
+    undefined;
+
+  const venueSearchQuery = [event.venue_name, event.venue_address, event.venue_city].filter(Boolean).join(", ");
+  let defaultMapsUrl = "";
+  if (venueSearchQuery) {
+    defaultMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(venueSearchQuery)}`;
   } else if (fullAddress) {
-    googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fullAddress)}`;
+    defaultMapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fullAddress)}`;
   }
+
+  const googleMapsUrl = overrideMapsUrl || defaultMapsUrl;
 
   const handleCopyAddress = () => {
     if (fullAddress && typeof window !== "undefined") {

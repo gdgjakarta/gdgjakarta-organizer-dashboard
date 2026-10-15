@@ -747,7 +747,12 @@ export function getCleanDefaultTemplateDataForType(
     (addressParts.length > 0
       ? addressParts
       : (customData?.venueLocation ?? "Google Indonesia, Pacific Century Place Level 45, SCBD"));
-  const venueLocationUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(venueLocation)}`;
+  const venueLocationQuery = [event.venue?.name, event.venue?.address, event.venue?.city].filter(Boolean).join(", ");
+  const venueLocationUrl =
+    event.google_maps_url ??
+    event.venue?.google_maps_url ??
+    event.venue?.url ??
+    `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(venueLocationQuery || venueLocation)}`;
 
   const defaultItems =
     customData?.event?.eventChecklistItems && customData.event.eventChecklistItems.length > 0

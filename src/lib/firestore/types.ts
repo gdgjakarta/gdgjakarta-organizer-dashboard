@@ -313,7 +313,10 @@ export interface FirestoreEvent {
     name?: string;
     address?: string;
     city?: string;
+    url?: string;
+    google_maps_url?: string;
   };
+  google_maps_url?: string;
   url?: string;
   static_url?: string;
   tags?: string[];

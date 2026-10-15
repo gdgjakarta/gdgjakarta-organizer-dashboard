@@ -352,13 +352,27 @@ export function EventDetailHeader({
             {event.venue?.name && (
               <>
                 <span>•</span>
-                <span className="flex items-center gap-1.5">
+                <a
+                  href={
+                    event.google_maps_url ??
+                    event.venue.google_maps_url ??
+                    event.venue.url ??
+                    `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                      [event.venue.name, event.venue.address, event.venue.city].filter(Boolean).join(", "),
+                    )}`
+                  }
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 transition-colors hover:text-foreground hover:underline"
+                  title={`Open in Google Maps: ${[event.venue.name, event.venue.address, event.venue.city].filter(Boolean).join(", ")}`}
+                >
                   <MapPin className="size-4 text-emerald-600 dark:text-emerald-400" />
                   <span>
                     {event.venue.name}
                     {event.venue.city ? `, ${event.venue.city}` : ""}
                   </span>
-                </span>
+                  <ExternalLink className="size-3 opacity-60" />
+                </a>
               </>
             )}
             <span>•</span>

@@ -142,6 +142,9 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
   const [defaultSessionLocationUrl, setDefaultSessionLocationUrl] = useState<string>(
     event.default_session_location_url ?? "",
   );
+  const [googleMapsUrlOverride, setGoogleMapsUrlOverride] = useState<string>(
+    event.google_maps_url ?? event.venue?.google_maps_url ?? "",
+  );
   const [newSession, setNewSession] = useState<Omit<EventSession, "id">>({
     title: "",
     description: "",
@@ -270,6 +273,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
       registrationStatus,
       registrationStartDate,
       registrationEndDate,
+      googleMapsUrlOverride: googleMapsUrlOverride.trim(),
     });
   }, [
     requiresApproval,
@@ -286,6 +290,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
     registrationStatus,
     registrationStartDate,
     registrationEndDate,
+    googleMapsUrlOverride,
   ]);
 
   const isDirty =
@@ -307,20 +312,24 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
         ]);
 
         const docRecord = docData as unknown as Record<string, unknown> | null;
-        const loadedApproval =
-          docData?.requires_approval !== undefined
-            ? docData.requires_approval
-            : docRecord?.curation_mode !== undefined
-              ? Boolean(docRecord.curation_mode)
-              : Boolean(event.requires_approval || (event as unknown as Record<string, unknown>).curation_mode);
+        let loadedApproval: boolean;
+        if (docData?.requires_approval !== undefined) {
+          loadedApproval = docData.requires_approval;
+        } else if (docRecord?.curation_mode !== undefined) {
+          loadedApproval = Boolean(docRecord.curation_mode);
+        } else {
+          loadedApproval = Boolean(
+            event.requires_approval || (event as unknown as Record<string, unknown>).curation_mode,
+          );
+        }
         const loadedAllowWaitlist =
           docData?.allow_waitlist !== undefined ? docData.allow_waitlist : event.allow_waitlist !== false;
-        const loadedMaxAttendees =
-          docData?.max_attendees !== undefined && docData.max_attendees !== null
-            ? String(docData.max_attendees)
-            : event.max_attendees
-              ? String(event.max_attendees)
-              : "";
+        let loadedMaxAttendees = "";
+        if (docData?.max_attendees !== undefined && docData.max_attendees !== null) {
+          loadedMaxAttendees = String(docData.max_attendees);
+        } else if (event.max_attendees) {
+          loadedMaxAttendees = String(event.max_attendees);
+        }
         let loadedSessions = Array.isArray(docData?.sessions) ? docData.sessions : (event.sessions ?? []);
         if (Object.keys(liveSessionCounts).length > 0) {
           loadedSessions = loadedSessions.map((sess) => ({
@@ -329,12 +338,12 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
           }));
         }
         const loadedTickets = Array.isArray(docData?.tickets) ? docData.tickets : (event.tickets ?? []);
-        const loadedQuestions =
-          docData?.custom_questions && docData.custom_questions.length > 0
-            ? docData.custom_questions
-            : event.custom_questions && event.custom_questions.length > 0
-              ? event.custom_questions
-              : DEFAULT_COMBINED_QUESTIONS;
+        let loadedQuestions = DEFAULT_COMBINED_QUESTIONS;
+        if (docData?.custom_questions && docData.custom_questions.length > 0) {
+          loadedQuestions = docData.custom_questions;
+        } else if (event.custom_questions && event.custom_questions.length > 0) {
+          loadedQuestions = event.custom_questions;
+        }
         const loadedStatus = (docData?.registration_status ||
           event.registration_status ||
           (event.status === "Draft" ? "Draft" : "Published")) as "Draft" | "Published" | "Closed";
@@ -348,6 +357,13 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
         const loadedDefaultSessionLocation = docData?.default_session_location ?? event.default_session_location ?? "";
         const loadedDefaultSessionLocationUrl =
           docData?.default_session_location_url ?? event.default_session_location_url ?? "";
+        const loadedGoogleMapsUrl = (
+          docData?.google_maps_url ??
+          docData?.venue?.google_maps_url ??
+          event.google_maps_url ??
+          event.venue?.google_maps_url ??
+          ""
+        ).trim();
 
         setRequiresApproval(loadedApproval);
         setAllowWaitlist(loadedAllowWaitlist);
@@ -358,6 +374,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
         setDefaultSessionCheckinDeadline(loadedDefaultSessionCheckinDeadline);
         setDefaultSessionLocation(loadedDefaultSessionLocation);
         setDefaultSessionLocationUrl(loadedDefaultSessionLocationUrl);
+        setGoogleMapsUrlOverride(loadedGoogleMapsUrl);
         setTickets(loadedTickets);
         setQuestions(loadedQuestions);
         setRegistrationStatus(loadedStatus);
@@ -379,6 +396,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
           registrationStatus: loadedStatus,
           registrationStartDate: loadedStartDate,
           registrationEndDate: loadedEndDate,
+          googleMapsUrlOverride: loadedGoogleMapsUrl,
         });
       } catch (err) {
         console.warn("[CustomFormTab] Failed to load Firestore document:", err);
@@ -405,6 +423,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
             | "Closed",
           registrationStartDate: toDateTimeLocal(event.registration_start_date),
           registrationEndDate: toDateTimeLocal(event.registration_end_date),
+          googleMapsUrlOverride: (event.google_maps_url ?? event.venue?.google_maps_url ?? "").trim(),
         });
       } finally {
         setIsInitialLoaded(true);
@@ -793,6 +812,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
           registrationStatus: "Draft" | "Published" | "Closed";
           registrationStartDate: string;
           registrationEndDate: string;
+          googleMapsUrlOverride?: string;
         };
         setRequiresApproval(snap.requiresApproval);
         if (snap.allowWaitlist !== undefined) setAllowWaitlist(snap.allowWaitlist);
@@ -804,6 +824,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
           setDefaultSessionCheckinDeadline(snap.defaultSessionCheckinDeadline);
         if (snap.defaultSessionLocation !== undefined) setDefaultSessionLocation(snap.defaultSessionLocation);
         if (snap.defaultSessionLocationUrl !== undefined) setDefaultSessionLocationUrl(snap.defaultSessionLocationUrl);
+        if (snap.googleMapsUrlOverride !== undefined) setGoogleMapsUrlOverride(snap.googleMapsUrlOverride);
         setQuestions(snap.questions);
         setRegistrationStatus(snap.registrationStatus);
         setRegistrationStartDate(snap.registrationStartDate);
@@ -862,6 +883,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
             default_session_location_url: defaultSessionLocationUrl.trim()
               ? defaultSessionLocationUrl.trim()
               : deleteField(),
+            google_maps_url: googleMapsUrlOverride.trim() ? googleMapsUrlOverride.trim() : deleteField(),
             tickets: tickets.length > 0 ? tickets : deleteField(),
             custom_questions: questions.filter((q) => q.label.trim().length > 0),
             updated_at: new Date().toISOString(),
@@ -889,6 +911,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
             registrationStatus: finalStatus,
             registrationStartDate,
             registrationEndDate,
+            googleMapsUrlOverride: googleMapsUrlOverride.trim(),
           });
 
           if (finalStatus === "Draft") {
@@ -1026,11 +1049,15 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
                       </Badge>
                       {tmpl.tickets && tmpl.tickets.length > 0 && (
                         <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground">
-                          {tmpl.tickets.some((t) => t.type === "commitment_fee")
-                            ? "Rp 50k Fee"
-                            : tmpl.tickets.some((t) => t.type === "paid")
-                              ? `${tmpl.tickets.length} Paid Tiers`
-                              : "Free RSVP"}
+                          {(() => {
+                            if (tmpl.tickets.some((t) => t.type === "commitment_fee")) {
+                              return "Rp 50k Fee";
+                            }
+                            if (tmpl.tickets.some((t) => t.type === "paid")) {
+                              return `${tmpl.tickets.length} Paid Tiers`;
+                            }
+                            return "Free RSVP";
+                          })()}
                         </span>
                       )}
                     </div>
@@ -1063,7 +1090,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
           </div>
 
           <div className="flex items-center gap-2">
-            {registrationStatus === "Draft" ? (
+            {registrationStatus === "Draft" && (
               <Button
                 size="sm"
                 variant="default"
@@ -1076,7 +1103,8 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
                 <Globe className="size-3.5" />
                 Publish Registration
               </Button>
-            ) : registrationStatus === "Published" ? (
+            )}
+            {registrationStatus === "Published" && (
               <div className="flex items-center gap-1.5">
                 <Button
                   size="sm"
@@ -1102,7 +1130,8 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
                   Close Registration
                 </Button>
               </div>
-            ) : (
+            )}
+            {registrationStatus !== "Draft" && registrationStatus !== "Published" && (
               <Button
                 size="sm"
                 variant="outline"
@@ -1366,6 +1395,84 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
               </p>
             </Field>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* ── 2b. VENUE LOCATION & GOOGLE MAPS LINK ───────────────────── */}
+      <Card>
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <MapPin className="size-4 text-emerald-600 dark:text-emerald-400" />
+              <CardTitle className="text-lg">Venue Location & Google Maps Link</CardTitle>
+            </div>
+            <CardDescription className="pt-1">
+              Review upstream Bevy venue information and customize or override the Google Maps link shown to attendees.
+            </CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1 rounded-lg border bg-muted/20 p-3.5">
+              <span className="font-medium text-[11px] text-muted-foreground uppercase tracking-wider">
+                Upstream Venue Name
+              </span>
+              <p className="font-semibold text-foreground text-sm">
+                {event.venue?.name ?? (event.is_virtual ? "Virtual Event" : "To Be Announced")}
+              </p>
+            </div>
+            <div className="space-y-1 rounded-lg border bg-muted/20 p-3.5">
+              <span className="font-medium text-[11px] text-muted-foreground uppercase tracking-wider">
+                Upstream Venue Address
+              </span>
+              <p className="line-clamp-2 text-muted-foreground text-xs">
+                {[event.venue?.address, event.venue?.city].filter(Boolean).join(", ") || "No address provided on Bevy"}
+              </p>
+            </div>
+          </div>
+
+          <Field className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <FieldLabel htmlFor="google-maps-url" className="font-medium text-xs">
+                Google Maps Link Override (Optional)
+              </FieldLabel>
+              {googleMapsUrlOverride.trim() ? (
+                <a
+                  href={googleMapsUrlOverride.trim()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 font-medium text-[11px] text-primary hover:underline"
+                >
+                  Test override link <ExternalLink className="size-2.5" />
+                </a>
+              ) : (
+                [event.venue?.name, event.venue?.address, event.venue?.city].filter(Boolean).join(", ") && (
+                  <a
+                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                      [event.venue?.name, event.venue?.address, event.venue?.city].filter(Boolean).join(", "),
+                    )}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground hover:underline"
+                  >
+                    Preview default link <ExternalLink className="size-2.5" />
+                  </a>
+                )
+              )}
+            </div>
+            <Input
+              id="google-maps-url"
+              placeholder="https://maps.app.goo.gl/... or custom Google Maps place link"
+              value={googleMapsUrlOverride}
+              onChange={(e) => setGoogleMapsUrlOverride(e.target.value)}
+              className="h-9 font-mono text-xs"
+            />
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              By default, Google Maps directions are automatically searched using the venue name{" "}
+              <strong>({event.venue?.name ?? "Venue"})</strong> and address. Enter a custom Google Maps URL here to
+              override it across the public event page, attendee ticket cards, and confirmation emails.
+            </p>
+          </Field>
         </CardContent>
       </Card>
 

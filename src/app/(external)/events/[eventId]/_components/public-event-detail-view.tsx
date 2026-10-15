@@ -122,7 +122,7 @@ export function PublicEventDetailView({ event, initialFirestoreEvent = null }: P
               </div>
             )}
 
-            <PublicEventInfoCards event={event} />
+            <PublicEventInfoCards event={event} firestoreEvent={firestoreEvent} />
 
             <PublicEventTabs
               event={event}
