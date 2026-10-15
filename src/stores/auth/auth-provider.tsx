@@ -153,8 +153,63 @@ export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
         try {
           const email = firebaseUser.email ?? "";
           const token = await firebaseUser.getIdToken();
+
+          // 1. Check local Firestore member profile first - DO NOT query Bevy API every time!
+          const { getFirestoreMemberById } = await import("@/lib/firestore/client");
+          const memberDoc = await getFirestoreMemberById(firebaseUser.uid);
+
+          if (memberDoc?.role) {
+            console.log(
+              `[Auth Provider] Restoring session from Firestore profile for ${email} (Role: ${memberDoc.role}, ChapterRole: ${memberDoc.chapter_role || "N/A"})`,
+            );
+
+            const isOrg = memberDoc.role === "organizer" || memberDoc.role === "Organizer";
+            const isStaff =
+              memberDoc.team === "Core Team" ||
+              memberDoc.role === "core_team" ||
+              memberDoc.role === "Core Team" ||
+              memberDoc.role === "Check-in Staff" ||
+              memberDoc.role === "check_in_staff";
+            let role = "member";
+            if (isOrg) {
+              role = "organizer";
+            } else if (isStaff) {
+              role = "core_team";
+            }
+
+            let defaultChapterRole = "Member";
+            if (isOrg) {
+              defaultChapterRole = "Organizer";
+            } else if (isStaff) {
+              defaultChapterRole = "Core Team";
+            }
+            const chapterRole = memberDoc.chapter_role ?? defaultChapterRole;
+
+            const organizer: AuthOrganizer = {
+              id: firebaseUser.uid,
+              name: memberDoc.name || firebaseUser.displayName || "User",
+              email,
+              avatar: memberDoc.avatar_url || firebaseUser.photoURL || "",
+              role,
+              bevyUserId: memberDoc.bevy_user_id ? String(memberDoc.bevy_user_id) : undefined,
+              chapterRole,
+              roleId: typeof memberDoc.bevy_member_id === "number" ? memberDoc.bevy_member_id : undefined,
+            };
+
+            const { restoreSessionCookieAction } = await import("@/server/auth-actions");
+            await restoreSessionCookieAction(token, role);
+
+            store.getState().setUser(organizer, firebaseUser);
+
+            if (!memberDoc.bevy_user_id) {
+              await syncBevyUserToFirestore(firebaseUser.uid, email);
+            }
+            return;
+          }
+
+          // 2. If no Firestore member doc exists yet (first-time fallback), evaluate Bevy once and save
+          console.log(`[Auth Provider] No Firestore profile found for ${email}. Evaluating Bevy API once...`);
           const { firstName, lastName } = splitFullName(firebaseUser.displayName);
-          console.log(`[Auth Provider] Restoring session via handleUserPostLoginAction for ${email}...`);
 
           const validation = await handleUserPostLoginAction({
             uid: firebaseUser.uid,
@@ -167,7 +222,7 @@ export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
           });
 
           const organizer = mapFirebaseUserToOrganizer(firebaseUser, validation);
-          console.log("[Auth Provider] Session restored successfully:", {
+          console.log("[Auth Provider] Bevy evaluation completed. Saving locally to Firestore:", {
             email: organizer.email,
             role: organizer.role,
             chapterRole: organizer.chapterRole,
@@ -233,9 +288,12 @@ export async function signInWithGoogle(): Promise<{ organizer: AuthOrganizer; is
       lastName = split.lastName;
     }
 
-    // Step 2: Validate user against Bevy Chapter Team and set Session Cookie on server
+    // Step 2: Check if member already exists in Firestore with a role to avoid redundant Bevy calls
     const email = user.email ?? "";
     const token = await user.getIdToken();
+    const { getFirestoreMemberById } = await import("@/lib/firestore/client");
+    const existingDoc = await getFirestoreMemberById(user.uid);
+
     console.log(`[Auth Flow Step 3 - Client] Calling handleUserPostLoginAction on server for ${email}...`);
     const validation = await handleUserPostLoginAction({
       uid: user.uid,
@@ -245,6 +303,10 @@ export async function signInWithGoogle(): Promise<{ organizer: AuthOrganizer; is
       token,
       firstName: firstName?.trim() ? firstName : undefined,
       lastName: lastName?.trim() ? lastName : undefined,
+      cachedRole: existingDoc?.role,
+      cachedChapterRole: existingDoc?.chapter_role ?? undefined,
+      cachedTeam: existingDoc?.team,
+      cachedBevyUserId: existingDoc?.bevy_user_id ? String(existingDoc.bevy_user_id) : undefined,
     });
 
     const organizer = mapFirebaseUserToOrganizer(user, validation);

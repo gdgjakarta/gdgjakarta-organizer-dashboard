@@ -22,6 +22,10 @@ export interface UserAuthSyncParams {
   token?: string;
   firstName?: string;
   lastName?: string;
+  cachedRole?: string;
+  cachedChapterRole?: string;
+  cachedTeam?: string;
+  cachedBevyUserId?: string;
 }
 
 /**
@@ -238,6 +242,60 @@ export async function handleUserPostLoginAction(params: UserAuthSyncParams): Pro
       };
     }
 
+    // If a cached role from Firestore is provided, restore session directly without querying Bevy API
+    if (params.cachedRole) {
+      console.log(
+        `[Auth Step 2 - Server] Using cached role from Firestore for ${verifiedEmail}: role="${params.cachedRole}", team="${params.cachedTeam ?? "N/A"}"`,
+      );
+      const isExecutive = params.cachedRole === "organizer" || params.cachedRole === "Organizer";
+      const isCoreStaff =
+        params.cachedRole === "core_team" ||
+        params.cachedRole === "Core Team" ||
+        params.cachedRole === "Check-in Staff" ||
+        params.cachedRole === "check_in_staff" ||
+        params.cachedTeam === "Core Team";
+      const isAuthorizedTeam = isExecutive || isCoreStaff;
+      let role = "member";
+      if (isExecutive) {
+        role = "organizer";
+      } else if (isCoreStaff) {
+        role = "core_team";
+      }
+
+      let defaultChapterRole = "Member";
+      if (isExecutive) {
+        defaultChapterRole = "Organizer";
+      } else if (isCoreStaff) {
+        defaultChapterRole = "Core Team";
+      }
+      const chapterRole = params.cachedChapterRole ?? defaultChapterRole;
+
+      if (token) {
+        console.log(
+          `[Auth Step 3 - Server] Setting session cookies from cache (auth_token & auth_role="${role}") for ${verifiedEmail}`,
+        );
+        await setAuthSessionCookie(token, role, true);
+      }
+
+      let chapterRoleType = ChapterRole.MEMBER;
+      if (isExecutive) {
+        chapterRoleType = ChapterRole.ORGANIZER;
+      } else if (isCoreStaff) {
+        chapterRoleType = ChapterRole.CORE_TEAM;
+      }
+
+      return {
+        isValidOrganizer: isAuthorizedTeam,
+        role,
+        bevyUserId: params.cachedBevyUserId ?? null,
+        chapterRole,
+        chapterRoleType,
+        roleId: null,
+        roleTitle: chapterRole,
+        wasImported: false,
+      };
+    }
+
     // 1. Validate role directly against Bevy API (/chapter/{chapterId}/team/) using verified email and Bevy User ID
     let validation: OrganizerValidationResult = {
       isValidOrganizer: false,
@@ -284,14 +342,19 @@ export async function handleUserPostLoginAction(params: UserAuthSyncParams): Pro
 
     console.log(`[Auth Step 4 - Server] Completed post-login sync for ${verifiedEmail}`);
     // 3. Return ONLY a plain, cleanly serializable object to prevent RSC flight serialization failures
+    let resolvedRoleType = ChapterRole.MEMBER;
+    if (isExecutive) {
+      resolvedRoleType = ChapterRole.ORGANIZER;
+    } else if (isCoreStaff) {
+      resolvedRoleType = ChapterRole.CORE_TEAM;
+    }
+
     return {
       isValidOrganizer: isAuthorizedTeam,
       role: role,
       bevyUserId: validation.bevyUserId ? String(validation.bevyUserId) : null,
       chapterRole: chapterRole,
-      chapterRoleType:
-        validation.chapterRoleType ??
-        (isExecutive ? ChapterRole.ORGANIZER : isCoreStaff ? ChapterRole.CORE_TEAM : ChapterRole.MEMBER),
+      chapterRoleType: validation.chapterRoleType ?? resolvedRoleType,
       roleId: validation.roleId ?? null,
       roleTitle: validation.roleTitle ?? chapterRole,
       wasImported: Boolean(validation.wasImported),
@@ -342,6 +405,26 @@ async function setAuthSessionCookie(token: string, role: string, remember = true
 }
 
 /**
+ * Restores or refreshes HTTP-only auth cookies directly from the client's verified Firestore profile
+ * without querying the Bevy API.
+ */
+export async function restoreSessionCookieAction(token: string, role: string): Promise<boolean> {
+  try {
+    if (!token) return false;
+    const tokenVerification = await verifyFirebaseIdToken(token);
+    if (!tokenVerification.valid) {
+      console.warn("[Auth Restore] Invalid token supplied to restoreSessionCookieAction");
+      return false;
+    }
+    await setAuthSessionCookie(token, role, true);
+    return true;
+  } catch (err) {
+    console.error("[Auth Restore] Failed to restore session cookie:", err);
+    return false;
+  }
+}
+
+/**
  * Clears the auth_token cookie without redirecting.
  */
 export async function clearAuthSessionCookie(): Promise<void> {
@@ -359,7 +442,7 @@ export async function clearAuthSessionCookie(): Promise<void> {
  * Direct password login action - disabled for security.
  * GDG Jakarta uses Google Sign-In with Firebase Authentication.
  */
-export async function loginAction(email: string, password: string, remember: boolean): Promise<LoginResult> {
+export async function loginAction(email: string, _password: string, _remember: boolean): Promise<LoginResult> {
   console.warn(`[Auth Security] Direct password login attempt rejected for: ${email}`);
   return { success: false, error: "Password authentication is disabled. Please sign in using Google." };
 }

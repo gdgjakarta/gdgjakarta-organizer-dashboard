@@ -125,10 +125,30 @@ export async function getMemberById(
   chapterId: string | number = BEVY_CONFIG.chapterId,
 ): Promise<BevyFetchResponse<BevyUser>> {
   if (!userId) return { status: 400, ok: false, data: null };
-
   const cleanUserId = userId.trim().replace(/\/+$/, "");
+
+  // If identifier is an email, search directly to avoid guaranteed 404 from /user/{email}
+  if (cleanUserId.includes("@")) {
+    const searchResult = await bevyFetchWithResponse<{ results?: BevyUser[]; user?: BevyUser }>(
+      `/user/?search=${encodeURIComponent(cleanUserId)}`,
+      {},
+      chapterId,
+    );
+
+    if (searchResult.ok && searchResult.data) {
+      if (searchResult.data.results && searchResult.data.results.length > 0) {
+        return { status: 200, ok: true, data: searchResult.data.results[0] };
+      }
+      if (searchResult.data.user) {
+        return { status: 200, ok: true, data: searchResult.data.user };
+      }
+    }
+    console.warn(`[Bevy Auth] No Bevy member found for email search: ${cleanUserId}`);
+    return { status: 404, ok: false, data: null };
+  }
+
   const isAllDigits = /^\d+$/.test(cleanUserId);
-  const formattedUserId = isAllDigits ? `${cleanUserId}/` : encodeURIComponent(cleanUserId);
+  const formattedUserId = isAllDigits ? `${cleanUserId}/` : `${encodeURIComponent(cleanUserId)}/`;
   const endpoint = fields
     ? `/user/${formattedUserId}?fields=${encodeURIComponent(fields)}`
     : `/user/${formattedUserId}`;
@@ -157,22 +177,6 @@ export async function getMemberById(
 
     if (resolvedUser) {
       return { status: directResult.status, ok: true, data: resolvedUser };
-    }
-  }
-
-  // Fallback to query param search if direct identifier returned nothing
-  const searchResult = await bevyFetchWithResponse<{ results?: BevyUser[]; user?: BevyUser }>(
-    `/user/?search=${encodeURIComponent(cleanUserId)}`,
-    {},
-    chapterId,
-  );
-
-  if (searchResult.ok && searchResult.data) {
-    if (searchResult.data.results && searchResult.data.results.length > 0) {
-      return { status: 200, ok: true, data: searchResult.data.results[0] };
-    }
-    if (searchResult.data.user) {
-      return { status: 200, ok: true, data: searchResult.data.user };
     }
   }
 
@@ -519,9 +523,17 @@ export async function validateBevyOrganizer(
 
       if (importResult.success) {
         wasImported = true;
-        console.log(`[Bevy Auth Flow] Successfully triggered import-member for ${normalizedEmail}.`);
-        bevyUser = null;
-        bevyUserId = null;
+        console.log(`[Bevy Auth Flow] Successfully triggered import-member for ${normalizedEmail}. Retrying lookup...`);
+        const retryMember = await getMemberById(normalizedEmail);
+        if (retryMember.ok && retryMember.data) {
+          bevyUser = retryMember.data;
+          bevyUserId =
+            retryMember.data.id !== undefined && retryMember.data.id !== null ? String(retryMember.data.id) : null;
+          console.log(`[Bevy Auth Flow] Post-import retry lookup resolved Bevy ID: ${bevyUserId}`);
+        } else {
+          bevyUser = null;
+          bevyUserId = null;
+        }
       } else {
         console.warn(`[Bevy Auth Flow] Failed to import member to Bevy: ${importResult.error}`);
       }
