@@ -128,24 +128,26 @@ export function CancelRegistrationDialog({
             </div>
             <AlertDialogTitle className="font-semibold text-base">Cancel Your Registration?</AlertDialogTitle>
           </div>
-          <AlertDialogDescription className="space-y-3 pt-2 text-xs sm:text-sm">
-            <span>
-              Are you sure you want to cancel your registration for{" "}
-              <strong className="text-foreground">{displayTitle}</strong>?
-            </span>
+          <AlertDialogDescription asChild>
+            <div className="space-y-3 pt-2 text-xs sm:text-sm">
+              <p>
+                Are you sure you want to cancel your registration for{" "}
+                <strong className="text-foreground">{displayTitle}</strong>?
+              </p>
 
-            <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-destructive leading-relaxed text-xs dark:bg-destructive/10">
-              <p className="font-semibold">⚠️ Notice:</p>
-              <p className="mt-1">
-                Your registration has been canceled and your registration will be removed from the event. If you change
-                your mind, you need to re-register again.
+              <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-destructive leading-relaxed text-xs dark:bg-destructive/10">
+                <p className="font-semibold">⚠️ Notice:</p>
+                <p className="mt-1">
+                  Your registration has been canceled and your registration will be removed from the event. If you
+                  change your mind, you need to re-register again.
+                </p>
+              </div>
+
+              <p className="text-muted-foreground text-xs">
+                Your allocated ticket and spot will be released immediately. A confirmation email will be sent to{" "}
+                {memberEmail ? <strong className="text-foreground">{memberEmail}</strong> : "your email address"}.
               </p>
             </div>
-
-            <p className="text-muted-foreground text-xs">
-              Your allocated ticket and spot will be released immediately. A confirmation email will be sent to{" "}
-              {memberEmail ? <strong className="text-foreground">{memberEmail}</strong> : "your email address"}.
-            </p>
           </AlertDialogDescription>
         </AlertDialogHeader>
 
