@@ -2,11 +2,12 @@
 
 import { useRef, useState, useTransition } from "react";
 
-import { AlertCircle, CreditCard, FileText, Loader2, Trash2, UploadCloud } from "lucide-react";
+import { AlertCircle, AlertTriangle, CreditCard, FileText, Loader2, Trash2, UploadCloud } from "lucide-react";
 import { toast } from "sonner";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -57,6 +58,7 @@ export function RefundRequestDialog({
   const [proofMediaUrl, setProofMediaUrl] = useState<string | null>(existingRefund?.proof_media_url ?? null);
   const [proofMediaName, setProofMediaName] = useState<string | null>(existingRefund?.proof_media_name ?? null);
   const [isUploadingProof, setIsUploadingProof] = useState(false);
+  const [hasAcknowledged, setHasAcknowledged] = useState(Boolean(existingRefund));
   const fileInputRef = useRef<HTMLInputElement | null>(null as unknown as HTMLInputElement);
 
   const [isSubmitting, startTransition] = useTransition();
@@ -132,6 +134,10 @@ export function RefundRequestDialog({
     }
     if (!cancellationReason.trim()) {
       toast.error("Please provide a reason for cancellation.");
+      return;
+    }
+    if (!hasAcknowledged) {
+      toast.error("Please acknowledge that requesting a refund will cancel your RSVP.");
       return;
     }
 
@@ -220,14 +226,29 @@ export function RefundRequestDialog({
           </Alert>
         )}
 
+        {/* RSVP Cancellation Warning Alert */}
+        <Alert className="border-amber-500/40 bg-amber-500/10 text-amber-900 dark:text-amber-200">
+          <AlertTriangle className="size-4 text-amber-600 dark:text-amber-400" />
+          <AlertTitle className="font-semibold text-xs">RSVP Cancellation Warning</AlertTitle>
+          <AlertDescription className="mt-1 text-xs leading-relaxed text-amber-800 dark:text-amber-300">
+            Requesting a refund will <strong>cancel your RSVP and release your ticket/spot</strong>. Once processed, you
+            will <strong>no longer be able to attend or join the event</strong> with this registration.
+          </AlertDescription>
+        </Alert>
+
         <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs">
           <div className="flex items-center justify-between">
-            <span className="font-medium text-foreground">Refundable Commitment Deposit:</span>
+            <span className="font-medium text-foreground">
+              {registration.status === "paid_waitlisted"
+                ? "Refundable Commitment Deposit:"
+                : "Refundable Ticket Amount:"}
+            </span>
             <span className="font-bold text-primary">{formatRupiah(refundAmount)}</span>
           </div>
           <p className="mt-1 text-[11px] text-muted-foreground leading-relaxed">
-            Because this session was over capacity, your waitlist fee is 100% refundable. Please provide valid bank
-            account information to receive your transfer.
+            {registration.status === "paid_waitlisted"
+              ? "Because this session was over capacity, your waitlist fee is refundable. Please provide valid bank account information to receive your transfer."
+              : "Please provide valid Indonesian bank account details to receive your refund transfer. Requesting this refund will forfeit your attendance spot."}
           </p>
         </div>
 
@@ -390,6 +411,23 @@ export function RefundRequestDialog({
             )}
           </div>
 
+          {/* Acknowledgment Checkbox */}
+          <div className="flex items-start gap-2.5 rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
+            <Checkbox
+              id="refund-acknowledge"
+              checked={hasAcknowledged}
+              onCheckedChange={(checked) => setHasAcknowledged(Boolean(checked))}
+              className="mt-0.5 border-amber-500/60 data-[state=checked]:bg-amber-600 data-[state=checked]:border-amber-600"
+            />
+            <Label
+              htmlFor="refund-acknowledge"
+              className="cursor-pointer select-none font-medium text-xs text-foreground leading-relaxed"
+            >
+              I understand and agree that submitting this refund request will <strong>cancel my RSVP</strong> and I will{" "}
+              <strong>forfeit my spot</strong> to join this event.
+            </Label>
+          </div>
+
           <DialogFooter className="mt-4 gap-2 pt-2">
             <Button
               type="button"
@@ -400,7 +438,12 @@ export function RefundRequestDialog({
             >
               Cancel
             </Button>
-            <Button type="submit" size="sm" disabled={isSubmitting || isUploadingProof} className="gap-1.5">
+            <Button
+              type="submit"
+              size="sm"
+              disabled={isSubmitting || isUploadingProof || !hasAcknowledged}
+              className="gap-1.5"
+            >
               {isSubmitting ? (
                 <>
                   <Loader2 className="size-3.5 animate-spin" />

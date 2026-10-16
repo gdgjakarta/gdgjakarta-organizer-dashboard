@@ -129,18 +129,23 @@ export function isRegistrationEligibleForRefund(
     };
   }
 
-  const isPaidWaitlisted = registration.status === "paid_waitlisted";
+  const isEligibleStatus =
+    registration.status === "paid_waitlisted" ||
+    registration.status === "paid_and_registered" ||
+    registration.status === "registered" ||
+    registration.status === "approved";
+
   const hasPaidAmount =
     (typeof registration.payment_amount === "number" && registration.payment_amount > 0) ||
     (typeof registration.ticket_price === "number" && registration.ticket_price > 0) ||
     registration.ticket_type === "commitment_fee";
 
-  if (!isPaidWaitlisted && !hasActiveRequest) {
+  if (!isEligibleStatus && !hasActiveRequest) {
     return {
       isEligible: false,
       canSubmitNew: false,
       hasActiveRequest: false,
-      reason: "Refund is only applicable for paid waitlisted registrations.",
+      reason: "Refund is only applicable for paid registrations.",
       cutoffInfo,
     };
   }

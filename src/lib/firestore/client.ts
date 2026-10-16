@@ -3024,15 +3024,16 @@ export async function updateRefundStatus(
     updated_at: now,
   };
 
-  // If approved and completed, mark payment_status as refunded
+  // If approved and completed, mark payment_status as refunded and cancel the registration RSVP
   if (status === "refund_completed") {
     updatePayload.payment_status = "refunded";
+    updatePayload.status = "canceled";
   }
 
   const existingLogs = Array.isArray(existing.status_logs) ? existing.status_logs : [];
   const logEntry: RegistrationStatusLog = {
     id: `log_${Date.now()}_refund_${status}`,
-    status: existing.status,
+    status: status === "refund_completed" ? "canceled" : existing.status,
     changed_at: now,
     changed_by_id: reviewer?.id ?? details?.completed_by_id ?? details?.rejected_by_id ?? "organizer",
     changed_by_name: reviewer?.name ?? details?.completed_by_name ?? details?.rejected_by_name ?? "Organizer",

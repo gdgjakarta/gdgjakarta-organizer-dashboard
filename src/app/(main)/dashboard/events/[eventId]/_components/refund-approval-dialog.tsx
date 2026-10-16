@@ -158,7 +158,9 @@ export function RefundApprovalDialog({
             </span>
             <div>
               <DialogTitle className="text-base sm:text-lg">Approve & Complete Refund</DialogTitle>
-              <DialogDescription className="text-xs">Disburse commitment fee deposit to attendee</DialogDescription>
+              <DialogDescription className="text-xs">
+                Disburse refund and cancel attendee registration
+              </DialogDescription>
             </div>
           </div>
         </DialogHeader>

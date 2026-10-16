@@ -697,7 +697,7 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
                             <CreditCard className="size-3.5 shrink-0" />
                             <span className="truncate font-semibold text-[11px]">
                               {isPending && "Refund Request Under Review"}
-                              {isCompleted && "Refund Transferred & Completed"}
+                              {isCompleted && "Refund Completed • RSVP Canceled"}
                               {isRejected && "Refund Request Rejected"}
                             </span>
                           </div>
@@ -711,7 +711,7 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
                             )}
                           >
                             {isPending && "Pending"}
-                            {isCompleted && "Completed"}
+                            {isCompleted && "Refunded"}
                             {isRejected && "Action Needed"}
                           </Badge>
                         </div>
