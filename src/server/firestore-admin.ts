@@ -1,18 +1,4 @@
-import { getApps, initializeApp } from "firebase/app";
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  getFirestore,
-  increment,
-  query,
-  setDoc,
-  updateDoc,
-  where,
-} from "firebase/firestore/lite";
-
-import { firebaseConfig } from "@/config/firebase";
+import { DEFAULT_MAINTENANCE_CONFIG, type MaintenanceConfig } from "@/config/maintenance-config";
 import { buildApprovedAttendeePayload } from "@/lib/events/approved-attendee-webhook";
 import { normalizeEventDoc } from "@/lib/firestore/normalization";
 import type {
@@ -23,18 +9,16 @@ import type {
 } from "@/lib/firestore/types";
 
 /**
- * Returns a dedicated Firestore Lite instance for server-side operations.
- * Uses a dedicated named FirebaseApp to completely isolate it from standard
- * client Firestore instances initialized on the default app.
+ * Cloud Firestore REST API configuration.
+ * Using native fetch and Firestore REST eliminates Node gRPC and @grpc/proto-loader dependencies,
+ * avoiding the protobufjs eval/codegen EvalError in Cloudflare Workers V8 isolates.
  */
-function getServerFirestoreLite() {
-  const existingApp = getApps().find((a) => a.name === "server-firestore-lite");
-  const serverApp = existingApp || initializeApp(firebaseConfig, "server-firestore-lite");
-  return getFirestore(serverApp);
-}
+const FIREBASE_PROJECT_ID = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "gdgjakarta-app";
+const FIREBASE_API_KEY = process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyCVk8ECyA8Lqd7KNqdnItxYUu9jdFzoohU";
+const FIRESTORE_BASE_URL = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
 
 /**
- * Pure utility function to strip undefined values before writing to Firestore.
+ * Pure utility function to strip undefined values before serializing payload.
  */
 function sanitizePayload<T>(data: T): T {
   if (data === null || data === undefined) return data;
@@ -51,6 +35,197 @@ function sanitizePayload<T>(data: T): T {
     return result as T;
   }
   return data;
+}
+
+/**
+ * Decodes a Firestore REST Value object into standard JavaScript primitives / objects.
+ */
+function decodeFirestoreValue(val: unknown): unknown {
+  if (!val || typeof val !== "object") return val;
+  const obj = val as Record<string, unknown>;
+  if ("stringValue" in obj) return obj.stringValue;
+  if ("integerValue" in obj) return Number(obj.integerValue);
+  if ("doubleValue" in obj) return Number(obj.doubleValue);
+  if ("booleanValue" in obj) return Boolean(obj.booleanValue);
+  if ("nullValue" in obj) return null;
+  if ("timestampValue" in obj) return obj.timestampValue;
+  if ("mapValue" in obj) {
+    const fields = (obj.mapValue as { fields?: Record<string, unknown> }).fields ?? {};
+    const res: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(fields)) {
+      res[k] = decodeFirestoreValue(v);
+    }
+    return res;
+  }
+  if ("arrayValue" in obj) {
+    const values = (obj.arrayValue as { values?: unknown[] }).values ?? [];
+    return values.map(decodeFirestoreValue);
+  }
+  if ("bytesValue" in obj) return obj.bytesValue;
+  if ("referenceValue" in obj) return obj.referenceValue;
+  if ("geoPointValue" in obj) return obj.geoPointValue;
+  return obj;
+}
+
+/**
+ * Decodes a Firestore document object from the REST API into a plain JavaScript dictionary.
+ */
+function decodeFirestoreDoc(
+  doc: { fields?: Record<string, unknown>; name?: string } | null | undefined,
+): Record<string, unknown> | null {
+  if (!doc?.fields) return null;
+  const res: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(doc.fields)) {
+    res[k] = decodeFirestoreValue(v);
+  }
+  return res;
+}
+
+/**
+ * Encodes a JavaScript value into a Firestore REST Value representation.
+ */
+function encodeFirestoreValue(val: unknown): Record<string, unknown> {
+  if (val === null || val === undefined) return { nullValue: null };
+  if (typeof val === "boolean") return { booleanValue: val };
+  if (typeof val === "number") {
+    return Number.isInteger(val) ? { integerValue: String(val) } : { doubleValue: val };
+  }
+  if (typeof val === "string") return { stringValue: val };
+  if (Array.isArray(val)) {
+    return { arrayValue: { values: val.map(encodeFirestoreValue) } };
+  }
+  if (val instanceof Date) {
+    return { timestampValue: val.toISOString() };
+  }
+  if (typeof val === "object") {
+    const fields: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(val as Record<string, unknown>)) {
+      if (v !== undefined) {
+        fields[k] = encodeFirestoreValue(v);
+      }
+    }
+    return { mapValue: { fields } };
+  }
+  return { stringValue: String(val) };
+}
+
+/**
+ * Encodes an object of field-value pairs into a Firestore REST fields map.
+ */
+function encodeFirestoreFields(data: Record<string, unknown>): Record<string, unknown> {
+  const fields: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(data)) {
+    if (v !== undefined) {
+      fields[k] = encodeFirestoreValue(v);
+    }
+  }
+  return fields;
+}
+
+/**
+ * Fetches a single document via Firestore REST API.
+ */
+async function getFirestoreDoc(collectionName: string, docId: string): Promise<Record<string, unknown> | null> {
+  try {
+    const url = `${FIRESTORE_BASE_URL}/${collectionName}/${encodeURIComponent(docId)}?key=${FIREBASE_API_KEY}`;
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+    if (res.status === 404) return null;
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      console.warn(`[Firestore REST] GET ${collectionName}/${docId} returned ${res.status}: ${errText}`);
+      return null;
+    }
+    const data = (await res.json()) as { fields?: Record<string, unknown> };
+    return decodeFirestoreDoc(data);
+  } catch (err) {
+    console.warn(`[Firestore REST] Failed fetching ${collectionName}/${docId}:`, err);
+    return null;
+  }
+}
+
+/**
+ * Patches a document via Firestore REST API with merge support.
+ */
+async function patchFirestoreDoc(
+  collectionName: string,
+  docId: string,
+  data: Record<string, unknown>,
+  merge = true,
+): Promise<boolean> {
+  try {
+    const searchParams = new URLSearchParams();
+    searchParams.set("key", FIREBASE_API_KEY);
+    const keys = Object.keys(data).filter((k) => data[k] !== undefined);
+    if (merge) {
+      for (const k of keys) {
+        searchParams.append("updateMask.fieldPaths", k);
+      }
+    }
+    const url = `${FIRESTORE_BASE_URL}/${collectionName}/${encodeURIComponent(docId)}?${searchParams.toString()}`;
+    const res = await fetch(url, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ fields: encodeFirestoreFields(data) }),
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      console.warn(`[Firestore REST] PATCH ${collectionName}/${docId} returned ${res.status}: ${errText}`);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn(`[Firestore REST] Failed updating ${collectionName}/${docId}:`, err);
+    return false;
+  }
+}
+
+/**
+ * Queries a collection using Firestore REST runQuery.
+ */
+async function queryRegistrationDoc(
+  fieldPath: string,
+  value: string,
+): Promise<{ id: string; data: FirestoreRegistration } | null> {
+  try {
+    const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents:runQuery?key=${FIREBASE_API_KEY}`;
+    const body = {
+      structuredQuery: {
+        from: [{ collectionId: "event_registrations" }],
+        where: {
+          fieldFilter: {
+            field: { fieldPath },
+            op: "EQUAL",
+            value: { stringValue: value },
+          },
+        },
+        limit: 1,
+      },
+    };
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) return null;
+    const items = (await res.json()) as Array<{ document?: { name?: string; fields?: Record<string, unknown> } }>;
+    if (!Array.isArray(items) || items.length === 0 || !items[0]?.document) return null;
+    const doc = items[0].document;
+    const id = doc.name?.split("/").pop() ?? "";
+    const decoded = decodeFirestoreDoc(doc);
+    return decoded ? { id, data: { id, ...decoded } as unknown as FirestoreRegistration } : null;
+  } catch {
+    return null;
+  }
 }
 
 export interface AttendeeLookupResult {
@@ -112,58 +287,33 @@ function splitName(fullName: string): { firstName: string; lastName: string } {
  * 4. answers.payment_invoice_number field
  * 5. top-level invoice_number field
  */
-async function findRegistrationDocSnap(regCollection: ReturnType<typeof collection>, invoiceNumber: string) {
-  // 1. Direct document ID checks
+async function findRegistrationDoc(invoiceNumber: string): Promise<{ id: string; data: FirestoreRegistration } | null> {
   const strippedId = invoiceNumber.replace(/^INV-/, "");
   try {
-    const snap = await getDoc(doc(regCollection, strippedId));
-    if (snap.exists()) return snap;
+    const data = await getFirestoreDoc("event_registrations", strippedId);
+    if (data) return { id: strippedId, data: { id: strippedId, ...data } as unknown as FirestoreRegistration };
   } catch {
     // Ignore and proceed to alternate lookup
   }
 
   try {
-    const snap = await getDoc(doc(regCollection, invoiceNumber));
-    if (snap.exists()) return snap;
+    const data = await getFirestoreDoc("event_registrations", invoiceNumber);
+    if (data) return { id: invoiceNumber, data: { id: invoiceNumber, ...data } as unknown as FirestoreRegistration };
   } catch {
     // Ignore and proceed to alternate lookup
   }
 
-  // 2. Query payment_invoice_number
-  try {
-    const qPayment = query(regCollection, where("payment_invoice_number", "==", invoiceNumber));
-    const snapPayment = await getDocs(qPayment);
-    if (!snapPayment.empty) return snapPayment.docs[0];
-  } catch {
-    // Ignore and proceed to alternate lookup
-  }
+  const matchPayment = await queryRegistrationDoc("payment_invoice_number", invoiceNumber);
+  if (matchPayment) return matchPayment;
 
-  // 3. Query answers.invoice_number
-  try {
-    const qAnswers = query(regCollection, where("answers.invoice_number", "==", invoiceNumber));
-    const snapAnswers = await getDocs(qAnswers);
-    if (!snapAnswers.empty) return snapAnswers.docs[0];
-  } catch {
-    // Ignore and proceed to alternate lookup
-  }
+  const matchAnswers = await queryRegistrationDoc("answers.invoice_number", invoiceNumber);
+  if (matchAnswers) return matchAnswers;
 
-  // 4. Query answers.payment_invoice_number
-  try {
-    const qAnswersPayment = query(regCollection, where("answers.payment_invoice_number", "==", invoiceNumber));
-    const snapAnswersPayment = await getDocs(qAnswersPayment);
-    if (!snapAnswersPayment.empty) return snapAnswersPayment.docs[0];
-  } catch {
-    // Ignore and proceed to alternate lookup
-  }
+  const matchAnswersPayment = await queryRegistrationDoc("answers.payment_invoice_number", invoiceNumber);
+  if (matchAnswersPayment) return matchAnswersPayment;
 
-  // 5. Query top-level invoice_number
-  try {
-    const qTop = query(regCollection, where("invoice_number", "==", invoiceNumber));
-    const snapTop = await getDocs(qTop);
-    if (!snapTop.empty) return snapTop.docs[0];
-  } catch {
-    // Ignore and proceed to alternate lookup
-  }
+  const matchTop = await queryRegistrationDoc("invoice_number", invoiceNumber);
+  if (matchTop) return matchTop;
 
   return null;
 }
@@ -178,36 +328,27 @@ export async function getAttendeeByInvoiceNumber(rawInvoiceNumber: string): Prom
     return { success: false, error: "invoiceNumber parameter is required." };
   }
 
-  const db = getServerFirestoreLite();
-  const regCollection = collection(db, "event_registrations");
-
-  const targetDocSnap = await findRegistrationDocSnap(regCollection, invoiceNumber);
-
-  if (!targetDocSnap) {
+  const targetDoc = await findRegistrationDoc(invoiceNumber);
+  if (!targetDoc) {
     return { success: false, error: `Registration with invoice number "${invoiceNumber}" was not found.` };
   }
 
-  const regData = { id: targetDocSnap.id, ...targetDocSnap.data() } as FirestoreRegistration;
+  const regData = targetDoc.data;
 
-  // 2. Hydrate associated event document
+  // Hydrate associated event document
   let eventData: FirestoreEvent | undefined;
   if (regData.event_id) {
     try {
-      const eventRef = doc(db, "events", String(regData.event_id));
-      const eventSnap = await getDoc(eventRef);
-      if (eventSnap.exists()) {
-        eventData = { id: eventSnap.id, ...eventSnap.data() } as FirestoreEvent;
-      }
+      const ev = await getFirestoreEventByIdServer(String(regData.event_id));
+      if (ev) eventData = ev;
     } catch (err) {
       console.warn(`[getAttendeeByInvoiceNumber] Could not fetch event ${regData.event_id}:`, err);
     }
   }
 
-  // 3. Determine curation mode & target status
   const isCurated = eventData?.requires_approval === true || eventData?.curation_mode === true;
   const targetStatus: "approved" | "registered" = isCurated ? "approved" : "registered";
 
-  // 4. Build Bevy-compatible payload with email template & variables
   const approvedPayload = buildApprovedAttendeePayload(regData, eventData);
   const { firstName, lastName } = splitName(approvedPayload.fullName);
 
@@ -247,34 +388,14 @@ export async function updateRegistrationFromPayment(input: UpdateRegistrationFro
     return { success: false, error: "invoiceNumber is required." };
   }
 
-  const db = getServerFirestoreLite();
-  const regCollection = collection(db, "event_registrations");
-
-  // 1. Locate registration document
-  const targetDocSnap = await findRegistrationDocSnap(regCollection, invoiceNumber);
-
-  if (!targetDocSnap) {
+  const targetDoc = await findRegistrationDoc(invoiceNumber);
+  if (!targetDoc) {
     return { success: false, error: `Registration with invoice number "${invoiceNumber}" was not found.` };
   }
 
-  const regData = targetDocSnap.data() as FirestoreRegistration;
-  const regRef = doc(db, "event_registrations", targetDocSnap.id);
+  const regData = targetDoc.data;
   const eventIdStr = String(regData.event_id);
 
-  // 2. Hydrate associated event if needed
-  if (regData.event_id) {
-    try {
-      const eventRef = doc(db, "events", eventIdStr);
-      const eventSnap = await getDoc(eventRef);
-      if (eventSnap.exists()) {
-        const _eData = eventSnap.data() as FirestoreEvent;
-      }
-    } catch {
-      // keep fallback
-    }
-  }
-
-  // 3. Resolve status
   const resolvedStatus: RegistrationStatus =
     input.status ?? (input.errorReason ? ("failed" as const) : ("paid_and_registered" as const));
 
@@ -293,7 +414,6 @@ export async function updateRegistrationFromPayment(input: UpdateRegistrationFro
       : `Payment confirmed (${invoiceNumber}). Status: ${resolvedStatus}. Synced to Bevy.`,
   };
 
-  // 4. Update registration document
   const updatePayload = sanitizePayload<Record<string, unknown>>({
     status: resolvedStatus,
     payment_status: input.errorReason ? "failed" : "paid",
@@ -318,9 +438,8 @@ export async function updateRegistrationFromPayment(input: UpdateRegistrationFro
     updated_at: now,
   });
 
-  await updateDoc(regRef, updatePayload);
+  await patchFirestoreDoc("event_registrations", targetDoc.id, updatePayload, true);
 
-  // 5. Increment event approved counter if transitioning to approved or paid_and_registered
   const isNowApproved =
     resolvedStatus === "approved" || resolvedStatus === "paid_and_registered" || resolvedStatus === "registered";
   const wasApproved =
@@ -328,53 +447,51 @@ export async function updateRegistrationFromPayment(input: UpdateRegistrationFro
 
   if (isNowApproved && !wasApproved) {
     try {
-      const eventRef = doc(db, "events", eventIdStr);
-      await updateDoc(eventRef, {
-        total_approved: increment(1),
-        updated_at: now,
-      });
+      const evData = await getFirestoreEventByIdServer(eventIdStr);
+      const currentApproved = typeof evData?.total_approved === "number" ? evData.total_approved : 0;
+      const currentVouchers = Array.isArray(evData?.vouchers) ? [...evData.vouchers] : [];
+      let hasNew = false;
 
-      // Ensure bundle vouchers are properly included in event.vouchers
       if (regData.bundle_id && Array.isArray(regData.bundle_vouchers) && regData.bundle_vouchers.length > 0) {
-        const eventSnap = await getDoc(eventRef);
-        if (eventSnap.exists()) {
-          const evData = eventSnap.data() as FirestoreEvent;
-          const currentVouchers = Array.isArray(evData.vouchers) ? [...evData.vouchers] : [];
-          let hasNew = false;
-
-          for (const bv of regData.bundle_vouchers) {
-            if (!currentVouchers.some((cv) => cv.code.toUpperCase() === bv.code.toUpperCase())) {
-              currentVouchers.push({
-                id: bv.voucher_id,
-                code: bv.code,
-                description: `100% Ticket Pass sponsored by ${regData.member_name || "Friend"}`,
-                discount_type: "percentage",
-                discount_value: 100,
-                applies_to: "ticket",
-                usage_limit: 1,
-                times_used: 0,
-                min_spend: null,
-                max_discount: null,
-                start_date: now,
-                end_date: evData.start_date || null,
-                status: "active",
-                source_bundle_id: regData.bundle_id,
-                source_registration_id: targetDocSnap.id,
-                purchaser_member_id: regData.member_id,
-                purchaser_name: regData.member_name,
-                purchaser_email: regData.member_email,
-                created_at: now,
-                updated_at: now,
-              });
-              hasNew = true;
-            }
-          }
-
-          if (hasNew) {
-            await updateDoc(eventRef, { vouchers: currentVouchers, updated_at: now });
+        for (const bv of regData.bundle_vouchers) {
+          if (!currentVouchers.some((cv) => cv.code.toUpperCase() === bv.code.toUpperCase())) {
+            currentVouchers.push({
+              id: bv.voucher_id,
+              code: bv.code,
+              description: `100% Ticket Pass sponsored by ${regData.member_name || "Friend"}`,
+              discount_type: "percentage",
+              discount_value: 100,
+              applies_to: "ticket",
+              usage_limit: 1,
+              times_used: 0,
+              min_spend: null,
+              max_discount: null,
+              start_date: now,
+              end_date: evData?.start_date ?? null,
+              status: "active",
+              source_bundle_id: regData.bundle_id,
+              source_registration_id: targetDoc.id,
+              purchaser_member_id: regData.member_id,
+              purchaser_name: regData.member_name,
+              purchaser_email: regData.member_email,
+              created_at: now,
+              updated_at: now,
+            });
+            hasNew = true;
           }
         }
       }
+
+      await patchFirestoreDoc(
+        "events",
+        eventIdStr,
+        {
+          total_approved: currentApproved + 1,
+          updated_at: now,
+          ...(hasNew ? { vouchers: currentVouchers } : {}),
+        },
+        true,
+      );
     } catch (countErr) {
       console.warn("[updateRegistrationFromPayment] Failed to update event / bundle vouchers:", countErr);
     }
@@ -382,22 +499,20 @@ export async function updateRegistrationFromPayment(input: UpdateRegistrationFro
 
   return {
     success: true,
-    registrationId: targetDocSnap.id,
+    registrationId: targetDoc.id,
     status: resolvedStatus,
     message: `Registration successfully updated to ${resolvedStatus}`,
   };
 }
 
 /**
- * Loads an event from Firestore on the server (Node/RSC).
+ * Loads an event from Firestore on the server (Node/RSC/Cloudflare Worker) via native REST.
  */
 export async function getFirestoreEventByIdServer(eventId: string): Promise<FirestoreEvent | null> {
   try {
-    const db = getServerFirestoreLite();
-    const eventRef = doc(db, "events", String(eventId));
-    const snap = await getDoc(eventRef);
-    if (!snap.exists()) return null;
-    return normalizeEventDoc(snap.data() as Record<string, unknown>, snap.id);
+    const data = await getFirestoreDoc("events", String(eventId));
+    if (!data) return null;
+    return normalizeEventDoc(data, String(eventId));
   } catch (err) {
     console.error(`[Firestore Server] getFirestoreEventByIdServer error for ${eventId}:`, err);
     return null;
@@ -405,7 +520,7 @@ export async function getFirestoreEventByIdServer(eventId: string): Promise<Fire
 }
 
 /**
- * Updates an event's short link properties in Firestore on the server.
+ * Updates an event's short link properties in Firestore on the server via native REST.
  */
 export async function updateFirestoreEventShortLinksServer(
   eventId: string,
@@ -417,8 +532,6 @@ export async function updateFirestoreEventShortLinksServer(
   },
 ): Promise<void> {
   try {
-    const db = getServerFirestoreLite();
-    const eventRef = doc(db, "events", String(eventId));
     const payload: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
     };
@@ -435,24 +548,20 @@ export async function updateFirestoreEventShortLinksServer(
     if (links.bevyShortPath) {
       payload.bevy_short_path = links.bevyShortPath;
     }
-    await setDoc(eventRef, payload, { merge: true });
+    await patchFirestoreDoc("events", String(eventId), payload, true);
   } catch (err) {
     console.warn(`[Firestore Server] updateFirestoreEventShortLinksServer error for ${eventId}:`, err);
   }
 }
 
-import { DEFAULT_MAINTENANCE_CONFIG, type MaintenanceConfig } from "@/config/maintenance-config";
-
 /**
- * Loads maintenance settings from Firestore on the server (Node/RSC).
+ * Loads maintenance settings from Firestore on the server (Node/RSC/Cloudflare Worker) via native REST.
  */
 export async function getMaintenanceConfigServer(): Promise<MaintenanceConfig> {
   try {
-    const db = getServerFirestoreLite();
-    const docRef = doc(db, "system_settings", "maintenance");
-    const snap = await getDoc(docRef);
-    if (!snap.exists()) return DEFAULT_MAINTENANCE_CONFIG;
-    return { ...DEFAULT_MAINTENANCE_CONFIG, ...(snap.data() as Partial<MaintenanceConfig>) };
+    const data = await getFirestoreDoc("system_settings", "maintenance");
+    if (!data) return DEFAULT_MAINTENANCE_CONFIG;
+    return { ...DEFAULT_MAINTENANCE_CONFIG, ...(data as Partial<MaintenanceConfig>) };
   } catch (err) {
     console.error("[Firestore Server] getMaintenanceConfigServer error:", err);
     return DEFAULT_MAINTENANCE_CONFIG;
@@ -462,18 +571,16 @@ export async function getMaintenanceConfigServer(): Promise<MaintenanceConfig> {
 /**
  * Saves maintenance settings to Firestore on the server.
  * Note: Firestore Security Rules require Organizer authentication (request.auth).
- * Since server-firestore-lite runs without client user session, writes should
+ * Since server REST runs without client user session, writes should
  * be dispatched via saveMaintenanceConfigDoc in `@/lib/firestore/client` from an authenticated client.
  */
 export async function saveMaintenanceConfigServer(config: Partial<MaintenanceConfig>): Promise<void> {
   try {
-    const db = getServerFirestoreLite();
-    const docRef = doc(db, "system_settings", "maintenance");
     const payload = sanitizePayload({
       ...config,
       updatedAt: new Date().toISOString(),
     });
-    await setDoc(docRef, payload, { merge: true });
+    await patchFirestoreDoc("system_settings", "maintenance", payload as Record<string, unknown>, true);
   } catch (err) {
     console.warn(
       "[Firestore Server] saveMaintenanceConfigServer warning (write should be performed via client SDK with auth session):",

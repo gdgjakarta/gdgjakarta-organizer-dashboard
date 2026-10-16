@@ -2,7 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 
-import { AlertCircle, AlertTriangle, CreditCard, FileText, Loader2, Trash2, UploadCloud } from "lucide-react";
+import { AlertCircle, AlertTriangle, CreditCard, FileText, Info, Loader2, Trash2, UploadCloud } from "lucide-react";
 import { toast } from "sonner";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -20,7 +20,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { formatRupiah, POPULAR_INDONESIAN_BANKS } from "@/lib/events/refund-utils";
+import {
+  formatRupiah,
+  getEventRefundCutoff,
+  getEventRefundPolicyNotes,
+  POPULAR_INDONESIAN_BANKS,
+} from "@/lib/events/refund-utils";
 import { submitRefundRequestAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent, FirestoreRegistration, RefundRequest } from "@/lib/firestore/types";
 
@@ -250,6 +255,21 @@ export function RefundRequestDialog({
               ? "Because this session was over capacity, your waitlist fee is refundable. Please provide valid bank account information to receive your transfer."
               : "Please provide valid Indonesian bank account details to receive your refund transfer. Requesting this refund will forfeit your attendance spot."}
           </p>
+        </div>
+
+        {/* Refund Policy Guidelines */}
+        <div className="space-y-1.5 rounded-lg border border-border/80 bg-muted/40 p-3 text-xs">
+          <div className="flex items-center gap-1.5 font-semibold text-foreground">
+            <Info className="size-3.5 text-primary" />
+            <span>Refund Policy & Disbursement Guidelines</span>
+          </div>
+          <p className="text-[11px] text-muted-foreground leading-relaxed whitespace-pre-wrap">
+            {getEventRefundPolicyNotes(event)}
+          </p>
+          <div className="flex flex-wrap items-center justify-between border-border/50 border-t pt-1 text-[10px] text-muted-foreground">
+            <span>Cutoff Deadline: {getEventRefundCutoff(event).formattedCutoff}</span>
+            <span>Policy Status: {event?.refund_enabled !== false ? "Active" : "Disabled"}</span>
+          </div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

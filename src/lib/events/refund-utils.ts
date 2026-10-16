@@ -24,6 +24,14 @@ export const POPULAR_INDONESIAN_BANKS: BankOption[] = [
   { code: "OTHER", name: "Other Bank / E-Wallet" },
 ];
 
+export const DEFAULT_REFUND_POLICY_NOTES =
+  "Commitment deposit will be refunded via bank transfer within 3-5 business days after event ends.";
+
+export function getEventRefundPolicyNotes(event?: FirestoreEvent | null): string {
+  const custom = event?.refund_policy_notes?.trim();
+  return custom && custom.length > 0 ? custom : DEFAULT_REFUND_POLICY_NOTES;
+}
+
 export interface RefundCutoffInfo {
   cutoffDate: Date | null;
   isExpired: boolean;

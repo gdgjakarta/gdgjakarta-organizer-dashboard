@@ -45,7 +45,7 @@ import { resolveEventAudience } from "@/lib/bevy/audience";
 import { toTimezoneDate } from "@/lib/date-utils";
 import { extractEventImageUrl } from "@/lib/events/media-utils";
 import { getEffectiveRegistrationStatus, getRegistrationPaymentDeadline } from "@/lib/events/payment-deadline";
-import { isRegistrationEligibleForRefund } from "@/lib/events/refund-utils";
+import { getEventRefundPolicyNotes, isRegistrationEligibleForRefund } from "@/lib/events/refund-utils";
 import { getRegistrationWindowStatus } from "@/lib/events/registration-defaults";
 import { checkEventRegistrationAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
@@ -673,16 +673,26 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
 
           if (refundInfo.canSubmitNew) {
             return (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setIsRefundModalOpen(true)}
-                className="w-full gap-2 border-indigo-500/40 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 text-xs shadow-xs hover:bg-indigo-500/20 font-semibold"
-              >
-                <CreditCard className="size-3.5" />
-                Request Commitment Fee Refund 💸
-              </Button>
+              <div className="space-y-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsRefundModalOpen(true)}
+                  className="w-full gap-2 border-indigo-500/40 bg-indigo-500/10 font-semibold text-indigo-700 text-xs shadow-xs hover:bg-indigo-500/20 dark:text-indigo-300"
+                >
+                  <CreditCard className="size-3.5" />
+                  {registration.status === "paid_waitlisted"
+                    ? "Request Commitment Fee Refund 💸"
+                    : "Request Ticket Refund 💸"}
+                </Button>
+                <div className="rounded-md border border-border/80 bg-muted/40 p-2.5 text-xs">
+                  <p className="font-semibold text-[11px] text-foreground">Refund Policy:</p>
+                  <p className="mt-0.5 text-[10px] text-muted-foreground leading-relaxed">
+                    {getEventRefundPolicyNotes(currentEvent || event)}
+                  </p>
+                </div>
+              </div>
             );
           }
 

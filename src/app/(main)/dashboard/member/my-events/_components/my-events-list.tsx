@@ -48,7 +48,7 @@ import {
   getRegistrationPaymentDeadline,
   isPaidRegistration,
 } from "@/lib/events/payment-deadline";
-import { isRegistrationEligibleForRefund } from "@/lib/events/refund-utils";
+import { getEventRefundPolicyNotes, isRegistrationEligibleForRefund } from "@/lib/events/refund-utils";
 import { fetchMemberRegistrationsAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent, FirestoreRegistration, RegistrationStatus } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
@@ -720,16 +720,21 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
 
                     if (refundInfo.canSubmitNew) {
                       return (
-                        <div className="flex items-center justify-between rounded-md border border-indigo-500/30 bg-indigo-500/5 p-2 text-xs">
-                          <span className="text-[11px] text-indigo-700 dark:text-indigo-300">
-                            💸 {refundInfo.cutoffInfo.deadlineDescription}
-                          </span>
-                          <Badge
-                            variant="outline"
-                            className="border-indigo-500/40 text-[10px] text-indigo-600 dark:text-indigo-400"
-                          >
-                            Refund Eligible
-                          </Badge>
+                        <div className="space-y-1.5 rounded-md border border-indigo-500/30 bg-indigo-500/5 p-2.5 text-xs">
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold text-[11px] text-indigo-700 dark:text-indigo-300">
+                              💸 {refundInfo.cutoffInfo.deadlineDescription}
+                            </span>
+                            <Badge
+                              variant="outline"
+                              className="border-indigo-500/40 text-[10px] text-indigo-600 dark:text-indigo-400"
+                            >
+                              Refund Eligible
+                            </Badge>
+                          </div>
+                          <p className="line-clamp-2 text-[10px] text-muted-foreground leading-normal">
+                            📋 {getEventRefundPolicyNotes(ev)}
+                          </p>
                         </div>
                       );
                     }
