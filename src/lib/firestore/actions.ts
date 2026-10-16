@@ -597,6 +597,7 @@ export async function submitMerchandiseDeliveryRequestAction(input: SubmitMercha
       success: boolean;
       paymentUrl?: string;
       invoiceNumber?: string;
+      requestId?: string;
       error?: string;
     };
 
