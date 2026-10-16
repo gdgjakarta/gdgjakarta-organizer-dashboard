@@ -62,6 +62,7 @@ export interface DokuPaymentLinkResponse {
   message: string;
   paymentUrl?: string;
   invoiceNumber?: string;
+  requestId?: string;
   amount?: number;
   expiredDatetime?: string;
   details?: unknown;
@@ -71,8 +72,35 @@ export interface PaymentDispatchResult {
   success: boolean;
   paymentUrl?: string;
   invoiceNumber?: string;
+  requestId?: string;
   amount?: number;
   expiredDatetime?: string;
+  message?: string;
+  error?: string;
+  details?: unknown;
+}
+
+export interface DokuCancelOrderRequest {
+  invoiceNumber: string;
+  originalRequestId?: string;
+  reason?: string;
+  customer?: Partial<PaymentCustomer>;
+  event?: Partial<PaymentEventData>;
+  referenceId?: string;
+  isProduction?: boolean;
+  webhookUrl?: string;
+}
+
+export interface DokuCancelOrderResponse {
+  status: boolean;
+  message: string;
+  invoiceNumber?: string;
+  details?: unknown;
+}
+
+export interface CancelOrderDispatchResult {
+  success: boolean;
+  invoiceNumber?: string;
   message?: string;
   error?: string;
   details?: unknown;
@@ -116,6 +144,49 @@ export function resolvePaymentLinkWebhookUrl(customBaseUrl?: string, isProductio
   }
 
   return `${base}/webhook/api/generate-payment-link`;
+}
+
+/**
+ * Resolves the webhook URL for the DOKU cancel order API in n8n.
+ */
+export function resolveCancelPaymentLinkWebhookUrl(customBaseUrl?: string, isProduction?: boolean): string {
+  if (customBaseUrl && customBaseUrl.trim().length > 0) {
+    return customBaseUrl.trim();
+  }
+
+  if (isProduction === false && process.env.N8N_CANCEL_PAYMENT_LINK_DEV_WEBHOOK_URL) {
+    return process.env.N8N_CANCEL_PAYMENT_LINK_DEV_WEBHOOK_URL.trim();
+  }
+
+  if (isProduction === true && process.env.N8N_CANCEL_PAYMENT_LINK_PROD_WEBHOOK_URL) {
+    return process.env.N8N_CANCEL_PAYMENT_LINK_PROD_WEBHOOK_URL.trim();
+  }
+
+  if (process.env.N8N_CANCEL_PAYMENT_LINK_WEBHOOK_URL) {
+    return process.env.N8N_CANCEL_PAYMENT_LINK_WEBHOOK_URL.trim();
+  }
+
+  const base = (process.env.N8N_WEBHOOK_BASE_URL ?? "https://n8n.gdgjakarta.com/webhook/api")
+    .trim()
+    .replace(/\/+$/, "");
+
+  if (base.endsWith("/cancel-payment-link")) {
+    return base;
+  }
+  if (base.endsWith("/generate-payment-link")) {
+    return `${base.slice(0, -"/generate-payment-link".length)}/cancel-payment-link`;
+  }
+  if (base.endsWith("/webhook/api")) {
+    return `${base}/cancel-payment-link`;
+  }
+  if (base.endsWith("/webhook")) {
+    return `${base}/api/cancel-payment-link`;
+  }
+  if (base.endsWith("/api")) {
+    return `${base.slice(0, -4)}/webhook/api/cancel-payment-link`;
+  }
+
+  return `${base}/webhook/api/cancel-payment-link`;
 }
 
 /**
@@ -416,5 +487,45 @@ export function buildRegistrationPaymentPayload(
     referenceId: registration.id ?? `REG-${Date.now()}`,
     isProduction,
     webhookUrl: event.payment_webhook_url ?? undefined,
+  };
+}
+
+/**
+ * Builds the DOKU Cancel Order payload from registration and event models.
+ */
+export function buildCancelPaymentPayload(
+  registration: Partial<FirestoreRegistration>,
+  event?: Partial<FirestoreEvent> | null,
+  reason = "Cancelled order via GDG Jakarta Dashboard",
+): DokuCancelOrderRequest {
+  const answers = (registration.answers ?? {}) as Record<string, unknown>;
+  const invoiceNumber =
+    registration.payment_invoice_number ??
+    (typeof answers.payment_invoice_number === "string" ? answers.payment_invoice_number : "") ??
+    "";
+
+  let isProduction: boolean | undefined;
+  if (event?.payment_environment === "production") {
+    isProduction = true;
+  } else if (event?.payment_environment === "sandbox") {
+    isProduction = false;
+  }
+
+  return {
+    invoiceNumber,
+    originalRequestId: registration.payment_request_id,
+    reason,
+    customer: {
+      name: extractCustomerName(registration, answers),
+      email: extractCustomerEmail(registration, answers),
+      phone: extractCustomerPhone(registration, answers),
+    },
+    event: {
+      id: event?.id ? String(event.id) : registration.event_id,
+      title: event?.title ?? registration.event_title ?? "GDG Jakarta Event",
+    },
+    referenceId: registration.id,
+    isProduction,
+    webhookUrl: event?.payment_webhook_url ?? undefined,
   };
 }

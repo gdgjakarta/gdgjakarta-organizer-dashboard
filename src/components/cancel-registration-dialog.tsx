@@ -59,7 +59,26 @@ export function CancelRegistrationDialog({
         console.warn("[CancelRegistrationDialog] Warning while removing attendee from Bevy:", bevyRes.error);
       }
 
-      // 2. Send attendee cancellation email notification via webhook API
+      // 2. Cancel active unexpired DOKU payment order if present
+      const { shouldCancelPaymentOrder } = await import("@/lib/events/payment-deadline");
+      if (shouldCancelPaymentOrder(registration, event)) {
+        try {
+          const { cancelPaymentLinkAction } = await import("@/server/payment-actions");
+          const { buildCancelPaymentPayload } = await import("@/lib/events/doku-payment");
+          const cancelRes = await cancelPaymentLinkAction(
+            buildCancelPaymentPayload(registration, event, "Attendee cancelled RSVP"),
+          );
+          if (!cancelRes.success) {
+            console.warn("[CancelRegistrationDialog] DOKU order cancellation warning:", cancelRes.error);
+          } else {
+            console.log("[CancelRegistrationDialog] Successfully cancelled DOKU order:", cancelRes.invoiceNumber);
+          }
+        } catch (payCancelErr) {
+          console.warn("[CancelRegistrationDialog] Failed to cancel DOKU order:", payCancelErr);
+        }
+      }
+
+      // 3. Send attendee cancellation email notification via webhook API
       const emailRes = await sendAttendeeCancelEmailAction({
         registrationId: registration.id,
         eventId,

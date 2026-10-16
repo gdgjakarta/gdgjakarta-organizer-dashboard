@@ -219,3 +219,53 @@ export function getEffectiveRegistrationStatus(
 
   return currentStatus;
 }
+
+/**
+ * Determines whether a registration has an active, unexpired, unpaid payment order with DOKU
+ * that should be cancelled when the attendee cancels RSVP, organizer cancels or removes attendee,
+ * or when regenerating a payment link.
+ */
+export function shouldCancelPaymentOrder(
+  registration?: Partial<FirestoreRegistration> | null,
+  event?: Partial<FirestoreEvent> | null,
+): boolean {
+  if (!registration) return false;
+
+  const invoiceNumber =
+    registration.payment_invoice_number ??
+    (typeof registration.answers?.payment_invoice_number === "string"
+      ? registration.answers.payment_invoice_number
+      : undefined);
+
+  if (!invoiceNumber || invoiceNumber.trim().length === 0) {
+    return false;
+  }
+
+  const paymentStatus = (registration.payment_status ?? "").toLowerCase().trim();
+  if (
+    paymentStatus === "paid" ||
+    paymentStatus === "refunded" ||
+    paymentStatus === "canceled" ||
+    paymentStatus === "cancelled" ||
+    paymentStatus === "expired"
+  ) {
+    return false;
+  }
+
+  const regStatus = (registration.status ?? "").toLowerCase().trim();
+  if (
+    regStatus === "paid_and_registered" ||
+    regStatus === "approved" ||
+    regStatus === "attended" ||
+    regStatus === "expired"
+  ) {
+    return false;
+  }
+
+  // If already overdue or expired according to payment deadline, DOKU automatically expires it
+  if (isRegistrationPaymentOverdue(registration, event ?? undefined)) {
+    return false;
+  }
+
+  return true;
+}

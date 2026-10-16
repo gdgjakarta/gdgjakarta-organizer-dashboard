@@ -585,6 +585,7 @@ export interface FirestoreRegistration {
   payment_channel?: string;
   payment_url?: string;
   payment_invoice_number?: string;
+  payment_request_id?: string;
   payment_amount?: number;
   paid_at?: string;
   payment_expired_datetime?: string;

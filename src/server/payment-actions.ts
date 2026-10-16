@@ -3,10 +3,14 @@
 import { z } from "zod";
 
 import {
+  type CancelOrderDispatchResult,
   DEFAULT_PAYMENT_HEADER_EMAIL_URL,
+  type DokuCancelOrderRequest,
+  type DokuCancelOrderResponse,
   type DokuPaymentLinkRequest,
   type DokuPaymentLinkResponse,
   type PaymentDispatchResult,
+  resolveCancelPaymentLinkWebhookUrl,
   resolvePaymentLinkWebhookUrl,
 } from "@/lib/events/doku-payment";
 import { extractApiMessage } from "@/lib/utils";
@@ -162,6 +166,7 @@ export async function generatePaymentLinkAction(input: DokuPaymentRequestInput):
       success: true,
       paymentUrl: responseData?.paymentUrl,
       invoiceNumber: responseData?.invoiceNumber,
+      requestId: responseData?.requestId,
       amount: responseData?.amount,
       expiredDatetime: responseData?.expiredDatetime,
       message: responseData?.message ?? "Payment link generated successfully.",
@@ -170,6 +175,128 @@ export async function generatePaymentLinkAction(input: DokuPaymentRequestInput):
   } catch (err: unknown) {
     console.error("[DOKU Payment Action] Network / Dispatch error:", err);
     const errorMsg = extractApiMessage(err, "Failed to connect to n8n payment webhook.");
+    return {
+      success: false,
+      error: errorMsg,
+      details: err,
+    };
+  }
+}
+
+const dokuCancelOrderRequestSchema = z.object({
+  invoiceNumber: z.string().min(1, "Invoice number is required"),
+  originalRequestId: z.string().optional(),
+  reason: z.string().optional(),
+  customer: z
+    .object({
+      name: z.string().optional(),
+      email: z.string().optional(),
+      phone: z.string().optional(),
+    })
+    .optional(),
+  event: z
+    .object({
+      id: z.string().optional(),
+      title: z.string().optional(),
+    })
+    .optional(),
+  referenceId: z.string().optional(),
+  isProduction: z.boolean().optional(),
+  webhookUrl: z.string().optional(),
+});
+
+export type DokuCancelOrderRequestInput = z.input<typeof dokuCancelOrderRequestSchema>;
+
+/**
+ * Server Action: Cancels an active DOKU checkout order via the GDG Jakarta n8n Webhook API.
+ * Dispatches to /webhook/api/cancel-payment-link with HMAC / Header Authentication.
+ */
+export async function cancelPaymentLinkAction(input: DokuCancelOrderRequestInput): Promise<CancelOrderDispatchResult> {
+  const parsed = dokuCancelOrderRequestSchema.safeParse(input);
+  if (!parsed.success) {
+    const errorMsg = parsed.error.issues.map((i) => i.message).join(", ");
+    return { success: false, error: errorMsg };
+  }
+
+  const isProduction =
+    parsed.data.isProduction !== undefined ? parsed.data.isProduction : process.env.NODE_ENV === "production";
+
+  const webhookUrl = resolveCancelPaymentLinkWebhookUrl(parsed.data.webhookUrl, isProduction);
+  const apiKey =
+    process.env.N8N_PAYMENT_LINK_API_KEY || process.env.N8N_WEBHOOK_API_KEY || process.env.N8N_AUTH_SECRET || "";
+
+  console.log(
+    `[DOKU Cancel Payment Action] POST ${webhookUrl} (mode: ${isProduction ? "production" : "sandbox"}) for invoice ${parsed.data.invoiceNumber}...`,
+  );
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "User-Agent": "GDG-Jakarta-Dashboard/1.0",
+    };
+
+    if (apiKey) {
+      headers["x-api-key"] = apiKey;
+    }
+
+    const payload: DokuCancelOrderRequest = {
+      invoiceNumber: parsed.data.invoiceNumber,
+      originalRequestId: parsed.data.originalRequestId,
+      reason: parsed.data.reason ?? "Cancelled order via GDG Jakarta Dashboard",
+      customer: parsed.data.customer,
+      event: parsed.data.event,
+      referenceId: parsed.data.referenceId,
+      isProduction,
+    };
+
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    const responseText = await response.text();
+    let responseData: DokuCancelOrderResponse | null = null;
+
+    try {
+      responseData = JSON.parse(responseText) as DokuCancelOrderResponse;
+    } catch {
+      // response might not be valid JSON
+    }
+
+    if (!response.ok) {
+      const errorMsg = responseData?.message ?? `n8n webhook error: HTTP ${response.status} ${response.statusText}`;
+      console.error(`[DOKU Cancel Payment Action] Failed (HTTP ${response.status}):`, responseText);
+      return {
+        success: false,
+        error: errorMsg,
+        details: responseData ?? responseText,
+      };
+    }
+
+    if (responseData && responseData.status === false) {
+      return {
+        success: false,
+        error: responseData.message ? responseData.message : "Failed to cancel order via DOKU.",
+        details: responseData,
+      };
+    }
+
+    return {
+      success: true,
+      invoiceNumber: responseData?.invoiceNumber ?? parsed.data.invoiceNumber,
+      message: responseData?.message ?? "Order cancelled successfully.",
+      details: responseData,
+    };
+  } catch (err: unknown) {
+    console.error("[DOKU Cancel Payment Action] Network / Dispatch error:", err);
+    const errorMsg = extractApiMessage(err, "Failed to connect to n8n cancel payment webhook.");
     return {
       success: false,
       error: errorMsg,

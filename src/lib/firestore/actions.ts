@@ -376,19 +376,18 @@ export async function deleteEventRegistrationAction(
   try {
     let resolvedAttendeeId = bevyAttendeeId;
     let resolvedEmail = attendeeEmail;
+    let registrationData: import("./types").FirestoreRegistration | null = null;
 
-    // Pre-resolve missing attendee info from registration doc if needed
-    if (!resolvedAttendeeId || !resolvedEmail) {
-      try {
-        const { getRegistrationById } = await import("./client");
-        const data = await getRegistrationById(registrationId);
-        if (data) {
-          resolvedAttendeeId = resolvedAttendeeId ?? data.bevy_attendee_id;
-          resolvedEmail = resolvedEmail ?? data.member_email;
-        }
-      } catch (fetchErr) {
-        console.warn("[deleteEventRegistrationAction] Could not pre-fetch registration document:", fetchErr);
+    // Pre-resolve missing attendee info and payment data from registration doc if needed
+    try {
+      const { getRegistrationById } = await import("./client");
+      registrationData = await getRegistrationById(registrationId);
+      if (registrationData) {
+        resolvedAttendeeId = resolvedAttendeeId ?? registrationData.bevy_attendee_id;
+        resolvedEmail = resolvedEmail ?? registrationData.member_email;
       }
+    } catch (fetchErr) {
+      console.warn("[deleteEventRegistrationAction] Could not pre-fetch registration document:", fetchErr);
     }
 
     // 1. Remove attendee from Bevy API BEFORE removing from dashboard
@@ -408,7 +407,28 @@ export async function deleteEventRegistrationAction(
       console.warn("[deleteEventRegistrationAction] Failed to remove attendee from Bevy API:", bevyErr);
     }
 
-    // 2. Remove registration from Firestore (dashboard) & recalculate capacity counters
+    // 2. Cancel active unexpired DOKU payment order if present
+    if (registrationData) {
+      try {
+        const { shouldCancelPaymentOrder } = await import("@/lib/events/payment-deadline");
+        if (shouldCancelPaymentOrder(registrationData)) {
+          const { cancelPaymentLinkAction } = await import("@/server/payment-actions");
+          const { buildCancelPaymentPayload } = await import("@/lib/events/doku-payment");
+          const cancelRes = await cancelPaymentLinkAction(
+            buildCancelPaymentPayload(registrationData, undefined, "Attendee removed from event roster"),
+          );
+          if (!cancelRes.success) {
+            console.warn("[deleteEventRegistrationAction] DOKU order cancellation warning:", cancelRes.error);
+          } else {
+            console.log("[deleteEventRegistrationAction] Successfully cancelled DOKU order:", cancelRes.invoiceNumber);
+          }
+        }
+      } catch (payCancelErr) {
+        console.warn("[deleteEventRegistrationAction] Failed to cancel DOKU order:", payCancelErr);
+      }
+    }
+
+    // 3. Remove registration from Firestore (dashboard) & recalculate capacity counters
     const { deleteEventRegistration } = await import("./client");
     await deleteEventRegistration(registrationId, eventId);
 
@@ -448,7 +468,29 @@ export async function deleteBatchEventRegistrationsAction(
       }
     }
 
-    // 2. Remove registrations from Firestore (dashboard)
+    // 2. Cancel active unexpired DOKU payment orders for batch if present
+    try {
+      const { getRegistrationById } = await import("./client");
+      const { shouldCancelPaymentOrder } = await import("@/lib/events/payment-deadline");
+      const { cancelPaymentLinkAction } = await import("@/server/payment-actions");
+      const { buildCancelPaymentPayload } = await import("@/lib/events/doku-payment");
+      for (const regId of registrationIds) {
+        try {
+          const regData = await getRegistrationById(regId);
+          if (regData && shouldCancelPaymentOrder(regData)) {
+            await cancelPaymentLinkAction(
+              buildCancelPaymentPayload(regData, undefined, "Attendee removed from event roster (Batch)"),
+            );
+          }
+        } catch (itemErr) {
+          console.warn("[deleteBatchEventRegistrationsAction] Error checking/cancelling payment for item:", itemErr);
+        }
+      }
+    } catch (batchPayErr) {
+      console.warn("[deleteBatchEventRegistrationsAction] Error during batch payment cancellation:", batchPayErr);
+    }
+
+    // 3. Remove registrations from Firestore (dashboard)
     const { deleteBatchEventRegistrations } = await import("./client");
     await deleteBatchEventRegistrations(registrationIds, eventId);
 
