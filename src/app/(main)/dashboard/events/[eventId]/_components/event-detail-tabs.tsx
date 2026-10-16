@@ -8,6 +8,7 @@ import {
   Mail,
   Package,
   PackageCheck,
+  RotateCcw,
   Sparkles,
   Ticket,
   TicketPercent,
@@ -15,6 +16,7 @@ import {
   Users,
 } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { hasTeamOperationalAccess, isExecutiveOrganizer } from "@/lib/auth-roles";
 import { ensureEventTickets } from "@/lib/events/ticket-templates";
@@ -34,6 +36,7 @@ import { HighlightsMediaTab } from "./highlights-media-tab";
 import { MerchandiseDeliveryTab } from "./merchandise-delivery-tab";
 import { MerchandiseTab } from "./merchandise-tab";
 import { PaymentGatewayTab } from "./payment-gateway-tab";
+import { RefundsTab } from "./refunds-tab";
 import { RegistrantsTab } from "./registrants-tab";
 import { TicketsTab } from "./tickets-tab";
 import { VouchersTab } from "./vouchers-tab";
@@ -149,6 +152,10 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
     return hasTeamOperationalAccess(initialRole);
   }, [user, initialRole]);
 
+  const pendingRefundsCount = useMemo(() => {
+    return registrations.filter((r) => r.refund_request?.status === "waiting_for_approval").length;
+  }, [registrations]);
+
   return (
     <Tabs defaultValue={hasTeamAccess ? "registrants" : "highlights"} className="space-y-6">
       <div className="scrollbar-none -mx-1 w-full overflow-x-auto px-1 pb-1 sm:mx-0 sm:px-0">
@@ -181,6 +188,18 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
               <TabsTrigger value="delivery" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
                 <Truck className="size-4" />
                 Merchandise Delivery
+              </TabsTrigger>
+              <TabsTrigger value="refunds" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
+                <RotateCcw className="size-4" />
+                Refunds
+                {pendingRefundsCount > 0 && (
+                  <Badge
+                    variant="secondary"
+                    className="ml-1 h-4 px-1.5 text-[10px] bg-amber-500/20 text-amber-700 dark:text-amber-300"
+                  >
+                    {pendingRefundsCount}
+                  </Badge>
+                )}
               </TabsTrigger>
               <TabsTrigger value="vouchers" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
                 <TicketPercent className="size-4" />
@@ -233,6 +252,10 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
 
           <TabsContent value="delivery" className="space-y-4">
             <MerchandiseDeliveryTab event={activeEvent} eventId={eventId} />
+          </TabsContent>
+
+          <TabsContent value="refunds" className="space-y-4">
+            <RefundsTab event={activeEvent} eventId={eventId} registrations={registrations} />
           </TabsContent>
 
           <TabsContent value="vouchers" className="space-y-4">

@@ -109,6 +109,8 @@ import type {
   ReferralLeaderboardEntry,
   ReferralProgramSettings,
   ReferralRedemption,
+  RefundRequest,
+  RefundStatus,
   RegistrationStatus,
   RegistrationStatusLog,
 } from "./types";
@@ -2929,6 +2931,127 @@ export async function updateEventMerchandiseDeliveryConfig(
   const eventRef = doc(db, "events", String(eventId));
   const updatePayload: Record<string, unknown> = {
     merchandise_delivery_payment_environment: environment,
+    updated_at: new Date().toISOString(),
+  };
+
+  const exists = await ensureEventDocInitialized(eventId, baseEvent, updatePayload);
+  if (!exists) return;
+
+  const sanitized = sanitizeFirestoreData(updatePayload);
+  await setDoc(eventRef, sanitized, { merge: true });
+}
+
+// ── Refund Requests ────────────────────────────────────────────────────────
+
+/**
+ * Saves or updates an attendee refund request for a registration.
+ */
+export async function saveRefundRequest(registrationId: string, refundRequest: RefundRequest): Promise<void> {
+  if (typeof window === "undefined") return;
+  const docRef = doc(db, "event_registrations", registrationId);
+  const now = new Date().toISOString();
+  const sanitized = sanitizeFirestoreData({
+    refund_request: {
+      ...refundRequest,
+      updated_at: now,
+    },
+    updated_at: now,
+  });
+  await updateDoc(docRef, sanitized);
+}
+
+/**
+ * Updates the status and details of a refund request (Approval with proof or Rejection with reason).
+ */
+export async function updateRefundStatus(
+  registrationId: string,
+  status: RefundStatus,
+  details?: Partial<RefundRequest>,
+  reviewer?: { id: string; name: string; email?: string },
+): Promise<void> {
+  if (typeof window === "undefined") return;
+  const docRef = doc(db, "event_registrations", registrationId);
+  const snap = await getDoc(docRef);
+  if (!snap.exists()) {
+    throw new Error(`Registration ${registrationId} not found`);
+  }
+  const existing = snap.data() as FirestoreRegistration;
+  const existingRequest = existing.refund_request;
+  if (!existingRequest) {
+    throw new Error(`Registration ${registrationId} does not have an active refund request`);
+  }
+
+  const now = new Date().toISOString();
+  const mergedRequest: RefundRequest = {
+    ...existingRequest,
+    ...(details ?? {}),
+    status,
+    updated_at: now,
+  };
+
+  const updatePayload: Record<string, unknown> = {
+    refund_request: mergedRequest,
+    updated_at: now,
+  };
+
+  // If approved and completed, mark payment_status as refunded
+  if (status === "refund_completed") {
+    updatePayload.payment_status = "refunded";
+  }
+
+  const existingLogs = Array.isArray(existing.status_logs) ? existing.status_logs : [];
+  const logEntry: RegistrationStatusLog = {
+    id: `log_${Date.now()}_refund_${status}`,
+    status: existing.status,
+    changed_at: now,
+    changed_by_id: reviewer?.id ?? details?.completed_by_id ?? details?.rejected_by_id ?? "organizer",
+    changed_by_name: reviewer?.name ?? details?.completed_by_name ?? details?.rejected_by_name ?? "Organizer",
+    changed_by_email: reviewer?.email ?? details?.completed_by_email ?? details?.rejected_by_email,
+    notes: (() => {
+      if (status === "refund_completed") {
+        return `Refund completed. Proof uploaded by ${reviewer?.name ?? "organizer"}.`;
+      }
+      if (status === "rejected") {
+        return `Refund rejected: ${details?.rejection_reason ?? "No reason specified"}`;
+      }
+      return "Refund request resubmitted.";
+    })(),
+  };
+  updatePayload.status_logs = [...existingLogs, logEntry];
+
+  await updateDoc(docRef, sanitizeFirestoreData(updatePayload));
+}
+
+/**
+ * Fetches all registrations for an event that contain a refund request.
+ */
+export async function getEventRefundRequests(eventId: string): Promise<FirestoreRegistration[]> {
+  const registrations = await getEventRegistrations(eventId);
+  return registrations.filter((r) => Boolean(r.refund_request));
+}
+
+/**
+ * Updates the refund configuration on the event document (enabled, cutoff days, cutoff date, policy notes).
+ */
+export async function updateEventRefundConfig(
+  eventId: string,
+  config: {
+    refund_enabled?: boolean;
+    refund_cutoff_days_before?: number;
+    refund_cutoff_date?: string | null;
+    refund_policy_notes?: string | null;
+  },
+  baseEvent?: Partial<FirestoreEvent>,
+): Promise<void> {
+  if (typeof window === "undefined") return;
+  const eventRef = doc(db, "events", String(eventId));
+  const updatePayload: Record<string, unknown> = {
+    ...(config.refund_enabled !== undefined ? { refund_enabled: config.refund_enabled } : {}),
+    ...(config.refund_cutoff_days_before !== undefined
+      ? { refund_cutoff_days_before: config.refund_cutoff_days_before }
+      : {}),
+    ...(config.refund_cutoff_date !== undefined ? { refund_cutoff_date: config.refund_cutoff_date } : {}),
+    ...(config.refund_policy_notes !== undefined ? { refund_policy_notes: config.refund_policy_notes } : {}),
     updated_at: new Date().toISOString(),
   };
 

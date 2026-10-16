@@ -813,6 +813,181 @@ export async function updateEventMerchandiseDeliveryConfigAction(
   }
 }
 
+// ── Refund Requests Server Actions ─────────────────────────────────────────
+
+export interface SubmitRefundRequestInput {
+  registrationId: string;
+  eventId: string;
+  bankName: string;
+  bankAccountName: string;
+  bankAccountNumber: string;
+  cancellationReason: string;
+  proofMediaUrl?: string;
+  proofMediaName?: string;
+  refundAmount: number;
+  isResubmission?: boolean;
+}
+
+/**
+ * Attendee submits or resubmits a refund request.
+ */
+export async function submitRefundRequestAction(input: SubmitRefundRequestInput) {
+  try {
+    const { saveRefundRequest } = await import("./client");
+    const now = new Date().toISOString();
+
+    const refundRequest: import("./types").RefundRequest = {
+      id: `ref_${input.registrationId}_${Date.now()}`,
+      status: "waiting_for_approval",
+      bank_name: input.bankName.trim(),
+      bank_account_name: input.bankAccountName.trim(),
+      bank_account_number: input.bankAccountNumber.trim(),
+      cancellation_reason: input.cancellationReason.trim(),
+      proof_media_url: input.proofMediaUrl?.trim() || undefined,
+      proof_media_name: input.proofMediaName?.trim() || undefined,
+      refund_amount: input.refundAmount,
+      requested_at: now,
+      ...(input.isResubmission ? { resubmitted_at: now } : {}),
+      updated_at: now,
+    };
+
+    await saveRefundRequest(input.registrationId, refundRequest);
+
+    await revalidateDashboardPath("/dashboard/member/my-events");
+    await revalidateDashboardPath("/dashboard/my-events");
+    await revalidateDashboardPath(`/dashboard/events/${input.eventId}`);
+    await revalidateDashboardPath(`/dashboard/member/events/${input.eventId}`);
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to submit refund request.";
+    console.error("[submitRefundRequestAction] error:", message);
+    return { success: false, error: message };
+  }
+}
+
+export interface ApproveRefundInput {
+  registrationId: string;
+  eventId: string;
+  completionProofUrl: string;
+  completionNotes?: string;
+  reviewer: { id: string; name: string; email?: string };
+}
+
+/**
+ * Organizer approves refund request and uploads proof of completed transfer.
+ */
+export async function approveAndCompleteRefundAction(input: ApproveRefundInput) {
+  try {
+    const { updateRefundStatus } = await import("./client");
+    const now = new Date().toISOString();
+
+    await updateRefundStatus(
+      input.registrationId,
+      "refund_completed",
+      {
+        completion_proof_url: input.completionProofUrl.trim(),
+        completion_notes: input.completionNotes?.trim() || undefined,
+        completed_at: now,
+        completed_by_id: input.reviewer.id,
+        completed_by_name: input.reviewer.name,
+        completed_by_email: input.reviewer.email,
+      },
+      input.reviewer,
+    );
+
+    await revalidateDashboardPath(`/dashboard/events/${input.eventId}`);
+    await revalidateDashboardPath("/dashboard/member/my-events");
+    await revalidateDashboardPath("/dashboard/my-events");
+    await revalidateDashboardPath(`/dashboard/member/events/${input.eventId}`);
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to approve refund request.";
+    console.error("[approveAndCompleteRefundAction] error:", message);
+    return { success: false, error: message };
+  }
+}
+
+export interface RejectRefundInput {
+  registrationId: string;
+  eventId: string;
+  reason: string;
+  reviewer: { id: string; name: string; email?: string };
+}
+
+/**
+ * Organizer rejects refund request with a reason.
+ */
+export async function rejectRefundAction(input: RejectRefundInput) {
+  try {
+    const { updateRefundStatus } = await import("./client");
+    const now = new Date().toISOString();
+
+    await updateRefundStatus(
+      input.registrationId,
+      "rejected",
+      {
+        rejection_reason: input.reason.trim(),
+        rejected_at: now,
+        rejected_by_id: input.reviewer.id,
+        rejected_by_name: input.reviewer.name,
+        rejected_by_email: input.reviewer.email,
+      },
+      input.reviewer,
+    );
+
+    await revalidateDashboardPath(`/dashboard/events/${input.eventId}`);
+    await revalidateDashboardPath("/dashboard/member/my-events");
+    await revalidateDashboardPath("/dashboard/my-events");
+    await revalidateDashboardPath(`/dashboard/member/events/${input.eventId}`);
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to reject refund request.";
+    console.error("[rejectRefundAction] error:", message);
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * Fetches all registrations for an event that contain a refund request.
+ */
+export async function fetchEventRefundRequestsAction(eventId: string) {
+  try {
+    const { getEventRefundRequests } = await import("./client");
+    return await getEventRefundRequests(eventId);
+  } catch (err) {
+    console.error("[fetchEventRefundRequestsAction] error:", err);
+    return [];
+  }
+}
+
+/**
+ * Updates the event's refund policy configuration.
+ */
+export async function updateEventRefundConfigAction(
+  eventId: string,
+  config: {
+    refund_enabled?: boolean;
+    refund_cutoff_days_before?: number;
+    refund_cutoff_date?: string | null;
+    refund_policy_notes?: string | null;
+  },
+  baseEvent?: Partial<FirestoreEvent>,
+) {
+  try {
+    const { updateEventRefundConfig } = await import("./client");
+    await updateEventRefundConfig(eventId, config, baseEvent);
+    await revalidateDashboardPath(`/dashboard/events/${eventId}`);
+    await revalidateDashboardPath("/dashboard/events");
+    await revalidateDashboardPath("/dashboard/member/my-events");
+    await revalidateDashboardPath(`/dashboard/member/events/${eventId}`);
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to update refund configuration.";
+    console.error("[updateEventRefundConfigAction] error:", message);
+    return { success: false, error: message };
+  }
+}
+
 /**
  * Updates the event's payment gateway environment and webhook URL override.
  */

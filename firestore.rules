@@ -152,6 +152,29 @@ service cloud.firestore {
     //       - reviewed_by_name: string|null (optional, <= 150 chars) - Reviewer display name
     //       - reviewed_at: string|null (optional, <= 50 chars) - Review timestamp
     //       - updated_at: string (required, <= 50 chars) - Last update timestamp
+    //   - refund_request: map|null (optional) - Refund request for paid waitlisted attendees
+    //     Fields in refund_request:
+    //       - id: string (required, <= 200 chars) - Refund request ID
+    //       - status: string (required) - Status ('waiting_for_approval'|'refund_completed'|'rejected')
+    //       - bank_name: string (required, <= 100 chars) - Bank name
+    //       - bank_account_name: string (required, <= 150 chars) - Account holder name
+    //       - bank_account_number: string (required, <= 50 chars) - Bank account number
+    //       - cancellation_reason: string (required, <= 1000 chars) - Cancellation explanation
+    //       - refund_amount: int|float (required, >= 0) - Refund amount in IDR
+    //       - proof_media_url: string|null (optional, <= 2000 chars) - Proof media URL
+    //       - requested_at: string (required, <= 50 chars) - Request timestamp ISO string
+    //       - completion_proof_url: string|null (optional, organizer-only, <= 2000 chars) - Transfer proof receipt URL
+    //       - completion_notes: string|null (optional, organizer-only, <= 1000 chars)
+    //       - completed_at: string|null (optional, organizer-only, <= 50 chars)
+    //       - completed_by_id: string|null (optional, organizer-only, <= 128 chars)
+    //       - completed_by_name: string|null (optional, organizer-only, <= 150 chars)
+    //       - completed_by_email: string|null (optional, organizer-only, <= 150 chars)
+    //       - rejection_reason: string|null (optional, organizer-only, <= 1000 chars)
+    //       - rejected_at: string|null (optional, organizer-only, <= 50 chars)
+    //       - rejected_by_id: string|null (optional, organizer-only, <= 128 chars)
+    //       - rejected_by_name: string|null (optional, organizer-only, <= 150 chars)
+    //       - rejected_by_email: string|null (optional, organizer-only, <= 150 chars)
+    //       - updated_at: string (required, <= 50 chars) - Last update timestamp
     //   - updated_at: string|null (optional, <= 50 chars) - Last update timestamp
     //
     // Collection: events
@@ -209,6 +232,10 @@ service cloud.firestore {
     //   - referral_discount_type: string|null (optional) - Referral discount calculation type ('percentage'|'fixed')
     //   - referral_discount_amount: int|float|null (optional, >= 0) - Referral discount fixed amount in IDR
     //   - referral_enabled: bool|null (optional) - Referral discount toggle for this event
+    //   - refund_enabled: bool|null (optional) - Refund request toggle for this event
+    //   - refund_cutoff_days_before: int|float|null (optional, >= 0) - Days before event when refund cutoff applies
+    //   - refund_cutoff_date: string|null (optional, <= 50 chars) - Explicit refund cutoff date ISO string
+    //   - refund_policy_notes: string|null (optional, <= 2000 chars) - Custom refund policy guidelines notes
     //   - highlight_video_url: string|null (optional, <= 2000 chars) - Highlight video URL
     //   - highlight_video_title: string|null (optional, <= 300 chars) - Highlight video title
     //   - photo_album_url: string|null (optional, <= 2000 chars) - Photo album URL
@@ -641,6 +668,7 @@ service cloud.firestore {
           'bundles',
           'vouchers',
           'referral_discount_percentage', 'referral_discount_type', 'referral_discount_amount', 'referral_enabled',
+          'refund_enabled', 'refund_cutoff_days_before', 'refund_cutoff_date', 'refund_policy_notes',
           'highlight_video_url', 'highlight_video_title', 'photo_album_url', 'photo_album_title', 'recap_description',
           'email_templates',
           'synced_from_bevy_at', 'created_at', 'updated_at'
@@ -698,6 +726,10 @@ service cloud.firestore {
         (!('referral_discount_type' in data) || data.referral_discount_type == null || (data.referral_discount_type is string && (data.referral_discount_type in ['percentage', 'fixed']))) &&
         (!('referral_discount_amount' in data) || data.referral_discount_amount == null || ((data.referral_discount_amount is int || data.referral_discount_amount is float) && data.referral_discount_amount >= 0)) &&
         (!('referral_enabled' in data) || data.referral_enabled == null || data.referral_enabled is bool) &&
+        (!('refund_enabled' in data) || data.refund_enabled == null || data.refund_enabled is bool) &&
+        (!('refund_cutoff_days_before' in data) || data.refund_cutoff_days_before == null || ((data.refund_cutoff_days_before is int || data.refund_cutoff_days_before is float) && data.refund_cutoff_days_before >= 0)) &&
+        (!('refund_cutoff_date' in data) || data.refund_cutoff_date == null || (data.refund_cutoff_date is string && data.refund_cutoff_date.size() <= 50)) &&
+        (!('refund_policy_notes' in data) || data.refund_policy_notes == null || (data.refund_policy_notes is string && data.refund_policy_notes.size() <= 2000)) &&
         (!('highlight_video_url' in data) || data.highlight_video_url == null || (data.highlight_video_url is string && data.highlight_video_url.size() <= 2000)) &&
         (!('highlight_video_title' in data) || data.highlight_video_title == null || (data.highlight_video_title is string && data.highlight_video_title.size() <= 300)) &&
         (!('photo_album_url' in data) || data.photo_album_url == null || (data.photo_album_url is string && data.photo_album_url.size() <= 2000)) &&
@@ -947,6 +979,38 @@ service cloud.firestore {
     // Event Registrations Collection
     // -------------------------------------------------------------
     match /event_registrations/{registrationId} {
+      // Ensures member (registrant) updates to refund_request are strictly constrained to submission
+      function isValidMemberRefundUpdate(prevData, newData) {
+        return !newData.diff(prevData).affectedKeys().hasAny(['refund_request']) ||
+          (
+            (!('refund_request' in prevData) || prevData.refund_request == null || !('status' in prevData.refund_request) || prevData.refund_request.status != 'refund_completed') &&
+            (
+              !('refund_request' in newData) ||
+              newData.refund_request == null ||
+              (
+                newData.refund_request is map &&
+                ('status' in newData.refund_request) &&
+                (newData.refund_request.status == 'waiting_for_approval') &&
+                !newData.refund_request.keys().hasAny([
+                  'completion_proof_url', 'completion_notes', 'completed_at',
+                  'completed_by_id', 'completed_by_name', 'completed_by_email',
+                  'rejection_reason', 'rejected_at',
+                  'rejected_by_id', 'rejected_by_name', 'rejected_by_email'
+                ]) &&
+                (
+                  !('refund_request' in prevData) ||
+                  prevData.refund_request == null ||
+                  (
+                    prevData.refund_request is map &&
+                    (!('id' in prevData.refund_request) || !('id' in newData.refund_request) || newData.refund_request.id == prevData.refund_request.id) &&
+                    (!('requested_at' in prevData.refund_request) || !('requested_at' in newData.refund_request) || newData.refund_request.requested_at == prevData.refund_request.requested_at)
+                  )
+                )
+              )
+            )
+          );
+      }
+
       // Individual registration lookup: Team access (Organizers & Staff), or the registrant themselves (matching member_id, member_email, or doc ID suffix).
       // Handles non-existent doc lookup gracefully when resource == null before registration.
       allow get: if hasTeamAccess() ||
@@ -971,9 +1035,10 @@ service cloud.firestore {
         (registrationId.size() >= request.auth.uid.size() && registrationId[registrationId.size() - request.auth.uid.size():] == request.auth.uid)
       );
 
-      // Update: Team access (Organizers & Staff for attendee curation, status review, check-in, delivery fulfillment) or the registrant updating payment fields, answers, delivery request, status logs, and RSVP details.
+      // Update: Team access (Organizers & Staff for attendee curation, status review, check-in, delivery fulfillment) or the registrant updating payment fields, answers, delivery request, refund request, status logs, and RSVP details.
       // Registrants cannot alter review fields or check-in status/timestamps. Identifier value preservation is verified.
       // For merchandise delivery requests, registrants can submit delivery address & fee payment (pending_payment / pending_review), while organizers/staff handle review, approval, rejection, and fulfillment.
+      // For refund requests, registrants can submit claims in 'waiting_for_approval' status without setting organizer review/completion fields; completed refunds cannot be tampered with.
       allow update: if isAuthenticated() && isValidRegistration(request.resource.data) && (
         hasTeamAccess() ||
         (
@@ -986,7 +1051,8 @@ service cloud.firestore {
             'reviewed_at', 'reviewed_by_id', 'reviewed_by_name', 'reviewed_by_email',
             'checked_in_at', 'is_checked_in', 'bevy_attendee_id', 'attendee_code'
           ]) &&
-          isValidMemberDeliveryUpdate(resource.data, request.resource.data)
+          isValidMemberDeliveryUpdate(resource.data, request.resource.data) &&
+          isValidMemberRefundUpdate(resource.data, request.resource.data)
         )
       );
 

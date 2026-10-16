@@ -16,6 +16,7 @@ import {
   Gift,
   Globe,
   Layers,
+  Lock,
   MapPin,
   Package,
   PackageCheck,
@@ -31,6 +32,8 @@ import {
 import { CancelRegistrationDialog } from "@/components/cancel-registration-dialog";
 import { EditRegistrationModal } from "@/components/edit-registration-modal";
 import { EventCardImage } from "@/components/event-card-image";
+import { RefundRequestDialog } from "@/components/refund/refund-request-dialog";
+import { RefundStatusDialog } from "@/components/refund/refund-status-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,6 +48,7 @@ import {
   getRegistrationPaymentDeadline,
   isPaidRegistration,
 } from "@/lib/events/payment-deadline";
+import { isRegistrationEligibleForRefund } from "@/lib/events/refund-utils";
 import { fetchMemberRegistrationsAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent, FirestoreRegistration, RegistrationStatus } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
@@ -147,6 +151,8 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
   const [deliveryModalReg, setDeliveryModalReg] = useState<FirestoreRegistration | null>(null);
   const [deliveryStatusReg, setDeliveryStatusReg] = useState<FirestoreRegistration | null>(null);
   const [bundleVouchersModalReg, setBundleVouchersModalReg] = useState<FirestoreRegistration | null>(null);
+  const [refundModalReg, setRefundModalReg] = useState<FirestoreRegistration | null>(null);
+  const [refundStatusModalReg, setRefundStatusModalReg] = useState<FirestoreRegistration | null>(null);
 
   useEffect(() => {
     async function loadRegistrations() {
@@ -665,6 +671,72 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
                     </div>
                   )}
 
+                  {/* Refund Status Callout Banner */}
+                  {(() => {
+                    const refundInfo = isRegistrationEligibleForRefund(reg, ev);
+                    const refundReq = reg.refund_request;
+
+                    if (!refundInfo.isEligible && !refundReq) return null;
+
+                    if (refundReq) {
+                      const isPending = refundReq.status === "waiting_for_approval";
+                      const isCompleted = refundReq.status === "refund_completed";
+                      const isRejected = refundReq.status === "rejected";
+
+                      return (
+                        <div
+                          className={cn(
+                            "flex items-center justify-between rounded-md border p-2.5 text-xs",
+                            isPending && "border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200",
+                            isCompleted &&
+                              "border-emerald-500/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200",
+                            isRejected && "border-destructive/40 bg-destructive/10 text-destructive",
+                          )}
+                        >
+                          <div className="flex items-center gap-1.5 truncate">
+                            <CreditCard className="size-3.5 shrink-0" />
+                            <span className="truncate font-semibold text-[11px]">
+                              {isPending && "Refund Request Under Review"}
+                              {isCompleted && "Refund Transferred & Completed"}
+                              {isRejected && "Refund Request Rejected"}
+                            </span>
+                          </div>
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "border-current text-[10px] capitalize shrink-0 font-medium",
+                              isPending && "bg-amber-500/20",
+                              isCompleted && "bg-emerald-500/20",
+                              isRejected && "bg-destructive/20",
+                            )}
+                          >
+                            {isPending && "Pending"}
+                            {isCompleted && "Completed"}
+                            {isRejected && "Action Needed"}
+                          </Badge>
+                        </div>
+                      );
+                    }
+
+                    if (refundInfo.canSubmitNew) {
+                      return (
+                        <div className="flex items-center justify-between rounded-md border border-indigo-500/30 bg-indigo-500/5 p-2 text-xs">
+                          <span className="text-[11px] text-indigo-700 dark:text-indigo-300">
+                            💸 {refundInfo.cutoffInfo.deadlineDescription}
+                          </span>
+                          <Badge
+                            variant="outline"
+                            className="border-indigo-500/40 text-[10px] text-indigo-600 dark:text-indigo-400"
+                          >
+                            Refund Eligible
+                          </Badge>
+                        </div>
+                      );
+                    }
+
+                    return null;
+                  })()}
+
                   {isPending && (
                     <div className="rounded-md border border-amber-500/20 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-800 dark:text-amber-300">
                       ✏️ Form responses can be edited while pending review.
@@ -789,35 +861,101 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
                     </Button>
                   )}
 
-                  <EditRegistrationModal
-                    registration={reg}
-                    event={ev}
-                    onSuccess={handleRegistrationUpdated}
-                    onCancel={() => {
-                      setRegistrations((prev) => prev.filter((r) => r.id !== reg.id));
-                    }}
-                    triggerButton={
-                      isPending || isWaitingPayment ? (
+                  {/* Edit Responses Modal or Finalized indicator */}
+                  {reg.refund_request?.status === "refund_completed" ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled
+                      className="h-8 gap-1.5 text-xs text-muted-foreground opacity-60 cursor-not-allowed"
+                    >
+                      <Lock className="size-3.5" />
+                      Refund Finalized
+                    </Button>
+                  ) : (
+                    <EditRegistrationModal
+                      registration={reg}
+                      event={ev}
+                      onSuccess={handleRegistrationUpdated}
+                      onCancel={() => {
+                        setRegistrations((prev) => prev.filter((r) => r.id !== reg.id));
+                      }}
+                      triggerButton={
+                        isPending || isWaitingPayment ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 gap-1.5 border-amber-500/40 text-amber-700 text-xs hover:bg-amber-500/10 dark:text-amber-300"
+                          >
+                            <Edit3 className="size-3.5 text-amber-600 dark:text-amber-400" />
+                            Edit Responses
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 gap-1.5 text-muted-foreground text-xs hover:text-foreground"
+                          >
+                            <FileText className="size-3.5" />
+                            View Responses
+                          </Button>
+                        )
+                      }
+                    />
+                  )}
+
+                  {/* Refund Request / Status Button */}
+                  {(() => {
+                    const refundInfo = isRegistrationEligibleForRefund(reg, ev);
+                    const refundReq = reg.refund_request;
+
+                    if (!refundInfo.isEligible && !refundReq) return null;
+
+                    if (refundReq) {
+                      let label = "Refund Status 💰";
+                      if (refundReq.status === "refund_completed") {
+                        label = "Refund Receipt 🧾";
+                      } else if (refundReq.status === "rejected") {
+                        label = "Refund Rejected ⚠️";
+                      }
+
+                      return (
                         <Button
                           variant="outline"
                           size="sm"
-                          className="h-8 gap-1.5 border-amber-500/40 text-amber-700 text-xs hover:bg-amber-500/10 dark:text-amber-300"
+                          className={cn(
+                            "h-8 gap-1.5 text-xs font-semibold",
+                            refundReq.status === "refund_completed" &&
+                              "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20",
+                            refundReq.status === "waiting_for_approval" &&
+                              "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20",
+                            refundReq.status === "rejected" &&
+                              "border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20",
+                          )}
+                          onClick={() => setRefundStatusModalReg(reg)}
                         >
-                          <Edit3 className="size-3.5 text-amber-600 dark:text-amber-400" />
-                          Edit Responses
+                          <CreditCard className="size-3.5" />
+                          {label}
                         </Button>
-                      ) : (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 gap-1.5 text-muted-foreground text-xs hover:text-foreground"
-                        >
-                          <FileText className="size-3.5" />
-                          View Responses
-                        </Button>
-                      )
+                      );
                     }
-                  />
+
+                    if (refundInfo.canSubmitNew) {
+                      return (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 gap-1.5 border-indigo-500/40 bg-indigo-500/10 font-semibold text-indigo-700 dark:text-indigo-300 text-xs hover:bg-indigo-500/20"
+                          onClick={() => setRefundModalReg(reg)}
+                        >
+                          <CreditCard className="size-3.5" />
+                          Request Refund 💸
+                        </Button>
+                      );
+                    }
+
+                    return null;
+                  })()}
 
                   {/* Merchandise Delivery Request / Status Button */}
                   {(() => {
@@ -867,17 +1005,20 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
                     <Link href={detailsHref}>Details →</Link>
                   </Button>
 
-                  {!isEventPast(ev) && !isPaidAndRegistered && reg.status !== "attended" && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 gap-1 text-destructive text-xs hover:bg-destructive/10 hover:text-destructive"
-                      onClick={() => setCancellingRegistration(reg)}
-                    >
-                      <UserX className="size-3.5" />
-                      Cancel RSVP
-                    </Button>
-                  )}
+                  {!isEventPast(ev) &&
+                    !isPaidAndRegistered &&
+                    reg.status !== "attended" &&
+                    reg.refund_request?.status !== "refund_completed" && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 gap-1 text-destructive text-xs hover:bg-destructive/10 hover:text-destructive"
+                        onClick={() => setCancellingRegistration(reg)}
+                      >
+                        <UserX className="size-3.5" />
+                        Cancel RSVP
+                      </Button>
+                    )}
                 </div>
               </CardFooter>
             </Card>
@@ -1119,6 +1260,42 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
           onOpenChange={(open) => !open && setBundleVouchersModalReg(null)}
           registration={bundleVouchersModalReg}
           event={eventMap.get(String(bundleVouchersModalReg.event_id))}
+        />
+      )}
+
+      {refundModalReg && (
+        <RefundRequestDialog
+          isOpen={Boolean(refundModalReg)}
+          onOpenChange={(open) => !open && setRefundModalReg(null)}
+          registration={refundModalReg}
+          event={eventMap.get(String(refundModalReg.event_id))}
+          onSuccess={(updatedRefund) => {
+            setRegistrations((prev) =>
+              prev.map((r) =>
+                r.id === refundModalReg.id
+                  ? {
+                      ...r,
+                      refund_request: updatedRefund,
+                    }
+                  : r,
+              ),
+            );
+            setRefundModalReg(null);
+          }}
+        />
+      )}
+
+      {refundStatusModalReg && (
+        <RefundStatusDialog
+          isOpen={Boolean(refundStatusModalReg)}
+          onOpenChange={(open) => !open && setRefundStatusModalReg(null)}
+          registration={refundStatusModalReg}
+          event={eventMap.get(String(refundStatusModalReg.event_id))}
+          onEditRequest={() => {
+            const target = refundStatusModalReg;
+            setRefundStatusModalReg(null);
+            setRefundModalReg(target);
+          }}
         />
       )}
     </div>

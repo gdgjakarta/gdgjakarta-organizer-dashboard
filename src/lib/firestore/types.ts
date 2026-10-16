@@ -386,6 +386,12 @@ export interface FirestoreEvent {
   registration_start_date?: string | null;
   registration_end_date?: string | null;
 
+  // Refund Management Settings
+  refund_enabled?: boolean;
+  refund_cutoff_days_before?: number; // e.g. 1 (cutoff 1 day before event)
+  refund_cutoff_date?: string | null;
+  refund_policy_notes?: string | null;
+
   // Post-Event Recap & Media Extensions
   highlight_video_url?: string;
   highlight_video_title?: string;
@@ -512,6 +518,41 @@ export interface MerchandiseDeliveryRequest {
   updated_at: string;
 }
 
+export type RefundStatus = "waiting_for_approval" | "refund_completed" | "rejected";
+
+export interface RefundRequest {
+  id: string; // e.g. `ref_${registrationId}_${Date.now()}`
+  status: RefundStatus;
+
+  // Attendee Submission
+  bank_name: string; // e.g. "BCA", "Bank Mandiri"
+  bank_account_name: string; // Account holder name
+  bank_account_number: string;
+  cancellation_reason: string;
+  proof_media_url?: string;
+  proof_media_name?: string;
+  requested_at: string;
+  resubmitted_at?: string;
+  refund_amount: number;
+
+  // Organizer Completion details (on approval)
+  completion_proof_url?: string; // Receipt / Transfer proof screenshot or PDF
+  completion_notes?: string;
+  completed_at?: string;
+  completed_by_id?: string;
+  completed_by_name?: string;
+  completed_by_email?: string;
+
+  // Organizer Rejection details
+  rejection_reason?: string;
+  rejected_at?: string;
+  rejected_by_id?: string;
+  rejected_by_name?: string;
+  rejected_by_email?: string;
+
+  updated_at: string;
+}
+
 export interface RegistrationStatusLog {
   id: string;
   status: RegistrationStatus;
@@ -614,6 +655,9 @@ export interface FirestoreRegistration {
 
   // Merchandise delivery request (No-show uncollected merchandise claim)
   delivery_request?: MerchandiseDeliveryRequest;
+
+  // Refund request (Paid waitlisted attendee refund claim)
+  refund_request?: RefundRequest;
 
   updated_at?: string;
 }

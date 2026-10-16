@@ -16,11 +16,11 @@ import {
   FileText,
   Globe,
   Layers,
+  Lock,
   MapPin,
   Radio,
   Share2,
   Sparkles,
-  Ticket,
   Truck,
   Users,
   UserX,
@@ -34,6 +34,8 @@ import { CancelRegistrationDialog } from "@/components/cancel-registration-dialo
 import { EditRegistrationModal } from "@/components/edit-registration-modal";
 import { EventCardImage } from "@/components/event-card-image";
 import { EventRegistrationModal } from "@/components/event-registration-modal";
+import { RefundRequestDialog } from "@/components/refund/refund-request-dialog";
+import { RefundStatusDialog } from "@/components/refund/refund-status-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -42,11 +44,8 @@ import { getDashboardHomeUrl } from "@/lib/auth-roles";
 import { resolveEventAudience } from "@/lib/bevy/audience";
 import { toTimezoneDate } from "@/lib/date-utils";
 import { extractEventImageUrl } from "@/lib/events/media-utils";
-import {
-  getEffectiveRegistrationStatus,
-  getRegistrationPaymentDeadline,
-  isPaidRegistration,
-} from "@/lib/events/payment-deadline";
+import { getEffectiveRegistrationStatus, getRegistrationPaymentDeadline } from "@/lib/events/payment-deadline";
+import { isRegistrationEligibleForRefund } from "@/lib/events/refund-utils";
 import { getRegistrationWindowStatus } from "@/lib/events/registration-defaults";
 import { checkEventRegistrationAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
@@ -188,6 +187,8 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
   const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false);
   const [isDeliveryStatusOpen, setIsDeliveryStatusOpen] = useState(false);
+  const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
+  const [isRefundStatusOpen, setIsRefundStatusOpen] = useState(false);
   const { isVirtual, isHybrid } = resolveEventAudience(currentEvent.audience_type, currentEvent.is_virtual);
 
   const rawFrom = from ? decodeURIComponent(from) : undefined;
@@ -587,53 +588,123 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
         </Button>
 
         {/* Edit or View Responses button */}
-        <EditRegistrationModal
-          registration={registration}
-          event={currentEvent}
-          onSuccess={(updated) => {
-            setRegistration(updated);
-          }}
-          onCancel={() => {
-            setRegistration(null);
-          }}
-          triggerButton={
-            <Button
-              variant="outline"
-              size="sm"
-              className={cn(
-                "w-full gap-2 font-medium text-xs shadow-xs",
-                (isPending || isWaitingPayment) &&
-                  "border-amber-500/30 hover:bg-amber-500/10 hover:text-amber-700 dark:hover:text-amber-300",
-              )}
-            >
-              {isPending || isWaitingPayment ? (
-                <>
-                  <Edit3 className="size-3.5 text-amber-500" />
-                  Edit Form Responses
-                </>
-              ) : (
-                <>
-                  <FileText className="size-3.5" />
-                  View Submitted Responses
-                </>
-              )}
-            </Button>
+        {registration.refund_request?.status === "refund_completed" ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled
+            className="w-full gap-2 font-medium text-xs shadow-xs text-muted-foreground opacity-60 cursor-not-allowed"
+          >
+            <Lock className="size-3.5" />
+            Refund Finalized • Form Locked
+          </Button>
+        ) : (
+          <EditRegistrationModal
+            registration={registration}
+            event={currentEvent}
+            onSuccess={(updated) => {
+              setRegistration(updated);
+            }}
+            onCancel={() => {
+              setRegistration(null);
+            }}
+            triggerButton={
+              <Button
+                variant="outline"
+                size="sm"
+                className={cn(
+                  "w-full gap-2 font-medium text-xs shadow-xs",
+                  (isPending || isWaitingPayment) &&
+                    "border-amber-500/30 hover:bg-amber-500/10 hover:text-amber-700 dark:hover:text-amber-300",
+                )}
+              >
+                {isPending || isWaitingPayment ? (
+                  <>
+                    <Edit3 className="size-3.5 text-amber-500" />
+                    Edit Form Responses
+                  </>
+                ) : (
+                  <>
+                    <FileText className="size-3.5" />
+                    View Submitted Responses
+                  </>
+                )}
+              </Button>
+            }
+          />
+        )}
+
+        {/* Refund Mechanism for Paid Waitlisted */}
+        {(() => {
+          const refundInfo = isRegistrationEligibleForRefund(registration, currentEvent);
+          const refundReq = registration.refund_request;
+
+          if (!refundInfo.isEligible && !refundReq) return null;
+
+          if (refundReq) {
+            let label = "View Refund Status 💰";
+            if (refundReq.status === "refund_completed") {
+              label = "View Refund Receipt 🧾";
+            } else if (refundReq.status === "rejected") {
+              label = "Refund Request Rejected ⚠️";
+            }
+
+            return (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsRefundStatusOpen(true)}
+                className={cn(
+                  "w-full gap-2 text-xs shadow-xs font-semibold",
+                  refundReq.status === "refund_completed" &&
+                    "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20",
+                  refundReq.status === "waiting_for_approval" &&
+                    "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20",
+                  refundReq.status === "rejected" &&
+                    "border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20",
+                )}
+              >
+                <CreditCard className="size-3.5" />
+                {label}
+              </Button>
+            );
           }
-        />
+
+          if (refundInfo.canSubmitNew) {
+            return (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsRefundModalOpen(true)}
+                className="w-full gap-2 border-indigo-500/40 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 text-xs shadow-xs hover:bg-indigo-500/20 font-semibold"
+              >
+                <CreditCard className="size-3.5" />
+                Request Commitment Fee Refund 💸
+              </Button>
+            );
+          }
+
+          return null;
+        })()}
 
         {/* Cancel Registration Button (only if event is not concluded and registration is not attended and not paid) */}
-        {!isPast && registration.status !== "attended" && !isPaidAndRegistered && (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setIsCancelModalOpen(true)}
-            className="w-full gap-2 border-destructive/30 text-destructive text-xs shadow-xs hover:bg-destructive/10 hover:text-destructive"
-          >
-            <UserX className="size-3.5" />
-            Cancel Registration
-          </Button>
-        )}
+        {!isPast &&
+          registration.status !== "attended" &&
+          !isPaidAndRegistered &&
+          registration.refund_request?.status !== "refund_completed" && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsCancelModalOpen(true)}
+              className="w-full gap-2 border-destructive/30 text-destructive text-xs shadow-xs hover:bg-destructive/10 hover:text-destructive"
+            >
+              <UserX className="size-3.5" />
+              Cancel Registration
+            </Button>
+          )}
 
         {/* Merchandise Delivery Claim for No-Show Attendees */}
         {isPast &&
@@ -994,6 +1065,39 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
           onOpenPayment={() => {
             setIsDeliveryStatusOpen(false);
             setIsDeliveryModalOpen(true);
+          }}
+        />
+      )}
+
+      {registration && isRefundModalOpen && (
+        <RefundRequestDialog
+          isOpen={isRefundModalOpen}
+          onOpenChange={setIsRefundModalOpen}
+          registration={registration}
+          event={currentEvent}
+          onSuccess={(updatedRefund) => {
+            setRegistration((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    refund_request: updatedRefund,
+                  }
+                : prev,
+            );
+            setIsRefundModalOpen(false);
+          }}
+        />
+      )}
+
+      {registration && isRefundStatusOpen && registration.refund_request && (
+        <RefundStatusDialog
+          isOpen={isRefundStatusOpen}
+          onOpenChange={setIsRefundStatusOpen}
+          registration={registration}
+          event={currentEvent}
+          onEditRequest={() => {
+            setIsRefundStatusOpen(false);
+            setIsRefundModalOpen(true);
           }}
         />
       )}
