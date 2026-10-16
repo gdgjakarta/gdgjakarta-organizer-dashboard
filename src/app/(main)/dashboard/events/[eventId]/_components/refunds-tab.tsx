@@ -812,7 +812,7 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
       {/* Organizer Proof Preview Modal */}
       {viewProofModalReg?.refund_request && (
         <Dialog open={Boolean(viewProofModalReg)} onOpenChange={(open) => !open && setViewProofModalReg(null)}>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="sm:max-w-lg">
             <DialogHeader>
               <DialogTitle className="text-base sm:text-lg">Completed Refund Transfer Proof</DialogTitle>
               <DialogDescription className="text-xs">
@@ -877,7 +877,7 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
       {/* Organizer Rejection Reason View Modal */}
       {viewReasonModalReg?.refund_request && (
         <Dialog open={Boolean(viewReasonModalReg)} onOpenChange={(open) => !open && setViewReasonModalReg(null)}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle className="text-base sm:text-lg">Rejection Reason</DialogTitle>
               <DialogDescription className="text-xs">
@@ -911,7 +911,7 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
 
       {/* Live Member View Preview Modal */}
       <Dialog open={isPreviewMemberViewOpen} onOpenChange={setIsPreviewMemberViewOpen}>
-        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <DialogContent className="max-h-[90vh] w-full overflow-y-auto p-4 sm:max-w-2xl sm:p-6 md:max-w-3xl">
           <DialogHeader>
             <div className="flex items-center gap-2">
               <Badge variant="outline" className="border-primary/40 bg-primary/10 text-[11px] text-primary">
@@ -927,15 +927,21 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
 
           <div className="space-y-4 pt-1">
             <Tabs defaultValue="event-details" className="w-full">
-              <TabsList className="grid w-full grid-cols-3 text-xs">
-                <TabsTrigger value="event-details" className="text-xs">
-                  1. Event Page View
+              <TabsList className="grid h-auto min-h-9 w-full grid-cols-3 gap-1 p-1 text-xs">
+                <TabsTrigger
+                  value="event-details"
+                  className="px-2 py-1.5 text-center text-xs leading-tight whitespace-normal"
+                >
+                  1. Event Page
                 </TabsTrigger>
-                <TabsTrigger value="my-events" className="text-xs">
+                <TabsTrigger
+                  value="my-events"
+                  className="px-2 py-1.5 text-center text-xs leading-tight whitespace-normal"
+                >
                   2. My Events Card
                 </TabsTrigger>
-                <TabsTrigger value="dialog" className="text-xs">
-                  3. Refund Request Dialog
+                <TabsTrigger value="dialog" className="px-2 py-1.5 text-center text-xs leading-tight whitespace-normal">
+                  3. Refund Dialog
                 </TabsTrigger>
               </TabsList>
 
@@ -944,7 +950,7 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
                 <p className="text-[11px] text-muted-foreground">
                   On the member event details page sidebar, attendees see this refund card below their ticket details:
                 </p>
-                <div className="rounded-xl border border-border bg-card p-4 shadow-xs">
+                <div className="mx-auto w-full max-w-lg rounded-xl border border-border bg-card p-4 shadow-xs">
                   <div className="mb-3 flex items-center justify-between border-b pb-3">
                     <span className="font-semibold text-foreground text-xs">Your Registration Status</span>
                     <Badge className="bg-indigo-600 text-[10px]">Priority Waitlist</Badge>
@@ -954,15 +960,15 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
                     <Button disabled className="h-9 w-full cursor-default gap-1.5 text-xs opacity-90">
                       Request Commitment Fee Refund 💸
                     </Button>
-                    <div className="space-y-1 rounded-lg border border-indigo-500/20 bg-indigo-500/5 p-3 text-xs">
+                    <div className="space-y-1.5 rounded-lg border border-indigo-500/20 bg-indigo-500/5 p-3 text-xs">
                       <p className="font-semibold text-indigo-900 text-xs dark:text-indigo-200">
                         📋 Refund Policy & Window
                       </p>
-                      <p className="text-[11px] text-muted-foreground leading-relaxed whitespace-pre-wrap">
+                      <p className="break-words text-[11px] text-muted-foreground leading-relaxed whitespace-pre-wrap">
                         {effectivePolicyNotes}
                       </p>
-                      <div className="flex items-center gap-1.5 pt-1 font-medium text-[11px] text-indigo-700 dark:text-indigo-300">
-                        <Clock className="size-3" />
+                      <div className="flex flex-wrap items-center gap-1.5 pt-1 font-medium text-[11px] text-indigo-700 dark:text-indigo-300">
+                        <Clock className="size-3 shrink-0" />
                         <span>{previewCutoffInfo.deadlineDescription}</span>
                       </div>
                     </div>
@@ -975,18 +981,18 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
                 <p className="text-[11px] text-muted-foreground">
                   On the &quot;My Events&quot; dashboard tab, attendees see an inline refund eligibility banner:
                 </p>
-                <div className="mx-auto max-w-sm rounded-xl border border-border bg-card p-4 shadow-xs">
-                  <div className="mb-2 flex items-center justify-between">
+                <div className="mx-auto w-full max-w-md rounded-xl border border-border bg-card p-4 shadow-xs">
+                  <div className="mb-2.5 flex items-center justify-between gap-2">
                     <span className="truncate font-semibold text-xs">{event.title ?? "GDG Jakarta Tech Event"}</span>
                     <Badge
                       variant="outline"
-                      className="border-indigo-500/40 text-[10px] text-indigo-600 dark:text-indigo-400"
+                      className="shrink-0 border-indigo-500/40 text-[10px] text-indigo-600 dark:text-indigo-400"
                     >
                       Refund Eligible
                     </Badge>
                   </div>
-                  <div className="space-y-1.5 rounded-md border border-indigo-500/30 bg-indigo-500/5 p-2.5 text-xs">
-                    <div className="flex items-center justify-between">
+                  <div className="space-y-2 rounded-md border border-indigo-500/30 bg-indigo-500/5 p-3 text-xs">
+                    <div className="flex flex-wrap items-center justify-between gap-1.5">
                       <span className="font-semibold text-[11px] text-indigo-700 dark:text-indigo-300">
                         💸 {previewCutoffInfo.deadlineDescription}
                       </span>
@@ -994,11 +1000,11 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
                         Until {previewCutoffInfo.formattedCutoff}
                       </span>
                     </div>
-                    <p className="line-clamp-2 text-[10px] text-muted-foreground leading-normal">
+                    <p className="break-words text-[11px] text-muted-foreground leading-relaxed">
                       📋 {effectivePolicyNotes}
                     </p>
                   </div>
-                  <Button variant="outline" size="sm" className="mt-3 h-8 w-full cursor-default text-xs">
+                  <Button variant="outline" size="sm" className="mt-3.5 h-8 w-full cursor-default text-xs">
                     View Details & Request Refund
                   </Button>
                 </div>
@@ -1030,10 +1036,10 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
                       <Info className="size-3.5 text-primary" />
                       <span>Refund Policy & Disbursement Guidelines</span>
                     </div>
-                    <p className="whitespace-pre-wrap text-[11px] text-muted-foreground leading-relaxed">
+                    <p className="break-words whitespace-pre-wrap text-[11px] text-muted-foreground leading-relaxed">
                       {effectivePolicyNotes}
                     </p>
-                    <div className="flex flex-wrap items-center justify-between border-border/50 border-t pt-1 text-[10px] text-muted-foreground">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-border/50 border-t pt-1.5 text-[10px] text-muted-foreground">
                       <span>Cutoff Deadline: {previewCutoffInfo.formattedCutoff}</span>
                       <span>Policy Status: {refundEnabled ? "Active" : "Disabled"}</span>
                     </div>
@@ -1052,7 +1058,7 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
             </Tabs>
           </div>
 
-          <DialogFooter className="mt-2 border-border/50 border-t pt-3 sm:justify-between">
+          <DialogFooter className="mt-2 flex flex-col-reverse gap-2 border-border/50 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
               <span>💡 Preview updates live as you edit the policy text above.</span>
             </div>
