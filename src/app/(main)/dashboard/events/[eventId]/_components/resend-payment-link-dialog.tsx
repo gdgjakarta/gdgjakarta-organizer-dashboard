@@ -236,6 +236,7 @@ export function ResendPaymentLinkDialog({
         payment_status: "unpaid",
         payment_url: res.paymentUrl,
         payment_invoice_number: invoiceNum,
+        payment_request_id: res.requestId,
         payment_amount: res.amount ?? payableAmount,
         payment_subtotal_amount: netSubtotal,
         payment_fee_amount: gatewayFeeCalc?.feeAmount ?? 0,

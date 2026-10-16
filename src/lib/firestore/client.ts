@@ -1611,10 +1611,12 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
       ? eventData.sessions[0].title
       : eventData?.default_session_name?.trim() || "Full session");
 
-  // Include session_id and session_title inside answers for backward compatibility
+  // Include session_id, session_title and payment metadata inside answers for backward compatibility
   const updatedAnswers = {
     ...(registration.answers ?? {}),
     ...(registration.session_id ? { session_id: registration.session_id } : {}),
+    ...(registration.payment_invoice_number ? { payment_invoice_number: registration.payment_invoice_number } : {}),
+    ...(registration.payment_request_id ? { payment_request_id: registration.payment_request_id } : {}),
     session_title: resolvedSessionTitle,
     Session: registration.answers?.Session ?? resolvedSessionTitle,
   };
@@ -2210,6 +2212,10 @@ export async function updateRegistrationStatus(
         }),
     ...(notes !== undefined ? { notes } : {}),
     ...(extraFields ? extraFields : {}),
+    ...(extraFields?.payment_invoice_number
+      ? { "answers.payment_invoice_number": extraFields.payment_invoice_number }
+      : {}),
+    ...(extraFields?.payment_request_id ? { "answers.payment_request_id": extraFields.payment_request_id } : {}),
     status_logs: updatedLogs,
     updated_at: now,
   });

@@ -2432,7 +2432,13 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       setDeleteConfirmRegistration(null);
 
       try {
-        const res = await deleteEventRegistrationAction(registration.id, eventId, matchedBevyAttendeeId, email);
+        const res = await deleteEventRegistrationAction(
+          registration.id,
+          eventId,
+          matchedBevyAttendeeId,
+          email,
+          registration,
+        );
         if (res.success) {
           if (email && bevyAttendeesMap.has(email)) {
             setBevyAttendeesMap((prev) => {
@@ -2547,7 +2553,13 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         }
 
         // 2. Remove registration from Firestore and Bevy
-        const deleteRes = await deleteEventRegistrationAction(registration.id, eventId, matchedBevyAttendeeId, email);
+        const deleteRes = await deleteEventRegistrationAction(
+          registration.id,
+          eventId,
+          matchedBevyAttendeeId,
+          email,
+          registration,
+        );
         if (!deleteRes.success) {
           toast.error(deleteRes.error ?? "Cancellation email sent, but failed to remove registration from database.");
           setIsCancelling(false);
@@ -2619,7 +2631,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
           }
 
           // 2. Delete registration
-          const deleteRes = await deleteEventRegistrationAction(reg.id, eventId, matchedBevyAttendeeId, email);
+          const deleteRes = await deleteEventRegistrationAction(reg.id, eventId, matchedBevyAttendeeId, email, reg);
           if (deleteRes.success) {
             successCount++;
             setRegistrationsList((prev) => prev.filter((r) => r.id !== reg.id));

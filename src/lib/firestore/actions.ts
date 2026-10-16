@@ -372,6 +372,7 @@ export async function deleteEventRegistrationAction(
   eventId: string,
   bevyAttendeeId?: number | string | null,
   attendeeEmail?: string | null,
+  cachedRegistration?: Partial<FirestoreRegistration>,
 ) {
   try {
     let resolvedAttendeeId = bevyAttendeeId;
@@ -381,13 +382,18 @@ export async function deleteEventRegistrationAction(
     // Pre-resolve missing attendee info and payment data from registration doc if needed
     try {
       const { getRegistrationById } = await import("./client");
-      registrationData = await getRegistrationById(registrationId);
+      const fetched = await getRegistrationById(registrationId);
+      registrationData = fetched ?? (cachedRegistration as import("./types").FirestoreRegistration) ?? null;
       if (registrationData) {
+        if (cachedRegistration?.payment_request_id && !registrationData.payment_request_id) {
+          registrationData.payment_request_id = cachedRegistration.payment_request_id;
+        }
         resolvedAttendeeId = resolvedAttendeeId ?? registrationData.bevy_attendee_id;
         resolvedEmail = resolvedEmail ?? registrationData.member_email;
       }
     } catch (fetchErr) {
       console.warn("[deleteEventRegistrationAction] Could not pre-fetch registration document:", fetchErr);
+      registrationData = (cachedRegistration as import("./types").FirestoreRegistration) ?? null;
     }
 
     // 1. Remove attendee from Bevy API BEFORE removing from dashboard

@@ -515,13 +515,20 @@ export function buildCancelPaymentPayload(
     isProduction = false;
   }
 
-  const resolvedRequestId =
-    registration.payment_request_id ??
-    (typeof answers.payment_request_id === "string" ? answers.payment_request_id : undefined);
+  const rawRequestId =
+    (registration.payment_request_id && registration.payment_request_id.trim().length > 0
+      ? registration.payment_request_id.trim()
+      : undefined) ??
+    (typeof answers.payment_request_id === "string" && answers.payment_request_id.trim().length > 0
+      ? answers.payment_request_id.trim()
+      : undefined) ??
+    (typeof answers.requestId === "string" && answers.requestId.trim().length > 0
+      ? answers.requestId.trim()
+      : undefined);
 
   return {
     invoiceNumber,
-    originalRequestId: resolvedRequestId,
+    originalRequestId: rawRequestId,
     reason,
     customer: {
       name: extractCustomerName(registration, answers),
