@@ -689,7 +689,7 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
                 <div className="rounded-md border border-border/80 bg-muted/40 p-2.5 text-xs">
                   <p className="font-semibold text-[11px] text-foreground">Refund Policy:</p>
                   <p className="mt-0.5 text-[10px] text-muted-foreground leading-relaxed">
-                    {getEventRefundPolicyNotes(currentEvent || event)}
+                    {getEventRefundPolicyNotes(currentEvent ?? event)}
                   </p>
                 </div>
               </div>

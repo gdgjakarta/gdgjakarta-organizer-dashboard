@@ -13,7 +13,9 @@ import {
   CreditCard,
   Download,
   ExternalLink,
+  Eye,
   FileText,
+  Info,
   Loader2,
   RefreshCw,
   Search,
@@ -22,10 +24,12 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -39,9 +43,10 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { formatFirestoreDate } from "@/lib/date-utils";
-import { formatRupiah, getEventRefundCutoff } from "@/lib/events/refund-utils";
+import { DEFAULT_REFUND_POLICY_NOTES, formatRupiah, getEventRefundCutoff } from "@/lib/events/refund-utils";
 import { fetchEventRefundRequestsAction, updateEventRefundConfigAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent, FirestoreRegistration, RefundStatus } from "@/lib/firestore/types";
 import { cn, getInitials } from "@/lib/utils";
@@ -82,14 +87,18 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
   const [isRefreshing, startRefresh] = useTransition();
 
   // Refund policy settings state
+  const initialCustomNotes = event.refund_policy_notes?.trim();
   const [refundEnabled, setRefundEnabled] = useState<boolean>(event.refund_enabled !== false);
   const [refundCutoffDays, setRefundCutoffDays] = useState<number>(
     typeof event.refund_cutoff_days_before === "number" ? event.refund_cutoff_days_before : 1,
   );
   const [refundCutoffDate, setRefundCutoffDate] = useState<string>(event.refund_cutoff_date ?? "");
-  const [refundPolicyNotes, setRefundPolicyNotes] = useState<string>(event.refund_policy_notes ?? "");
+  const [refundPolicyNotes, setRefundPolicyNotes] = useState<string>(
+    initialCustomNotes && initialCustomNotes.length > 0 ? initialCustomNotes : DEFAULT_REFUND_POLICY_NOTES,
+  );
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [showSettingsCard, setShowSettingsCard] = useState(false);
+  const [isPreviewMemberViewOpen, setIsPreviewMemberViewOpen] = useState(false);
 
   // Filters & Search
   const [searchQuery, setSearchQuery] = useState("");
@@ -110,8 +119,11 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
     if (event.refund_cutoff_date) {
       setRefundCutoffDate(event.refund_cutoff_date);
     }
-    if (event.refund_policy_notes) {
-      setRefundPolicyNotes(event.refund_policy_notes);
+    const custom = event.refund_policy_notes?.trim();
+    if (custom && custom.length > 0) {
+      setRefundPolicyNotes(custom);
+    } else {
+      setRefundPolicyNotes(DEFAULT_REFUND_POLICY_NOTES);
     }
   }, [event]);
 
@@ -263,6 +275,22 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
 
   const cutoffInfo = getEventRefundCutoff(event);
 
+  const effectivePolicyNotes = refundPolicyNotes.trim() ? refundPolicyNotes.trim() : DEFAULT_REFUND_POLICY_NOTES;
+
+  const previewEvent: FirestoreEvent = useMemo(() => {
+    return {
+      ...event,
+      refund_enabled: refundEnabled,
+      refund_cutoff_days_before: refundCutoffDays,
+      refund_cutoff_date: refundCutoffDate.trim() ? refundCutoffDate.trim() : undefined,
+      refund_policy_notes: effectivePolicyNotes,
+    };
+  }, [event, refundEnabled, refundCutoffDays, refundCutoffDate, effectivePolicyNotes]);
+
+  const previewCutoffInfo = useMemo(() => {
+    return getEventRefundCutoff(previewEvent);
+  }, [previewEvent]);
+
   return (
     <div className="space-y-6">
       {/* KPI Cards */}
@@ -331,6 +359,16 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsPreviewMemberViewOpen(true)}
+              className="h-8 gap-1.5 text-xs font-medium"
+            >
+              <Eye className="size-3.5 text-primary" />
+              Preview Member View
+            </Button>
             <Badge
               variant="outline"
               className={cn(
@@ -403,20 +441,43 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="policyNotes" className="font-semibold text-xs">
-                Custom Refund Policy Guidelines (Optional)
-              </Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="policyNotes" className="font-semibold text-xs">
+                  Custom Refund Policy Guidelines (Optional)
+                </Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsPreviewMemberViewOpen(true)}
+                  className="h-6 gap-1 text-[11px] text-primary"
+                >
+                  <Eye className="size-3" />
+                  Live Preview
+                </Button>
+              </div>
               <Textarea
                 id="policyNotes"
-                placeholder="e.g. Commitment deposit will be refunded via bank transfer within 3-5 business days."
+                placeholder={DEFAULT_REFUND_POLICY_NOTES}
                 value={refundPolicyNotes}
                 onChange={(e) => setRefundPolicyNotes(e.target.value)}
                 rows={2}
                 className="resize-none text-xs"
               />
+              <p className="text-[10px] text-muted-foreground">Default: &ldquo;{DEFAULT_REFUND_POLICY_NOTES}&rdquo;</p>
             </div>
 
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:items-center sm:justify-between">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsPreviewMemberViewOpen(true)}
+                className="gap-1.5 text-xs font-medium"
+              >
+                <Eye className="size-3.5 text-primary" />
+                Preview Member View
+              </Button>
               <Button
                 size="sm"
                 onClick={handleSavePolicySettings}
@@ -430,10 +491,18 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
           </CardContent>
         ) : (
           <CardContent className="border-border/50 border-t pt-3 pb-3 text-xs">
-            <div className="flex flex-wrap items-center justify-between gap-2 text-muted-foreground">
+            <div className="flex flex-wrap items-center justify-between gap-3 text-muted-foreground">
               <span>
                 <strong>Active Window: </strong>
                 {cutoffInfo.deadlineDescription}
+              </span>
+              <span className="max-w-md truncate">
+                <strong>Policy Guidelines: </strong>
+                <span className="italic text-foreground">
+                  &ldquo;
+                  {event.refund_policy_notes?.trim() ? event.refund_policy_notes.trim() : DEFAULT_REFUND_POLICY_NOTES}
+                  &rdquo;
+                </span>
               </span>
               <span>
                 <strong>Cutoff Rule: </strong>
@@ -839,6 +908,160 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Live Member View Preview Modal */}
+      <Dialog open={isPreviewMemberViewOpen} onOpenChange={setIsPreviewMemberViewOpen}>
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="border-primary/40 bg-primary/10 text-[11px] text-primary">
+                Live Member Preview
+              </Badge>
+            </div>
+            <DialogTitle className="text-base sm:text-lg">Refund Policy & Member Experience Preview</DialogTitle>
+            <DialogDescription className="text-xs">
+              Preview how attendees see the refund policy, cutoff notices, and cancellation warnings across different
+              views in the member portal.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 pt-1">
+            <Tabs defaultValue="event-details" className="w-full">
+              <TabsList className="grid w-full grid-cols-3 text-xs">
+                <TabsTrigger value="event-details" className="text-xs">
+                  1. Event Page View
+                </TabsTrigger>
+                <TabsTrigger value="my-events" className="text-xs">
+                  2. My Events Card
+                </TabsTrigger>
+                <TabsTrigger value="dialog" className="text-xs">
+                  3. Refund Request Dialog
+                </TabsTrigger>
+              </TabsList>
+
+              {/* Tab 1: Event Details Page View */}
+              <TabsContent value="event-details" className="space-y-3 pt-3">
+                <p className="text-[11px] text-muted-foreground">
+                  On the member event details page sidebar, attendees see this refund card below their ticket details:
+                </p>
+                <div className="rounded-xl border border-border bg-card p-4 shadow-xs">
+                  <div className="mb-3 flex items-center justify-between border-b pb-3">
+                    <span className="font-semibold text-foreground text-xs">Your Registration Status</span>
+                    <Badge className="bg-indigo-600 text-[10px]">Priority Waitlist</Badge>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Button disabled className="h-9 w-full cursor-default gap-1.5 text-xs opacity-90">
+                      Request Commitment Fee Refund 💸
+                    </Button>
+                    <div className="space-y-1 rounded-lg border border-indigo-500/20 bg-indigo-500/5 p-3 text-xs">
+                      <p className="font-semibold text-indigo-900 text-xs dark:text-indigo-200">
+                        📋 Refund Policy & Window
+                      </p>
+                      <p className="text-[11px] text-muted-foreground leading-relaxed whitespace-pre-wrap">
+                        {effectivePolicyNotes}
+                      </p>
+                      <div className="flex items-center gap-1.5 pt-1 font-medium text-[11px] text-indigo-700 dark:text-indigo-300">
+                        <Clock className="size-3" />
+                        <span>{previewCutoffInfo.deadlineDescription}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </TabsContent>
+
+              {/* Tab 2: My Events Card View */}
+              <TabsContent value="my-events" className="space-y-3 pt-3">
+                <p className="text-[11px] text-muted-foreground">
+                  On the &quot;My Events&quot; dashboard tab, attendees see an inline refund eligibility banner:
+                </p>
+                <div className="mx-auto max-w-sm rounded-xl border border-border bg-card p-4 shadow-xs">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="truncate font-semibold text-xs">{event.title ?? "GDG Jakarta Tech Event"}</span>
+                    <Badge
+                      variant="outline"
+                      className="border-indigo-500/40 text-[10px] text-indigo-600 dark:text-indigo-400"
+                    >
+                      Refund Eligible
+                    </Badge>
+                  </div>
+                  <div className="space-y-1.5 rounded-md border border-indigo-500/30 bg-indigo-500/5 p-2.5 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-[11px] text-indigo-700 dark:text-indigo-300">
+                        💸 {previewCutoffInfo.deadlineDescription}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">
+                        Until {previewCutoffInfo.formattedCutoff}
+                      </span>
+                    </div>
+                    <p className="line-clamp-2 text-[10px] text-muted-foreground leading-normal">
+                      📋 {effectivePolicyNotes}
+                    </p>
+                  </div>
+                  <Button variant="outline" size="sm" className="mt-3 h-8 w-full cursor-default text-xs">
+                    View Details & Request Refund
+                  </Button>
+                </div>
+              </TabsContent>
+
+              {/* Tab 3: Attendee Request Dialog */}
+              <TabsContent value="dialog" className="space-y-3 pt-3">
+                <p className="text-[11px] text-muted-foreground">
+                  When the attendee clicks &quot;Request Refund&quot;, they are shown the full cancellation warning and
+                  policy agreement:
+                </p>
+                <div className="space-y-3 rounded-xl border border-border bg-card p-4 shadow-xs">
+                  {/* Warning Alert */}
+                  <Alert
+                    variant="destructive"
+                    className="border-destructive/40 bg-destructive/10 text-destructive text-xs"
+                  >
+                    <AlertCircle className="size-4 shrink-0" />
+                    <AlertTitle className="font-semibold text-xs">RSVP Cancellation Warning</AlertTitle>
+                    <AlertDescription className="text-[11px] leading-relaxed">
+                      Submitting this refund request will <strong>cancel your RSVP</strong> and release your
+                      registration. You will <strong>no longer be able to attend or join the event</strong>.
+                    </AlertDescription>
+                  </Alert>
+
+                  {/* Policy Notes */}
+                  <div className="space-y-1.5 rounded-lg border border-border/80 bg-muted/40 p-3 text-xs">
+                    <div className="flex items-center gap-1.5 font-semibold text-foreground">
+                      <Info className="size-3.5 text-primary" />
+                      <span>Refund Policy & Disbursement Guidelines</span>
+                    </div>
+                    <p className="whitespace-pre-wrap text-[11px] text-muted-foreground leading-relaxed">
+                      {effectivePolicyNotes}
+                    </p>
+                    <div className="flex flex-wrap items-center justify-between border-border/50 border-t pt-1 text-[10px] text-muted-foreground">
+                      <span>Cutoff Deadline: {previewCutoffInfo.formattedCutoff}</span>
+                      <span>Policy Status: {refundEnabled ? "Active" : "Disabled"}</span>
+                    </div>
+                  </div>
+
+                  {/* Checkbox preview */}
+                  <div className="flex items-start gap-2.5 rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
+                    <Checkbox checked disabled className="mt-0.5 cursor-default" />
+                    <Label className="cursor-default font-medium text-xs text-foreground leading-snug">
+                      I understand and agree that submitting this refund request will cancel my RSVP and I will forfeit
+                      my spot to join this event. <span className="text-destructive">*</span>
+                    </Label>
+                  </div>
+                </div>
+              </TabsContent>
+            </Tabs>
+          </div>
+
+          <DialogFooter className="mt-2 border-border/50 border-t pt-3 sm:justify-between">
+            <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+              <span>💡 Preview updates live as you edit the policy text above.</span>
+            </div>
+            <Button variant="secondary" size="sm" onClick={() => setIsPreviewMemberViewOpen(false)} className="text-xs">
+              Close Preview
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
