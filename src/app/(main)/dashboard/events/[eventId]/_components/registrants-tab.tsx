@@ -94,6 +94,8 @@ import {
   rejectAttendeeAction,
   resendInterestEmailAction,
   sendCancelAttendeeEmailAction,
+  sendPaidWaitlistAttendeeEmailAction,
+  sendWaitlistAttendeeEmailAction,
 } from "@/server/email-template-actions";
 import { generatePaymentLinkAction } from "@/server/payment-actions";
 import { approveAttendeeWebhookAction } from "@/server/registration-actions";
@@ -172,6 +174,11 @@ const STATUS_VARIANTS: Record<RegistrationStatus, { label: string; badgeClass: s
     label: "Waitlisted",
     badgeClass: "border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400",
     dotClass: "bg-blue-500",
+  },
+  paid_waitlisted: {
+    label: "Paid Waitlist",
+    badgeClass: "border-indigo-500/20 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400",
+    dotClass: "bg-indigo-500",
   },
   attended: {
     label: "Attended",
@@ -457,8 +464,12 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const [isBatchApproving, setIsBatchApproving] = useState(false);
   const [rejectingRegistrationId, setRejectingRegistrationId] = useState<string | null>(null);
   const [isBatchRejecting, setIsBatchRejecting] = useState(false);
+  const [waitlistingRegistrationId, setWaitlistingRegistrationId] = useState<string | null>(null);
+  const [isBatchWaitlisting, setIsBatchWaitlisting] = useState(false);
   const [isResendingInterestId, setIsResendingInterestId] = useState<string | null>(null);
   const [isBatchResendingInterest, setIsBatchResendingInterest] = useState(false);
+  const [isResendingWaitlistId, setIsResendingWaitlistId] = useState<string | null>(null);
+  const [isResendingPaidWaitlistId, setIsResendingPaidWaitlistId] = useState<string | null>(null);
   const [resendPaymentRegistration, setResendPaymentRegistration] = useState<FirestoreRegistration | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -875,6 +886,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     let checkedIn = 0;
     let notCheckedIn = 0;
     let waitlisted = 0;
+    let paidWaitlisted = 0;
     let rejected = 0;
 
     for (const reg of registrationsList) {
@@ -894,6 +906,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         canceled++;
       } else if (s === "waitlisted") {
         waitlisted++;
+      } else if (s === "paid_waitlisted") {
+        paidWaitlisted++;
       } else if (s === "rejected") {
         rejected++;
       }
@@ -924,6 +938,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       pending,
       waiting_for_payment: waitingPayment,
       paid_and_registered: paidRegistered,
+      paid_waitlisted: paidWaitlisted,
       expired,
       failed,
       canceled,
@@ -1456,6 +1471,11 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       return;
     }
 
+    if (newStatus === "waitlisted" && targetReg) {
+      void handleWaitlistAttendee(targetReg);
+      return;
+    }
+
     startTransition(async () => {
       try {
         const reviewerPayload = user ? { id: user.id, name: user.name, email: user.email } : undefined;
@@ -1747,6 +1767,126 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       toast.error(msg);
     } finally {
       setRejectingRegistrationId(null);
+    }
+  };
+
+  const handleWaitlistAttendee = async (registration: FirestoreRegistration) => {
+    if (registration.status === "approved") {
+      toast.error("This attendee is already approved. Their status cannot be changed except by removal.");
+      return;
+    }
+
+    setWaitlistingRegistrationId(registration.id);
+    try {
+      const reviewerPayload = user ? { id: user.id, name: user.name, email: user.email } : undefined;
+      const res = await sendWaitlistAttendeeEmailAction({
+        registrationId: registration.id,
+        eventId,
+        attendeeName: registration.member_name,
+        attendeeEmail: registration.member_email,
+        reviewer: reviewerPayload,
+        eventData: currentEvent,
+      });
+
+      if (!res.success) {
+        console.error("[RegistrantsTab] Waitlist attendee error:", res.error, res.details);
+        toast.error(res.error ?? "Failed to send waitlist email.", {
+          description: typeof res.details === "string" ? res.details : undefined,
+        });
+        return;
+      }
+
+      // Persist status update in Firestore (client-side)
+      await updateRegistrationStatusAction(registration.id, eventId, "waitlisted", reviewerPayload);
+
+      const now = new Date().toISOString();
+      setRegistrationsList((prev) =>
+        prev.map((r) =>
+          r.id === registration.id
+            ? {
+                ...r,
+                status: "waitlisted",
+                reviewed_at: now,
+                reviewed_by_id: user?.id ?? r.reviewed_by_id,
+                reviewed_by_name: user?.name ?? r.reviewed_by_name,
+                reviewed_by_email: user?.email ?? r.reviewed_by_email,
+              }
+            : r,
+        ),
+      );
+
+      setInspectRegistration((prev) =>
+        prev?.id === registration.id
+          ? {
+              ...prev,
+              status: "waitlisted",
+              reviewed_at: now,
+              reviewed_by_id: user?.id ?? prev.reviewed_by_id,
+              reviewed_by_name: user?.name ?? prev.reviewed_by_name,
+              reviewed_by_email: user?.email ?? prev.reviewed_by_email,
+            }
+          : prev,
+      );
+
+      toast.success(res.message ?? `${registration.member_name} moved to waitlist and notification email sent.`);
+    } catch (err) {
+      console.error("[RegistrantsTab] Error moving attendee to waitlist:", err);
+      const msg = err instanceof Error ? err.message : "Failed to move applicant to waitlist.";
+      toast.error(msg);
+    } finally {
+      setWaitlistingRegistrationId(null);
+    }
+  };
+
+  const handleResendWaitlistEmail = async (registration: FirestoreRegistration) => {
+    setIsResendingWaitlistId(registration.id);
+    try {
+      const reviewerPayload = user ? { id: user.id, name: user.name, email: user.email } : undefined;
+      const res = await sendWaitlistAttendeeEmailAction({
+        registrationId: registration.id,
+        eventId,
+        attendeeName: registration.member_name,
+        attendeeEmail: registration.member_email,
+        reviewer: reviewerPayload,
+        eventData: currentEvent,
+      });
+
+      if (res.success) {
+        toast.success(`Waitlist email successfully resent to ${registration.member_name}.`);
+      } else {
+        toast.error(res.error ?? "Failed to resend waitlist email.");
+      }
+    } catch (err) {
+      console.error("[RegistrantsTab] Error resending waitlist email:", err);
+      toast.error("Failed to resend waitlist email.");
+    } finally {
+      setIsResendingWaitlistId(null);
+    }
+  };
+
+  const handleResendPaidWaitlistEmail = async (registration: FirestoreRegistration) => {
+    setIsResendingPaidWaitlistId(registration.id);
+    try {
+      const reviewerPayload = user ? { id: user.id, name: user.name, email: user.email } : undefined;
+      const res = await sendPaidWaitlistAttendeeEmailAction({
+        registrationId: registration.id,
+        eventId,
+        attendeeName: registration.member_name,
+        attendeeEmail: registration.member_email,
+        reviewer: reviewerPayload,
+        eventData: currentEvent,
+      });
+
+      if (res.success) {
+        toast.success(`Paid waitlist email successfully resent to ${registration.member_name}.`);
+      } else {
+        toast.error(res.error ?? "Failed to resend paid waitlist email.");
+      }
+    } catch (err) {
+      console.error("[RegistrantsTab] Error resending paid waitlist email:", err);
+      toast.error("Failed to resend paid waitlist email.");
+    } finally {
+      setIsResendingPaidWaitlistId(null);
     }
   };
 
@@ -2128,6 +2268,73 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     }
   };
 
+  const handleBatchWaitlist = async () => {
+    if (selectedIds.size === 0) return;
+    const eligibleRegistrations = registrationsList.filter(
+      (r) => selectedIds.has(r.id) && r.status !== "approved" && r.status !== "waitlisted",
+    );
+
+    if (eligibleRegistrations.length === 0) {
+      toast.warning("No eligible attendees selected for waitlist (approved or already waitlisted).");
+      return;
+    }
+
+    setIsBatchWaitlisting(true);
+    try {
+      let successCount = 0;
+      const failedErrors: string[] = [];
+      const reviewerPayload = user ? { id: user.id, name: user.name, email: user.email } : undefined;
+      const now = new Date().toISOString();
+
+      for (const reg of eligibleRegistrations) {
+        const res = await sendWaitlistAttendeeEmailAction({
+          registrationId: reg.id,
+          eventId,
+          attendeeName: reg.member_name,
+          attendeeEmail: reg.member_email,
+          reviewer: reviewerPayload,
+          eventData: currentEvent,
+        });
+
+        if (res.success) {
+          await updateRegistrationStatusAction(reg.id, eventId, "waitlisted", reviewerPayload);
+          successCount++;
+          setRegistrationsList((prev) =>
+            prev.map((r) =>
+              r.id === reg.id
+                ? {
+                    ...r,
+                    status: "waitlisted",
+                    reviewed_at: now,
+                    reviewed_by_id: user?.id ?? r.reviewed_by_id,
+                    reviewed_by_name: user?.name ?? r.reviewed_by_name,
+                    reviewed_by_email: user?.email ?? r.reviewed_by_email,
+                  }
+                : r,
+            ),
+          );
+        } else {
+          failedErrors.push(`${reg.member_name}: ${res.error ?? "Failed to send waitlist email"}`);
+        }
+      }
+
+      if (successCount > 0) {
+        toast.success(`Successfully moved ${successCount} applicant(s) to waitlist and sent notifications.`);
+      }
+      if (failedErrors.length > 0) {
+        toast.error(`Waitlist email failed for ${failedErrors.length} applicant(s):`, {
+          description: failedErrors.slice(0, 3).join("\n"),
+        });
+      }
+      setSelectedIds(new Set());
+    } catch (err) {
+      console.error("[RegistrantsTab] Batch waitlist error:", err);
+      toast.error("Batch waitlist failed.");
+    } finally {
+      setIsBatchWaitlisting(false);
+    }
+  };
+
   const handleBatchAction = (newStatus: RegistrationStatus) => {
     if (selectedIds.size === 0) return;
     if (newStatus === "approved") {
@@ -2136,6 +2343,10 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     }
     if (newStatus === "rejected") {
       void handleBatchReject();
+      return;
+    }
+    if (newStatus === "waitlisted") {
+      void handleBatchWaitlist();
       return;
     }
 
@@ -2675,6 +2886,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                         isPending ||
                         isBatchApproving ||
                         isBatchRejecting ||
+                        isBatchWaitlisting ||
                         isBatchResendingInterest ||
                         hasApprovedSelected
                       }
@@ -2684,7 +2896,11 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                           : "Set selected attendees to Waitlisted"
                       }
                     >
-                      <Hourglass className="size-3.5" />
+                      {isBatchWaitlisting ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <Hourglass className="size-3.5" />
+                      )}
                       <span>Waitlist</span>
                     </Button>
 
@@ -2837,6 +3053,9 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                     </SelectItem>
                     <SelectItem value="paid_and_registered">
                       Paid & Registered ({isLoading ? "..." : statusCounts.paid_and_registered})
+                    </SelectItem>
+                    <SelectItem value="paid_waitlisted">
+                      Paid Waitlist ({isLoading ? "..." : statusCounts.paid_waitlisted})
                     </SelectItem>
                     <SelectItem value="expired">Expired ({isLoading ? "..." : statusCounts.expired})</SelectItem>
                     <SelectItem value="failed">Failed ({isLoading ? "..." : statusCounts.failed})</SelectItem>
@@ -3126,6 +3345,12 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                   "border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium",
               },
               {
+                key: "paid_waitlisted",
+                label: "Paid Waitlist",
+                count: statusCounts.paid_waitlisted,
+                activeClass: "border-indigo-500/50 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-medium",
+              },
+              {
                 key: "expired",
                 label: "Expired",
                 count: statusCounts.expired,
@@ -3181,7 +3406,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 (item) =>
                   item.key === "all" ||
                   item.count > 0 ||
-                  ["waiting_for_payment", "paid_and_registered", "expired"].includes(item.key),
+                  ["waiting_for_payment", "paid_and_registered", "paid_waitlisted", "expired"].includes(item.key),
               )
               .map((item) => {
                 const isActive = statusFilter === item.key;
@@ -3918,17 +4143,57 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                       Resend Interest Email
                                     </DropdownMenuItem>
                                   )}
+                                  {isCurationMode && reg.status === "waitlisted" && (
+                                    <DropdownMenuItem
+                                      disabled={
+                                        isResendingWaitlistId === reg.id ||
+                                        isPending ||
+                                        approvingRegistrationId === reg.id
+                                      }
+                                      onClick={() => void handleResendWaitlistEmail(reg)}
+                                    >
+                                      {isResendingWaitlistId === reg.id ? (
+                                        <Loader2 className="mr-2 size-3.5 animate-spin" />
+                                      ) : (
+                                        <Mail className="mr-2 size-3.5" />
+                                      )}
+                                      Resend Waitlist Email
+                                    </DropdownMenuItem>
+                                  )}
+                                  {reg.status === "paid_waitlisted" && (
+                                    <DropdownMenuItem
+                                      disabled={
+                                        isResendingPaidWaitlistId === reg.id ||
+                                        isPending ||
+                                        approvingRegistrationId === reg.id
+                                      }
+                                      onClick={() => void handleResendPaidWaitlistEmail(reg)}
+                                    >
+                                      {isResendingPaidWaitlistId === reg.id ? (
+                                        <Loader2 className="mr-2 size-3.5 animate-spin" />
+                                      ) : (
+                                        <Mail className="mr-2 size-3.5" />
+                                      )}
+                                      Resend Paid Waitlist Email
+                                    </DropdownMenuItem>
+                                  )}
                                   {isCurationMode && (
                                     <DropdownMenuItem
                                       disabled={
                                         rawStatus === "approved" ||
                                         rawStatus === "paid_and_registered" ||
+                                        rawStatus === "waitlisted" ||
                                         isPending ||
-                                        approvingRegistrationId === reg.id
+                                        approvingRegistrationId === reg.id ||
+                                        waitlistingRegistrationId === reg.id
                                       }
                                       onClick={() => handleStatusChange(reg.id, "waitlisted")}
                                     >
-                                      <Layers className="mr-2 size-3.5" />
+                                      {waitlistingRegistrationId === reg.id ? (
+                                        <Loader2 className="mr-2 size-3.5 animate-spin" />
+                                      ) : (
+                                        <Layers className="mr-2 size-3.5" />
+                                      )}
                                       Move to Waitlist
                                     </DropdownMenuItem>
                                   )}
@@ -3982,6 +4247,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         onApprove={handleApproveAttendee}
         onReject={handleRejectAttendee}
         onResendInterestEmail={handleResendInterestEmail}
+        onResendWaitlistEmail={handleResendWaitlistEmail}
+        onResendPaidWaitlistEmail={handleResendPaidWaitlistEmail}
         onToggleCheckIn={handleToggleCheckIn}
         onCancelRegistration={(reg) => {
           setInspectRegistration(null);
@@ -3995,7 +4262,10 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         isPending={isPending || isCheckingInId === inspectRegistration?.id}
         isApproving={approvingRegistrationId === inspectRegistration?.id}
         isRejecting={rejectingRegistrationId === inspectRegistration?.id}
+        isWaitlisting={waitlistingRegistrationId === inspectRegistration?.id}
         isResendingInterest={isResendingInterestId === inspectRegistration?.id}
+        isResendingWaitlist={isResendingWaitlistId === inspectRegistration?.id}
+        isResendingPaidWaitlist={isResendingPaidWaitlistId === inspectRegistration?.id}
         isCancelling={isCancelling}
       />
 

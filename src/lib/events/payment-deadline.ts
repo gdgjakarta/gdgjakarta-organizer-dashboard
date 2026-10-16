@@ -35,6 +35,7 @@ export function isPaidRegistration(reg: Partial<FirestoreRegistration>): boolean
   if (
     reg.status === "waiting_for_payment" ||
     reg.status === "paid_and_registered" ||
+    reg.status === "paid_waitlisted" ||
     reg.status === "expired" ||
     reg.status === "failed" ||
     reg.status === "canceled" ||

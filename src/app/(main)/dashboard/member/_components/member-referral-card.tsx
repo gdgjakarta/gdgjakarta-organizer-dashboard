@@ -136,7 +136,7 @@ export function MemberReferralCard() {
               <Gift className="size-5" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <CardTitle className="text-base font-semibold">Community Referral Program</CardTitle>
                 <Badge variant="outline" className="border-primary/30 bg-primary/10 text-primary text-[11px]">
                   <Sparkles className="mr-1 size-3" />

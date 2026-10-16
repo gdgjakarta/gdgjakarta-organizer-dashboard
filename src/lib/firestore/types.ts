@@ -9,6 +9,7 @@ export type RegistrationStatus =
   | "registered"
   | "rejected"
   | "waitlisted"
+  | "paid_waitlisted"
   | "attended"
   | "waiting_for_payment"
   | "paid_and_registered"
@@ -242,7 +243,9 @@ export type EmailTemplateKey =
   | "rejected_non_hybrid"
   | "rejected_virtual"
   | "cancelled"
-  | "cancelled_attendee";
+  | "cancelled_attendee"
+  | "waitlisted"
+  | "paid_waitlisted";
 
 export interface EventEmailTemplateData {
   headerEmailUrl?: string;
@@ -269,6 +272,8 @@ export interface EventEmailTemplates {
   direct_ticket?: string;
   cancelled?: string;
   cancelled_attendee?: string;
+  waitlisted?: string;
+  paid_waitlisted?: string;
 
   // Custom subject lines
   interest_subject?: string;
@@ -278,6 +283,8 @@ export interface EventEmailTemplates {
   rejected_virtual_subject?: string;
   cancelled_subject?: string;
   cancelled_attendee_subject?: string;
+  waitlisted_subject?: string;
+  paid_waitlisted_subject?: string;
 
   // Saved event template data configuration (legacy fallback)
   template_data?: EventEmailTemplateData;

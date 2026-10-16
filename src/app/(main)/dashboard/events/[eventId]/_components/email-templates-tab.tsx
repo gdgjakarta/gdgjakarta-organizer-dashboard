@@ -8,8 +8,10 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
+  Clock,
   Code2,
   Copy,
+  CreditCard,
   Eye,
   Info,
   Laptop,
@@ -94,6 +96,8 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
     return {
       interest: event.email_templates?.interest ?? getDefaultTemplateByKey("interest"),
       accepted: acceptedHtml,
+      waitlisted: event.email_templates?.waitlisted ?? getDefaultTemplateByKey("waitlisted"),
+      paid_waitlisted: event.email_templates?.paid_waitlisted ?? getDefaultTemplateByKey("paid_waitlisted"),
       rejected_hybrid: event.email_templates?.rejected_hybrid ?? getDefaultTemplateByKey("rejected_hybrid"),
       rejected_non_hybrid: event.email_templates?.rejected_non_hybrid ?? getDefaultTemplateByKey("rejected_non_hybrid"),
       rejected_virtual: event.email_templates?.rejected_virtual ?? getDefaultTemplateByKey("rejected_virtual"),
@@ -110,6 +114,8 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
     return {
       interest: event.email_templates?.interest ?? getDefaultTemplateByKey("interest"),
       accepted: acceptedHtml,
+      waitlisted: event.email_templates?.waitlisted ?? getDefaultTemplateByKey("waitlisted"),
+      paid_waitlisted: event.email_templates?.paid_waitlisted ?? getDefaultTemplateByKey("paid_waitlisted"),
       rejected_hybrid: event.email_templates?.rejected_hybrid ?? getDefaultTemplateByKey("rejected_hybrid"),
       rejected_non_hybrid: event.email_templates?.rejected_non_hybrid ?? getDefaultTemplateByKey("rejected_non_hybrid"),
       rejected_virtual: event.email_templates?.rejected_virtual ?? getDefaultTemplateByKey("rejected_virtual"),
@@ -169,6 +175,8 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
               accepted: ensureCheckinDeadlineInAcceptedHtml(
                 docData.email_templates.accepted ?? getDefaultTemplateByKey("accepted"),
               ),
+              waitlisted: docData.email_templates.waitlisted ?? getDefaultTemplateByKey("waitlisted"),
+              paid_waitlisted: docData.email_templates.paid_waitlisted ?? getDefaultTemplateByKey("paid_waitlisted"),
               rejected_hybrid: docData.email_templates.rejected_hybrid ?? getDefaultTemplateByKey("rejected_hybrid"),
               rejected_non_hybrid:
                 docData.email_templates.rejected_non_hybrid ?? getDefaultTemplateByKey("rejected_non_hybrid"),
@@ -197,6 +205,8 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
     const templatesChanged =
       templates.interest !== savedTemplates.interest ||
       templates.accepted !== savedTemplates.accepted ||
+      templates.waitlisted !== savedTemplates.waitlisted ||
+      templates.paid_waitlisted !== savedTemplates.paid_waitlisted ||
       templates.rejected_hybrid !== savedTemplates.rejected_hybrid ||
       templates.rejected_non_hybrid !== savedTemplates.rejected_non_hybrid ||
       templates.rejected_virtual !== savedTemplates.rejected_virtual ||
@@ -286,6 +296,8 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
     const allDefaults: Record<EmailTemplateKey, string> = {
       interest: getDefaultTemplateByKey("interest"),
       accepted: getDefaultTemplateByKey("accepted"),
+      waitlisted: getDefaultTemplateByKey("waitlisted"),
+      paid_waitlisted: getDefaultTemplateByKey("paid_waitlisted"),
       rejected_hybrid: getDefaultTemplateByKey("rejected_hybrid"),
       rejected_non_hybrid: getDefaultTemplateByKey("rejected_non_hybrid"),
       rejected_virtual: getDefaultTemplateByKey("rejected_virtual"),
@@ -304,6 +316,8 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
     const allDefaults: Record<EmailTemplateKey, string> = {
       interest: getDefaultTemplateByKey("interest"),
       accepted: getDefaultTemplateByKey("accepted"),
+      waitlisted: getDefaultTemplateByKey("waitlisted"),
+      paid_waitlisted: getDefaultTemplateByKey("paid_waitlisted"),
       rejected_hybrid: getDefaultTemplateByKey("rejected_hybrid"),
       rejected_non_hybrid: getDefaultTemplateByKey("rejected_non_hybrid"),
       rejected_virtual: getDefaultTemplateByKey("rejected_virtual"),
@@ -319,6 +333,8 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
         const payload: EventEmailTemplates = {
           interest: allDefaults.interest,
           accepted: allDefaults.accepted,
+          waitlisted: allDefaults.waitlisted,
+          paid_waitlisted: allDefaults.paid_waitlisted,
           rejected_hybrid: allDefaults.rejected_hybrid,
           rejected_non_hybrid: allDefaults.rejected_non_hybrid,
           rejected_virtual: allDefaults.rejected_virtual,
@@ -354,6 +370,22 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
               venueLocation: cleanData.accepted.venueLocation,
               venueLocationUrl: cleanData.accepted.venueLocationUrl,
               attendeeCode: cleanData.accepted.attendeeCode,
+            },
+            waitlisted: {
+              headerEmailUrl: cleanData.waitlisted.event.headerEmailUrl,
+              eventName: cleanData.waitlisted.event.eventName,
+              eventCtaUrl: cleanData.waitlisted.event.eventCtaUrl,
+              eventChecklistItems: cleanData.waitlisted.event.eventChecklistItems,
+              attendeeName: cleanData.waitlisted.attendee.name,
+              attendeeEmail: cleanData.waitlisted.attendee.email,
+            },
+            paid_waitlisted: {
+              headerEmailUrl: cleanData.paid_waitlisted.event.headerEmailUrl,
+              eventName: cleanData.paid_waitlisted.event.eventName,
+              eventCtaUrl: cleanData.paid_waitlisted.event.eventCtaUrl,
+              eventChecklistItems: cleanData.paid_waitlisted.event.eventChecklistItems,
+              attendeeName: cleanData.paid_waitlisted.attendee.name,
+              attendeeEmail: cleanData.paid_waitlisted.attendee.email,
             },
             rejected_hybrid: {
               headerEmailUrl: cleanData.rejected_hybrid.event.headerEmailUrl,
@@ -446,6 +478,8 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
         const payload: EventEmailTemplates = {
           interest: templates.interest,
           accepted: templates.accepted,
+          waitlisted: templates.waitlisted,
+          paid_waitlisted: templates.paid_waitlisted,
           rejected_hybrid: templates.rejected_hybrid,
           rejected_non_hybrid: templates.rejected_non_hybrid,
           rejected_virtual: templates.rejected_virtual,
@@ -483,6 +517,22 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
               venueLocation: templatesData.accepted.venueLocation,
               venueLocationUrl: templatesData.accepted.venueLocationUrl,
               attendeeCode: templatesData.accepted.attendeeCode,
+            },
+            waitlisted: {
+              headerEmailUrl: templatesData.waitlisted.event.headerEmailUrl,
+              eventName: templatesData.waitlisted.event.eventName,
+              eventCtaUrl: templatesData.waitlisted.event.eventCtaUrl,
+              eventChecklistItems: templatesData.waitlisted.event.eventChecklistItems,
+              attendeeName: templatesData.waitlisted.attendee.name,
+              attendeeEmail: templatesData.waitlisted.attendee.email,
+            },
+            paid_waitlisted: {
+              headerEmailUrl: templatesData.paid_waitlisted.event.headerEmailUrl,
+              eventName: templatesData.paid_waitlisted.event.eventName,
+              eventCtaUrl: templatesData.paid_waitlisted.event.eventCtaUrl,
+              eventChecklistItems: templatesData.paid_waitlisted.event.eventChecklistItems,
+              attendeeName: templatesData.paid_waitlisted.attendee.name,
+              attendeeEmail: templatesData.paid_waitlisted.attendee.email,
             },
             rejected_hybrid: {
               headerEmailUrl: templatesData.rejected_hybrid.event.headerEmailUrl,
@@ -636,12 +686,12 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
                   </div>
                   <div className="font-medium text-foreground text-xs sm:text-sm">Dashboard Curation</div>
                   <p className="mt-1 text-[11px] text-muted-foreground">
-                    Organizer marks applicant as Approved or Rejected in Registrants tab
+                    Organizer marks applicant as Approved, Waitlisted, or Rejected in Registrants tab
                   </p>
                 </div>
 
                 {/* Step 4: Outcome Branch */}
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   <button
                     type="button"
                     onClick={() => setActiveKey("accepted")}
@@ -656,6 +706,22 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
                       <CheckCircle2 className="size-3 shrink-0" /> Approved
                     </div>
                     <div className="mt-0.5 font-medium text-[11px] text-foreground">Ticket Pass & QR</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveKey("waitlisted")}
+                    className={cn(
+                      "flex w-full cursor-pointer flex-col justify-between rounded-lg border p-2 text-left transition-all",
+                      activeKey === "waitlisted"
+                        ? "border-amber-500 bg-amber-500/5 ring-1 ring-amber-500"
+                        : "bg-background/80 hover:border-amber-500/40",
+                    )}
+                  >
+                    <div className="flex items-center gap-1 font-semibold text-[11px] text-amber-600 dark:text-amber-400">
+                      <Clock className="size-3 shrink-0" /> Waitlisted
+                    </div>
+                    <div className="mt-0.5 font-medium text-[11px] text-foreground">Waitlist Notice</div>
                   </button>
 
                   <button
@@ -745,6 +811,8 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
                       <div className="flex items-center gap-2">
                         {cfg.key === "interest" && <Mail className="size-3.5 text-blue-500 shrink-0" />}
                         {cfg.key === "accepted" && <CheckCircle2 className="size-3.5 text-emerald-500 shrink-0" />}
+                        {cfg.key === "waitlisted" && <Clock className="size-3.5 text-amber-500 shrink-0" />}
+                        {cfg.key === "paid_waitlisted" && <CreditCard className="size-3.5 text-indigo-500 shrink-0" />}
                         {cfg.key.startsWith("rejected") && <XCircle className="size-3.5 text-red-500 shrink-0" />}
                         {cfg.key.startsWith("cancelled") && <XCircle className="size-3.5 text-amber-500 shrink-0" />}
                         <span className="truncate">{cfg.name}</span>

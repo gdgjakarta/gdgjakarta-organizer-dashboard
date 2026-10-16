@@ -74,17 +74,27 @@ export function AccountReferralsTab({ user, member }: AccountReferralsTabProps) 
     }
   };
 
-  const shareText = `Join me at upcoming GDG Jakarta developer events! Use my referral code "${referralCode}" to get a discount on your event tickets: https://gdgjakarta.org`;
-  const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`;
+  const shareText = `Join me at upcoming GDG Jakarta developer events!\n\nUse my referral code *${referralCode}* to get a discount on your event tickets:\nhttps://gdgjakarta.org`;
+  const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
+
+  const handleShareWhatsApp = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    const isMobile = typeof navigator !== "undefined" && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    if (isMobile) {
+      e.preventDefault();
+      // On mobile devices, launching whatsapp:// directly opens WhatsApp with the prefilled message intact
+      // and bypasses the intermediate web splash screen on api.whatsapp.com that strips the text on iOS.
+      window.location.href = `whatsapp://send?text=${encodeURIComponent(shareText)}`;
+    }
+  };
 
   return (
     <div className="space-y-6">
       {/* Referral Code Hero Card */}
       <Card className="overflow-hidden border-none bg-gradient-to-r from-primary/10 via-card to-card shadow-xs">
-        <CardContent className="p-6">
+        <CardContent className="p-5 sm:p-6">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
             <div className="space-y-2">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Badge className="bg-primary font-medium text-primary-foreground text-xs">
                   <Sparkles className="mr-1 size-3" />
                   Your Community Referral Code
@@ -111,7 +121,7 @@ export function AccountReferralsTab({ user, member }: AccountReferralsTabProps) 
               </Button>
 
               <Button variant="outline" asChild className="gap-2">
-                <a href={whatsappUrl} target="_blank" rel="noopener noreferrer">
+                <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" onClick={handleShareWhatsApp}>
                   <MessageCircle className="size-4 text-emerald-500" />
                   <span>Share on WhatsApp</span>
                 </a>
@@ -244,12 +254,12 @@ export function AccountReferralsTab({ user, member }: AccountReferralsTabProps) 
       {/* Referral Redemption History */}
       <Card className="border-none shadow-xs">
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <CardTitle className="text-base sm:text-lg">Referral Redemption History</CardTitle>
               <CardDescription>Track events where community members redeemed your referral code</CardDescription>
             </div>
-            <Badge variant="secondary" className="text-xs">
+            <Badge variant="secondary" className="w-fit text-xs">
               {history.length} {history.length === 1 ? "Redemption" : "Redemptions"}
             </Badge>
           </div>

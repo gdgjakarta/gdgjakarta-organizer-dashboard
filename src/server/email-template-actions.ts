@@ -223,9 +223,11 @@ export async function sendTemplateEmailRequestAction(
   const safeFirstName = firstName || "Attendee";
   const safeLastName = lastName || firstName || "-";
 
-  // If this is the registration interest, cancelled (by organizer or attendee), or any rejected template, use the reusable /send-email endpoint
+  // If this is the registration interest, waitlisted, cancelled (by organizer or attendee), or any rejected template, use the reusable /send-email endpoint
   if (
     parsed.data.templateKey === "interest" ||
+    parsed.data.templateKey === "waitlisted" ||
+    parsed.data.templateKey === "paid_waitlisted" ||
     parsed.data.templateKey === "cancelled" ||
     parsed.data.templateKey === "cancelled_attendee" ||
     parsed.data.templateKey.startsWith("rejected")
@@ -737,6 +739,228 @@ export async function sendAttendeeCancelEmailAction(
   } catch (err) {
     console.error("[Attendee Cancel Email] Exception:", err);
     const errorMsg = extractApiMessage(err, "Failed to send cancellation confirmation email.");
+    return {
+      success: false,
+      error: errorMsg,
+      details: err,
+    };
+  }
+}
+
+export interface WaitlistAttendeeEmailInput {
+  registrationId: string;
+  eventId: string;
+  attendeeName: string;
+  attendeeEmail: string;
+  reviewer?: {
+    id?: string;
+    name?: string;
+    email?: string;
+  };
+  eventData?: FirestoreEvent;
+}
+
+export interface WaitlistAttendeeEmailResult extends EmailDispatchResult {
+  templateKey?: string;
+}
+
+/**
+ * Server Action: Sends the waitlist notification email via n8n send-email webhook.
+ * Informs the attendee:
+ * "your registration has been placed on the official event waitlist. You will be notified if a seat opens up."
+ */
+export async function sendWaitlistAttendeeEmailAction(
+  input: WaitlistAttendeeEmailInput,
+): Promise<WaitlistAttendeeEmailResult> {
+  try {
+    let event: FirestoreEvent | Partial<FirestoreEvent> | undefined = input.eventData;
+    if (!event) {
+      const { getBevyEventById } = await import("@/lib/bevy/client");
+      const fetched = await getBevyEventById(input.eventId);
+      if (!fetched) {
+        return { success: false, error: "Event not found." };
+      }
+      event = {
+        id: String(fetched.id),
+        title: fetched.title,
+        status: (fetched.status as FirestoreEvent["status"]) ?? "Published",
+        start_date: fetched.start_date ?? "",
+        end_date: fetched.end_date ?? "",
+        requires_approval: false,
+        total_registrations: 0,
+        total_approved: 0,
+        total_checked_in: 0,
+        banner_url: fetched.picture?.url,
+        picture_url: fetched.picture?.url,
+        created_at: "",
+        updated_at: "",
+        audience_type: fetched.audience_type,
+        is_virtual: Boolean(fetched.is_virtual),
+        event_type_title: fetched.event_type_title,
+        venue: fetched.venue as FirestoreEvent["venue"],
+        url: fetched.url,
+        static_url: fetched.static_url,
+      };
+    }
+
+    if (!event) {
+      return { success: false, error: "Event not found." };
+    }
+
+    const templateKey = "waitlisted";
+    const rendered = buildRenderedEmailForAttendee({
+      templateKey,
+      attendee: {
+        name: input.attendeeName,
+        email: input.attendeeEmail,
+      },
+      event,
+    });
+
+    const emailResult = await sendEmailWebhookAction({
+      first_name: rendered.firstName,
+      last_name: rendered.lastName,
+      email: input.attendeeEmail,
+      subjectEmail: rendered.subjectEmail,
+      bodyEmail: rendered.bodyEmail,
+    });
+
+    if (!emailResult.success) {
+      console.error(`[Waitlist Attendee Email] Failed for ${input.attendeeEmail}:`, emailResult.error);
+      return {
+        ...emailResult,
+        templateKey,
+      };
+    }
+
+    return {
+      success: true,
+      status: emailResult.status,
+      templateKey,
+      message: `Waitlist notification sent to ${input.attendeeName} (${input.attendeeEmail}).`,
+      details: emailResult.details,
+    };
+  } catch (err) {
+    console.error("[Waitlist Attendee Email] Exception:", err);
+    const errorMsg = extractApiMessage(err, "Failed to send waitlist email.");
+    return {
+      success: false,
+      error: errorMsg,
+      details: err,
+    };
+  }
+}
+
+export interface PaidWaitlistAttendeeEmailInput {
+  registrationId: string;
+  eventId: string;
+  attendeeName: string;
+  attendeeEmail: string;
+  reviewer?: {
+    id?: string;
+    name?: string;
+    email?: string;
+  };
+  eventData?: FirestoreEvent;
+  invoiceNumber?: string;
+  paidAmount?: number;
+  sessionName?: string;
+}
+
+export interface PaidWaitlistAttendeeEmailResult extends EmailDispatchResult {
+  templateKey?: string;
+}
+
+/**
+ * Server Action: Sends the paid waitlist notification email via n8n send-email webhook.
+ * Informs the attendee:
+ * "payment has been received, but session capacity reached max. You are on the Paid Priority Waitlist"
+ */
+export async function sendPaidWaitlistAttendeeEmailAction(
+  input: PaidWaitlistAttendeeEmailInput,
+): Promise<PaidWaitlistAttendeeEmailResult> {
+  try {
+    let event: FirestoreEvent | Partial<FirestoreEvent> | undefined = input.eventData;
+    if (!event) {
+      const { getBevyEventById } = await import("@/lib/bevy/client");
+      const fetched = await getBevyEventById(input.eventId);
+      if (!fetched) {
+        return { success: false, error: "Event not found." };
+      }
+      event = {
+        id: String(fetched.id),
+        title: fetched.title,
+        status: (fetched.status as FirestoreEvent["status"]) ?? "Published",
+        start_date: fetched.start_date ?? "",
+        end_date: fetched.end_date ?? "",
+        requires_approval: false,
+        total_registrations: 0,
+        total_approved: 0,
+        total_checked_in: 0,
+        banner_url: fetched.picture?.url,
+        picture_url: fetched.picture?.url,
+        created_at: "",
+        updated_at: "",
+        audience_type: fetched.audience_type,
+        is_virtual: Boolean(fetched.is_virtual),
+        event_type_title: fetched.event_type_title,
+        venue: fetched.venue as FirestoreEvent["venue"],
+        url: fetched.url,
+        static_url: fetched.static_url,
+      };
+    }
+
+    if (!event) {
+      return { success: false, error: "Event not found." };
+    }
+
+    const templateKey = "paid_waitlisted";
+    const rendered = buildRenderedEmailForAttendee({
+      templateKey,
+      attendee: {
+        name: input.attendeeName,
+        email: input.attendeeEmail,
+      },
+      event,
+    });
+
+    let bodyEmail = rendered.bodyEmail;
+    if (input.invoiceNumber) {
+      bodyEmail = bodyEmail.replaceAll("{{ invoice_number }}", input.invoiceNumber);
+    }
+    if (typeof input.paidAmount === "number") {
+      bodyEmail = bodyEmail.replaceAll("{{ paid_amount }}", `Rp ${input.paidAmount.toLocaleString("id-ID")}`);
+    }
+    if (input.sessionName) {
+      bodyEmail = bodyEmail.replaceAll("{{ session_name }}", input.sessionName);
+    }
+
+    const emailResult = await sendEmailWebhookAction({
+      first_name: rendered.firstName,
+      last_name: rendered.lastName,
+      email: input.attendeeEmail,
+      subjectEmail: rendered.subjectEmail,
+      bodyEmail,
+    });
+
+    if (!emailResult.success) {
+      console.error(`[Paid Waitlist Attendee Email] Failed for ${input.attendeeEmail}:`, emailResult.error);
+      return {
+        ...emailResult,
+        templateKey,
+      };
+    }
+
+    return {
+      success: true,
+      status: emailResult.status,
+      templateKey,
+      message: `Paid waitlist notification sent to ${input.attendeeName} (${input.attendeeEmail}).`,
+      details: emailResult.details,
+    };
+  } catch (err) {
+    console.error("[Paid Waitlist Attendee Email] Exception:", err);
+    const errorMsg = extractApiMessage(err, "Failed to send paid waitlist email.");
     return {
       success: false,
       error: errorMsg,

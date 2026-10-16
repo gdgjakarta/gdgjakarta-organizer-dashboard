@@ -103,6 +103,10 @@ const STATUS_VARIANTS: Record<RegistrationStatus, { label: string; badgeClass: s
     label: "Waitlisted",
     badgeClass: "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300",
   },
+  paid_waitlisted: {
+    label: "Paid Waitlist",
+    badgeClass: "border-indigo-500/30 bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 font-semibold",
+  },
   attended: {
     label: "Attended",
     badgeClass: "border-purple-500/30 bg-purple-500/10 text-purple-700 dark:text-purple-300",
@@ -260,7 +264,7 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
   const totalCount = registrations.length;
   const pendingCount = registrations.filter((r) => {
     const s = getEffectiveRegistrationStatus(r, eventMap.get(String(r.event_id)));
-    return s === "pending" || s === "waitlisted";
+    return s === "pending" || s === "waitlisted" || s === "paid_waitlisted";
   }).length;
   const waitingPaymentCount = registrations.filter((r) => {
     const s = getEffectiveRegistrationStatus(r, eventMap.get(String(r.event_id)));
@@ -299,7 +303,11 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
             return false;
           }
         } else if (statusFilter === "pending") {
-          if (effectiveStatus !== "pending" && effectiveStatus !== "waitlisted") {
+          if (
+            effectiveStatus !== "pending" &&
+            effectiveStatus !== "waitlisted" &&
+            effectiveStatus !== "paid_waitlisted"
+          ) {
             return false;
           }
         } else if (statusFilter === "waiting_for_payment") {
@@ -634,6 +642,26 @@ export function MyEventsList({ allEvents }: MyEventsListProps) {
                   {isFailed && (
                     <div className="rounded-md border border-rose-500/30 bg-rose-500/10 p-2.5 text-[11px] text-rose-700 dark:text-rose-300">
                       ⚠️ Payment failed or incomplete.
+                    </div>
+                  )}
+
+                  {effectiveStatus === "paid_waitlisted" && (
+                    <div className="rounded-md border border-indigo-500/30 bg-indigo-500/10 p-2.5 text-xs">
+                      <div className="flex items-center justify-between font-semibold text-indigo-800 dark:text-indigo-200">
+                        <span className="flex items-center gap-1.5 text-xs">
+                          <CheckCircle2 className="size-3.5 text-indigo-600 dark:text-indigo-400" />
+                          Payment Received • Priority Waitlist
+                        </span>
+                        {reg.payment_amount ? (
+                          <span className="font-bold text-indigo-700 dark:text-indigo-300">
+                            {formatRupiah(reg.payment_amount)}
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="mt-1 text-[11px] text-indigo-700/90 dark:text-indigo-300/90">
+                        Session capacity is currently full. You will be prioritized if seats open up, or eligible for a
+                        full refund.
+                      </p>
                     </div>
                   )}
 

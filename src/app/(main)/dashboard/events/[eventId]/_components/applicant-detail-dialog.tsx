@@ -15,6 +15,7 @@ import {
   Globe,
   Heart,
   HelpCircle,
+  Hourglass,
   Image as ImageIcon,
   Layers,
   Loader2,
@@ -64,6 +65,8 @@ interface ApplicantDetailDialogProps {
   onApprove?: (registration: FirestoreRegistration) => void;
   onReject?: (registration: FirestoreRegistration) => void;
   onResendInterestEmail?: (registration: FirestoreRegistration) => void;
+  onResendWaitlistEmail?: (registration: FirestoreRegistration) => void;
+  onResendPaidWaitlistEmail?: (registration: FirestoreRegistration) => void;
   onToggleCheckIn?: (registration: FirestoreRegistration, isCheckedIn: boolean) => void;
   onCancelRegistration?: (registration: FirestoreRegistration) => void;
   onDelete?: (registration: FirestoreRegistration) => void;
@@ -71,7 +74,10 @@ interface ApplicantDetailDialogProps {
   isPending?: boolean;
   isApproving?: boolean;
   isRejecting?: boolean;
+  isWaitlisting?: boolean;
   isResendingInterest?: boolean;
+  isResendingWaitlist?: boolean;
+  isResendingPaidWaitlist?: boolean;
   isCancelling?: boolean;
 }
 
@@ -130,6 +136,11 @@ const STATUS_VARIANTS: Record<RegistrationStatus, { label: string; badgeClass: s
     label: "Waitlisted",
     badgeClass: "border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400",
     dotClass: "bg-blue-500",
+  },
+  paid_waitlisted: {
+    label: "Paid Waitlist",
+    badgeClass: "border-indigo-500/20 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400",
+    dotClass: "bg-indigo-500",
   },
   attended: {
     label: "Attended",
@@ -213,13 +224,18 @@ export function ApplicantDetailDialog({
   onApprove,
   onReject,
   onResendInterestEmail,
+  onResendWaitlistEmail,
+  onResendPaidWaitlistEmail,
   onToggleCheckIn,
   onDelete,
   customQuestions = [],
   isPending = false,
   isApproving = false,
   isRejecting = false,
+  isWaitlisting = false,
   isResendingInterest = false,
+  isResendingWaitlist = false,
+  isResendingPaidWaitlist = false,
   onCancelRegistration,
   isCancelling = false,
 }: ApplicantDetailDialogProps) {
@@ -1233,26 +1249,41 @@ export function ApplicantDetailDialog({
 
           {/* Footer Actions */}
           {(() => {
-            const isActionBlocked = [isPending, isApproving, isRejecting, isResendingInterest, isCancelling].some(
-              Boolean,
-            );
+            const isActionBlocked = [
+              isPending,
+              isApproving,
+              isRejecting,
+              isWaitlisting,
+              isResendingInterest,
+              isResendingWaitlist,
+              isResendingPaidWaitlist,
+              isCancelling,
+            ].some(Boolean);
             return (
               <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t bg-muted/20 px-6 py-3.5">
                 <div className="flex items-center gap-2">
-                  {isCuration && registration.status !== "waitlisted" && registration.status !== "approved" && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-xs"
-                      disabled={isActionBlocked}
-                      onClick={() => {
-                        onStatusChange(registration.id, "waitlisted");
-                        onClose();
-                      }}
-                    >
-                      Waitlist
-                    </Button>
-                  )}
+                  {isCuration &&
+                    registration.status !== "waitlisted" &&
+                    registration.status !== "paid_waitlisted" &&
+                    registration.status !== "approved" && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-blue-500/30 text-blue-600 text-xs hover:bg-blue-500/10 dark:text-blue-400"
+                        disabled={isActionBlocked}
+                        onClick={() => {
+                          onStatusChange(registration.id, "waitlisted");
+                          onClose();
+                        }}
+                      >
+                        {isWaitlisting ? (
+                          <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                        ) : (
+                          <Clock className="mr-1.5 size-3.5" />
+                        )}
+                        Waitlist
+                      </Button>
+                    )}
 
                   {isCuration && registration.status !== "pending" && registration.status !== "approved" && (
                     <Button
@@ -1286,6 +1317,44 @@ export function ApplicantDetailDialog({
                         <Mail className="mr-1.5 size-3.5" />
                       )}
                       Resend Interest Email
+                    </Button>
+                  )}
+
+                  {isCuration && registration.status === "waitlisted" && onResendWaitlistEmail && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-blue-500/30 text-blue-600 text-xs hover:bg-blue-500/10 dark:text-blue-400"
+                      disabled={isActionBlocked}
+                      onClick={() => {
+                        onResendWaitlistEmail(registration);
+                      }}
+                    >
+                      {isResendingWaitlist ? (
+                        <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                      ) : (
+                        <Mail className="mr-1.5 size-3.5" />
+                      )}
+                      Resend Waitlist Email
+                    </Button>
+                  )}
+
+                  {registration.status === "paid_waitlisted" && onResendPaidWaitlistEmail && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-indigo-500/30 text-indigo-600 text-xs hover:bg-indigo-500/10 dark:text-indigo-400"
+                      disabled={isActionBlocked}
+                      onClick={() => {
+                        onResendPaidWaitlistEmail(registration);
+                      }}
+                    >
+                      {isResendingPaidWaitlist ? (
+                        <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                      ) : (
+                        <Mail className="mr-1.5 size-3.5" />
+                      )}
+                      Resend Paid Waitlist Email
                     </Button>
                   )}
 
