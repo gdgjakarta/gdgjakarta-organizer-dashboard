@@ -57,6 +57,7 @@ const dokuPaymentRequestSchema = z.object({
     })
     .optional(),
   referenceId: z.string().optional(),
+  requestId: z.string().optional(),
   isProduction: z.boolean().optional(),
   webhookUrl: z.string().optional(),
 });
@@ -123,6 +124,7 @@ export async function generatePaymentLinkAction(input: DokuPaymentRequestInput):
       fees: parsed.data.fees,
       payment: parsed.data.payment,
       referenceId: parsed.data.referenceId,
+      requestId: parsed.data.requestId,
       isProduction,
     };
 
@@ -166,7 +168,7 @@ export async function generatePaymentLinkAction(input: DokuPaymentRequestInput):
       success: true,
       paymentUrl: responseData?.paymentUrl,
       invoiceNumber: responseData?.invoiceNumber,
-      requestId: responseData?.requestId,
+      requestId: responseData?.requestId ?? parsed.data.requestId,
       amount: responseData?.amount,
       expiredDatetime: responseData?.expiredDatetime,
       message: responseData?.message ?? "Payment link generated successfully.",

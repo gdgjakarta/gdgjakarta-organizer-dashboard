@@ -1618,6 +1618,7 @@ export function EventRegistrationModal({
         // For curated events and waitlisted applicants, payment link generation is deferred until organizer approval.
         let generatedPaymentUrl: string | undefined;
         let generatedInvoiceNumber: string | undefined;
+        let generatedRequestId: string | undefined;
         let generatedPaymentAmount: number | undefined;
         let generatedExpiredDatetime: string | undefined;
 
@@ -1630,6 +1631,7 @@ export function EventRegistrationModal({
             if (payRes.success && payRes.paymentUrl) {
               generatedPaymentUrl = payRes.paymentUrl;
               generatedInvoiceNumber = payRes.invoiceNumber;
+              generatedRequestId = payRes.requestId;
               generatedPaymentAmount = payRes.amount;
               generatedExpiredDatetime = payRes.expiredDatetime;
             } else {
@@ -1685,6 +1687,7 @@ export function EventRegistrationModal({
           payment_status: !isWaitlistMode && requiresPayment ? "unpaid" : undefined,
           payment_url: isWaitlistMode ? undefined : generatedPaymentUrl,
           payment_invoice_number: isWaitlistMode ? undefined : generatedInvoiceNumber,
+          payment_request_id: isWaitlistMode ? undefined : generatedRequestId,
           payment_amount: isWaitlistMode ? undefined : (generatedPaymentAmount ?? (requiresPayment ? grandTotal : 0)),
           payment_expired_datetime: isWaitlistMode ? undefined : generatedExpiredDatetime,
           payment_fee_amount: isWaitlistMode ? undefined : requiresPayment ? gatewayFeeCalc.feeAmount : undefined,
@@ -1862,6 +1865,7 @@ export function EventRegistrationModal({
           payment_status: requiresPayment ? "unpaid" : undefined,
           payment_url: generatedPaymentUrl,
           payment_invoice_number: generatedInvoiceNumber,
+          payment_request_id: generatedRequestId,
           payment_amount: generatedPaymentAmount ?? (requiresPayment ? grandTotal : 0),
           payment_expired_datetime: generatedExpiredDatetime,
           payment_fee_amount: requiresPayment ? gatewayFeeCalc.feeAmount : undefined,

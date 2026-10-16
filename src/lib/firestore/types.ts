@@ -500,6 +500,7 @@ export interface MerchandiseDeliveryRequest {
   payment_environment?: "production" | "sandbox";
   payment_url?: string;
   payment_invoice_number?: string;
+  payment_request_id?: string;
   paid_at?: string;
 
   // Courier fulfillment details (submitted by Organizer on approval)

@@ -626,6 +626,7 @@ export async function submitMerchandiseDeliveryRequestAction(input: SubmitMercha
       payment_environment: deliveryPaymentEnv,
       payment_url: payResult.paymentUrl,
       payment_invoice_number: payResult.invoiceNumber,
+      payment_request_id: payResult.requestId,
       updated_at: now,
     };
 

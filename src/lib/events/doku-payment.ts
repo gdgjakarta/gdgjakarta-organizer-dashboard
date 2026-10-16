@@ -53,6 +53,7 @@ export interface DokuPaymentLinkRequest {
   fees?: PaymentFee[];
   payment?: PaymentOptions;
   referenceId?: string;
+  requestId?: string;
   isProduction?: boolean;
   webhookUrl?: string;
 }
@@ -348,6 +349,7 @@ export function buildRegistrationPaymentPayload(
     paymentMethodTypes?: string[];
     paymentDeadlineMinutes?: number;
     emailTemplate?: string;
+    requestId?: string;
   },
 ): DokuPaymentLinkRequest {
   const answers = (registration.answers ?? {}) as Record<string, unknown>;
@@ -485,6 +487,8 @@ export function buildRegistrationPaymentPayload(
       emailTemplate,
     },
     referenceId: registration.id ?? `REG-${Date.now()}`,
+    requestId:
+      options?.requestId ?? registration.payment_request_id ?? `REQ-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
     isProduction,
     webhookUrl: event.payment_webhook_url ?? undefined,
   };
@@ -511,9 +515,13 @@ export function buildCancelPaymentPayload(
     isProduction = false;
   }
 
+  const resolvedRequestId =
+    registration.payment_request_id ??
+    (typeof answers.payment_request_id === "string" ? answers.payment_request_id : undefined);
+
   return {
     invoiceNumber,
-    originalRequestId: registration.payment_request_id,
+    originalRequestId: resolvedRequestId,
     reason,
     customer: {
       name: extractCustomerName(registration, answers),
