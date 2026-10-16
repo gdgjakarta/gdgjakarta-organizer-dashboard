@@ -19,6 +19,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { hasTeamOperationalAccess, isExecutiveOrganizer } from "@/lib/auth-roles";
+import { hasPaidTicketOrMerchandise } from "@/lib/events/registration-defaults";
 import { ensureEventTickets } from "@/lib/events/ticket-templates";
 import type {
   EventBundlePackage,
@@ -156,6 +157,31 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
     return registrations.filter((r) => r.refund_request?.status === "waiting_for_approval").length;
   }, [registrations]);
 
+  // Financial & payment features check: paid registration, merchandise to purchase, or commitment fee
+  const hasPaidFeatures = useMemo(() => {
+    return (
+      hasPaidTicketOrMerchandise(activeEvent) ||
+      registrations.some(
+        (r) =>
+          r.ticket_type === "paid" ||
+          r.ticket_type === "commitment_fee" ||
+          (typeof r.ticket_price === "number" && r.ticket_price > 0) ||
+          Boolean(r.refund_request) ||
+          (typeof r.payment_status === "string" && r.payment_status === "paid"),
+      )
+    );
+  }, [activeEvent, registrations]);
+
+  // Merchandise delivery check: show delivery tab whenever event or attendees have merchandise
+  const hasMerchandise = useMemo(() => {
+    const eventHasMerch = (activeEvent.merchandise?.length ?? 0) > 0;
+    const eventHasBundleMerch = (activeEvent.bundles ?? []).some((b) => (b.merchandise_items?.length ?? 0) > 0);
+    const regHasMerch = registrations.some((r) =>
+      Boolean(r.delivery_request || (r.selected_merchandise && r.selected_merchandise.length > 0)),
+    );
+    return eventHasMerch || eventHasBundleMerch || regHasMerch;
+  }, [activeEvent, registrations]);
+
   return (
     <Tabs defaultValue={hasTeamAccess ? "registrants" : "highlights"} className="space-y-6">
       <div className="scrollbar-none -mx-1 w-full overflow-x-auto px-1 pb-1 sm:mx-0 sm:px-0">
@@ -185,30 +211,36 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
                 <PackageCheck className="size-4" />
                 Bundles
               </TabsTrigger>
-              <TabsTrigger value="delivery" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
-                <Truck className="size-4" />
-                Merchandise Delivery
-              </TabsTrigger>
-              <TabsTrigger value="refunds" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
-                <RotateCcw className="size-4" />
-                Refunds
-                {pendingRefundsCount > 0 && (
-                  <Badge
-                    variant="secondary"
-                    className="ml-1 h-4 px-1.5 text-[10px] bg-amber-500/20 text-amber-700 dark:text-amber-300"
-                  >
-                    {pendingRefundsCount}
-                  </Badge>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="vouchers" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
-                <TicketPercent className="size-4" />
-                Vouchers
-              </TabsTrigger>
-              <TabsTrigger value="payment" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
-                <CreditCard className="size-4" />
-                Payment Gateway
-              </TabsTrigger>
+              {hasMerchandise && (
+                <TabsTrigger value="delivery" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
+                  <Truck className="size-4" />
+                  Merchandise Delivery
+                </TabsTrigger>
+              )}
+              {hasPaidFeatures && (
+                <>
+                  <TabsTrigger value="refunds" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
+                    <RotateCcw className="size-4" />
+                    Refunds
+                    {pendingRefundsCount > 0 && (
+                      <Badge
+                        variant="secondary"
+                        className="ml-1 h-4 bg-amber-500/20 px-1.5 text-[10px] text-amber-700 dark:text-amber-300"
+                      >
+                        {pendingRefundsCount}
+                      </Badge>
+                    )}
+                  </TabsTrigger>
+                  <TabsTrigger value="vouchers" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
+                    <TicketPercent className="size-4" />
+                    Vouchers
+                  </TabsTrigger>
+                  <TabsTrigger value="payment" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
+                    <CreditCard className="size-4" />
+                    Payment Gateway
+                  </TabsTrigger>
+                </>
+              )}
             </>
           )}
 
@@ -250,21 +282,27 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
             <BundlesTab event={activeEvent} />
           </TabsContent>
 
-          <TabsContent value="delivery" className="space-y-4">
-            <MerchandiseDeliveryTab event={activeEvent} eventId={eventId} />
-          </TabsContent>
+          {hasMerchandise && (
+            <TabsContent value="delivery" className="space-y-4">
+              <MerchandiseDeliveryTab event={activeEvent} eventId={eventId} />
+            </TabsContent>
+          )}
 
-          <TabsContent value="refunds" className="space-y-4">
-            <RefundsTab event={activeEvent} eventId={eventId} registrations={registrations} />
-          </TabsContent>
+          {hasPaidFeatures && (
+            <>
+              <TabsContent value="refunds" className="space-y-4">
+                <RefundsTab event={activeEvent} eventId={eventId} registrations={registrations} />
+              </TabsContent>
 
-          <TabsContent value="vouchers" className="space-y-4">
-            <VouchersTab event={activeEvent} />
-          </TabsContent>
+              <TabsContent value="vouchers" className="space-y-4">
+                <VouchersTab event={activeEvent} />
+              </TabsContent>
 
-          <TabsContent value="payment" className="space-y-4">
-            <PaymentGatewayTab event={activeEvent} />
-          </TabsContent>
+              <TabsContent value="payment" className="space-y-4">
+                <PaymentGatewayTab event={activeEvent} />
+              </TabsContent>
+            </>
+          )}
         </>
       )}
 

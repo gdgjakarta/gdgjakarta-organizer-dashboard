@@ -15,7 +15,6 @@ import {
   Globe,
   Heart,
   HelpCircle,
-  Hourglass,
   Image as ImageIcon,
   Layers,
   Loader2,
@@ -180,9 +179,9 @@ function formatLabel(key: string, labelMap: Map<string, string>): string {
     return trimmed;
   }
 
-  // Handle auto-generated IDs e.g. q_123456 or custom_123456
-  if (/^q_\d+$/i.test(trimmed)) {
-    return `Question #${trimmed.replace(/^q_/i, "")}`;
+  // Handle auto-generated IDs e.g. q_123456 or q_123456_abcde
+  if (/^q_\d+/i.test(trimmed)) {
+    return "Archived Form Question";
   }
 
   const words = trimmed
@@ -913,11 +912,15 @@ export function ApplicantDetailDialog({
                     variant="outline"
                     className="shrink-0 border-primary/30 bg-primary/10 text-[10px] font-semibold text-primary"
                   >
-                    {registration.bundle_price !== undefined && registration.bundle_price !== null
-                      ? registration.bundle_price === 0
-                        ? "Free Bundle"
-                        : `Rp ${registration.bundle_price.toLocaleString("id-ID")}`
-                      : "Combo Package"}
+                    {(() => {
+                      if (registration.bundle_price === undefined || registration.bundle_price === null) {
+                        return "Combo Package";
+                      }
+                      if (registration.bundle_price === 0) {
+                        return "Free Bundle";
+                      }
+                      return `Rp ${registration.bundle_price.toLocaleString("id-ID")}`;
+                    })()}
                   </Badge>
                 </div>
               )}

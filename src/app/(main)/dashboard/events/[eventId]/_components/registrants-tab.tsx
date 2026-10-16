@@ -1021,6 +1021,11 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       const mapped = questionLabelMap.get(trimmed.toLowerCase());
       if (mapped) return mapped;
 
+      // Handle auto-generated internal question IDs that are orphaned/deleted
+      if (/^q_\d+/i.test(trimmed)) {
+        return "Archived Question";
+      }
+
       // Preserve strings that are already natural sentence case or title case with spaces
       if (/[A-Z]/.test(trimmed) && trimmed.includes(" ") && !trimmed.includes("_")) {
         return trimmed;
@@ -1075,6 +1080,10 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         if (k === "session_id" || k === "session_title" || k === "bevy_user_id") continue;
         if (v === undefined || v === null || v === "") continue;
 
+        // Skip orphaned/deleted internal question IDs (e.g. q_1791887936517_d35sr)
+        // that are no longer defined in the event's custom_questions
+        if (!fieldMap.has(k) && /^q_\d+/i.test(k)) continue;
+
         const formattedLabel = formatQuestionLabel(k);
         let targetKey = k;
 
@@ -1118,7 +1127,14 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed.questions)) {
-          setSelectedQuestionColumns(parsed.questions);
+          setSelectedQuestionColumns(
+            parsed.questions.filter((col: string) => {
+              if (/^q_\d+/i.test(col)) {
+                return (customQuestions ?? []).some((q) => q.id === col);
+              }
+              return true;
+            }),
+          );
         }
         if (parsed.standard && typeof parsed.standard === "object") {
           setVisibleStandardColumns((prev) => ({ ...prev, ...parsed.standard }));
@@ -1127,7 +1143,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     } catch {
       // Ignore localStorage read errors
     }
-  }, [eventId]);
+  }, [eventId, customQuestions]);
 
   const saveColumnsToStorage = (questions: string[], standard: Record<string, boolean>) => {
     if (typeof window === "undefined" || !eventId) return;

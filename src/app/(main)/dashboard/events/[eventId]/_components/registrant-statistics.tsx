@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
   AlertTriangle,
@@ -273,6 +273,10 @@ export function RegistrantStatistics({
           if (existing) {
             existing.count += 1;
           } else {
+            // Ignore orphaned or deleted internal question IDs (e.g. q_1791887936517_d35sr)
+            // that are no longer defined in the event's custom_questions
+            if (/^q_\d+/i.test(key)) continue;
+
             // Humanize key
             const label = key
               .replace(/[_-]+/g, " ")
@@ -426,19 +430,33 @@ export function RegistrantStatistics({
     );
   }, [availableFields, selectedField]);
 
+  // Ensure pinnedFields only contains currently available fields
+  const validPinnedFields = useMemo(() => {
+    const availableSet = new Set(availableFields.map((f) => f.id));
+    return pinnedFields.filter((id) => availableSet.has(id));
+  }, [pinnedFields, availableFields]);
+
+  // Auto-correct selectedField if it points to an invalid/deleted field
+  useEffect(() => {
+    if (availableFields.length === 0) return;
+    if (selectedField && !availableFields.some((f) => f.id === selectedField)) {
+      setSelectedField(availableFields[0]?.id ?? "");
+    }
+  }, [availableFields, selectedField]);
+
   const togglePinField = (fieldId: string) => {
-    if (pinnedFields.includes(fieldId)) {
-      const nextPinned = pinnedFields.filter((id) => id !== fieldId);
+    if (validPinnedFields.includes(fieldId)) {
+      const nextPinned = validPinnedFields.filter((id) => id !== fieldId);
       setPinnedFields(nextPinned);
       if (selectedField === fieldId) {
         if (nextPinned.length > 0) {
           setSelectedField(nextPinned[0]);
         } else {
-          setSelectedField("");
+          setSelectedField(availableFields[0]?.id ?? "");
         }
       }
     } else {
-      const nextPinned = [...pinnedFields, fieldId];
+      const nextPinned = [...validPinnedFields, fieldId];
       setPinnedFields(nextPinned);
       if (!selectedField) {
         setSelectedField(fieldId);
@@ -521,7 +539,7 @@ export function RegistrantStatistics({
       );
     }
 
-    if (pinnedFields.length === 0 || !selectedField) {
+    if (validPinnedFields.length === 0 || !selectedField) {
       return (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-12 text-center">
           <div className="mb-3 flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
@@ -629,12 +647,12 @@ export function RegistrantStatistics({
         </div>
 
         {/* Secondary Pinned Metrics (if organizer pinned other fields) */}
-        {pinnedFields.filter((f) => f !== selectedField).length > 0 && (
+        {validPinnedFields.filter((f) => f !== selectedField).length > 0 && (
           <div className="mt-6 space-y-3 border-t pt-4">
             <div className="font-semibold text-foreground text-xs">Pinned Comparisons:</div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              {pinnedFields
+              {validPinnedFields
                 .filter((f) => f !== selectedField)
                 .map((fieldId) => {
                   const dist = computeDistribution(fieldId);
@@ -1347,7 +1365,7 @@ export function RegistrantStatistics({
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
                     <Layers className="size-3.5" />
-                    Pinned ({pinnedFields.length})
+                    Pinned ({validPinnedFields.length})
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56 max-h-72 overflow-y-auto text-xs">
@@ -1356,7 +1374,7 @@ export function RegistrantStatistics({
                   {availableFields.map((field) => (
                     <DropdownMenuCheckboxItem
                       key={field.id}
-                      checked={pinnedFields.includes(field.id)}
+                      checked={validPinnedFields.includes(field.id)}
                       onCheckedChange={() => togglePinField(field.id)}
                       onSelect={(event) => event.preventDefault()}
                       className="text-xs"
@@ -1364,7 +1382,7 @@ export function RegistrantStatistics({
                       {field.label}
                     </DropdownMenuCheckboxItem>
                   ))}
-                  {pinnedFields.length > 0 && (
+                  {validPinnedFields.length > 0 && (
                     <>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
