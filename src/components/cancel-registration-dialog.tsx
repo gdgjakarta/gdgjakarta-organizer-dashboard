@@ -99,6 +99,8 @@ export function CancelRegistrationDialog({
         eventId,
         registration.bevy_attendee_id,
         email,
+        registration,
+        { skipBevyRemoval: true, skipPaymentCancel: true },
       );
 
       if (!deleteRes.success) {

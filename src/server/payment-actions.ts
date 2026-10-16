@@ -164,11 +164,19 @@ export async function generatePaymentLinkAction(input: DokuPaymentRequestInput):
       };
     }
 
+    const rawRes = responseData as Record<string, unknown> | null;
+    const resolvedReqId =
+      (typeof rawRes?.requestId === "string" && rawRes.requestId.trim()) ||
+      (typeof rawRes?.originalRequestId === "string" && rawRes.originalRequestId.trim()) ||
+      (typeof rawRes?.request_id === "string" && rawRes.request_id.trim()) ||
+      (typeof rawRes?.original_request_id === "string" && rawRes.original_request_id.trim()) ||
+      parsed.data.requestId;
+
     return {
       success: true,
       paymentUrl: responseData?.paymentUrl,
       invoiceNumber: responseData?.invoiceNumber,
-      requestId: responseData?.requestId ?? parsed.data.requestId,
+      requestId: resolvedReqId,
       amount: responseData?.amount,
       expiredDatetime: responseData?.expiredDatetime,
       message: responseData?.message ?? "Payment link generated successfully.",
@@ -188,6 +196,7 @@ export async function generatePaymentLinkAction(input: DokuPaymentRequestInput):
 const dokuCancelOrderRequestSchema = z.object({
   invoiceNumber: z.string().min(1, "Invoice number is required"),
   originalRequestId: z.string().optional(),
+  requestId: z.string().optional(),
   reason: z.string().optional(),
   customer: z
     .object({
@@ -244,9 +253,13 @@ export async function cancelPaymentLinkAction(input: DokuCancelOrderRequestInput
       headers["x-api-key"] = apiKey;
     }
 
-    const payload: DokuCancelOrderRequest = {
+    const resolvedRequestId =
+      parsed.data.originalRequestId?.trim() || parsed.data.requestId?.trim() || `REQ-${parsed.data.invoiceNumber}`;
+
+    const payload: DokuCancelOrderRequest & { requestId: string } = {
       invoiceNumber: parsed.data.invoiceNumber,
-      originalRequestId: parsed.data.originalRequestId,
+      originalRequestId: resolvedRequestId,
+      requestId: resolvedRequestId,
       reason: parsed.data.reason ?? "Cancelled order via GDG Jakarta Dashboard",
       customer: parsed.data.customer,
       event: parsed.data.event,

@@ -84,6 +84,7 @@ export interface PaymentDispatchResult {
 export interface DokuCancelOrderRequest {
   invoiceNumber: string;
   originalRequestId?: string;
+  requestId?: string;
   reason?: string;
   customer?: Partial<PaymentCustomer>;
   event?: Partial<PaymentEventData>;
@@ -524,11 +525,13 @@ export function buildCancelPaymentPayload(
       : undefined) ??
     (typeof answers.requestId === "string" && answers.requestId.trim().length > 0
       ? answers.requestId.trim()
-      : undefined);
+      : undefined) ??
+    (invoiceNumber ? `REQ-${invoiceNumber}` : `REQ-${Date.now()}`);
 
   return {
     invoiceNumber,
     originalRequestId: rawRequestId,
+    requestId: rawRequestId,
     reason,
     customer: {
       name: extractCustomerName(registration, answers),

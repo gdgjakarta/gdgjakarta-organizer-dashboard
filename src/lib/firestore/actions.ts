@@ -373,6 +373,7 @@ export async function deleteEventRegistrationAction(
   bevyAttendeeId?: number | string | null,
   attendeeEmail?: string | null,
   cachedRegistration?: Partial<FirestoreRegistration>,
+  options?: { skipBevyRemoval?: boolean; skipPaymentCancel?: boolean },
 ) {
   try {
     let resolvedAttendeeId = bevyAttendeeId;
@@ -397,24 +398,26 @@ export async function deleteEventRegistrationAction(
     }
 
     // 1. Remove attendee from Bevy API BEFORE removing from dashboard
-    try {
-      const { removeAttendeeFromBevyAction } = await import("@/server/bevy-actions");
-      const bevyRes = await removeAttendeeFromBevyAction({
-        eventId,
-        attendeeId: resolvedAttendeeId,
-        attendeeEmail: resolvedEmail,
-      });
-      if (!bevyRes.success) {
-        console.warn("[deleteEventRegistrationAction] Bevy attendee deletion warning:", bevyRes.error);
-      } else {
-        console.log("[deleteEventRegistrationAction] Successfully verified/removed attendee from Bevy.");
+    if (!options?.skipBevyRemoval) {
+      try {
+        const { removeAttendeeFromBevyAction } = await import("@/server/bevy-actions");
+        const bevyRes = await removeAttendeeFromBevyAction({
+          eventId,
+          attendeeId: resolvedAttendeeId,
+          attendeeEmail: resolvedEmail,
+        });
+        if (!bevyRes.success) {
+          console.warn("[deleteEventRegistrationAction] Bevy attendee deletion warning:", bevyRes.error);
+        } else {
+          console.log("[deleteEventRegistrationAction] Successfully verified/removed attendee from Bevy.");
+        }
+      } catch (bevyErr) {
+        console.warn("[deleteEventRegistrationAction] Failed to remove attendee from Bevy API:", bevyErr);
       }
-    } catch (bevyErr) {
-      console.warn("[deleteEventRegistrationAction] Failed to remove attendee from Bevy API:", bevyErr);
     }
 
     // 2. Cancel active unexpired DOKU payment order if present
-    if (registrationData) {
+    if (!options?.skipPaymentCancel && registrationData) {
       try {
         const { shouldCancelPaymentOrder } = await import("@/lib/events/payment-deadline");
         if (shouldCancelPaymentOrder(registrationData)) {
