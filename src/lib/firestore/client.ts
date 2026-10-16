@@ -311,6 +311,7 @@ const DEFAULT_REFERRAL_SETTINGS: ReferralProgramSettings = {
   excluded_event_ids: [],
   auto_exclude_roles: [],
   auto_exclude_organizers: false,
+  blocked_redemption_roles: [],
   updated_at: new Date().toISOString(),
 };
 
@@ -394,6 +395,12 @@ export async function getReferralProgramSettings(): Promise<ReferralProgramSetti
       autoExcludeRoles = ["googler", "organizer", "team_member"];
     }
 
+    const rawBlocked = data.blocked_redemption_roles;
+    let blockedRedemptionRoles: string[] = [];
+    if (Array.isArray(rawBlocked)) {
+      blockedRedemptionRoles = rawBlocked.map((r: unknown) => String(r).toLowerCase().trim());
+    }
+
     return {
       default_discount_type: data.default_discount_type === "fixed" ? "fixed" : "percentage",
       default_discount_percentage:
@@ -412,6 +419,7 @@ export async function getReferralProgramSettings(): Promise<ReferralProgramSetti
       excluded_event_ids: Array.isArray(data.excluded_event_ids) ? data.excluded_event_ids : [],
       auto_exclude_roles: autoExcludeRoles,
       auto_exclude_organizers: Boolean(data.auto_exclude_organizers) || autoExcludeRoles.includes("organizer"),
+      blocked_redemption_roles: blockedRedemptionRoles,
       updated_at: data.updated_at ?? new Date().toISOString(),
       updated_by_name: data.updated_by_name,
     };
@@ -646,6 +654,24 @@ export async function validateReferralCode(
             error: "Referral code can only be applied once per account.",
           };
         }
+      }
+    }
+
+    // 4.1 Blocked redemption roles check
+    const blockedRoles = settings.blocked_redemption_roles ?? [];
+    if (blockedRoles.length > 0) {
+      const roleCategory = getMemberRoleCategory(referrerData);
+      if (roleCategory && blockedRoles.includes(roleCategory)) {
+        const roleLabel =
+          roleCategory === "googler"
+            ? "Google staff and advisors"
+            : roleCategory === "organizer"
+              ? "chapter organizers"
+              : "core team members";
+        return {
+          valid: false,
+          error: `Referral codes from ${roleLabel} cannot be redeemed for ticket discounts.`,
+        };
       }
     }
 
@@ -1830,8 +1856,12 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
         const referrerData = referrerDoc.data() as FirestoreMember;
         const referrerId = referrerDoc.id;
 
-        // Ensure not self-referral
-        if (referrerId !== effectiveMemberId) {
+        // Ensure not self-referral and role is not blocked from redemption
+        const blockedRoles = refSettings.blocked_redemption_roles ?? [];
+        const roleCategory = getMemberRoleCategory(referrerData);
+        const isBlocked = roleCategory && blockedRoles.includes(roleCategory);
+
+        if (referrerId !== effectiveMemberId && !isBlocked) {
           const pointsAwarded =
             typeof refSettings.points_per_referral === "number" ? refSettings.points_per_referral : 10;
 

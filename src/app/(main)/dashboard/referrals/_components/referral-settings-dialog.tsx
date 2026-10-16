@@ -72,6 +72,9 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
     }
     return [];
   });
+  const [blockedRedemptionRoles, setBlockedRedemptionRoles] = useState<string[]>(
+    () => initialSettings?.blocked_redemption_roles ?? [],
+  );
   const [excludedEventIds, setExcludedEventIds] = useState<string[]>(initialSettings?.excluded_event_ids ?? []);
   const [availableEvents, setAvailableEvents] = useState<PublishedEventOption[]>([]);
   const [loadingEvents, setLoadingEvents] = useState(false);
@@ -80,7 +83,7 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
     initialSettings?.merch_prize_description ?? "Exclusive GDG Jakarta merchandise bundle",
   );
 
-  // Sync excludedEventIds and enabledCondition when initialSettings change
+  // Sync excludedEventIds, enabledCondition, and blockedRedemptionRoles when initialSettings change
   useEffect(() => {
     if (initialSettings?.excluded_event_ids) {
       setExcludedEventIds(initialSettings.excluded_event_ids);
@@ -88,7 +91,14 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
     if (initialSettings?.enabled_condition) {
       setEnabledCondition(initialSettings.enabled_condition);
     }
-  }, [initialSettings?.excluded_event_ids, initialSettings?.enabled_condition]);
+    if (Array.isArray(initialSettings?.blocked_redemption_roles)) {
+      setBlockedRedemptionRoles(initialSettings.blocked_redemption_roles);
+    }
+  }, [
+    initialSettings?.excluded_event_ids,
+    initialSettings?.enabled_condition,
+    initialSettings?.blocked_redemption_roles,
+  ]);
 
   // Load events when dialog opens
   useEffect(() => {
@@ -132,6 +142,15 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
     });
   };
 
+  const handleRedemptionRoleToggle = (role: "googler" | "organizer" | "team_member", allowRedemption: boolean) => {
+    setBlockedRedemptionRoles((prev) => {
+      if (allowRedemption) {
+        return prev.filter((r) => r !== role);
+      }
+      return prev.includes(role) ? prev : [...prev, role];
+    });
+  };
+
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -144,6 +163,7 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
         enabled_condition: enabledCondition,
         auto_exclude_roles: autoExcludeRoles,
         auto_exclude_organizers: autoExcludeRoles.includes("organizer"),
+        blocked_redemption_roles: blockedRedemptionRoles,
         excluded_member_ids: initialSettings?.excluded_member_ids ?? [],
         excluded_event_ids: excludedEventIds,
         merch_prize_description: prizeDesc.trim(),
@@ -165,6 +185,7 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
           enabled_condition: enabledCondition,
           auto_exclude_roles: autoExcludeRoles,
           auto_exclude_organizers: autoExcludeRoles.includes("organizer"),
+          blocked_redemption_roles: blockedRedemptionRoles,
           excluded_member_ids: initialSettings?.excluded_member_ids ?? [],
           excluded_event_ids: excludedEventIds,
           merch_prize_description: prizeDesc.trim(),
@@ -182,13 +203,13 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs font-medium">
+        <Button variant="outline" size="sm" className="h-8 gap-1.5 font-medium text-xs">
           <Settings className="size-3.5" />
           Referral Settings
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
         <DialogHeader>
           <div className="flex items-center gap-2">
             <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -207,7 +228,7 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
           {/* Master Toggle */}
           <div className="flex items-center justify-between rounded-lg border bg-muted/30 p-3">
             <div className="space-y-0.5">
-              <p className="text-xs font-medium text-foreground">Program Active Status</p>
+              <p className="font-medium text-foreground text-xs">Program Active Status</p>
               <p className="text-[11px] text-muted-foreground">
                 Enable or pause referral redemption and discounts chapter-wide.
               </p>
@@ -220,7 +241,7 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
             <div className="space-y-0.5">
               <div className="flex items-center gap-1.5">
                 <Sliders className="size-4 text-primary" />
-                <p className="text-xs font-medium text-foreground">Referral Enablement Condition</p>
+                <p className="font-medium text-foreground text-xs">Referral Enablement Condition</p>
               </div>
               <p className="text-[11px] text-muted-foreground">
                 Define the event and ticket criteria required for referral codes to appear and be redeemable.
@@ -235,14 +256,14 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
                 className={cn(
                   "flex flex-col gap-1 rounded-lg border p-2.5 text-left transition-all",
                   enabledCondition === "all"
-                    ? "border-primary bg-primary/10 text-primary shadow-xs font-semibold ring-1 ring-primary/30"
-                    : "border-border/80 bg-background/80 hover:bg-muted/40 text-muted-foreground",
+                    ? "border-primary bg-primary/10 font-semibold text-primary shadow-xs ring-1 ring-primary/30"
+                    : "border-border/80 bg-background/80 text-muted-foreground hover:bg-muted/40",
                 )}
               >
                 <div className="flex w-full items-center justify-between">
                   <div className="flex items-center gap-1.5">
                     <Ticket className="size-3.5" />
-                    <span className="text-xs font-semibold">All Events</span>
+                    <span className="font-semibold text-xs">All Events</span>
                   </div>
                   {enabledCondition === "all" && <Check className="size-3 text-primary" />}
                 </div>
@@ -258,14 +279,14 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
                 className={cn(
                   "flex flex-col gap-1 rounded-lg border p-2.5 text-left transition-all",
                   enabledCondition === "paid_events_only"
-                    ? "border-primary bg-primary/10 text-primary shadow-xs font-semibold ring-1 ring-primary/30"
-                    : "border-border/80 bg-background/80 hover:bg-muted/40 text-muted-foreground",
+                    ? "border-primary bg-primary/10 font-semibold text-primary shadow-xs ring-1 ring-primary/30"
+                    : "border-border/80 bg-background/80 text-muted-foreground hover:bg-muted/40",
                 )}
               >
                 <div className="flex w-full items-center justify-between">
                   <div className="flex items-center gap-1.5">
                     <Coins className="size-3.5" />
-                    <span className="text-xs font-semibold">Paid Events</span>
+                    <span className="font-semibold text-xs">Paid Events</span>
                   </div>
                   {enabledCondition === "paid_events_only" && <Check className="size-3 text-primary" />}
                 </div>
@@ -281,14 +302,14 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
                 className={cn(
                   "flex flex-col gap-1 rounded-lg border p-2.5 text-left transition-all",
                   enabledCondition === "paid_tickets_only"
-                    ? "border-primary bg-primary/10 text-primary shadow-xs font-semibold ring-1 ring-primary/30"
-                    : "border-border/80 bg-background/80 hover:bg-muted/40 text-muted-foreground",
+                    ? "border-primary bg-primary/10 font-semibold text-primary shadow-xs ring-1 ring-primary/30"
+                    : "border-border/80 bg-background/80 text-muted-foreground hover:bg-muted/40",
                 )}
               >
                 <div className="flex w-full items-center justify-between">
                   <div className="flex items-center gap-1.5">
                     <CreditCard className="size-3.5" />
-                    <span className="text-xs font-semibold">Paid Passes</span>
+                    <span className="font-semibold text-xs">Paid Passes</span>
                   </div>
                   {enabledCondition === "paid_tickets_only" && <Check className="size-3 text-primary" />}
                 </div>
@@ -302,81 +323,201 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
           {/* Role Auto-Exclusion Controls */}
           <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
             <div className="space-y-0.5">
-              <p className="text-xs font-medium text-foreground">Auto-Exclude Roles</p>
+              <p className="font-medium text-foreground text-xs">Auto-Exclude Roles & Permissions</p>
               <p className="text-[11px] text-muted-foreground">
-                Select chapter roles to automatically filter out from leaderboard rankings and prizes.
+                Configure leaderboard exclusion and attendee discount redemption rules for each chapter role.
               </p>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               {/* Googler */}
-              <div className="flex items-center justify-between rounded-lg border bg-background/80 p-2.5 transition-colors hover:bg-muted/30">
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-1.5">
-                    <p className="text-xs font-medium text-foreground">Googler</p>
-                    <Badge
-                      variant="outline"
-                      className="border-red-500/30 bg-red-500/10 text-red-700 text-[10px] dark:border-red-400/30 dark:bg-red-500/20 dark:text-red-300"
-                    >
-                      Google
-                    </Badge>
+              {(() => {
+                const isExcludedLeaderboard = autoExcludeRoles.includes("googler");
+                const isRedemptionBlocked = blockedRedemptionRoles.includes("googler");
+                return (
+                  <div className="space-y-2 rounded-lg border bg-background/80 p-3 transition-colors hover:bg-muted/20">
+                    <div className="flex items-center justify-between border-border/50 border-b pb-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <p className="font-semibold text-foreground text-xs">Googler</p>
+                        <Badge
+                          variant="outline"
+                          className="border-red-500/30 bg-red-500/10 text-[10px] text-red-700 dark:border-red-400/30 dark:bg-red-500/20 dark:text-red-300"
+                        >
+                          Google
+                        </Badge>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className={
+                          !isRedemptionBlocked
+                            ? "border-emerald-500/30 bg-emerald-500/10 text-[10px] text-emerald-700 dark:text-emerald-300"
+                            : "border-amber-500/30 bg-amber-500/10 text-[10px] text-amber-700 dark:text-amber-300"
+                        }
+                      >
+                        {!isRedemptionBlocked ? "Discounts Allowed" : "Discounts Blocked"}
+                      </Badge>
+                    </div>
+
+                    {/* Leaderboard Ranking Toggle */}
+                    <div className="flex items-center justify-between pt-0.5">
+                      <div className="space-y-0.5 pr-2">
+                        <p className="font-medium text-foreground text-xs">Exclude from Leaderboard</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          Filter out Google staff and advisors from leaderboard rankings and prizes.
+                        </p>
+                      </div>
+                      <Switch
+                        checked={isExcludedLeaderboard}
+                        onCheckedChange={(checked) => handleRoleToggle("googler", checked)}
+                        aria-label="Auto-exclude Googlers from leaderboard"
+                      />
+                    </div>
+
+                    {/* Attendee Discount Redemption Toggle */}
+                    <div className="flex items-center justify-between border-border/60 border-t border-dashed pt-2">
+                      <div className="space-y-0.5 pr-2">
+                        <p className="font-medium text-foreground text-xs">Allow Attendee Redemption</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {!isRedemptionBlocked
+                            ? "Attendees can enter Googler referral codes for ticket discounts."
+                            : "Attendees cannot redeem Googler referral codes during checkout."}
+                        </p>
+                      </div>
+                      <Switch
+                        checked={!isRedemptionBlocked}
+                        onCheckedChange={(checked) => handleRedemptionRoleToggle("googler", checked)}
+                        aria-label="Allow attendee redemption for Googler referral codes"
+                      />
+                    </div>
                   </div>
-                  <p className="text-[11px] text-muted-foreground">
-                    Filter out Google employees and advisors from leaderboard rankings.
-                  </p>
-                </div>
-                <Switch
-                  checked={autoExcludeRoles.includes("googler")}
-                  onCheckedChange={(checked) => handleRoleToggle("googler", checked)}
-                  aria-label="Auto-exclude Googlers"
-                />
-              </div>
+                );
+              })()}
 
               {/* Organizer */}
-              <div className="flex items-center justify-between rounded-lg border bg-background/80 p-2.5 transition-colors hover:bg-muted/30">
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-1.5">
-                    <p className="text-xs font-medium text-foreground">Organizer</p>
-                    <Badge
-                      variant="outline"
-                      className="border-blue-500/30 bg-blue-500/10 text-blue-700 text-[10px] dark:border-blue-400/30 dark:bg-blue-500/20 dark:text-blue-300"
-                    >
-                      Organizer
-                    </Badge>
+              {(() => {
+                const isExcludedLeaderboard = autoExcludeRoles.includes("organizer");
+                const isRedemptionBlocked = blockedRedemptionRoles.includes("organizer");
+                return (
+                  <div className="space-y-2 rounded-lg border bg-background/80 p-3 transition-colors hover:bg-muted/20">
+                    <div className="flex items-center justify-between border-border/50 border-b pb-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <p className="font-semibold text-foreground text-xs">Organizer</p>
+                        <Badge
+                          variant="outline"
+                          className="border-blue-500/30 bg-blue-500/10 text-[10px] text-blue-700 dark:border-blue-400/30 dark:bg-blue-500/20 dark:text-blue-300"
+                        >
+                          Organizer
+                        </Badge>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className={
+                          !isRedemptionBlocked
+                            ? "border-emerald-500/30 bg-emerald-500/10 text-[10px] text-emerald-700 dark:text-emerald-300"
+                            : "border-amber-500/30 bg-amber-500/10 text-[10px] text-amber-700 dark:text-amber-300"
+                        }
+                      >
+                        {!isRedemptionBlocked ? "Discounts Allowed" : "Discounts Blocked"}
+                      </Badge>
+                    </div>
+
+                    {/* Leaderboard Ranking Toggle */}
+                    <div className="flex items-center justify-between pt-0.5">
+                      <div className="space-y-0.5 pr-2">
+                        <p className="font-medium text-foreground text-xs">Exclude from Leaderboard</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          Filter out chapter leads and co-organizers from leaderboard rankings and prizes.
+                        </p>
+                      </div>
+                      <Switch
+                        checked={isExcludedLeaderboard}
+                        onCheckedChange={(checked) => handleRoleToggle("organizer", checked)}
+                        aria-label="Auto-exclude Organizers from leaderboard"
+                      />
+                    </div>
+
+                    {/* Attendee Discount Redemption Toggle */}
+                    <div className="flex items-center justify-between border-border/60 border-t border-dashed pt-2">
+                      <div className="space-y-0.5 pr-2">
+                        <p className="font-medium text-foreground text-xs">Allow Attendee Redemption</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {!isRedemptionBlocked
+                            ? "Attendees can enter Organizer referral codes for ticket discounts."
+                            : "Attendees cannot redeem Organizer referral codes during checkout."}
+                        </p>
+                      </div>
+                      <Switch
+                        checked={!isRedemptionBlocked}
+                        onCheckedChange={(checked) => handleRedemptionRoleToggle("organizer", checked)}
+                        aria-label="Allow attendee redemption for Organizer referral codes"
+                      />
+                    </div>
                   </div>
-                  <p className="text-[11px] text-muted-foreground">
-                    Filter out chapter leads and co-organizers from leaderboard rankings.
-                  </p>
-                </div>
-                <Switch
-                  checked={autoExcludeRoles.includes("organizer")}
-                  onCheckedChange={(checked) => handleRoleToggle("organizer", checked)}
-                  aria-label="Auto-exclude Organizers"
-                />
-              </div>
+                );
+              })()}
 
               {/* Team Member */}
-              <div className="flex items-center justify-between rounded-lg border bg-background/80 p-2.5 transition-colors hover:bg-muted/30">
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-1.5">
-                    <p className="text-xs font-medium text-foreground">Team Member</p>
-                    <Badge
-                      variant="outline"
-                      className="border-purple-500/30 bg-purple-500/10 text-purple-700 text-[10px] dark:border-purple-400/30 dark:bg-purple-500/20 dark:text-purple-300"
-                    >
-                      Core Team
-                    </Badge>
+              {(() => {
+                const isExcludedLeaderboard = autoExcludeRoles.includes("team_member");
+                const isRedemptionBlocked = blockedRedemptionRoles.includes("team_member");
+                return (
+                  <div className="space-y-2 rounded-lg border bg-background/80 p-3 transition-colors hover:bg-muted/20">
+                    <div className="flex items-center justify-between border-border/50 border-b pb-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <p className="font-semibold text-foreground text-xs">Team Member</p>
+                        <Badge
+                          variant="outline"
+                          className="border-purple-500/30 bg-purple-500/10 text-[10px] text-purple-700 dark:border-purple-400/30 dark:bg-purple-500/20 dark:text-purple-300"
+                        >
+                          Core Team
+                        </Badge>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className={
+                          !isRedemptionBlocked
+                            ? "border-emerald-500/30 bg-emerald-500/10 text-[10px] text-emerald-700 dark:text-emerald-300"
+                            : "border-amber-500/30 bg-amber-500/10 text-[10px] text-amber-700 dark:text-amber-300"
+                        }
+                      >
+                        {!isRedemptionBlocked ? "Discounts Allowed" : "Discounts Blocked"}
+                      </Badge>
+                    </div>
+
+                    {/* Leaderboard Ranking Toggle */}
+                    <div className="flex items-center justify-between pt-0.5">
+                      <div className="space-y-0.5 pr-2">
+                        <p className="font-medium text-foreground text-xs">Exclude from Leaderboard</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          Filter out core team crew and chapter staff from leaderboard rankings and prizes.
+                        </p>
+                      </div>
+                      <Switch
+                        checked={isExcludedLeaderboard}
+                        onCheckedChange={(checked) => handleRoleToggle("team_member", checked)}
+                        aria-label="Auto-exclude Team Members from leaderboard"
+                      />
+                    </div>
+
+                    {/* Attendee Discount Redemption Toggle */}
+                    <div className="flex items-center justify-between border-border/60 border-t border-dashed pt-2">
+                      <div className="space-y-0.5 pr-2">
+                        <p className="font-medium text-foreground text-xs">Allow Attendee Redemption</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {!isRedemptionBlocked
+                            ? "Attendees can enter Team Member referral codes for ticket discounts."
+                            : "Attendees cannot redeem Team Member referral codes during checkout."}
+                        </p>
+                      </div>
+                      <Switch
+                        checked={!isRedemptionBlocked}
+                        onCheckedChange={(checked) => handleRedemptionRoleToggle("team_member", checked)}
+                        aria-label="Allow attendee redemption for Team Member referral codes"
+                      />
+                    </div>
                   </div>
-                  <p className="text-[11px] text-muted-foreground">
-                    Filter out core team crew and chapter staff from leaderboard rankings.
-                  </p>
-                </div>
-                <Switch
-                  checked={autoExcludeRoles.includes("team_member")}
-                  onCheckedChange={(checked) => handleRoleToggle("team_member", checked)}
-                  aria-label="Auto-exclude Team Members"
-                />
-              </div>
+                );
+              })()}
             </div>
           </div>
 
@@ -386,10 +527,10 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
               <div className="space-y-0.5">
                 <div className="flex items-center gap-1.5">
                   <CalendarX className="size-4 text-amber-600 dark:text-amber-400" />
-                  <p className="text-xs font-medium text-foreground">Excluded Events</p>
+                  <p className="font-medium text-foreground text-xs">Excluded Events</p>
                   <Badge
                     variant="outline"
-                    className="border-amber-500/30 bg-amber-500/10 text-amber-700 text-[10px] dark:text-amber-300"
+                    className="border-amber-500/30 bg-amber-500/10 text-[10px] text-amber-700 dark:text-amber-300"
                   >
                     {excludedEventIds.length} {excludedEventIds.length === 1 ? "event" : "events"} excluded
                   </Badge>
@@ -408,7 +549,7 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
                   variant="outline"
                   size="sm"
                   disabled={loadingEvents}
-                  className="h-8 w-full justify-between px-3 text-xs font-normal"
+                  className="h-8 w-full justify-between px-3 font-normal text-xs"
                 >
                   <span className="flex items-center gap-1.5 text-muted-foreground">
                     {loadingEvents ? (
@@ -448,7 +589,7 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
                                 {ev.thumbnailUrl && (
                                   <AvatarImage src={ev.thumbnailUrl} alt={ev.title} className="object-cover" />
                                 )}
-                                <AvatarFallback className="rounded-md bg-primary/10 text-primary text-[10px]">
+                                <AvatarFallback className="rounded-md bg-primary/10 text-[10px] text-primary">
                                   <Calendar className="size-3" />
                                 </AvatarFallback>
                               </Avatar>
@@ -463,7 +604,7 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
                               {isExcluded ? (
                                 <Badge
                                   variant="outline"
-                                  className="border-amber-500/30 bg-amber-500/10 text-amber-700 text-[10px] dark:text-amber-300"
+                                  className="border-amber-500/30 bg-amber-500/10 text-[10px] text-amber-700 dark:text-amber-300"
                                 >
                                   <Check className="mr-0.5 size-2.5" /> Excluded
                                 </Badge>
@@ -497,7 +638,7 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
                           {ev?.thumbnailUrl && (
                             <AvatarImage src={ev.thumbnailUrl} alt={ev.title} className="object-cover" />
                           )}
-                          <AvatarFallback className="rounded-md bg-amber-500/10 text-amber-700 text-[10px] dark:text-amber-300">
+                          <AvatarFallback className="rounded-md bg-amber-500/10 text-[10px] text-amber-700 dark:text-amber-300">
                             <Calendar className="size-3.5" />
                           </AvatarFallback>
                         </Avatar>
@@ -521,7 +662,7 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
                 })}
               </div>
             ) : (
-              <div className="rounded-lg border border-dashed border-border/80 bg-background/40 p-3 text-center">
+              <div className="rounded-lg border border-border/80 border-dashed bg-background/40 p-3 text-center">
                 <p className="text-muted-foreground text-xs">No events excluded from referrals.</p>
                 <p className="text-[10px] text-muted-foreground/80">
                   Attendees can redeem referral codes across all chapter events.
@@ -533,7 +674,7 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
           {/* Discount Configuration: Type & Value */}
           <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
             <div className="space-y-1">
-              <FieldLabel className="text-xs font-medium">Default Discount Type</FieldLabel>
+              <FieldLabel className="font-medium text-xs">Default Discount Type</FieldLabel>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
@@ -541,8 +682,8 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
                   className={cn(
                     "flex items-center gap-2 rounded-lg border p-2.5 text-left transition-all",
                     discountType === "percentage"
-                      ? "border-primary bg-primary/10 text-primary shadow-xs font-semibold"
-                      : "border-border hover:bg-muted/50 text-muted-foreground",
+                      ? "border-primary bg-primary/10 font-semibold text-primary shadow-xs"
+                      : "border-border text-muted-foreground hover:bg-muted/50",
                   )}
                 >
                   <div
@@ -562,8 +703,8 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
                   className={cn(
                     "flex items-center gap-2 rounded-lg border p-2.5 text-left transition-all",
                     discountType === "fixed"
-                      ? "border-primary bg-primary/10 text-primary shadow-xs font-semibold"
-                      : "border-border hover:bg-muted/50 text-muted-foreground",
+                      ? "border-primary bg-primary/10 font-semibold text-primary shadow-xs"
+                      : "border-border text-muted-foreground hover:bg-muted/50",
                   )}
                 >
                   <div
@@ -581,7 +722,7 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
 
             {discountType === "percentage" ? (
               <Field>
-                <FieldLabel className="text-xs font-medium">Default Ticket Discount Percentage (%)</FieldLabel>
+                <FieldLabel className="font-medium text-xs">Default Ticket Discount Percentage (%)</FieldLabel>
                 <div className="relative mt-1">
                   <Input
                     type="number"
@@ -591,7 +732,7 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
                     onChange={(e) => setDiscountPercent(Math.min(100, Math.max(0, Number(e.target.value))))}
                     className="h-8 pr-8 font-mono text-xs"
                   />
-                  <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs text-muted-foreground">
+                  <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-muted-foreground text-xs">
                     %
                   </span>
                 </div>
@@ -601,9 +742,9 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
               </Field>
             ) : (
               <Field>
-                <FieldLabel className="text-xs font-medium">Default Ticket Fixed Discount (Rp)</FieldLabel>
+                <FieldLabel className="font-medium text-xs">Default Ticket Fixed Discount (Rp)</FieldLabel>
                 <div className="relative mt-1">
-                  <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-xs font-medium text-muted-foreground">
+                  <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center font-medium text-muted-foreground text-xs">
                     Rp
                   </span>
                   <Input
@@ -624,7 +765,7 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
 
           {/* Points Per Referral */}
           <Field>
-            <FieldLabel className="text-xs font-medium">Points Awarded Per Referred Booking</FieldLabel>
+            <FieldLabel className="font-medium text-xs">Points Awarded Per Referred Booking</FieldLabel>
             <Input
               type="number"
               min={1}
@@ -640,7 +781,7 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
 
           {/* Merchandise Prize Description */}
           <Field>
-            <FieldLabel className="text-xs font-medium">Merchandise Grand Prize Description</FieldLabel>
+            <FieldLabel className="font-medium text-xs">Merchandise Grand Prize Description</FieldLabel>
             <Textarea
               rows={2}
               value={prizeDesc}
@@ -658,7 +799,7 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
           <Button variant="ghost" size="sm" onClick={() => setOpen(false)} disabled={saving} className="h-8 text-xs">
             Cancel
           </Button>
-          <Button size="sm" onClick={handleSave} disabled={saving} className="h-8 text-xs font-medium">
+          <Button size="sm" onClick={handleSave} disabled={saving} className="h-8 font-medium text-xs">
             {saving ? "Saving..." : "Save Settings"}
           </Button>
         </DialogFooter>

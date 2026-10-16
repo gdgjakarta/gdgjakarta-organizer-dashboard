@@ -676,6 +676,7 @@ export interface ReferralProgramSettings {
   excluded_event_ids?: string[]; // IDs of events excluded from the referral program
   auto_exclude_roles?: Array<"googler" | "organizer" | "team_member" | string>; // Selected roles to automatically exclude from leaderboard
   auto_exclude_organizers?: boolean; // When true, members with roles Organizer/Core Team are excluded (legacy compatibility)
+  blocked_redemption_roles?: Array<"googler" | "organizer" | "team_member" | string>; // Selected roles whose referral codes cannot be redeemed by attendees
   updated_at: string;
   updated_by_name?: string;
 }
