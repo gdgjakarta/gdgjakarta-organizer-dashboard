@@ -432,19 +432,21 @@ export function RefundRequestDialog({
           </div>
 
           {/* Acknowledgment Checkbox */}
-          <div className="flex items-start gap-2.5 rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
+          <div className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3.5 transition-colors hover:bg-amber-500/10">
             <Checkbox
               id="refund-acknowledge"
               checked={hasAcknowledged}
               onCheckedChange={(checked) => setHasAcknowledged(Boolean(checked))}
-              className="mt-0.5 border-amber-500/60 data-[state=checked]:bg-amber-600 data-[state=checked]:border-amber-600"
+              className="mt-0.5 shrink-0 border-amber-500/60 data-[state=checked]:border-amber-600 data-[state=checked]:bg-amber-600 data-[state=checked]:text-white dark:border-amber-400 dark:data-[state=checked]:bg-amber-500"
             />
             <Label
               htmlFor="refund-acknowledge"
-              className="cursor-pointer select-none font-medium text-xs text-foreground leading-relaxed"
+              className="block cursor-pointer select-none font-normal text-xs text-foreground leading-relaxed"
             >
-              I understand and agree that submitting this refund request will <strong>cancel my RSVP</strong> and I will{" "}
-              <strong>forfeit my spot</strong> to join this event.
+              I understand and agree that submitting this refund request will{" "}
+              <strong className="font-semibold text-destructive">cancel my RSVP</strong> and I will{" "}
+              <strong className="font-semibold text-foreground">forfeit my spot</strong> to join this event.{" "}
+              <span className="font-bold text-destructive">*</span>
             </Label>
           </div>
 

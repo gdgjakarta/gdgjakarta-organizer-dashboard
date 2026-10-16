@@ -983,7 +983,7 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
                 </p>
                 <div className="mx-auto w-full max-w-md rounded-xl border border-border bg-card p-4 shadow-xs">
                   <div className="mb-2.5 flex items-center justify-between gap-2">
-                    <span className="truncate font-semibold text-xs">{event.title ?? "GDG Jakarta Tech Event"}</span>
+                    <span className="truncate font-semibold text-xs">{event.title}</span>
                     <Badge
                       variant="outline"
                       className="shrink-0 border-indigo-500/40 text-[10px] text-indigo-600 dark:text-indigo-400"
@@ -1046,11 +1046,13 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
                   </div>
 
                   {/* Checkbox preview */}
-                  <div className="flex items-start gap-2.5 rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
-                    <Checkbox checked disabled className="mt-0.5 cursor-default" />
-                    <Label className="cursor-default font-medium text-xs text-foreground leading-snug">
-                      I understand and agree that submitting this refund request will cancel my RSVP and I will forfeit
-                      my spot to join this event. <span className="text-destructive">*</span>
+                  <div className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3.5">
+                    <Checkbox checked disabled className="mt-0.5 shrink-0 cursor-default" />
+                    <Label className="block cursor-default font-normal text-xs text-foreground leading-relaxed">
+                      I understand and agree that submitting this refund request will{" "}
+                      <strong className="font-semibold text-destructive">cancel my RSVP</strong> and I will{" "}
+                      <strong className="font-semibold text-foreground">forfeit my spot</strong> to join this event.{" "}
+                      <span className="font-bold text-destructive">*</span>
                     </Label>
                   </div>
                 </div>
