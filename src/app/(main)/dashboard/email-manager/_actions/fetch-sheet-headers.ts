@@ -4,8 +4,10 @@ import { google } from "googleapis";
 
 import { extractApiMessage } from "@/lib/utils";
 
-export async function fetchSheetHeaders(spreadsheetUrl: string, sheetName: string) {
+export async function fetchSheetHeaders(spreadsheetUrl: string, sheetName: string, headerRow = 1) {
   try {
+    const rowNumber = Math.max(1, Math.floor(Number(headerRow) || 1));
+
     // Extract Spreadsheet ID from URL
     const match = spreadsheetUrl.match(/\/d\/([a-zA-Z0-9-_]+)/);
     if (!match?.[1]) {
@@ -21,20 +23,21 @@ export async function fetchSheetHeaders(spreadsheetUrl: string, sheetName: strin
         const sheets = google.sheets("v4");
         const response = await sheets.spreadsheets.values.get({
           spreadsheetId,
-          range: `${sheetName}!1:1`,
+          range: `${sheetName}!${rowNumber}:${rowNumber}`,
           key: apiKey,
         });
 
         const rows = response.data.values;
         if (!rows || rows.length === 0) {
-          return { success: true, headers: [], message: "No headers found in the first row." };
+          return { success: true, headers: [], message: `No titles found in row ${rowNumber}.` };
         }
 
-        const headers = rows[0].map(String).filter(Boolean);
+        const headers = rows[0].map((v) => String(v ?? "").trim()).filter((v) => v.length > 0);
+
         return {
           success: true,
           headers,
-          message: `Successfully loaded ${headers.length} tag${headers.length === 1 ? "" : "s"} from the sheet.`,
+          message: `Successfully loaded ${headers.length} tag${headers.length === 1 ? "" : "s"} from row ${rowNumber}.`,
         };
       } catch (apiError: unknown) {
         console.warn("[fetchSheetHeaders] Google Sheets API error, falling back to public gviz endpoint:", apiError);
@@ -42,16 +45,32 @@ export async function fetchSheetHeaders(spreadsheetUrl: string, sheetName: strin
     }
 
     // Fallback: Read public sheets via the gviz export endpoint (doesn't require API key for public sheets)
-    const gvizUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(
+    // headers=0 prevents gviz from automatically combining multiple rows as column titles
+    const gvizUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&headers=0&sheet=${encodeURIComponent(
       sheetName,
-    )}`;
-    const response = await fetch(gvizUrl, {
+    )}&range=${rowNumber}:${rowNumber}`;
+
+    let response = await fetch(gvizUrl, {
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       },
       next: { revalidate: 0 },
     });
+
+    // If range query fails on gviz, fallback to fetching without range and slicing rows manually
+    if (!response.ok) {
+      const fallbackUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(
+        sheetName,
+      )}`;
+      response = await fetch(fallbackUrl, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        },
+        next: { revalidate: 0 },
+      });
+    }
 
     if (!response.ok) {
       return {
@@ -62,22 +81,48 @@ export async function fetchSheetHeaders(spreadsheetUrl: string, sheetName: strin
     }
 
     const csvText = await response.text();
-    const firstRow = csvText.split("\n")[0];
+    const csvRows = csvText.split(/\r?\n/).filter((line) => line.trim().length > 0);
 
-    if (!firstRow) {
-      return { success: true, headers: [], message: "The sheet appears to be empty." };
+    // If range=${rowNumber}:${rowNumber} succeeded, the target row is index 0; otherwise it's index rowNumber - 1
+    const targetRow = csvRows.length === 1 ? csvRows[0] : (csvRows[rowNumber - 1] ?? csvRows[0]);
+
+    if (!targetRow) {
+      return { success: true, headers: [], message: `Row ${rowNumber} appears to be empty.` };
     }
 
-    // Simple CSV parser for the first row (removes surrounding quotes)
-    const headers = firstRow
-      .split(",")
+    // Robust CSV row parser that handles quoted commas
+    const parseCsvRow = (rowStr: string): string[] => {
+      const result: string[] = [];
+      let current = "";
+      let inQuotes = false;
+      for (let i = 0; i < rowStr.length; i++) {
+        const char = rowStr[i];
+        if (char === '"') {
+          if (inQuotes && rowStr[i + 1] === '"') {
+            current += '"';
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (char === "," && !inQuotes) {
+          result.push(current.trim());
+          current = "";
+        } else {
+          current += char;
+        }
+      }
+      result.push(current.trim());
+      return result;
+    };
+
+    const headers = parseCsvRow(targetRow)
       .map((h) => h.replace(/^"|"$/g, "").trim())
-      .filter(Boolean);
+      .filter((h) => h.length > 0);
 
     return {
       success: true,
       headers,
-      message: `Successfully loaded ${headers.length} tag${headers.length === 1 ? "" : "s"} from sheet "${sheetName}".`,
+      message: `Successfully loaded ${headers.length} tag${headers.length === 1 ? "" : "s"} from row ${rowNumber} of "${sheetName}".`,
     };
   } catch (error: unknown) {
     console.error("[fetchSheetHeaders] Error:", error);

@@ -1,6 +1,8 @@
 "use client";
 
-import { Calendar, Code, GripVertical, Sparkles, User } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+
+import { Calendar, Code, FileSpreadsheet, GripVertical, Loader2, Sparkles, User } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -143,14 +145,36 @@ export const PREBUILT_HTML_BLOCKS: DraggableTokenItem[] = [
 
 interface DraggableTokensPanelProps {
   onInsertToken: (tokenOrSnippet: string) => void;
+  sheetTokens?: string[];
+  isLoadingSheetTokens?: boolean;
   className?: string;
 }
 
-export function DraggableTokensPanel({ onInsertToken, className }: DraggableTokensPanelProps) {
+export function DraggableTokensPanel({
+  onInsertToken,
+  sheetTokens = [],
+  isLoadingSheetTokens = false,
+  className,
+}: DraggableTokensPanelProps) {
+  const [activeTab, setActiveTab] = useState<string>("event");
+
+  const validSheetTokens = useMemo(() => {
+    return sheetTokens.map((t) => t.trim()).filter((t) => t.length > 0);
+  }, [sheetTokens]);
+
+  // When sheet tokens are loaded and available, switch to sheet tab automatically
+  useEffect(() => {
+    if (validSheetTokens.length > 0) {
+      setActiveTab("sheet");
+    }
+  }, [validSheetTokens.length]);
+
   const handleDragStart = (e: React.DragEvent<HTMLElement>, content: string) => {
     e.dataTransfer.setData("text/plain", content);
     e.dataTransfer.effectAllowed = "copy";
   };
+
+  const hasSheetTokens = validSheetTokens.length > 0 || isLoadingSheetTokens;
 
   return (
     <div className={cn("flex flex-col rounded-lg border bg-card/60 p-3 shadow-xs", className)}>
@@ -162,8 +186,8 @@ export function DraggableTokensPanel({ onInsertToken, className }: DraggableToke
         <span className="text-[11px] text-muted-foreground">Drag &amp; drop into editor or click to insert</span>
       </div>
 
-      <Tabs defaultValue="event" className="w-full">
-        <TabsList className="grid h-8 w-full grid-cols-3">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className={cn("grid h-8 w-full", hasSheetTokens ? "grid-cols-4" : "grid-cols-3")}>
           <TabsTrigger value="event" className="gap-1 text-[11px]">
             <Calendar className="size-3 text-sky-500" />
             Event Data
@@ -172,6 +196,17 @@ export function DraggableTokensPanel({ onInsertToken, className }: DraggableToke
             <User className="size-3 text-emerald-500" />
             Attendee Data
           </TabsTrigger>
+          {hasSheetTokens && (
+            <TabsTrigger value="sheet" className="gap-1 text-[11px]">
+              <FileSpreadsheet className="size-3 text-teal-500" />
+              Sheet Data
+              {validSheetTokens.length > 0 && (
+                <Badge variant="secondary" className="h-4 px-1 font-normal text-[9px]">
+                  {validSheetTokens.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+          )}
           <TabsTrigger value="blocks" className="gap-1 text-[11px]">
             <Code className="size-3 text-indigo-500" />
             HTML Blocks
@@ -226,7 +261,50 @@ export function DraggableTokensPanel({ onInsertToken, className }: DraggableToke
           </div>
         </TabsContent>
 
-        {/* Tab 3: Pre-built HTML Blocks */}
+        {/* Tab 3: Sheet Data Column Tokens */}
+        {hasSheetTokens && (
+          <TabsContent value="sheet" className="mt-2.5 space-y-1.5">
+            {isLoadingSheetTokens && (
+              <div className="flex items-center justify-center gap-2 py-4 text-muted-foreground text-xs">
+                <Loader2 className="size-4 animate-spin text-teal-500" />
+                <span>Loading column titles from sheet...</span>
+              </div>
+            )}
+            {!isLoadingSheetTokens && validSheetTokens.length === 0 && (
+              <div className="py-3 text-center text-muted-foreground text-xs">
+                No non-empty column titles found in the configured row position.
+              </div>
+            )}
+            {!isLoadingSheetTokens && validSheetTokens.length > 0 && (
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+                {validSheetTokens.map((title) => {
+                  const tag = `[[${title}]]`;
+                  return (
+                    <button
+                      type="button"
+                      key={title}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, tag)}
+                      onClick={() => onInsertToken(tag)}
+                      title={`Insert ${tag} (Drag to editor or click to insert)`}
+                      className="group flex cursor-grab items-center gap-1.5 rounded-md border border-teal-500/25 bg-teal-500/10 px-2 py-1.5 text-left transition-all hover:border-teal-500/50 hover:bg-teal-500/15 active:cursor-grabbing"
+                    >
+                      <GripVertical className="size-3 text-teal-600/50 group-hover:text-teal-600 dark:text-teal-400" />
+                      <div className="flex min-w-0 flex-1 flex-col">
+                        <span className="truncate font-semibold text-[11px] text-teal-700 dark:text-teal-300">
+                          {title}
+                        </span>
+                        <span className="truncate font-mono text-[9px] text-muted-foreground">{tag}</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </TabsContent>
+        )}
+
+        {/* Tab 4: Pre-built HTML Blocks */}
         <TabsContent value="blocks" className="mt-2.5 space-y-1.5">
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             {PREBUILT_HTML_BLOCKS.map((block) => (

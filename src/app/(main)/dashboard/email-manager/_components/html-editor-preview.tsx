@@ -20,13 +20,15 @@ interface HtmlEditorPreviewProps {
   onChange: (value: string) => void;
   selectedEvent?: PublishedEventOption;
   availableTags?: string[];
+  isLoadingTags?: boolean;
 }
 
 export function HtmlEditorPreview({
   value,
   onChange,
   selectedEvent,
-  availableTags: _availableTags = [],
+  availableTags = [],
+  isLoadingTags = false,
 }: HtmlEditorPreviewProps) {
   const editorRef = useRef<EditorInstance | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -131,7 +133,11 @@ export function HtmlEditorPreview({
   return (
     <div className="flex w-full flex-col space-y-4">
       {/* Draggable Template Tokens & Component Blocks */}
-      <DraggableTokensPanel onInsertToken={insertContent} />
+      <DraggableTokensPanel
+        onInsertToken={insertContent}
+        sheetTokens={availableTags}
+        isLoadingSheetTokens={isLoadingTags}
+      />
 
       {/* Editor & Preview Grid */}
       <div className="grid min-h-160 grid-cols-1 gap-4 xl:grid-cols-2">

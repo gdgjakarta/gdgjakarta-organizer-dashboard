@@ -21,6 +21,7 @@ const bulkEmailSchema = z.object({
   audienceLabel: z.string().optional(),
   spreadsheetUrl: z.string().url().optional().or(z.literal("")),
   sheetName: z.string().optional(),
+  headerRow: z.number().int().min(1).optional(),
   subject: z.string().min(1, "Subject is required"),
   headerUrl: z.string().optional(),
   body: z.string().min(1, "Email body HTML is required"),
@@ -88,6 +89,7 @@ export async function sendEmailBlast(data: BulkEmailInput) {
     audienceLabel: validData.audienceLabel || "",
     spreadsheetUrl: validData.spreadsheetUrl || "",
     sheetName: validData.sheetName || "",
+    headerRow: validData.headerRow ?? 1,
     subjectEmail: validData.subject,
     headerUrl:
       validData.headerUrl || "https://assets.gdgjakarta.org/gdg-jakarta/gdg-jakarta-emailheaders-1244x388-blue.png",

@@ -32,6 +32,7 @@ const formSchema = z.object({
   audienceType: z.string().optional(),
   spreadsheetUrl: z.string().optional(),
   sheetName: z.string().optional(),
+  headerRow: z.coerce.number().int().min(1, { message: "Header row position must be at least 1." }).default(1),
   subject: z.string().min(1, { message: "Subject is required." }),
   headerUrl: z.string().optional(),
   body: z.string().min(1, { message: "Email HTML body is required." }),
@@ -58,6 +59,7 @@ export function EmailBlastForm({ onSuccess, showHeader = true }: EmailBlastFormP
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [availableSheets, setAvailableSheets] = useState<string[]>([]);
   const [isLoadingSheets, setIsLoadingSheets] = useState(false);
+  const [isLoadingTags, setIsLoadingTags] = useState(false);
 
   const [, startTransition] = useTransition();
 
@@ -76,6 +78,7 @@ export function EmailBlastForm({ onSuccess, showHeader = true }: EmailBlastFormP
       audienceType: "ticket_all",
       spreadsheetUrl: "",
       sheetName: "",
+      headerRow: 1,
       subject: "",
       headerUrl: "",
       body: defaultHtmlTemplate,
@@ -87,6 +90,7 @@ export function EmailBlastForm({ onSuccess, showHeader = true }: EmailBlastFormP
   const audienceType = watch("audienceType");
   const spreadsheetUrl = watch("spreadsheetUrl");
   const sheetName = watch("sheetName");
+  const headerRow = watch("headerRow");
   const bodyValue = watch("body");
 
   const lastFetchedUrl = useRef("");
@@ -171,23 +175,38 @@ export function EmailBlastForm({ onSuccess, showHeader = true }: EmailBlastFormP
 
   const handleLoadTags = useCallback(async () => {
     if (!spreadsheetUrl || !sheetName) return;
+    const rowNum = Math.max(1, Math.floor(Number(headerRow) || 1));
+    setIsLoadingTags(true);
     startTransition(async () => {
       try {
-        const res = await fetchSheetHeaders(spreadsheetUrl, sheetName);
+        const res = await fetchSheetHeaders(spreadsheetUrl, sheetName, rowNum);
         if (res.success && res.headers) {
           setAvailableTags(res.headers);
+          if (res.headers.length > 0) {
+            toast.success("Sheet Headers Loaded", {
+              description: `Loaded ${res.headers.length} column token${res.headers.length === 1 ? "" : "s"} from row ${rowNum}.`,
+            });
+          } else {
+            toast.info("No Column Titles Found", {
+              description: `Row ${rowNum} contains no non-empty column titles.`,
+            });
+          }
         } else if (!res.success && res.error) {
+          setAvailableTags([]);
           toast.error("Failed to load sheet headers", {
             description: res.error,
           });
         }
       } catch (err) {
+        setAvailableTags([]);
         toast.error("Failed to load sheet headers", {
           description: extractApiMessage(err),
         });
+      } finally {
+        setIsLoadingTags(false);
       }
     });
-  }, [spreadsheetUrl, sheetName]);
+  }, [spreadsheetUrl, sheetName, headerRow]);
 
   // Google Sheets auto-fetch listeners
   useEffect(() => {
@@ -205,12 +224,16 @@ export function EmailBlastForm({ onSuccess, showHeader = true }: EmailBlastFormP
 
   useEffect(() => {
     if (recipientSource !== "spreadsheet" || !sheetName || !spreadsheetUrl) return;
-    const combination = `${spreadsheetUrl}|${sheetName}`;
+    const combination = `${spreadsheetUrl}|${sheetName}|${headerRow || 1}`;
     if (combination === lastFetchedSheetName.current) return;
 
-    lastFetchedSheetName.current = combination;
-    void handleLoadTags();
-  }, [sheetName, spreadsheetUrl, recipientSource, handleLoadTags]);
+    const timer = setTimeout(() => {
+      lastFetchedSheetName.current = combination;
+      void handleLoadTags();
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [sheetName, spreadsheetUrl, headerRow, recipientSource, handleLoadTags]);
 
   async function onSubmit(data: FormValues) {
     if (data.recipientSource === "audience" && recipientCount === 0) {
@@ -233,6 +256,7 @@ export function EmailBlastForm({ onSuccess, showHeader = true }: EmailBlastFormP
         audienceLabel: data.audienceType,
         spreadsheetUrl: data.spreadsheetUrl,
         sheetName: data.sheetName,
+        headerRow: data.headerRow ?? 1,
         subject: data.subject,
         headerUrl: data.headerUrl,
         body: data.body,
@@ -354,33 +378,87 @@ export function EmailBlastForm({ onSuccess, showHeader = true }: EmailBlastFormP
                       </div>
                     </div>
 
-                    <div className="space-y-1">
-                      <FieldLabel htmlFor="sheetName" className="text-xs">
-                        Sheet Tab Name
-                      </FieldLabel>
-                      <Select
-                        value={sheetName || ""}
-                        onValueChange={(val) => setValue("sheetName", val, { shouldValidate: true })}
-                        disabled={isSubmitting || isLoadingSheets || availableSheets.length === 0}
-                      >
-                        <SelectTrigger id="sheetName" className="w-full">
-                          <SelectValue
-                            placeholder={
-                              availableSheets.length > 0 ? "Select a sheet tab" : "Enter spreadsheet URL to load sheets"
-                            }
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <FieldLabel htmlFor="sheetName" className="text-xs">
+                          Sheet Tab Name
+                        </FieldLabel>
+                        <Select
+                          value={sheetName || ""}
+                          onValueChange={(val) => setValue("sheetName", val, { shouldValidate: true })}
+                          disabled={isSubmitting || isLoadingSheets || availableSheets.length === 0}
+                        >
+                          <SelectTrigger id="sheetName" className="w-full">
+                            <SelectValue
+                              placeholder={
+                                availableSheets.length > 0
+                                  ? "Select a sheet tab"
+                                  : "Enter spreadsheet URL to load sheets"
+                              }
+                            />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              {availableSheets.map((sheet) => (
+                                <SelectItem key={sheet} value={sheet}>
+                                  {sheet}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <FieldLabel htmlFor="headerRow" className="text-xs">
+                            Row Title Position (Row #)
+                          </FieldLabel>
+                          <span className="text-[10px] text-muted-foreground">Default: 1</span>
+                        </div>
+                        <div className="flex gap-2">
+                          <Input
+                            id="headerRow"
+                            type="number"
+                            min={1}
+                            placeholder="1"
+                            {...register("headerRow", { valueAsNumber: true })}
+                            disabled={isSubmitting || isLoadingTags}
+                            className="h-9"
                           />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectGroup>
-                            {availableSheets.map((sheet) => (
-                              <SelectItem key={sheet} value={sheet}>
-                                {sheet}
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={handleLoadTags}
+                            disabled={isSubmitting || isLoadingTags || !spreadsheetUrl || !sheetName}
+                            className="h-9 shrink-0 gap-1 px-2.5 text-xs"
+                          >
+                            {isLoadingTags ? (
+                              <Loader2 className="size-3.5 animate-spin" />
+                            ) : (
+                              <RefreshCw className="size-3.5" />
+                            )}
+                            Fetch Headers
+                          </Button>
+                        </div>
+                        <FieldDescription className="text-[11px]">
+                          Position of the row that contains column titles.
+                        </FieldDescription>
+                        {errors.headerRow && <FieldError>{errors.headerRow.message}</FieldError>}
+                      </div>
                     </div>
+
+                    {availableTags.length > 0 && (
+                      <div className="flex items-center gap-1.5 rounded-md border border-teal-500/20 bg-teal-500/5 px-2.5 py-1.5 text-teal-700 text-xs dark:text-teal-300">
+                        <FileSpreadsheet className="size-3.5 shrink-0" />
+                        <span>
+                          <strong>{availableTags.length}</strong> non-empty column{" "}
+                          {availableTags.length === 1 ? "token" : "tokens"} loaded from row {headerRow || 1}. Drag and
+                          drop them in the editor below.
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </TabsContent>
               </Tabs>
@@ -429,6 +507,7 @@ export function EmailBlastForm({ onSuccess, showHeader = true }: EmailBlastFormP
                 onChange={(newVal) => setValue("body", newVal, { shouldValidate: true })}
                 selectedEvent={selectedEvent}
                 availableTags={availableTags}
+                isLoadingTags={isLoadingTags}
               />
               {errors.body && <FieldError>{errors.body.message}</FieldError>}
             </FieldContent>
