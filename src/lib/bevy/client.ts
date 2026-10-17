@@ -186,7 +186,7 @@ export async function getUserById(
 
 export interface ImportMemberParams {
   firstName: string;
-  lastName: string;
+  lastName?: string;
   email: string;
 }
 
@@ -207,10 +207,29 @@ export async function importMemberToBevy(params: ImportMemberParams): Promise<Im
   const webhookUrl = "https://n8n.gdgjakarta.com/webhook/api/import-member";
   const apiKey = process.env.N8N_WEBHOOK_API_KEY || "";
 
+  const trimmedFirst = params.firstName?.trim() || "";
+  let safeFirstName = trimmedFirst;
+  let safeLastName = params.lastName?.trim() || "";
+
+  // If last name is empty, check if first name contains multiple words to split, otherwise default to '.' (mononym)
+  if (!safeLastName) {
+    const parts = trimmedFirst.split(/\s+/);
+    if (parts.length > 1) {
+      safeLastName = parts.pop() || ".";
+      safeFirstName = parts.join(" ");
+    } else {
+      safeLastName = ".";
+    }
+  }
+
+  if (!safeFirstName) {
+    safeFirstName = params.email.split("@")[0] || "Member";
+  }
+
   const payload = {
-    first_name: params.firstName,
-    last_name: params.lastName,
-    email: params.email,
+    first_name: safeFirstName,
+    last_name: safeLastName,
+    email: params.email.trim(),
   };
 
   try {
@@ -497,7 +516,7 @@ export async function validateBevyOrganizer(
       if (!safeFirstName) {
         safeFirstName = displayName?.trim() || normalizedEmail.split("@")[0] || "Member";
       }
-      const safeLastName = (lastName?.trim() ?? splitLast ?? "").trim();
+      const safeLastName = (lastName?.trim() ?? splitLast ?? "").trim() || ".";
 
       const importResult = await importMemberToBevy({
         firstName: safeFirstName,

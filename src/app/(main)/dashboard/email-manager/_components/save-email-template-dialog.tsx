@@ -83,7 +83,7 @@ export function SaveEmailTemplateDialog({
     });
 
     toast.success("Template Saved", {
-      description: `"${saved.name}" is now saved in your templates library.`,
+      description: `"${saved.name}" is now saved in your templates.`,
     });
 
     onSaved(saved);
@@ -197,7 +197,7 @@ export function SaveEmailTemplateDialog({
           </div>
         </div>
 
-        <DialogFooter className="gap-2 sm:gap-0">
+        <DialogFooter className="gap-2">
           <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>

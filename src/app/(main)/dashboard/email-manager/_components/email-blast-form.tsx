@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import {
   Bookmark,
   BookmarkPlus,
+  Check,
   ChevronDown,
   FileSpreadsheet,
   Loader2,
@@ -65,8 +66,7 @@ import {
 import { HtmlEditorPreview } from "./html-editor-preview";
 import { PublishedEventSelector } from "./published-event-selector";
 import { SaveEmailTemplateDialog } from "./save-email-template-dialog";
-import { TemplateSelector } from "./template-selector";
-import type { EmailFeatureTemplateItem } from "./template-utils";
+import { EMAIL_FEATURE_TEMPLATES, type EmailFeatureTemplateItem } from "./template-utils";
 
 const formSchema = z
   .object({
@@ -242,6 +242,12 @@ export function EmailBlastForm({
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [pendingFormData, setPendingFormData] = useState<FormValues | null>(null);
   const [currentFeatureTemplateId, setCurrentFeatureTemplateId] = useState<string>("default");
+
+  const currentTemplateName = useMemo(() => {
+    if (activeTemplate) return activeTemplate.name;
+    const found = EMAIL_FEATURE_TEMPLATES.find((t) => t.id === currentFeatureTemplateId);
+    return found ? found.name : "Custom Template";
+  }, [activeTemplate, currentFeatureTemplateId]);
 
   const resolvedAttendeePlaceholders = useMemo<AttendeeDynamicPlaceholders>(() => {
     if (recipientSource === "single" && recipientEmail) {
@@ -622,11 +628,15 @@ export function EmailBlastForm({
 
   const handleSelectFeatureTemplate = (tpl: EmailFeatureTemplateItem) => {
     setCurrentFeatureTemplateId(tpl.id);
+    setActiveTemplate(null);
     const bodyContent = tpl.getRawHtml();
     setValue("body", bodyContent, { shouldValidate: true });
     if (tpl.defaultSubject) {
       setValue("subject", tpl.defaultSubject, { shouldValidate: true });
     }
+    toast.success("Email Template Loaded", {
+      description: `Loaded "${tpl.name}". Subject and HTML body have been updated.`,
+    });
   };
 
   async function onSubmit(data: FormValues) {
@@ -664,6 +674,7 @@ export function EmailBlastForm({
           subject: data.subject,
           headerUrl: data.headerUrl,
           body: data.body,
+          sessionTitle: eventPlaceholders?.SessionTitle,
           eventDetails: selectedEvent
             ? {
                 formattedDate: selectedEvent.formattedDate,
@@ -784,6 +795,11 @@ export function EmailBlastForm({
               </CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="secondary" className="h-8 gap-1.5 px-2.5 text-xs font-normal">
+                <span className="text-muted-foreground">Template:</span>
+                <span className="max-w-[170px] truncate font-medium text-foreground">{currentTemplateName}</span>
+              </Badge>
+
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
@@ -792,31 +808,20 @@ export function EmailBlastForm({
                     <ChevronDown className="size-3 opacity-60" />
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-80 max-h-96 overflow-y-auto">
-                  <DropdownMenuLabel className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Prebuilt Templates
-                  </DropdownMenuLabel>
-                  {templatesData.defaultTemplates.map((tpl) => (
-                    <DropdownMenuItem
-                      key={tpl.id}
-                      onClick={() => handleApplyTemplate(tpl)}
-                      className="flex cursor-pointer flex-col items-start gap-1 py-2"
-                    >
-                      <div className="flex w-full items-center justify-between">
-                        <span className="font-medium text-xs text-foreground">{tpl.name}</span>
-                        <Badge variant="secondary" className="text-[10px] py-0 px-1.5 font-normal">
-                          {tpl.badge}
-                        </Badge>
-                      </div>
-                      <span className="line-clamp-1 text-[11px] text-muted-foreground">{tpl.description}</span>
-                    </DropdownMenuItem>
-                  ))}
+                <DropdownMenuContent align="end" className="w-80 max-h-[30rem] overflow-y-auto">
+                  <DropdownMenuItem
+                    onClick={() => setIsSaveTemplateOpen(true)}
+                    className="flex cursor-pointer items-center gap-2 py-2 font-medium text-xs text-primary focus:text-primary"
+                  >
+                    <BookmarkPlus className="size-3.5" />
+                    <span>Save Current as Template...</span>
+                  </DropdownMenuItem>
 
                   {templatesData.customTemplates.length > 0 && (
                     <>
                       <DropdownMenuSeparator />
-                      <DropdownMenuLabel className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        My Saved Templates
+                      <DropdownMenuLabel className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        My Saved Templates ({templatesData.customTemplates.length})
                       </DropdownMenuLabel>
                       {templatesData.customTemplates.map((tpl) => (
                         <DropdownMenuItem
@@ -825,7 +830,13 @@ export function EmailBlastForm({
                           className="group flex cursor-pointer items-start justify-between gap-2 py-2"
                         >
                           <div className="flex flex-col items-start gap-1 overflow-hidden">
-                            <span className="font-medium text-xs text-foreground">{tpl.name}</span>
+                            <div className="flex items-center gap-1.5">
+                              {activeTemplate?.id === tpl.id && <Check className="size-3.5 text-primary shrink-0" />}
+                              <span className="font-medium text-xs text-foreground">{tpl.name}</span>
+                              <Badge variant="secondary" className="text-[9px] py-0 px-1 font-normal">
+                                {tpl.badge}
+                              </Badge>
+                            </div>
                             <span className="line-clamp-1 text-[11px] text-muted-foreground">{tpl.description}</span>
                           </div>
                           <Button
@@ -841,19 +852,163 @@ export function EmailBlastForm({
                       ))}
                     </>
                   )}
+
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Pre-built Templates
+                  </DropdownMenuLabel>
+
+                  {/* General */}
+                  <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
+                    General &amp; Updates
+                  </div>
+                  {EMAIL_FEATURE_TEMPLATES.filter((t) => t.category === "general").map((tpl) => (
+                    <DropdownMenuItem
+                      key={tpl.id}
+                      onClick={() => handleSelectFeatureTemplate(tpl)}
+                      className="flex cursor-pointer flex-col items-start gap-0.5 py-1.5"
+                    >
+                      <div className="flex w-full items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          {currentFeatureTemplateId === tpl.id && !activeTemplate && (
+                            <Check className="size-3.5 text-primary shrink-0" />
+                          )}
+                          <span className="font-medium text-xs text-foreground">{tpl.name}</span>
+                        </div>
+                        <Badge variant="outline" className="text-[9px] py-0 px-1 font-normal">
+                          {tpl.badge}
+                        </Badge>
+                      </div>
+                      <span className="line-clamp-1 text-[11px] text-muted-foreground">{tpl.description}</span>
+                    </DropdownMenuItem>
+                  ))}
+
+                  {/* RSVP & Tickets */}
+                  <div className="mt-1 border-t px-2 pt-1.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
+                    RSVP &amp; Tickets
+                  </div>
+                  {EMAIL_FEATURE_TEMPLATES.filter((t) => t.category === "rsvp").map((tpl) => (
+                    <DropdownMenuItem
+                      key={tpl.id}
+                      onClick={() => handleSelectFeatureTemplate(tpl)}
+                      className="flex cursor-pointer flex-col items-start gap-0.5 py-1.5"
+                    >
+                      <div className="flex w-full items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          {currentFeatureTemplateId === tpl.id && !activeTemplate && (
+                            <Check className="size-3.5 text-primary shrink-0" />
+                          )}
+                          <span className="font-medium text-xs text-foreground">{tpl.name}</span>
+                        </div>
+                        <Badge variant="outline" className="text-[9px] py-0 px-1 font-normal">
+                          {tpl.badge}
+                        </Badge>
+                      </div>
+                      <span className="line-clamp-1 text-[11px] text-muted-foreground">{tpl.description}</span>
+                    </DropdownMenuItem>
+                  ))}
+
+                  {/* Curation & Registration */}
+                  <div className="mt-1 border-t px-2 pt-1.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
+                    Curation &amp; Registration
+                  </div>
+                  {EMAIL_FEATURE_TEMPLATES.filter((t) => t.category === "curation").map((tpl) => (
+                    <DropdownMenuItem
+                      key={tpl.id}
+                      onClick={() => handleSelectFeatureTemplate(tpl)}
+                      className="flex cursor-pointer flex-col items-start gap-0.5 py-1.5"
+                    >
+                      <div className="flex w-full items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          {currentFeatureTemplateId === tpl.id && !activeTemplate && (
+                            <Check className="size-3.5 text-primary shrink-0" />
+                          )}
+                          <span className="font-medium text-xs text-foreground">{tpl.name}</span>
+                        </div>
+                        <Badge variant="outline" className="text-[9px] py-0 px-1 font-normal">
+                          {tpl.badge}
+                        </Badge>
+                      </div>
+                      <span className="line-clamp-1 text-[11px] text-muted-foreground">{tpl.description}</span>
+                    </DropdownMenuItem>
+                  ))}
+
+                  {/* Waitlist Notifications */}
+                  <div className="mt-1 border-t px-2 pt-1.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
+                    Waitlist Notifications
+                  </div>
+                  {EMAIL_FEATURE_TEMPLATES.filter((t) => t.category === "waitlist").map((tpl) => (
+                    <DropdownMenuItem
+                      key={tpl.id}
+                      onClick={() => handleSelectFeatureTemplate(tpl)}
+                      className="flex cursor-pointer flex-col items-start gap-0.5 py-1.5"
+                    >
+                      <div className="flex w-full items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          {currentFeatureTemplateId === tpl.id && !activeTemplate && (
+                            <Check className="size-3.5 text-primary shrink-0" />
+                          )}
+                          <span className="font-medium text-xs text-foreground">{tpl.name}</span>
+                        </div>
+                        <Badge variant="outline" className="text-[9px] py-0 px-1 font-normal">
+                          {tpl.badge}
+                        </Badge>
+                      </div>
+                      <span className="line-clamp-1 text-[11px] text-muted-foreground">{tpl.description}</span>
+                    </DropdownMenuItem>
+                  ))}
+
+                  {/* Cancellations */}
+                  <div className="mt-1 border-t px-2 pt-1.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
+                    Cancellations
+                  </div>
+                  {EMAIL_FEATURE_TEMPLATES.filter((t) => t.category === "cancellation").map((tpl) => (
+                    <DropdownMenuItem
+                      key={tpl.id}
+                      onClick={() => handleSelectFeatureTemplate(tpl)}
+                      className="flex cursor-pointer flex-col items-start gap-0.5 py-1.5"
+                    >
+                      <div className="flex w-full items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          {currentFeatureTemplateId === tpl.id && !activeTemplate && (
+                            <Check className="size-3.5 text-primary shrink-0" />
+                          )}
+                          <span className="font-medium text-xs text-foreground">{tpl.name}</span>
+                        </div>
+                        <Badge variant="outline" className="text-[9px] py-0 px-1 font-normal">
+                          {tpl.badge}
+                        </Badge>
+                      </div>
+                      <span className="line-clamp-1 text-[11px] text-muted-foreground">{tpl.description}</span>
+                    </DropdownMenuItem>
+                  ))}
+
+                  {/* Outreach & Invitations */}
+                  <div className="mt-1 border-t px-2 pt-1.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
+                    Outreach &amp; Invitations
+                  </div>
+                  {EMAIL_FEATURE_TEMPLATES.filter((t) => t.category === "invitation").map((tpl) => (
+                    <DropdownMenuItem
+                      key={tpl.id}
+                      onClick={() => handleSelectFeatureTemplate(tpl)}
+                      className="flex cursor-pointer flex-col items-start gap-0.5 py-1.5"
+                    >
+                      <div className="flex w-full items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          {currentFeatureTemplateId === tpl.id && !activeTemplate && (
+                            <Check className="size-3.5 text-primary shrink-0" />
+                          )}
+                          <span className="font-medium text-xs text-foreground">{tpl.name}</span>
+                        </div>
+                        <Badge variant="outline" className="text-[9px] py-0 px-1 font-normal">
+                          {tpl.badge}
+                        </Badge>
+                      </div>
+                      <span className="line-clamp-1 text-[11px] text-muted-foreground">{tpl.description}</span>
+                    </DropdownMenuItem>
+                  ))}
                 </DropdownMenuContent>
               </DropdownMenu>
-
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-8 gap-1.5 text-xs"
-                onClick={() => setIsSaveTemplateOpen(true)}
-              >
-                <BookmarkPlus className="size-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span>Save as Template</span>
-              </Button>
             </div>
           </CardHeader>
         )}
@@ -880,23 +1035,7 @@ export function EmailBlastForm({
             </FieldContent>
           </Field>
 
-          {/* 2. Pre-built Email Template Selector */}
-          <Field>
-            <FieldLabel>Email Template</FieldLabel>
-            <FieldContent>
-              <TemplateSelector
-                currentTemplateId={currentFeatureTemplateId}
-                onSelectTemplate={handleSelectFeatureTemplate}
-                disabled={isSubmitting}
-              />
-              <FieldDescription>
-                Choose from GDG official pass, curation, waitlist, or cancellation templates. Automatically formats
-                clean subject and body tokens.
-              </FieldDescription>
-            </FieldContent>
-          </Field>
-
-          {/* 3. Recipient Selector: Bevy Audience vs Google Sheets vs Quick Send (1 User) */}
+          {/* 2. Recipient Selector: Bevy Audience vs Google Sheets vs Quick Send (1 User) */}
           <Field>
             <FieldLabel>Recipient Source</FieldLabel>
             <FieldContent>
@@ -1207,8 +1346,8 @@ export function EmailBlastForm({
                     )}
                   </div>
                   <span className="text-[11px] text-muted-foreground">
-                    Custom values override default tokens like <code>[[EventName]]</code>, <code>[[EventVenue]]</code>,
-                    etc.
+                    Custom values override default tokens like <code>[[EventName]]</code>, <code>[[SessionTitle]]</code>
+                    ,<code>[[EventVenue]]</code>, etc.
                   </span>
                 </div>
               </div>
@@ -1343,6 +1482,24 @@ export function EmailBlastForm({
                       onChange={(e) => handlePlaceholderChange("EventUrl", e.target.value)}
                       disabled={isSubmitting}
                       placeholder="https://gdg.community.dev/..."
+                      className="h-8 text-xs"
+                    />
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <FieldLabel className="text-xs">Session Title (Topic)</FieldLabel>
+                    <code className="text-[10px] text-sky-600 dark:text-sky-400">[[SessionTitle]]</code>
+                  </div>
+                  {isLoadingEventDetail ? (
+                    <Skeleton className="h-8 w-full animate-pulse rounded-md" />
+                  ) : (
+                    <Input
+                      value={eventPlaceholders?.SessionTitle || ""}
+                      onChange={(e) => handlePlaceholderChange("SessionTitle", e.target.value)}
+                      disabled={isSubmitting}
+                      placeholder="e.g. Keynote: Building Production AI Agents with Gemini"
                       className="h-8 text-xs"
                     />
                   )}

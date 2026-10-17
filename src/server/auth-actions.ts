@@ -43,7 +43,7 @@ export async function validateOrganizerAction(
 /**
  * Server action to import a new member into Bevy via the GDG Jakarta n8n API webhook.
  */
-export async function importMemberAction(params: { firstName: string; lastName: string; email: string }) {
+export async function importMemberAction(params: { firstName: string; lastName?: string; email: string }) {
   return await importMemberToBevy(params);
 }
 
@@ -145,7 +145,7 @@ export async function syncSingleMemberToBevyAction(params: {
   console.log(`[Sync Single Member] Member ${normalizedEmail} not in Bevy. Importing via webhook...`);
   const { firstName: splitFirst, lastName: splitLast } = splitFullName(name);
   const safeFirstName = firstName?.trim() || splitFirst.trim() || normalizedEmail.split("@")[0] || "Member";
-  const safeLastName = (lastName?.trim() ?? splitLast ?? "").trim();
+  const safeLastName = (lastName?.trim() ?? splitLast ?? "").trim() || ".";
 
   const importResult = await importMemberToBevy({
     firstName: safeFirstName,

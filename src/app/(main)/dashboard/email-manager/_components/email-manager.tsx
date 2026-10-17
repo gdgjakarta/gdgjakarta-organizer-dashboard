@@ -2,24 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import {
-  Bookmark,
-  CheckCircle2,
-  ExternalLink,
-  FileSpreadsheet,
-  Info,
-  Layers,
-  Mail,
-  Send,
-  Sparkles,
-  Trash2,
-  Users,
-} from "lucide-react";
+import { CheckCircle2, ExternalLink, FileSpreadsheet, Info, Mail, Send, Sparkles, Users } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getBevyDashboardUrl } from "@/config/remote-config-utils";
 import { extractApiMessage } from "@/lib/utils";
@@ -32,11 +20,6 @@ import {
   type EventDynamicPlaceholders,
   type PublishedEventOption,
 } from "../_types/placeholders";
-import {
-  deleteCustomEmailBlastTemplate,
-  type EmailBlastTemplate,
-  getAllEmailBlastTemplates,
-} from "./default-html-template";
 import { EmailBlastForm } from "./email-blast-form";
 
 const CLIENT_EVENTS_CACHE_KEY = "gdg_email_published_events_cache_v1";
@@ -77,12 +60,6 @@ function writeClientEventsCache(events: PublishedEventOption[]) {
 
 export function EmailManager() {
   const [activeTab, setActiveTab] = useState("composer");
-  const [composerSelectedTemplate, setComposerSelectedTemplate] = useState<EmailBlastTemplate | null>(null);
-  const [templatesData, setTemplatesData] = useState(() => getAllEmailBlastTemplates());
-
-  const refreshTemplates = useCallback(() => {
-    setTemplatesData(getAllEmailBlastTemplates());
-  }, []);
 
   // Shared event & dynamic placeholder state between Composer & Placeholders tabs
   const [publishedEvents, setPublishedEvents] = useState<PublishedEventOption[]>([]);
@@ -217,28 +194,6 @@ export function EmailManager() {
     });
   };
 
-  const handleApplyTemplateToComposer = (tpl: EmailBlastTemplate) => {
-    setComposerSelectedTemplate(tpl);
-    setActiveTab("composer");
-    toast.success(`Loaded "${tpl.name}" into Composer`, {
-      description: "Switched to Bulk Email Composer with template preloaded.",
-    });
-  };
-
-  const handleDeleteCustomTemplate = (e: React.MouseEvent, tplId: string, tplName: string) => {
-    e.stopPropagation();
-    deleteCustomEmailBlastTemplate(tplId);
-    refreshTemplates();
-    if (composerSelectedTemplate?.id === tplId) {
-      setComposerSelectedTemplate(null);
-    }
-    toast.success("Template Deleted", {
-      description: `Removed "${tplName}" from your custom templates.`,
-    });
-  };
-
-  const allTemplatesCount = templatesData.defaultTemplates.length + templatesData.customTemplates.length;
-
   return (
     <div className="flex flex-col gap-6 p-6 md:p-8">
       {/* Top Header */}
@@ -274,13 +229,6 @@ export function EmailManager() {
               <Send className="size-3.5" />
               Email Composer (Single &amp; Bulk)
             </TabsTrigger>
-            <TabsTrigger value="templates" className="gap-2 text-xs">
-              <Bookmark className="size-3.5" />
-              Templates Library
-              <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-[10px]">
-                {allTemplatesCount}
-              </Badge>
-            </TabsTrigger>
             <TabsTrigger value="documentation" className="gap-2 text-xs">
               <Info className="size-3.5" />
               Integration &amp; Guide
@@ -304,138 +252,7 @@ export function EmailManager() {
             onResetAttendeePlaceholders={handleResetAttendeePlaceholders}
             onRefreshEvents={handleRefreshEvents}
             isRefreshingEvents={isRefreshingEvents}
-            initialTemplate={composerSelectedTemplate}
-            onTemplateChange={setComposerSelectedTemplate}
           />
-        </TabsContent>
-
-        {/* Tab 2: Email Templates Library */}
-        <TabsContent value="templates" className="space-y-6 pt-2">
-          <div className="flex flex-col gap-2">
-            <h2 className="text-lg font-semibold tracking-tight">Email Templates Library</h2>
-            <p className="text-sm text-muted-foreground">
-              Browse prebuilt invitations for speakers and members, or manage your custom saved email templates.
-            </p>
-          </div>
-
-          {/* Default Templates Section */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <Layers className="size-4 text-primary" />
-              <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                Official GDG Jakarta Templates ({templatesData.defaultTemplates.length})
-              </h3>
-            </div>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {templatesData.defaultTemplates.map((tpl) => (
-                <Card
-                  key={tpl.id}
-                  className="flex flex-col justify-between shadow-xs transition-shadow hover:shadow-sm"
-                >
-                  <CardHeader className="space-y-2 pb-3">
-                    <div className="flex items-center justify-between">
-                      <Badge variant="outline" className="text-xs font-medium">
-                        {tpl.badge}
-                      </Badge>
-                      <span className="text-[10px] text-muted-foreground uppercase font-semibold">Official</span>
-                    </div>
-                    <div>
-                      <CardTitle className="text-base">{tpl.name}</CardTitle>
-                      <CardDescription className="line-clamp-2 text-xs mt-1">{tpl.description}</CardDescription>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-2 text-xs text-muted-foreground">
-                    <div className="rounded-md bg-muted/40 p-2.5 font-mono text-[11px] text-foreground">
-                      <span className="text-muted-foreground">Subject: </span>
-                      {tpl.subject}
-                    </div>
-                  </CardContent>
-                  <CardFooter className="border-t bg-muted/10 pt-3">
-                    <Button
-                      size="sm"
-                      className="w-full gap-1.5 text-xs"
-                      onClick={() => handleApplyTemplateToComposer(tpl)}
-                    >
-                      <Send className="size-3.5" />
-                      <span>Use in Composer</span>
-                    </Button>
-                  </CardFooter>
-                </Card>
-              ))}
-            </div>
-          </div>
-
-          {/* Custom Templates Section */}
-          <div className="space-y-3 pt-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Bookmark className="size-4 text-emerald-600 dark:text-emerald-400" />
-                <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                  My Custom Templates ({templatesData.customTemplates.length})
-                </h3>
-              </div>
-            </div>
-
-            {templatesData.customTemplates.length === 0 ? (
-              <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-8 text-center">
-                <Bookmark className="size-8 text-muted-foreground/50 mb-2" />
-                <p className="text-sm font-medium">No custom templates saved yet</p>
-                <p className="text-xs text-muted-foreground mt-1 max-w-sm">
-                  Design your custom email blast in the Composer and click &ldquo;Save as Template&rdquo; to reuse it
-                  anytime.
-                </p>
-                <Button variant="outline" size="sm" className="mt-4 text-xs" onClick={() => setActiveTab("composer")}>
-                  Go to Composer
-                </Button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {templatesData.customTemplates.map((tpl) => (
-                  <Card
-                    key={tpl.id}
-                    className="flex flex-col justify-between shadow-xs transition-shadow hover:shadow-sm"
-                  >
-                    <CardHeader className="space-y-2 pb-3">
-                      <div className="flex items-center justify-between">
-                        <Badge variant="secondary" className="text-xs font-medium">
-                          {tpl.badge}
-                        </Badge>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-7 text-muted-foreground hover:text-destructive"
-                          onClick={(e) => handleDeleteCustomTemplate(e, tpl.id, tpl.name)}
-                          title="Delete template"
-                        >
-                          <Trash2 className="size-3.5" />
-                        </Button>
-                      </div>
-                      <div>
-                        <CardTitle className="text-base">{tpl.name}</CardTitle>
-                        <CardDescription className="line-clamp-2 text-xs mt-1">{tpl.description}</CardDescription>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-2 text-xs text-muted-foreground">
-                      <div className="rounded-md bg-muted/40 p-2.5 font-mono text-[11px] text-foreground">
-                        <span className="text-muted-foreground">Subject: </span>
-                        {tpl.subject}
-                      </div>
-                    </CardContent>
-                    <CardFooter className="border-t bg-muted/10 pt-3">
-                      <Button
-                        size="sm"
-                        className="w-full gap-1.5 text-xs"
-                        onClick={() => handleApplyTemplateToComposer(tpl)}
-                      >
-                        <Send className="size-3.5" />
-                        <span>Use in Composer</span>
-                      </Button>
-                    </CardFooter>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </div>
         </TabsContent>
 
         {/* Tab 2: Documentation & Integration Guide */}
@@ -472,8 +289,9 @@ export function EmailManager() {
                   </div>
                   <p className="pl-6 text-muted-foreground text-xs">
                     Event variables (<code>[[EventName]]</code>, <code>[[EventDate]]</code>, <code>[[EventVenue]]</code>
-                    , etc.) are autofilled from Bevy. Expand the collapsible placeholder panels to review or edit sample
-                    values and attendee tokens (like <code>[[Name]]</code> and <code>[[TicketType]]</code>).
+                    , <code>[[SessionTitle]]</code>, etc.) are autofilled from Bevy. Expand the collapsible placeholder
+                    panels to review or edit sample values and attendee tokens (like <code>[[Name]]</code> and{" "}
+                    <code>[[TicketType]]</code>).
                   </p>
                 </div>
 

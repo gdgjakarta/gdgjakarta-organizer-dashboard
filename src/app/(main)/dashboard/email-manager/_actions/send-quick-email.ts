@@ -16,6 +16,7 @@ const quickEmailSchema = z.object({
   subject: z.string().min(1, "Subject is required"),
   headerUrl: z.string().optional(),
   body: z.string().min(1, "Email HTML body is required"),
+  sessionTitle: z.string().optional(),
   eventDetails: z
     .object({
       formattedDate: z.string().optional(),
@@ -63,6 +64,7 @@ export async function sendQuickEmail(input: QuickEmailInput) {
       data.eventDetails?.bannerUrl ||
       "https://assets.gdgjakarta.org/gdg-jakarta/gdg-jakarta-emailheaders-1244x388-blue.png";
     const eventDesc = data.eventDetails?.descriptionShort || "";
+    const sessionTitle = data.sessionTitle || "Keynote: Building Production AI Agents with Gemini";
 
     // 3. Convert any legacy n8n expressions in subject/body first
     let cleanSubject = convertTemplateToCleanTokens(data.subject);
@@ -78,7 +80,8 @@ export async function sendQuickEmail(input: QuickEmailInput) {
         .replaceAll("[[EventAddress]]", eventAddress)
         .replaceAll("[[EventUrl]]", eventUrl)
         .replaceAll("[[EventBannerUrl]]", headerBannerUrl)
-        .replaceAll("[[EventDescription]]", eventDesc);
+        .replaceAll("[[EventDescription]]", eventDesc)
+        .replaceAll("[[SessionTitle]]", sessionTitle);
     };
 
     // 5. Interpolate Recipient Placeholders

@@ -187,7 +187,7 @@ export function ConfirmEmailDialog({
           </div>
         </div>
 
-        <AlertDialogFooter className="gap-2 sm:gap-0">
+        <AlertDialogFooter className="gap-2">
           <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
           <Button type="button" onClick={onConfirm} disabled={isSubmitting} className="gap-2">
             {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}

@@ -23,7 +23,7 @@ export interface EventDynamicPlaceholders {
   EventUrl: string;
   EventBannerUrl: string;
   EventDescription: string;
-  SessionTitle?: string;
+  SessionTitle: string;
 }
 
 export function buildDefaultEventPlaceholders(event?: PublishedEventOption): EventDynamicPlaceholders {

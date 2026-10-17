@@ -89,7 +89,7 @@ export async function fetchBevyMemberByIdAction(identifier: string) {
 /**
  * Server action to import a new member into Bevy via the GDG Jakarta webhook
  */
-export async function importBevyMemberAction(params: { firstName: string; lastName: string; email: string }) {
+export async function importBevyMemberAction(params: { firstName: string; lastName?: string; email: string }) {
   return await importMemberToBevy(params);
 }
 
