@@ -16,7 +16,6 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { getFirestoreMemberById } from "@/lib/firestore/client";
 import type { FirestoreMember } from "@/lib/firestore/types";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
@@ -43,6 +42,7 @@ export function AccountView() {
     async function fetchMember() {
       if (!user?.id) return;
       try {
+        const { getFirestoreMemberById } = await import("@/lib/firestore/client");
         const data = await getFirestoreMemberById(user.id);
         if (isMounted && data) {
           setMember(data);

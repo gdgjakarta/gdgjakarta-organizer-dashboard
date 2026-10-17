@@ -10,7 +10,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { saveFirestoreMember } from "@/lib/firestore/client";
 import type { FirestoreMember } from "@/lib/firestore/types";
 import { splitFullName } from "@/lib/utils";
 import type { AuthOrganizer } from "@/stores/auth/auth-store";
@@ -59,6 +58,7 @@ export function AccountProfileTab({ user, member, onProfileUpdated }: AccountPro
         ...(member?.team ? { team: member.team } : {}),
       };
 
+      const { saveFirestoreMember } = await import("@/lib/firestore/client");
       await saveFirestoreMember(payload);
       onProfileUpdated(payload);
       toast.success("Profile details updated successfully!");

@@ -57,8 +57,58 @@ function isTeamOperational(pathname: string): boolean {
   return TEAM_OPERATIONAL_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 }
 
+/**
+ * Detects secret-file probes and vulnerability scanner patterns (e.g., /.npmrc, /.env, /.git, .php, .sql).
+ * Rejects them early with a 404 before hitting the Next.js SSR engine.
+ */
+function isSuspiciousOrSecretProbe(pathname: string): boolean {
+  // Allow legitimate well-known requests (e.g. /.well-known/assetlinks.json)
+  if (pathname.startsWith("/.well-known/") || pathname === "/.well-known") {
+    return false;
+  }
+
+  // Block any hidden file or directory probe starting with a dot (e.g. /.npmrc, /.env, /.git)
+  if (pathname.includes("/.")) {
+    return true;
+  }
+
+  const lowerPath = pathname.toLowerCase();
+  const blockedExtensions = [
+    ".php",
+    ".asp",
+    ".aspx",
+    ".jsp",
+    ".cgi",
+    ".sql",
+    ".bak",
+    ".backup",
+    ".ini",
+    ".conf",
+    ".config",
+  ];
+  if (blockedExtensions.some((ext) => lowerPath.endsWith(ext))) {
+    return true;
+  }
+
+  if (
+    lowerPath.includes("wp-login") ||
+    lowerPath.includes("xmlrpc.php") ||
+    lowerPath.includes("phpmyadmin") ||
+    lowerPath.includes(".aws/")
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // Immediately terminate secret-file and scanner probes with 404 to avoid invoking SSR
+  if (isSuspiciousOrSecretProbe(pathname)) {
+    return new NextResponse(null, { status: 404 });
+  }
 
   // Never intercept or redirect Server Actions or non-GET requests away from handlers
   if (request.method !== "GET" || request.headers.has("next-action")) {

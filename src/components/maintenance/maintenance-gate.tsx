@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation";
 
 import type { MaintenanceConfig } from "@/config/maintenance-config";
 import { isExecutiveOrganizer } from "@/lib/auth-roles";
-import { subscribeMaintenanceConfigDoc } from "@/lib/firestore/client";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
 import { MaintenanceBanner } from "./maintenance-banner";
@@ -35,15 +34,24 @@ export function MaintenanceGate({ initialConfig, initialIsOrganizer = false, chi
 
   // Real-time synchronization with Firestore
   useEffect(() => {
+    let isMounted = true;
     let unsubscribe: (() => void) | undefined;
-    try {
-      unsubscribe = subscribeMaintenanceConfigDoc((updated) => {
-        setConfig(updated);
-      });
-    } catch (err) {
-      console.warn("[MaintenanceGate] Realtime subscription warning:", err);
-    }
+    void (async () => {
+      try {
+        const { subscribeMaintenanceConfigDoc } = await import("@/lib/firestore/client");
+        if (!isMounted) return;
+        unsubscribe = subscribeMaintenanceConfigDoc((updated) => {
+          if (isMounted) {
+            setConfig(updated);
+          }
+        });
+      } catch (err) {
+        console.warn("[MaintenanceGate] Realtime subscription warning:", err);
+      }
+    })();
+
     return () => {
+      isMounted = false;
       unsubscribe?.();
     };
   }, []);

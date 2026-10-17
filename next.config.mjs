@@ -94,6 +94,16 @@ const nextConfig = {
       },
     ];
   },
+  webpack(config, { isServer }) {
+    if (isServer) {
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        "firebase/firestore": new URL("./src/lib/firestore/server-noop.ts", import.meta.url).pathname,
+        "@firebase/firestore": new URL("./src/lib/firestore/server-noop.ts", import.meta.url).pathname,
+      };
+    }
+    return config;
+  },
 };
 
 export default nextConfig;

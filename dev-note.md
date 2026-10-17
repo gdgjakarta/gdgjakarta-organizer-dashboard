@@ -1,6 +1,39 @@
 # GDG Organizer Dashboard - Dev Changelog
 This is a changelog for the development of the GDG Organizer Dashboard. Me Rizky, make this developer note as the main source of truth for development information. Copy-paste directly from the Antigravity agent response (like the block below) or notes from other sources.
 
+## [October 17, 2026] - Fix Cloudflare Worker EvalError on GET /events (Protobuf / Codegen in Server Bundle)
+
+### Error Summary
+On Cloudflare Workers (`gdgjakarta-organizer-dashboard.workers.dev`), accessing `GET /events` (and other SSR pages) crashed with:
+```text
+EvalError: Code generation from strings disallowed for this context
+    at Function (<anonymous>)
+    at f (worker.js:109612:22)
+    at s.get (worker.js:106460:72)
+    at j.resolve (worker.js:107936:195)
+    at s.resolveAll (worker.js:106492:78)
+    at l.resolveAll (worker.js:112891:81)
+    at l.resolveAll (worker.js:112891:81)
+    at l.resolveAll (worker.js:112891:81)
+    at l.resolveAll (worker.js:114175:41)
+    at l.fromJSON (worker.js:114100:130)
+```
+
+### Root Cause Analysis
+1. `MaintenanceGate` (`src/components/maintenance/maintenance-gate.tsx`), rendered by `RootLayout` (`src/app/layout.tsx`) across all routes, had a top-level static import: `import { subscribeMaintenanceConfigDoc } from "@/lib/firestore/client"`. Similarly, `maintenance-dashboard.tsx`, `account-view.tsx`, and `account-profile-tab.tsx` had static imports of `@/lib/firestore/client`.
+2. Because `src/lib/firestore/client.ts` had top-level side effects (`export const db = ...`), Webpack bundled it synchronously into SSR chunks (`chunk 5588.js` in `RootLayout`).
+3. Evaluating `@/lib/firestore/client` on the server loaded `@firebase/firestore`'s Node build (`dist/index.node.mjs`), which uses `@grpc/proto-loader` and `protobufjs`.
+4. On module evaluation, `protobufjs` executed `Root.fromJSON().resolveAll()`, invoking `@protobufjs/codegen`'s `Function(source)()`, which threw `EvalError` in Cloudflare's V8 isolate sandbox.
+
+### Solution & What Was Done
+1. **Dynamic Imports in Client Components**:
+   - Converted all static imports of `@/lib/firestore/client` to lazy `await import("@/lib/firestore/client")` inside client-only callbacks (`useEffect` / event handlers) in `maintenance-gate.tsx`, `maintenance-dashboard.tsx`, `account-view.tsx`, and `account-profile-tab.tsx`.
+2. **Server-Side No-Op Stub & Webpack Alias**:
+   - Created `src/lib/firestore/server-noop.ts` exporting typed no-op stubs for Firestore SDK functions.
+   - Updated `next.config.mjs` with `webpack(config, { isServer })` aliasing `firebase/firestore` and `@firebase/firestore` to `server-noop.ts` on server builds. This completely eliminates `@grpc/grpc-js`, `@grpc/proto-loader`, and `protobufjs` from the server bundle (`.open-next/server-functions/default/.next/server`).
+
+---
+
 ## [October 2, 2026] - Modern Editorial Homepage Redesign & Layouts
 
 ### Overview
