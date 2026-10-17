@@ -57,12 +57,26 @@ export async function sendEmailBlast(data: BulkEmailInput) {
     }
   }
 
-  const webhookUrl = process.env.N8N_BULK_EMAIL_WEBHOOK_URL || "https://n8n.gdgjakarta.com/webhook/api/send-bulk-email";
+  const customBaseUrl = process.env.N8N_WEBHOOK_BASE_URL ?? process.env.N8N_BASE_URL;
+  const webhookUrl =
+    process.env.N8N_BULK_EMAIL_WEBHOOK_URL ||
+    (customBaseUrl
+      ? `${customBaseUrl.trim().replace(/\/+$/, "")}/send-bulk-email`
+      : "https://n8n.gdgjakarta.com/webhook/api/send-bulk-email");
   const apiKey =
     process.env.N8N_WEBHOOK_API_KEY ||
     process.env.EVENT_REGISTRATION_WEBHOOK_API_KEY ||
     process.env.N8N_AUTH_SECRET ||
     "";
+
+  if (!apiKey) {
+    console.error("[sendEmailBlast] Authentication error: N8N_WEBHOOK_API_KEY is not configured.");
+    return {
+      success: false,
+      error:
+        "Authentication key (N8N_WEBHOOK_API_KEY) is missing on the server. Please check your environment variables.",
+    };
+  }
 
   const totalCount = validData.recipients?.length ?? 0;
 
@@ -87,21 +101,25 @@ export async function sendEmailBlast(data: BulkEmailInput) {
   );
 
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+
+    const authHeaderName = process.env.N8N_WEBHOOK_HEADER_NAME ?? process.env.N8N_AUTH_HEADER_NAME ?? "x-api-key";
+
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       "User-Agent": "GDG-Jakarta-Dashboard/1.0",
+      [authHeaderName]: apiKey,
     };
-
-    if (apiKey) {
-      headers["X-API-Key"] = apiKey;
-      headers["x-api-key"] = apiKey;
-    }
 
     const response = await fetch(webhookUrl, {
       method: "POST",
       headers,
       body: JSON.stringify(payload),
+      signal: controller.signal,
     });
+
+    clearTimeout(timeoutId);
 
     const responseText = await response.text();
     let responseJson: unknown = null;
@@ -135,7 +153,11 @@ export async function sendEmailBlast(data: BulkEmailInput) {
     };
   } catch (error) {
     console.error("[sendEmailBlast] Exception:", error);
-    const cleanError = extractApiMessage(error, "An unexpected error occurred while dispatching bulk emails.");
+    let defaultMsg = "An unexpected error occurred while dispatching bulk emails.";
+    if (error instanceof Error && error.name === "AbortError") {
+      defaultMsg = "Request timed out after 30 seconds while connecting to the bulk email service.";
+    }
+    const cleanError = extractApiMessage(error, defaultMsg);
     return { success: false, error: cleanError };
   }
 }
