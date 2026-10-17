@@ -15,32 +15,40 @@ export async function fetchSheetsList(spreadsheetUrl: string) {
 
     const apiKey = process.env.GOOGLE_SHEETS_API_KEY;
 
-    // If an API key is provided, use the official Google Sheets API
+    // If an API key is provided, try the official Google Sheets API first
     if (apiKey) {
-      const sheets = google.sheets("v4");
-      const response = await sheets.spreadsheets.get({
-        spreadsheetId,
-        key: apiKey,
-      });
+      try {
+        const sheets = google.sheets("v4");
+        const response = await sheets.spreadsheets.get({
+          spreadsheetId,
+          key: apiKey,
+        });
 
-      const sheetNames = (response.data.sheets || [])
-        .map((s) => s.properties?.title)
-        .filter((title): title is string => Boolean(title));
+        const sheetNames = (response.data.sheets || [])
+          .map((s) => s.properties?.title)
+          .filter((title): title is string => Boolean(title));
 
-      if (sheetNames.length === 0) {
-        return { success: true, sheets: ["Sheet1"], message: "No visible sheets found, defaulting to Sheet1." };
+        if (sheetNames.length > 0) {
+          return {
+            success: true,
+            sheets: sheetNames,
+            message: `Found ${sheetNames.length} sheet${sheetNames.length === 1 ? "" : "s"}.`,
+          };
+        }
+      } catch (apiError: unknown) {
+        console.warn("[fetchSheetsList] Google Sheets API error, falling back to public HTML inspection:", apiError);
       }
-
-      return {
-        success: true,
-        sheets: sheetNames,
-        message: `Found ${sheetNames.length} sheet${sheetNames.length === 1 ? "" : "s"}.`,
-      };
     }
 
     // Fallback: Scrape public sheet HTML to get sheet names from the bottom tabs
     const htmlUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/htmlview`;
-    const response = await fetch(htmlUrl);
+    const response = await fetch(htmlUrl, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      },
+      next: { revalidate: 0 },
+    });
 
     if (!response.ok) {
       return {
@@ -51,18 +59,30 @@ export async function fetchSheetsList(spreadsheetUrl: string) {
 
     const htmlText = await response.text();
 
-    // Match tab names in standard Google Sheets HTML output: <li class="..."><a ...>SheetName</a>
-    const tabRegex = /<li id="sheet-button-[^"]*"[^>]*><a[^>]*>(.*?)<\/a>/g;
     const sheets: string[] = [];
-    let matchGroup = tabRegex.exec(htmlText);
 
-    while (matchGroup !== null) {
-      if (matchGroup[1]) {
-        // Decode HTML entities if any
-        const cleanName = matchGroup[1].replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").trim();
+    // Modern Google Sheets htmlview stores sheet items in JavaScript: items.push({name: "SheetName", ...})
+    const modernItemRegex = /items\.push\(\{\s*name:\s*"([^"]+)"/g;
+    let modernMatch = modernItemRegex.exec(htmlText);
+    while (modernMatch !== null) {
+      if (modernMatch[1]) {
+        const cleanName = modernMatch[1].replace(/\\"/g, '"').trim();
         sheets.push(cleanName);
       }
-      matchGroup = tabRegex.exec(htmlText);
+      modernMatch = modernItemRegex.exec(htmlText);
+    }
+
+    // Classic Google Sheets HTML output fallback: <li id="sheet-button-..."><a ...>SheetName</a>
+    if (sheets.length === 0) {
+      const tabRegex = /<li id="sheet-button-[^"]*"[^>]*><a[^>]*>(.*?)<\/a>/g;
+      let matchGroup = tabRegex.exec(htmlText);
+      while (matchGroup !== null) {
+        if (matchGroup[1]) {
+          const cleanName = matchGroup[1].replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").trim();
+          sheets.push(cleanName);
+        }
+        matchGroup = tabRegex.exec(htmlText);
+      }
     }
 
     if (sheets.length > 0) {

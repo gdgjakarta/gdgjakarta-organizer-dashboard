@@ -15,33 +15,43 @@ export async function fetchSheetHeaders(spreadsheetUrl: string, sheetName: strin
 
     const apiKey = process.env.GOOGLE_SHEETS_API_KEY;
 
-    // If an API key is provided, use the official Google Sheets API
+    // If an API key is provided, try the official Google Sheets API first
     if (apiKey) {
-      const sheets = google.sheets("v4");
-      const response = await sheets.spreadsheets.values.get({
-        spreadsheetId,
-        range: `${sheetName}!1:1`,
-        key: apiKey,
-      });
+      try {
+        const sheets = google.sheets("v4");
+        const response = await sheets.spreadsheets.values.get({
+          spreadsheetId,
+          range: `${sheetName}!1:1`,
+          key: apiKey,
+        });
 
-      const rows = response.data.values;
-      if (!rows || rows.length === 0) {
-        return { success: true, headers: [], message: "No headers found in the first row." };
+        const rows = response.data.values;
+        if (!rows || rows.length === 0) {
+          return { success: true, headers: [], message: "No headers found in the first row." };
+        }
+
+        const headers = rows[0].map(String).filter(Boolean);
+        return {
+          success: true,
+          headers,
+          message: `Successfully loaded ${headers.length} tag${headers.length === 1 ? "" : "s"} from the sheet.`,
+        };
+      } catch (apiError: unknown) {
+        console.warn("[fetchSheetHeaders] Google Sheets API error, falling back to public gviz endpoint:", apiError);
       }
-
-      const headers = rows[0].map(String).filter(Boolean);
-      return {
-        success: true,
-        headers,
-        message: `Successfully loaded ${headers.length} tag${headers.length === 1 ? "" : "s"} from the sheet.`,
-      };
     }
 
     // Fallback: Read public sheets via the gviz export endpoint (doesn't require API key for public sheets)
     const gvizUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(
       sheetName,
     )}`;
-    const response = await fetch(gvizUrl);
+    const response = await fetch(gvizUrl, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      },
+      next: { revalidate: 0 },
+    });
 
     if (!response.ok) {
       return {

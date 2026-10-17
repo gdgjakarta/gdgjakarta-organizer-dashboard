@@ -155,8 +155,14 @@ export function EmailBlastForm({ onSuccess, showHeader = true }: EmailBlastFormP
         if (res.sheets.length > 0) {
           setValue("sheetName", res.sheets[0], { shouldValidate: true });
         }
+      } else {
+        lastFetchedUrl.current = "";
+        toast.error("Failed to load sheet tabs", {
+          description: res.error || "Could not retrieve sheets from spreadsheet.",
+        });
       }
     } catch (err) {
+      lastFetchedUrl.current = "";
       toast.error("Failed to load sheet tabs", { description: extractApiMessage(err) });
     } finally {
       setIsLoadingSheets(false);
@@ -166,9 +172,19 @@ export function EmailBlastForm({ onSuccess, showHeader = true }: EmailBlastFormP
   const handleLoadTags = useCallback(async () => {
     if (!spreadsheetUrl || !sheetName) return;
     startTransition(async () => {
-      const res = await fetchSheetHeaders(spreadsheetUrl, sheetName);
-      if (res.success && res.headers) {
-        setAvailableTags(res.headers);
+      try {
+        const res = await fetchSheetHeaders(spreadsheetUrl, sheetName);
+        if (res.success && res.headers) {
+          setAvailableTags(res.headers);
+        } else if (!res.success && res.error) {
+          toast.error("Failed to load sheet headers", {
+            description: res.error,
+          });
+        }
+      } catch (err) {
+        toast.error("Failed to load sheet headers", {
+          description: extractApiMessage(err),
+        });
       }
     });
   }, [spreadsheetUrl, sheetName]);
