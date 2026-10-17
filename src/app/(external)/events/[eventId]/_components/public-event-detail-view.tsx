@@ -38,7 +38,8 @@ export function PublicEventDetailView({ event, initialFirestoreEvent = null }: P
         const { getFirestoreEventById } = await import("@/lib/firestore/client");
         const docData = await getFirestoreEventById(String(event.id));
         if (docData) {
-          setFirestoreEvent(docData);
+          const { vouchers: _stripped, ...safeDoc } = docData;
+          setFirestoreEvent(safeDoc as FirestoreEvent);
         }
       } catch (err) {
         console.warn("[PublicEventDetailView] Failed to load Firestore event:", err);

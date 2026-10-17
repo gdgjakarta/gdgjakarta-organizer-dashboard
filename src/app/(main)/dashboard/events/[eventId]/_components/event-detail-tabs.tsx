@@ -295,7 +295,7 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
               </TabsContent>
 
               <TabsContent value="vouchers" className="space-y-4">
-                <VouchersTab event={activeEvent} />
+                <VouchersTab event={activeEvent} registrations={registrations} />
               </TabsContent>
 
               <TabsContent value="payment" className="space-y-4">

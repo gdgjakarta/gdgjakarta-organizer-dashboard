@@ -698,6 +698,7 @@ export function EventRegistrationModal({
   const [voucherInput, setVoucherInput] = useState("");
   const [appliedVoucher, setAppliedVoucher] = useState<EventVoucher | null>(null);
   const [voucherError, setVoucherError] = useState<string | null>(null);
+  const [isApplyingVoucher, setIsApplyingVoucher] = useState(false);
 
   // Referral state
   const [referralInput, setReferralInput] = useState("");
@@ -836,29 +837,40 @@ export function EventRegistrationModal({
   }, [netSubtotal, eventConfig]);
   const grandTotal = Math.max(0, netSubtotal + (gatewayFeeCalc.isPassedToAttendee ? gatewayFeeCalc.feeAmount : 0));
 
-  const handleApplyVoucher = () => {
+  const handleApplyVoucher = async () => {
     const cleanCode = voucherInput.trim().toUpperCase();
     if (!cleanCode) {
       setVoucherError("Please enter a voucher code.");
       return;
     }
-    const eventVouchers = eventConfig.vouchers ?? [];
-    const matched = eventVouchers.find((v) => v.code.toUpperCase() === cleanCode);
-    if (!matched) {
-      setVoucherError(`Voucher "${cleanCode}" is invalid or does not exist.`);
-      return;
-    }
-    const validation = validateVoucherForCart(matched, {
-      ticketPrice: effectiveBasePrice,
-      merchandiseTotal: merchandiseTotalPrice,
-    });
-    if (!validation.isValid) {
-      setVoucherError(validation.error ?? "This voucher cannot be applied.");
-      return;
-    }
-    setAppliedVoucher(matched);
+    setIsApplyingVoucher(true);
     setVoucherError(null);
-    toast.success(`Voucher "${matched.code}" applied! Saved Rp ${validation.totalDiscount.toLocaleString("id-ID")}.`);
+    try {
+      const { validateVoucherAction } = await import("@/server/voucher-actions");
+      const res = await validateVoucherAction({
+        eventId: String(eventConfig.id),
+        voucherCode: cleanCode,
+        ticketPrice: effectiveBasePrice,
+        merchandiseTotal: merchandiseTotalPrice,
+        userEmail: user?.email,
+      });
+
+      if (!res.isValid || !res.voucher) {
+        setVoucherError(res.error ?? `Voucher "${cleanCode}" is invalid or does not exist.`);
+        return;
+      }
+
+      setAppliedVoucher(res.voucher as EventVoucher);
+      setVoucherError(null);
+      toast.success(
+        `Voucher "${res.voucher.code}" applied! Saved Rp ${(res.totalDiscount ?? 0).toLocaleString("id-ID")}.`,
+      );
+    } catch (err) {
+      console.error("[EventRegistrationModal] Error validating voucher:", err);
+      setVoucherError("Failed to validate voucher. Please try again.");
+    } finally {
+      setIsApplyingVoucher(false);
+    }
   };
 
   const handleRemoveVoucher = () => {
@@ -3305,7 +3317,7 @@ export function EventRegistrationModal({
                                 onKeyDown={(e) => {
                                   if (e.key === "Enter") {
                                     e.preventDefault();
-                                    handleApplyVoucher();
+                                    void handleApplyVoucher();
                                   }
                                 }}
                                 placeholder="Enter voucher code (e.g. DEVFEST50)"
@@ -3316,9 +3328,10 @@ export function EventRegistrationModal({
                                 variant="outline"
                                 size="sm"
                                 onClick={handleApplyVoucher}
+                                disabled={isApplyingVoucher}
                                 className="h-8 shrink-0 px-3 font-medium text-xs"
                               >
-                                Apply
+                                {isApplyingVoucher ? "Applying..." : "Apply"}
                               </Button>
                             </div>
                             {voucherError && (

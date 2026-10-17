@@ -148,8 +148,9 @@ export default async function MemberEventDetailPage({ params, searchParams }: Me
     // Merge or fallback to Firestore
     try {
       const { getFirestoreEventByIdServer } = await import("@/server/firestore-admin");
-      const firestoreDoc = await getFirestoreEventByIdServer(eventId);
-      if (firestoreDoc) {
+      const rawFirestoreDoc = await getFirestoreEventByIdServer(eventId);
+      if (rawFirestoreDoc) {
+        const { vouchers: _stripped, ...firestoreDoc } = rawFirestoreDoc;
         event = event
           ? {
               ...firestoreDoc,

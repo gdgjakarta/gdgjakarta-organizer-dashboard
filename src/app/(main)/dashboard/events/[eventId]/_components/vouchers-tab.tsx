@@ -48,7 +48,7 @@ import {
 } from "@/lib/events/voucher-templates";
 import { formatVoucherDiscountDisplay } from "@/lib/events/voucher-utils";
 import { updateEventReferralConfigAction, updateEventVouchersAction } from "@/lib/firestore/actions";
-import type { EventVoucher, FirestoreEvent, VoucherStatus } from "@/lib/firestore/types";
+import type { EventVoucher, FirestoreEvent, FirestoreRegistration, VoucherStatus } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
 import { VoucherDialog } from "./voucher-dialog";
@@ -56,10 +56,12 @@ import { VoucherRedemptionsDialog } from "./voucher-redemptions-dialog";
 
 interface VouchersTabProps {
   event: FirestoreEvent;
+  registrations?: FirestoreRegistration[];
 }
 
-export function VouchersTab({ event }: VouchersTabProps) {
+export function VouchersTab({ event, registrations: initialRegistrations }: VouchersTabProps) {
   const [vouchers, setVouchers] = useState<EventVoucher[]>(event.vouchers ?? []);
+  const [registrations, setRegistrations] = useState<FirestoreRegistration[]>(initialRegistrations ?? []);
   const [editingVoucher, setEditingVoucher] = useState<EventVoucher | null>(null);
   const [viewingRedemptionsVoucher, setViewingRedemptionsVoucher] = useState<EventVoucher | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -143,16 +145,16 @@ export function VouchersTab({ event }: VouchersTabProps) {
     }
   };
 
-  // Load latest event vouchers from Firestore
+  // Load latest event vouchers from secure private collection
   useEffect(() => {
     if (!event.id) return;
 
     async function loadLatestVouchers() {
       try {
-        const { getFirestoreEventById } = await import("@/lib/firestore/client");
-        const docData = await getFirestoreEventById(String(event.id));
-        if (docData?.vouchers && Array.isArray(docData.vouchers)) {
-          setVouchers(docData.vouchers);
+        const { getEventVouchers } = await import("@/lib/firestore/client");
+        const list = await getEventVouchers(String(event.id));
+        if (list && list.length > 0) {
+          setVouchers(list);
         }
       } catch (err) {
         console.warn("[VouchersTab] Failed to fetch latest vouchers:", err);
@@ -162,16 +164,81 @@ export function VouchersTab({ event }: VouchersTabProps) {
     void loadLatestVouchers();
   }, [event.id]);
 
+  // Sync prop registrations when changed
+  useEffect(() => {
+    if (initialRegistrations && initialRegistrations.length > 0) {
+      setRegistrations(initialRegistrations);
+    }
+  }, [initialRegistrations]);
+
+  // Subscribe to live registrations for real-time voucher redemptions
+  useEffect(() => {
+    if (!event.id) return;
+    let isMounted = true;
+    let unsubscribe: (() => void) | undefined;
+
+    async function setupRegistrations() {
+      try {
+        const { getEventRegistrations, subscribeEventRegistrations } = await import("@/lib/firestore/client");
+        const list = await getEventRegistrations(String(event.id));
+        if (isMounted) {
+          setRegistrations(list);
+        }
+
+        unsubscribe = subscribeEventRegistrations(String(event.id), (updatedList) => {
+          if (isMounted) {
+            setRegistrations(updatedList);
+          }
+        });
+      } catch (err) {
+        console.warn("[VouchersTab] Failed to fetch or subscribe to registrations:", err);
+      }
+    }
+
+    void setupRegistrations();
+
+    return () => {
+      isMounted = false;
+      if (unsubscribe) unsubscribe();
+    };
+  }, [event.id]);
+
+  // Dynamic redemptions count mapped per voucher, aligned with VoucherRedemptionsDialog
+  const redemptionsCountMap = useMemo(() => {
+    const map = new Map<string, number>();
+
+    for (const v of vouchers) {
+      const normCode = v.code.trim().toUpperCase();
+      const matched = registrations.filter((reg) => {
+        const regCode = reg.voucher_code ? reg.voucher_code.trim().toUpperCase() : "";
+        const matchesCode = regCode.length > 0 && regCode === normCode;
+        const matchesId = Boolean(reg.voucher_id && reg.voucher_id === v.id);
+        return matchesCode || matchesId;
+      });
+
+      let count = matched.length;
+      // Fallback: If no registrations matched but the voucher document has direct redemption metadata
+      if (count === 0 && (v.redeemed_by_name || v.redeemed_by_email)) {
+        count = 1;
+      }
+
+      // Best effort: take the maximum between live registrations count and stored times_used
+      map.set(v.id, Math.max(count, v.times_used || 0));
+    }
+
+    return map;
+  }, [vouchers, registrations]);
+
   // Summary Metrics
   const metrics = useMemo(() => {
     const total = vouchers.length;
     const active = vouchers.filter((v) => v.status === "active").length;
-    const totalRedeemed = vouchers.reduce((sum, v) => sum + (v.times_used || 0), 0);
+    const totalRedeemed = vouchers.reduce((sum, v) => sum + (redemptionsCountMap.get(v.id) ?? v.times_used ?? 0), 0);
     const ticketVouchers = vouchers.filter((v) => v.applies_to === "ticket" || v.applies_to === "all").length;
     const merchVouchers = vouchers.filter((v) => v.applies_to === "merchandise" || v.applies_to === "all").length;
 
     return { total, active, totalRedeemed, ticketVouchers, merchVouchers };
-  }, [vouchers]);
+  }, [vouchers, redemptionsCountMap]);
 
   // Filtered List
   const filteredVouchers = useMemo(() => {
@@ -206,7 +273,11 @@ export function VouchersTab({ event }: VouchersTabProps) {
   };
 
   const handleEdit = (v: EventVoucher) => {
-    setEditingVoucher(v);
+    const liveCount = redemptionsCountMap.get(v.id) ?? v.times_used ?? 0;
+    setEditingVoucher({
+      ...v,
+      times_used: Math.max(liveCount, v.times_used ?? 0),
+    });
     setIsDialogOpen(true);
   };
 
@@ -270,8 +341,17 @@ export function VouchersTab({ event }: VouchersTabProps) {
   const handleSaveToFirestore = () => {
     startTransition(async () => {
       try {
-        const res = await updateEventVouchersAction(String(event.id), vouchers, event);
+        const syncedVouchers = vouchers.map((v) => {
+          const liveCount = redemptionsCountMap.get(v.id) ?? v.times_used ?? 0;
+          return {
+            ...v,
+            times_used: Math.max(liveCount, v.times_used ?? 0),
+          };
+        });
+
+        const res = await updateEventVouchersAction(String(event.id), syncedVouchers, event);
         if (res.success) {
+          setVouchers(syncedVouchers);
           setIsDirty(false);
           toast.success("Vouchers saved successfully!");
         } else {
@@ -284,8 +364,18 @@ export function VouchersTab({ event }: VouchersTabProps) {
     });
   };
 
-  const handleReset = () => {
-    setVouchers(event.vouchers ?? []);
+  const handleReset = async () => {
+    try {
+      const { getEventVouchers } = await import("@/lib/firestore/client");
+      const list = await getEventVouchers(String(event.id));
+      if (list && list.length > 0) {
+        setVouchers(list);
+      } else {
+        setVouchers(event.vouchers ?? []);
+      }
+    } catch {
+      setVouchers(event.vouchers ?? []);
+    }
     setIsDirty(false);
     toast.info("Reverted unsaved voucher changes.");
   };
@@ -601,9 +691,10 @@ export function VouchersTab({ event }: VouchersTabProps) {
           {filteredVouchers.map((v) => {
             const isPercentage = v.discount_type === "percentage";
             const discountDisplay = formatVoucherDiscountDisplay(v);
+            const actualRedeemed = redemptionsCountMap.get(v.id) ?? v.times_used ?? 0;
             const usagePercent =
               v.usage_limit && v.usage_limit > 0
-                ? Math.min(100, Math.round(((v.times_used || 0) / v.usage_limit) * 100))
+                ? Math.min(100, Math.round((actualRedeemed / v.usage_limit) * 100))
                 : null;
 
             return (
@@ -711,14 +802,14 @@ export function VouchersTab({ event }: VouchersTabProps) {
                         onClick={() => handleViewRedemptions(v)}
                         className={cn(
                           "flex items-center gap-1 font-mono text-xs transition-colors hover:underline",
-                          (v.times_used || 0) > 0
+                          actualRedeemed > 0
                             ? "cursor-pointer font-semibold text-primary hover:text-primary/80"
                             : "cursor-pointer hover:text-foreground",
                         )}
                         title="View attendees who redeemed this voucher"
                       >
                         <span>
-                          {v.times_used || 0}
+                          {actualRedeemed}
                           {v.usage_limit ? ` / ${v.usage_limit}` : " used"}
                         </span>
                         <Eye className="ml-0.5 size-3 opacity-70" />
@@ -778,6 +869,7 @@ export function VouchersTab({ event }: VouchersTabProps) {
         voucher={viewingRedemptionsVoucher}
         eventId={String(event.id)}
         eventTitle={event.title}
+        registrations={registrations}
       />
 
       {/* ── FLOATING SAVE BAR ────────────────────────────────────────────── */}

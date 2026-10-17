@@ -1773,65 +1773,75 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
         updateData.tickets = updatedTickets;
       }
 
-      // Handle applied voucher redemption tracking
-      let updatedVouchers = Array.isArray(eventData.vouchers) ? [...eventData.vouchers] : [];
-
+      // Handle applied voucher redemption tracking in private event_vouchers collection
       if (registration.voucher_id || registration.voucher_code) {
         const normalizedCode = registration.voucher_code?.trim().toUpperCase();
-        updatedVouchers = updatedVouchers.map((v) => {
-          if (v.id === registration.voucher_id || (normalizedCode && v.code.toUpperCase() === normalizedCode)) {
-            return {
-              ...v,
-              times_used: (v.times_used ?? 0) + 1,
-              redeemed_by_member_id: effectiveMemberId,
-              redeemed_by_name: registration.member_name || undefined,
-              redeemed_by_email: normalizedEmail,
-              redeemed_at: new Date().toISOString(),
-            };
-          }
-          return v;
-        });
-
-        // Also if this voucher came from another buyer's bundle, update buyer's registration record
-        const redeemedVoucherObj = updatedVouchers.find(
-          (v) => v.id === registration.voucher_id || (normalizedCode && v.code.toUpperCase() === normalizedCode),
-        );
-        if (redeemedVoucherObj?.source_registration_id) {
+        if (normalizedCode) {
           try {
-            const purchaserRegRef = doc(db, "event_registrations", redeemedVoucherObj.source_registration_id);
-            const purchaserRegSnap = await getDoc(purchaserRegRef);
-            if (purchaserRegSnap.exists()) {
-              const pData = purchaserRegSnap.data() as FirestoreRegistration;
-              if (Array.isArray(pData.bundle_vouchers)) {
-                const updatedBuyerVouchers = pData.bundle_vouchers.map((bv) => {
-                  if (bv.code.toUpperCase() === normalizedCode) {
-                    return {
-                      ...bv,
-                      status: "redeemed" as const,
-                      redeemed_by_member_id: effectiveMemberId,
-                      redeemed_by_name: registration.member_name || "Friend",
-                      redeemed_by_email: normalizedEmail,
-                      redeemed_at: new Date().toISOString(),
-                    };
+            const vDocRef = doc(db, "event_vouchers", `${eventIdStr}_${normalizedCode}`);
+            const vDocSnap = await getDoc(vDocRef);
+            if (vDocSnap.exists()) {
+              const vData = vDocSnap.data() as EventVoucher;
+              await updateDoc(vDocRef, {
+                times_used: (vData.times_used ?? 0) + 1,
+                redeemed_by_member_id: effectiveMemberId,
+                redeemed_by_name: registration.member_name || undefined,
+                redeemed_by_email: normalizedEmail,
+                redeemed_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              });
+
+              if (vData.source_registration_id) {
+                try {
+                  const purchaserRegRef = doc(db, "event_registrations", vData.source_registration_id);
+                  const purchaserRegSnap = await getDoc(purchaserRegRef);
+                  if (purchaserRegSnap.exists()) {
+                    const pData = purchaserRegSnap.data() as FirestoreRegistration;
+                    if (Array.isArray(pData.bundle_vouchers)) {
+                      const updatedBuyerVouchers = pData.bundle_vouchers.map((bv) => {
+                        if (bv.code.toUpperCase() === normalizedCode) {
+                          return {
+                            ...bv,
+                            status: "redeemed" as const,
+                            redeemed_by_member_id: effectiveMemberId,
+                            redeemed_by_name: registration.member_name || "Friend",
+                            redeemed_by_email: normalizedEmail,
+                            redeemed_at: new Date().toISOString(),
+                          };
+                        }
+                        return bv;
+                      });
+                      await updateDoc(purchaserRegRef, { bundle_vouchers: updatedBuyerVouchers });
+                    }
                   }
-                  return bv;
-                });
-                await updateDoc(purchaserRegRef, { bundle_vouchers: updatedBuyerVouchers });
+                } catch (buyerUpdateErr) {
+                  console.warn("[Firestore] Failed to update purchaser bundle voucher state:", buyerUpdateErr);
+                }
               }
             }
-          } catch (buyerUpdateErr) {
-            console.warn("[Firestore] Failed to update purchaser bundle voucher state:", buyerUpdateErr);
+          } catch (vErr) {
+            console.warn("[Firestore] Failed updating private event_voucher redemption:", vErr);
           }
         }
       }
 
-      // Append newly generated friend vouchers if any
+      // Save newly generated friend vouchers to private event_vouchers collection
       if (newFriendVouchers.length > 0) {
-        updatedVouchers = [...updatedVouchers, ...newFriendVouchers];
-      }
-
-      if (updatedVouchers.length > 0 || registration.voucher_id || registration.voucher_code) {
-        updateData.vouchers = updatedVouchers;
+        try {
+          const friendBatch = writeBatch(db);
+          for (const fv of newFriendVouchers) {
+            const fvDocRef = doc(db, "event_vouchers", `${eventIdStr}_${fv.code.trim().toUpperCase()}`);
+            friendBatch.set(fvDocRef, {
+              ...fv,
+              event_id: eventIdStr,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            });
+          }
+          await friendBatch.commit();
+        } catch (fErr) {
+          console.warn("[Firestore] Failed saving bundle friend vouchers to event_vouchers:", fErr);
+        }
       }
 
       if (registration.bundle_id && Array.isArray(eventData.bundles)) {
@@ -2603,23 +2613,99 @@ export async function updateEventMerchandise(
   await setDoc(eventRef, sanitized, { merge: true });
 }
 
+export async function getEventVouchers(eventId: string): Promise<EventVoucher[]> {
+  if (typeof window === "undefined" || !eventId) return [];
+  try {
+    const q = query(collection(db, "event_vouchers"), where("event_id", "==", String(eventId)));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      return snap.docs.map((d) => d.data() as EventVoucher);
+    }
+  } catch (err) {
+    console.warn(`[Firestore] getEventVouchers error for ${eventId}:`, err);
+  }
+
+  // Fallback to legacy events doc if not yet migrated
+  try {
+    const eventRef = doc(db, "events", String(eventId));
+    const eventSnap = await getDoc(eventRef);
+    if (eventSnap.exists()) {
+      const data = eventSnap.data() as FirestoreEvent;
+      if (Array.isArray(data.vouchers)) {
+        return data.vouchers;
+      }
+    }
+  } catch {
+    // Ignore fallback read error
+  }
+  return [];
+}
+
 export async function updateEventVouchers(
   eventId: string,
   vouchers: EventVoucher[],
   baseEvent?: Partial<FirestoreEvent>,
 ): Promise<void> {
-  if (typeof window === "undefined") return;
-  const eventRef = doc(db, "events", String(eventId));
-  const updatePayload: Record<string, unknown> = {
-    vouchers,
-    updated_at: new Date().toISOString(),
-  };
+  if (typeof window === "undefined" || !eventId) return;
 
-  const exists = await ensureEventDocInitialized(eventId, baseEvent, updatePayload);
-  if (!exists) return;
+  const eventIdStr = String(eventId);
+  const now = new Date().toISOString();
 
-  const sanitized = sanitizeFirestoreData(updatePayload);
-  await setDoc(eventRef, sanitized, { merge: true });
+  // 1. Fetch existing private voucher documents for this event to identify deleted ones
+  try {
+    const q = query(collection(db, "event_vouchers"), where("event_id", "==", eventIdStr));
+    const existingSnap = await getDocs(q);
+    const newCodes = new Set(vouchers.map((v) => v.code.trim().toUpperCase()));
+
+    const batch = writeBatch(db);
+
+    // Delete vouchers that the organizer removed
+    for (const docSnap of existingSnap.docs) {
+      const vData = docSnap.data() as EventVoucher;
+      if (vData.code && !newCodes.has(vData.code.trim().toUpperCase())) {
+        batch.delete(docSnap.ref);
+      }
+    }
+
+    // Upsert each voucher into its private document `${eventId}_${code}`
+    for (const v of vouchers) {
+      const cleanCode = v.code.trim().toUpperCase();
+      const docId = `${eventIdStr}_${cleanCode}`;
+      const docRef = doc(db, "event_vouchers", docId);
+      const voucherDocPayload = sanitizeFirestoreData({
+        ...v,
+        id: v.id || `voucher-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        event_id: eventIdStr,
+        code: cleanCode,
+        discount_type: v.discount_type,
+        discount_value: Number(v.discount_value) || 0,
+        applies_to: v.applies_to,
+        status: v.status,
+        times_used: Number(v.times_used) || 0,
+        updated_at: now,
+        created_at: v.created_at ?? now,
+      });
+      batch.set(docRef, voucherDocPayload, { merge: true });
+    }
+
+    await batch.commit();
+  } catch (batchErr) {
+    console.error(`[Firestore] Failed to batch save event_vouchers for ${eventIdStr}:`, batchErr);
+    throw batchErr;
+  }
+
+  // 2. Remove `vouchers` from public `events/{eventId}` document to prevent any leak
+  try {
+    const eventRef = doc(db, "events", eventIdStr);
+    const updatePayload: Record<string, unknown> = {
+      vouchers: deleteField(),
+      updated_at: now,
+    };
+    await ensureEventDocInitialized(eventId, baseEvent, updatePayload);
+    await updateDoc(eventRef, updatePayload);
+  } catch (evErr) {
+    console.warn(`[Firestore] Note: Could not deleteField vouchers on events/${eventIdStr}:`, evErr);
+  }
 }
 
 export async function updateEventReferralConfig(

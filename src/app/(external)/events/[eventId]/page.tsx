@@ -78,5 +78,12 @@ export default async function PublicEventDetailPage({ params }: PublicEventDetai
     notFound();
   }
 
-  return <PublicEventDetailView event={event} initialFirestoreEvent={firestoreEvent} />;
+  // Strip private vouchers before serializing into public client props
+  let safeFirestoreEvent = firestoreEvent;
+  if (safeFirestoreEvent && "vouchers" in safeFirestoreEvent) {
+    const { vouchers: _stripped, ...rest } = safeFirestoreEvent;
+    safeFirestoreEvent = rest as typeof firestoreEvent;
+  }
+
+  return <PublicEventDetailView event={event} initialFirestoreEvent={safeFirestoreEvent} />;
 }

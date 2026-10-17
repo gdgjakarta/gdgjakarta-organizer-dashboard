@@ -36,6 +36,7 @@ interface VoucherRedemptionsDialogProps {
   voucher: EventVoucher | null;
   eventId: string;
   eventTitle?: string;
+  registrations?: FirestoreRegistration[];
 }
 
 export function VoucherRedemptionsDialog({
@@ -44,15 +45,24 @@ export function VoucherRedemptionsDialog({
   voucher,
   eventId,
   eventTitle,
+  registrations: propRegistrations,
 }: VoucherRedemptionsDialogProps) {
-  const [registrations, setRegistrations] = useState<FirestoreRegistration[]>([]);
+  const [registrations, setRegistrations] = useState<FirestoreRegistration[]>(propRegistrations ?? []);
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [copiedEmail, setCopiedEmail] = useState<string | null>(null);
 
-  // Load event registrations whenever dialog opens for a valid event
+  // Sync prop registrations if passed
+  useEffect(() => {
+    if (propRegistrations && propRegistrations.length > 0) {
+      setRegistrations(propRegistrations);
+    }
+  }, [propRegistrations]);
+
+  // Load event registrations whenever dialog opens if not already supplied
   useEffect(() => {
     if (!open || !eventId) return;
+    if (propRegistrations && propRegistrations.length > 0) return;
 
     let isMounted = true;
     async function loadRegistrations() {
@@ -80,7 +90,7 @@ export function VoucherRedemptionsDialog({
     return () => {
       isMounted = false;
     };
-  }, [open, eventId]);
+  }, [open, eventId, propRegistrations]);
 
   // Find all registrations that redeemed this specific voucher
   const redeemedRegistrations = useMemo(() => {

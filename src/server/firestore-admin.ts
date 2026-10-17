@@ -449,36 +449,36 @@ export async function updateRegistrationFromPayment(input: UpdateRegistrationFro
     try {
       const evData = await getFirestoreEventByIdServer(eventIdStr);
       const currentApproved = typeof evData?.total_approved === "number" ? evData.total_approved : 0;
-      const currentVouchers = Array.isArray(evData?.vouchers) ? [...evData.vouchers] : [];
-      let hasNew = false;
 
       if (regData.bundle_id && Array.isArray(regData.bundle_vouchers) && regData.bundle_vouchers.length > 0) {
         for (const bv of regData.bundle_vouchers) {
-          if (!currentVouchers.some((cv) => cv.code.toUpperCase() === bv.code.toUpperCase())) {
-            currentVouchers.push({
-              id: bv.voucher_id,
-              code: bv.code,
-              description: `100% Ticket Pass sponsored by ${regData.member_name || "Friend"}`,
-              discount_type: "percentage",
-              discount_value: 100,
-              applies_to: "ticket",
-              usage_limit: 1,
-              times_used: 0,
-              min_spend: null,
-              max_discount: null,
-              start_date: now,
-              end_date: evData?.start_date ?? null,
-              status: "active",
-              source_bundle_id: regData.bundle_id,
-              source_registration_id: targetDoc.id,
-              purchaser_member_id: regData.member_id,
-              purchaser_name: regData.member_name,
-              purchaser_email: regData.member_email,
-              created_at: now,
-              updated_at: now,
-            });
-            hasNew = true;
-          }
+          const cleanCode = bv.code.trim().toUpperCase();
+          const voucherDocId = `${eventIdStr}_${cleanCode}`;
+          const friendVoucherPayload = {
+            id: bv.voucher_id,
+            event_id: eventIdStr,
+            code: cleanCode,
+            description: `100% Ticket Pass sponsored by ${regData.member_name || "Friend"}`,
+            discount_type: "percentage",
+            discount_value: 100,
+            applies_to: "ticket",
+            usage_limit: 1,
+            times_used: 0,
+            min_spend: null,
+            max_discount: null,
+            start_date: now,
+            end_date: evData?.start_date ?? null,
+            status: "active",
+            source_bundle_id: regData.bundle_id,
+            source_registration_id: targetDoc.id,
+            purchaser_member_id: regData.member_id,
+            purchaser_name: regData.member_name,
+            purchaser_email: regData.member_email,
+            created_at: now,
+            updated_at: now,
+          };
+
+          await patchFirestoreDoc("event_vouchers", voucherDocId, friendVoucherPayload, true);
         }
       }
 
@@ -488,7 +488,6 @@ export async function updateRegistrationFromPayment(input: UpdateRegistrationFro
         {
           total_approved: currentApproved + 1,
           updated_at: now,
-          ...(hasNew ? { vouchers: currentVouchers } : {}),
         },
         true,
       );
@@ -508,11 +507,19 @@ export async function updateRegistrationFromPayment(input: UpdateRegistrationFro
 /**
  * Loads an event from Firestore on the server (Node/RSC/Cloudflare Worker) via native REST.
  */
-export async function getFirestoreEventByIdServer(eventId: string): Promise<FirestoreEvent | null> {
+export async function getFirestoreEventByIdServer(
+  eventId: string,
+  options?: { includeVouchers?: boolean },
+): Promise<FirestoreEvent | null> {
   try {
     const data = await getFirestoreDoc("events", String(eventId));
     if (!data) return null;
-    return normalizeEventDoc(data, String(eventId));
+    const normalized = normalizeEventDoc(data, String(eventId));
+    if (!options?.includeVouchers && normalized && "vouchers" in normalized) {
+      const { vouchers: _stripped, ...safe } = normalized;
+      return safe as FirestoreEvent;
+    }
+    return normalized;
   } catch (err) {
     console.error(`[Firestore Server] getFirestoreEventByIdServer error for ${eventId}:`, err);
     return null;

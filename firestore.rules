@@ -246,6 +246,40 @@ service cloud.firestore {
     //   - created_at: string|null (optional, <= 50 chars) - Creation timestamp
     //   - updated_at: string (required, <= 50 chars) - Last update timestamp
     //
+    // Collection: event_vouchers
+    // Document ID: voucherDocId (e.g. `${eventId}_${normalizedCode}` or voucherId)
+    // Fields:
+    //   - id: string (required, 1-128 chars) - Unique voucher identifier
+    //   - event_id: string (required, 1-128 chars) - Associated event identifier
+    //   - code: string (required, 1-64 chars) - Voucher promo / sponsor code
+    //   - description: string|null (optional, <= 500 chars) - Voucher description or perks
+    //   - discount_type: string (required) - Discount calculation type ('percentage'|'fixed')
+    //   - discount_value: int|float (required, >= 0) - Discount face value in IDR or percentage
+    //   - applies_to: string (required) - Discount application scope ('all'|'ticket'|'merchandise')
+    //   - usage_limit: int|float|null (optional, >= 0) - Total redemptions limit (null = unlimited)
+    //   - times_used: int|float|null (optional, >= 0) - Times voucher has been redeemed
+    //   - min_spend: int|float|null (optional, >= 0) - Minimum eligible cart amount in IDR
+    //   - max_discount: int|float|null (optional, >= 0) - Maximum discount cap in IDR
+    //   - start_date: string|null (optional, <= 50 chars) - Validity start timestamp ISO string
+    //   - end_date: string|null (optional, <= 50 chars) - Validity end timestamp ISO string
+    //   - status: string (required) - Voucher lifecycle status ('active'|'inactive'|'expired')
+    //   - created_at: string (required, <= 50 chars) - Creation timestamp ISO string
+    //   - updated_at: string (required, <= 50 chars) - Last update timestamp ISO string
+    //   - source_bundle_id: string|null (optional, <= 128 chars) - Bundle package ID that generated this voucher
+    //   - source_registration_id: string|null (optional, <= 200 chars) - Buyer registration ID for bundle vouchers
+    //   - redeemed_by_member_id: string|null (optional, <= 128 chars) - Member UID who redeemed voucher
+    //   - redeemed_by_name: string|null (optional, <= 150 chars) - Member name who redeemed voucher
+    //   - redeemed_by_email: string|null (optional, <= 150 chars) - Member email who redeemed voucher
+    //   - redeemed_at: string|null (optional, <= 50 chars) - Redemption timestamp ISO string
+    //   - purchaser_member_id: string|null (optional, <= 128 chars) - Buyer member UID for bundle vouchers
+    //   - purchaser_name: string|null (optional, <= 150 chars) - Buyer name for bundle vouchers
+    //   - purchaser_email: string|null (optional, <= 150 chars) - Buyer email for bundle vouchers
+    // Permissions:
+    //   - get: Public / anyone (`if true;`) to allow single voucher validation by exact doc ID / code during checkout without exposing other codes.
+    //   - list: Restricted strictly to team members (`hasTeamAccess()`) to prevent scraping secret promo & sponsor vouchers.
+    //   - create, delete: Team members only (`hasTeamAccess()`).
+    //   - update: Team members (`hasTeamAccess()`) or authenticated users updating redemption fields (`times_used`, `redeemed_by_*`, `redeemed_at`, `updated_at`).
+    //
     // Collection: sync_metadata
     // Document ID: bevy
     // Fields:
@@ -877,6 +911,47 @@ service cloud.firestore {
         (!('updated_at' in data) || data.updated_at == null || (data.updated_at is string && data.updated_at.size() <= 50));
     }
 
+    // Validates event_vouchers document structure, data types, and bounds
+    function isValidEventVoucher(data) {
+      return hasRequiredFields(data, [
+        'id', 'event_id', 'code', 'discount_type', 'discount_value',
+        'applies_to', 'status', 'created_at', 'updated_at'
+      ]) &&
+        hasOnlyAllowedFields(data, [
+          'id', 'event_id', 'code', 'description', 'discount_type',
+          'discount_value', 'applies_to', 'usage_limit', 'times_used',
+          'min_spend', 'max_discount', 'start_date', 'end_date', 'status',
+          'created_at', 'updated_at', 'source_bundle_id', 'source_registration_id',
+          'redeemed_by_member_id', 'redeemed_by_name', 'redeemed_by_email', 'redeemed_at',
+          'purchaser_member_id', 'purchaser_name', 'purchaser_email'
+        ]) &&
+        data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
+        data.event_id is string && data.event_id.size() > 0 && data.event_id.size() <= 128 &&
+        data.code is string && data.code.size() > 0 && data.code.size() <= 64 &&
+        data.discount_type is string && (data.discount_type in ['percentage', 'fixed']) &&
+        (data.discount_value is int || data.discount_value is float) && data.discount_value >= 0 &&
+        data.applies_to is string && (data.applies_to in ['all', 'ticket', 'merchandise']) &&
+        data.status is string && (data.status in ['active', 'inactive', 'expired']) &&
+        data.created_at is string && data.created_at.size() <= 50 &&
+        data.updated_at is string && data.updated_at.size() <= 50 &&
+        (!('description' in data) || data.description == null || (data.description is string && data.description.size() <= 500)) &&
+        (!('usage_limit' in data) || data.usage_limit == null || ((data.usage_limit is int || data.usage_limit is float) && data.usage_limit >= 0)) &&
+        (!('times_used' in data) || data.times_used == null || ((data.times_used is int || data.times_used is float) && data.times_used >= 0)) &&
+        (!('min_spend' in data) || data.min_spend == null || ((data.min_spend is int || data.min_spend is float) && data.min_spend >= 0)) &&
+        (!('max_discount' in data) || data.max_discount == null || ((data.max_discount is int || data.max_discount is float) && data.max_discount >= 0)) &&
+        (!('start_date' in data) || data.start_date == null || (data.start_date is string && data.start_date.size() <= 50)) &&
+        (!('end_date' in data) || data.end_date == null || (data.end_date is string && data.end_date.size() <= 50)) &&
+        (!('source_bundle_id' in data) || data.source_bundle_id == null || (data.source_bundle_id is string && data.source_bundle_id.size() <= 128)) &&
+        (!('source_registration_id' in data) || data.source_registration_id == null || (data.source_registration_id is string && data.source_registration_id.size() <= 200)) &&
+        (!('redeemed_by_member_id' in data) || data.redeemed_by_member_id == null || (data.redeemed_by_member_id is string && data.redeemed_by_member_id.size() <= 128)) &&
+        (!('redeemed_by_name' in data) || data.redeemed_by_name == null || (data.redeemed_by_name is string && data.redeemed_by_name.size() <= 150)) &&
+        (!('redeemed_by_email' in data) || data.redeemed_by_email == null || (data.redeemed_by_email is string && data.redeemed_by_email.size() <= 150)) &&
+        (!('redeemed_at' in data) || data.redeemed_at == null || (data.redeemed_at is string && data.redeemed_at.size() <= 50)) &&
+        (!('purchaser_member_id' in data) || data.purchaser_member_id == null || (data.purchaser_member_id is string && data.purchaser_member_id.size() <= 128)) &&
+        (!('purchaser_name' in data) || data.purchaser_name == null || (data.purchaser_name is string && data.purchaser_name.size() <= 150)) &&
+        (!('purchaser_email' in data) || data.purchaser_email == null || (data.purchaser_email is string && data.purchaser_email.size() <= 150));
+    }
+
     // Validates system_settings document structure, data types, and bounds
     function isValidSystemSetting(data) {
       return (
@@ -1101,6 +1176,37 @@ service cloud.firestore {
               'total_approved', 'total_checked_in', 'total_waitlisted'
             ])
           )
+        )
+      );
+    }
+
+    // -------------------------------------------------------------
+    // Event Vouchers Collection (Private promo & sponsor discount vouchers)
+    // -------------------------------------------------------------
+    match /event_vouchers/{voucherDocId} {
+      // Individual voucher validation: Public read for single voucher verification by exact document ID.
+      // Allows checkout attendees and guests to look up and validate a promo code without revealing other vouchers.
+      allow get: if true;
+
+      // Listing vouchers: Strictly restricted to team members (Organizers & Staff).
+      // CRITICAL: Public and regular users MUST NOT be allowed to list or query all vouchers to prevent scraping secret promo codes.
+      allow list: if hasTeamAccess();
+
+      // Create & Delete: Team members only (Organizers & Staff), validating schema on create.
+      allow create: if hasTeamAccess() && isValidEventVoucher(request.resource.data);
+      allow delete: if hasTeamAccess();
+
+      // Update: Team members (full voucher editing) or authenticated users redeeming a voucher upon registration checkout.
+      // Regular users are strictly restricted to updating redemption tracking fields and non-negative times_used counter.
+      allow update: if isValidEventVoucher(request.resource.data) && (
+        hasTeamAccess() ||
+        (
+          isAuthenticated() &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'times_used', 'redeemed_by_member_id', 'redeemed_by_name',
+            'redeemed_by_email', 'redeemed_at', 'updated_at'
+          ]) &&
+          (!('times_used' in request.resource.data) || ((request.resource.data.times_used is int || request.resource.data.times_used is float) && request.resource.data.times_used >= 0))
         )
       );
     }
