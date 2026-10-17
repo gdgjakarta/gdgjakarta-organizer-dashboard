@@ -9,7 +9,9 @@
     "nodejs_compat",
     // Allow to fetch URLs in your app
     // see https://developers.cloudflare.com/workers/configuration/compatibility-flags/#global-fetch-strictly-public
-    "global_fetch_strictly_public"
+    "global_fetch_strictly_public",
+    // Permit harmless dynamic code evaluation during module initialization/startup
+    "allow_eval_during_startup"
   ],
   "assets": {
     "directory": ".open-next/assets",
