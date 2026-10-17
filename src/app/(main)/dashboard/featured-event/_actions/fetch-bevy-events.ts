@@ -11,10 +11,10 @@ export type { PublishedEventOption };
  * Server action to fetch chapter events from Bevy API for the featured event picker.
  * Uses the exact same Bevy data pipeline and formatting as the email manager.
  */
-export async function fetchFeaturedEventBevyListAction(): Promise<{
+export async function fetchFeaturedEventBevyListAction(options?: { forceRefresh?: boolean }): Promise<{
   success: boolean;
   events: PublishedEventOption[];
   error?: string;
 }> {
-  return await fetchPublishedEventsAction();
+  return await fetchPublishedEventsAction(options);
 }

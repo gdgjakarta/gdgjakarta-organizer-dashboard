@@ -2,31 +2,15 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import {
-  Activity,
-  Calendar,
-  CheckCircle2,
-  Copy,
-  ExternalLink,
-  Info,
-  Layers,
-  Loader2,
-  RotateCcw,
-  Send,
-  ShieldCheck,
-  Sparkles,
-  Users,
-  Zap,
-} from "lucide-react";
+import { CheckCircle2, ExternalLink, FileSpreadsheet, Info, Send, Sparkles, Users } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
 import { getBevyDashboardUrl } from "@/config/remote-config-utils";
+import { extractApiMessage } from "@/lib/utils";
 
 import { fetchBevyEventDetailAction, fetchPublishedEventsAction } from "../_actions/fetch-published-events";
 import {
@@ -37,104 +21,42 @@ import {
   type PublishedEventOption,
 } from "../_types/placeholders";
 import { EmailBlastForm } from "./email-blast-form";
-import { PublishedEventSelector } from "./published-event-selector";
 
-interface EventTagItem {
-  key: keyof EventDynamicPlaceholders;
-  tag: string;
-  description: string;
-  isTextarea?: boolean;
+const CLIENT_EVENTS_CACHE_KEY = "gdg_email_published_events_cache_v1";
+const CLIENT_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+interface ClientEventsCacheData {
+  events: PublishedEventOption[];
+  timestamp: number;
 }
 
-interface AttendeeTagItem {
-  key: keyof AttendeeDynamicPlaceholders;
-  tag: string;
-  description: string;
-  example: string;
+function readClientEventsCache(): PublishedEventOption[] | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(CLIENT_EVENTS_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as ClientEventsCacheData;
+    if (parsed && Array.isArray(parsed.events) && Date.now() - parsed.timestamp < CLIENT_CACHE_TTL_MS) {
+      return parsed.events;
+    }
+  } catch {
+    // Ignore malformed cache
+  }
+  return null;
 }
 
-const standardEventTags: EventTagItem[] = [
-  {
-    key: "EventName",
-    tag: "[[EventName]]",
-    description: "Auto-populated title of the selected target event",
-  },
-  {
-    key: "EventDate",
-    tag: "[[EventDate]]",
-    description: "Formatted event date (e.g. Friday, Oct 23, 2026)",
-  },
-  {
-    key: "EventTime",
-    tag: "[[EventTime]]",
-    description: "Formatted event start & end time (e.g. 10:00 AM - 05:00 PM)",
-  },
-  {
-    key: "EventVenue",
-    tag: "[[EventVenue]]",
-    description: "Event venue name and location city",
-  },
-  {
-    key: "EventAddress",
-    tag: "[[EventAddress]]",
-    description: "Full street address of the venue",
-  },
-  {
-    key: "EventUrl",
-    tag: "[[EventUrl]]",
-    description: "Public landing page link to the event details",
-  },
-  {
-    key: "EventBannerUrl",
-    tag: "[[EventBannerUrl]]",
-    description: "Direct URL of the event hero banner image (recommended: 1850 × 560 px)",
-  },
-  {
-    key: "EventDescription",
-    tag: "[[EventDescription]]",
-    description: "Short overview description of the event",
-    isTextarea: true,
-  },
-];
-
-const standardAttendeeTags: AttendeeTagItem[] = [
-  {
-    key: "Name",
-    tag: "[[Name]]",
-    description: "Recipient's full name from Bevy or Google Sheets",
-    example: "Budi Santoso",
-  },
-  {
-    key: "FirstName",
-    tag: "[[FirstName]]",
-    description: "Recipient's first given name",
-    example: "Budi",
-  },
-  {
-    key: "LastName",
-    tag: "[[LastName]]",
-    description: "Recipient's surname or family name",
-    example: "Santoso",
-  },
-  {
-    key: "Email",
-    tag: "[[Email]]",
-    description: "Recipient's verified email address",
-    example: "budi.santoso@example.com",
-  },
-  {
-    key: "TicketType",
-    tag: "[[TicketType]]",
-    description: "Registered ticket tier or category",
-    example: "In-Person Pass (Free)",
-  },
-  {
-    key: "CheckinStatus",
-    tag: "[[CheckinStatus]]",
-    description: "Whether the attendee has checked in",
-    example: "Checked In",
-  },
-];
+function writeClientEventsCache(events: PublishedEventOption[]) {
+  if (typeof window === "undefined") return;
+  try {
+    const data: ClientEventsCacheData = {
+      events,
+      timestamp: Date.now(),
+    };
+    localStorage.setItem(CLIENT_EVENTS_CACHE_KEY, JSON.stringify(data));
+  } catch {
+    // Ignore quota/privacy errors
+  }
+}
 
 export function EmailManager() {
   const [activeTab, setActiveTab] = useState("composer");
@@ -142,6 +64,7 @@ export function EmailManager() {
   // Shared event & dynamic placeholder state between Composer & Placeholders tabs
   const [publishedEvents, setPublishedEvents] = useState<PublishedEventOption[]>([]);
   const [isLoadingEvents, setIsLoadingEvents] = useState(true);
+  const [isRefreshingEvents, setIsRefreshingEvents] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<PublishedEventOption | undefined>();
   const [eventPlaceholders, setEventPlaceholders] = useState<EventDynamicPlaceholders>(() =>
     buildDefaultEventPlaceholders(),
@@ -152,14 +75,14 @@ export function EmailManager() {
   const [isLoadingEventDetail, setIsLoadingEventDetail] = useState(false);
 
   // Function to load detail event and autofill dynamic placeholders + header banner
-  const handleSelectEvent = useCallback(async (ev: PublishedEventOption) => {
+  const handleSelectEvent = useCallback(async (ev: PublishedEventOption, forceRefresh?: boolean) => {
     setSelectedEvent(ev);
     const initialDefaults = buildDefaultEventPlaceholders(ev);
     setEventPlaceholders(initialDefaults);
 
     setIsLoadingEventDetail(true);
     try {
-      const res = await fetchBevyEventDetailAction(ev.id);
+      const res = await fetchBevyEventDetailAction(ev.id, { forceRefresh });
       if (res.success && res.event && res.placeholders) {
         setSelectedEvent(res.event);
         setEventPlaceholders(res.placeholders);
@@ -171,17 +94,67 @@ export function EmailManager() {
     }
   }, []);
 
-  // Initial load of published events
+  // Force refresh handler triggered by organizer
+  const handleRefreshEvents = useCallback(async () => {
+    setIsRefreshingEvents(true);
+    try {
+      const res = await fetchPublishedEventsAction({ forceRefresh: true });
+      if (res.success && res.events) {
+        setPublishedEvents(res.events);
+        writeClientEventsCache(res.events);
+        toast.success("Bevy Events Refreshed", {
+          description: `Loaded ${res.events.length} chapter event${res.events.length === 1 ? "" : "s"} from Bevy.`,
+        });
+
+        if (selectedEvent) {
+          const matched = res.events.find((e) => e.id === selectedEvent.id);
+          if (matched) {
+            void handleSelectEvent(matched, true);
+          } else if (res.events.length > 0) {
+            void handleSelectEvent(res.events[0], true);
+          }
+        }
+      } else {
+        toast.error("Failed to refresh Bevy events", {
+          description: res.error ?? "Could not retrieve fresh events from Bevy.",
+        });
+      }
+    } catch (err) {
+      console.error("Failed to refresh Bevy events:", err);
+      toast.error("Failed to refresh Bevy events", {
+        description: extractApiMessage(err),
+      });
+    } finally {
+      setIsRefreshingEvents(false);
+    }
+  }, [handleSelectEvent, selectedEvent]);
+
+  // Initial load of published events: read client cache first, then fetch if needed
   useEffect(() => {
+    let isMounted = true;
+
     async function loadEvents() {
+      // 1. Try reading client cache
+      const cached = readClientEventsCache();
+      if (cached && cached.length > 0) {
+        if (isMounted) {
+          setPublishedEvents(cached);
+          setIsLoadingEvents(false);
+          void handleSelectEvent(cached[0]);
+        }
+        return;
+      }
+
+      // 2. Fetch from server action
       setIsLoadingEvents(true);
       try {
         const res = await fetchPublishedEventsAction();
+        if (!isMounted) return;
         if (res.success && res.events) {
           setPublishedEvents(res.events);
-          if (res.events.length > 0 && !selectedEvent) {
-            const first = res.events[0];
-            void handleSelectEvent(first);
+          writeClientEventsCache(res.events);
+          if (res.events.length > 0) {
+            void handleSelectEvent(res.events[0]);
           }
         } else {
           toast.error("Could not load Bevy events", {
@@ -191,25 +164,18 @@ export function EmailManager() {
       } catch (err) {
         console.error("Failed to fetch Bevy events:", err);
       } finally {
-        setIsLoadingEvents(false);
+        if (isMounted) {
+          setIsLoadingEvents(false);
+        }
       }
     }
+
     void loadEvents();
-  }, [handleSelectEvent, selectedEvent]);
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast.success("Copied to Clipboard", {
-      description: `${text} copied. You can drag or paste it directly into your HTML template.`,
-    });
-  };
-
-  const handlePlaceholderChange = (key: keyof EventDynamicPlaceholders, val: string) => {
-    setEventPlaceholders((prev) => ({
-      ...prev,
-      [key]: val,
-    }));
-  };
+    return () => {
+      isMounted = false;
+    };
+  }, [handleSelectEvent]);
 
   const handleResetPlaceholders = () => {
     if (selectedEvent) {
@@ -219,13 +185,6 @@ export function EmailManager() {
         description: `Reset to Bevy defaults for "${selectedEvent.title}".`,
       });
     }
-  };
-
-  const handleAttendeePlaceholderChange = (key: keyof AttendeeDynamicPlaceholders, val: string) => {
-    setAttendeePlaceholders((prev) => ({
-      ...prev,
-      [key]: val,
-    }));
   };
 
   const handleResetAttendeePlaceholders = () => {
@@ -269,10 +228,6 @@ export function EmailManager() {
               <Send className="size-3.5" />
               Bulk Email Composer
             </TabsTrigger>
-            <TabsTrigger value="placeholders" className="gap-2 text-xs">
-              <Layers className="size-3.5" />
-              Dynamic Placeholders
-            </TabsTrigger>
             <TabsTrigger value="documentation" className="gap-2 text-xs">
               <Info className="size-3.5" />
               Integration &amp; Guide
@@ -292,301 +247,130 @@ export function EmailManager() {
             onSelectEvent={handleSelectEvent}
             onChangePlaceholders={setEventPlaceholders}
             onResetPlaceholders={handleResetPlaceholders}
+            onChangeAttendeePlaceholders={setAttendeePlaceholders}
+            onResetAttendeePlaceholders={handleResetAttendeePlaceholders}
+            onRefreshEvents={handleRefreshEvents}
+            isRefreshingEvents={isRefreshingEvents}
           />
         </TabsContent>
 
-        {/* Tab 2: Dynamic Placeholders with Live Autofill & Organizer Editing */}
-        <TabsContent value="placeholders" className="space-y-4 pt-2">
-          <Card>
-            <CardHeader className="space-y-4">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <CardTitle>Supported Dynamic Variables</CardTitle>
-                  <CardDescription className="mt-1">
-                    Event data placeholders below are <strong>autofilled from the selected Bevy event</strong> and can
-                    be directly modified by organizers. Modified values apply to live preview and outgoing emails.
-                  </CardDescription>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleResetPlaceholders}
-                  disabled={isLoadingEventDetail || !selectedEvent}
-                  className="shrink-0 gap-1.5 text-xs shadow-xs"
-                >
-                  <RotateCcw className="size-3.5" />
-                  Reset to Bevy Defaults
-                </Button>
-              </div>
-
-              {/* Event Selector in Placeholders Tab for quick switching */}
-              <div className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-2">
-                  <Calendar className="size-4 text-sky-500" />
-                  <span className="font-medium text-foreground text-xs">Target Event for Autofill:</span>
-                </div>
-                <div className="w-full sm:w-80">
-                  <PublishedEventSelector
-                    events={publishedEvents}
-                    selectedEventId={selectedEvent?.id}
-                    onSelectEvent={handleSelectEvent}
-                    isLoading={isLoadingEvents}
-                    disabled={isLoadingEventDetail}
-                  />
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Event Placeholders */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="size-4 text-sky-500" />
-                    <h3 className="font-semibold text-foreground text-sm">Event Data Placeholders</h3>
-                  </div>
-                  {isLoadingEventDetail && (
-                    <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
-                      <Loader2 className="size-3 animate-spin text-primary" />
-                      <span>Syncing event details from Bevy...</span>
-                    </div>
-                  )}
-                </div>
-                <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2">
-                  {standardEventTags.map((item) => (
-                    <div
-                      key={item.tag}
-                      className="flex flex-col justify-between rounded-lg border p-3.5 transition-colors hover:bg-muted/20"
-                    >
-                      <div>
-                        <div className="flex items-center justify-between">
-                          <Badge
-                            variant="outline"
-                            className="font-bold font-mono text-sky-600 text-xs dark:text-sky-400"
-                          >
-                            {item.tag}
-                          </Badge>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 px-2 text-muted-foreground text-xs hover:text-foreground"
-                            onClick={() => copyToClipboard(item.tag)}
-                          >
-                            <Copy className="mr-1 size-3" />
-                            Copy
-                          </Button>
-                        </div>
-                        <p className="mt-1.5 text-muted-foreground text-xs">{item.description}</p>
-                      </div>
-
-                      {/* Image Preview for EventBannerUrl */}
-                      {item.key === "EventBannerUrl" && eventPlaceholders.EventBannerUrl && (
-                        <div className="mt-3 overflow-hidden rounded-md border bg-muted/40">
-                          <div className="relative aspect-[1850/560] w-full overflow-hidden bg-muted">
-                            {/* biome-ignore lint/performance/noImgElement: dynamic external banner preview */}
-                            <img
-                              src={eventPlaceholders.EventBannerUrl}
-                              alt="Event Banner Preview"
-                              className="h-full w-full object-cover transition-transform duration-300 hover:scale-105"
-                              onError={(e) => {
-                                (e.currentTarget as HTMLElement).style.display = "none";
-                              }}
-                            />
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="mt-3 space-y-1">
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium text-[11px] text-foreground/80">
-                            Default / Autofilled Value:
-                          </span>
-                          <span className="text-[10px] text-muted-foreground">(Editable)</span>
-                        </div>
-                        {item.isTextarea ? (
-                          <Textarea
-                            rows={2}
-                            value={eventPlaceholders[item.key] || ""}
-                            onChange={(e) => handlePlaceholderChange(item.key, e.target.value)}
-                            placeholder={`Autofilled from Bevy ${item.tag}...`}
-                            className="resize-none text-xs"
-                          />
-                        ) : (
-                          <Input
-                            value={eventPlaceholders[item.key] || ""}
-                            onChange={(e) => handlePlaceholderChange(item.key, e.target.value)}
-                            placeholder={`Autofilled from Bevy ${item.tag}...`}
-                            className="h-8 text-xs"
-                          />
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Attendee Placeholders */}
-              <div className="space-y-3 border-t pt-5">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <Users className="size-4 text-emerald-500" />
-                      <h3 className="font-semibold text-foreground text-sm">Attendee Data Placeholders</h3>
-                    </div>
-                    <p className="mt-0.5 text-muted-foreground text-xs">
-                      Attendee tokens are dynamically resolved and replaced for each individual recipient during bulk
-                      delivery.
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleResetAttendeePlaceholders}
-                    className="h-7 w-fit gap-1 px-2.5 text-xs shadow-xs"
-                  >
-                    <RotateCcw className="size-3" />
-                    Reset to Defaults
-                  </Button>
-                </div>
-
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                  {standardAttendeeTags.map((item) => (
-                    <div
-                      key={item.tag}
-                      className="flex flex-col justify-between rounded-lg border bg-card p-3.5 shadow-xs transition-colors hover:bg-muted/30"
-                    >
-                      <div>
-                        <div className="flex items-center justify-between">
-                          <Badge
-                            variant="outline"
-                            className="font-bold font-mono text-emerald-600 text-xs dark:text-emerald-400"
-                          >
-                            {item.tag}
-                          </Badge>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 px-2 text-muted-foreground text-xs hover:text-foreground"
-                            onClick={() => copyToClipboard(item.tag)}
-                          >
-                            <Copy className="mr-1 size-3" />
-                            Copy
-                          </Button>
-                        </div>
-                        <p className="mt-1.5 text-muted-foreground text-xs">{item.description}</p>
-                      </div>
-
-                      <div className="mt-3 space-y-1">
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium text-[11px] text-foreground/80">
-                            Default / Autofilled Value:
-                          </span>
-                          <span className="text-[10px] text-muted-foreground">(Editable)</span>
-                        </div>
-                        <Input
-                          value={attendeePlaceholders[item.key] || ""}
-                          onChange={(e) => handleAttendeePlaceholderChange(item.key, e.target.value)}
-                          placeholder={`Preview value for ${item.tag}...`}
-                          className="h-8 text-xs"
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Tab 3: Documentation & Integration Guide */}
+        {/* Tab 2: Documentation & Integration Guide */}
         <TabsContent value="documentation" className="space-y-4 pt-2">
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            {/* Guide 1: Sending via Event Attendees Data */}
             <Card>
               <CardHeader>
                 <div className="flex items-center gap-2">
                   <Users className="size-5 text-emerald-500" />
-                  <CardTitle className="text-lg">Bevy Audience Segments</CardTitle>
+                  <CardTitle className="text-lg">Sending with Event Attendees</CardTitle>
                 </div>
-                <CardDescription>How attendee data is resolved from Bevy for bulk campaigns.</CardDescription>
+                <CardDescription>
+                  How to dispatch personalized bulk emails using live attendee data from Bevy events.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4 text-sm">
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 font-medium">
                     <CheckCircle2 className="size-4 text-emerald-500" />
-                    <span>1. Real-Time Attendee Roster</span>
+                    <span>1. Select Target Event &amp; Audience</span>
                   </div>
                   <p className="pl-6 text-muted-foreground text-xs">
-                    When you select a published event and choose an audience segment (such as confirmed ticket holders,
-                    checked-in guests, or waitlisted users), the dashboard queries Bevy directly and resolves
-                    deduplicated verified recipient records.
+                    Choose a published Bevy chapter event and select an audience segment (such as confirmed ticket
+                    holders, checked-in guests, or waitlisted members). The platform resolves verified, deduplicated
+                    recipient records in real time.
                   </p>
                 </div>
 
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 font-medium">
                     <CheckCircle2 className="size-4 text-emerald-500" />
-                    <span>2. Drag &amp; Drop Tokens</span>
+                    <span>2. Review Event &amp; Attendee Placeholders</span>
                   </div>
                   <p className="pl-6 text-muted-foreground text-xs">
-                    In the HTML editor, drag any variable badge (e.g. <code>[[EventName]]</code>,{" "}
-                    <code>[[EventDate]]</code>, <code>[[Name]]</code>) or pre-built HTML component card directly onto
-                    the code editor.
+                    Event variables (<code>[[EventName]]</code>, <code>[[EventDate]]</code>, <code>[[EventVenue]]</code>
+                    , etc.) are autofilled from Bevy. Expand the collapsible placeholder panels to review or edit sample
+                    values and attendee tokens (like <code>[[Name]]</code> and <code>[[TicketType]]</code>).
                   </p>
                 </div>
 
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 font-medium">
                     <CheckCircle2 className="size-4 text-emerald-500" />
-                    <span>3. Sample Data Live Preview</span>
+                    <span>3. Drag &amp; Drop Tokens in HTML Editor</span>
                   </div>
                   <p className="pl-6 text-muted-foreground text-xs">
-                    Use the Live Preview panel on desktop or mobile view with Sample Data toggled to inspect exactly how
-                    the rendered email will appear in recipient inboxes.
+                    Drag variable badges or pre-built HTML component blocks directly onto the code editor. Toggle the
+                    Live Preview between desktop and mobile to verify layout styling.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 font-medium">
+                    <CheckCircle2 className="size-4 text-emerald-500" />
+                    <span>4. Send Blast with Dynamic Replacement</span>
+                  </div>
+                  <p className="pl-6 text-muted-foreground text-xs">
+                    Click <strong>Send Email Blast</strong>. Each recipient receives a customized email with their
+                    individual attendee data and event tokens replaced automatically.
                   </p>
                 </div>
               </CardContent>
             </Card>
 
+            {/* Guide 2: Sending via Google Spreadsheets */}
             <Card>
               <CardHeader>
                 <div className="flex items-center gap-2">
-                  <Zap className="size-5 text-blue-500" />
-                  <CardTitle className="text-lg">n8n Automation Pipeline</CardTitle>
+                  <FileSpreadsheet className="size-5 text-teal-500" />
+                  <CardTitle className="text-lg">Sending with Google Spreadsheets</CardTitle>
                 </div>
-                <CardDescription>Overview of how the background email queue process works.</CardDescription>
+                <CardDescription>
+                  How to send bulk campaigns using custom recipient lists and columns from Google Sheets.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4 text-sm">
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 font-medium">
-                    <Activity className="size-4 text-blue-500" />
-                    <span>1. Webhook Ingestion</span>
+                    <CheckCircle2 className="size-4 text-teal-500" />
+                    <span>1. Connect Google Sheet URL</span>
                   </div>
                   <p className="pl-6 text-muted-foreground text-xs">
-                    Submitting the email blast dispatches the payload to{" "}
-                    <code>https://n8n.gdgjakarta.com/webhook/api/send-bulk-email</code> with the full verified recipient
-                    array.
+                    Under Recipient Source, switch to <strong>Google Spreadsheet</strong>. Paste your public or shared
+                    Google Sheet URL and click <strong>Fetch Sheets</strong> to load available tabs.
                   </p>
                 </div>
 
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 font-medium">
-                    <Layers className="size-4 text-blue-500" />
-                    <span>2. Batch Queuing &amp; Throttling</span>
+                    <CheckCircle2 className="size-4 text-teal-500" />
+                    <span>2. Select Worksheet Tab &amp; Header Row</span>
                   </div>
                   <p className="pl-6 text-muted-foreground text-xs">
-                    The n8n workflow processes the recipients list, replaces all template placeholders per individual,
-                    and throttles delivery to maintain high deliverability and avoid spam triggers.
+                    Select your sheet tab from the dropdown. Specify the header row number (defaults to row 1)
+                    containing your column titles, then click <strong>Fetch Headers</strong>.
                   </p>
                 </div>
 
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 font-medium">
-                    <ShieldCheck className="size-4 text-blue-500" />
-                    <span>3. Secure Server Authorization</span>
+                    <CheckCircle2 className="size-4 text-teal-500" />
+                    <span>3. Use Extracted Column Tokens</span>
                   </div>
                   <p className="pl-6 text-muted-foreground text-xs">
-                    Authorization headers are attached securely on the server via <code>N8N_WEBHOOK_API_KEY</code>.
+                    All non-empty column names become draggable placeholder badges (e.g. <code>[[Email]]</code>,{" "}
+                    <code>[[Full Name]]</code>, <code>[[Custom Note]]</code>). Ensure an <code>Email</code> column
+                    exists to identify recipients.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 font-medium">
+                    <CheckCircle2 className="size-4 text-teal-500" />
+                    <span>4. Preview &amp; Dispatch Campaign</span>
+                  </div>
+                  <p className="pl-6 text-muted-foreground text-xs">
+                    Preview your email in desktop or mobile mode. When ready, click <strong>Send Email Blast</strong> to
+                    deliver emails to all valid recipient rows extracted from your spreadsheet.
                   </p>
                 </div>
               </CardContent>

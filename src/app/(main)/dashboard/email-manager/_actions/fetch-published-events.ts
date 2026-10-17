@@ -10,108 +10,180 @@ import {
   type PublishedEventOption,
 } from "../_types/placeholders";
 
-export type { EventDynamicPlaceholders, PublishedEventOption };
+export { buildDefaultEventPlaceholders, type EventDynamicPlaceholders, type PublishedEventOption };
 
-/**
- * Server action to fetch events that are published and ready for communications.
- * Merges Bevy chapter events with any local Firestore event extensions.
- */
-export async function fetchPublishedEventsAction(): Promise<{
+interface EventsCacheEntry {
+  events: PublishedEventOption[];
+  fetchedAt: number;
+}
+
+let cachedEventsEntry: EventsCacheEntry | null = null;
+let inFlightEventsPromise: Promise<{
   success: boolean;
   events: PublishedEventOption[];
   error?: string;
+  fromCache?: boolean;
+}> | null = null;
+
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes cache TTL
+
+interface DetailCacheEntry {
+  event: PublishedEventOption;
+  placeholders: EventDynamicPlaceholders;
+  fetchedAt: number;
+}
+
+const cachedEventDetails = new Map<string, DetailCacheEntry>();
+
+/**
+ * Server action to fetch events that are published and ready for communications.
+ * Merges Bevy chapter events with in-memory caching and optional forceRefresh flag.
+ */
+export async function fetchPublishedEventsAction(options?: { forceRefresh?: boolean }): Promise<{
+  success: boolean;
+  events: PublishedEventOption[];
+  error?: string;
+  fromCache?: boolean;
 }> {
-  try {
-    // 1. Fetch all Bevy events (including hidden events)
-    const { results: bevyEvents } = await getAllBevyChapterEvents(undefined, true, "All");
+  const now = Date.now();
 
-    // 2. Return all chapter events with no filter
-    const allEvents = bevyEvents.filter((e) => Boolean(e.id));
-
-    // 3. Map to unified format
-    const events: PublishedEventOption[] = allEvents.map((bevy) => {
-      const idStr = String(bevy.id);
-
-      let formattedDate = "Date TBD";
-      let formattedTime = "";
-      const rawStart = bevy.start_date || "";
-
-      if (rawStart) {
-        try {
-          const parsed = parseISO(rawStart);
-          formattedDate = format(parsed, "EEEE, MMM dd, yyyy");
-          formattedTime = format(parsed, "hh:mm a");
-        } catch {
-          formattedDate = rawStart;
-        }
-      }
-
-      const thumbnailUrl = bevy.picture?.thumbnail_url || bevy.picture?.url || bevy.cropped_picture_url || "";
-
-      const bannerUrl =
-        bevy.banner?.url ||
-        bevy.cropped_banner_url ||
-        bevy.banner?.thumbnail_url ||
-        bevy.picture?.url ||
-        bevy.cropped_picture_url ||
-        thumbnailUrl;
-
-      const venueName = bevy.venue_name || (bevy.is_virtual_event ? "Virtual / Online" : "Jakarta, Indonesia");
-      const venueAddress = bevy.venue_address || "";
-      const eventUrl =
-        bevy.url || bevy.static_url || `https://gdg.community.dev/events/details/google-gdg-jakarta-${idStr}/`;
-
-      return {
-        id: idStr,
-        title: bevy.title || "Untitled Event",
-        startDate: rawStart,
-        endDate: bevy.end_date || "",
-        formattedDate,
-        formattedTime,
-        thumbnailUrl,
-        bannerUrl,
-        venueName,
-        venueAddress,
-        url: eventUrl,
-        descriptionShort: bevy.description_short || "",
-        isVirtual: Boolean(bevy.is_virtual_event),
-      };
-    });
-
-    // Sort by start date (descending, latest / upcoming first)
-    events.sort((a, b) => {
-      const timeA = a.startDate ? new Date(a.startDate).getTime() : 0;
-      const timeB = b.startDate ? new Date(b.startDate).getTime() : 0;
-      return timeB - timeA;
-    });
-
+  // Return cached events if fresh and forceRefresh was not requested
+  if (!options?.forceRefresh && cachedEventsEntry && now - cachedEventsEntry.fetchedAt < CACHE_TTL_MS) {
     return {
       success: true,
-      events,
-    };
-  } catch (error) {
-    console.error("[fetchPublishedEventsAction] Error fetching published events:", error);
-    return {
-      success: false,
-      events: [],
-      error: error instanceof Error ? error.message : "Failed to fetch published events.",
+      events: cachedEventsEntry.events,
+      fromCache: true,
     };
   }
+
+  // Deduplicate concurrent in-flight requests when not forcing refresh
+  if (!options?.forceRefresh && inFlightEventsPromise) {
+    return inFlightEventsPromise;
+  }
+
+  const fetchPromise = (async () => {
+    try {
+      // 1. Fetch all Bevy events (including hidden events)
+      const { results: bevyEvents } = await getAllBevyChapterEvents(undefined, true, "All");
+
+      // 2. Return all chapter events with no filter
+      const allEvents = bevyEvents.filter((e) => Boolean(e.id));
+
+      // 3. Map to unified format
+      const events: PublishedEventOption[] = allEvents.map((bevy) => {
+        const idStr = String(bevy.id);
+
+        let formattedDate = "Date TBD";
+        let formattedTime = "";
+        const rawStart = bevy.start_date || "";
+
+        if (rawStart) {
+          try {
+            const parsed = parseISO(rawStart);
+            formattedDate = format(parsed, "EEEE, MMM dd, yyyy");
+            formattedTime = format(parsed, "hh:mm a");
+          } catch {
+            formattedDate = rawStart;
+          }
+        }
+
+        const thumbnailUrl = bevy.picture?.thumbnail_url || bevy.picture?.url || bevy.cropped_picture_url || "";
+
+        const bannerUrl =
+          bevy.banner?.url ||
+          bevy.cropped_banner_url ||
+          bevy.banner?.thumbnail_url ||
+          bevy.picture?.url ||
+          bevy.cropped_picture_url ||
+          thumbnailUrl;
+
+        const venueName = bevy.venue_name || (bevy.is_virtual_event ? "Virtual / Online" : "Jakarta, Indonesia");
+        const venueAddress = bevy.venue_address || "";
+        const eventUrl =
+          bevy.url || bevy.static_url || `https://gdg.community.dev/events/details/google-gdg-jakarta-${idStr}/`;
+
+        return {
+          id: idStr,
+          title: bevy.title || "Untitled Event",
+          startDate: rawStart,
+          endDate: bevy.end_date || "",
+          formattedDate,
+          formattedTime,
+          thumbnailUrl,
+          bannerUrl,
+          venueName,
+          venueAddress,
+          url: eventUrl,
+          descriptionShort: bevy.description_short || "",
+          isVirtual: Boolean(bevy.is_virtual_event),
+        };
+      });
+
+      // Sort by start date (descending, latest / upcoming first)
+      events.sort((a, b) => {
+        const timeA = a.startDate ? new Date(a.startDate).getTime() : 0;
+        const timeB = b.startDate ? new Date(b.startDate).getTime() : 0;
+        return timeB - timeA;
+      });
+
+      cachedEventsEntry = {
+        events,
+        fetchedAt: Date.now(),
+      };
+
+      return {
+        success: true,
+        events,
+        fromCache: false,
+      };
+    } catch (error) {
+      console.error("[fetchPublishedEventsAction] Error fetching published events:", error);
+      return {
+        success: false,
+        events: cachedEventsEntry?.events ?? [],
+        error: error instanceof Error ? error.message : "Failed to fetch published events.",
+        fromCache: false,
+      };
+    } finally {
+      inFlightEventsPromise = null;
+    }
+  })();
+
+  inFlightEventsPromise = fetchPromise;
+  return fetchPromise;
 }
 
 /**
  * Server action to fetch single event details directly from Bevy API.
  * Accurately retrieves full banner image URL, description, and location metadata.
+ * Uses in-memory server cache to avoid repeated network hits for the same event.
  */
-export async function fetchBevyEventDetailAction(eventId: string): Promise<{
+export async function fetchBevyEventDetailAction(
+  eventId: string,
+  options?: { forceRefresh?: boolean },
+): Promise<{
   success: boolean;
   event?: PublishedEventOption;
   placeholders?: EventDynamicPlaceholders;
   error?: string;
+  fromCache?: boolean;
 }> {
   try {
     if (!eventId) {
       return { success: false, error: "Event ID is required." };
+    }
+
+    const now = Date.now();
+    if (!options?.forceRefresh) {
+      const cached = cachedEventDetails.get(eventId);
+      if (cached && now - cached.fetchedAt < CACHE_TTL_MS) {
+        return {
+          success: true,
+          event: cached.event,
+          placeholders: cached.placeholders,
+          fromCache: true,
+        };
+      }
     }
 
     const { getBevyEventById } = await import("@/lib/bevy/client");
@@ -189,10 +261,17 @@ export async function fetchBevyEventDetailAction(eventId: string): Promise<{
 
     const placeholders = buildDefaultEventPlaceholders(mappedEvent);
 
+    cachedEventDetails.set(eventId, {
+      event: mappedEvent,
+      placeholders,
+      fetchedAt: Date.now(),
+    });
+
     return {
       success: true,
       event: mappedEvent,
       placeholders,
+      fromCache: false,
     };
   } catch (error) {
     console.error(`[fetchBevyEventDetailAction] Error fetching details for event ${eventId}:`, error);
