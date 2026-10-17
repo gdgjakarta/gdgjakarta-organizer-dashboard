@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -9,11 +9,13 @@ import {
   ChevronDown,
   FileSpreadsheet,
   Loader2,
+  Mail,
   RefreshCw,
   RotateCcw,
   Send,
   Sparkles,
   Trash2,
+  User,
   Users,
 } from "lucide-react";
 import { useForm } from "react-hook-form";
@@ -44,6 +46,7 @@ import { fetchSheetHeaders } from "../_actions/fetch-sheet-headers";
 import { fetchSheetsList } from "../_actions/fetch-sheets-list";
 import type { AudienceType, ResolvedRecipient } from "../_actions/resolve-audience-recipients";
 import { sendEmailBlast } from "../_actions/send-email-blast";
+import { sendQuickEmail } from "../_actions/send-quick-email";
 import {
   type AttendeeDynamicPlaceholders,
   buildDefaultEventPlaceholders,
@@ -52,6 +55,7 @@ import {
   type PublishedEventOption,
 } from "../_types/placeholders";
 import { AudienceSelector } from "./audience-selector";
+import { ConfirmEmailDialog } from "./confirm-email-dialog";
 import {
   defaultHtmlTemplate,
   deleteCustomEmailBlastTemplate,
@@ -61,18 +65,42 @@ import {
 import { HtmlEditorPreview } from "./html-editor-preview";
 import { PublishedEventSelector } from "./published-event-selector";
 import { SaveEmailTemplateDialog } from "./save-email-template-dialog";
+import { TemplateSelector } from "./template-selector";
+import type { EmailFeatureTemplateItem } from "./template-utils";
 
-const formSchema = z.object({
-  eventId: z.string().min(1, { message: "Event is required." }),
-  recipientSource: z.enum(["audience", "spreadsheet"]),
-  audienceType: z.string().optional(),
-  spreadsheetUrl: z.string().optional(),
-  sheetName: z.string().optional(),
-  headerRow: z.number().int().min(1, { message: "Header row position must be at least 1." }),
-  subject: z.string().min(1, { message: "Subject is required." }),
-  headerUrl: z.string().optional(),
-  body: z.string().min(1, { message: "Email HTML body is required." }),
-});
+const formSchema = z
+  .object({
+    eventId: z.string().min(1, { message: "Event is required." }),
+    recipientSource: z.enum(["audience", "spreadsheet", "single"]),
+    recipientEmail: z.string().optional(),
+    recipientName: z.string().optional(),
+    audienceType: z.string().optional(),
+    spreadsheetUrl: z.string().optional(),
+    sheetName: z.string().optional(),
+    headerRow: z.number().int().min(1, { message: "Header row position must be at least 1." }),
+    subject: z.string().min(1, { message: "Subject is required." }),
+    headerUrl: z.string().optional(),
+    body: z.string().min(1, { message: "Email HTML body is required." }),
+  })
+  .superRefine((data, ctx) => {
+    if (data.recipientSource === "single") {
+      if (!data.recipientEmail?.includes("@")) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["recipientEmail"],
+          message: "A valid recipient email address is required.",
+        });
+      }
+    } else if (data.recipientSource === "spreadsheet") {
+      if (!data.spreadsheetUrl) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["spreadsheetUrl"],
+          message: "Spreadsheet URL is required.",
+        });
+      }
+    }
+  });
 
 export type FormValues = z.infer<typeof formSchema>;
 
@@ -188,6 +216,8 @@ export function EmailBlastForm({
     defaultValues: {
       eventId: selectedEvent?.id || "",
       recipientSource: "audience",
+      recipientEmail: "",
+      recipientName: "",
       audienceType: "ticket_all",
       spreadsheetUrl: "",
       sheetName: "",
@@ -200,6 +230,8 @@ export function EmailBlastForm({
 
   const eventId = watch("eventId");
   const recipientSource = watch("recipientSource");
+  const recipientEmail = watch("recipientEmail");
+  const recipientName = watch("recipientName");
   const audienceType = watch("audienceType");
   const spreadsheetUrl = watch("spreadsheetUrl");
   const sheetName = watch("sheetName");
@@ -207,12 +239,39 @@ export function EmailBlastForm({
   const headerUrlValue = watch("headerUrl");
   const bodyValue = watch("body");
 
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [pendingFormData, setPendingFormData] = useState<FormValues | null>(null);
+  const [currentFeatureTemplateId, setCurrentFeatureTemplateId] = useState<string>("default");
+
+  const resolvedAttendeePlaceholders = useMemo<AttendeeDynamicPlaceholders>(() => {
+    if (recipientSource === "single" && recipientEmail) {
+      const rawName = (recipientName || "").trim();
+      const fallbackFromEmail = recipientEmail.split("@")[0] || "Attendee";
+      const name = rawName || fallbackFromEmail;
+      const parts = name.split(" ");
+      const firstName = parts[0] || name;
+      const lastName = parts.slice(1).join(" ") || firstName;
+      return {
+        Name: name,
+        FirstName: firstName,
+        LastName: lastName,
+        Email: recipientEmail,
+        TicketType: "Confirmed Entry Pass",
+        CheckinStatus: "Confirmed",
+      };
+    }
+    return attendeePlaceholders;
+  }, [recipientSource, recipientEmail, recipientName, attendeePlaceholders]);
+
   const isResolvingRecipients =
     recipientSource === "audience" &&
     (isResolvingAudience || isLoadingEventDetail || isRefreshingEvents || (isLoadingEvents && !selectedEvent));
 
   const submitButtonLabel = (() => {
     if (isSubmitting) return "Dispatching...";
+    if (recipientSource === "single") {
+      return "Send Email";
+    }
     if (isResolvingRecipients) return "Send Bulk Email (...)";
     if (recipientSource === "audience" && recipientCount > 0) {
       return `Send Bulk Email (${recipientCount.toLocaleString()})`;
@@ -561,6 +620,15 @@ export function EmailBlastForm({
     return () => clearTimeout(timer);
   }, [sheetName, spreadsheetUrl, headerRow, recipientSource, handleLoadTags]);
 
+  const handleSelectFeatureTemplate = (tpl: EmailFeatureTemplateItem) => {
+    setCurrentFeatureTemplateId(tpl.id);
+    const bodyContent = tpl.getRawHtml();
+    setValue("body", bodyContent, { shouldValidate: true });
+    if (tpl.defaultSubject) {
+      setValue("subject", tpl.defaultSubject, { shouldValidate: true });
+    }
+  };
+
   async function onSubmit(data: FormValues) {
     if (data.recipientSource === "audience" && recipientCount === 0) {
       toast.error("No Recipients Found", {
@@ -568,12 +636,64 @@ export function EmailBlastForm({
       });
       return;
     }
+    if (data.recipientSource === "single" && !data.recipientEmail?.includes("@")) {
+      toast.error("Invalid Recipient Email", {
+        description: "Please enter a valid recipient email address.",
+      });
+      return;
+    }
 
+    setPendingFormData(data);
+    setConfirmDialogOpen(true);
+  }
+
+  async function handleExecuteConfirmedSend() {
+    if (!pendingFormData) return;
+    const data = pendingFormData;
     setIsSubmitting(true);
 
     try {
       const eventTitle = selectedEvent?.title;
 
+      if (data.recipientSource === "single") {
+        const result = await sendQuickEmail({
+          eventId: data.eventId,
+          eventTitle,
+          recipientEmail: data.recipientEmail || "",
+          recipientName: data.recipientName,
+          subject: data.subject,
+          headerUrl: data.headerUrl,
+          body: data.body,
+          eventDetails: selectedEvent
+            ? {
+                formattedDate: selectedEvent.formattedDate,
+                formattedTime: selectedEvent.formattedTime,
+                venueName: selectedEvent.venueName,
+                venueAddress: selectedEvent.venueAddress,
+                url: selectedEvent.url,
+                bannerUrl: selectedEvent.bannerUrl,
+                descriptionShort: selectedEvent.descriptionShort,
+                isVirtual: selectedEvent.isVirtual,
+              }
+            : undefined,
+        });
+
+        if (!result.success) {
+          throw new Error(result.error ?? "Failed to dispatch quick email.");
+        }
+
+        toast.success("Quick Email Sent", {
+          description: result.message ?? `Email sent successfully to ${data.recipientEmail}.`,
+        });
+
+        setConfirmDialogOpen(false);
+        setPendingFormData(null);
+        reset();
+        onSuccess?.();
+        return;
+      }
+
+      // Bulk Email dispatch
       const result = await sendEmailBlast({
         eventId: data.eventId,
         eventTitle,
@@ -590,22 +710,57 @@ export function EmailBlastForm({
       });
 
       if (!result.success) {
-        throw new Error(result.error || "Failed to dispatch bulk email.");
+        throw new Error(result.error ?? "Failed to dispatch bulk email.");
       }
 
       toast.success("Bulk Email Blast Sent", {
-        description: result.message || `Campaign successfully queued for ${recipientCount} recipients.`,
+        description: result.message ?? `Campaign successfully queued for ${recipientCount} recipients.`,
       });
 
+      setConfirmDialogOpen(false);
+      setPendingFormData(null);
       reset();
       onSuccess?.();
     } catch (error: unknown) {
       console.error(error);
-      const msg = extractApiMessage(error, "Failed to dispatch bulk email.");
+      const msg = extractApiMessage(error, "Failed to dispatch email.");
       toast.error("Dispatch Failed", { description: msg });
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  function renderFooterRecipientStatus() {
+    if (recipientSource === "single") {
+      if (recipientEmail) {
+        return (
+          <span>
+            Ready to send quick email to <strong className="text-foreground">{recipientEmail}</strong>
+          </span>
+        );
+      }
+      return <span>Enter recipient email address above</span>;
+    }
+
+    if (recipientSource === "audience") {
+      return (
+        <span>
+          Ready to deliver to{" "}
+          {isResolvingRecipients ? (
+            <span className="inline-flex items-center gap-1.5 font-medium text-muted-foreground">
+              <Loader2 className="size-3 animate-spin text-primary" />
+              <span>calculating recipients...</span>
+            </span>
+          ) : (
+            <strong className="text-foreground">
+              {recipientCount.toLocaleString()} {recipientCount === 1 ? "recipient" : "recipients"}
+            </strong>
+          )}
+        </span>
+      );
+    }
+
+    return <span>Google Sheets automated column extraction active</span>;
   }
 
   return (
@@ -725,16 +880,32 @@ export function EmailBlastForm({
             </FieldContent>
           </Field>
 
-          {/* 2. Recipient Selector: Bevy Audience (Screenshots 1 & 2) vs Google Sheets */}
+          {/* 2. Pre-built Email Template Selector */}
+          <Field>
+            <FieldLabel>Email Template</FieldLabel>
+            <FieldContent>
+              <TemplateSelector
+                currentTemplateId={currentFeatureTemplateId}
+                onSelectTemplate={handleSelectFeatureTemplate}
+                disabled={isSubmitting}
+              />
+              <FieldDescription>
+                Choose from GDG official pass, curation, waitlist, or cancellation templates. Automatically formats
+                clean subject and body tokens.
+              </FieldDescription>
+            </FieldContent>
+          </Field>
+
+          {/* 3. Recipient Selector: Bevy Audience vs Google Sheets vs Quick Send (1 User) */}
           <Field>
             <FieldLabel>Recipient Source</FieldLabel>
             <FieldContent>
               <Tabs
                 value={recipientSource}
-                onValueChange={(val) => setValue("recipientSource", val as "audience" | "spreadsheet")}
+                onValueChange={(val) => setValue("recipientSource", val as "audience" | "spreadsheet" | "single")}
                 className="w-full space-y-3"
               >
-                <TabsList className="grid h-9 w-full grid-cols-2">
+                <TabsList className="grid h-9 w-full grid-cols-3">
                   <TabsTrigger value="audience" className="gap-1.5 text-xs">
                     <Users className="size-3.5" />
                     Bevy Event Audience
@@ -743,7 +914,58 @@ export function EmailBlastForm({
                     <FileSpreadsheet className="size-3.5" />
                     Google Sheets Import
                   </TabsTrigger>
+                  <TabsTrigger value="single" className="gap-1.5 text-xs">
+                    <User className="size-3.5" />
+                    Quick Send (1 User)
+                  </TabsTrigger>
                 </TabsList>
+
+                {/* Single Recipient Option (Quick Send) */}
+                <TabsContent value="single" className="space-y-4 pt-1">
+                  <div className="space-y-3 rounded-lg border bg-muted/20 p-3.5">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <FieldLabel htmlFor="recipientEmail" className="text-xs font-semibold">
+                          Recipient Email Address <span className="text-destructive">*</span>
+                        </FieldLabel>
+                        <Input
+                          id="recipientEmail"
+                          type="email"
+                          placeholder="e.g. attendee@example.com"
+                          {...register("recipientEmail")}
+                          disabled={isSubmitting}
+                          aria-invalid={!!errors.recipientEmail}
+                          className="h-9"
+                        />
+                        {errors.recipientEmail && <FieldError>{errors.recipientEmail.message}</FieldError>}
+                      </div>
+
+                      <div className="space-y-1">
+                        <FieldLabel htmlFor="recipientName" className="text-xs font-semibold">
+                          Recipient Name (Optional)
+                        </FieldLabel>
+                        <Input
+                          id="recipientName"
+                          placeholder="e.g. Jane Doe"
+                          {...register("recipientName")}
+                          disabled={isSubmitting}
+                          className="h-9"
+                        />
+                        <FieldDescription className="text-[11px]">
+                          Used to personalize [[Name]], [[FirstName]], and [[LastName]].
+                        </FieldDescription>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 rounded-md border border-emerald-500/20 bg-emerald-500/5 px-2.5 py-1.5 text-emerald-800 text-xs dark:text-emerald-300">
+                      <Mail className="size-3.5 shrink-0" />
+                      <span>
+                        Dispatched individually via <strong>Send Email API (/webhook/api/send-email)</strong>. Dynamic
+                        event and attendee tokens are personalized before sending.
+                      </span>
+                    </div>
+                  </div>
+                </TabsContent>
 
                 {/* Audience Segment Option (Redesigned Bevy Audience) */}
                 <TabsContent value="audience" className="space-y-2 pt-1">
@@ -1223,7 +1445,7 @@ export function EmailBlastForm({
                 onChange={(newVal) => setValue("body", newVal, { shouldValidate: true })}
                 selectedEvent={selectedEvent}
                 eventPlaceholders={eventPlaceholders}
-                attendeePlaceholders={attendeePlaceholders}
+                attendeePlaceholders={resolvedAttendeePlaceholders}
                 headerUrl={headerUrlValue}
                 availableTags={availableTags}
                 isLoadingTags={isLoadingTags}
@@ -1234,25 +1456,7 @@ export function EmailBlastForm({
         </CardContent>
 
         <CardFooter className="flex flex-col gap-3 border-t bg-muted/20 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-muted-foreground text-xs">
-            {recipientSource === "audience" ? (
-              <span>
-                Ready to deliver to{" "}
-                {isResolvingRecipients ? (
-                  <span className="inline-flex items-center gap-1.5 font-medium text-muted-foreground">
-                    <Loader2 className="size-3 animate-spin text-primary" />
-                    <span>calculating recipients...</span>
-                  </span>
-                ) : (
-                  <strong className="text-foreground">
-                    {recipientCount.toLocaleString()} {recipientCount === 1 ? "recipient" : "recipients"}
-                  </strong>
-                )}
-              </span>
-            ) : (
-              <span>Google Sheets automated column extraction active</span>
-            )}
-          </div>
+          <div className="text-muted-foreground text-xs">{renderFooterRecipientStatus()}</div>
           <div className="flex items-center gap-2">
             <Button
               type="button"
@@ -1267,7 +1471,9 @@ export function EmailBlastForm({
             <Button
               type="submit"
               disabled={
-                isSubmitting || (recipientSource === "audience" && (recipientCount === 0 || isResolvingRecipients))
+                isSubmitting ||
+                (recipientSource === "single" && !recipientEmail?.includes("@")) ||
+                (recipientSource === "audience" && (recipientCount === 0 || isResolvingRecipients))
               }
               size="lg"
               className="min-w-44 gap-2"
@@ -1296,6 +1502,27 @@ export function EmailBlastForm({
             onTemplateChange(newTpl);
           }
         }}
+      />
+
+      <ConfirmEmailDialog
+        open={confirmDialogOpen}
+        onOpenChange={setConfirmDialogOpen}
+        onConfirm={handleExecuteConfirmedSend}
+        isSubmitting={isSubmitting}
+        mode={recipientSource}
+        eventTitle={selectedEvent?.title}
+        subject={watch("subject") || ""}
+        singleRecipient={
+          recipientSource === "single"
+            ? {
+                email: recipientEmail || "",
+                name: recipientName || undefined,
+              }
+            : undefined
+        }
+        audienceCount={recipientCount}
+        audienceLabel={audienceType}
+        sheetName={sheetName}
       />
     </form>
   );

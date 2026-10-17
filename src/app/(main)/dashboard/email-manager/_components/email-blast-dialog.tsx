@@ -51,9 +51,10 @@ export function EmailBlastDialog({ trigger }: EmailBlastDialogProps) {
                   <Mail className="size-5" />
                 </div>
                 <div>
-                  <DialogTitle className="text-xl">Email Blast Campaign</DialogTitle>
+                  <DialogTitle className="text-xl">Email Composer</DialogTitle>
                   <DialogDescription className="text-xs">
-                    Compose and dispatch personalized bulk emails using Bevy event audiences or Google Sheets.
+                    Compose and dispatch single quick emails or bulk campaigns using Bevy event audiences or Google
+                    Sheets.
                   </DialogDescription>
                 </div>
               </div>

@@ -9,6 +9,7 @@ import {
   FileSpreadsheet,
   Info,
   Layers,
+  Mail,
   Send,
   Sparkles,
   Trash2,
@@ -251,8 +252,8 @@ export function EmailManager() {
             </Badge>
           </div>
           <p className="text-muted-foreground text-sm">
-            Select published events, filter Bevy attendee audiences, choose from curated templates, and compose
-            drag-and-drop bulk HTML emails.
+            Select published events, choose from official GDG email templates, and dispatch quick single emails or
+            audience-wide bulk campaigns with interactive confirmation.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -271,7 +272,7 @@ export function EmailManager() {
           <TabsList className="h-9">
             <TabsTrigger value="composer" className="gap-2 text-xs">
               <Send className="size-3.5" />
-              Bulk Email Composer
+              Email Composer (Single &amp; Bulk)
             </TabsTrigger>
             <TabsTrigger value="templates" className="gap-2 text-xs">
               <Bookmark className="size-3.5" />
@@ -554,6 +555,55 @@ export function EmailManager() {
                   <p className="pl-6 text-muted-foreground text-xs">
                     Preview your email in desktop or mobile mode. When ready, click <strong>Send Email Blast</strong> to
                     deliver emails to all valid recipient rows extracted from your spreadsheet.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Guide 3: Quick Send to Single Recipient */}
+            <Card className="md:col-span-2">
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Mail className="size-5 text-emerald-500" />
+                  <CardTitle className="text-lg">Quick Send (Single User) via Send Email API</CardTitle>
+                </div>
+                <CardDescription>
+                  How to send individualized transactional or update emails directly to one recipient without queuing in
+                  bulk.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-3">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 font-medium">
+                    <CheckCircle2 className="size-4 text-emerald-500" />
+                    <span>1. Input Recipient Email</span>
+                  </div>
+                  <p className="text-muted-foreground text-xs">
+                    Switch Recipient Source to <strong>Quick Send (1 User)</strong> and enter the target
+                    recipient&apos;s verified email address and optional recipient name.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 font-medium">
+                    <CheckCircle2 className="size-4 text-emerald-500" />
+                    <span>2. Select Official Template</span>
+                  </div>
+                  <p className="text-muted-foreground text-xs">
+                    Choose from GDG official passes, waitlist notifications, registration receipts, or regret emails.
+                    All tokens (<code>[[Name]]</code>, <code>[[EventName]]</code>, etc.) are personalized before
+                    sending.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 font-medium">
+                    <CheckCircle2 className="size-4 text-emerald-500" />
+                    <span>3. Send Email API Dispatch</span>
+                  </div>
+                  <p className="text-muted-foreground text-xs">
+                    Review and confirm in the dispatch dialog. The email is delivered via{" "}
+                    <code>https://n8n.gdgjakarta.com/webhook/api/send-email</code> directly to the user.
                   </p>
                 </div>
               </CardContent>
