@@ -6,7 +6,6 @@ import {
   Activity,
   Calendar,
   CheckCircle2,
-  Code2,
   Copy,
   ExternalLink,
   Info,
@@ -25,7 +24,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getBevyDashboardUrl } from "@/config/remote-config-utils";
 
-import { EmailBlastDialog } from "./email-blast-dialog";
 import { EmailBlastForm } from "./email-blast-form";
 
 const standardEventTags = [
@@ -101,81 +99,7 @@ export function EmailManager() {
               Open in Bevy
             </a>
           </Button>
-          <EmailBlastDialog
-            trigger={
-              <Button size="default" className="gap-2 shadow-xs">
-                <Send className="size-4" />
-                Quick Blast Modal
-              </Button>
-            }
-          />
         </div>
-      </div>
-
-      {/* Overview Stat Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="bg-gradient-to-br from-card to-muted/20 shadow-xs">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="font-medium text-muted-foreground text-sm">Target Engine</CardTitle>
-            <div className="flex size-8 items-center justify-center rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400">
-              <Calendar className="size-4" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-2xl tracking-tight">Published Events</span>
-            </div>
-            <p className="mt-1 text-muted-foreground text-xs">Live Bevy chapter sync</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-card to-muted/20 shadow-xs">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="font-medium text-muted-foreground text-sm">Audience Segments</CardTitle>
-            <div className="flex size-8 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-              <Users className="size-4" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="font-bold text-2xl tracking-tight">11 Bevy Audiences</div>
-            <p className="mt-1 text-muted-foreground text-xs">Attendees, check-ins, &amp; members</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-card to-muted/20 shadow-xs">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="font-medium text-muted-foreground text-sm">HTML Composer</CardTitle>
-            <div className="flex size-8 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
-              <Code2 className="size-4" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="font-bold text-2xl tracking-tight">Drag &amp; Drop Monaco</div>
-            <p className="mt-1 text-muted-foreground text-xs">Event tokens &amp; live preview</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-card to-muted/20 shadow-xs">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="font-medium text-muted-foreground text-sm">Delivery Pipeline</CardTitle>
-            <div className="flex size-8 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
-              <Zap className="size-4" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-2xl tracking-tight">n8n Bulk API</span>
-              <Badge
-                variant="outline"
-                className="border-emerald-500/30 bg-emerald-500/10 text-[10px] text-emerald-600 dark:text-emerald-400"
-              >
-                <span className="mr-1 inline-block size-1.5 animate-pulse rounded-full bg-emerald-500" />
-                Active
-              </Badge>
-            </div>
-            <p className="mt-1 text-muted-foreground text-xs">Throttled spam-safe batch queue</p>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Main Tabs Navigation */}
