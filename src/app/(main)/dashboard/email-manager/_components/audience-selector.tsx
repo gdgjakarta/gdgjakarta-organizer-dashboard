@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   CheckCircle2,
@@ -37,6 +37,9 @@ interface AudienceSelectorProps {
   eventId?: string;
   selectedAudience?: AudienceType;
   onSelectAudience: (audience: AudienceType, result: { count: number; recipients: ResolvedRecipient[] }) => void;
+  onAudienceTypeChange?: (audience: AudienceType) => void;
+  onResolvingChange?: (isResolving: boolean) => void;
+  isLoadingEvent?: boolean;
   disabled?: boolean;
   error?: boolean;
 }
@@ -59,61 +62,98 @@ export function AudienceSelector({
   eventId,
   selectedAudience,
   onSelectAudience,
+  onAudienceTypeChange,
+  onResolvingChange,
+  isLoadingEvent = false,
   disabled = false,
   error = false,
 }: AudienceSelectorProps) {
+  const [internalAudience, setInternalAudience] = useState<AudienceType | undefined>(selectedAudience);
   const [recipientCount, setRecipientCount] = useState<number | null>(null);
   const [recipients, setRecipients] = useState<ResolvedRecipient[]>([]);
   const [sampleRecipients, setSampleRecipients] = useState<ResolvedRecipient[]>([]);
-  const [isResolving, startTransition] = useTransition();
+  const [isResolving, setIsResolving] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
 
-  // Automatically fetch recipients count when eventId or selectedAudience changes
+  const activeAudience = selectedAudience ?? internalAudience;
+
+  const onSelectAudienceRef = useRef(onSelectAudience);
+  onSelectAudienceRef.current = onSelectAudience;
+
+  const onResolvingChangeRef = useRef(onResolvingChange);
+  onResolvingChangeRef.current = onResolvingChange;
+
+  // Automatically fetch recipients count when eventId or activeAudience changes
   useEffect(() => {
-    if (!eventId || !selectedAudience) {
+    let isCancelled = false;
+
+    if (!eventId || !activeAudience) {
       setRecipientCount(null);
       setRecipients([]);
       setSampleRecipients([]);
+      setIsResolving(false);
+      onResolvingChangeRef.current?.(false);
       return;
     }
 
-    startTransition(async () => {
-      const res = await resolveAudienceRecipientsAction(eventId, selectedAudience);
-      if (res.success) {
-        setRecipientCount(res.totalCount);
-        setRecipients(res.recipients);
-        setSampleRecipients(res.sampleRecipients);
-        onSelectAudience(selectedAudience, { count: res.totalCount, recipients: res.recipients });
-      } else {
+    setIsResolving(true);
+    onResolvingChangeRef.current?.(true);
+
+    void resolveAudienceRecipientsAction(eventId, activeAudience)
+      .then((res) => {
+        if (isCancelled) return;
+        setIsResolving(false);
+        onResolvingChangeRef.current?.(false);
+        if (res.success) {
+          setRecipientCount(res.totalCount);
+          setRecipients(res.recipients);
+          setSampleRecipients(res.sampleRecipients);
+          onSelectAudienceRef.current(activeAudience, { count: res.totalCount, recipients: res.recipients });
+        } else {
+          setRecipientCount(0);
+          setRecipients([]);
+          setSampleRecipients([]);
+          onSelectAudienceRef.current(activeAudience, { count: 0, recipients: [] });
+        }
+      })
+      .catch((err) => {
+        if (isCancelled) return;
+        console.error("Failed to resolve audience recipients:", err);
+        setIsResolving(false);
+        onResolvingChangeRef.current?.(false);
         setRecipientCount(0);
         setRecipients([]);
         setSampleRecipients([]);
-      }
-    });
-  }, [eventId, selectedAudience, onSelectAudience]);
+        onSelectAudienceRef.current(activeAudience, { count: 0, recipients: [] });
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [eventId, activeAudience]);
 
   const handleAudienceChange = (val: string) => {
-    const audienceType = val as AudienceType;
-    if (!eventId) return;
+    const nextAudience = val as AudienceType;
+    if (nextAudience === activeAudience) return;
 
-    startTransition(async () => {
-      const res = await resolveAudienceRecipientsAction(eventId, audienceType);
-      if (res.success) {
-        setRecipientCount(res.totalCount);
-        setRecipients(res.recipients);
-        setSampleRecipients(res.sampleRecipients);
-        onSelectAudience(audienceType, { count: res.totalCount, recipients: res.recipients });
-      }
-    });
+    setIsResolving(true);
+    onResolvingChangeRef.current?.(true);
+
+    if (onAudienceTypeChange) {
+      onAudienceTypeChange(nextAudience);
+    } else {
+      setInternalAudience(nextAudience);
+    }
   };
 
-  const isEnabled = Boolean(eventId) && !disabled;
+  const isEnabled = Boolean(eventId) && !disabled && !isLoadingEvent;
+  const showResolvingState = isResolving || isLoadingEvent;
 
   return (
     <div className="space-y-2">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex-1">
-          <Select value={selectedAudience ?? ""} onValueChange={handleAudienceChange} disabled={!isEnabled}>
+          <Select value={activeAudience ?? ""} onValueChange={handleAudienceChange} disabled={!isEnabled}>
             <SelectTrigger
               className={cn(
                 "h-auto min-h-10 w-full px-3 py-2 text-left font-normal",
@@ -198,15 +238,15 @@ export function AudienceSelector({
         </div>
 
         {/* Recipient Status & Preview Button */}
-        {selectedAudience && (
+        {activeAudience && (
           <div className="flex shrink-0 items-center gap-2">
-            {isResolving && (
+            {showResolvingState && (
               <Badge variant="outline" className="gap-1.5 px-2.5 py-1 text-xs">
                 <Loader2 className="size-3 animate-spin text-primary" />
                 <span>Resolving recipients...</span>
               </Badge>
             )}
-            {!isResolving && recipientCount !== null && (
+            {!showResolvingState && recipientCount !== null && (
               <>
                 <Badge
                   variant={recipientCount > 0 ? "secondary" : "outline"}

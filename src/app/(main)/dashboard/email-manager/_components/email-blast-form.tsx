@@ -166,6 +166,7 @@ export function EmailBlastForm({
   // Audience resolution state
   const [resolvedRecipients, setResolvedRecipients] = useState<ResolvedRecipient[]>([]);
   const [recipientCount, setRecipientCount] = useState<number>(0);
+  const [isResolvingAudience, setIsResolvingAudience] = useState(false);
 
   // Google Sheets state (legacy fallback)
   const [availableTags, setAvailableTags] = useState<string[]>([]);
@@ -205,6 +206,19 @@ export function EmailBlastForm({
   const headerRow = watch("headerRow");
   const headerUrlValue = watch("headerUrl");
   const bodyValue = watch("body");
+
+  const isResolvingRecipients =
+    recipientSource === "audience" &&
+    (isResolvingAudience || isLoadingEventDetail || isRefreshingEvents || (isLoadingEvents && !selectedEvent));
+
+  const submitButtonLabel = (() => {
+    if (isSubmitting) return "Dispatching...";
+    if (isResolvingRecipients) return "Send Bulk Email (...)";
+    if (recipientSource === "audience" && recipientCount > 0) {
+      return `Send Bulk Email (${recipientCount.toLocaleString()})`;
+    }
+    return "Send Bulk Email";
+  })();
 
   const lastFetchedUrl = useRef("");
   const lastFetchedSheetName = useRef("");
@@ -318,6 +332,7 @@ export function EmailBlastForm({
   // Keep form values in sync when controlled selectedEvent or eventPlaceholders change
   useEffect(() => {
     if (selectedEvent?.id && selectedEvent.id !== eventId) {
+      setIsResolvingAudience(true);
       setValue("eventId", selectedEvent.id, { shouldValidate: true });
     }
   }, [selectedEvent?.id, eventId, setValue]);
@@ -373,6 +388,7 @@ export function EmailBlastForm({
 
   // Handle Event selection
   const handleSelectEvent = (event: PublishedEventOption) => {
+    setIsResolvingAudience(true);
     setValue("eventId", event.id, { shouldValidate: true });
     void loadEventDetail(event);
 
@@ -434,12 +450,23 @@ export function EmailBlastForm({
     }
   };
 
+  const handleAudienceTypeChange = useCallback(
+    (audience: AudienceType) => {
+      setValue("audienceType", audience, { shouldValidate: true });
+      setIsResolvingAudience(true);
+    },
+    [setValue],
+  );
+
   // Handle Audience selection callback
-  const handleSelectAudience = (audience: AudienceType, result: { count: number; recipients: ResolvedRecipient[] }) => {
-    setValue("audienceType", audience, { shouldValidate: true });
-    setResolvedRecipients(result.recipients);
-    setRecipientCount(result.count);
-  };
+  const handleSelectAudience = useCallback(
+    (audience: AudienceType, result: { count: number; recipients: ResolvedRecipient[] }) => {
+      setValue("audienceType", audience, { shouldValidate: true });
+      setResolvedRecipients(result.recipients);
+      setRecipientCount(result.count);
+    },
+    [setValue],
+  );
 
   const handleLoadSheets = useCallback(async () => {
     if (!spreadsheetUrl) return;
@@ -724,7 +751,10 @@ export function EmailBlastForm({
                     eventId={eventId}
                     selectedAudience={audienceType as AudienceType}
                     onSelectAudience={handleSelectAudience}
-                    disabled={isSubmitting || !eventId}
+                    onAudienceTypeChange={handleAudienceTypeChange}
+                    onResolvingChange={setIsResolvingAudience}
+                    isLoadingEvent={isLoadingEventDetail}
+                    disabled={isSubmitting || !eventId || isLoadingEventDetail}
                   />
                   <FieldDescription>
                     Filter confirmed attendees, check-in status, ticket types, or chapter members directly from Bevy.
@@ -1208,9 +1238,16 @@ export function EmailBlastForm({
             {recipientSource === "audience" ? (
               <span>
                 Ready to deliver to{" "}
-                <strong className="text-foreground">
-                  {recipientCount.toLocaleString()} {recipientCount === 1 ? "recipient" : "recipients"}
-                </strong>
+                {isResolvingRecipients ? (
+                  <span className="inline-flex items-center gap-1.5 font-medium text-muted-foreground">
+                    <Loader2 className="size-3 animate-spin text-primary" />
+                    <span>calculating recipients...</span>
+                  </span>
+                ) : (
+                  <strong className="text-foreground">
+                    {recipientCount.toLocaleString()} {recipientCount === 1 ? "recipient" : "recipients"}
+                  </strong>
+                )}
               </span>
             ) : (
               <span>Google Sheets automated column extraction active</span>
@@ -1229,14 +1266,18 @@ export function EmailBlastForm({
             </Button>
             <Button
               type="submit"
-              disabled={isSubmitting || (recipientSource === "audience" && recipientCount === 0)}
+              disabled={
+                isSubmitting || (recipientSource === "audience" && (recipientCount === 0 || isResolvingRecipients))
+              }
               size="lg"
               className="min-w-44 gap-2"
             >
-              {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
-              {isSubmitting
-                ? "Dispatching..."
-                : `Send Bulk Email ${recipientCount > 0 && recipientSource === "audience" ? `(${recipientCount})` : ""}`}
+              {isSubmitting || isResolvingRecipients ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Send className="size-4" />
+              )}
+              {submitButtonLabel}
             </Button>
           </div>
         </CardFooter>
