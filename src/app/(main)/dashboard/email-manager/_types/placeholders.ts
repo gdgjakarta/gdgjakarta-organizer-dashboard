@@ -23,6 +23,7 @@ export interface EventDynamicPlaceholders {
   EventUrl: string;
   EventBannerUrl: string;
   EventDescription: string;
+  SessionTitle?: string;
 }
 
 export function buildDefaultEventPlaceholders(event?: PublishedEventOption): EventDynamicPlaceholders {
@@ -37,6 +38,7 @@ export function buildDefaultEventPlaceholders(event?: PublishedEventOption): Eve
       EventUrl: "https://gdg.community.dev/gdg-jakarta/",
       EventBannerUrl: fallbackBanner,
       EventDescription: "Join the GDG Jakarta community event.",
+      SessionTitle: "Keynote: Building Production AI Agents with Gemini",
     };
   }
 
@@ -49,6 +51,7 @@ export function buildDefaultEventPlaceholders(event?: PublishedEventOption): Eve
     EventUrl: event.url ?? `https://gdg.community.dev/events/details/google-gdg-jakarta-${event.id}/`,
     EventBannerUrl: event.bannerUrl ?? fallbackBanner,
     EventDescription: event.descriptionShort ?? "",
+    SessionTitle: "Keynote: Building Production AI Agents with Gemini",
   };
 }
 

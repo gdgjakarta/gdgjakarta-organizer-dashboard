@@ -3,7 +3,19 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { ChevronDown, FileSpreadsheet, Loader2, RefreshCw, RotateCcw, Send, Sparkles, Users } from "lucide-react";
+import {
+  Bookmark,
+  BookmarkPlus,
+  ChevronDown,
+  FileSpreadsheet,
+  Loader2,
+  RefreshCw,
+  RotateCcw,
+  Send,
+  Sparkles,
+  Trash2,
+  Users,
+} from "lucide-react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as z from "zod";
@@ -12,6 +24,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -32,9 +52,15 @@ import {
   type PublishedEventOption,
 } from "../_types/placeholders";
 import { AudienceSelector } from "./audience-selector";
-import { defaultHtmlTemplate } from "./default-html-template";
+import {
+  defaultHtmlTemplate,
+  deleteCustomEmailBlastTemplate,
+  type EmailBlastTemplate,
+  getAllEmailBlastTemplates,
+} from "./default-html-template";
 import { HtmlEditorPreview } from "./html-editor-preview";
 import { PublishedEventSelector } from "./published-event-selector";
+import { SaveEmailTemplateDialog } from "./save-email-template-dialog";
 
 const formSchema = z.object({
   eventId: z.string().min(1, { message: "Event is required." }),
@@ -42,7 +68,7 @@ const formSchema = z.object({
   audienceType: z.string().optional(),
   spreadsheetUrl: z.string().optional(),
   sheetName: z.string().optional(),
-  headerRow: z.coerce.number().int().min(1, { message: "Header row position must be at least 1." }).default(1),
+  headerRow: z.number().int().min(1, { message: "Header row position must be at least 1." }),
   subject: z.string().min(1, { message: "Subject is required." }),
   headerUrl: z.string().optional(),
   body: z.string().min(1, { message: "Email HTML body is required." }),
@@ -66,6 +92,8 @@ export interface EmailBlastFormProps {
   onResetAttendeePlaceholders?: () => void;
   onRefreshEvents?: () => void;
   isRefreshingEvents?: boolean;
+  initialTemplate?: EmailBlastTemplate | null;
+  onTemplateChange?: (template: EmailBlastTemplate | null) => void;
 }
 
 interface AttendeeFieldItem {
@@ -100,6 +128,8 @@ export function EmailBlastForm({
   onResetAttendeePlaceholders: propOnResetAttendeePlaceholders,
   onRefreshEvents: propOnRefreshEvents,
   isRefreshingEvents: propIsRefreshingEvents,
+  initialTemplate,
+  onTemplateChange,
 }: EmailBlastFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [internalEvents, setInternalEvents] = useState<PublishedEventOption[]>([]);
@@ -115,6 +145,15 @@ export function EmailBlastForm({
   const [internalLoadingDetail, setInternalLoadingDetail] = useState(false);
   const [isPlaceholdersOpen, setIsPlaceholdersOpen] = useState(false);
   const [isAttendeePlaceholdersOpen, setIsAttendeePlaceholdersOpen] = useState(false);
+
+  // Email blast templates state
+  const [templatesData, setTemplatesData] = useState(() => getAllEmailBlastTemplates());
+  const [activeTemplate, setActiveTemplate] = useState<EmailBlastTemplate | null>(initialTemplate ?? null);
+  const [isSaveTemplateOpen, setIsSaveTemplateOpen] = useState(false);
+
+  const refreshTemplates = useCallback(() => {
+    setTemplatesData(getAllEmailBlastTemplates());
+  }, []);
 
   const publishedEvents = propEvents ?? internalEvents;
   const isLoadingEvents = propIsLoadingEvents ?? internalLoadingEvents;
@@ -288,6 +327,49 @@ export function EmailBlastForm({
       setValue("headerUrl", eventPlaceholders.EventBannerUrl);
     }
   }, [eventPlaceholders?.EventBannerUrl, headerUrlValue, setValue]);
+
+  // Sync initialTemplate if supplied from parent tab
+  useEffect(() => {
+    if (initialTemplate) {
+      setActiveTemplate(initialTemplate);
+      setValue("body", initialTemplate.body, { shouldValidate: true });
+      if (initialTemplate.subject) {
+        setValue("subject", initialTemplate.subject, { shouldValidate: true });
+      }
+      if (initialTemplate.headerUrl) {
+        setValue("headerUrl", initialTemplate.headerUrl);
+      }
+    }
+  }, [initialTemplate, setValue]);
+
+  const handleApplyTemplate = (tpl: EmailBlastTemplate) => {
+    setActiveTemplate(tpl);
+    setValue("body", tpl.body, { shouldValidate: true });
+    if (tpl.subject) {
+      setValue("subject", tpl.subject, { shouldValidate: true });
+    }
+    if (tpl.headerUrl) {
+      setValue("headerUrl", tpl.headerUrl);
+    }
+    if (onTemplateChange) {
+      onTemplateChange(tpl);
+    }
+    toast.success(`Template Applied: ${tpl.name}`, {
+      description: "Subject and HTML body updated with template content.",
+    });
+  };
+
+  const handleDeleteCustomTemplate = (e: React.MouseEvent, tplId: string, tplName: string) => {
+    e.stopPropagation();
+    deleteCustomEmailBlastTemplate(tplId);
+    refreshTemplates();
+    if (activeTemplate?.id === tplId) {
+      setActiveTemplate(null);
+    }
+    toast.success("Template Deleted", {
+      description: `Removed "${tplName}" from your custom templates.`,
+    });
+  };
 
   // Handle Event selection
   const handleSelectEvent = (event: PublishedEventOption) => {
@@ -477,7 +559,6 @@ export function EmailBlastForm({
         subject: data.subject,
         headerUrl: data.headerUrl,
         body: data.body,
-        eventPlaceholders,
         recipients: data.recipientSource === "audience" ? resolvedRecipients : undefined,
       });
 
@@ -504,11 +585,94 @@ export function EmailBlastForm({
     <form onSubmit={handleSubmit(onSubmit)}>
       <Card className="shadow-xs">
         {showHeader && (
-          <CardHeader>
-            <CardTitle>Bulk Email Campaign Composer</CardTitle>
-            <CardDescription>
-              Select your published event target, configure audience recipients, and design your responsive HTML email.
-            </CardDescription>
+          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <CardTitle>Bulk Email Campaign Composer</CardTitle>
+                {activeTemplate && (
+                  <Badge variant="outline" className="text-[11px] font-normal text-muted-foreground">
+                    <Bookmark className="mr-1 size-3 text-primary" />
+                    {activeTemplate.name}
+                  </Badge>
+                )}
+              </div>
+              <CardDescription>
+                Select your published event target, configure audience recipients, and design your responsive HTML
+                email.
+              </CardDescription>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
+                    <Bookmark className="size-3.5 text-primary" />
+                    <span>Templates</span>
+                    <ChevronDown className="size-3 opacity-60" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-80 max-h-96 overflow-y-auto">
+                  <DropdownMenuLabel className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Prebuilt Templates
+                  </DropdownMenuLabel>
+                  {templatesData.defaultTemplates.map((tpl) => (
+                    <DropdownMenuItem
+                      key={tpl.id}
+                      onClick={() => handleApplyTemplate(tpl)}
+                      className="flex cursor-pointer flex-col items-start gap-1 py-2"
+                    >
+                      <div className="flex w-full items-center justify-between">
+                        <span className="font-medium text-xs text-foreground">{tpl.name}</span>
+                        <Badge variant="secondary" className="text-[10px] py-0 px-1.5 font-normal">
+                          {tpl.badge}
+                        </Badge>
+                      </div>
+                      <span className="line-clamp-1 text-[11px] text-muted-foreground">{tpl.description}</span>
+                    </DropdownMenuItem>
+                  ))}
+
+                  {templatesData.customTemplates.length > 0 && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuLabel className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        My Saved Templates
+                      </DropdownMenuLabel>
+                      {templatesData.customTemplates.map((tpl) => (
+                        <DropdownMenuItem
+                          key={tpl.id}
+                          onClick={() => handleApplyTemplate(tpl)}
+                          className="group flex cursor-pointer items-start justify-between gap-2 py-2"
+                        >
+                          <div className="flex flex-col items-start gap-1 overflow-hidden">
+                            <span className="font-medium text-xs text-foreground">{tpl.name}</span>
+                            <span className="line-clamp-1 text-[11px] text-muted-foreground">{tpl.description}</span>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-6 shrink-0 text-muted-foreground opacity-60 hover:text-destructive group-hover:opacity-100"
+                            onClick={(e) => handleDeleteCustomTemplate(e, tpl.id, tpl.name)}
+                            title="Delete custom template"
+                          >
+                            <Trash2 className="size-3.5" />
+                          </Button>
+                        </DropdownMenuItem>
+                      ))}
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5 text-xs"
+                onClick={() => setIsSaveTemplateOpen(true)}
+              >
+                <BookmarkPlus className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span>Save as Template</span>
+              </Button>
+            </div>
           </CardHeader>
         )}
         <CardContent className="space-y-6 pt-6">
@@ -1039,7 +1203,7 @@ export function EmailBlastForm({
           </Field>
         </CardContent>
 
-        <CardFooter className="flex justify-between border-t bg-muted/20 px-6 py-4">
+        <CardFooter className="flex flex-col gap-3 border-t bg-muted/20 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-muted-foreground text-xs">
             {recipientSource === "audience" ? (
               <span>
@@ -1052,19 +1216,46 @@ export function EmailBlastForm({
               <span>Google Sheets automated column extraction active</span>
             )}
           </div>
-          <Button
-            type="submit"
-            disabled={isSubmitting || (recipientSource === "audience" && recipientCount === 0)}
-            size="lg"
-            className="min-w-44 gap-2"
-          >
-            {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
-            {isSubmitting
-              ? "Dispatching..."
-              : `Send Bulk Email ${recipientCount > 0 && recipientSource === "audience" ? `(${recipientCount})` : ""}`}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="lg"
+              className="gap-1.5 text-xs"
+              onClick={() => setIsSaveTemplateOpen(true)}
+            >
+              <BookmarkPlus className="size-4 text-emerald-600 dark:text-emerald-400" />
+              <span>Save as Template</span>
+            </Button>
+            <Button
+              type="submit"
+              disabled={isSubmitting || (recipientSource === "audience" && recipientCount === 0)}
+              size="lg"
+              className="min-w-44 gap-2"
+            >
+              {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+              {isSubmitting
+                ? "Dispatching..."
+                : `Send Bulk Email ${recipientCount > 0 && recipientSource === "audience" ? `(${recipientCount})` : ""}`}
+            </Button>
+          </div>
         </CardFooter>
       </Card>
+
+      <SaveEmailTemplateDialog
+        open={isSaveTemplateOpen}
+        onOpenChange={setIsSaveTemplateOpen}
+        currentSubject={watch("subject") || ""}
+        currentHeaderUrl={headerUrlValue || ""}
+        currentBody={bodyValue || defaultHtmlTemplate}
+        onSaved={(newTpl) => {
+          refreshTemplates();
+          setActiveTemplate(newTpl);
+          if (onTemplateChange) {
+            onTemplateChange(newTpl);
+          }
+        }}
+      />
     </form>
   );
 }

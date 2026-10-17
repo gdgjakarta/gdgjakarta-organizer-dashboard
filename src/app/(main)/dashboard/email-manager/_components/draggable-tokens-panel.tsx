@@ -30,6 +30,12 @@ export const EVENT_DATA_TOKENS: DraggableTokenItem[] = [
     description: "Direct link to event cover banner (1850 × 560 px)",
   },
   { id: "event_desc", tag: "[[EventDescription]]", label: "Description", description: "Brief overview of the event" },
+  {
+    id: "session_title",
+    tag: "[[SessionTitle]]",
+    label: "Session Title",
+    description: "Speaker session topic or talk title",
+  },
 ];
 
 export const ATTENDEE_DATA_TOKENS: DraggableTokenItem[] = [
@@ -52,6 +58,30 @@ export const ATTENDEE_DATA_TOKENS: DraggableTokenItem[] = [
 ];
 
 export const PREBUILT_HTML_BLOCKS: DraggableTokenItem[] = [
+  {
+    id: "block_speaker_box",
+    tag: "Speaker Session Card",
+    label: "Speaker Session Card",
+    description: "Highlighted session card featuring session title, date, time, and venue",
+    snippet: `<div class="speaker-card" style="background-color: #f8f9fa; border: 2px dashed #4285f4; border-radius: 12px; padding: 20px; margin: 20px 0;">
+  <div style="color: #4285f4; font-weight: 600; font-size: 0.85em; text-transform: uppercase; letter-spacing: 1px;">Proposed Session Topic</div>
+  <div style="font-size: 1.2em; font-weight: 600; color: #202124; margin: 6px 0 14px 0;">[[SessionTitle]]</div>
+  <p style="margin: 4px 0;"><strong>Event:</strong> [[EventName]]</p>
+  <p style="margin: 4px 0;"><strong>Date &amp; Time:</strong> [[EventDate]] at [[EventTime]]</p>
+  <p style="margin: 4px 0;"><strong>Venue:</strong> [[EventVenue]]</p>
+</div>`,
+  },
+  {
+    id: "block_speaker_handbook",
+    tag: "Speaker Handbook Box",
+    label: "Speaker Handbook Box",
+    description: "Highlighted resource link to the GDG Jakarta Speaker Handbook and guidelines",
+    snippet: `<div style="background-color: #e8f0fe; border-left: 4px solid #4285f4; border-radius: 4px; padding: 14px 18px; margin: 20px 0;">
+  <p style="margin: 0; font-size: 0.9em; color: #1a73e8; line-height: 1.5;">
+    📘 <strong>Speaker Resource:</strong> Access the full <a href="https://gdgjakarta.org/speaker-handbook" target="_blank" style="color: #1a73e8; font-weight: 600; text-decoration: underline;">Speaker Handbook &amp; Guidelines</a> anytime for presentation tips, AV setup, and slide templates.
+  </p>
+</div>`,
+  },
   {
     id: "block_event_box",
     tag: "Event Details Card",

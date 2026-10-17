@@ -124,6 +124,8 @@ export function HtmlEditorPreview({
       selectedEvent?.descriptionShort ??
       "Join the largest Google developer community conference in Jakarta!";
 
+    const sessionTitle = eventPlaceholders?.SessionTitle ?? "Keynote: Building Production AI Agents with Gemini";
+
     return (
       value
         .replace(/\[\[EventName\]\]/g, eventName)
@@ -134,6 +136,7 @@ export function HtmlEditorPreview({
         .replace(/\[\[EventUrl\]\]/g, eventUrl)
         .replace(/\[\[EventBannerUrl\]\]/g, eventBannerUrl)
         .replace(/\[\[EventDescription\]\]/g, eventDesc)
+        .replace(/\[\[SessionTitle\]\]/g, sessionTitle)
         // Attendee placeholders simulation (customizable preview)
         .replace(/\[\[Name\]\]/g, attendeePlaceholders?.Name ?? "Budi Santoso")
         .replace(/\[\[FirstName\]\]/g, attendeePlaceholders?.FirstName ?? "Budi")
