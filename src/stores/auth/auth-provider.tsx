@@ -163,13 +163,22 @@ export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
               `[Auth Provider] Restoring session from Firestore profile for ${email} (Role: ${memberDoc.role}, ChapterRole: ${memberDoc.chapter_role || "N/A"})`,
             );
 
-            const isOrg = memberDoc.role === "organizer" || memberDoc.role === "Organizer";
+            const isOrg =
+              memberDoc.role === "organizer" ||
+              memberDoc.role === "Organizer" ||
+              (typeof memberDoc.chapter_role === "string" &&
+                (memberDoc.chapter_role.toLowerCase().includes("organizer") ||
+                  memberDoc.chapter_role.toLowerCase().includes("googler")));
             const isStaff =
-              memberDoc.team === "Core Team" ||
-              memberDoc.role === "core_team" ||
-              memberDoc.role === "Core Team" ||
-              memberDoc.role === "Check-in Staff" ||
-              memberDoc.role === "check_in_staff";
+              !isOrg &&
+              (memberDoc.team === "Core Team" ||
+                memberDoc.role === "core_team" ||
+                memberDoc.role === "Core Team" ||
+                memberDoc.role === "Check-in Staff" ||
+                memberDoc.role === "check_in_staff" ||
+                (typeof memberDoc.chapter_role === "string" &&
+                  (memberDoc.chapter_role.toLowerCase().includes("core team") ||
+                    memberDoc.chapter_role.toLowerCase().includes("staff"))));
             let role = "member";
             if (isOrg) {
               role = "organizer";
@@ -193,7 +202,7 @@ export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
               role,
               bevyUserId: memberDoc.bevy_user_id ? String(memberDoc.bevy_user_id) : undefined,
               chapterRole,
-              roleId: typeof memberDoc.bevy_member_id === "number" ? memberDoc.bevy_member_id : undefined,
+              roleId: isOrg ? 1 : typeof memberDoc.bevy_member_id === "number" ? memberDoc.bevy_member_id : undefined,
             };
 
             const { restoreSessionCookieAction } = await import("@/server/auth-actions");

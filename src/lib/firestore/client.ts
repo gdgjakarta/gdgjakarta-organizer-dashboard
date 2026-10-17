@@ -219,10 +219,14 @@ export async function saveFirestoreMember(member: Partial<FirestoreMember> | Rec
         updated_at: now,
       };
 
-      if (existing.role) {
+      if (member.role) {
+        updatePayload.role = member.role;
+      } else if (existing.role) {
         updatePayload.role = existing.role;
       }
-      if (existing.team) {
+      if (member.team) {
+        updatePayload.team = member.team;
+      } else if (existing.team) {
         updatePayload.team = existing.team;
       }
       if (typeof existing.referral_points === "number") {
@@ -231,10 +235,14 @@ export async function saveFirestoreMember(member: Partial<FirestoreMember> | Rec
       if (typeof existing.referrals_count === "number") {
         updatePayload.referrals_count = existing.referrals_count;
       }
-      if (existing.bevy_user_id !== undefined && existing.bevy_user_id !== null) {
+      if (member.bevy_user_id !== undefined && member.bevy_user_id !== null) {
+        updatePayload.bevy_user_id = member.bevy_user_id;
+      } else if (existing.bevy_user_id !== undefined && existing.bevy_user_id !== null) {
         updatePayload.bevy_user_id = existing.bevy_user_id;
       }
-      if (existing.bevy_member_id !== undefined && existing.bevy_member_id !== null) {
+      if (member.bevy_member_id !== undefined && member.bevy_member_id !== null) {
+        updatePayload.bevy_member_id = member.bevy_member_id;
+      } else if (existing.bevy_member_id !== undefined && existing.bevy_member_id !== null) {
         updatePayload.bevy_member_id = existing.bevy_member_id;
       }
       if (typeof existing.events_registered_count === "number") {

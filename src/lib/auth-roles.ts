@@ -59,6 +59,10 @@ export function isExecutiveOrganizer(userOrRole?: UserRoleLike | string | null):
     if (userOrRole.roleId === 1 || userOrRole.roleId === 4) {
       return true;
     }
+    const cr = (userOrRole.chapterRole ?? "").toLowerCase().trim();
+    if (cr.includes("organizer") || cr.includes("googler")) {
+      return true;
+    }
   }
 
   return lower === "organizer" || lower === "googler" || lower === "admin";

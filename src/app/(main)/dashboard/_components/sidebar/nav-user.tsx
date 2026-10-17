@@ -64,7 +64,11 @@ export function NavUser({
       if (result.success) {
         toast.success(result.message || "Permissions updated from Bevy!", { id: "refresh-role" });
         setTimeout(() => {
-          window.location.reload();
+          if (result.role === "organizer") {
+            window.location.assign("/dashboard/organizer");
+          } else {
+            window.location.reload();
+          }
         }, 600);
       } else {
         toast.error(result.message || "Failed to sync role with Bevy", { id: "refresh-role" });
