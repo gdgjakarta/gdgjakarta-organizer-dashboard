@@ -10,7 +10,11 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
-import type { PublishedEventOption } from "../_actions/fetch-published-events";
+import type {
+  AttendeeDynamicPlaceholders,
+  EventDynamicPlaceholders,
+  PublishedEventOption,
+} from "../_types/placeholders";
 import { DraggableTokensPanel } from "./draggable-tokens-panel";
 
 type EditorInstance = Parameters<OnMount>[0];
@@ -19,6 +23,9 @@ interface HtmlEditorPreviewProps {
   value: string;
   onChange: (value: string) => void;
   selectedEvent?: PublishedEventOption;
+  eventPlaceholders?: EventDynamicPlaceholders;
+  attendeePlaceholders?: AttendeeDynamicPlaceholders;
+  headerUrl?: string;
   availableTags?: string[];
   isLoadingTags?: boolean;
 }
@@ -27,6 +34,9 @@ export function HtmlEditorPreview({
   value,
   onChange,
   selectedEvent,
+  eventPlaceholders,
+  attendeePlaceholders,
+  headerUrl,
   availableTags = [],
   isLoadingTags = false,
 }: HtmlEditorPreviewProps) {
@@ -98,17 +108,21 @@ export function HtmlEditorPreview({
   const renderedHtml = useMemo(() => {
     if (!interpolatePreview) return value;
 
-    const eventName = selectedEvent?.title ?? "DevFest Jakarta 2026";
-    const eventDate = selectedEvent?.formattedDate ?? "FRIDAY, OCT 23, 2026";
-    const eventTime = selectedEvent?.formattedTime ?? "10:00 AM - 05:00 PM";
-    const eventVenue = selectedEvent?.venueName ?? "Jakarta Convention Center";
-    const eventAddress = selectedEvent?.venueAddress ?? "Jl. Gatot Subroto, Jakarta";
-    const eventUrl = selectedEvent?.url ?? "https://gdg.community.dev/gdg-jakarta/";
+    const eventName = eventPlaceholders?.EventName ?? selectedEvent?.title ?? "DevFest Jakarta 2026";
+    const eventDate = eventPlaceholders?.EventDate ?? selectedEvent?.formattedDate ?? "Friday, Oct 23, 2026";
+    const eventTime = eventPlaceholders?.EventTime ?? selectedEvent?.formattedTime ?? "10:00 AM - 05:00 PM";
+    const eventVenue = eventPlaceholders?.EventVenue ?? selectedEvent?.venueName ?? "Jakarta Convention Center";
+    const eventAddress = eventPlaceholders?.EventAddress ?? selectedEvent?.venueAddress ?? "Jl. Gatot Subroto, Jakarta";
+    const eventUrl = eventPlaceholders?.EventUrl ?? selectedEvent?.url ?? "https://gdg.community.dev/gdg-jakarta/";
     const eventBannerUrl =
+      headerUrl ??
+      eventPlaceholders?.EventBannerUrl ??
       selectedEvent?.bannerUrl ??
       "https://assets.gdgjakarta.org/gdg-jakarta/gdg-jakarta-emailheaders-1244x388-blue.png";
     const eventDesc =
-      selectedEvent?.descriptionShort ?? "Join the largest Google developer community conference in Jakarta!";
+      eventPlaceholders?.EventDescription ??
+      selectedEvent?.descriptionShort ??
+      "Join the largest Google developer community conference in Jakarta!";
 
     return (
       value
@@ -120,15 +134,15 @@ export function HtmlEditorPreview({
         .replace(/\[\[EventUrl\]\]/g, eventUrl)
         .replace(/\[\[EventBannerUrl\]\]/g, eventBannerUrl)
         .replace(/\[\[EventDescription\]\]/g, eventDesc)
-        // Attendee placeholders simulation
-        .replace(/\[\[Name\]\]/g, "Budi Santoso")
-        .replace(/\[\[FirstName\]\]/g, "Budi")
-        .replace(/\[\[LastName\]\]/g, "Santoso")
-        .replace(/\[\[Email\]\]/g, "budi.santoso@example.com")
-        .replace(/\[\[TicketType\]\]/g, "In-Person Pass")
-        .replace(/\[\[CheckinStatus\]\]/g, "Confirmed")
+        // Attendee placeholders simulation (customizable preview)
+        .replace(/\[\[Name\]\]/g, attendeePlaceholders?.Name ?? "Budi Santoso")
+        .replace(/\[\[FirstName\]\]/g, attendeePlaceholders?.FirstName ?? "Budi")
+        .replace(/\[\[LastName\]\]/g, attendeePlaceholders?.LastName ?? "Santoso")
+        .replace(/\[\[Email\]\]/g, attendeePlaceholders?.Email ?? "budi.santoso@example.com")
+        .replace(/\[\[TicketType\]\]/g, attendeePlaceholders?.TicketType ?? "In-Person Pass (Free)")
+        .replace(/\[\[CheckinStatus\]\]/g, attendeePlaceholders?.CheckinStatus ?? "Checked In")
     );
-  }, [value, interpolatePreview, selectedEvent]);
+  }, [value, interpolatePreview, selectedEvent, eventPlaceholders, attendeePlaceholders, headerUrl]);
 
   return (
     <div className="flex w-full flex-col space-y-4">

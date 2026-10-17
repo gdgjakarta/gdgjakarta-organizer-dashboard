@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import {
   Activity,
@@ -10,6 +10,8 @@ import {
   ExternalLink,
   Info,
   Layers,
+  Loader2,
+  RotateCcw,
   Send,
   ShieldCheck,
   Sparkles,
@@ -21,58 +23,215 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { getBevyDashboardUrl } from "@/config/remote-config-utils";
 
+import { fetchBevyEventDetailAction, fetchPublishedEventsAction } from "../_actions/fetch-published-events";
+import {
+  type AttendeeDynamicPlaceholders,
+  buildDefaultEventPlaceholders,
+  defaultAttendeePlaceholders,
+  type EventDynamicPlaceholders,
+  type PublishedEventOption,
+} from "../_types/placeholders";
 import { EmailBlastForm } from "./email-blast-form";
+import { PublishedEventSelector } from "./published-event-selector";
 
-const standardEventTags = [
+interface EventTagItem {
+  key: keyof EventDynamicPlaceholders;
+  tag: string;
+  description: string;
+  isTextarea?: boolean;
+}
+
+interface AttendeeTagItem {
+  key: keyof AttendeeDynamicPlaceholders;
+  tag: string;
+  description: string;
+  example: string;
+}
+
+const standardEventTags: EventTagItem[] = [
   {
+    key: "EventName",
     tag: "[[EventName]]",
     description: "Auto-populated title of the selected target event",
-    example: "Road to DevFest Jakarta 2026",
   },
-  { tag: "[[EventDate]]", description: "Formatted event date in uppercase", example: "FRIDAY, OCT 23, 2026" },
-  { tag: "[[EventTime]]", description: "Formatted event start time", example: "10:00 AM" },
-  { tag: "[[EventVenue]]", description: "Event venue name and location city", example: "Jakarta Convention Center" },
   {
+    key: "EventDate",
+    tag: "[[EventDate]]",
+    description: "Formatted event date (e.g. Friday, Oct 23, 2026)",
+  },
+  {
+    key: "EventTime",
+    tag: "[[EventTime]]",
+    description: "Formatted event start & end time (e.g. 10:00 AM - 05:00 PM)",
+  },
+  {
+    key: "EventVenue",
+    tag: "[[EventVenue]]",
+    description: "Event venue name and location city",
+  },
+  {
+    key: "EventAddress",
     tag: "[[EventAddress]]",
     description: "Full street address of the venue",
-    example: "Jl. Jend. Gatot Subroto, Jakarta",
   },
   {
+    key: "EventUrl",
     tag: "[[EventUrl]]",
     description: "Public landing page link to the event details",
-    example: "https://gdg.community.dev/events/...",
   },
   {
+    key: "EventBannerUrl",
     tag: "[[EventBannerUrl]]",
-    description: "Direct URL of the event hero image",
-    example: "https://assets.gdgjakarta.org/...",
+    description: "Direct URL of the event hero banner image (recommended: 1850 × 560 px)",
   },
   {
+    key: "EventDescription",
     tag: "[[EventDescription]]",
     description: "Short overview description of the event",
-    example: "Join the annual flagship GDG Jakarta conference...",
+    isTextarea: true,
   },
 ];
 
-const standardAttendeeTags = [
-  { tag: "[[Name]]", description: "Recipient's full name from Bevy or Google Sheets", example: "Budi Santoso" },
-  { tag: "[[FirstName]]", description: "Recipient's first given name", example: "Budi" },
-  { tag: "[[LastName]]", description: "Recipient's surname or family name", example: "Santoso" },
-  { tag: "[[Email]]", description: "Recipient's verified email address", example: "budi.santoso@example.com" },
-  { tag: "[[TicketType]]", description: "Registered ticket tier or category", example: "In-Person Pass (Free)" },
-  { tag: "[[CheckinStatus]]", description: "Whether the attendee has checked in", example: "Checked In" },
+const standardAttendeeTags: AttendeeTagItem[] = [
+  {
+    key: "Name",
+    tag: "[[Name]]",
+    description: "Recipient's full name from Bevy or Google Sheets",
+    example: "Budi Santoso",
+  },
+  {
+    key: "FirstName",
+    tag: "[[FirstName]]",
+    description: "Recipient's first given name",
+    example: "Budi",
+  },
+  {
+    key: "LastName",
+    tag: "[[LastName]]",
+    description: "Recipient's surname or family name",
+    example: "Santoso",
+  },
+  {
+    key: "Email",
+    tag: "[[Email]]",
+    description: "Recipient's verified email address",
+    example: "budi.santoso@example.com",
+  },
+  {
+    key: "TicketType",
+    tag: "[[TicketType]]",
+    description: "Registered ticket tier or category",
+    example: "In-Person Pass (Free)",
+  },
+  {
+    key: "CheckinStatus",
+    tag: "[[CheckinStatus]]",
+    description: "Whether the attendee has checked in",
+    example: "Checked In",
+  },
 ];
 
 export function EmailManager() {
   const [activeTab, setActiveTab] = useState("composer");
 
+  // Shared event & dynamic placeholder state between Composer & Placeholders tabs
+  const [publishedEvents, setPublishedEvents] = useState<PublishedEventOption[]>([]);
+  const [isLoadingEvents, setIsLoadingEvents] = useState(true);
+  const [selectedEvent, setSelectedEvent] = useState<PublishedEventOption | undefined>();
+  const [eventPlaceholders, setEventPlaceholders] = useState<EventDynamicPlaceholders>(() =>
+    buildDefaultEventPlaceholders(),
+  );
+  const [attendeePlaceholders, setAttendeePlaceholders] = useState<AttendeeDynamicPlaceholders>(
+    () => defaultAttendeePlaceholders,
+  );
+  const [isLoadingEventDetail, setIsLoadingEventDetail] = useState(false);
+
+  // Function to load detail event and autofill dynamic placeholders + header banner
+  const handleSelectEvent = useCallback(async (ev: PublishedEventOption) => {
+    setSelectedEvent(ev);
+    const initialDefaults = buildDefaultEventPlaceholders(ev);
+    setEventPlaceholders(initialDefaults);
+
+    setIsLoadingEventDetail(true);
+    try {
+      const res = await fetchBevyEventDetailAction(ev.id);
+      if (res.success && res.event && res.placeholders) {
+        setSelectedEvent(res.event);
+        setEventPlaceholders(res.placeholders);
+      }
+    } catch (err) {
+      console.error("Failed to load Bevy event detail:", err);
+    } finally {
+      setIsLoadingEventDetail(false);
+    }
+  }, []);
+
+  // Initial load of published events
+  useEffect(() => {
+    async function loadEvents() {
+      setIsLoadingEvents(true);
+      try {
+        const res = await fetchPublishedEventsAction();
+        if (res.success && res.events) {
+          setPublishedEvents(res.events);
+          if (res.events.length > 0 && !selectedEvent) {
+            const first = res.events[0];
+            void handleSelectEvent(first);
+          }
+        } else {
+          toast.error("Could not load Bevy events", {
+            description: res.error,
+          });
+        }
+      } catch (err) {
+        console.error("Failed to fetch Bevy events:", err);
+      } finally {
+        setIsLoadingEvents(false);
+      }
+    }
+    void loadEvents();
+  }, [handleSelectEvent, selectedEvent]);
+
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     toast.success("Copied to Clipboard", {
       description: `${text} copied. You can drag or paste it directly into your HTML template.`,
+    });
+  };
+
+  const handlePlaceholderChange = (key: keyof EventDynamicPlaceholders, val: string) => {
+    setEventPlaceholders((prev) => ({
+      ...prev,
+      [key]: val,
+    }));
+  };
+
+  const handleResetPlaceholders = () => {
+    if (selectedEvent) {
+      const resetVals = buildDefaultEventPlaceholders(selectedEvent);
+      setEventPlaceholders(resetVals);
+      toast.success("Placeholders Reset", {
+        description: `Reset to Bevy defaults for "${selectedEvent.title}".`,
+      });
+    }
+  };
+
+  const handleAttendeePlaceholderChange = (key: keyof AttendeeDynamicPlaceholders, val: string) => {
+    setAttendeePlaceholders((prev) => ({
+      ...prev,
+      [key]: val,
+    }));
+  };
+
+  const handleResetAttendeePlaceholders = () => {
+    setAttendeePlaceholders(defaultAttendeePlaceholders);
+    toast.success("Attendee Placeholders Reset", {
+      description: "Restored sample attendee values to defaults.",
     });
   };
 
@@ -123,31 +282,81 @@ export function EmailManager() {
 
         {/* Tab 1: Full-Screen Bulk Email Composer */}
         <TabsContent value="composer" className="space-y-4 pt-2">
-          <EmailBlastForm />
+          <EmailBlastForm
+            publishedEvents={publishedEvents}
+            selectedEvent={selectedEvent}
+            eventPlaceholders={eventPlaceholders}
+            attendeePlaceholders={attendeePlaceholders}
+            isLoadingEvents={isLoadingEvents}
+            isLoadingEventDetail={isLoadingEventDetail}
+            onSelectEvent={handleSelectEvent}
+            onChangePlaceholders={setEventPlaceholders}
+            onResetPlaceholders={handleResetPlaceholders}
+          />
         </TabsContent>
 
-        {/* Tab 2: Dynamic Placeholders Guide */}
+        {/* Tab 2: Dynamic Placeholders with Live Autofill & Organizer Editing */}
         <TabsContent value="placeholders" className="space-y-4 pt-2">
           <Card>
-            <CardHeader>
-              <CardTitle>Supported Dynamic Variables</CardTitle>
-              <CardDescription>
-                Drag and drop these placeholders or click Copy to use them in your HTML subject or body. They are
-                automatically replaced with real event and recipient data when dispatched.
-              </CardDescription>
+            <CardHeader className="space-y-4">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <CardTitle>Supported Dynamic Variables</CardTitle>
+                  <CardDescription className="mt-1">
+                    Event data placeholders below are <strong>autofilled from the selected Bevy event</strong> and can
+                    be directly modified by organizers. Modified values apply to live preview and outgoing emails.
+                  </CardDescription>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleResetPlaceholders}
+                  disabled={isLoadingEventDetail || !selectedEvent}
+                  className="shrink-0 gap-1.5 text-xs shadow-xs"
+                >
+                  <RotateCcw className="size-3.5" />
+                  Reset to Bevy Defaults
+                </Button>
+              </div>
+
+              {/* Event Selector in Placeholders Tab for quick switching */}
+              <div className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2">
+                  <Calendar className="size-4 text-sky-500" />
+                  <span className="font-medium text-foreground text-xs">Target Event for Autofill:</span>
+                </div>
+                <div className="w-full sm:w-80">
+                  <PublishedEventSelector
+                    events={publishedEvents}
+                    selectedEventId={selectedEvent?.id}
+                    onSelectEvent={handleSelectEvent}
+                    isLoading={isLoadingEvents}
+                    disabled={isLoadingEventDetail}
+                  />
+                </div>
+              </div>
             </CardHeader>
             <CardContent className="space-y-6">
               {/* Event Placeholders */}
               <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Calendar className="size-4 text-sky-500" />
-                  <h3 className="font-semibold text-foreground text-sm">Event Data Placeholders</h3>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="size-4 text-sky-500" />
+                    <h3 className="font-semibold text-foreground text-sm">Event Data Placeholders</h3>
+                  </div>
+                  {isLoadingEventDetail && (
+                    <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
+                      <Loader2 className="size-3 animate-spin text-primary" />
+                      <span>Syncing event details from Bevy...</span>
+                    </div>
+                  )}
                 </div>
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2">
                   {standardEventTags.map((item) => (
                     <div
                       key={item.tag}
-                      className="flex flex-col justify-between rounded-lg border p-3.5 transition-colors hover:bg-muted/40"
+                      className="flex flex-col justify-between rounded-lg border p-3.5 transition-colors hover:bg-muted/20"
                     >
                       <div>
                         <div className="flex items-center justify-between">
@@ -167,11 +376,49 @@ export function EmailManager() {
                             Copy
                           </Button>
                         </div>
-                        <p className="mt-2 text-foreground text-sm">{item.description}</p>
+                        <p className="mt-1.5 text-muted-foreground text-xs">{item.description}</p>
                       </div>
-                      <div className="mt-2.5 rounded-md bg-muted/60 px-2.5 py-1 text-muted-foreground text-xs">
-                        <span className="font-semibold text-foreground/80">Example: </span>
-                        {item.example}
+
+                      {/* Image Preview for EventBannerUrl */}
+                      {item.key === "EventBannerUrl" && eventPlaceholders.EventBannerUrl && (
+                        <div className="mt-3 overflow-hidden rounded-md border bg-muted/40">
+                          <div className="relative aspect-[1850/560] w-full overflow-hidden bg-muted">
+                            {/* biome-ignore lint/performance/noImgElement: dynamic external banner preview */}
+                            <img
+                              src={eventPlaceholders.EventBannerUrl}
+                              alt="Event Banner Preview"
+                              className="h-full w-full object-cover transition-transform duration-300 hover:scale-105"
+                              onError={(e) => {
+                                (e.currentTarget as HTMLElement).style.display = "none";
+                              }}
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="mt-3 space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-[11px] text-foreground/80">
+                            Default / Autofilled Value:
+                          </span>
+                          <span className="text-[10px] text-muted-foreground">(Editable)</span>
+                        </div>
+                        {item.isTextarea ? (
+                          <Textarea
+                            rows={2}
+                            value={eventPlaceholders[item.key] || ""}
+                            onChange={(e) => handlePlaceholderChange(item.key, e.target.value)}
+                            placeholder={`Autofilled from Bevy ${item.tag}...`}
+                            className="resize-none text-xs"
+                          />
+                        ) : (
+                          <Input
+                            value={eventPlaceholders[item.key] || ""}
+                            onChange={(e) => handlePlaceholderChange(item.key, e.target.value)}
+                            placeholder={`Autofilled from Bevy ${item.tag}...`}
+                            className="h-8 text-xs"
+                          />
+                        )}
                       </div>
                     </div>
                   ))}
@@ -180,15 +427,34 @@ export function EmailManager() {
 
               {/* Attendee Placeholders */}
               <div className="space-y-3 border-t pt-5">
-                <div className="flex items-center gap-2">
-                  <Users className="size-4 text-emerald-500" />
-                  <h3 className="font-semibold text-foreground text-sm">Attendee Data Placeholders</h3>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Users className="size-4 text-emerald-500" />
+                      <h3 className="font-semibold text-foreground text-sm">Attendee Data Placeholders</h3>
+                    </div>
+                    <p className="mt-0.5 text-muted-foreground text-xs">
+                      Attendee tokens are dynamically resolved and replaced for each individual recipient during bulk
+                      delivery.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleResetAttendeePlaceholders}
+                    className="h-7 w-fit gap-1 px-2.5 text-xs shadow-xs"
+                  >
+                    <RotateCcw className="size-3" />
+                    Reset to Defaults
+                  </Button>
                 </div>
+
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   {standardAttendeeTags.map((item) => (
                     <div
                       key={item.tag}
-                      className="flex flex-col justify-between rounded-lg border p-3.5 transition-colors hover:bg-muted/40"
+                      className="flex flex-col justify-between rounded-lg border bg-card p-3.5 shadow-xs transition-colors hover:bg-muted/30"
                     >
                       <div>
                         <div className="flex items-center justify-between">
@@ -208,11 +474,22 @@ export function EmailManager() {
                             Copy
                           </Button>
                         </div>
-                        <p className="mt-2 text-foreground text-sm">{item.description}</p>
+                        <p className="mt-1.5 text-muted-foreground text-xs">{item.description}</p>
                       </div>
-                      <div className="mt-2.5 rounded-md bg-muted/60 px-2.5 py-1 text-muted-foreground text-xs">
-                        <span className="font-semibold text-foreground/80">Example: </span>
-                        {item.example}
+
+                      <div className="mt-3 space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-[11px] text-foreground/80">
+                            Default / Autofilled Value:
+                          </span>
+                          <span className="text-[10px] text-muted-foreground">(Editable)</span>
+                        </div>
+                        <Input
+                          value={attendeePlaceholders[item.key] || ""}
+                          onChange={(e) => handleAttendeePlaceholderChange(item.key, e.target.value)}
+                          placeholder={`Preview value for ${item.tag}...`}
+                          className="h-8 text-xs"
+                        />
                       </div>
                     </div>
                   ))}

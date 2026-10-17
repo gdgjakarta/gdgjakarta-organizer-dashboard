@@ -4,21 +4,13 @@ import { format, parseISO } from "date-fns";
 
 import { getAllBevyChapterEvents } from "@/lib/bevy/client";
 
-export interface PublishedEventOption {
-  id: string;
-  title: string;
-  startDate: string;
-  endDate: string;
-  formattedDate: string; // e.g., "FRIDAY, OCT 23, 2026"
-  formattedTime: string; // e.g., "10:00 AM"
-  thumbnailUrl?: string;
-  bannerUrl?: string;
-  venueName?: string;
-  venueAddress?: string;
-  url?: string;
-  descriptionShort?: string;
-  isVirtual?: boolean;
-}
+import {
+  buildDefaultEventPlaceholders,
+  type EventDynamicPlaceholders,
+  type PublishedEventOption,
+} from "../_types/placeholders";
+
+export type { EventDynamicPlaceholders, PublishedEventOption };
 
 /**
  * Server action to fetch events that are published and ready for communications.
@@ -40,24 +32,29 @@ export async function fetchPublishedEventsAction(): Promise<{
     const events: PublishedEventOption[] = allEvents.map((bevy) => {
       const idStr = String(bevy.id);
 
-      let formattedDate = "DATE TBD";
+      let formattedDate = "Date TBD";
       let formattedTime = "";
       const rawStart = bevy.start_date || "";
 
       if (rawStart) {
         try {
           const parsed = parseISO(rawStart);
-          // Uppercase date format matching Bevy UI: "FRIDAY, OCT 23, 2026"
-          formattedDate = format(parsed, "EEEE, MMM dd, yyyy").toUpperCase();
+          formattedDate = format(parsed, "EEEE, MMM dd, yyyy");
           formattedTime = format(parsed, "hh:mm a");
         } catch {
-          formattedDate = rawStart.toUpperCase();
+          formattedDate = rawStart;
         }
       }
 
       const thumbnailUrl = bevy.picture?.thumbnail_url || bevy.picture?.url || bevy.cropped_picture_url || "";
 
-      const bannerUrl = bevy.banner?.url || bevy.picture?.url || thumbnailUrl;
+      const bannerUrl =
+        bevy.banner?.url ||
+        bevy.cropped_banner_url ||
+        bevy.banner?.thumbnail_url ||
+        bevy.picture?.url ||
+        bevy.cropped_picture_url ||
+        thumbnailUrl;
 
       const venueName = bevy.venue_name || (bevy.is_virtual_event ? "Virtual / Online" : "Jakarta, Indonesia");
       const venueAddress = bevy.venue_address || "";
@@ -98,6 +95,110 @@ export async function fetchPublishedEventsAction(): Promise<{
       success: false,
       events: [],
       error: error instanceof Error ? error.message : "Failed to fetch published events.",
+    };
+  }
+}
+
+/**
+ * Server action to fetch single event details directly from Bevy API.
+ * Accurately retrieves full banner image URL, description, and location metadata.
+ */
+export async function fetchBevyEventDetailAction(eventId: string): Promise<{
+  success: boolean;
+  event?: PublishedEventOption;
+  placeholders?: EventDynamicPlaceholders;
+  error?: string;
+}> {
+  try {
+    if (!eventId) {
+      return { success: false, error: "Event ID is required." };
+    }
+
+    const { getBevyEventById } = await import("@/lib/bevy/client");
+    const detail = await getBevyEventById(eventId);
+
+    if (!detail) {
+      return { success: false, error: `Event ${eventId} not found on Bevy.` };
+    }
+
+    const idStr = String(detail.id);
+    let formattedDate = "Date TBD";
+    let formattedTime = "";
+    const rawStart = detail.start_date || "";
+
+    if (rawStart) {
+      try {
+        const parsed = parseISO(rawStart);
+        formattedDate = format(parsed, "EEEE, MMM dd, yyyy");
+        formattedTime = format(parsed, "hh:mm a");
+        if (detail.end_date) {
+          try {
+            const parsedEnd = parseISO(detail.end_date);
+            formattedTime = `${formattedTime} - ${format(parsedEnd, "hh:mm a")}`;
+          } catch {
+            // Keep start time
+          }
+        }
+      } catch {
+        formattedDate = rawStart;
+      }
+    }
+
+    const thumbnailUrl = detail.picture?.thumbnail_url || detail.picture?.url || detail.cropped_picture_url || "";
+
+    const bannerUrl =
+      detail.banner?.url ||
+      detail.cropped_banner_url ||
+      detail.banner?.thumbnail_url ||
+      (detail as unknown as { banner_url?: string }).banner_url ||
+      detail.picture?.url ||
+      detail.cropped_picture_url ||
+      (detail as unknown as { picture_url?: string }).picture_url ||
+      thumbnailUrl ||
+      "https://assets.gdgjakarta.org/gdg-jakarta/gdg-jakarta-emailheaders-1244x388-blue.png";
+
+    let defaultVenue = "Jakarta, Indonesia";
+    if (detail.is_virtual_event) {
+      defaultVenue = "Virtual / Online";
+    } else if (detail.venue_city) {
+      defaultVenue = `${detail.venue_city}, Indonesia`;
+    }
+    const venueName = detail.venue_name || defaultVenue;
+
+    const venueAddress =
+      detail.venue_address || [detail.venue_city, detail.venue_country].filter(Boolean).join(", ") || "";
+
+    const eventUrl =
+      detail.url || detail.static_url || `https://gdg.community.dev/events/details/google-gdg-jakarta-${idStr}/`;
+
+    const mappedEvent: PublishedEventOption = {
+      id: idStr,
+      title: detail.title || "Untitled Event",
+      startDate: rawStart,
+      endDate: detail.end_date || "",
+      formattedDate,
+      formattedTime,
+      thumbnailUrl,
+      bannerUrl,
+      venueName,
+      venueAddress,
+      url: eventUrl,
+      descriptionShort: detail.description_short || "",
+      isVirtual: Boolean(detail.is_virtual_event),
+    };
+
+    const placeholders = buildDefaultEventPlaceholders(mappedEvent);
+
+    return {
+      success: true,
+      event: mappedEvent,
+      placeholders,
+    };
+  } catch (error) {
+    console.error(`[fetchBevyEventDetailAction] Error fetching details for event ${eventId}:`, error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to fetch event detail from Bevy.",
     };
   }
 }

@@ -57,7 +57,7 @@ export function PublishedEventSelector({
             </AvatarFallback>
           </Avatar>
           <div className="flex min-w-0 flex-1 flex-col text-left">
-            <span className="font-semibold text-[11px] text-sky-600 uppercase tracking-wider dark:text-sky-400">
+            <span className="font-semibold text-[11px] text-sky-600 dark:text-sky-400">
               {selectedEvent.formattedDate}
             </span>
             <span className="truncate font-medium text-foreground text-sm">{selectedEvent.title}</span>
@@ -121,8 +121,7 @@ export function PublishedEventSelector({
                         </AvatarFallback>
                       </Avatar>
                       <div className="flex min-w-0 flex-1 flex-col text-left">
-                        {/* Styled Uppercase Date matching Bevy UI */}
-                        <span className="font-semibold text-[11px] text-sky-600 uppercase tracking-wider dark:text-sky-400">
+                        <span className="font-semibold text-[11px] text-sky-600 dark:text-sky-400">
                           {event.formattedDate}
                         </span>
                         <span className="truncate font-medium text-foreground text-sm">{event.title}</span>

@@ -3,24 +3,32 @@
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { FileSpreadsheet, Loader2, RefreshCw, Send, Users } from "lucide-react";
+import { ChevronDown, FileSpreadsheet, Loader2, RefreshCw, RotateCcw, Send, Sparkles, Users } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as z from "zod";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { extractApiMessage } from "@/lib/utils";
+import { cn, extractApiMessage } from "@/lib/utils";
 
-import { fetchPublishedEventsAction, type PublishedEventOption } from "../_actions/fetch-published-events";
+import { fetchBevyEventDetailAction, fetchPublishedEventsAction } from "../_actions/fetch-published-events";
 import { fetchSheetHeaders } from "../_actions/fetch-sheet-headers";
 import { fetchSheetsList } from "../_actions/fetch-sheets-list";
 import type { AudienceType, ResolvedRecipient } from "../_actions/resolve-audience-recipients";
 import { sendEmailBlast } from "../_actions/send-email-blast";
+import {
+  type AttendeeDynamicPlaceholders,
+  buildDefaultEventPlaceholders,
+  defaultAttendeePlaceholders,
+  type EventDynamicPlaceholders,
+  type PublishedEventOption,
+} from "../_types/placeholders";
 import { AudienceSelector } from "./audience-selector";
 import { defaultHtmlTemplate } from "./default-html-template";
 import { HtmlEditorPreview } from "./html-editor-preview";
@@ -40,16 +48,49 @@ const formSchema = z.object({
 
 export type FormValues = z.infer<typeof formSchema>;
 
-interface EmailBlastFormProps {
+export interface EmailBlastFormProps {
   onSuccess?: () => void;
   showHeader?: boolean;
+  publishedEvents?: PublishedEventOption[];
+  selectedEvent?: PublishedEventOption;
+  eventPlaceholders?: EventDynamicPlaceholders;
+  attendeePlaceholders?: AttendeeDynamicPlaceholders;
+  isLoadingEvents?: boolean;
+  isLoadingEventDetail?: boolean;
+  onSelectEvent?: (event: PublishedEventOption) => void;
+  onChangePlaceholders?: (placeholders: EventDynamicPlaceholders) => void;
+  onResetPlaceholders?: () => void;
 }
 
-export function EmailBlastForm({ onSuccess, showHeader = true }: EmailBlastFormProps) {
+export function EmailBlastForm({
+  onSuccess,
+  showHeader = true,
+  publishedEvents: propEvents,
+  selectedEvent: propSelectedEvent,
+  eventPlaceholders: propPlaceholders,
+  attendeePlaceholders: propAttendeePlaceholders,
+  isLoadingEvents: propIsLoadingEvents,
+  isLoadingEventDetail: propIsLoadingDetail,
+  onSelectEvent: propOnSelectEvent,
+  onChangePlaceholders: propOnChangePlaceholders,
+  onResetPlaceholders: propOnResetPlaceholders,
+}: EmailBlastFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [publishedEvents, setPublishedEvents] = useState<PublishedEventOption[]>([]);
-  const [isLoadingEvents, setIsLoadingEvents] = useState(true);
-  const [selectedEvent, setSelectedEvent] = useState<PublishedEventOption | undefined>();
+  const [internalEvents, setInternalEvents] = useState<PublishedEventOption[]>([]);
+  const [internalLoadingEvents, setInternalLoadingEvents] = useState(true);
+  const [internalSelectedEvent, setInternalSelectedEvent] = useState<PublishedEventOption | undefined>();
+  const [internalPlaceholders, setInternalPlaceholders] = useState<EventDynamicPlaceholders>(() =>
+    buildDefaultEventPlaceholders(),
+  );
+  const [internalLoadingDetail, setInternalLoadingDetail] = useState(false);
+  const [isPlaceholdersOpen, setIsPlaceholdersOpen] = useState(false);
+
+  const publishedEvents = propEvents ?? internalEvents;
+  const isLoadingEvents = propIsLoadingEvents ?? internalLoadingEvents;
+  const selectedEvent = propSelectedEvent ?? internalSelectedEvent;
+  const eventPlaceholders = propPlaceholders ?? internalPlaceholders;
+  const attendeePlaceholders = propAttendeePlaceholders ?? defaultAttendeePlaceholders;
+  const isLoadingEventDetail = propIsLoadingDetail ?? internalLoadingDetail;
 
   // Audience resolution state
   const [resolvedRecipients, setResolvedRecipients] = useState<ResolvedRecipient[]>([]);
@@ -73,14 +114,14 @@ export function EmailBlastForm({ onSuccess, showHeader = true }: EmailBlastFormP
   } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      eventId: "",
+      eventId: selectedEvent?.id || "",
       recipientSource: "audience",
       audienceType: "ticket_all",
       spreadsheetUrl: "",
       sheetName: "",
       headerRow: 1,
       subject: "",
-      headerUrl: "",
+      headerUrl: eventPlaceholders.EventBannerUrl,
       body: defaultHtmlTemplate,
     },
   });
@@ -91,23 +132,57 @@ export function EmailBlastForm({ onSuccess, showHeader = true }: EmailBlastFormP
   const spreadsheetUrl = watch("spreadsheetUrl");
   const sheetName = watch("sheetName");
   const headerRow = watch("headerRow");
+  const headerUrlValue = watch("headerUrl");
   const bodyValue = watch("body");
 
   const lastFetchedUrl = useRef("");
   const lastFetchedSheetName = useRef("");
 
-  // Load published events on mount
+  // Function to load detail event and autofill dynamic placeholders + header banner
+  const loadEventDetail = useCallback(
+    async (ev: PublishedEventOption) => {
+      if (propOnSelectEvent) {
+        propOnSelectEvent(ev);
+        return;
+      }
+
+      setInternalSelectedEvent(ev);
+      setValue("eventId", ev.id, { shouldValidate: true });
+
+      const initialDefaults = buildDefaultEventPlaceholders(ev);
+      setInternalPlaceholders(initialDefaults);
+      setValue("headerUrl", initialDefaults.EventBannerUrl);
+
+      setInternalLoadingDetail(true);
+      try {
+        const res = await fetchBevyEventDetailAction(ev.id);
+        if (res.success && res.event && res.placeholders) {
+          setInternalSelectedEvent(res.event);
+          setInternalPlaceholders(res.placeholders);
+          setValue("headerUrl", res.placeholders.EventBannerUrl);
+        }
+      } catch (err) {
+        console.error("Failed to load Bevy event detail:", err);
+      } finally {
+        setInternalLoadingDetail(false);
+      }
+    },
+    [propOnSelectEvent, setValue],
+  );
+
+  // Load published events on mount if standalone (e.g. in Quick Blast Modal)
   useEffect(() => {
+    if (propEvents) return; // Controlled by EmailManager
+
     async function loadEvents() {
-      setIsLoadingEvents(true);
+      setInternalLoadingEvents(true);
       try {
         const res = await fetchPublishedEventsAction();
         if (res.success && res.events) {
-          setPublishedEvents(res.events);
+          setInternalEvents(res.events);
           if (res.events.length > 0 && !eventId) {
             const first = res.events[0];
-            setSelectedEvent(first);
-            setValue("eventId", first.id, { shouldValidate: true });
+            void loadEventDetail(first);
           }
         } else {
           toast.error("Could not load Bevy events", {
@@ -117,21 +192,62 @@ export function EmailBlastForm({ onSuccess, showHeader = true }: EmailBlastFormP
       } catch (err) {
         console.error("Failed to fetch Bevy events:", err);
       } finally {
-        setIsLoadingEvents(false);
+        setInternalLoadingEvents(false);
       }
     }
     void loadEvents();
-  }, [setValue, eventId]);
+  }, [propEvents, eventId, loadEventDetail]);
+
+  // Keep form values in sync when controlled selectedEvent or eventPlaceholders change
+  useEffect(() => {
+    if (selectedEvent?.id && selectedEvent.id !== eventId) {
+      setValue("eventId", selectedEvent.id, { shouldValidate: true });
+    }
+  }, [selectedEvent?.id, eventId, setValue]);
+
+  useEffect(() => {
+    if (eventPlaceholders?.EventBannerUrl && !headerUrlValue) {
+      setValue("headerUrl", eventPlaceholders.EventBannerUrl);
+    }
+  }, [eventPlaceholders?.EventBannerUrl, headerUrlValue, setValue]);
 
   // Handle Event selection
   const handleSelectEvent = (event: PublishedEventOption) => {
-    setSelectedEvent(event);
     setValue("eventId", event.id, { shouldValidate: true });
+    void loadEventDetail(event);
 
     // Pre-fill a helpful subject if empty
     const currentSubject = watch("subject");
     if (!currentSubject) {
       setValue("subject", `Important Update: ${event.title}`, { shouldValidate: true });
+    }
+  };
+
+  const handlePlaceholderChange = (key: keyof EventDynamicPlaceholders, val: string) => {
+    const updated = {
+      ...eventPlaceholders,
+      [key]: val,
+    };
+    if (key === "EventBannerUrl") {
+      setValue("headerUrl", val);
+    }
+    if (propOnChangePlaceholders) {
+      propOnChangePlaceholders(updated);
+    } else {
+      setInternalPlaceholders(updated);
+    }
+  };
+
+  const handleResetPlaceholders = () => {
+    if (propOnResetPlaceholders) {
+      propOnResetPlaceholders();
+    } else if (selectedEvent) {
+      const resetVals = buildDefaultEventPlaceholders(selectedEvent);
+      setInternalPlaceholders(resetVals);
+      setValue("headerUrl", resetVals.EventBannerUrl);
+      toast.success("Placeholders Reset", {
+        description: "Dynamic placeholders reset to Bevy event defaults.",
+      });
     }
   };
 
@@ -246,7 +362,7 @@ export function EmailBlastForm({ onSuccess, showHeader = true }: EmailBlastFormP
     setIsSubmitting(true);
 
     try {
-      const eventTitle = selectedEvent?.title ?? "";
+      const eventTitle = selectedEvent?.title;
 
       const result = await sendEmailBlast({
         eventId: data.eventId,
@@ -260,6 +376,7 @@ export function EmailBlastForm({ onSuccess, showHeader = true }: EmailBlastFormP
         subject: data.subject,
         headerUrl: data.headerUrl,
         body: data.body,
+        eventPlaceholders,
         recipients: data.recipientSource === "audience" ? resolvedRecipients : undefined,
       });
 
@@ -486,19 +603,205 @@ export function EmailBlastForm({ onSuccess, showHeader = true }: EmailBlastFormP
 
           {/* 4. Header Image URL */}
           <Field>
-            <FieldLabel htmlFor="headerUrl">Header Image URL (Optional)</FieldLabel>
+            <div className="flex items-center justify-between">
+              <FieldLabel htmlFor="headerUrl">Header Image URL (Optional)</FieldLabel>
+              {selectedEvent?.bannerUrl && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 gap-1 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+                  onClick={() => {
+                    const fallbackBanner = selectedEvent.bannerUrl ?? "";
+                    setValue("headerUrl", fallbackBanner);
+                    handlePlaceholderChange("EventBannerUrl", fallbackBanner);
+                    toast.success("Header Image Reset", {
+                      description: "Reset to Bevy event banner image.",
+                    });
+                  }}
+                >
+                  <RotateCcw className="size-3" />
+                  Reset to Event Banner
+                </Button>
+              )}
+            </div>
             <FieldContent>
               <Input
                 id="headerUrl"
                 placeholder="https://assets.gdgjakarta.org/gdg-jakarta/gdg-jakarta-emailheaders-1244x388-blue.png"
                 {...register("headerUrl")}
+                onChange={(e) => {
+                  setValue("headerUrl", e.target.value);
+                  handlePlaceholderChange("EventBannerUrl", e.target.value);
+                }}
                 disabled={isSubmitting}
               />
-              <FieldDescription>Defaults to the official GDG Jakarta blue banner if left empty.</FieldDescription>
+              {headerUrlValue && (
+                <div className="mt-2.5 overflow-hidden rounded-md border bg-muted/40">
+                  <div className="relative aspect-[1850/560] w-full overflow-hidden bg-muted">
+                    {/* biome-ignore lint/performance/noImgElement: dynamic external banner preview */}
+                    <img
+                      src={headerUrlValue}
+                      alt="Header Banner Preview"
+                      className="h-full w-full object-cover transition-transform duration-300 hover:scale-105"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLElement).style.display = "none";
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+              <FieldDescription>
+                Autofilled from the selected Bevy event banner (recommended: 1850 × 560 px). Editable by organizer.
+              </FieldDescription>
             </FieldContent>
           </Field>
 
-          {/* 5. Drag-and-Drop HTML Editor & Live Preview */}
+          {/* 5. Dynamic Event Placeholders Collapsible Panel */}
+          <Collapsible open={isPlaceholdersOpen} onOpenChange={setIsPlaceholdersOpen} className="space-y-2">
+            <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3.5 py-2.5">
+              <div className="flex items-center gap-2">
+                <Sparkles className="size-4 text-sky-500" />
+                <div className="flex flex-col">
+                  <span className="font-semibold text-foreground text-xs">
+                    Dynamic Event Placeholders (Autofilled from Bevy)
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">
+                    Custom values override default tokens like <code>[[EventName]]</code>, <code>[[EventVenue]]</code>,
+                    etc.
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1 px-2 text-xs"
+                  onClick={handleResetPlaceholders}
+                  disabled={isSubmitting || isLoadingEventDetail}
+                >
+                  <RotateCcw className="size-3" />
+                  Reset to Bevy Defaults
+                </Button>
+                <CollapsibleTrigger asChild>
+                  <Button type="button" variant="ghost" size="sm" className="h-7 w-7 p-0">
+                    <ChevronDown
+                      className={cn(
+                        "size-4 text-muted-foreground transition-transform duration-200",
+                        isPlaceholdersOpen && "rotate-180",
+                      )}
+                    />
+                    <span className="sr-only">Toggle Dynamic Placeholders</span>
+                  </Button>
+                </CollapsibleTrigger>
+              </div>
+            </div>
+
+            <CollapsibleContent className="space-y-3 pt-1">
+              <div className="grid grid-cols-1 gap-3 rounded-lg border bg-card/50 p-3.5 sm:grid-cols-2">
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <FieldLabel className="text-xs">Event Title</FieldLabel>
+                    <code className="text-[10px] text-sky-600 dark:text-sky-400">[[EventName]]</code>
+                  </div>
+                  <Input
+                    value={eventPlaceholders?.EventName || ""}
+                    onChange={(e) => handlePlaceholderChange("EventName", e.target.value)}
+                    disabled={isSubmitting}
+                    placeholder="e.g. Road to DevFest Jakarta"
+                    className="h-8 text-xs"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <FieldLabel className="text-xs">Event Date</FieldLabel>
+                    <code className="text-[10px] text-sky-600 dark:text-sky-400">[[EventDate]]</code>
+                  </div>
+                  <Input
+                    value={eventPlaceholders?.EventDate || ""}
+                    onChange={(e) => handlePlaceholderChange("EventDate", e.target.value)}
+                    disabled={isSubmitting}
+                    placeholder="e.g. FRIDAY, OCT 23, 2026"
+                    className="h-8 text-xs"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <FieldLabel className="text-xs">Event Time</FieldLabel>
+                    <code className="text-[10px] text-sky-600 dark:text-sky-400">[[EventTime]]</code>
+                  </div>
+                  <Input
+                    value={eventPlaceholders?.EventTime || ""}
+                    onChange={(e) => handlePlaceholderChange("EventTime", e.target.value)}
+                    disabled={isSubmitting}
+                    placeholder="e.g. 10:00 AM - 05:00 PM"
+                    className="h-8 text-xs"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <FieldLabel className="text-xs">Venue Location</FieldLabel>
+                    <code className="text-[10px] text-sky-600 dark:text-sky-400">[[EventVenue]]</code>
+                  </div>
+                  <Input
+                    value={eventPlaceholders?.EventVenue || ""}
+                    onChange={(e) => handlePlaceholderChange("EventVenue", e.target.value)}
+                    disabled={isSubmitting}
+                    placeholder="e.g. Jakarta Convention Center"
+                    className="h-8 text-xs"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <FieldLabel className="text-xs">Venue Address</FieldLabel>
+                    <code className="text-[10px] text-sky-600 dark:text-sky-400">[[EventAddress]]</code>
+                  </div>
+                  <Input
+                    value={eventPlaceholders?.EventAddress || ""}
+                    onChange={(e) => handlePlaceholderChange("EventAddress", e.target.value)}
+                    disabled={isSubmitting}
+                    placeholder="e.g. Jl. Jend. Gatot Subroto, Jakarta"
+                    className="h-8 text-xs"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <FieldLabel className="text-xs">Event URL</FieldLabel>
+                    <code className="text-[10px] text-sky-600 dark:text-sky-400">[[EventUrl]]</code>
+                  </div>
+                  <Input
+                    value={eventPlaceholders?.EventUrl || ""}
+                    onChange={(e) => handlePlaceholderChange("EventUrl", e.target.value)}
+                    disabled={isSubmitting}
+                    placeholder="https://gdg.community.dev/..."
+                    className="h-8 text-xs"
+                  />
+                </div>
+
+                <div className="space-y-1 sm:col-span-2">
+                  <div className="flex items-center justify-between">
+                    <FieldLabel className="text-xs">Short Description</FieldLabel>
+                    <code className="text-[10px] text-sky-600 dark:text-sky-400">[[EventDescription]]</code>
+                  </div>
+                  <Input
+                    value={eventPlaceholders?.EventDescription || ""}
+                    onChange={(e) => handlePlaceholderChange("EventDescription", e.target.value)}
+                    disabled={isSubmitting}
+                    placeholder="Short description of the event..."
+                    className="h-8 text-xs"
+                  />
+                </div>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+
+          {/* 6. Drag-and-Drop HTML Editor & Live Preview */}
           <Field>
             <FieldLabel htmlFor="body">Email HTML Content &amp; Live Preview</FieldLabel>
             <FieldContent>
@@ -506,6 +809,9 @@ export function EmailBlastForm({ onSuccess, showHeader = true }: EmailBlastFormP
                 value={bodyValue}
                 onChange={(newVal) => setValue("body", newVal, { shouldValidate: true })}
                 selectedEvent={selectedEvent}
+                eventPlaceholders={eventPlaceholders}
+                attendeePlaceholders={attendeePlaceholders}
+                headerUrl={headerUrlValue}
                 availableTags={availableTags}
                 isLoadingTags={isLoadingTags}
               />

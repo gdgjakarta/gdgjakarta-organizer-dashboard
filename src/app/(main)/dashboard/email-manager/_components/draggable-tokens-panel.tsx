@@ -27,7 +27,7 @@ export const EVENT_DATA_TOKENS: DraggableTokenItem[] = [
     id: "event_banner",
     tag: "[[EventBannerUrl]]",
     label: "Banner Image URL",
-    description: "Direct link to event cover banner",
+    description: "Direct link to event cover banner (1850 × 560 px)",
   },
   { id: "event_desc", tag: "[[EventDescription]]", label: "Description", description: "Brief overview of the event" },
 ];
