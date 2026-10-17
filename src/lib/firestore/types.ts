@@ -611,6 +611,7 @@ export interface FirestoreRegistration {
   bundle_name?: string | null;
   bundle_price?: number | null;
   registered_at: string;
+  registered_at_millis?: number;
   reviewed_at?: string;
   reviewed_by_id?: string;
   reviewed_by_name?: string;

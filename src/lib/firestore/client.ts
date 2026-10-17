@@ -1437,7 +1437,23 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
     throw new Error(`Email ${normalizedEmail} is already registered for this event.`);
   }
 
-  // 2. Fetch event document to validate session capacity and evaluate curation mode
+  // 2. Validate sales window eligibility against server-authoritative clock and get NTP timestamp
+  const { validateRegistrationEligibilityAction } = await import("@/server/event-registration-actions");
+  const salesEligibility = await validateRegistrationEligibilityAction({
+    eventId: eventIdStr,
+    ticketId: registration.ticket_id,
+    bundleId: registration.bundle_id,
+    selectedMerchandise: registration.selected_merchandise,
+  });
+
+  if (!salesEligibility.valid) {
+    throw new Error(salesEligibility.error || "Event registration is currently not open.");
+  }
+
+  const authoritativeTimeIso = salesEligibility.serverTimeIso;
+  const authoritativeTimeMillis = salesEligibility.serverTimeMillis;
+
+  // 3. Fetch event document to validate session capacity and evaluate curation mode
   let eventData: FirestoreEvent | null = null;
   const eventRef = doc(db, "events", eventIdStr);
   try {
@@ -1516,13 +1532,13 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
         }
         if (matchingTicket.sales_start_date && matchingTicket.sales_start_date.trim() !== "") {
           const startTime = new Date(matchingTicket.sales_start_date).getTime();
-          if (!Number.isNaN(startTime) && Date.now() < startTime) {
+          if (!Number.isNaN(startTime) && authoritativeTimeMillis < startTime) {
             throw new Error(`Sales for ticket "${matchingTicket.name}" have not started yet.`);
           }
         }
         if (matchingTicket.sales_end_date && matchingTicket.sales_end_date.trim() !== "") {
           const endTime = new Date(matchingTicket.sales_end_date).getTime();
-          if (!Number.isNaN(endTime) && Date.now() > endTime) {
+          if (!Number.isNaN(endTime) && authoritativeTimeMillis > endTime) {
             throw new Error(`Sales for ticket "${matchingTicket.name}" have ended.`);
           }
         }
@@ -1553,13 +1569,13 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
         }
         if (matchingBundle.sales_start_date && matchingBundle.sales_start_date.trim() !== "") {
           const startTime = new Date(matchingBundle.sales_start_date).getTime();
-          if (!Number.isNaN(startTime) && Date.now() < startTime) {
+          if (!Number.isNaN(startTime) && authoritativeTimeMillis < startTime) {
             throw new Error(`Sales for package "${matchingBundle.name}" have not started yet.`);
           }
         }
         if (matchingBundle.sales_end_date && matchingBundle.sales_end_date.trim() !== "") {
           const endTime = new Date(matchingBundle.sales_end_date).getTime();
-          if (!Number.isNaN(endTime) && Date.now() > endTime) {
+          if (!Number.isNaN(endTime) && authoritativeTimeMillis > endTime) {
             throw new Error(`Sales for package "${matchingBundle.name}" have ended.`);
           }
         }
@@ -1591,13 +1607,13 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
           }
           if (matchingMerch.sales_start_date && matchingMerch.sales_start_date.trim() !== "") {
             const startTime = new Date(matchingMerch.sales_start_date).getTime();
-            if (!Number.isNaN(startTime) && Date.now() < startTime) {
+            if (!Number.isNaN(startTime) && authoritativeTimeMillis < startTime) {
               throw new Error(`Sales for merchandise "${matchingMerch.name}" have not started yet.`);
             }
           }
           if (matchingMerch.sales_end_date && matchingMerch.sales_end_date.trim() !== "") {
             const endTime = new Date(matchingMerch.sales_end_date).getTime();
-            if (!Number.isNaN(endTime) && Date.now() > endTime) {
+            if (!Number.isNaN(endTime) && authoritativeTimeMillis > endTime) {
               throw new Error(`Sales for merchandise "${matchingMerch.name}" have ended.`);
             }
           }
@@ -1630,9 +1646,9 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
   };
 
   const initialStatusLog: RegistrationStatusLog = {
-    id: `log_${Date.now()}_initial`,
+    id: `log_${authoritativeTimeMillis}_initial`,
     status: resolvedStatus,
-    changed_at: new Date().toISOString(),
+    changed_at: authoritativeTimeIso,
     changed_by_id: effectiveMemberId,
     changed_by_name: registration.member_name || "Applicant",
     notes: isWaitlisted ? "Registered on waitlist as event capacity was reached." : "Initial registration submitted.",
@@ -1712,6 +1728,8 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
     event_id: eventIdStr,
     member_email: normalizedEmail,
     id: regId,
+    registered_at: authoritativeTimeIso,
+    registered_at_millis: authoritativeTimeMillis,
     status_logs: [initialStatusLog],
   });
 

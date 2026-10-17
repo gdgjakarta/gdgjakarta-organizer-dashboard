@@ -63,7 +63,7 @@ export function calculateBundlePricing(
 /**
  * Resolves the real-time sales availability and status badge for a bundle package.
  */
-export function getBundleSalesStatus(bundle: EventBundlePackage): BundleSalesStatus {
+export function getBundleSalesStatus(bundle: EventBundlePackage, now: number = Date.now()): BundleSalesStatus {
   if (bundle.status === "hidden") {
     return {
       status: "hidden",
@@ -84,8 +84,6 @@ export function getBundleSalesStatus(bundle: EventBundlePackage): BundleSalesSta
       badgeColor: "border-destructive/30 bg-destructive/10 text-destructive",
     };
   }
-
-  const now = Date.now();
 
   if (bundle.sales_start_date && bundle.sales_start_date.trim() !== "") {
     const startTime = new Date(bundle.sales_start_date).getTime();

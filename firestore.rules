@@ -88,6 +88,7 @@ service cloud.firestore {
     //   - session_id: string|int|float|null (optional, <= 128 chars if string) - Selected session identifier
     //   - session_title: string|null (optional, <= 200 chars) - Selected session title
     //   - registered_at: string (required, <= 50 chars) - Registration timestamp
+    //   - registered_at_millis: int|float (required on create, epoch timestamp in milliseconds)
     //   - reviewed_at: string|null (optional, immutable for members, <= 50 chars) - Review timestamp
     //   - reviewed_by_id: string|null (optional, immutable for members, <= 128 chars) - Reviewer UID
     //   - reviewed_by_name: string|null (optional, immutable for members, <= 150 chars) - Reviewer name
@@ -681,7 +682,8 @@ service cloud.firestore {
         data.member_name is string && data.member_name.size() > 0 && data.member_name.size() <= 150 &&
         data.member_email is string && data.member_email.size() > 0 && data.member_email.size() <= 150 &&
         data.status is string && data.status.size() > 0 && data.status.size() <= 50 &&
-        data.registered_at is string && data.registered_at.size() <= 50;
+        data.registered_at is string && data.registered_at.size() <= 50 &&
+        (!('registered_at_millis' in data) || ((data.registered_at_millis is int || data.registered_at_millis is float) && data.registered_at_millis <= request.time.toMillis() + 300000 && data.registered_at_millis >= request.time.toMillis() - 600000));
     }
 
     // Validates events document structure, data types, and bounds
@@ -1104,7 +1106,11 @@ service cloud.firestore {
         ));
 
       // Create: Organizers or authenticated users registering themselves.
-      allow create: if isAuthenticated() && isValidRegistration(request.resource.data) && (
+      allow create: if isAuthenticated() && isValidRegistration(request.resource.data) &&
+        ('registered_at_millis' in request.resource.data) &&
+        ((request.resource.data.registered_at_millis is int || request.resource.data.registered_at_millis is float) &&
+          request.resource.data.registered_at_millis <= request.time.toMillis() + 300000 &&
+          request.resource.data.registered_at_millis >= request.time.toMillis() - 600000) && (
         isOrganizer() ||
         request.auth.uid == request.resource.data.member_id ||
         (registrationId.size() >= request.auth.uid.size() && registrationId[registrationId.size() - request.auth.uid.size():] == request.auth.uid)
@@ -1124,7 +1130,8 @@ service cloud.firestore {
           ) &&
           !request.resource.data.diff(resource.data).affectedKeys().hasAny([
             'reviewed_at', 'reviewed_by_id', 'reviewed_by_name', 'reviewed_by_email',
-            'checked_in_at', 'is_checked_in', 'bevy_attendee_id', 'attendee_code'
+            'checked_in_at', 'is_checked_in', 'bevy_attendee_id', 'attendee_code',
+            'registered_at', 'registered_at_millis'
           ]) &&
           isValidMemberDeliveryUpdate(resource.data, request.resource.data) &&
           isValidMemberRefundUpdate(resource.data, request.resource.data)

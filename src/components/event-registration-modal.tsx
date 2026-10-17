@@ -269,6 +269,32 @@ export function EventRegistrationModal({
     maxCapacity?: number;
   } | null>(null);
 
+  const [serverClockOffset, setServerClockOffset] = useState<number>(0);
+  const [isClockDriftDetected, setIsClockDriftDetected] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!open) return;
+    let isCancelled = false;
+    import("@/server/event-registration-actions")
+      .then((m) => m.getServerTimeAction())
+      .then((res) => {
+        if (isCancelled) return;
+        const drift = res.serverTimeMillis - Date.now();
+        setServerClockOffset(drift);
+        if (Math.abs(drift) > 2 * 60 * 1000) {
+          setIsClockDriftDetected(true);
+        }
+      })
+      .catch((err) => {
+        console.warn("[Registration Modal] Could not sync server time:", err);
+      });
+    return () => {
+      isCancelled = true;
+    };
+  }, [open]);
+
+  const effectiveNow = Date.now() + serverClockOffset;
+
   useEffect(() => {
     if (open) {
       setRegistrationStep("tickets");
@@ -494,7 +520,7 @@ export function EventRegistrationModal({
           return updated;
         });
       }
-      const openTickets = availableTickets.filter((t) => getTicketSalesStatus(t).isOpen);
+      const openTickets = availableTickets.filter((t) => getTicketSalesStatus(t, effectiveNow).isOpen);
       if (openTickets.length > 0) {
         setSelectedTicketId(openTickets[0].id);
       }
@@ -546,9 +572,9 @@ export function EventRegistrationModal({
   // Auto-select first open ticket if none selected or if currently selected ticket is closed/unavailable
   useEffect(() => {
     if (selectedBundleId && hasBundleTicket) return;
-    const openTickets = availableTickets.filter((t) => getTicketSalesStatus(t).isOpen);
+    const openTickets = availableTickets.filter((t) => getTicketSalesStatus(t, effectiveNow).isOpen);
     const currentTicket = availableTickets.find((t) => t.id === selectedTicketId);
-    const isCurrentTicketOpen = currentTicket ? getTicketSalesStatus(currentTicket).isOpen : false;
+    const isCurrentTicketOpen = currentTicket ? getTicketSalesStatus(currentTicket, effectiveNow).isOpen : false;
 
     if (!isCurrentTicketOpen) {
       if (openTickets.length > 0) {
@@ -557,7 +583,7 @@ export function EventRegistrationModal({
         setSelectedTicketId("");
       }
     }
-  }, [availableTickets, selectedTicketId, selectedBundleId, hasBundleTicket]);
+  }, [availableTickets, selectedTicketId, selectedBundleId, hasBundleTicket, effectiveNow]);
 
   const selectedTicket = useMemo(() => {
     return availableTickets.find((t) => t.id === selectedTicketId) ?? null;
@@ -948,7 +974,7 @@ export function EventRegistrationModal({
 
       // Check max limits
       if (delta > 0) {
-        const salesStatus = getMerchandiseSalesStatus(item);
+        const salesStatus = getMerchandiseSalesStatus(item, effectiveNow);
         if (!salesStatus.isOpen) {
           toast.error(salesStatus.message ?? `"${item.name}" is not open for purchase.`);
           return prev;
@@ -1300,7 +1326,7 @@ export function EventRegistrationModal({
         return;
       }
       if (selectedBundle) {
-        const bundleSales = getBundleSalesStatus(selectedBundle);
+        const bundleSales = getBundleSalesStatus(selectedBundle, effectiveNow);
         if (!bundleSales.isAvailable) {
           toast.error(
             `The bundling package "${selectedBundle.name}" is currently not available (${bundleSales.badgeLabel}).`,
@@ -1308,7 +1334,7 @@ export function EventRegistrationModal({
           return;
         }
         if (!hasBundleTicket) {
-          const ticketSales = getTicketSalesStatus(selectedTicket);
+          const ticketSales = getTicketSalesStatus(selectedTicket, effectiveNow);
           if (!ticketSales.isOpen) {
             toast.error(
               ticketSales.message ??
@@ -1318,7 +1344,7 @@ export function EventRegistrationModal({
           }
         }
       } else {
-        const ticketSales = getTicketSalesStatus(selectedTicket);
+        const ticketSales = getTicketSalesStatus(selectedTicket, effectiveNow);
         if (!ticketSales.isOpen) {
           toast.error(
             ticketSales.message ??
@@ -1403,7 +1429,7 @@ export function EventRegistrationModal({
         return;
       }
       if (selectedBundle) {
-        const bundleSales = getBundleSalesStatus(selectedBundle);
+        const bundleSales = getBundleSalesStatus(selectedBundle, effectiveNow);
         if (!bundleSales.isAvailable) {
           toast.error(
             `The bundling package "${selectedBundle.name}" is currently not available (${bundleSales.badgeLabel}).`,
@@ -1412,7 +1438,7 @@ export function EventRegistrationModal({
           return;
         }
         if (!hasBundleTicket) {
-          const ticketSales = getTicketSalesStatus(selectedTicket);
+          const ticketSales = getTicketSalesStatus(selectedTicket, effectiveNow);
           if (!ticketSales.isOpen) {
             toast.error(
               ticketSales.message ??
@@ -1423,7 +1449,7 @@ export function EventRegistrationModal({
           }
         }
       } else {
-        const ticketSales = getTicketSalesStatus(selectedTicket);
+        const ticketSales = getTicketSalesStatus(selectedTicket, effectiveNow);
         if (!ticketSales.isOpen) {
           toast.error(
             ticketSales.message ??
@@ -1514,7 +1540,7 @@ export function EventRegistrationModal({
           if (order.quantity > 0) {
             const item = availableMerchandise.find((m) => m.id === itemId);
             if (item) {
-              const salesStatus = getMerchandiseSalesStatus(item);
+              const salesStatus = getMerchandiseSalesStatus(item, effectiveNow);
               const unitPrice = getMerchEffectivePrice(item, order.selectedVariations);
               const isIncludedInTicket = Boolean(selectedTicket?.perks?.some((p) => p.merchandise_id === item.id));
               const bundledRecord = selectedBundle?.merchandise_items.find((bi) => bi.merchandise_id === item.id);
@@ -1695,7 +1721,7 @@ export function EventRegistrationModal({
           referral_discount_type: appliedReferral?.discountType,
           referral_discount_percent: appliedReferral?.discountPercentage,
           referral_discount_amount: referralDiscount > 0 ? referralDiscount : undefined,
-          registered_at: new Date().toISOString(),
+          registered_at: new Date(effectiveNow).toISOString(),
           payment_status: !isWaitlistMode && requiresPayment ? "unpaid" : undefined,
           payment_url: isWaitlistMode ? undefined : generatedPaymentUrl,
           payment_invoice_number: isWaitlistMode ? undefined : generatedInvoiceNumber,
@@ -1862,7 +1888,7 @@ export function EventRegistrationModal({
           member_name: user?.name || "Attendee",
           member_email: attendeeEmail,
           status: initialStatus,
-          registered_at: new Date().toISOString(),
+          registered_at: new Date(effectiveNow).toISOString(),
           answers: combinedAnswers,
           session_id: selectedSession?.id,
           session_title: selectedSession?.title,
@@ -2546,7 +2572,7 @@ export function EventRegistrationModal({
 
                         <div className="grid grid-cols-1 gap-3 pt-1">
                           {availableBundles.map((b) => {
-                            const salesStatus = getBundleSalesStatus(b);
+                            const salesStatus = getBundleSalesStatus(b, effectiveNow);
                             const isDisabled = !salesStatus.isAvailable;
                             const isSelected = selectedBundleId === b.id;
                             const pricing = calculateBundlePricing(b, availableTickets, availableMerchandise);
@@ -2723,9 +2749,22 @@ export function EventRegistrationModal({
                           </p>
                         )}
 
+                        {isClockDriftDetected && (
+                          <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-amber-800 text-xs dark:text-amber-300">
+                            <Clock className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                            <div>
+                              <p className="font-semibold">Device Clock Out of Sync</p>
+                              <p className="mt-0.5 text-[11px] text-amber-700/90 leading-relaxed dark:text-amber-400/90">
+                                Your device clock differs from real-world time. Ticket sales availability is
+                                synchronized with official server time.
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
                         {!hasBundleTicket &&
                           availableTickets.length > 0 &&
-                          availableTickets.every((t) => !getTicketSalesStatus(t).isOpen) && (
+                          availableTickets.every((t) => !getTicketSalesStatus(t, effectiveNow).isOpen) && (
                             <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-amber-800 text-xs dark:text-amber-300">
                               <Clock className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
                               <div>
@@ -2744,7 +2783,7 @@ export function EventRegistrationModal({
                           onValueChange={(val) => {
                             if (hasBundleTicket) return;
                             const target = availableTickets.find((t) => t.id === val);
-                            if (target && !getTicketSalesStatus(target).isOpen) {
+                            if (target && !getTicketSalesStatus(target, effectiveNow).isOpen) {
                               return;
                             }
                             setSelectedTicketId(val);
@@ -2752,7 +2791,7 @@ export function EventRegistrationModal({
                           className="grid grid-cols-1 gap-2.5 pt-1"
                         >
                           {availableTickets.map((t) => {
-                            const salesStatus = getTicketSalesStatus(t);
+                            const salesStatus = getTicketSalesStatus(t, effectiveNow);
                             const isTicketInBundle = Boolean(hasBundleTicket && selectedBundle?.ticket_id === t.id);
                             const isDisabled = hasBundleTicket ? !isTicketInBundle : !salesStatus.isOpen;
                             const isSelected = selectedTicketId === t.id;
@@ -3013,7 +3052,7 @@ export function EventRegistrationModal({
 
                         <div className="space-y-3 pt-1">
                           {availableMerchandise.map((item) => {
-                            const salesStatus = getMerchandiseSalesStatus(item);
+                            const salesStatus = getMerchandiseSalesStatus(item, effectiveNow);
                             const order = selectedMerch[item.id] ?? { quantity: 0, selectedVariations: {} };
                             const isAdded = order.quantity > 0;
                             const bundledItemRecord = hasBundleMerchandise
@@ -4399,10 +4438,10 @@ export function EventRegistrationModal({
                             (!selectedTicket ||
                               (selectedBundle
                                 ? hasBundleTicket
-                                  ? !getBundleSalesStatus(selectedBundle).isAvailable
-                                  : !getBundleSalesStatus(selectedBundle).isAvailable ||
-                                    !getTicketSalesStatus(selectedTicket).isOpen
-                                : !getTicketSalesStatus(selectedTicket).isOpen)))
+                                  ? !getBundleSalesStatus(selectedBundle, effectiveNow).isAvailable
+                                  : !getBundleSalesStatus(selectedBundle, effectiveNow).isAvailable ||
+                                    !getTicketSalesStatus(selectedTicket, effectiveNow).isOpen
+                                : !getTicketSalesStatus(selectedTicket, effectiveNow).isOpen)))
                         }
                         className="flex-1 sm:flex-initial gap-2 shadow-xs"
                       >
