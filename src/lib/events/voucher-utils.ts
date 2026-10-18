@@ -120,10 +120,11 @@ export function validateVoucherForCart(voucher: EventVoucher, context: VoucherCa
     totalDiscount: 0,
   };
 
-  if (voucher.status !== "active") {
+  const status = (voucher as Partial<EventVoucher>).status ?? "active";
+  if (status !== "active") {
     return {
       ...zeroResult,
-      error: voucher.status === "expired" ? "This voucher has expired." : "This voucher is inactive.",
+      error: status === "expired" ? "This voucher has expired." : "This voucher is inactive.",
     };
   }
 

@@ -5,7 +5,7 @@ import {
   type VoucherValidationResult,
   validateVoucherForCart,
 } from "@/lib/events/voucher-utils";
-import type { EventVoucher } from "@/lib/firestore/types";
+import type { EventVoucher, VoucherStatus } from "@/lib/firestore/types";
 import { getFirestoreEventByIdServer } from "@/server/firestore-admin";
 
 const FIREBASE_PROJECT_ID = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "gdgjakarta-app";
@@ -93,6 +93,11 @@ export interface ValidateVoucherActionResult {
     applies_to: "all" | "ticket" | "merchandise";
     min_spend?: number | null;
     max_discount?: number | null;
+    status: VoucherStatus;
+    start_date?: string | null;
+    end_date?: string | null;
+    usage_limit?: number | null;
+    times_used?: number;
   };
   ticketDiscount?: number;
   merchandiseDiscount?: number;
@@ -172,8 +177,13 @@ export async function validateVoucherAction(params: ValidateVoucherActionParams)
       discount_type: matchedVoucher.discount_type,
       discount_value: matchedVoucher.discount_value,
       applies_to: matchedVoucher.applies_to,
-      min_spend: matchedVoucher.min_spend,
-      max_discount: matchedVoucher.max_discount,
+      min_spend: matchedVoucher.min_spend ?? null,
+      max_discount: matchedVoucher.max_discount ?? null,
+      status: matchedVoucher.status || "active",
+      start_date: matchedVoucher.start_date ?? null,
+      end_date: matchedVoucher.end_date ?? null,
+      usage_limit: matchedVoucher.usage_limit ?? null,
+      times_used: matchedVoucher.times_used ?? 0,
     },
     ticketDiscount: validation.ticketDiscount,
     merchandiseDiscount: validation.merchandiseDiscount,

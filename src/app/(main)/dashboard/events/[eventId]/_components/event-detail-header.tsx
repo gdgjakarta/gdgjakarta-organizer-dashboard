@@ -120,6 +120,7 @@ export function EventDetailHeader({
   const [liveTotals, setLiveTotals] = useState({
     totalRegistrations,
     totalApproved: initialTotalApproved,
+    totalExpected: initialTotalApproved,
     totalRejected,
     totalPending,
     totalWaitlisted,
@@ -131,6 +132,7 @@ export function EventDetailHeader({
     setLiveTotals({
       totalRegistrations,
       totalApproved: initialTotalApproved,
+      totalExpected: initialTotalApproved,
       totalRejected,
       totalPending,
       totalWaitlisted,
@@ -167,6 +169,16 @@ export function EventDetailHeader({
             const s = (r.status || "").toLowerCase().trim();
             return s === "approved" || s === "attended" || s === "confirmed" || s === "registered";
           }).length;
+          const expectedCount = directList.filter((r) => {
+            const s = (r.status || "").toLowerCase().trim();
+            return (
+              s === "approved" ||
+              s === "paid_and_registered" ||
+              s === "attended" ||
+              s === "confirmed" ||
+              s === "registered"
+            );
+          }).length;
           const rejectedCount = directList.filter((r) => (r.status || "").toLowerCase().trim() === "rejected").length;
           const waitlistedCount = directList.filter(
             (r) => (r.status || "").toLowerCase().trim() === "waitlisted",
@@ -183,6 +195,7 @@ export function EventDetailHeader({
           setLiveTotals({
             totalRegistrations: directList.length,
             totalApproved: approvedCount,
+            totalExpected: expectedCount,
             totalRejected: rejectedCount,
             totalPending: pendingCount,
             totalWaitlisted: waitlistedCount,
@@ -198,6 +211,16 @@ export function EventDetailHeader({
               const s = (r.status || "").toLowerCase().trim();
               return s === "approved" || s === "attended" || s === "confirmed" || s === "registered";
             }).length;
+            const expectedCount = list.filter((r) => {
+              const s = (r.status || "").toLowerCase().trim();
+              return (
+                s === "approved" ||
+                s === "paid_and_registered" ||
+                s === "attended" ||
+                s === "confirmed" ||
+                s === "registered"
+              );
+            }).length;
             const rejectedCount = list.filter((r) => (r.status || "").toLowerCase().trim() === "rejected").length;
             const waitlistedCount = list.filter((r) => (r.status || "").toLowerCase().trim() === "waitlisted").length;
             const pendingCount = list.filter((r) => {
@@ -212,6 +235,7 @@ export function EventDetailHeader({
             setLiveTotals({
               totalRegistrations: list.length,
               totalApproved: approvedCount,
+              totalExpected: expectedCount,
               totalRejected: rejectedCount,
               totalPending: pendingCount,
               totalWaitlisted: waitlistedCount,
@@ -256,9 +280,10 @@ export function EventDetailHeader({
   const liveBevyUrl = getBevyLiveEventUrl(event);
 
   const totalApproved = liveTotals.totalApproved;
+  const totalExpected = liveTotals.totalExpected ?? liveTotals.totalApproved;
   const totalCheckedIn = liveTotals.totalCheckedIn;
-  const droppedCount = Math.max(0, totalApproved - totalCheckedIn);
-  const dropRateNumber = totalApproved > 0 ? (droppedCount / totalApproved) * 100 : 0;
+  const droppedCount = Math.max(0, totalExpected - totalCheckedIn);
+  const dropRateNumber = totalExpected > 0 ? (droppedCount / totalExpected) * 100 : 0;
   const formattedDropRate = `${dropRateNumber % 1 === 0 ? dropRateNumber.toFixed(0) : dropRateNumber.toFixed(1)}%`;
 
   const handleCopyLivePage = () => {
@@ -417,12 +442,12 @@ export function EventDetailHeader({
               )}{" "}
               Checked In
             </span>
-            {isCurationMode && !isLoadingTotals && totalApproved > 0 && (
+            {isCurationMode && !isLoadingTotals && totalExpected > 0 && (
               <>
                 <span>•</span>
                 <span
                   className={cn("flex items-center gap-1.5", getDropRateColorClass(dropRateNumber))}
-                  title={`${droppedCount} approved attendee${droppedCount === 1 ? "" : "s"} not checked in`}
+                  title={`${droppedCount} confirmed attendee${droppedCount === 1 ? "" : "s"} not checked in`}
                 >
                   <TrendingDown className="size-4" />
                   <strong>{formattedDropRate}</strong> Drop Rate

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, useTransition } from "react"
 
 import { format, parseISO } from "date-fns";
 import {
+  BookOpen,
   Check,
   Clock,
   Copy,
@@ -102,6 +103,7 @@ import { approveAttendeeWebhookAction } from "@/server/registration-actions";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
 import { ApplicantDetailDialog } from "./applicant-detail-dialog";
+import { AttendeeStatusGuideDialog } from "./attendee-status-guide-dialog";
 import { type AvailableQuestionField, ColumnCustomizer } from "./column-customizer";
 import {
   collectMerchandiseFilterOptions,

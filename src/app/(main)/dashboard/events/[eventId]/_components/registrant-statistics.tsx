@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   Ban,
   BarChart3,
+  BookOpen,
   CalendarX,
   CheckCircle2,
   Clock,
@@ -37,6 +38,7 @@ import { DEFAULT_COMBINED_QUESTIONS } from "@/lib/events/registration-defaults";
 import type { CustomQuestion, EventSession, FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
+import { AttendeeStatusGuideDialog } from "./attendee-status-guide-dialog";
 import { parseMerchandiseVariations } from "./merchandise-helpers";
 
 interface RegistrantStatisticsProps {
@@ -105,6 +107,7 @@ export function RegistrantStatistics({
   const [analysisScope, setAnalysisScope] = useState<"all" | "approved" | "checked_in" | "not_checked_in">("all");
   // Organizer can pin multiple fields to display comparison overview cards
   const [pinnedFields, setPinnedFields] = useState<string[]>(["professional_background"]);
+  const [isGuideOpen, setIsGuideOpen] = useState(false);
 
   const isCurationMode = isEventCurationMode(event);
 
@@ -117,6 +120,16 @@ export function RegistrantStatistics({
     }).length;
   }, [registrations]);
 
+  // All confirmed/ticketed attendees expected to attend (curated approved + paid & registered)
+  const totalConfirmedAttendees = useMemo(() => {
+    return registrations.filter((r) => {
+      const s = (r.status || "").toLowerCase().trim();
+      return (
+        s === "approved" || s === "paid_and_registered" || s === "attended" || s === "confirmed" || s === "registered"
+      );
+    }).length;
+  }, [registrations]);
+
   const totalCheckedIn = useMemo(() => {
     return registrations.filter((r) => {
       const s = (r.status || "").toLowerCase().trim();
@@ -125,10 +138,10 @@ export function RegistrantStatistics({
   }, [registrations]);
 
   const totalDropped = useMemo(() => {
-    return Math.max(0, totalApproved - totalCheckedIn);
-  }, [totalApproved, totalCheckedIn]);
+    return Math.max(0, totalConfirmedAttendees - totalCheckedIn);
+  }, [totalConfirmedAttendees, totalCheckedIn]);
 
-  const dropRateNumber = totalApproved > 0 ? (totalDropped / totalApproved) * 100 : 0;
+  const dropRateNumber = totalConfirmedAttendees > 0 ? (totalDropped / totalConfirmedAttendees) * 100 : 0;
   const formattedDropRate = `${dropRateNumber % 1 === 0 ? dropRateNumber.toFixed(0) : dropRateNumber.toFixed(1)}%`;
 
   const totalRejected = useMemo(() => {
@@ -201,8 +214,8 @@ export function RegistrantStatistics({
 
   const approvedPercent = totalRegistrations > 0 ? ((totalApproved / totalRegistrations) * 100).toFixed(1) : "0.0";
   let checkedInPercent = "0.0";
-  if (totalApproved > 0) {
-    checkedInPercent = ((totalCheckedIn / totalApproved) * 100).toFixed(1);
+  if (totalConfirmedAttendees > 0) {
+    checkedInPercent = ((totalCheckedIn / totalConfirmedAttendees) * 100).toFixed(1);
   } else if (totalRegistrations > 0) {
     checkedInPercent = ((totalCheckedIn / totalRegistrations) * 100).toFixed(1);
   }
@@ -318,9 +331,14 @@ export function RegistrantStatistics({
     if (analysisScope === "not_checked_in") {
       return registrations.filter((r) => {
         const s = (r.status ?? "").toLowerCase().trim();
-        const isApproved = s === "approved" || s === "attended" || s === "confirmed" || s === "registered";
+        const isConfirmed =
+          s === "approved" ||
+          s === "paid_and_registered" ||
+          s === "attended" ||
+          s === "confirmed" ||
+          s === "registered";
         const isCheckedIn = Boolean(r.is_checked_in) || s === "attended";
-        return isApproved && !isCheckedIn;
+        return isConfirmed && !isCheckedIn;
       });
     }
     return registrations;
@@ -719,6 +737,23 @@ export function RegistrantStatistics({
 
   return (
     <div className="space-y-4">
+      {/* ── Section Header with Status & Metric Reference Guide Trigger ── */}
+      <div className="flex items-center justify-between pb-0.5">
+        <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <BarChart3 className="size-3.5 text-primary" />
+          <span>Registration & Attendance Overview</span>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setIsGuideOpen(true)}
+          className="h-7 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
+        >
+          <BookOpen className="size-3.5 text-primary" />
+          <span>Status & Metric Guide</span>
+        </Button>
+      </div>
+
       {/* ── Top Level Status Overview ──────────────────────────────── */}
       <div
         className={cn(
@@ -836,10 +871,10 @@ export function RegistrantStatistics({
                   <div className="font-bold text-2xl tracking-tight text-purple-600 dark:text-purple-400 sm:text-3xl">
                     {totalCheckedIn}
                   </div>
-                  {totalApproved > 0 && (
+                  {totalConfirmedAttendees > 0 && (
                     <div
                       className="flex items-center gap-0.5 text-xs"
-                      title={`${totalDropped} of ${totalApproved} approved attendees not checked in`}
+                      title={`${totalDropped} of ${totalConfirmedAttendees} confirmed attendees not checked in`}
                     >
                       <TrendingDown
                         className={cn(
@@ -875,7 +910,7 @@ export function RegistrantStatistics({
                     {checkedInPercent}%
                   </Badge>
                   <span>turnout</span>
-                  {totalApproved > 0 && (
+                  {totalConfirmedAttendees > 0 && (
                     <>
                       <span>•</span>
                       <span>{totalDropped} no-show</span>
@@ -1325,7 +1360,7 @@ export function RegistrantStatistics({
                       ? "bg-background text-foreground shadow-xs"
                       : "text-muted-foreground hover:text-foreground",
                   )}
-                  title="Approved attendees who have not checked in"
+                  title="Confirmed attendees (approved and paid) who have not checked in"
                 >
                   <span>Not Checked In</span>
                   {isLoading ? (
@@ -1429,6 +1464,9 @@ export function RegistrantStatistics({
 
         <CardContent className="space-y-5 pt-0">{renderAnalyticsContent()}</CardContent>
       </Card>
+
+      {/* Status & Metric Reference Guide Dialog */}
+      <AttendeeStatusGuideDialog open={isGuideOpen} onOpenChange={setIsGuideOpen} />
     </div>
   );
 }
