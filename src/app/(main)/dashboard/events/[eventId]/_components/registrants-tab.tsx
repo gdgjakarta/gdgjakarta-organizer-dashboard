@@ -411,6 +411,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const [merchandiseFilter, setMerchandiseFilter] = useState<string>("all");
   const [merchandiseVariantFilter, setMerchandiseVariantFilter] = useState<string>("all");
   const [reviewerFilter, setReviewerFilter] = useState<string>("all");
+  const [isStatusGuideOpen, setIsStatusGuideOpen] = useState(false);
   const [sessions, setSessions] = useState<EventSession[]>(event?.sessions ?? []);
   const [customQuestions, setCustomQuestions] = useState<CustomQuestion[]>(event?.custom_questions ?? []);
   const [emailTemplates, setEmailTemplates] = useState(event?.email_templates);
@@ -3067,51 +3068,62 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 />
               </InputGroup>
 
-              <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
-                <SelectTrigger size="sm" className="h-8 text-xs">
-                  <span className="text-muted-foreground">Status:</span>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    <SelectItem value="all">All Statuses ({isLoading ? "..." : statusCounts.all})</SelectItem>
-                    {isCurationMode && (
-                      <SelectItem value="pending">
-                        Pending Review ({isLoading ? "..." : statusCounts.pending})
+              <div className="flex items-center gap-1">
+                <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
+                  <SelectTrigger size="sm" className="h-8 text-xs">
+                    <span className="text-muted-foreground">Status:</span>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem value="all">All Statuses ({isLoading ? "..." : statusCounts.all})</SelectItem>
+                      {isCurationMode && (
+                        <SelectItem value="pending">
+                          Pending Review ({isLoading ? "..." : statusCounts.pending})
+                        </SelectItem>
+                      )}
+                      <SelectItem value="waiting_for_payment">
+                        Waiting for Payment ({isLoading ? "..." : statusCounts.waiting_for_payment})
                       </SelectItem>
-                    )}
-                    <SelectItem value="waiting_for_payment">
-                      Waiting for Payment ({isLoading ? "..." : statusCounts.waiting_for_payment})
-                    </SelectItem>
-                    <SelectItem value="paid_and_registered">
-                      Paid & Registered ({isLoading ? "..." : statusCounts.paid_and_registered})
-                    </SelectItem>
-                    <SelectItem value="paid_waitlisted">
-                      Paid Waitlist ({isLoading ? "..." : statusCounts.paid_waitlisted})
-                    </SelectItem>
-                    <SelectItem value="expired">Expired ({isLoading ? "..." : statusCounts.expired})</SelectItem>
-                    <SelectItem value="failed">Failed ({isLoading ? "..." : statusCounts.failed})</SelectItem>
-                    <SelectItem value="canceled">Canceled ({isLoading ? "..." : statusCounts.canceled})</SelectItem>
-                    {isCurationMode && (
-                      <SelectItem value="approved">Approved ({isLoading ? "..." : statusCounts.approved})</SelectItem>
-                    )}
-                    <SelectItem value="checked_in">
-                      Checked In ({isLoading ? "..." : statusCounts.checked_in})
-                    </SelectItem>
-                    <SelectItem value="not_checked_in">
-                      Not Checked In (Drop) ({isLoading ? "..." : statusCounts.not_checked_in})
-                    </SelectItem>
-                    {isCurationMode && (
-                      <SelectItem value="waitlisted">
-                        Waitlisted ({isLoading ? "..." : statusCounts.waitlisted})
+                      <SelectItem value="paid_and_registered">
+                        Paid & Registered ({isLoading ? "..." : statusCounts.paid_and_registered})
                       </SelectItem>
-                    )}
-                    {isCurationMode && (
-                      <SelectItem value="rejected">Rejected ({isLoading ? "..." : statusCounts.rejected})</SelectItem>
-                    )}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
+                      <SelectItem value="paid_waitlisted">
+                        Paid Waitlist ({isLoading ? "..." : statusCounts.paid_waitlisted})
+                      </SelectItem>
+                      <SelectItem value="expired">Expired ({isLoading ? "..." : statusCounts.expired})</SelectItem>
+                      <SelectItem value="failed">Failed ({isLoading ? "..." : statusCounts.failed})</SelectItem>
+                      <SelectItem value="canceled">Canceled ({isLoading ? "..." : statusCounts.canceled})</SelectItem>
+                      {isCurationMode && (
+                        <SelectItem value="approved">Approved ({isLoading ? "..." : statusCounts.approved})</SelectItem>
+                      )}
+                      <SelectItem value="checked_in">
+                        Checked In ({isLoading ? "..." : statusCounts.checked_in})
+                      </SelectItem>
+                      <SelectItem value="not_checked_in">
+                        Not Checked In (Drop) ({isLoading ? "..." : statusCounts.not_checked_in})
+                      </SelectItem>
+                      {isCurationMode && (
+                        <SelectItem value="waitlisted">
+                          Waitlisted ({isLoading ? "..." : statusCounts.waitlisted})
+                        </SelectItem>
+                      )}
+                      {isCurationMode && (
+                        <SelectItem value="rejected">Rejected ({isLoading ? "..." : statusCounts.rejected})</SelectItem>
+                      )}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setIsStatusGuideOpen(true)}
+                  className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
+                  title="Attendee Status & Metric Reference Guide"
+                >
+                  <BookOpen className="size-3.5 text-primary" />
+                </Button>
+              </div>
 
               {hasSessions && (
                 <Select value={sessionFilter} onValueChange={handleSessionFilterChange}>
@@ -4496,6 +4508,9 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
           setRegistrationsList((prev) => prev.map((r) => (r.id === updatedReg.id ? updatedReg : r)));
         }}
       />
+
+      {/* Attendee Status & Metric Reference Guide Dialog */}
+      <AttendeeStatusGuideDialog open={isStatusGuideOpen} onOpenChange={setIsStatusGuideOpen} />
     </div>
   );
 }
