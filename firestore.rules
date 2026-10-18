@@ -683,7 +683,7 @@ service cloud.firestore {
         data.member_email is string && data.member_email.size() > 0 && data.member_email.size() <= 150 &&
         data.status is string && data.status.size() > 0 && data.status.size() <= 50 &&
         data.registered_at is string && data.registered_at.size() <= 50 &&
-        (!('registered_at_millis' in data) || ((data.registered_at_millis is int || data.registered_at_millis is float) && data.registered_at_millis <= request.time.toMillis() + 300000 && data.registered_at_millis >= request.time.toMillis() - 600000));
+        (!('registered_at_millis' in data) || ((data.registered_at_millis is int || data.registered_at_millis is float) && data.registered_at_millis > 0));
     }
 
     // Validates events document structure, data types, and bounds
