@@ -265,8 +265,8 @@ export function ReferralPresentView({ initialEntries, initialSettings }: Referra
   };
 
   const handleShootExtraConfetti = () => {
+    soundEffects.playFahhhh();
     soundEffects.playConfettiPop();
-    soundEffects.playCrowdCheerAndClap(3500);
     confettiRef.current?.fireGrandFinale();
   };
 

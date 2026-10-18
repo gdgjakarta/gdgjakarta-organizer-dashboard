@@ -328,6 +328,22 @@ class SoundEffectManager {
       clapSource.stop(clapTime + 0.04);
     }
   }
+
+  // Play "ACTUALLY GOOD FAHHHH sfx"
+  public playFahhhh() {
+    if (this.isMuted) return;
+    if (typeof window === "undefined") return;
+
+    try {
+      const audio = new Audio("/sounds/actually-good-fahhhh-sfx.mp3");
+      audio.volume = 0.85;
+      void audio.play().catch((err) => {
+        console.warn("[SoundEffectManager] Failed to play fahhhh audio:", err);
+      });
+    } catch (err) {
+      console.warn("[SoundEffectManager] Audio playback error:", err);
+    }
+  }
 }
 
 export const soundEffects = new SoundEffectManager();
