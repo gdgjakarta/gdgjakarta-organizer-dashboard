@@ -61,15 +61,16 @@ export function ReferralPodium({
               <h4 className="line-clamp-1 font-semibold text-foreground text-sm">{second.name}</h4>
               <p className="line-clamp-1 font-mono text-[11px] text-muted-foreground">{second.referral_code}</p>
 
-              <div className="mt-3.5 flex w-full justify-around border-t pt-2.5 text-xs">
-                <div>
-                  <p className="text-[10px] text-muted-foreground uppercase">Points</p>
-                  <p className="font-bold text-foreground">{second.referral_points}</p>
+              <div className="mt-3.5 grid w-full grid-cols-2 divide-x border-t pt-2.5 text-xs">
+                <div className="flex flex-col items-center justify-center px-2 text-center">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider whitespace-nowrap">Points</p>
+                  <p className="mt-1 font-bold text-foreground text-sm">{second.referral_points}</p>
                 </div>
-                <div className="border-r" />
-                <div>
-                  <p className="text-[10px] text-muted-foreground uppercase">Referrals</p>
-                  <p className="font-bold text-foreground">{second.referrals_count}</p>
+                <div className="flex flex-col items-center justify-center px-2 text-center">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider whitespace-nowrap">
+                    Referrals
+                  </p>
+                  <p className="mt-1 font-bold text-foreground text-sm">{second.referrals_count}</p>
                 </div>
               </div>
             </CardContent>
@@ -122,15 +123,18 @@ export function ReferralPodium({
 
             <p className="mt-2 line-clamp-1 text-[11px] text-muted-foreground">{merchPrizeDescription}</p>
 
-            <div className="mt-3.5 flex w-full justify-around rounded-lg bg-amber-500/10 py-2 text-xs dark:bg-amber-500/15">
-              <div>
-                <p className="text-[10px] text-amber-800 font-medium uppercase dark:text-amber-300">Total Points</p>
-                <p className="text-base font-black text-amber-900 dark:text-amber-100">{first.referral_points}</p>
+            <div className="mt-3.5 grid w-full grid-cols-2 divide-x divide-amber-500/30 rounded-xl bg-amber-500/10 px-2 py-2.5 text-xs dark:bg-amber-500/15">
+              <div className="flex flex-col items-center justify-center px-2 text-center">
+                <p className="text-[10px] text-amber-800 font-medium uppercase tracking-wider whitespace-nowrap dark:text-amber-300">
+                  Total Points
+                </p>
+                <p className="mt-1 font-black text-amber-900 text-lg dark:text-amber-100">{first.referral_points}</p>
               </div>
-              <div className="border-r border-amber-500/30" />
-              <div>
-                <p className="text-[10px] text-amber-800 font-medium uppercase dark:text-amber-300">Total Referrals</p>
-                <p className="text-base font-black text-amber-900 dark:text-amber-100">{first.referrals_count}</p>
+              <div className="flex flex-col items-center justify-center px-2 text-center">
+                <p className="text-[10px] text-amber-800 font-medium uppercase tracking-wider whitespace-nowrap dark:text-amber-300">
+                  Total Referrals
+                </p>
+                <p className="mt-1 font-black text-amber-900 text-lg dark:text-amber-100">{first.referrals_count}</p>
               </div>
             </div>
           </CardContent>
@@ -166,15 +170,16 @@ export function ReferralPodium({
               <h4 className="line-clamp-1 font-semibold text-foreground text-sm">{third.name}</h4>
               <p className="line-clamp-1 font-mono text-[11px] text-muted-foreground">{third.referral_code}</p>
 
-              <div className="mt-3.5 flex w-full justify-around border-t pt-2.5 text-xs">
-                <div>
-                  <p className="text-[10px] text-muted-foreground uppercase">Points</p>
-                  <p className="font-bold text-foreground">{third.referral_points}</p>
+              <div className="mt-3.5 grid w-full grid-cols-2 divide-x border-t pt-2.5 text-xs">
+                <div className="flex flex-col items-center justify-center px-2 text-center">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider whitespace-nowrap">Points</p>
+                  <p className="mt-1 font-bold text-foreground text-sm">{third.referral_points}</p>
                 </div>
-                <div className="border-r" />
-                <div>
-                  <p className="text-[10px] text-muted-foreground uppercase">Referrals</p>
-                  <p className="font-bold text-foreground">{third.referrals_count}</p>
+                <div className="flex flex-col items-center justify-center px-2 text-center">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wider whitespace-nowrap">
+                    Referrals
+                  </p>
+                  <p className="mt-1 font-bold text-foreground text-sm">{third.referrals_count}</p>
                 </div>
               </div>
             </CardContent>

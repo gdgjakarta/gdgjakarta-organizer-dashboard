@@ -21,8 +21,10 @@ import {
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { getReferralLeaderboardAction, getReferralProgramSettingsAction } from "@/lib/firestore/actions";
 import type { ReferralLeaderboardEntry, ReferralProgramSettings } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/stores/auth/auth-provider";
 
 import { ConfettiEngine } from "./referral-confetti";
 import { ReferralContendersTicker } from "./referral-contenders-ticker";
@@ -36,9 +38,13 @@ interface ReferralPresentViewProps {
 
 type RevealStage = "idle" | "revealing-3" | "revealing-2" | "revealing-1" | "completed";
 
-export function ReferralPresentView({ initialEntries = [], initialSettings = null }: ReferralPresentViewProps) {
-  const [entries] = useState<ReferralLeaderboardEntry[]>(initialEntries);
-  const [settings] = useState<ReferralProgramSettings | null>(initialSettings);
+export function ReferralPresentView({ initialEntries, initialSettings }: ReferralPresentViewProps) {
+  const [entries, setEntries] = useState<ReferralLeaderboardEntry[]>(initialEntries ?? []);
+  const [settings, setSettings] = useState<ReferralProgramSettings | null>(initialSettings ?? null);
+  const [loading, setLoading] = useState<boolean>(!initialEntries);
+  const user = useAuthStore((s) => s.user);
+  const isAuthLoading = useAuthStore((s) => s.isLoading || s.isLoggingOut);
+
   const [stage, setStage] = useState<RevealStage>("idle");
   const [revealedRanks, setRevealedRanks] = useState({
     rank1: false,
@@ -92,6 +98,49 @@ export function ReferralPresentView({ initialEntries = [], initialSettings = nul
       soundEffects.stopDrumroll();
     };
   }, []);
+
+  // Load leaderboard and settings on client if not initially passed
+  useEffect(() => {
+    if (isAuthLoading) {
+      return;
+    }
+    let isMounted = true;
+    async function loadData() {
+      try {
+        const { getGlobalAuthUser } = await import("@/stores/auth/auth-store");
+        const { hasTeamOperationalAccess } = await import("@/lib/auth-roles");
+        const currentUser = user ?? getGlobalAuthUser();
+        if (!hasTeamOperationalAccess(currentUser)) {
+          if (isMounted) setLoading(false);
+          return;
+        }
+
+        const [loadedEntries, loadedSettings] = await Promise.all([
+          getReferralLeaderboardAction(200),
+          getReferralProgramSettingsAction(),
+        ]);
+        if (isMounted) {
+          setEntries(loadedEntries);
+          if (loadedSettings) {
+            setSettings(loadedSettings);
+          }
+        }
+      } catch (err) {
+        console.warn("[ReferralPresentView] Failed to load referral data:", err);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    if (!initialEntries) {
+      void loadData();
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [initialEntries, isAuthLoading, user]);
 
   const toggleFullscreen = useCallback(async () => {
     try {
@@ -226,6 +275,22 @@ export function ReferralPresentView({ initialEntries = [], initialSettings = nul
       window.location.href = "/dashboard/referrals";
     }
   };
+
+  if (loading) {
+    return (
+      <div className="fixed inset-0 z-50 flex h-screen w-screen flex-col items-center justify-center bg-slate-950 font-sans text-white">
+        <div className="flex flex-col items-center gap-4">
+          <div className="flex size-16 items-center justify-center rounded-2xl border border-amber-500/30 bg-amber-500/10 shadow-lg shadow-amber-500/10 animate-pulse">
+            <Trophy className="size-8 text-amber-400" />
+          </div>
+          <div className="flex items-center gap-2 font-semibold text-slate-300 text-sm">
+            <RefreshCw className="size-4 animate-spin text-blue-400" />
+            <span>Loading GDG Jakarta Championship Stage...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

@@ -198,15 +198,14 @@ function PodiumCard({
             <p className="font-mono text-slate-500 text-xs">GDG-SECRET-CODE</p>
           </div>
 
-          <div className="mt-5 flex w-full max-w-[200px] justify-around rounded-xl border border-slate-800 bg-slate-950/60 py-2.5 text-xs">
-            <div>
-              <p className="text-[10px] text-slate-500 uppercase">Points</p>
-              <p className="font-bold font-mono text-slate-400">••••</p>
+          <div className="mt-5 grid w-full grid-cols-2 divide-x divide-slate-800 rounded-2xl border border-slate-800 bg-slate-950/60 px-2 py-3 text-xs">
+            <div className="flex flex-col items-center justify-center px-3 text-center">
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider whitespace-nowrap">Points</p>
+              <p className="mt-1 font-bold font-mono text-slate-400 text-base">••••</p>
             </div>
-            <div className="border-slate-800 border-r" />
-            <div>
-              <p className="text-[10px] text-slate-500 uppercase">Referrals</p>
-              <p className="font-bold font-mono text-slate-400">••</p>
+            <div className="flex flex-col items-center justify-center px-3 text-center">
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider whitespace-nowrap">Referrals</p>
+              <p className="mt-1 font-bold font-mono text-slate-400 text-base">••</p>
             </div>
           </div>
         </div>
@@ -279,30 +278,35 @@ function PodiumCard({
           {/* Points & Referrals Stats */}
           <div
             className={cn(
-              "mt-4 flex w-full justify-around rounded-xl py-3 text-xs",
+              "mt-5 grid w-full grid-cols-2 divide-x rounded-2xl px-2 py-3.5 text-xs",
               isChampion
-                ? "border border-amber-400/30 bg-amber-400/10 text-amber-100"
-                : "border border-slate-800 bg-slate-950/70 text-slate-300",
+                ? "border border-amber-400/30 bg-amber-400/10 divide-amber-400/30 text-amber-100"
+                : "border border-slate-800 bg-slate-950/70 divide-slate-800 text-slate-300",
             )}
           >
-            <div>
+            <div className="flex flex-col items-center justify-center px-3 text-center">
               <p
-                className={cn("text-[10px] uppercase", isChampion ? "font-semibold text-amber-300" : "text-slate-500")}
+                className={cn(
+                  "text-[10px] uppercase tracking-wider whitespace-nowrap",
+                  isChampion ? "font-semibold text-amber-300" : "text-slate-400",
+                )}
               >
                 Total Points
               </p>
-              <p className={cn("font-black", isChampion ? "text-amber-200 text-xl" : "text-base text-white")}>
+              <p className={cn("mt-1.5 font-black", isChampion ? "text-amber-200 text-2xl" : "text-xl text-white")}>
                 {entry?.referral_points?.toLocaleString("id-ID") ?? 0}
               </p>
             </div>
-            <div className={cn("border-r", isChampion ? "border-amber-400/30" : "border-slate-800")} />
-            <div>
+            <div className="flex flex-col items-center justify-center px-3 text-center">
               <p
-                className={cn("text-[10px] uppercase", isChampion ? "font-semibold text-amber-300" : "text-slate-500")}
+                className={cn(
+                  "text-[10px] uppercase tracking-wider whitespace-nowrap",
+                  isChampion ? "font-semibold text-amber-300" : "text-slate-400",
+                )}
               >
                 Conversions
               </p>
-              <p className={cn("font-black", isChampion ? "text-amber-200 text-xl" : "text-base text-white")}>
+              <p className={cn("mt-1.5 font-black", isChampion ? "text-amber-200 text-2xl" : "text-xl text-white")}>
                 {entry?.referrals_count?.toLocaleString("id-ID") ?? 0}
               </p>
             </div>
