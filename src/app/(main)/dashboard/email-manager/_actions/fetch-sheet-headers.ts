@@ -4,7 +4,44 @@ import { google } from "googleapis";
 
 import { extractApiMessage } from "@/lib/utils";
 
-export async function fetchSheetHeaders(spreadsheetUrl: string, sheetName: string, headerRow = 1) {
+function parseCsvRow(rowStr: string): string[] {
+  const result: string[] = [];
+  let current = "";
+  let inQuotes = false;
+  for (let i = 0; i < rowStr.length; i++) {
+    const char = rowStr[i];
+    if (char === '"') {
+      if (inQuotes && rowStr[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === "," && !inQuotes) {
+      result.push(current.trim());
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
+
+export interface FetchSheetHeadersResult {
+  success: boolean;
+  headers?: string[];
+  rowCount?: number;
+  sampleRow?: Record<string, string>;
+  message?: string;
+  error?: string;
+}
+
+export async function fetchSheetHeaders(
+  spreadsheetUrl: string,
+  sheetName: string,
+  headerRow = 1,
+): Promise<FetchSheetHeadersResult> {
   try {
     const rowNumber = Math.max(1, Math.floor(Number(headerRow) || 1));
 
@@ -21,23 +58,52 @@ export async function fetchSheetHeaders(spreadsheetUrl: string, sheetName: strin
     if (apiKey) {
       try {
         const sheets = google.sheets("v4");
+        const safeSheetRange =
+          sheetName.includes(" ") || /[^a-zA-Z0-9]/.test(sheetName) ? `'${sheetName.replace(/'/g, "''")}'` : sheetName;
+
         const response = await sheets.spreadsheets.values.get({
           spreadsheetId,
-          range: `${sheetName}!${rowNumber}:${rowNumber}`,
+          range: safeSheetRange,
           key: apiKey,
         });
 
         const rows = response.data.values;
         if (!rows || rows.length === 0) {
-          return { success: true, headers: [], message: `No titles found in row ${rowNumber}.` };
+          return {
+            success: true,
+            headers: [],
+            rowCount: 0,
+            sampleRow: {},
+            message: `No data found in sheet "${sheetName}".`,
+          };
         }
 
-        const headers = rows[0].map((v) => String(v ?? "").trim()).filter((v) => v.length > 0);
+        const headerIndex = rowNumber - 1;
+        const rawHeaders = rows[headerIndex] || [];
+        const headers = rawHeaders.map((v) => String(v ?? "").trim()).filter((v) => v.length > 0);
+
+        // Count data rows below the header row that have at least one non-empty cell
+        const dataRows = rows.slice(rowNumber);
+        const nonEmptyDataRows = dataRows.filter((r) => r.some((cell) => String(cell ?? "").trim().length > 0));
+        const rowCount = nonEmptyDataRows.length;
+
+        const sampleRow: Record<string, string> = {};
+        if (nonEmptyDataRows.length > 0) {
+          const firstRow = nonEmptyDataRows[0];
+          rawHeaders.forEach((h, idx) => {
+            const hStr = String(h ?? "").trim();
+            if (hStr) {
+              sampleRow[hStr] = String(firstRow[idx] ?? "").trim();
+            }
+          });
+        }
 
         return {
           success: true,
           headers,
-          message: `Successfully loaded ${headers.length} tag${headers.length === 1 ? "" : "s"} from row ${rowNumber}.`,
+          rowCount,
+          sampleRow,
+          message: `Successfully loaded ${headers.length} tag${headers.length === 1 ? "" : "s"} and ${rowCount} recipient row${rowCount === 1 ? "" : "s"} from row ${rowNumber}.`,
         };
       } catch (apiError: unknown) {
         console.warn("[fetchSheetHeaders] Google Sheets API error, falling back to public gviz endpoint:", apiError);
@@ -45,32 +111,17 @@ export async function fetchSheetHeaders(spreadsheetUrl: string, sheetName: strin
     }
 
     // Fallback: Read public sheets via the gviz export endpoint (doesn't require API key for public sheets)
-    // headers=0 prevents gviz from automatically combining multiple rows as column titles
     const gvizUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&headers=0&sheet=${encodeURIComponent(
       sheetName,
-    )}&range=${rowNumber}:${rowNumber}`;
+    )}`;
 
-    let response = await fetch(gvizUrl, {
+    const response = await fetch(gvizUrl, {
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       },
       next: { revalidate: 0 },
     });
-
-    // If range query fails on gviz, fallback to fetching without range and slicing rows manually
-    if (!response.ok) {
-      const fallbackUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(
-        sheetName,
-      )}`;
-      response = await fetch(fallbackUrl, {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        },
-        next: { revalidate: 0 },
-      });
-    }
 
     if (!response.ok) {
       return {
@@ -83,46 +134,44 @@ export async function fetchSheetHeaders(spreadsheetUrl: string, sheetName: strin
     const csvText = await response.text();
     const csvRows = csvText.split(/\r?\n/).filter((line) => line.trim().length > 0);
 
-    // If range=${rowNumber}:${rowNumber} succeeded, the target row is index 0; otherwise it's index rowNumber - 1
-    const targetRow = csvRows.length === 1 ? csvRows[0] : (csvRows[rowNumber - 1] ?? csvRows[0]);
+    const headerIndex = rowNumber - 1;
+    const targetRow = csvRows[headerIndex] ?? csvRows[0];
 
     if (!targetRow) {
-      return { success: true, headers: [], message: `Row ${rowNumber} appears to be empty.` };
+      return {
+        success: true,
+        headers: [],
+        rowCount: 0,
+        sampleRow: {},
+        message: `Row ${rowNumber} appears to be empty.`,
+      };
     }
 
-    // Robust CSV row parser that handles quoted commas
-    const parseCsvRow = (rowStr: string): string[] => {
-      const result: string[] = [];
-      let current = "";
-      let inQuotes = false;
-      for (let i = 0; i < rowStr.length; i++) {
-        const char = rowStr[i];
-        if (char === '"') {
-          if (inQuotes && rowStr[i + 1] === '"') {
-            current += '"';
-            i++;
-          } else {
-            inQuotes = !inQuotes;
-          }
-        } else if (char === "," && !inQuotes) {
-          result.push(current.trim());
-          current = "";
-        } else {
-          current += char;
-        }
-      }
-      result.push(current.trim());
-      return result;
-    };
+    const parsedHeaderCols = parseCsvRow(targetRow);
+    const headers = parsedHeaderCols.map((h) => h.replace(/^"|"$/g, "").trim()).filter((h) => h.length > 0);
 
-    const headers = parseCsvRow(targetRow)
-      .map((h) => h.replace(/^"|"$/g, "").trim())
-      .filter((h) => h.length > 0);
+    // Count non-empty data rows after the header row
+    const dataLines = csvRows.slice(rowNumber);
+    const nonEmptyDataLines = dataLines.filter((line) => {
+      const cols = parseCsvRow(line);
+      return cols.some((col) => col.replace(/^"|"$/g, "").trim().length > 0);
+    });
+    const rowCount = nonEmptyDataLines.length;
+
+    const sampleRow: Record<string, string> = {};
+    if (nonEmptyDataLines.length > 0) {
+      const firstDataLineParsed = parseCsvRow(nonEmptyDataLines[0]);
+      headers.forEach((h, idx) => {
+        sampleRow[h] = (firstDataLineParsed[idx] ?? "").replace(/^"|"$/g, "").trim();
+      });
+    }
 
     return {
       success: true,
       headers,
-      message: `Successfully loaded ${headers.length} tag${headers.length === 1 ? "" : "s"} from row ${rowNumber} of "${sheetName}".`,
+      rowCount,
+      sampleRow,
+      message: `Successfully loaded ${headers.length} tag${headers.length === 1 ? "" : "s"} and ${rowCount} recipient row${rowCount === 1 ? "" : "s"} from row ${rowNumber} of "${sheetName}".`,
     };
   } catch (error: unknown) {
     console.error("[fetchSheetHeaders] Error:", error);

@@ -199,6 +199,8 @@ export function EmailBlastForm({
   // Google Sheets state (legacy fallback)
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [availableSheets, setAvailableSheets] = useState<string[]>([]);
+  const [sheetRowCount, setSheetRowCount] = useState<number>(0);
+  const [sheetSampleRow, setSheetSampleRow] = useState<Record<string, string>>({});
   const [isLoadingSheets, setIsLoadingSheets] = useState(false);
   const [isLoadingTags, setIsLoadingTags] = useState(false);
 
@@ -281,6 +283,11 @@ export function EmailBlastForm({
     if (isResolvingRecipients) return "Send Bulk Email (...)";
     if (recipientSource === "audience" && recipientCount > 0) {
       return `Send Bulk Email (${recipientCount.toLocaleString()})`;
+    }
+    if (recipientSource === "spreadsheet") {
+      if (isLoadingSheets || isLoadingTags) return "Send Bulk Email (...)";
+      if (sheetRowCount > 0) return `Send Bulk Email (${sheetRowCount.toLocaleString()})`;
+      return "Send Bulk Email (Sheet)";
     }
     return "Send Bulk Email";
   })();
@@ -537,6 +544,8 @@ export function EmailBlastForm({
     if (!spreadsheetUrl) return;
     setIsLoadingSheets(true);
     setAvailableSheets([]);
+    setSheetRowCount(0);
+    setSheetSampleRow({});
     setValue("sheetName", "", { shouldValidate: true });
     lastFetchedUrl.current = spreadsheetUrl;
 
@@ -573,9 +582,17 @@ export function EmailBlastForm({
         const res = await fetchSheetHeaders(spreadsheetUrl, sheetName, rowNum);
         if (res.success && res.headers) {
           setAvailableTags(res.headers);
+          setSheetRowCount(res.rowCount ?? 0);
+          if (res.sampleRow) {
+            setSheetSampleRow(res.sampleRow);
+          }
           if (res.headers.length > 0) {
+            const countSuffix =
+              typeof res.rowCount === "number" && res.rowCount > 0
+                ? ` and ${res.rowCount.toLocaleString()} recipient rows`
+                : "";
             toast.success("Sheet Headers Loaded", {
-              description: `Loaded ${res.headers.length} column token${res.headers.length === 1 ? "" : "s"} from row ${rowNum}.`,
+              description: `Loaded ${res.headers.length} column token${res.headers.length === 1 ? "" : "s"}${countSuffix} from row ${rowNum}.`,
             });
           } else {
             toast.info("No Column Titles Found", {
@@ -584,12 +601,16 @@ export function EmailBlastForm({
           }
         } else if (!res.success && res.error) {
           setAvailableTags([]);
+          setSheetRowCount(0);
+          setSheetSampleRow({});
           toast.error("Failed to load sheet headers", {
             description: res.error,
           });
         }
       } catch (err) {
         setAvailableTags([]);
+        setSheetRowCount(0);
+        setSheetSampleRow({});
         toast.error("Failed to load sheet headers", {
           description: extractApiMessage(err),
         });
@@ -652,6 +673,20 @@ export function EmailBlastForm({
       });
       return;
     }
+    if (data.recipientSource === "spreadsheet") {
+      if (!data.spreadsheetUrl) {
+        toast.error("Missing Spreadsheet URL", {
+          description: "Please enter a valid Google Spreadsheet URL.",
+        });
+        return;
+      }
+      if (!data.sheetName) {
+        toast.error("Missing Sheet Tab", {
+          description: "Please select or fetch a Google Sheet tab.",
+        });
+        return;
+      }
+    }
 
     setPendingFormData(data);
     setConfirmDialogOpen(true);
@@ -705,15 +740,17 @@ export function EmailBlastForm({
       }
 
       // Bulk Email dispatch
+      const isSheetSource = data.recipientSource === "spreadsheet";
       const result = await sendEmailBlast({
         eventId: data.eventId,
         eventTitle,
         recipientSource: data.recipientSource,
-        audienceType: data.audienceType,
-        audienceLabel: data.audienceType,
+        audienceType: isSheetSource ? undefined : data.audienceType,
+        audienceLabel: isSheetSource ? undefined : data.audienceType,
         spreadsheetUrl: data.spreadsheetUrl,
         sheetName: data.sheetName,
         headerRow: data.headerRow ?? 1,
+        sheetRowCount: isSheetSource ? sheetRowCount : undefined,
         subject: data.subject,
         headerUrl: data.headerUrl,
         body: data.body,
@@ -724,8 +761,16 @@ export function EmailBlastForm({
         throw new Error(result.error ?? "Failed to dispatch bulk email.");
       }
 
+      let countMsg = `${recipientCount.toLocaleString()} recipients`;
+      if (isSheetSource) {
+        countMsg =
+          sheetRowCount > 0
+            ? `${sheetRowCount.toLocaleString()} recipients from sheet "${data.sheetName}"`
+            : `recipients from sheet "${data.sheetName}"`;
+      }
+
       toast.success("Bulk Email Blast Sent", {
-        description: result.message ?? `Campaign successfully queued for ${recipientCount} recipients.`,
+        description: result.message ?? `Campaign successfully queued for ${countMsg}.`,
       });
 
       setConfirmDialogOpen(false);
@@ -771,7 +816,34 @@ export function EmailBlastForm({
       );
     }
 
-    return <span>Google Sheets automated column extraction active</span>;
+    if (isLoadingTags || isLoadingSheets) {
+      return (
+        <span className="inline-flex items-center gap-1.5 font-medium text-muted-foreground">
+          <Loader2 className="size-3 animate-spin text-primary" />
+          <span>reading sheet data...</span>
+        </span>
+      );
+    }
+
+    if (sheetRowCount > 0) {
+      return (
+        <span>
+          Ready to deliver to <strong className="text-foreground">{sheetRowCount.toLocaleString()} recipients</strong>{" "}
+          from sheet tab <strong className="text-foreground">&quot;{sheetName}&quot;</strong>
+        </span>
+      );
+    }
+
+    if (sheetName) {
+      return (
+        <span>
+          Targeting Google Sheet tab: <strong className="text-foreground">&quot;{sheetName}&quot;</strong> (
+          {availableTags.length} columns)
+        </span>
+      );
+    }
+
+    return <span>Configure Google Sheet URL and tab name above</span>;
   }
 
   return (
@@ -1229,9 +1301,16 @@ export function EmailBlastForm({
                       <div className="flex items-center gap-1.5 rounded-md border border-teal-500/20 bg-teal-500/5 px-2.5 py-1.5 text-teal-700 text-xs dark:text-teal-300">
                         <FileSpreadsheet className="size-3.5 shrink-0" />
                         <span>
-                          <strong>{availableTags.length}</strong> non-empty column{" "}
-                          {availableTags.length === 1 ? "token" : "tokens"} loaded from row {headerRow || 1}. Drag and
-                          drop them in the editor below.
+                          <strong>{availableTags.length}</strong> column{" "}
+                          {availableTags.length === 1 ? "token" : "tokens"}
+                          {sheetRowCount > 0 && (
+                            <>
+                              {" "}
+                              and <strong>{sheetRowCount.toLocaleString()}</strong> recipient{" "}
+                              {sheetRowCount === 1 ? "row" : "rows"}
+                            </>
+                          )}{" "}
+                          loaded from row {headerRow || 1}. Drag and drop them in the editor below.
                         </span>
                       </div>
                     )}
@@ -1606,6 +1685,7 @@ export function EmailBlastForm({
                 headerUrl={headerUrlValue}
                 availableTags={availableTags}
                 isLoadingTags={isLoadingTags}
+                sheetSampleData={sheetSampleRow}
               />
               {errors.body && <FieldError>{errors.body.message}</FieldError>}
             </FieldContent>
@@ -1630,7 +1710,9 @@ export function EmailBlastForm({
               disabled={
                 isSubmitting ||
                 (recipientSource === "single" && !recipientEmail?.includes("@")) ||
-                (recipientSource === "audience" && (recipientCount === 0 || isResolvingRecipients))
+                (recipientSource === "audience" && (recipientCount === 0 || isResolvingRecipients)) ||
+                (recipientSource === "spreadsheet" &&
+                  (!spreadsheetUrl || !sheetName || isLoadingSheets || isLoadingTags))
               }
               size="lg"
               className="min-w-44 gap-2"
@@ -1677,9 +1759,10 @@ export function EmailBlastForm({
               }
             : undefined
         }
-        audienceCount={recipientCount}
+        audienceCount={recipientSource === "audience" ? recipientCount : undefined}
         audienceLabel={audienceType}
         sheetName={sheetName}
+        sheetRowCount={recipientSource === "spreadsheet" ? sheetRowCount : undefined}
       />
     </form>
   );

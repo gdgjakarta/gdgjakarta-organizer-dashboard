@@ -22,6 +22,7 @@ const bulkEmailSchema = z.object({
   spreadsheetUrl: z.string().url().optional().or(z.literal("")),
   sheetName: z.string().optional(),
   headerRow: z.number().int().min(1).optional(),
+  sheetRowCount: z.number().int().min(0).optional(),
   subject: z.string().min(1, "Subject is required"),
   headerUrl: z.string().optional(),
   body: z.string().min(1, "Email body HTML is required"),
@@ -41,7 +42,8 @@ export async function sendEmailBlast(data: BulkEmailInput) {
   const { data: validData } = parsed;
 
   // Validation checks based on source
-  if (validData.recipientSource === "spreadsheet") {
+  const isSheet = validData.recipientSource === "spreadsheet";
+  if (isSheet) {
     if (!validData.spreadsheetUrl) {
       return { success: false, error: "Spreadsheet URL is required when using Google Sheets source." };
     }
@@ -79,14 +81,21 @@ export async function sendEmailBlast(data: BulkEmailInput) {
     };
   }
 
-  const totalCount = validData.recipients?.length ?? 0;
+  const totalCount = isSheet ? (validData.sheetRowCount ?? 0) : (validData.recipients?.length ?? 0);
+
+  let audienceLabel = "";
+  if (isSheet) {
+    audienceLabel = validData.sheetName ? `Google Sheet (${validData.sheetName})` : "Google Sheet";
+  } else {
+    audienceLabel = validData.audienceLabel || "";
+  }
 
   const payload = {
     eventId: validData.eventId,
     eventTitle: validData.eventTitle || "",
     recipientSource: validData.recipientSource,
-    audience: validData.audienceType || "",
-    audienceLabel: validData.audienceLabel || "",
+    audience: isSheet ? "" : validData.audienceType || "",
+    audienceLabel,
     spreadsheetUrl: validData.spreadsheetUrl || "",
     sheetName: validData.sheetName || "",
     headerRow: validData.headerRow ?? 1,
@@ -95,11 +104,11 @@ export async function sendEmailBlast(data: BulkEmailInput) {
       validData.headerUrl || "https://assets.gdgjakarta.org/gdg-jakarta/gdg-jakarta-emailheaders-1244x388-blue.png",
     bodyEmail: validData.body,
     totalRecipients: totalCount,
-    recipients: validData.recipients || [],
+    recipients: isSheet ? [] : validData.recipients || [],
   };
 
   console.log(
-    `[sendEmailBlast] Dispatching bulk email request for event "${validData.eventId}" (${totalCount} recipients) to ${webhookUrl}...`,
+    `[sendEmailBlast] Dispatching bulk email request for event "${validData.eventId}" (${totalCount} recipients via ${validData.recipientSource}) to ${webhookUrl}...`,
   );
 
   try {
@@ -143,10 +152,11 @@ export async function sendEmailBlast(data: BulkEmailInput) {
       };
     }
 
-    const cleanSuccessMessage = extractApiMessage(
-      responseJson || responseText,
-      `Successfully queued bulk email campaign for ${totalCount} recipients.`,
-    );
+    const defaultSuccessMessage = isSheet
+      ? `Successfully queued bulk email campaign for Google Sheet tab "${validData.sheetName}"${totalCount > 0 ? ` (${totalCount.toLocaleString()} recipients)` : ""}.`
+      : `Successfully queued bulk email campaign for ${totalCount.toLocaleString()} recipients.`;
+
+    const cleanSuccessMessage = extractApiMessage(responseJson || responseText, defaultSuccessMessage);
 
     return {
       success: true,

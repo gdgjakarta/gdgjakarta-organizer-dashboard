@@ -28,6 +28,7 @@ interface HtmlEditorPreviewProps {
   headerUrl?: string;
   availableTags?: string[];
   isLoadingTags?: boolean;
+  sheetSampleData?: Record<string, string>;
 }
 
 export function HtmlEditorPreview({
@@ -39,6 +40,7 @@ export function HtmlEditorPreview({
   headerUrl,
   availableTags = [],
   isLoadingTags = false,
+  sheetSampleData,
 }: HtmlEditorPreviewProps) {
   const editorRef = useRef<EditorInstance | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -126,26 +128,35 @@ export function HtmlEditorPreview({
 
     const sessionTitle = eventPlaceholders?.SessionTitle ?? "Keynote: Building Production AI Agents with Gemini";
 
-    return (
-      value
-        .replace(/\[\[EventName\]\]/g, eventName)
-        .replace(/\[\[EventDate\]\]/g, eventDate)
-        .replace(/\[\[EventTime\]\]/g, eventTime)
-        .replace(/\[\[EventVenue\]\]/g, eventVenue)
-        .replace(/\[\[EventAddress\]\]/g, eventAddress)
-        .replace(/\[\[EventUrl\]\]/g, eventUrl)
-        .replace(/\[\[EventBannerUrl\]\]/g, eventBannerUrl)
-        .replace(/\[\[EventDescription\]\]/g, eventDesc)
-        .replace(/\[\[SessionTitle\]\]/g, sessionTitle)
-        // Attendee placeholders simulation (customizable preview)
-        .replace(/\[\[Name\]\]/g, attendeePlaceholders?.Name ?? "Budi Santoso")
-        .replace(/\[\[FirstName\]\]/g, attendeePlaceholders?.FirstName ?? "Budi")
-        .replace(/\[\[LastName\]\]/g, attendeePlaceholders?.LastName ?? "Santoso")
-        .replace(/\[\[Email\]\]/g, attendeePlaceholders?.Email ?? "budi.santoso@example.com")
-        .replace(/\[\[TicketType\]\]/g, attendeePlaceholders?.TicketType ?? "In-Person Pass (Free)")
-        .replace(/\[\[CheckinStatus\]\]/g, attendeePlaceholders?.CheckinStatus ?? "Checked In")
-    );
-  }, [value, interpolatePreview, selectedEvent, eventPlaceholders, attendeePlaceholders, headerUrl]);
+    let result = value
+      .replace(/\[\[EventName\]\]/g, eventName)
+      .replace(/\[\[EventDate\]\]/g, eventDate)
+      .replace(/\[\[EventTime\]\]/g, eventTime)
+      .replace(/\[\[EventVenue\]\]/g, eventVenue)
+      .replace(/\[\[EventAddress\]\]/g, eventAddress)
+      .replace(/\[\[EventUrl\]\]/g, eventUrl)
+      .replace(/\[\[EventBannerUrl\]\]/g, eventBannerUrl)
+      .replace(/\[\[EventDescription\]\]/g, eventDesc)
+      .replace(/\[\[SessionTitle\]\]/g, sessionTitle)
+      // Attendee placeholders simulation (customizable preview)
+      .replace(/\[\[Name\]\]/g, attendeePlaceholders?.Name ?? "Budi Santoso")
+      .replace(/\[\[FirstName\]\]/g, attendeePlaceholders?.FirstName ?? "Budi")
+      .replace(/\[\[LastName\]\]/g, attendeePlaceholders?.LastName ?? "Santoso")
+      .replace(/\[\[Email\]\]/g, attendeePlaceholders?.Email ?? "budi.santoso@example.com")
+      .replace(/\[\[TicketType\]\]/g, attendeePlaceholders?.TicketType ?? "In-Person Pass (Free)")
+      .replace(/\[\[CheckinStatus\]\]/g, attendeePlaceholders?.CheckinStatus ?? "Checked In");
+
+    if (sheetSampleData && Object.keys(sheetSampleData).length > 0) {
+      for (const [tag, sampleVal] of Object.entries(sheetSampleData)) {
+        if (sampleVal) {
+          const escapedTag = tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          result = result.replace(new RegExp(`\\[\\[\\s*${escapedTag}\\s*\\]\\]`, "gi"), sampleVal);
+        }
+      }
+    }
+
+    return result;
+  }, [value, interpolatePreview, selectedEvent, eventPlaceholders, attendeePlaceholders, headerUrl, sheetSampleData]);
 
   return (
     <div className="flex w-full flex-col space-y-4">
