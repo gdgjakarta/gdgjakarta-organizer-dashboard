@@ -107,6 +107,7 @@ import type {
   MerchandiseDeliveryRequest,
   MerchandiseDeliveryStatus,
   ReferralLeaderboardEntry,
+  ReferralOwnerInfo,
   ReferralProgramSettings,
   ReferralRedemption,
   RefundRequest,
@@ -1177,23 +1178,141 @@ export async function searchMembersForExclusion(searchTerm: string): Promise<
   }
 }
 
-export async function getMemberReferralHistory(memberId: string): Promise<ReferralRedemption[]> {
-  if (typeof window === "undefined" || !memberId) return [];
+export async function getMemberReferralHistory(memberId: string, referralCode?: string): Promise<ReferralRedemption[]> {
+  if (typeof window === "undefined" || (!memberId && !referralCode)) return [];
   if (!auth.currentUser) return [];
   try {
     const redemptionsRef = collection(db, "referral_redemptions");
-    const q = query(redemptionsRef, where("referrer_id", "==", memberId));
-    const snapshot = await getDocs(q);
-    const list = snapshot.docs.map((docSnap) => ({
-      id: docSnap.id,
-      ...docSnap.data(),
-    })) as ReferralRedemption[];
+    const map = new Map<string, ReferralRedemption>();
 
+    // 1. Query by referrer_id if memberId provided
+    if (memberId) {
+      try {
+        const qId = query(redemptionsRef, where("referrer_id", "==", memberId));
+        const snapId = await getDocs(qId);
+        for (const docSnap of snapId.docs) {
+          map.set(docSnap.id, {
+            id: docSnap.id,
+            ...docSnap.data(),
+          } as ReferralRedemption);
+        }
+      } catch (err) {
+        console.warn("[Firestore] Query redemptions by referrer_id error:", err);
+      }
+    }
+
+    // 2. Query by referrer_code if referralCode provided
+    const cleanCode = (referralCode || "").trim().toUpperCase();
+    if (cleanCode) {
+      try {
+        const qCode = query(redemptionsRef, where("referrer_code", "==", cleanCode));
+        const snapCode = await getDocs(qCode);
+        for (const docSnap of snapCode.docs) {
+          if (!map.has(docSnap.id)) {
+            map.set(docSnap.id, {
+              id: docSnap.id,
+              ...docSnap.data(),
+            } as ReferralRedemption);
+          }
+        }
+      } catch (err) {
+        console.warn("[Firestore] Query redemptions by referrer_code error:", err);
+      }
+    }
+
+    // 3. Fallback: If no records found in referral_redemptions, check event_registrations directly
+    if (map.size === 0 && cleanCode) {
+      try {
+        const regRef = collection(db, "event_registrations");
+        const qReg = query(regRef, where("referral_code", "==", cleanCode));
+        const snapReg = await getDocs(qReg);
+        for (const rDoc of snapReg.docs) {
+          const rData = rDoc.data() as FirestoreRegistration;
+          map.set(rDoc.id, {
+            id: rDoc.id,
+            referrer_id: memberId || rData.referrer_member_id || "",
+            referrer_name: rData.referrer_name || "GDG Referrer",
+            referrer_email: "",
+            referrer_code: cleanCode,
+            referee_id: rData.member_id,
+            referee_name: rData.member_name || "Applicant",
+            referee_email: rData.member_email || "",
+            event_id: rData.event_id,
+            event_title: rData.event_title || "GDG Event",
+            ticket_id: rData.ticket_id,
+            ticket_name: rData.ticket_name,
+            ticket_type: rData.ticket_type,
+            ticket_price: rData.ticket_price,
+            discount_type: rData.referral_discount_type ?? "percentage",
+            discount_percentage: rData.referral_discount_percent ?? 10,
+            discount_amount: rData.referral_discount_amount ?? 0,
+            points_awarded: 10,
+            created_at: rData.registered_at || new Date().toISOString(),
+          });
+        }
+      } catch (fallbackErr) {
+        console.warn("[Firestore] Fallback query to event_registrations warning:", fallbackErr);
+      }
+    }
+
+    const list = Array.from(map.values());
     return list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   } catch (err) {
     console.warn("[Firestore] getMemberReferralHistory error:", err);
     return [];
   }
+}
+
+export async function getReferralOwner(
+  referralCode: string,
+  referrerMemberId?: string,
+): Promise<ReferralOwnerInfo | null> {
+  if (typeof window === "undefined") return null;
+  if (!auth.currentUser) return null;
+
+  try {
+    // 1. Direct member lookup by ID if provided
+    if (referrerMemberId) {
+      const memberRef = doc(db, "members", referrerMemberId);
+      const memberSnap = await getDoc(memberRef);
+      if (memberSnap.exists()) {
+        const data = memberSnap.data() as FirestoreMember;
+        return {
+          id: memberSnap.id,
+          name: data.name || "Community Member",
+          email: data.email || "",
+          role: data.role,
+          avatar_url: data.avatar_url,
+          referral_code: data.referral_code || referralCode,
+        };
+      }
+    }
+
+    // 2. Query member by referral_code
+    const cleanCode = (referralCode || "").trim().toUpperCase();
+    if (!cleanCode) return null;
+
+    const membersRef = collection(db, "members");
+    const q = query(membersRef, where("referral_code", "==", cleanCode), limit(1));
+    const snap = await getDocs(q);
+
+    if (!snap.empty) {
+      const docSnap = snap.docs[0];
+      const data = docSnap.data() as FirestoreMember;
+      return {
+        id: docSnap.id,
+        name: data.name || "Community Member",
+        email: data.email || "",
+        role: data.role,
+        avatar_url: data.avatar_url,
+        referral_code: data.referral_code || cleanCode,
+      };
+    }
+  } catch (err) {
+    console.warn("[Firestore] getReferralOwner error:", err);
+  }
+
+  return null;
 }
 
 // ── Registrations & Filtration ──────────────────────────────────────────────

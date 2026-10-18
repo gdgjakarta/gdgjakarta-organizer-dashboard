@@ -1320,6 +1320,9 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         !searchLower ||
         reg.member_name.toLowerCase().includes(searchLower) ||
         reg.member_email.toLowerCase().includes(searchLower) ||
+        Boolean(reg.referral_code?.toLowerCase().includes(searchLower)) ||
+        Boolean(reg.referrer_name?.toLowerCase().includes(searchLower)) ||
+        Boolean(reg.voucher_code?.toLowerCase().includes(searchLower)) ||
         Boolean(reg.reviewed_by_name?.toLowerCase().includes(searchLower)) ||
         Boolean(reg.reviewed_by_email?.toLowerCase().includes(searchLower)) ||
         Boolean(reg.ticket_name?.toLowerCase().includes(searchLower)) ||
@@ -2712,6 +2715,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       ...(hasMerchandise ? ["Merchandise Orders"] : []),
       "Voucher Code",
       "Voucher Discount",
+      "Referral Code",
+      "Referral Belongs To",
       "Bevy Check-In",
       "Session Track",
       ...dynamicHeaders,
@@ -2763,6 +2768,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         ...(hasMerchandise ? [`"${merchText.replace(/"/g, '""')}"`] : []),
         `"${(r.voucher_code || "").replace(/"/g, '""')}"`,
         `"${r.voucher_discount_amount || 0}"`,
+        `"${(r.referral_code || "").replace(/"/g, '""')}"`,
+        `"${(r.referrer_name || "").replace(/"/g, '""')}"`,
         `"${r.is_checked_in ? "Checked In" : "Not Checked In"}"`,
         `"${sessionTitle.replace(/"/g, '""')}"`,
         ...questionColsData,
@@ -3873,6 +3880,14 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                     Promo: {reg.voucher_code}
                                   </Badge>
                                 )}
+                                {reg.referral_code && (
+                                  <Badge
+                                    variant="outline"
+                                    className="w-fit border-border/80 bg-muted/60 px-1.5 py-0 font-mono font-semibold text-[9px] text-foreground"
+                                  >
+                                    Referral: {reg.referral_code}
+                                  </Badge>
+                                )}
                                 {reg.bundle_name && (
                                   <Badge
                                     variant="outline"
@@ -3883,7 +3898,17 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                 )}
                               </div>
                             ) : (
-                              <span className="text-muted-foreground text-xs">General RSVP</span>
+                              <div className="flex flex-col gap-0.5">
+                                <span className="text-muted-foreground text-xs">General RSVP</span>
+                                {reg.referral_code && (
+                                  <Badge
+                                    variant="outline"
+                                    className="w-fit border-border/80 bg-muted/60 px-1.5 py-0 font-mono font-semibold text-[9px] text-foreground"
+                                  >
+                                    Referral: {reg.referral_code}
+                                  </Badge>
+                                )}
+                              </div>
                             )}
                           </TableCell>
                         )}

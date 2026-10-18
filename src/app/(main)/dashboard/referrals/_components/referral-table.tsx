@@ -45,6 +45,8 @@ import { excludeMemberFromLeaderboardAction, resetMemberReferralAction } from "@
 import type { ReferralLeaderboardEntry } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
+import { ReferralRedemptionsDialog } from "./referral-redemptions-dialog";
+
 interface ReferralTableProps {
   entries: ReferralLeaderboardEntry[];
   onDataMutated?: () => void;
@@ -56,6 +58,9 @@ export function ReferralTable({ entries, onDataMutated }: ReferralTableProps) {
   const [resetTarget, setResetTarget] = useState<ReferralLeaderboardEntry | null>(null);
   const [resetting, setResetting] = useState(false);
   const [excludingId, setExcludingId] = useState<string | null>(null);
+  const [selectedReferrerForRedemptions, setSelectedReferrerForRedemptions] = useState<ReferralLeaderboardEntry | null>(
+    null,
+  );
 
   const filteredEntries = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -256,8 +261,29 @@ export function ReferralTable({ entries, onDataMutated }: ReferralTableProps) {
                           </div>
                         </TableCell>
 
-                        <TableCell className="text-right font-mono font-medium">
-                          {entry.referrals_count} <span className="text-[10px] text-muted-foreground">tickets</span>
+                        <TableCell className="text-right">
+                          {entry.referrals_count > 0 ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setSelectedReferrerForRedemptions(entry)}
+                              className="group ml-auto flex h-7 items-center justify-end gap-1.5 px-2 font-mono text-xs hover:bg-primary/10 hover:text-primary transition-colors cursor-pointer"
+                              title="View attendees who redeemed this referral"
+                            >
+                              <span className="font-semibold text-foreground group-hover:text-primary">
+                                {entry.referrals_count}
+                              </span>
+                              <span className="text-[10px] text-muted-foreground group-hover:text-primary">
+                                tickets
+                              </span>
+                              <Users className="size-3 text-muted-foreground opacity-60 group-hover:opacity-100 group-hover:text-primary" />
+                            </Button>
+                          ) : (
+                            <span className="font-mono text-xs text-muted-foreground">
+                              0 <span className="text-[10px] text-muted-foreground">tickets</span>
+                            </span>
+                          )}
                         </TableCell>
 
                         <TableCell className="text-right">
@@ -308,6 +334,13 @@ export function ReferralTable({ entries, onDataMutated }: ReferralTableProps) {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-48 text-xs">
+                              <DropdownMenuItem
+                                onClick={() => setSelectedReferrerForRedemptions(entry)}
+                                className="gap-2 cursor-pointer text-xs"
+                              >
+                                <Users className="size-3.5" />
+                                View Redemptions ({entry.referrals_count})
+                              </DropdownMenuItem>
                               <DropdownMenuItem
                                 onClick={() => handleCopyCode(entry.referral_code)}
                                 className="gap-2 cursor-pointer text-xs"
@@ -415,6 +448,15 @@ export function ReferralTable({ entries, onDataMutated }: ReferralTableProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Attendees who redeemed referral inspection dialog */}
+      <ReferralRedemptionsDialog
+        entry={selectedReferrerForRedemptions}
+        open={Boolean(selectedReferrerForRedemptions)}
+        onOpenChange={(next) => {
+          if (!next) setSelectedReferrerForRedemptions(null);
+        }}
+      />
     </>
   );
 }

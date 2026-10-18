@@ -1122,13 +1122,23 @@ export async function saveReferralProgramSettingsAction(settings: Partial<Referr
   }
 }
 
-export async function getMemberReferralHistoryAction(memberId: string) {
+export async function getMemberReferralHistoryAction(memberId: string, referralCode?: string) {
   try {
     const { getMemberReferralHistory } = await import("./client");
-    return await getMemberReferralHistory(memberId);
+    return await getMemberReferralHistory(memberId, referralCode);
   } catch (err) {
     console.error("[getMemberReferralHistoryAction] error:", err);
     return [];
+  }
+}
+
+export async function getReferralOwnerAction(referralCode: string, referrerMemberId?: string) {
+  try {
+    const { getReferralOwner } = await import("./client");
+    return await getReferralOwner(referralCode, referrerMemberId);
+  } catch (err) {
+    console.error("[getReferralOwnerAction] error:", err);
+    return null;
   }
 }
 

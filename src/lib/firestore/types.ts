@@ -735,6 +735,15 @@ export interface ExcludedReferralMember {
   excluded_role?: "googler" | "organizer" | "team_member" | string;
 }
 
+export interface ReferralOwnerInfo {
+  id: string;
+  name: string;
+  email: string;
+  role?: string;
+  avatar_url?: string | null;
+  referral_code?: string;
+}
+
 export interface FirestoreSyncMetadata {
   id: "bevy";
   last_synced_events_at?: string;

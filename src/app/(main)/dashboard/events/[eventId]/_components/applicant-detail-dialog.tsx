@@ -49,7 +49,13 @@ import {
   isEventCurationMode,
 } from "@/lib/events/payment-deadline";
 import { DEFAULT_COMBINED_QUESTIONS } from "@/lib/events/registration-defaults";
-import type { CustomQuestion, FirestoreEvent, FirestoreRegistration, RegistrationStatus } from "@/lib/firestore/types";
+import type {
+  CustomQuestion,
+  FirestoreEvent,
+  FirestoreRegistration,
+  ReferralOwnerInfo,
+  RegistrationStatus,
+} from "@/lib/firestore/types";
 import { cn, getInitials } from "@/lib/utils";
 
 import { parseMerchandiseVariations } from "./merchandise-helpers";
@@ -244,6 +250,34 @@ export function ApplicantDetailDialog({
   const [loadedQuestions, setLoadedQuestions] = useState<CustomQuestion[]>([]);
   const [paymentLinkInfo, setPaymentLinkInfo] = useState<{ url: string; invoiceNumber: string } | null>(null);
   const [isResendPaymentOpen, setIsResendPaymentOpen] = useState(false);
+  const [referrerInfo, setReferrerInfo] = useState<ReferralOwnerInfo | null>(null);
+
+  // Fetch referrer profile ("Who does the referral belong to") if referral code was used
+  useEffect(() => {
+    if (!registration?.referral_code) {
+      setReferrerInfo(null);
+      return;
+    }
+
+    let active = true;
+    async function loadReferrer() {
+      if (!registration?.referral_code) return;
+      try {
+        const { getReferralOwnerAction } = await import("@/lib/firestore/actions");
+        const info = await getReferralOwnerAction(registration.referral_code, registration.referrer_member_id);
+        if (active && info) {
+          setReferrerInfo(info);
+        }
+      } catch (err) {
+        console.warn("[ApplicantDetailDialog] Could not fetch referral owner:", err);
+      }
+    }
+
+    void loadReferrer();
+    return () => {
+      active = false;
+    };
+  }, [registration?.referral_code, registration?.referrer_member_id]);
 
   // Hydrate custom questions from Firestore if not provided
   useEffect(() => {
@@ -1001,6 +1035,77 @@ export function ApplicantDetailDialog({
                   >
                     -Rp {(registration.voucher_discount_amount ?? 0).toLocaleString("id-ID")}
                   </Badge>
+                </div>
+              )}
+
+              {/* Referral Code & Ownership Details if applied */}
+              {Boolean(registration.referral_code) && (
+                <div className="flex flex-col gap-2 rounded-lg border border-purple-500/30 bg-purple-500/5 p-3 text-xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <Sparkles className="size-3.5 shrink-0 text-purple-600 dark:text-purple-400" />
+                      <span className="shrink-0 text-[11px] font-medium text-muted-foreground">Referral Code:</span>
+                      <span className="truncate font-mono font-semibold text-[11px] text-foreground">
+                        {registration.referral_code}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        className="size-5 text-muted-foreground hover:text-foreground"
+                        title="Copy referral code"
+                        onClick={() => handleCopy(registration.referral_code ?? "", "Referral code", "referral_code")}
+                      >
+                        {copiedKey === "referral_code" ? (
+                          <Check className="size-3 text-emerald-600" />
+                        ) : (
+                          <Copy className="size-3" />
+                        )}
+                      </Button>
+                    </div>
+
+                    {(registration.referral_discount_amount || registration.referral_discount_percent) && (
+                      <Badge
+                        variant="outline"
+                        className="shrink-0 border-purple-500/30 bg-purple-500/10 font-mono text-[10px] font-semibold text-purple-700 dark:text-purple-300"
+                      >
+                        {registration.referral_discount_type === "fixed" || registration.referral_discount_amount
+                          ? `-Rp ${(registration.referral_discount_amount ?? 0).toLocaleString("id-ID")}`
+                          : `-${registration.referral_discount_percent ?? 10}%`}
+                      </Badge>
+                    )}
+                  </div>
+
+                  {/* Referrer Details ("Who does the referral belong to") */}
+                  <div className="flex items-center justify-between rounded-md border border-purple-500/20 bg-background/80 px-2.5 py-1.5 text-xs">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Avatar className="size-6 border border-border/60 shrink-0">
+                        <AvatarImage
+                          src={referrerInfo?.avatar_url ?? undefined}
+                          alt={referrerInfo?.name || "Referrer"}
+                        />
+                        <AvatarFallback className="text-[9px] font-semibold">
+                          {getInitials(referrerInfo?.name || registration.referrer_name || "Ref")}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0 flex flex-col">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] text-muted-foreground shrink-0">Belongs to:</span>
+                          <span className="font-semibold text-foreground text-[11px] truncate">
+                            {referrerInfo?.name || registration.referrer_name || "Community Member"}
+                          </span>
+                        </div>
+                        {Boolean(referrerInfo?.email) && (
+                          <span className="text-[10px] text-muted-foreground truncate">{referrerInfo?.email}</span>
+                        )}
+                      </div>
+                    </div>
+                    {referrerInfo?.role && (
+                      <Badge variant="secondary" className="text-[9px] capitalize px-1.5 py-0 shrink-0">
+                        {referrerInfo.role.replace(/_/g, " ")}
+                      </Badge>
+                    )}
+                  </div>
                 </div>
               )}
 

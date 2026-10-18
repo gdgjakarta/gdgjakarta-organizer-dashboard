@@ -57,7 +57,13 @@ import {
 } from "@/lib/events/question-validator";
 import { DEFAULT_COMBINED_QUESTIONS } from "@/lib/events/registration-defaults";
 import { updateRegistrationAnswersAction } from "@/lib/firestore/actions";
-import type { CustomQuestion, EventSession, FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
+import type {
+  CustomQuestion,
+  EventSession,
+  FirestoreEvent,
+  FirestoreRegistration,
+  ReferralOwnerInfo,
+} from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
 function formatRupiah(amount: number): string {
@@ -110,6 +116,31 @@ export function EditRegistrationModal({
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [touchedFields, setTouchedFields] = useState<Set<string>>(new Set());
+  const [referrerInfo, setReferrerInfo] = useState<ReferralOwnerInfo | null>(null);
+
+  useEffect(() => {
+    if (!registration?.referral_code) {
+      setReferrerInfo(null);
+      return;
+    }
+    let active = true;
+    async function loadReferrer() {
+      if (!registration?.referral_code) return;
+      try {
+        const { getReferralOwnerAction } = await import("@/lib/firestore/actions");
+        const info = await getReferralOwnerAction(registration.referral_code, registration.referrer_member_id);
+        if (active && info) {
+          setReferrerInfo(info);
+        }
+      } catch (err) {
+        console.warn("[EditRegistrationModal] Could not fetch referral owner:", err);
+      }
+    }
+    void loadReferrer();
+    return () => {
+      active = false;
+    };
+  }, [registration?.referral_code, registration?.referrer_member_id]);
 
   const status = registration.status;
   const paymentStatus = (registration.payment_status ?? "").toLowerCase().trim();
@@ -803,6 +834,47 @@ export function EditRegistrationModal({
                             })}
                           </div>
                         </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Referral Applied & Referrer Details */}
+                {Boolean(registration.referral_code) && (
+                  <div className="space-y-2.5 rounded-xl border border-purple-500/30 bg-purple-500/5 p-4 shadow-2xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="size-4 text-purple-600 dark:text-purple-400" />
+                        <div>
+                          <h4 className="font-semibold text-foreground text-sm">Referral Code Applied</h4>
+                          <p className="text-[11px] text-muted-foreground">
+                            Discount redeemed using promoter referral code.
+                          </p>
+                        </div>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className="font-mono text-xs font-semibold border-purple-500/30 bg-purple-500/10 text-purple-700 dark:text-purple-300"
+                      >
+                        {registration.referral_code}
+                      </Badge>
+                    </div>
+
+                    <div className="flex items-center justify-between rounded-lg border border-purple-500/20 bg-background/80 p-3 text-xs">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <User className="size-3.5 text-muted-foreground shrink-0" />
+                        <span className="text-muted-foreground">Belongs to:</span>
+                        <span className="font-semibold text-foreground truncate">
+                          {referrerInfo?.name || registration.referrer_name || "Community Member"}
+                        </span>
+                        {referrerInfo?.email && (
+                          <span className="text-muted-foreground text-[11px] truncate">({referrerInfo.email})</span>
+                        )}
+                      </div>
+                      {referrerInfo?.role && (
+                        <Badge variant="secondary" className="text-[10px] capitalize shrink-0">
+                          {referrerInfo.role.replace(/_/g, " ")}
+                        </Badge>
                       )}
                     </div>
                   </div>
