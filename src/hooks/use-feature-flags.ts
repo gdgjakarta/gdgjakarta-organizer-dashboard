@@ -72,7 +72,19 @@ async function initRemoteConfigFeatureFlags() {
           }
         },
         error: (err) => {
-          console.warn("[useFeatureFlags] Remote Config update listener error:", err);
+          const isStreamError =
+            err &&
+            typeof err === "object" &&
+            ("code" in err
+              ? String((err as { code?: unknown }).code).includes("stream-error")
+              : "message" in err && String((err as { message?: unknown }).message).includes("stream-error"));
+          if (isStreamError) {
+            console.debug(
+              "[useFeatureFlags] Real-time Remote Config stream unavailable; relying on fetched/default flags.",
+            );
+          } else {
+            console.warn("[useFeatureFlags] Remote Config update listener error:", err);
+          }
         },
         complete: () => {
           /* no-op */
