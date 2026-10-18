@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 
-import { Crown, Gift, Sparkles, Ticket, Trophy, Users } from "lucide-react";
+import { Crown, Gift, Presentation, Sparkles, Ticket, Trophy, Users } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getReferralLeaderboardAction, getReferralProgramSettingsAction } from "@/lib/firestore/actions";
 import type { ReferralLeaderboardEntry, ReferralProgramSettings } from "@/lib/firestore/types";
@@ -106,7 +107,7 @@ export function ReferralLeaderboardView({ initialEntries, initialSettings }: Ref
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold tracking-tight sm:text-2xl">Referral Leaderboard</h1>
+            <h1 className="font-bold text-xl tracking-tight sm:text-2xl">Referral Leaderboard</h1>
             <Badge
               variant="outline"
               className="border-amber-500/30 bg-amber-500/10 text-amber-700 text-xs dark:text-amber-300"
@@ -115,13 +116,21 @@ export function ReferralLeaderboardView({ initialEntries, initialSettings }: Ref
               Community Program
             </Badge>
           </div>
-          <p className="text-xs text-muted-foreground sm:text-sm">
+          <p className="text-muted-foreground text-xs sm:text-sm">
             Monitor community promoter rankings, ticket conversions, and reward the top referrer with official GDG
             merchandise.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            className="border-primary/30 bg-primary/5 text-primary hover:bg-primary/10"
+            onClick={() => window.open("/dashboard/referrals/present", "_blank")}
+          >
+            <Presentation className="mr-1.5 size-4" />
+            <span>Present Mode</span>
+          </Button>
           <ReferralExcludedMembersDialog
             onExclusionsChanged={refreshData}
             autoExcludeRoles={settings?.auto_exclude_roles}
@@ -144,7 +153,7 @@ export function ReferralLeaderboardView({ initialEntries, initialSettings }: Ref
       </div>
 
       {/* Program Announcement Banner */}
-      <div className="relative overflow-hidden rounded-2xl border border-amber-500/30 bg-gradient-to-r from-amber-500/10 via-background to-primary/5 p-4 sm:p-5 shadow-xs">
+      <div className="relative overflow-hidden rounded-2xl border border-amber-500/30 bg-gradient-to-r from-amber-500/10 via-background to-primary/5 p-4 shadow-xs sm:p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
             <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-amber-950 shadow-xs">
@@ -162,7 +171,7 @@ export function ReferralLeaderboardView({ initialEntries, initialSettings }: Ref
                   Attendee Discount
                 </Badge>
               </div>
-              <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
+              <p className="mt-0.5 text-muted-foreground text-xs leading-relaxed">
                 Attendees applying referral codes receive{" "}
                 {settings?.default_discount_type === "fixed"
                   ? `Rp ${(settings?.default_discount_amount ?? 25000).toLocaleString("id-ID")}`
@@ -179,52 +188,52 @@ export function ReferralLeaderboardView({ initialEntries, initialSettings }: Ref
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Card className="shadow-xs">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            <CardTitle className="font-medium text-muted-foreground text-xs uppercase tracking-wider">
               Total Points Awarded
             </CardTitle>
             <Trophy className="size-4 text-amber-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalPoints.toLocaleString("id-ID")}</div>
+            <div className="font-bold text-2xl">{totalPoints.toLocaleString("id-ID")}</div>
             <p className="text-[11px] text-muted-foreground">Across all community members</p>
           </CardContent>
         </Card>
 
         <Card className="shadow-xs">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            <CardTitle className="font-medium text-muted-foreground text-xs uppercase tracking-wider">
               Tickets Referred
             </CardTitle>
             <Ticket className="size-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalReferrals.toLocaleString("id-ID")}</div>
+            <div className="font-bold text-2xl">{totalReferrals.toLocaleString("id-ID")}</div>
             <p className="text-[11px] text-muted-foreground">Successful event registrations</p>
           </CardContent>
         </Card>
 
         <Card className="shadow-xs">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            <CardTitle className="font-medium text-muted-foreground text-xs uppercase tracking-wider">
               Active Referrers
             </CardTitle>
             <Users className="size-4 text-emerald-600 dark:text-emerald-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{activeReferrersCount}</div>
+            <div className="font-bold text-2xl">{activeReferrersCount}</div>
             <p className="text-[11px] text-muted-foreground">Promoters with points earned</p>
           </CardContent>
         </Card>
 
         <Card className="shadow-xs">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            <CardTitle className="font-medium text-muted-foreground text-xs uppercase tracking-wider">
               Current Top Scorer
             </CardTitle>
             <Crown className="size-4 text-amber-500" />
           </CardHeader>
           <CardContent>
-            <div className="line-clamp-1 text-base font-bold sm:text-lg">{topLeader ? topLeader.name : "None yet"}</div>
+            <div className="line-clamp-1 font-bold text-base sm:text-lg">{topLeader ? topLeader.name : "None yet"}</div>
             <p className="text-[11px] text-muted-foreground">
               {topLeader
                 ? `${topLeader.referral_points} pts • ${topLeader.referrals_count} tickets`

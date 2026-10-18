@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import type { Metadata, Viewport } from "next";
 
+import { ApiLoggerBoot } from "@/components/api-logger-boot";
 import { NavigationProgressProvider } from "@/components/navigation-progress-bar";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -152,6 +153,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         <ThemeBootScript />
       </head>
       <body className={`${fontVars} min-h-screen antialiased`}>
+        <ApiLoggerBoot />
         <TooltipProvider>
           <AuthStoreProvider>
             <PreferencesStoreProvider initialValues={PREFERENCE_DEFAULTS}>

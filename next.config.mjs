@@ -94,12 +94,7 @@ const nextConfig = {
       },
     ];
   },
-  turbopack: {
-    resolveAlias: {
-      "firebase/firestore": "./src/lib/firestore/server-noop.ts",
-      "@firebase/firestore": "./src/lib/firestore/server-noop.ts",
-    },
-  },
+  turbopack: {},
   webpack(config, { isServer }) {
     if (isServer) {
       config.resolve.alias = {

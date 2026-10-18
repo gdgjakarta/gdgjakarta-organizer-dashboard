@@ -1,4 +1,5 @@
 import { BEVY_CONFIG, getBevyAuthCredentials, getBevyRefererUrl } from "@/config/bevy-config";
+import "@/lib/api-logger";
 import { extractApiMessage, splitFullName } from "@/lib/utils";
 
 export {
@@ -58,9 +59,6 @@ export async function bevyFetchWithResponse<T>(
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     Accept: "application/json, version=bevy.1.0",
-    "Accept-Charset": "UTF-8",
-    "Auth-Type": "AUTHORIZED",
-    "User-Agent": "GDGJakarta-Dashboard/1.0.0",
     ...(csrfToken ? { "X-Csrftoken": csrfToken } : {}),
     ...(cookie ? { Cookie: cookie } : {}),
     ...(BEVY_CONFIG.apiToken ? { Authorization: `Token ${BEVY_CONFIG.apiToken}` } : {}),

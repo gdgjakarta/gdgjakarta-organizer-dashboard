@@ -16,9 +16,6 @@ export {
   type RemoteConfigKey,
 };
 
-const DEFAULT_CSRF_TOKEN = "1l7eIkOW2AbClb9bAk2MSjvtikUVRjX2";
-const DEFAULT_COOKIE = "csrftoken=1l7eIkOW2AbClb9bAk2MSjvtikUVRjX2; sessionid=q9qpbcr8elwx5g8by6awszm8t0h199xq;";
-
 // ── In-Memory Caching for Server-Side REST Fetcher ────────────────────────────
 
 interface InstallationAuth {
@@ -200,44 +197,21 @@ export async function getMappedRemoteConfigValue(
 
 /**
  * Resolves the Bevy session cookie for a chapter from Remote Config (`cfg_bevy_cookie`),
- * falling back to process.env.BEVY_COOKIE or default fallback.
- *
- * Matches KawalEvent HeaderInterceptor:
- * configProvider.getMappedConfigValue(ConfigKey.BEVY_COOKIE, chapterId)
+ * Resolves the Bevy session cookie for a chapter from Remote Config (`cfg_bevy_cookie`).
+ * If not found in Remote Config, returns an empty string (no fallback).
  */
 export async function getBevyCookie(chapterId: string | number = DEFAULT_CHAPTER_ID): Promise<string> {
-  const envCookie = process.env.BEVY_COOKIE;
-  if (envCookie?.trim()) {
-    return envCookie.trim();
-  }
-  const resolved = await getMappedRemoteConfigValue(REMOTE_CONFIG_KEYS.BEVY_COOKIE, chapterId, DEFAULT_COOKIE);
-  // Detect truncated sessionid (e.g. 31 chars ending at 07v9 instead of valid 32 chars)
-  if (
-    resolved.includes("sessionid=2614nstjcxs8fx3y73miqjh2dny07v9;") ||
-    resolved.endsWith("sessionid=2614nstjcxs8fx3y73miqjh2dny07v9")
-  ) {
-    return DEFAULT_COOKIE;
-  }
-  return resolved || DEFAULT_COOKIE;
+  const resolved = await getMappedRemoteConfigValue(REMOTE_CONFIG_KEYS.BEVY_COOKIE, chapterId, "");
+  return resolved.trim();
 }
 
 /**
- * Resolves the Bevy X-CSRFToken for a chapter from Remote Config (`cfg_bevy_x_csrftoken`),
- * falling back to process.env.BEVY_CSRF_TOKEN or default fallback.
- *
- * Matches KawalEvent HeaderInterceptor:
- * configProvider.getMappedConfigValue(ConfigKey.BEVY_X_CSRFTOKEN, chapterId)
+ * Resolves the Bevy X-CSRFToken for a chapter from Remote Config (`cfg_bevy_x_csrftoken`).
+ * If not found in Remote Config, returns an empty string (no fallback).
  */
 export async function getBevyCsrfToken(chapterId: string | number = DEFAULT_CHAPTER_ID): Promise<string> {
-  const envCsrf = process.env.BEVY_CSRF_TOKEN;
-  if (envCsrf?.trim()) {
-    return envCsrf.trim();
-  }
-  const resolved = await getMappedRemoteConfigValue(REMOTE_CONFIG_KEYS.BEVY_X_CSRFTOKEN, chapterId, DEFAULT_CSRF_TOKEN);
-  if (resolved.includes("xluCT3mDl99cB2bF0xWLSqGy9uAP4kEc")) {
-    return DEFAULT_CSRF_TOKEN;
-  }
-  return resolved || DEFAULT_CSRF_TOKEN;
+  const resolved = await getMappedRemoteConfigValue(REMOTE_CONFIG_KEYS.BEVY_X_CSRFTOKEN, chapterId, "");
+  return resolved.trim();
 }
 
 /**

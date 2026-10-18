@@ -827,6 +827,11 @@ export function isExcludedOrganizerOrStaff(member?: Partial<FirestoreMember> | n
 
 export async function getReferralLeaderboard(limitCount = 100): Promise<ReferralLeaderboardEntry[]> {
   if (typeof window === "undefined") return [];
+  if (typeof auth.authStateReady === "function") {
+    await auth.authStateReady().catch(() => {
+      /* ignore auth readiness failure */
+    });
+  }
   if (!auth.currentUser) return [];
   try {
     const settings = await getReferralProgramSettings();
@@ -899,6 +904,11 @@ export async function getReferralLeaderboard(limitCount = 100): Promise<Referral
 
 export async function getExcludedReferralMembers(): Promise<ExcludedReferralMember[]> {
   if (typeof window === "undefined") return [];
+  if (typeof auth.authStateReady === "function") {
+    await auth.authStateReady().catch(() => {
+      /* ignore auth readiness failure */
+    });
+  }
   if (!auth.currentUser) return [];
   try {
     const settings = await getReferralProgramSettings();
@@ -1180,6 +1190,11 @@ export async function searchMembersForExclusion(searchTerm: string): Promise<
 
 export async function getMemberReferralHistory(memberId: string, referralCode?: string): Promise<ReferralRedemption[]> {
   if (typeof window === "undefined" || (!memberId && !referralCode)) return [];
+  if (typeof auth.authStateReady === "function") {
+    await auth.authStateReady().catch(() => {
+      /* ignore auth readiness failure */
+    });
+  }
   if (!auth.currentUser) return [];
   try {
     const redemptionsRef = collection(db, "referral_redemptions");
@@ -1202,7 +1217,7 @@ export async function getMemberReferralHistory(memberId: string, referralCode?: 
     }
 
     // 2. Query by referrer_code if referralCode provided
-    const cleanCode = (referralCode || "").trim().toUpperCase();
+    const cleanCode = (referralCode ?? "").trim().toUpperCase();
     if (cleanCode) {
       try {
         const qCode = query(redemptionsRef, where("referrer_code", "==", cleanCode));
@@ -1230,15 +1245,15 @@ export async function getMemberReferralHistory(memberId: string, referralCode?: 
           const rData = rDoc.data() as FirestoreRegistration;
           map.set(rDoc.id, {
             id: rDoc.id,
-            referrer_id: memberId || rData.referrer_member_id || "",
-            referrer_name: rData.referrer_name || "GDG Referrer",
+            referrer_id: memberId ? memberId : (rData.referrer_member_id ?? ""),
+            referrer_name: rData.referrer_name ?? "GDG Referrer",
             referrer_email: "",
             referrer_code: cleanCode,
             referee_id: rData.member_id,
-            referee_name: rData.member_name || "Applicant",
-            referee_email: rData.member_email || "",
+            referee_name: rData.member_name ?? "Applicant",
+            referee_email: rData.member_email ?? "",
             event_id: rData.event_id,
-            event_title: rData.event_title || "GDG Event",
+            event_title: rData.event_title ?? "GDG Event",
             ticket_id: rData.ticket_id,
             ticket_name: rData.ticket_name,
             ticket_type: rData.ticket_type,
@@ -1268,6 +1283,11 @@ export async function getReferralOwner(
   referrerMemberId?: string,
 ): Promise<ReferralOwnerInfo | null> {
   if (typeof window === "undefined") return null;
+  if (typeof auth.authStateReady === "function") {
+    await auth.authStateReady().catch(() => {
+      /* ignore auth readiness failure */
+    });
+  }
   if (!auth.currentUser) return null;
 
   try {
@@ -1279,17 +1299,17 @@ export async function getReferralOwner(
         const data = memberSnap.data() as FirestoreMember;
         return {
           id: memberSnap.id,
-          name: data.name || "Community Member",
-          email: data.email || "",
+          name: data.name ?? "Community Member",
+          email: data.email,
           role: data.role,
           avatar_url: data.avatar_url,
-          referral_code: data.referral_code || referralCode,
+          referral_code: data.referral_code ?? referralCode,
         };
       }
     }
 
     // 2. Query member by referral_code
-    const cleanCode = (referralCode || "").trim().toUpperCase();
+    const cleanCode = referralCode.trim().toUpperCase();
     if (!cleanCode) return null;
 
     const membersRef = collection(db, "members");
@@ -1301,11 +1321,11 @@ export async function getReferralOwner(
       const data = docSnap.data() as FirestoreMember;
       return {
         id: docSnap.id,
-        name: data.name || "Community Member",
-        email: data.email || "",
+        name: data.name ?? "Community Member",
+        email: data.email,
         role: data.role,
         avatar_url: data.avatar_url,
-        referral_code: data.referral_code || cleanCode,
+        referral_code: data.referral_code ?? cleanCode,
       };
     }
   } catch (err) {

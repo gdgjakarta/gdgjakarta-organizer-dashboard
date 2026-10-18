@@ -10,15 +10,15 @@ export const BEVY_CONFIG = {
   chapterSlug: process.env.BEVY_CHAPTER_SLUG || "gdg-jakarta",
   chapterId: process.env.BEVY_CHAPTER_ID || "642",
   apiToken: process.env.BEVY_API_TOKEN,
-  defaultCsrfToken: process.env.BEVY_CSRF_TOKEN || "",
-  defaultCookie: process.env.BEVY_COOKIE || "",
+  defaultCsrfToken: "",
+  defaultCookie: "",
 
   /**
    * Synchronous fallback getter for CSRF token.
    * Prefer using async `getBevyCsrfToken()` from "@/config/remote-config" for dynamic resolution.
    */
   get csrfToken() {
-    return process.env.BEVY_CSRF_TOKEN || this.defaultCsrfToken;
+    return "";
   },
 
   /**
@@ -26,7 +26,7 @@ export const BEVY_CONFIG = {
    * Prefer using async `getBevyCookie()` from "@/config/remote-config" for dynamic resolution.
    */
   get cookie() {
-    return process.env.BEVY_COOKIE || this.defaultCookie;
+    return "";
   },
 };
 

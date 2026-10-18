@@ -34,7 +34,6 @@ Every HTTP request to Bevy API endpoints must supply the following headers:
 |---|---|---|---|
 | `Accept` | `application/json; version=bevy.1.0` | **Mandatory** | Required for all Bevy v1 API responses. |
 | `Content-Type` | `application/json` | **Mandatory** for POST/PUT | JSON payload serialization. |
-| `User-Agent` | `GDGJakarta-Dashboard/1.0.0` | **Mandatory** | Identifies client requests. |
 | `Cookie` | `csrftoken=<token>; sessionid=<sessionid>` | **Authorized Endpoints** | Valid session cookie extracted from an authenticated organizer browser session. |
 | `X-Csrftoken` | `<csrftoken>` | **Mutating & Authorized** | Must match the `csrftoken` value in the `Cookie` header. |
 | `Referer` | See Referer URLs below | **Mutating Requests** (`PUT`, `POST`, `DELETE`) | Bevy rejects mutating requests if the Referer does not match the expected web path. |

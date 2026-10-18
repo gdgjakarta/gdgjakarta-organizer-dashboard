@@ -111,7 +111,7 @@ export function ReferralRedemptionsDialog({ entry, open, onOpenChange }: Referra
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-3xl overflow-hidden p-0 sm:max-h-[85vh] flex flex-col">
+      <DialogContent className="flex max-h-[90vh] w-full flex-col overflow-hidden p-0 sm:max-h-[85vh] sm:max-w-4xl lg:max-w-5xl">
         {/* Dialog Header */}
         <DialogHeader className="border-b px-5 py-4 shrink-0 bg-muted/20">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -214,12 +214,14 @@ export function ReferralRedemptionsDialog({ entry, open, onOpenChange }: Referra
 
         {/* Content Table / Body */}
         <div className="flex-1 overflow-y-auto min-h-[220px]">
-          {loading ? (
+          {loading && (
             <div className="flex flex-col items-center justify-center space-y-2 py-16 text-muted-foreground">
               <Loader2 className="size-6 animate-spin text-primary" />
               <p className="text-xs">Loading attendees who redeemed this code...</p>
             </div>
-          ) : filteredRedemptions.length === 0 ? (
+          )}
+
+          {!loading && filteredRedemptions.length === 0 && (
             <div className="flex flex-col items-center justify-center space-y-2 py-16 text-center text-muted-foreground">
               <div className="flex size-10 items-center justify-center rounded-full bg-muted/60">
                 <Ticket className="size-5 text-muted-foreground" />
@@ -233,7 +235,9 @@ export function ReferralRedemptionsDialog({ entry, open, onOpenChange }: Referra
                   : "When attendees enter this promoter's referral code during checkout, they will appear here."}
               </p>
             </div>
-          ) : (
+          )}
+
+          {!loading && filteredRedemptions.length > 0 && (
             <Table>
               <TableHeader className="sticky top-0 bg-background/95 backdrop-blur-xs z-10">
                 <TableRow className="hover:bg-transparent text-xs">
@@ -274,10 +278,10 @@ export function ReferralRedemptionsDialog({ entry, open, onOpenChange }: Referra
                             </AvatarFallback>
                           </Avatar>
                           <div className="min-w-0">
-                            <p className="font-semibold text-foreground text-xs leading-none truncate max-w-[160px]">
+                            <p className="font-semibold text-foreground text-xs leading-none truncate max-w-[180px] sm:max-w-xs md:max-w-sm">
                               {redemption.referee_name || "Community Member"}
                             </p>
-                            <p className="mt-0.5 text-[11px] text-muted-foreground leading-none truncate max-w-[160px]">
+                            <p className="mt-1 text-[11px] text-muted-foreground leading-none truncate max-w-[180px] sm:max-w-xs md:max-w-sm">
                               {redemption.referee_email}
                             </p>
                           </div>
@@ -287,7 +291,7 @@ export function ReferralRedemptionsDialog({ entry, open, onOpenChange }: Referra
                       {/* Event Title */}
                       <TableCell>
                         <p
-                          className="font-medium text-foreground text-xs max-w-[200px] truncate"
+                          className="font-medium text-foreground text-xs max-w-[180px] sm:max-w-xs md:max-w-sm truncate"
                           title={redemption.event_title}
                         >
                           {redemption.event_title}
