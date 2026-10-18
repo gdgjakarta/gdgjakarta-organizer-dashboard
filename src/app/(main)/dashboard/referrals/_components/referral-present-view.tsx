@@ -55,24 +55,22 @@ export function ReferralPresentView({ initialEntries, initialSettings }: Referra
   const [isMuted, setIsMuted] = useState(false);
   const [showFullscreenBanner, setShowFullscreenBanner] = useState(true);
 
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [canvasNode, setCanvasNode] = useState<HTMLCanvasElement | null>(null);
   const confettiRef = useRef<ConfettiEngine | null>(null);
   const timeoutsRef = useRef<number[]>([]);
 
-  // Initialize Confetti Engine
+  // Initialize Confetti Engine as soon as canvas element is mounted
   useEffect(() => {
-    // biome-ignore lint/suspicious/noUnnecessaryConditions: Canvas ref is populated by React on mount
-    if (canvasRef.current) {
-      const engine = new ConfettiEngine();
-      engine.init(canvasRef.current);
-      confettiRef.current = engine;
-    }
+    if (!canvasNode) return;
+    const engine = new ConfettiEngine();
+    engine.init(canvasNode);
+    confettiRef.current = engine;
 
     return () => {
-      confettiRef.current?.destroy();
+      engine.destroy();
       confettiRef.current = null;
     };
-  }, []);
+  }, [canvasNode]);
 
   // Sync fullscreen state
   useEffect(() => {
@@ -181,10 +179,11 @@ export function ReferralPresentView({ initialEntries, initialSettings }: Referra
     const t1 = window.setTimeout(() => {
       setRevealedRanks((prev) => ({ ...prev, rank3: true }));
       soundEffects.playBronzeChime();
+      soundEffects.playConfettiPop();
       confettiRef.current?.burst({
         origin: { x: 0.8, y: 0.65 },
-        particleCount: 45,
-        spread: 60,
+        particleCount: 50,
+        spread: 65,
         colors: ["#D97706", "#B45309", "#FDE68A", "#FFFFFF"],
       });
 
@@ -197,10 +196,11 @@ export function ReferralPresentView({ initialEntries, initialSettings }: Referra
         const t3 = window.setTimeout(() => {
           setRevealedRanks((prev) => ({ ...prev, rank2: true }));
           soundEffects.playSilverChime();
+          soundEffects.playConfettiPop();
           confettiRef.current?.burst({
             origin: { x: 0.2, y: 0.65 },
-            particleCount: 55,
-            spread: 60,
+            particleCount: 65,
+            spread: 70,
             colors: ["#94A3B8", "#4285F4", "#E2E8F0", "#FFFFFF"],
           });
 
@@ -215,6 +215,7 @@ export function ReferralPresentView({ initialEntries, initialSettings }: Referra
               setStage("completed");
               soundEffects.playChampionFanfare();
               soundEffects.playConfettiPop();
+              soundEffects.playCrowdCheerAndClap(4500);
               confettiRef.current?.fireGrandFinale();
             }, 3200);
 
@@ -265,6 +266,7 @@ export function ReferralPresentView({ initialEntries, initialSettings }: Referra
 
   const handleShootExtraConfetti = () => {
     soundEffects.playConfettiPop();
+    soundEffects.playCrowdCheerAndClap(3500);
     confettiRef.current?.fireGrandFinale();
   };
 
@@ -298,7 +300,7 @@ export function ReferralPresentView({ initialEntries, initialSettings }: Referra
       className="fixed inset-0 z-50 flex h-screen w-screen flex-col overflow-hidden bg-slate-950 font-sans text-white select-none"
     >
       {/* Canvas Confetti Layer */}
-      <canvas ref={canvasRef} className="pointer-events-none fixed inset-0 z-50 h-full w-full" />
+      <canvas ref={setCanvasNode} className="pointer-events-none fixed inset-0 z-50 h-full w-full" />
 
       {/* Top Header Bar */}
       <header className="z-20 flex h-16 shrink-0 items-center justify-between border-b border-slate-800/80 bg-slate-950/80 px-6 backdrop-blur-md">

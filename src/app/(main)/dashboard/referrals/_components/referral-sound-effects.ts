@@ -236,6 +236,98 @@ class SoundEffectManager {
       osc.stop(now + i * 0.05 + 0.15);
     }
   }
+
+  // Celebratory Crowd Cheer with Clapping: "Yeay!" vocal formants + rapid clapping transients
+  public playCrowdCheerAndClap(durationMs = 4200) {
+    if (this.isMuted) return;
+    const ctx = this.getContext();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+    const totalSec = durationMs / 1000;
+
+    // 1. Crowd Vocal Cheer ("YEAY!"): Synthesized via harmonized formant filters
+    // Multi-voice pitches simulating diverse crowd voices shouting together
+    const cheerVoices = [
+      { baseFreq: 330, peakFreq: 520, formants: [850, 1600], gain: 0.12 },
+      { baseFreq: 415, peakFreq: 620, formants: [920, 1750], gain: 0.14 },
+      { baseFreq: 260, peakFreq: 440, formants: [780, 1500], gain: 0.11 },
+      { baseFreq: 520, peakFreq: 780, formants: [1050, 1950], gain: 0.09 },
+    ];
+
+    cheerVoices.forEach(({ baseFreq, peakFreq, formants, gain: vGain }) => {
+      // Sawtooth/triangle blend for rich vocal harmonics
+      const osc = ctx.createOscillator();
+      const oscGain = ctx.createGain();
+
+      osc.type = "sawtooth";
+      // Natural vocal inflection: starts strong, pitches up on "YEAY!", then gently settles
+      osc.frequency.setValueAtTime(baseFreq, now);
+      osc.frequency.exponentialRampToValueAtTime(peakFreq, now + 0.35);
+      osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.9, now + totalSec * 0.85);
+
+      // Volume envelope: rapid attack, sustained crescendo, natural decay
+      oscGain.gain.setValueAtTime(0.001, now);
+      oscGain.gain.linearRampToValueAtTime(vGain, now + 0.15);
+      oscGain.gain.exponentialRampToValueAtTime(vGain * 0.7, now + 1.2);
+      oscGain.gain.exponentialRampToValueAtTime(0.0001, now + totalSec);
+
+      // Dual bandpass formant filter to shape "yeay / yeah" vowel acoustic resonance
+      const filter = ctx.createBiquadFilter();
+      filter.type = "bandpass";
+      filter.frequency.setValueAtTime(formants[0], now);
+      filter.frequency.exponentialRampToValueAtTime(formants[1], now + 0.4);
+      filter.Q.setValueAtTime(2.2, now);
+
+      osc.connect(filter);
+      filter.connect(oscGain);
+      oscGain.connect(ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + totalSec);
+    });
+
+    // 2. Multi-person Applause & Hand Clapping: Rapid noise bursts spread across stereo/time
+    // Create a 1-second white noise buffer reused for clapping impulses
+    const sampleRate = ctx.sampleRate;
+    const bufferSize = sampleRate;
+    const noiseBuffer = ctx.createBuffer(1, bufferSize, sampleRate);
+    const noiseData = noiseBuffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      noiseData[i] = Math.random() * 2 - 1;
+    }
+
+    // Generate randomized claps across the duration
+    const clapCount = 55;
+    for (let i = 0; i < clapCount; i++) {
+      // Claps intensify in the first 2 seconds then continue cheering
+      const offset = Math.random() ** 0.85 * totalSec * 0.95;
+      const clapTime = now + offset;
+
+      const clapSource = ctx.createBufferSource();
+      clapSource.buffer = noiseBuffer;
+
+      // Clapping acoustic signature: Bandpass filter ~1100Hz - 2200Hz
+      const clapFilter = ctx.createBiquadFilter();
+      clapFilter.type = "bandpass";
+      clapFilter.frequency.setValueAtTime(1100 + Math.random() * 900, clapTime);
+      clapFilter.Q.setValueAtTime(3.5, clapTime);
+
+      const clapGain = ctx.createGain();
+      // Sharp percussive envelope (~25ms-35ms)
+      const clapVol = 0.08 + Math.random() * 0.12;
+      clapGain.gain.setValueAtTime(0.001, clapTime);
+      clapGain.gain.linearRampToValueAtTime(clapVol, clapTime + 0.003);
+      clapGain.gain.exponentialRampToValueAtTime(0.001, clapTime + 0.035);
+
+      clapSource.connect(clapFilter);
+      clapFilter.connect(clapGain);
+      clapGain.connect(ctx.destination);
+
+      clapSource.start(clapTime);
+      clapSource.stop(clapTime + 0.04);
+    }
+  }
 }
 
 export const soundEffects = new SoundEffectManager();
