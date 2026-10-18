@@ -840,8 +840,7 @@ export async function getReferralLeaderboard(limitCount = 100): Promise<Referral
       settings.auto_exclude_roles ?? (settings.auto_exclude_organizers ? ["googler", "organizer", "team_member"] : []);
 
     const membersRef = collection(db, "members");
-    const membersQuery = limitCount > 0 && limitCount <= 5 ? query(membersRef, limit(limitCount)) : membersRef;
-    const snapshot = await getDocs(membersQuery);
+    const snapshot = await getDocs(membersRef);
     const entries: ReferralLeaderboardEntry[] = [];
 
     for (const docSnap of snapshot.docs) {
