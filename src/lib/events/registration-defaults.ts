@@ -1507,16 +1507,6 @@ export const DEFAULT_GDG_SESSIONS: EventSession[] = [
     capacity: 100,
     total_registered: 0,
   },
-  {
-    id: "full-session",
-    title: "Full session",
-    description: "General admission regular session access.",
-    time_slot: "12:15 WIB - 17:00 WIB",
-    checkin_deadline: "13:15 WIB",
-    location: "Main Venue",
-    capacity: 136,
-    total_registered: 0,
-  },
 ];
 
 /**
@@ -1576,7 +1566,7 @@ export const EVENT_FORMAT_TEMPLATES: EventFormatTemplate[] = [
     name: "Free / Paid Registration with Multiple Sessions",
     badge: "Multi-Session",
     category: "standard",
-    description: "Event split into Morning, Afternoon, and Full session tracks with independent capacity limits.",
+    description: "Event split into Morning and Afternoon tracks with independent capacity limits.",
     requires_approval: false,
     sessions: DEFAULT_GDG_SESSIONS,
     tickets: getRecommendedTicketsForFormat("multi_track"),

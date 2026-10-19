@@ -10,6 +10,8 @@ import {
   AlertTriangle,
   CalendarClock,
   CheckCircle2,
+  ChevronsDownUp,
+  ChevronsUpDown,
   Clock,
   Copy,
   ExternalLink,
@@ -171,6 +173,39 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
     event.custom_questions && event.custom_questions.length > 0 ? event.custom_questions : DEFAULT_COMBINED_QUESTIONS,
   );
   const [templateCategoryFilter, setTemplateCategoryFilter] = useState<"all" | "curated" | "standard">("all");
+
+  // Question expansion states (can be toggled individually or collapsed/expanded all)
+  const [expandedQuestionIds, setExpandedQuestionIds] = useState<Set<string>>(() => new Set());
+  const [hasInitializedExpanded, setHasInitializedExpanded] = useState(false);
+
+  useEffect(() => {
+    if (!hasInitializedExpanded && questions.length > 0) {
+      setExpandedQuestionIds(new Set(questions.map((q) => q.id)));
+      setHasInitializedExpanded(true);
+    }
+  }, [questions, hasInitializedExpanded]);
+
+  const handleToggleExpandQuestion = (id: string) => {
+    setExpandedQuestionIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const areAllQuestionsCollapsed = questions.length > 0 && expandedQuestionIds.size === 0;
+
+  const handleToggleExpandAllQuestions = () => {
+    if (areAllQuestionsCollapsed) {
+      setExpandedQuestionIds(new Set(questions.map((q) => q.id)));
+    } else {
+      setExpandedQuestionIds(new Set());
+    }
+  };
 
   // 6. Event Tickets (Configured via Ticket Tiers or Format Template Presets)
   const [tickets, setTickets] = useState<EventTicketTier[]>(() => event.tickets ?? []);
@@ -521,7 +556,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
   // Session Handlers
   const handleLoadStandardSessions = () => {
     setSessions(DEFAULT_GDG_SESSIONS);
-    toast.success("Loaded default sessions (Morning, Afternoon, Full session).");
+    toast.success("Loaded default sessions (Morning, Afternoon).");
   };
 
   const handleAddSession = () => {
@@ -586,10 +621,16 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
       validation_type: "none",
     };
     setQuestions([...questions, newQ]);
+    setExpandedQuestionIds((prev) => new Set([...prev, newQ.id]));
   };
 
   const handleRemoveQuestion = (id: string) => {
     setQuestions(questions.filter((q) => q.id !== id));
+    setExpandedQuestionIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
   };
 
   const handleDuplicateQuestion = (id: string) => {
@@ -611,6 +652,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
       next.splice(targetIndex + 1, 0, duplicatedQ);
       return next;
     });
+    setExpandedQuestionIds((prev) => new Set([...prev, duplicatedQ.id]));
 
     toast.success(
       targetQuestion.label ? `Duplicated "${targetQuestion.label}"` : `Duplicated Question #${targetIndex + 1}`,
@@ -2047,6 +2089,29 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
               </SelectContent>
             </Select>
 
+            {questions.length > 0 && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={handleToggleExpandAllQuestions}
+                className="h-8 gap-1.5 text-xs shadow-2xs"
+                title={areAllQuestionsCollapsed ? "Expand all questions" : "Collapse all questions"}
+              >
+                {areAllQuestionsCollapsed ? (
+                  <>
+                    <ChevronsUpDown className="size-3.5" />
+                    <span>Expand All</span>
+                  </>
+                ) : (
+                  <>
+                    <ChevronsDownUp className="size-3.5" />
+                    <span>Collapse All</span>
+                  </>
+                )}
+              </Button>
+            )}
+
             <Button
               type="button"
               size="sm"
@@ -2126,6 +2191,8 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
                     index={idx}
                     totalQuestions={questions.length}
                     eventName={event.title}
+                    isExpanded={expandedQuestionIds.has(q.id)}
+                    onToggleExpand={() => handleToggleExpandQuestion(q.id)}
                     onUpdate={handleUpdateQuestion}
                     onRemove={handleRemoveQuestion}
                     onDuplicate={handleDuplicateQuestion}
