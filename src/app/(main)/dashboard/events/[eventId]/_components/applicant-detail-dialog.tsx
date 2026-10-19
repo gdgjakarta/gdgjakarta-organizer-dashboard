@@ -1985,6 +1985,9 @@ export function ApplicantDetailDialog({
                   {isCuration &&
                     !isWaitingPayment &&
                     (() => {
+                      if (isCanceled || isDisbursementCompleted) {
+                        return null;
+                      }
                       if (isApproved) {
                         return (
                           <Button
@@ -1995,19 +1998,6 @@ export function ApplicantDetailDialog({
                           >
                             <CheckCircle className="mr-1.5 size-3.5" />
                             Approved
-                          </Button>
-                        );
-                      }
-                      if (isCanceled) {
-                        return (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled
-                            className="cursor-default border-zinc-500/30 bg-zinc-500/10 text-xs text-zinc-600 dark:text-zinc-400"
-                          >
-                            <XCircle className="mr-1.5 size-3.5" />
-                            Canceled
                           </Button>
                         );
                       }
@@ -2035,8 +2025,8 @@ export function ApplicantDetailDialog({
                       );
                     })()}
 
-                  {/* Check Payment (only for waiting_for_payment) */}
-                  {isWaitingPayment && (
+                  {/* Check Payment (only for active waiting_for_payment) */}
+                  {isWaitingPayment && !isCanceled && !isDisbursementCompleted && (
                     <Button
                       size="sm"
                       variant="outline"

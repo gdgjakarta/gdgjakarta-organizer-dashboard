@@ -1129,6 +1129,55 @@ service cloud.firestore {
         );
       }
 
+      // Allows a member to re-register (full overwrite) on their own canceled registration doc.
+      // Identity is preserved, organizer-only fields are stripped, and any prior refund_request is archived into refund_history.
+      function isValidMemberReRegistration(prevData, newData) {
+        let prevHistory = ('refund_history' in prevData && prevData.refund_history != null) ? prevData.refund_history : [];
+        let hasPrevRefund = ('refund_request' in prevData) && prevData.refund_request != null;
+        return (
+          newData.member_id == request.auth.uid &&
+          prevData.status in ['canceled', 'cancelled'] &&
+
+          // Identity fields cannot change
+          newData.id == prevData.id &&
+          newData.event_id == prevData.event_id &&
+          newData.member_id == prevData.member_id &&
+
+          // Fresh registration status only
+          newData.status in ['pending', 'waiting_for_payment', 'waitlisted', 'approved', 'registered'] &&
+
+          // Same registration timestamp window as create
+          ('registered_at_millis' in newData) &&
+          (newData.registered_at_millis is int || newData.registered_at_millis is float) &&
+          newData.registered_at_millis <= request.time.toMillis() + 300000 &&
+          newData.registered_at_millis >= request.time.toMillis() - 600000 &&
+
+          // Organizer-only / lifecycle fields must not be carried over or forged
+          !newData.keys().hasAny([
+            'reviewed_at', 'reviewed_by_id', 'reviewed_by_name', 'reviewed_by_email',
+            'checked_in_at', 'is_checked_in', 'bevy_attendee_id', 'attendee_code',
+            'refund_request', 'delivery_request', 'paid_at'
+          ]) &&
+          (!('payment_status' in newData) || newData.payment_status in ['unpaid', 'pending']) &&
+
+          // Refund audit trail preservation
+          (
+            hasPrevRefund ?
+              (
+                ('refund_history' in newData) &&
+                newData.refund_history is list &&
+                newData.refund_history.size() <= 50 &&
+                newData.refund_history == prevHistory.concat([prevData.refund_request])
+              ) :
+              (
+                ('refund_history' in prevData) ?
+                  (('refund_history' in newData) && newData.refund_history == prevData.refund_history) :
+                  !('refund_history' in newData)
+              )
+          )
+        );
+      }
+
       // Individual registration lookup: Team access (Organizers & Staff), or the registrant themselves (matching member_id, member_email, or doc ID suffix).
       // Handles non-existent doc lookup gracefully when resource == null before registration.
       allow get: if hasTeamAccess() ||
@@ -1172,11 +1221,18 @@ service cloud.firestore {
           !request.resource.data.diff(resource.data).affectedKeys().hasAny([
             'reviewed_at', 'reviewed_by_id', 'reviewed_by_name', 'reviewed_by_email',
             'checked_in_at', 'is_checked_in', 'bevy_attendee_id', 'attendee_code',
-            'registered_at', 'registered_at_millis'
+            'registered_at', 'registered_at_millis', 'refund_history'
           ]) &&
           isValidMemberRegistrationUpdate(resource.data, request.resource.data) &&
           isValidMemberDeliveryUpdate(resource.data, request.resource.data) &&
           isValidMemberRefundUpdate(resource.data, request.resource.data)
+        ) ||
+        (
+          (
+            resource.data.member_id == request.auth.uid ||
+            (registrationId.size() >= request.auth.uid.size() && registrationId[registrationId.size() - request.auth.uid.size():] == request.auth.uid)
+          ) &&
+          isValidMemberReRegistration(resource.data, request.resource.data)
         )
       );
 

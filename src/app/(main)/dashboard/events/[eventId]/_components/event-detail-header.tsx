@@ -45,6 +45,7 @@ import { isExecutiveOrganizer } from "@/lib/auth-roles";
 import { resolveEventAudience } from "@/lib/bevy/audience";
 import { formatFirestoreDate } from "@/lib/date-utils";
 import { isEventCurationMode } from "@/lib/events/payment-deadline";
+import { expandRefundRecords } from "@/lib/events/refund-utils";
 import { triggerEventsSyncAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
@@ -199,7 +200,7 @@ export function EventDetailHeader({
             const s = (r.status || "").toLowerCase().trim();
             return Boolean(r.is_checked_in) || s === "attended";
           }).length;
-          const refundsCount = directList.filter((r) => Boolean(r.refund_request)).length;
+          const refundsCount = expandRefundRecords(directList).length;
           const refundsPendingCount = directList.filter(
             (r) => r.refund_request?.status === "waiting_for_approval",
           ).length;
@@ -245,7 +246,7 @@ export function EventDetailHeader({
               const s = (r.status || "").toLowerCase().trim();
               return Boolean(r.is_checked_in) || s === "attended";
             }).length;
-            const refundsCount = list.filter((r) => Boolean(r.refund_request)).length;
+            const refundsCount = expandRefundRecords(list).length;
             const refundsPendingCount = list.filter((r) => r.refund_request?.status === "waiting_for_approval").length;
 
             setLiveTotals({

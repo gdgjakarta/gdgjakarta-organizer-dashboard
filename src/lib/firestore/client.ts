@@ -1876,14 +1876,27 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
     status_logs: [initialStatusLog],
   });
 
+  // Re-registering over a canceled/refunded doc: overwrite it fully (no merge) so stale review, check-in,
+  // payment and refund fields don't leak into the new registration. Past refunds move to refund_history.
+  const isReRegistration = Boolean(existing && existing.id === regId);
+  const refundHistory = isReRegistration
+    ? [...(existing?.refund_history ?? []), ...(existing?.refund_request ? [existing.refund_request] : [])]
+    : [];
+  const writePayload = refundHistory.length > 0 ? { ...cleanPayload, refund_history: refundHistory } : cleanPayload;
+
   try {
-    await setDoc(docRef, cleanPayload, { merge: true });
+    if (isReRegistration) {
+      await setDoc(docRef, writePayload);
+    } else {
+      await setDoc(docRef, writePayload, { merge: true });
+    }
   } catch (setErr) {
     console.error("[registerMemberForEvent] Failed to write registration document:", setErr, {
       regId,
       effectiveMemberId,
       status: resolvedStatus,
-      payloadKeys: Object.keys(cleanPayload),
+      isReRegistration,
+      payloadKeys: Object.keys(writePayload),
     });
     throw setErr;
   }
@@ -3333,7 +3346,8 @@ export async function updateRefundStatus(
  */
 export async function getEventRefundRequests(eventId: string): Promise<FirestoreRegistration[]> {
   const registrations = await getEventRegistrations(eventId);
-  return registrations.filter((r) => Boolean(r.refund_request));
+  const { expandRefundRecords } = await import("@/lib/events/refund-utils");
+  return expandRefundRecords(registrations);
 }
 
 /**

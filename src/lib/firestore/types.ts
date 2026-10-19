@@ -668,6 +668,8 @@ export interface FirestoreRegistration {
 
   // Refund request (Paid waitlisted attendee refund claim)
   refund_request?: RefundRequest;
+  // Past refund requests archived when the member re-registers after a canceled/refunded registration
+  refund_history?: RefundRequest[];
 
   updated_at?: string;
 }

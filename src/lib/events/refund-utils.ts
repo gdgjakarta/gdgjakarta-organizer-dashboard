@@ -202,3 +202,25 @@ export function formatRupiah(amount: number): string {
     maximumFractionDigits: 0,
   }).format(amount);
 }
+
+/**
+ * Flattens registrations into one row per refund record: the active `refund_request` plus any archived
+ * `refund_history` entries (kept when a refunded member re-registers). Archived rows are read-only
+ * snapshots shown as canceled/refunded and get a synthetic id so they don't collide with the live row.
+ */
+export function expandRefundRecords(registrations: FirestoreRegistration[]): FirestoreRegistration[] {
+  const rows: FirestoreRegistration[] = [];
+  for (const reg of registrations) {
+    if (reg.refund_request) rows.push(reg);
+    for (const [index, past] of (reg.refund_history ?? []).entries()) {
+      rows.push({
+        ...reg,
+        id: `${reg.id}__refund_${past.id ?? index}`,
+        status: "canceled",
+        payment_status: "refunded",
+        refund_request: past,
+      });
+    }
+  }
+  return rows;
+}

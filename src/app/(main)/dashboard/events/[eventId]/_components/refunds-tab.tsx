@@ -7,6 +7,7 @@ import Image from "next/image";
 import {
   AlertCircle,
   Building2,
+  Check,
   CheckCircle2,
   Clock,
   Copy,
@@ -14,9 +15,10 @@ import {
   Download,
   ExternalLink,
   Eye,
-  FileText,
   Info,
   Loader2,
+  Paperclip,
+  Receipt,
   RefreshCw,
   Search,
   Settings,
@@ -46,7 +48,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { formatFirestoreDate } from "@/lib/date-utils";
-import { DEFAULT_REFUND_POLICY_NOTES, formatRupiah, getEventRefundCutoff } from "@/lib/events/refund-utils";
+import {
+  DEFAULT_REFUND_POLICY_NOTES,
+  expandRefundRecords,
+  formatRupiah,
+  getEventRefundCutoff,
+} from "@/lib/events/refund-utils";
 import { fetchEventRefundRequestsAction, updateEventRefundConfigAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent, FirestoreRegistration, RefundStatus } from "@/lib/firestore/types";
 import { cn, getInitials } from "@/lib/utils";
@@ -111,6 +118,7 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
   const [rejectModalReg, setRejectModalReg] = useState<FirestoreRegistration | null>(null);
   const [viewProofModalReg, setViewProofModalReg] = useState<FirestoreRegistration | null>(null);
   const [viewReasonModalReg, setViewReasonModalReg] = useState<FirestoreRegistration | null>(null);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   // Sync event props
   useEffect(() => {
@@ -145,7 +153,7 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
 
   useEffect(() => {
     if (initialRegistrations && initialRegistrations.length > 0) {
-      const withRefunds = initialRegistrations.filter((r) => Boolean(r.refund_request));
+      const withRefunds = expandRefundRecords(initialRegistrations);
       setRegistrations(withRefunds);
       setIsLoading(false);
     } else {
@@ -153,8 +161,12 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
     }
   }, [initialRegistrations, loadData]);
 
-  const handleCopy = (text: string, label: string) => {
-    navigator.clipboard.writeText(text);
+  const handleCopy = (text: string, label: string, key?: string) => {
+    void navigator.clipboard.writeText(text);
+    if (key) {
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey(null), 2000);
+    }
     toast.success(`Copied ${label} to clipboard.`);
   };
 
@@ -531,7 +543,7 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
           </div>
 
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="h-9 w-[180px] text-xs">
+            <SelectTrigger className="h-9 w-[190px] text-xs">
               <SelectValue placeholder="All Statuses" />
             </SelectTrigger>
             <SelectContent>
@@ -549,6 +561,20 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
               </SelectItem>
             </SelectContent>
           </Select>
+
+          {Boolean(searchQuery || statusFilter !== "all") && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setSearchQuery("");
+                setStatusFilter("all");
+              }}
+              className="h-9 px-2 text-muted-foreground text-xs hover:text-foreground"
+            >
+              Reset Filters
+            </Button>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -577,18 +603,32 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
       </div>
 
       {/* Requests Table */}
-      <Card className="overflow-hidden border-border/80 shadow-xs">
+      <Card className="overflow-hidden border border-border/80 shadow-xs">
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
-              <TableRow className="bg-muted/40 hover:bg-muted/40">
-                <TableHead className="w-[200px] font-semibold text-xs">Attendee</TableHead>
-                <TableHead className="font-semibold text-xs">Deposit Amount</TableHead>
-                <TableHead className="font-semibold text-xs">Payee Bank Details</TableHead>
-                <TableHead className="font-semibold text-xs">Cancellation Reason & Proof</TableHead>
-                <TableHead className="font-semibold text-xs">Requested At</TableHead>
-                <TableHead className="font-semibold text-xs">Status</TableHead>
-                <TableHead className="text-right font-semibold text-xs">Actions</TableHead>
+              <TableRow className="border-b bg-muted/30 hover:bg-muted/30">
+                <TableHead className="w-[220px] py-3.5 pl-4 font-semibold text-muted-foreground text-xs uppercase tracking-wider">
+                  Attendee
+                </TableHead>
+                <TableHead className="w-[140px] py-3.5 font-semibold text-muted-foreground text-xs uppercase tracking-wider">
+                  Deposit Amount
+                </TableHead>
+                <TableHead className="w-[260px] py-3.5 font-semibold text-muted-foreground text-xs uppercase tracking-wider">
+                  Payee Bank Details
+                </TableHead>
+                <TableHead className="min-w-[220px] max-w-[280px] py-3.5 font-semibold text-muted-foreground text-xs uppercase tracking-wider">
+                  Cancellation Reason & Proof
+                </TableHead>
+                <TableHead className="w-[130px] py-3.5 font-semibold text-muted-foreground text-xs uppercase tracking-wider">
+                  Requested At
+                </TableHead>
+                <TableHead className="w-[160px] py-3.5 font-semibold text-muted-foreground text-xs uppercase tracking-wider">
+                  Status
+                </TableHead>
+                <TableHead className="w-[190px] py-3.5 pr-4 text-right font-semibold text-muted-foreground text-xs uppercase tracking-wider">
+                  Actions
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -628,21 +668,26 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
                   const isRejected = req.status === "rejected";
 
                   return (
-                    <TableRow key={reg.id} className="text-xs transition-colors hover:bg-muted/30">
+                    <TableRow
+                      key={reg.id}
+                      className="border-b border-border/60 text-xs transition-colors hover:bg-muted/30"
+                    >
                       {/* Attendee */}
-                      <TableCell className="align-top">
+                      <TableCell className="py-3.5 pl-4 align-top">
                         <button
                           type="button"
                           className="group flex w-full cursor-pointer items-center gap-2.5 text-left"
                           onClick={() => setInspectRegistration(reg)}
                           title="View application dossier"
                         >
-                          <Avatar className="size-8 border transition-transform group-hover:scale-105">
+                          <Avatar className="size-8.5 shrink-0 border border-border/70 shadow-2xs transition-transform group-hover:scale-105">
                             <AvatarImage src={reg.member_avatar} alt={reg.member_name} />
-                            <AvatarFallback className="text-[10px]">{getInitials(reg.member_name)}</AvatarFallback>
+                            <AvatarFallback className="bg-primary/10 font-semibold text-[10px] text-primary">
+                              {getInitials(reg.member_name)}
+                            </AvatarFallback>
                           </Avatar>
-                          <div className="truncate">
-                            <p className="truncate font-semibold text-foreground transition-colors group-hover:text-primary">
+                          <div className="min-w-0 flex-1 truncate">
+                            <p className="truncate font-semibold text-foreground text-xs transition-colors group-hover:text-primary">
                               {reg.member_name}
                             </p>
                             <p className="truncate text-[11px] text-muted-foreground">{reg.member_email}</p>
@@ -651,97 +696,132 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
                       </TableCell>
 
                       {/* Deposit Amount */}
-                      <TableCell className="align-top font-medium">
-                        <div className="space-y-0.5">
-                          <p className="font-bold text-foreground">{formatRupiah(req.refund_amount)}</p>
-                          <p className="text-[10px] text-muted-foreground">
-                            {reg.ticket_name || reg.ticket_tier || "Commitment Fee"}
+                      <TableCell className="py-3.5 align-top font-medium">
+                        <div className="space-y-1">
+                          <p className="font-bold text-foreground text-xs tabular-nums">
+                            {formatRupiah(req.refund_amount)}
                           </p>
+                          <Badge
+                            variant="secondary"
+                            className="px-1.5 py-0 font-normal text-[10px] text-muted-foreground"
+                          >
+                            {reg.ticket_name || reg.ticket_tier || "Commitment Fee"}
+                          </Badge>
                         </div>
                       </TableCell>
 
                       {/* Bank Details */}
-                      <TableCell className="align-top">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-1.5 font-medium text-foreground">
-                            <Building2 className="size-3.5 shrink-0 text-primary" />
-                            <span>{req.bank_name}</span>
+                      <TableCell className="py-3.5 align-top">
+                        <div className="space-y-1.5 rounded-lg border border-border/60 bg-muted/20 p-2.5 text-xs">
+                          <div className="flex items-center gap-1.5 font-semibold text-foreground">
+                            <Building2 className="size-3.5 shrink-0 text-muted-foreground" />
+                            <span className="truncate">{req.bank_name}</span>
                           </div>
-                          <div className="flex items-center gap-1 font-mono text-[11px] text-muted-foreground">
-                            <span>{req.bank_account_number}</span>
-                            <button
+                          <div className="flex items-center justify-between gap-1 rounded border border-border/40 bg-background/80 px-2 py-0.5">
+                            <span className="truncate font-mono font-medium text-[11px] tracking-tight text-foreground">
+                              {req.bank_account_number}
+                            </span>
+                            <Button
                               type="button"
-                              onClick={() => handleCopy(req.bank_account_number, "Account Number")}
-                              className="text-primary hover:opacity-75"
+                              variant="ghost"
+                              size="icon-xs"
+                              className="size-5 shrink-0 text-muted-foreground hover:text-foreground"
                               title="Copy account number"
+                              onClick={() => handleCopy(req.bank_account_number, "Account Number", `acc-${reg.id}`)}
                             >
-                              <Copy className="size-3" />
-                            </button>
+                              {copiedKey === `acc-${reg.id}` ? (
+                                <Check className="size-3 text-emerald-600" />
+                              ) : (
+                                <Copy className="size-3" />
+                              )}
+                            </Button>
                           </div>
-                          <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                            <span>a/n {req.bank_account_name}</span>
-                            <button
+                          <div className="flex items-center justify-between gap-1 px-0.5 text-[11px] text-muted-foreground">
+                            <span className="truncate">
+                              a/n <span className="font-medium text-foreground">{req.bank_account_name}</span>
+                            </span>
+                            <Button
                               type="button"
-                              onClick={() => handleCopy(req.bank_account_name, "Account Holder Name")}
-                              className="text-primary hover:opacity-75"
-                              title="Copy account name"
+                              variant="ghost"
+                              size="icon-xs"
+                              className="size-5 shrink-0 text-muted-foreground hover:text-foreground"
+                              title="Copy account holder name"
+                              onClick={() => handleCopy(req.bank_account_name, "Account Holder Name", `name-${reg.id}`)}
                             >
-                              <Copy className="size-3" />
-                            </button>
+                              {copiedKey === `name-${reg.id}` ? (
+                                <Check className="size-3 text-emerald-600" />
+                              ) : (
+                                <Copy className="size-3" />
+                              )}
+                            </Button>
                           </div>
                         </div>
                       </TableCell>
 
                       {/* Cancellation Reason & Proof */}
-                      <TableCell className="max-w-[220px] align-top">
-                        <div className="space-y-1">
+                      <TableCell className="max-w-[260px] py-3.5 align-top">
+                        <div className="space-y-1.5">
                           <p
                             className="line-clamp-2 text-foreground text-xs leading-relaxed"
                             title={req.cancellation_reason}
                           >
-                            {req.cancellation_reason}
+                            {req.cancellation_reason || (
+                              <span className="text-muted-foreground italic">No cancellation reason provided.</span>
+                            )}
                           </p>
                           {req.proof_media_url && (
                             <a
                               href={req.proof_media_url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 font-medium text-[11px] text-primary hover:underline"
+                              className="inline-flex items-center gap-1.5 rounded-md border border-border/80 bg-background px-2 py-0.5 font-medium text-[11px] text-foreground shadow-2xs transition-colors hover:bg-muted"
+                              title="Open attendee's submitted cancellation document"
                             >
-                              <FileText className="size-3" />
-                              <span>View Attendee Proof ↗</span>
+                              <Paperclip className="size-3 text-muted-foreground" />
+                              <span>Attendee Proof</span>
+                              <ExternalLink className="ml-0.5 size-2.5 opacity-60" />
                             </a>
                           )}
                         </div>
                       </TableCell>
 
                       {/* Requested At */}
-                      <TableCell className="align-top text-muted-foreground">
-                        <div className="space-y-0.5 text-[11px]">
-                          <p>{formatFirestoreDate(req.requested_at, "dd MMM yyyy", "—")}</p>
-                          <p className="text-[10px] opacity-75">{formatFirestoreDate(req.requested_at, "HH:mm", "")}</p>
+                      <TableCell className="py-3.5 align-top text-muted-foreground">
+                        <div className="space-y-0.5 text-xs">
+                          <p className="font-medium text-foreground">
+                            {formatFirestoreDate(req.requested_at, "dd MMM yyyy", "—")}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">
+                            {formatFirestoreDate(req.requested_at, "HH:mm", "")} WIB
+                          </p>
                         </div>
                       </TableCell>
 
                       {/* Status */}
-                      <TableCell className="align-top">
-                        <Badge variant="outline" className={cn("gap-1 font-semibold text-[10px]", meta.badgeClass)}>
-                          <meta.icon className="size-3" />
-                          {meta.label}
+                      <TableCell className="py-3.5 align-top">
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "gap-1.5 rounded-full px-2.5 py-0.5 font-medium text-[11px] shadow-2xs",
+                            meta.badgeClass,
+                          )}
+                        >
+                          <meta.icon className="size-3.5 shrink-0" />
+                          <span>{meta.label}</span>
                         </Badge>
                       </TableCell>
 
                       {/* Actions */}
-                      <TableCell className="text-right align-top">
+                      <TableCell className="py-3.5 pr-4 text-right align-top">
                         <div className="flex flex-wrap items-center justify-end gap-1.5">
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-7 gap-1 px-2 text-[11px] text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                            className="h-7.5 gap-1.5 px-2.5 text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                             onClick={() => setInspectRegistration(reg)}
-                            title="View application dossier"
+                            title="View attendee application dossier"
                           >
-                            <Eye className="size-3" />
+                            <Eye className="size-3.5" />
                             <span>Dossier</span>
                           </Button>
 
@@ -749,20 +829,20 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
                             <>
                               <Button
                                 size="sm"
-                                className="h-7 gap-1 bg-emerald-600 px-2 text-[11px] text-white hover:bg-emerald-700"
+                                className="h-7.5 gap-1.5 bg-emerald-600 px-2.5 text-white text-xs shadow-xs hover:bg-emerald-700"
                                 onClick={() => setApprovalModalReg(reg)}
                               >
-                                <CheckCircle2 className="size-3" />
-                                Approve
+                                <CheckCircle2 className="size-3.5" />
+                                <span>Approve</span>
                               </Button>
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="h-7 gap-1 border-destructive/40 px-2 text-[11px] text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                className="h-7.5 gap-1.5 border-destructive/40 px-2.5 text-destructive text-xs hover:bg-destructive/10 hover:text-destructive"
                                 onClick={() => setRejectModalReg(reg)}
                               >
-                                <XCircle className="size-3" />
-                                Reject
+                                <XCircle className="size-3.5" />
+                                <span>Reject</span>
                               </Button>
                             </>
                           )}
@@ -771,23 +851,25 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
                             <Button
                               variant="outline"
                               size="sm"
-                              className="h-7 gap-1 px-2 text-[11px] text-emerald-700 dark:text-emerald-300"
+                              className="h-7.5 gap-1.5 border-emerald-500/30 bg-emerald-500/5 px-2.5 text-emerald-700 text-xs hover:bg-emerald-500/10 dark:text-emerald-300"
                               onClick={() => setViewProofModalReg(reg)}
+                              title="View disbursement transfer receipt"
                             >
-                              <CheckCircle2 className="size-3" />
-                              View Proof
+                              <Receipt className="size-3.5" />
+                              <span>Transfer Receipt</span>
                             </Button>
                           )}
 
                           {isRejected && (
                             <Button
-                              variant="ghost"
+                              variant="outline"
                               size="sm"
-                              className="h-7 gap-1 px-2 text-[11px] text-destructive hover:bg-destructive/10"
+                              className="h-7.5 gap-1.5 border-destructive/30 bg-destructive/5 px-2.5 text-destructive text-xs hover:bg-destructive/10"
                               onClick={() => setViewReasonModalReg(reg)}
+                              title="View rejection reason"
                             >
-                              <AlertCircle className="size-3" />
-                              View Reason
+                              <AlertCircle className="size-3.5" />
+                              <span>Rejection Reason</span>
                             </Button>
                           )}
                         </div>
