@@ -84,10 +84,9 @@
   },
   "allowScripts": {
     "@firebase/util@1.15.3": true,
-    "esbuild@0.25.4": true,
-    "esbuild@0.28.1": true,
     "fsevents@2.3.3": true,
     "protobufjs@7.6.6": true,
-    "workerd@1.20260921.1": true
+    "esbuild@0.28.2": true,
+    "workerd@1.20261019.1": true
   }
 }

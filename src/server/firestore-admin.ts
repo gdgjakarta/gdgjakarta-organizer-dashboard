@@ -127,14 +127,43 @@ function encodeFirestoreFields(data: Record<string, unknown>): Record<string, un
 }
 
 /**
+ * Resolves Firebase Auth ID token from an explicit parameter or the HTTP-only session cookie.
+ */
+async function resolveAuthToken(explicitToken?: string): Promise<string | undefined> {
+  if (explicitToken?.trim()) {
+    return explicitToken.trim();
+  }
+  try {
+    const { cookies } = await import("next/headers");
+    const cookieStore = await cookies();
+    const cookieToken = cookieStore.get("auth_token")?.value;
+    if (cookieToken?.trim()) {
+      return cookieToken.trim();
+    }
+  } catch {
+    // cookies() unavailable in non-request contexts
+  }
+  return undefined;
+}
+
+/**
  * Fetches a single document via Firestore REST API.
  */
-async function getFirestoreDoc(collectionName: string, docId: string): Promise<Record<string, unknown> | null> {
+export async function getFirestoreDoc(
+  collectionName: string,
+  docId: string,
+  token?: string,
+): Promise<Record<string, unknown> | null> {
   try {
     const url = `${FIRESTORE_BASE_URL}/${collectionName}/${encodeURIComponent(docId)}?key=${getFirebaseApiKey()}`;
+    const headers: Record<string, string> = { Accept: "application/json" };
+    const authToken = await resolveAuthToken(token);
+    if (authToken) {
+      headers.Authorization = `Bearer ${authToken}`;
+    }
     const res = await fetch(url, {
       method: "GET",
-      headers: { Accept: "application/json" },
+      headers,
       cache: "no-store",
       signal: typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(6_000) : undefined,
     });
@@ -155,11 +184,12 @@ async function getFirestoreDoc(collectionName: string, docId: string): Promise<R
 /**
  * Patches a document via Firestore REST API with merge support.
  */
-async function patchFirestoreDoc(
+export async function patchFirestoreDoc(
   collectionName: string,
   docId: string,
   data: Record<string, unknown>,
   merge = true,
+  token?: string,
 ): Promise<boolean> {
   try {
     const searchParams = new URLSearchParams();
@@ -171,12 +201,17 @@ async function patchFirestoreDoc(
       }
     }
     const url = `${FIRESTORE_BASE_URL}/${collectionName}/${encodeURIComponent(docId)}?${searchParams.toString()}`;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    };
+    const authToken = await resolveAuthToken(token);
+    if (authToken) {
+      headers.Authorization = `Bearer ${authToken}`;
+    }
     const res = await fetch(url, {
       method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
+      headers,
       body: JSON.stringify({ fields: encodeFirestoreFields(data) }),
     });
     if (!res.ok) {
@@ -197,9 +232,18 @@ async function patchFirestoreDoc(
 async function queryRegistrationDoc(
   fieldPath: string,
   value: string,
+  token?: string,
 ): Promise<{ id: string; data: FirestoreRegistration } | null> {
   try {
     const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents:runQuery?key=${getFirebaseApiKey()}`;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    };
+    const authToken = await resolveAuthToken(token);
+    if (authToken) {
+      headers.Authorization = `Bearer ${authToken}`;
+    }
     const body = {
       structuredQuery: {
         from: [{ collectionId: "event_registrations" }],
@@ -215,10 +259,7 @@ async function queryRegistrationDoc(
     };
     const res = await fetch(url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
+      headers,
       body: JSON.stringify(body),
     });
     if (!res.ok) return null;
@@ -262,14 +303,16 @@ export interface AttendeeLookupResult {
 }
 
 export interface UpdateRegistrationFromPaymentInput {
-  invoiceNumber: string;
+  invoiceNumber?: string;
+  registrationId?: string;
   status?: RegistrationStatus;
-  bevyAttendeeId?: number | null;
+  bevyAttendeeId?: number | string | null;
   attendeeCode?: string | null;
   amount?: number;
   paymentChannel?: string;
   paidAt?: string;
   errorReason?: string;
+  isTeamAccess?: boolean;
 }
 
 /**
@@ -294,32 +337,33 @@ function splitName(fullName: string): { firstName: string; lastName: string } {
  */
 export async function findRegistrationDoc(
   invoiceNumber: string,
+  token?: string,
 ): Promise<{ id: string; data: FirestoreRegistration } | null> {
   const strippedId = invoiceNumber.replace(/^INV-/, "");
   try {
-    const data = await getFirestoreDoc("event_registrations", strippedId);
+    const data = await getFirestoreDoc("event_registrations", strippedId, token);
     if (data) return { id: strippedId, data: { id: strippedId, ...data } as unknown as FirestoreRegistration };
   } catch {
     // Ignore and proceed to alternate lookup
   }
 
   try {
-    const data = await getFirestoreDoc("event_registrations", invoiceNumber);
+    const data = await getFirestoreDoc("event_registrations", invoiceNumber, token);
     if (data) return { id: invoiceNumber, data: { id: invoiceNumber, ...data } as unknown as FirestoreRegistration };
   } catch {
     // Ignore and proceed to alternate lookup
   }
 
-  const matchPayment = await queryRegistrationDoc("payment_invoice_number", invoiceNumber);
+  const matchPayment = await queryRegistrationDoc("payment_invoice_number", invoiceNumber, token);
   if (matchPayment) return matchPayment;
 
-  const matchAnswers = await queryRegistrationDoc("answers.invoice_number", invoiceNumber);
+  const matchAnswers = await queryRegistrationDoc("answers.invoice_number", invoiceNumber, token);
   if (matchAnswers) return matchAnswers;
 
-  const matchAnswersPayment = await queryRegistrationDoc("answers.payment_invoice_number", invoiceNumber);
+  const matchAnswersPayment = await queryRegistrationDoc("answers.payment_invoice_number", invoiceNumber, token);
   if (matchAnswersPayment) return matchAnswersPayment;
 
-  const matchTop = await queryRegistrationDoc("invoice_number", invoiceNumber);
+  const matchTop = await queryRegistrationDoc("invoice_number", invoiceNumber, token);
   if (matchTop) return matchTop;
 
   return null;
@@ -329,13 +373,16 @@ export async function findRegistrationDoc(
  * Looks up an event registration in Firestore using the unique invoiceNumber.
  * Resolves event metadata and constructs the ApprovedAttendeeWebhookPayload.
  */
-export async function getAttendeeByInvoiceNumber(rawInvoiceNumber: string): Promise<AttendeeLookupResult> {
+export async function getAttendeeByInvoiceNumber(
+  rawInvoiceNumber: string,
+  token?: string,
+): Promise<AttendeeLookupResult> {
   const invoiceNumber = (rawInvoiceNumber || "").trim();
   if (!invoiceNumber) {
     return { success: false, error: "invoiceNumber parameter is required." };
   }
 
-  const targetDoc = await findRegistrationDoc(invoiceNumber);
+  const targetDoc = await findRegistrationDoc(invoiceNumber, token);
   if (!targetDoc) {
     return { success: false, error: `Registration with invoice number "${invoiceNumber}" was not found.` };
   }
@@ -389,63 +436,108 @@ export async function getAttendeeByInvoiceNumber(rawInvoiceNumber: string): Prom
  * Reconciles payment notification: updates registration status, sets attendee code & Bevy ID,
  * marks payment as PAID, and increments event counters.
  */
-export async function updateRegistrationFromPayment(input: UpdateRegistrationFromPaymentInput) {
+export async function updateRegistrationFromPayment(input: UpdateRegistrationFromPaymentInput, token?: string) {
   const invoiceNumber = (input.invoiceNumber || "").trim();
-  if (!invoiceNumber) {
-    return { success: false, error: "invoiceNumber is required." };
+  const registrationId = (input.registrationId || "").trim();
+  if (!invoiceNumber && !registrationId) {
+    return { success: false, error: "invoiceNumber or registrationId is required." };
   }
 
-  const targetDoc = await findRegistrationDoc(invoiceNumber);
+  let targetDoc: { id: string; data: FirestoreRegistration } | null = null;
+  if (registrationId) {
+    const directDoc = await getFirestoreDoc("event_registrations", registrationId, token);
+    if (directDoc) {
+      targetDoc = {
+        id: registrationId,
+        data: { id: registrationId, ...directDoc } as unknown as FirestoreRegistration,
+      };
+    }
+  }
+
+  if (!targetDoc && invoiceNumber) {
+    targetDoc = await findRegistrationDoc(invoiceNumber, token);
+  }
+
   if (!targetDoc) {
-    return { success: false, error: `Registration with invoice number "${invoiceNumber}" was not found.` };
+    return {
+      success: false,
+      error: `Registration with invoice number "${invoiceNumber || registrationId}" was not found.`,
+    };
   }
 
   const regData = targetDoc.data;
   const eventIdStr = String(regData.event_id);
 
+  const currentStatus = (regData.status ? String(regData.status) : "").toLowerCase().trim();
+  const terminalStatuses = ["cancelled", "canceled", "rejected", "refunded"];
+  if (terminalStatuses.includes(currentStatus)) {
+    console.warn(
+      `[updateRegistrationFromPayment] Refusing to overwrite terminal status "${regData.status}" on registration ${targetDoc.id}`,
+    );
+    return {
+      success: false,
+      error: `Registration is in terminal status "${regData.status}". Cannot overwrite via payment status check.`,
+    };
+  }
+
   const resolvedStatus: RegistrationStatus =
     input.status ?? (input.errorReason ? ("failed" as const) : ("paid_and_registered" as const));
-
   const now = new Date().toISOString();
   const existingLogs = Array.isArray(regData.status_logs) ? regData.status_logs : [];
 
-  const logEntry: RegistrationStatusLog = {
-    id: `log_${Date.now()}_n8n`,
-    status: resolvedStatus,
-    previous_status: regData.status,
-    changed_at: now,
-    changed_by_id: "doku_automation",
-    changed_by_name: "DOKU & Bevy Automation (n8n)",
-    notes: input.errorReason
-      ? `Payment notification: ${input.errorReason}`
-      : `Payment confirmed (${invoiceNumber}). Status: ${resolvedStatus}. Synced to Bevy.`,
-  };
+  const statusChanged = regData.status !== resolvedStatus;
+  const hasPaidLog = existingLogs.some((l) => l.status === "paid_and_registered");
+  const shouldAddLog = statusChanged || (resolvedStatus === "paid_and_registered" && !hasPaidLog);
+
+  let statusLogs = existingLogs;
+  let logEntry: RegistrationStatusLog | undefined;
+
+  if (shouldAddLog) {
+    logEntry = {
+      id: `log_${Date.now()}_doku`,
+      status: resolvedStatus,
+      previous_status: regData.status,
+      changed_at: now,
+      changed_by_id: input.isTeamAccess ? "organizer_doku_check" : "doku_automation",
+      changed_by_name: "DOKU Payment Gateway",
+      notes: input.errorReason
+        ? `Payment notification: ${input.errorReason}`
+        : `Payment confirmed via ${input.paymentChannel || "QRIS"} (${invoiceNumber || targetDoc.id}). Status: ${resolvedStatus}.`,
+    };
+    statusLogs = [...existingLogs, logEntry];
+  }
+
+  const isTeam = input.isTeamAccess ?? false;
 
   const updatePayload = sanitizePayload<Record<string, unknown>>({
     status: resolvedStatus,
     payment_status: input.errorReason ? "failed" : "paid",
-    payment_invoice_number: invoiceNumber,
+    ...(invoiceNumber ? { payment_invoice_number: invoiceNumber } : {}),
     ...(input.amount !== undefined ? { payment_amount: input.amount } : {}),
     ...(input.paymentChannel ? { payment_channel: input.paymentChannel } : {}),
     ...(input.paidAt ? { paid_at: input.paidAt } : { paid_at: now }),
-    reviewed_at: now,
-    reviewed_by_name: "DOKU Payment Automation (n8n)",
-    ...(input.bevyAttendeeId ? { bevy_attendee_id: input.bevyAttendeeId } : {}),
-    ...(input.attendeeCode ? { attendee_code: input.attendeeCode } : {}),
+    ...(isTeam
+      ? {
+          reviewed_at: now,
+          reviewed_by_name: "DOKU Payment Gateway",
+          ...(input.bevyAttendeeId ? { bevy_attendee_id: input.bevyAttendeeId } : {}),
+          ...(input.attendeeCode ? { attendee_code: input.attendeeCode } : {}),
+        }
+      : {}),
     answers: {
       ...(regData.answers ?? {}),
-      invoice_number: invoiceNumber,
+      ...(invoiceNumber ? { invoice_number: invoiceNumber } : {}),
       payment_status: input.errorReason ? "FAILED" : "PAID",
       ...(input.paymentChannel ? { payment_channel: input.paymentChannel } : {}),
       ...(input.paidAt ? { paid_at: input.paidAt } : { paid_at: now }),
       ...(input.amount !== undefined ? { payment_amount: input.amount } : {}),
       ...(input.errorReason ? { error_reason: input.errorReason } : {}),
     },
-    status_logs: [...existingLogs, logEntry],
+    status_logs: statusLogs,
     updated_at: now,
   });
 
-  await patchFirestoreDoc("event_registrations", targetDoc.id, updatePayload, true);
+  await patchFirestoreDoc("event_registrations", targetDoc.id, updatePayload, true, token);
 
   const isNowApproved =
     resolvedStatus === "approved" || resolvedStatus === "paid_and_registered" || resolvedStatus === "registered";
@@ -485,7 +577,7 @@ export async function updateRegistrationFromPayment(input: UpdateRegistrationFro
             updated_at: now,
           };
 
-          await patchFirestoreDoc("event_vouchers", voucherDocId, friendVoucherPayload, true);
+          await patchFirestoreDoc("event_vouchers", voucherDocId, friendVoucherPayload, true, token);
         }
       }
 
@@ -497,6 +589,7 @@ export async function updateRegistrationFromPayment(input: UpdateRegistrationFro
           updated_at: now,
         },
         true,
+        token,
       );
     } catch (countErr) {
       console.warn("[updateRegistrationFromPayment] Failed to update event / bundle vouchers:", countErr);
@@ -508,6 +601,8 @@ export async function updateRegistrationFromPayment(input: UpdateRegistrationFro
     registrationId: targetDoc.id,
     status: resolvedStatus,
     message: `Registration successfully updated to ${resolvedStatus}`,
+    statusLogs,
+    logEntry,
   };
 }
 
@@ -599,5 +694,71 @@ export async function saveMaintenanceConfigServer(config: Partial<MaintenanceCon
       "[Firestore Server] saveMaintenanceConfigServer warning (write should be performed via client SDK with auth session):",
       err,
     );
+  }
+}
+
+/**
+ * Updates refund request status on the server using Firestore REST API.
+ * Ensures status is updated to 'canceled' and payment_status to 'refunded' upon refund completion.
+ */
+export async function updateRefundStatusServer(
+  registrationId: string,
+  status: RefundStatus,
+  details?: Partial<RefundRequest>,
+  reviewer?: { id: string; name: string; email?: string },
+  token?: string,
+): Promise<boolean> {
+  try {
+    const rawDoc = await getFirestoreDoc("event_registrations", registrationId, token);
+    if (!rawDoc) {
+      console.warn(`[updateRefundStatusServer] Registration ${registrationId} not found`);
+      return false;
+    }
+    const existing = rawDoc as unknown as FirestoreRegistration;
+    const existingRequest = existing.refund_request;
+    if (!existingRequest) {
+      console.warn(`[updateRefundStatusServer] Registration ${registrationId} has no active refund request`);
+      return false;
+    }
+
+    const now = new Date().toISOString();
+    const mergedRequest: RefundRequest = {
+      ...existingRequest,
+      ...(details ?? {}),
+      status,
+      updated_at: now,
+    };
+
+    const updatePayload: Record<string, unknown> = {
+      refund_request: mergedRequest,
+      updated_at: now,
+    };
+
+    if (status === "refund_completed") {
+      updatePayload.payment_status = "refunded";
+      updatePayload.status = "canceled";
+    }
+
+    const existingLogs = Array.isArray(existing.status_logs) ? existing.status_logs : [];
+    const logEntry: RegistrationStatusLog = {
+      id: `log_${Date.now()}_refund_${status}`,
+      status: status === "refund_completed" ? "canceled" : existing.status,
+      changed_at: now,
+      changed_by_id: reviewer?.id ?? details?.completed_by_id ?? details?.rejected_by_id ?? "organizer",
+      changed_by_name: reviewer?.name ?? details?.completed_by_name ?? details?.rejected_by_name ?? "Organizer",
+      changed_by_email: reviewer?.email ?? details?.completed_by_email ?? details?.rejected_by_email,
+      notes:
+        status === "refund_completed"
+          ? `Refund completed. Proof uploaded by ${reviewer?.name ?? "organizer"}.`
+          : status === "rejected"
+            ? `Refund rejected: ${details?.rejection_reason ?? "No reason specified"}`
+            : "Refund request resubmitted.",
+    };
+    updatePayload.status_logs = [...existingLogs, logEntry];
+
+    return await patchFirestoreDoc("event_registrations", registrationId, sanitizePayload(updatePayload), true, token);
+  } catch (err) {
+    console.error(`[updateRefundStatusServer] Error updating refund status for ${registrationId}:`, err);
+    return false;
   }
 }

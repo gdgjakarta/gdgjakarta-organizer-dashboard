@@ -84,6 +84,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
       event.paymentEmailTemplate ??
       (event.tickets?.some((t) => t.type === "commitment_fee") ? "Commitment Fee" : "Ticketing"),
   );
+  const [memberPaymentCheckLimit, setMemberPaymentCheckLimit] = useState<number>(event.member_payment_check_limit ?? 3);
 
   // Payment Gateway Fee Configuration States
   const [paymentFeeEnabled, setPaymentFeeEnabled] = useState<boolean>(event.payment_fee_enabled ?? true);
@@ -119,6 +120,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
       merchandiseDeliveryFee,
       headerEmailUrl,
       paymentDeadlinesInMinutes,
+      memberPaymentCheckLimit,
       emailTemplate,
       paymentFeeEnabled,
       paymentFeeBearer,
@@ -136,6 +138,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
     merchandiseDeliveryFee,
     headerEmailUrl,
     paymentDeadlinesInMinutes,
+    memberPaymentCheckLimit,
     emailTemplate,
     paymentFeeEnabled,
     paymentFeeBearer,
@@ -218,6 +221,10 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
           currentEvent.paymentDeadlineMinutes ??
           currentEvent.payment_deadline_minutes ??
           1440;
+        const loadedMemberCheckLimit =
+          typeof docData?.member_payment_check_limit === "number"
+            ? docData.member_payment_check_limit
+            : (currentEvent.member_payment_check_limit ?? 3);
         const loadedEmailTemplate =
           docData?.payment_email_template ??
           docData?.paymentEmailTemplate ??
@@ -261,6 +268,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
           setMerchandiseDeliveryFee(loadedDeliveryFee);
           setHeaderEmailUrl(loadedHeaderEmail);
           setPaymentDeadlinesInMinutes(loadedPaymentDeadlines);
+          setMemberPaymentCheckLimit(loadedMemberCheckLimit);
           setEmailTemplate(loadedEmailTemplate);
           setPaymentFeeEnabled(loadedFeeEnabled);
           setPaymentFeeBearer(loadedFeeBearer);
@@ -278,6 +286,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
             merchandiseDeliveryFee: loadedDeliveryFee,
             headerEmailUrl: loadedHeaderEmail,
             paymentDeadlinesInMinutes: loadedPaymentDeadlines,
+            memberPaymentCheckLimit: loadedMemberCheckLimit,
             emailTemplate: loadedEmailTemplate,
             paymentFeeEnabled: loadedFeeEnabled,
             paymentFeeBearer: loadedFeeBearer,
@@ -302,6 +311,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
           currentEvent.paymentDeadlineMinutes ??
           currentEvent.payment_deadline_minutes ??
           1440;
+        const fallbackMemberCheckLimit = currentEvent.member_payment_check_limit ?? 3;
         const fallbackEmailTemplate =
           currentEvent.payment_email_template ??
           currentEvent.paymentEmailTemplate ??
@@ -323,6 +333,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
             merchandiseDeliveryFee: fallbackDeliveryFee,
             headerEmailUrl: fallbackHeaderEmail,
             paymentDeadlinesInMinutes: fallbackPaymentDeadlines,
+            memberPaymentCheckLimit: fallbackMemberCheckLimit,
             emailTemplate: fallbackEmailTemplate,
             paymentFeeEnabled: fallbackFeeEnabled,
             paymentFeeBearer: fallbackFeeBearer,
@@ -396,6 +407,9 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
           if (typeof incomingDeadline === "number") {
             setPaymentDeadlinesInMinutes(incomingDeadline);
           }
+          if (typeof docData.member_payment_check_limit === "number") {
+            setMemberPaymentCheckLimit(docData.member_payment_check_limit);
+          }
           const incomingEmailTemplate = docData.payment_email_template ?? docData.paymentEmailTemplate;
           if (incomingEmailTemplate) {
             setEmailTemplate(incomingEmailTemplate);
@@ -445,6 +459,9 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
               }
               if (typeof incomingDeadline === "number") {
                 parsed.paymentDeadlinesInMinutes = incomingDeadline;
+              }
+              if (typeof docData.member_payment_check_limit === "number") {
+                parsed.memberPaymentCheckLimit = docData.member_payment_check_limit;
               }
               if (incomingEmailTemplate) {
                 parsed.emailTemplate = incomingEmailTemplate;
@@ -631,6 +648,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
             paymentDeadlinesInMinutes,
             paymentDeadlineMinutes: paymentDeadlinesInMinutes,
             payment_deadline_minutes: paymentDeadlinesInMinutes,
+            member_payment_check_limit: memberPaymentCheckLimit,
             payment_email_template: emailTemplate,
             paymentEmailTemplate: emailTemplate,
             payment_fee_enabled: paymentFeeEnabled,
@@ -665,6 +683,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
             merchandiseDeliveryFee,
             headerEmailUrl,
             paymentDeadlinesInMinutes,
+            memberPaymentCheckLimit,
             emailTemplate,
             paymentFeeEnabled,
             paymentFeeBearer,
@@ -698,6 +717,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
         merchandiseDeliveryFee?: number;
         headerEmailUrl?: string;
         paymentDeadlinesInMinutes?: number;
+        memberPaymentCheckLimit?: number;
         emailTemplate?: string;
         paymentFeeEnabled?: boolean;
         paymentFeeBearer?: PaymentFeeBearer;
@@ -721,6 +741,11 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
           event.paymentDeadlineMinutes ??
           event.payment_deadline_minutes ??
           1440,
+      );
+      setMemberPaymentCheckLimit(
+        typeof parsed.memberPaymentCheckLimit === "number"
+          ? parsed.memberPaymentCheckLimit
+          : (event.member_payment_check_limit ?? 3),
       );
       setEmailTemplate(
         parsed.emailTemplate ??
@@ -755,6 +780,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
       setPaymentDeadlinesInMinutes(
         event.paymentDeadlinesInMinutes ?? event.paymentDeadlineMinutes ?? event.payment_deadline_minutes ?? 1440,
       );
+      setMemberPaymentCheckLimit(event.member_payment_check_limit ?? 3);
       setEmailTemplate(
         event.payment_email_template ??
           event.paymentEmailTemplate ??
@@ -816,7 +842,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
             <div className="flex flex-col justify-between rounded-lg border bg-muted/20 p-3.5 transition-colors hover:border-primary/40 hover:bg-muted/40">
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-1.5 font-medium text-xs text-foreground">
+                  <span className="flex items-center gap-1.5 font-medium text-foreground text-xs">
                     <QrCode className="size-4 text-primary" />
                     QRIS Simulator
                   </span>
@@ -846,7 +872,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
             <div className="flex flex-col justify-between rounded-lg border bg-muted/20 p-3.5 transition-colors hover:border-amber-500/40 hover:bg-muted/40">
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-1.5 font-medium text-xs text-foreground">
+                  <span className="flex items-center gap-1.5 font-medium text-foreground text-xs">
                     <CreditCard className="size-4 text-amber-500" />
                     Sandbox Dashboard
                   </span>
@@ -875,7 +901,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
             <div className="flex flex-col justify-between rounded-lg border bg-muted/20 p-3.5 transition-colors hover:border-emerald-500/40 hover:bg-muted/40">
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <span className="flex items-center gap-1.5 font-medium text-xs text-foreground">
+                  <span className="flex items-center gap-1.5 font-medium text-foreground text-xs">
                     <ShieldCheck className="size-4 text-emerald-600 dark:text-emerald-400" />
                     Production Dashboard
                   </span>
@@ -1007,7 +1033,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
             <div className="flex items-center gap-2">
               <Truck className="size-4 text-primary" />
               <div>
-                <h4 className="font-semibold text-xs text-foreground">Merchandise Delivery Pricing & Configuration</h4>
+                <h4 className="font-semibold text-foreground text-xs">Merchandise Delivery Pricing & Configuration</h4>
                 <p className="text-[11px] text-muted-foreground">
                   Configure the handling and courier delivery fee charged to attendees who claim uncollected merchandise
                   after missing event check-in.
@@ -1112,7 +1138,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
             <div className="flex flex-wrap items-center gap-2">
               <Badge
                 variant="outline"
-                className="border-primary/30 bg-primary/10 text-[10px] font-semibold text-primary"
+                className="border-primary/30 bg-primary/10 font-semibold text-[10px] text-primary"
               >
                 Nov 1, 2026 Ready
               </Badge>
@@ -1151,7 +1177,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
           {/* Master Enable Toggle */}
           <div className="flex items-center justify-between rounded-lg border p-3.5">
             <div className="space-y-0.5">
-              <Label htmlFor="toggle-payment-fee" className="cursor-pointer font-semibold text-xs text-foreground">
+              <Label htmlFor="toggle-payment-fee" className="cursor-pointer font-semibold text-foreground text-xs">
                 Enable Payment Gateway Fee
               </Label>
               <p className="text-[11px] text-muted-foreground">
@@ -1254,7 +1280,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
                         Recommended
                       </Badge>
                     </div>
-                    <p className="font-normal text-muted-foreground text-[11px] leading-relaxed">
+                    <p className="font-normal text-[11px] text-muted-foreground leading-relaxed">
                       Fixed price (Rp {paymentFeeTierBelowAmount.toLocaleString("id-ID")}) for amounts ≤ Rp{" "}
                       {paymentFeeThreshold.toLocaleString("id-ID")}, and {paymentFeeTierAbovePercent}% MDR above
                       threshold.
@@ -1280,7 +1306,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
                         Flat Rate
                       </Badge>
                     </div>
-                    <p className="font-normal text-muted-foreground text-[11px] leading-relaxed">
+                    <p className="font-normal text-[11px] text-muted-foreground leading-relaxed">
                       Charges a fixed nominal fee (Rp {paymentFeeFixedAmount.toLocaleString("id-ID")}) per transaction
                       regardless of order total.
                     </p>
@@ -1305,7 +1331,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
                         Standard MDR
                       </Badge>
                     </div>
-                    <p className="font-normal text-muted-foreground text-[11px] leading-relaxed">
+                    <p className="font-normal text-[11px] text-muted-foreground leading-relaxed">
                       Charges a flat percentage ({paymentFeePercentage}%) of the total order subtotal.
                     </p>
                   </Label>
@@ -1329,7 +1355,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
                         Hybrid
                       </Badge>
                     </div>
-                    <p className="font-normal text-muted-foreground text-[11px] leading-relaxed">
+                    <p className="font-normal text-[11px] text-muted-foreground leading-relaxed">
                       Charges base fixed price (Rp {paymentFeeFixedAmount.toLocaleString("id-ID")}) plus a percentage
                       rate ({paymentFeePercentage}%).
                     </p>
@@ -1599,7 +1625,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Calculator className="size-4 text-primary" />
-                    <span className="font-semibold text-xs text-foreground">Interactive Fee Simulator</span>
+                    <span className="font-semibold text-foreground text-xs">Interactive Fee Simulator</span>
                   </div>
                   <Badge variant="outline" className="font-mono text-[10px] text-muted-foreground">
                     Sandbox Tester
@@ -1651,14 +1677,14 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
 
                   <div className="rounded-md border bg-background p-2.5">
                     <span className="block text-[10px] text-muted-foreground">Attendee Invoiced Total</span>
-                    <span className="font-mono font-bold text-blue-600 text-sm dark:text-blue-400">
+                    <span className="font-bold font-mono text-blue-600 text-sm dark:text-blue-400">
                       Rp {simulatedCalculation.totalWithFee.toLocaleString("id-ID")}
                     </span>
                   </div>
 
                   <div className="rounded-md border bg-background p-2.5">
                     <span className="block text-[10px] text-muted-foreground">Organizer Net Settlement</span>
-                    <span className="font-mono font-bold text-emerald-600 text-sm dark:text-emerald-400">
+                    <span className="font-bold font-mono text-emerald-600 text-sm dark:text-emerald-400">
                       Rp{" "}
                       {paymentFeeBearer === "attendee"
                         ? previewTestAmount.toLocaleString("id-ID")
@@ -1741,7 +1767,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
 
               {headerEmailUrl ? (
                 <div className="mt-2 overflow-hidden rounded-md border bg-muted/20 p-2">
-                  <span className="text-[10px] font-medium text-muted-foreground">Banner Preview:</span>
+                  <span className="font-medium text-[10px] text-muted-foreground">Banner Preview:</span>
                   <div className="relative mt-1 h-24 w-full overflow-hidden rounded bg-background">
                     <Image src={headerEmailUrl} alt="Email Header Preview" fill unoptimized className="object-cover" />
                   </div>
@@ -1816,12 +1842,93 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
             </Field>
           </div>
 
+          {/* ── Member Self-Service Payment Status Check Quota ── */}
+          <div className="space-y-4 border-t pt-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <RotateCcw className="size-4 text-primary" />
+                  <h4 className="font-semibold text-foreground text-xs">Member Payment Status Check Quota</h4>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Controls the maximum number of times an attendee can manually check payment status from their
+                  dashboard (e.g. My Events) to verify pending DOKU transactions.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setMemberPaymentCheckLimit(3)}
+                className="h-6 gap-1 px-2 text-[10px] text-muted-foreground hover:text-foreground"
+              >
+                <RotateCcw className="size-2.5" />
+                Reset to Default (3)
+              </Button>
+            </div>
+
+            <div className="max-w-xs space-y-2">
+              <Field>
+                <FieldLabel htmlFor="member-check-limit" className="font-semibold text-xs">
+                  Max Status Check Attempts per Registration
+                </FieldLabel>
+                <div className="relative">
+                  <Input
+                    id="member-check-limit"
+                    type="number"
+                    min={1}
+                    max={20}
+                    step={1}
+                    value={memberPaymentCheckLimit}
+                    onChange={(e) => {
+                      const val = Number.parseInt(e.target.value, 10);
+                      setMemberPaymentCheckLimit(Number.isNaN(val) ? 3 : Math.max(1, Math.min(val, 20)));
+                    }}
+                    className="font-semibold text-xs"
+                    placeholder="3"
+                  />
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                  <span className="mr-1 text-[10px] text-muted-foreground">Presets:</span>
+                  {[
+                    { label: "1 time", value: 1 },
+                    { label: "3 times (Default)", value: 3 },
+                    { label: "5 times", value: 5 },
+                    { label: "10 times", value: 10 },
+                  ].map((preset) => (
+                    <Button
+                      key={preset.value}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setMemberPaymentCheckLimit(preset.value)}
+                      className={cn(
+                        "h-6 px-2 text-[10px]",
+                        memberPaymentCheckLimit === preset.value &&
+                          "border-primary bg-primary/10 font-semibold text-primary",
+                      )}
+                    >
+                      {preset.label}
+                    </Button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Current quota:{" "}
+                  <strong className="text-foreground">
+                    {memberPaymentCheckLimit} check attempt{memberPaymentCheckLimit === 1 ? "" : "s"}
+                  </strong>{" "}
+                  per attendee registration.
+                </p>
+              </Field>
+            </div>
+          </div>
+
           {/* ── Payment Request Email Template Configuration ── */}
           <div className="space-y-4 border-t pt-4">
             <div className="flex items-center gap-2">
               <Mail className="size-4 text-primary" />
               <div>
-                <h4 className="font-semibold text-xs text-foreground">Payment Request Email Template</h4>
+                <h4 className="font-semibold text-foreground text-xs">Payment Request Email Template</h4>
                 <p className="text-[11px] text-muted-foreground">
                   Configure which automated email template n8n uses when generating a DOKU payment link (passes key{" "}
                   <code className="rounded bg-muted px-1 text-[11px]">payment.emailTemplate</code> to the checkout
@@ -1987,7 +2094,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
             </div>
 
             {paymentEnvironment === "production" ? (
-              <div className="flex flex-col gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 text-[11px] text-emerald-700 dark:text-emerald-400 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 text-[11px] text-emerald-700 sm:flex-row sm:items-center sm:justify-between dark:text-emerald-400">
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="size-4 shrink-0" />
                   <span>
@@ -1998,7 +2105,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
                   size="sm"
                   variant="outline"
                   asChild
-                  className="h-7 shrink-0 gap-1.5 border-emerald-500/30 text-xs text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-400"
+                  className="h-7 shrink-0 gap-1.5 border-emerald-500/30 text-emerald-700 text-xs hover:bg-emerald-500/10 dark:text-emerald-400"
                 >
                   <a href="https://dashboard.doku.com/bo/dashboard" target="_blank" rel="noopener noreferrer">
                     DOKU Production Dashboard
@@ -2007,7 +2114,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
                 </Button>
               </div>
             ) : (
-              <div className="flex flex-col gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-[11px] text-amber-700 dark:text-amber-400 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-[11px] text-amber-700 sm:flex-row sm:items-center sm:justify-between dark:text-amber-400">
                 <div className="flex items-center gap-2">
                   <AlertTriangle className="size-4 shrink-0" />
                   <span>
@@ -2018,7 +2125,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
                   size="sm"
                   variant="outline"
                   asChild
-                  className="h-7 shrink-0 gap-1.5 border-amber-500/30 text-xs text-amber-700 hover:bg-amber-500/10 dark:text-amber-400"
+                  className="h-7 shrink-0 gap-1.5 border-amber-500/30 text-amber-700 text-xs hover:bg-amber-500/10 dark:text-amber-400"
                 >
                   <a href="https://sandbox.doku.com/bo/dashboard" target="_blank" rel="noopener noreferrer">
                     DOKU Sandbox Dashboard
@@ -2086,7 +2193,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
         saveLabel="Save Payment Settings"
         savingLabel="Saving Settings..."
         savedLabel="Settings Saved"
-        statusInfo={`Env: ${paymentEnvironment === "production" ? "Production" : "Sandbox"} | Fee: ${paymentFeeEnabled ? `${paymentFeeType} (${paymentFeeBearer})` : "Off"} | Template: ${emailTemplate} | Deadline: ${paymentDeadlinesInMinutes}m`}
+        statusInfo={`Env: ${paymentEnvironment === "production" ? "Production" : "Sandbox"} | Fee: ${paymentFeeEnabled ? `${paymentFeeType} (${paymentFeeBearer})` : "Off"} | Check Quota: ${memberPaymentCheckLimit}x | Template: ${emailTemplate} | Deadline: ${paymentDeadlinesInMinutes}m`}
         helperText="Payment environment, gateway fee rules, email template, banner, deadline, and delivery fees take effect immediately for new payment links."
       />
     </div>

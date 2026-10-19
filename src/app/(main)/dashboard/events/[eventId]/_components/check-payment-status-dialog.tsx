@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 
 import {
   AlertTriangle,
@@ -22,7 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import type { DokuStatusCheckResult } from "@/lib/events/doku-payment";
-import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
+import type { FirestoreEvent, FirestoreRegistration, RegistrationStatusLog } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 import { checkDokuPaymentStatusAction } from "@/server/payment-actions";
 
@@ -60,6 +60,10 @@ export function CheckPaymentStatusDialog({
   const isProduction =
     event?.payment_environment === "production" || (event?.payment_environment === undefined && !event?.is_test);
 
+  const runCheckRef = useRef<(targetInvoice?: string) => void>(() => {
+    /* no-op initial ref */
+  });
+
   const runCheck = useCallback(
     (targetInvoice?: string) => {
       const invoiceToCheck = (targetInvoice ?? effectiveInvoice).trim();
@@ -71,11 +75,14 @@ export function CheckPaymentStatusDialog({
       startTransition(async () => {
         setResult(null);
         try {
+          const { auth } = await import("@/config/firebase");
+          const idToken = await auth?.currentUser?.getIdToken();
           const res = await checkDokuPaymentStatusAction({
             invoiceNumber: invoiceToCheck,
             eventId: event?.id ? String(event.id) : registration?.event_id,
             registrationId: registration?.id,
             isProduction,
+            idToken: idToken || undefined,
           });
 
           setResult(res);
@@ -83,12 +90,26 @@ export function CheckPaymentStatusDialog({
           if (res.isPaid) {
             toast.success("Payment confirmed! Attendee status updated to Paid & Registered.");
             if (registration && onSuccess) {
+              const fallbackLog: RegistrationStatusLog = {
+                id: `log_${Date.now()}_doku`,
+                status: "paid_and_registered",
+                previous_status: registration.status,
+                changed_at: res.paidAt ?? new Date().toISOString(),
+                changed_by_id: "doku_payment_gateway",
+                changed_by_name: "DOKU Payment Gateway",
+                notes: `Payment confirmed via ${res.paymentChannel ?? "QRIS"}. Status updated to Paid & Registered.`,
+              };
+              const updatedLogs: RegistrationStatusLog[] = res.statusLogs ?? [
+                ...(registration.status_logs ?? []),
+                res.logEntry ?? fallbackLog,
+              ];
               onSuccess({
                 ...registration,
                 status: "paid_and_registered",
                 payment_status: "paid",
                 payment_channel: res.paymentChannel ?? registration.payment_channel,
                 paid_at: res.paidAt ?? new Date().toISOString(),
+                status_logs: updatedLogs,
               });
             }
           } else if (res.dokuStatus === "PENDING" || res.dokuStatus === "ORDER_GENERATED") {
@@ -107,23 +128,27 @@ export function CheckPaymentStatusDialog({
     [effectiveInvoice, event?.id, registration, isProduction, onSuccess],
   );
 
-  // Run automatically when dialog opens with a valid registration invoice
   useEffect(() => {
-    setIsEditingInvoice(false);
+    runCheckRef.current = runCheck;
+  }, [runCheck]);
+
+  // Run automatically only when dialog opens or registration changes
+  useEffect(() => {
     if (open) {
+      setIsEditingInvoice(false);
+      setShowRawDetails(false);
       if (registrationInvoice) {
         setCustomInvoice(registrationInvoice);
-        runCheck(registrationInvoice);
+        runCheckRef.current(registrationInvoice);
       } else {
         setCustomInvoice("");
         setResult(null);
-        setShowRawDetails(false);
       }
     } else {
       setResult(null);
       setShowRawDetails(false);
     }
-  }, [open, registrationInvoice, runCheck]);
+  }, [open, registrationInvoice]);
 
   const handleCopyInvoice = () => {
     if (!effectiveInvoice) return;

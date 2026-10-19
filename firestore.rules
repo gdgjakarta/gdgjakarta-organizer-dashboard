@@ -1097,6 +1097,38 @@ service cloud.firestore {
           );
       }
 
+      // Ensures member (registrant) updates strictly adhere to identity preservation, quota monotonicity, and status integrity
+      function isValidMemberRegistrationUpdate(prevData, newData) {
+        return (
+          // Identity fields cannot change
+          newData.id == prevData.id &&
+          newData.event_id == prevData.event_id &&
+          newData.member_id == prevData.member_id &&
+          (!('member_email' in prevData) || !('member_email' in newData) || newData.member_email == prevData.member_email) &&
+
+          // Quota cannot be decremented or reset by member
+          (!newData.diff(prevData).affectedKeys().hasAny(['payment_check_count']) ||
+            (!('payment_check_count' in prevData) && ('payment_check_count' in newData) && newData.payment_check_count >= 0) ||
+            (('payment_check_count' in prevData) && ('payment_check_count' in newData) && newData.payment_check_count >= prevData.payment_check_count)) &&
+
+          // Payment amount cannot be reduced by member
+          (!newData.diff(prevData).affectedKeys().hasAny(['payment_amount']) ||
+            (!('payment_amount' in prevData)) ||
+            (('payment_amount' in prevData) && ('payment_amount' in newData) && newData.payment_amount >= prevData.payment_amount)) &&
+
+          // Cannot escalate status to approved, attended, or rejected without team access
+          (!newData.diff(prevData).affectedKeys().hasAny(['status']) ||
+            (newData.status == prevData.status) ||
+            (prevData.status in ['waiting_for_payment', 'pending'] && newData.status in ['waiting_for_payment', 'pending', 'paid_and_registered'])) &&
+
+          // Once paid_and_registered, status cannot be reverted
+          (prevData.status != 'paid_and_registered' || newData.status == 'paid_and_registered') &&
+
+          // Terminal states (cancelled, rejected, refunded) cannot be altered
+          (!(prevData.status in ['cancelled', 'canceled', 'rejected', 'refunded']) || newData.status == prevData.status)
+        );
+      }
+
       // Individual registration lookup: Team access (Organizers & Staff), or the registrant themselves (matching member_id, member_email, or doc ID suffix).
       // Handles non-existent doc lookup gracefully when resource == null before registration.
       allow get: if hasTeamAccess() ||
@@ -1142,6 +1174,7 @@ service cloud.firestore {
             'checked_in_at', 'is_checked_in', 'bevy_attendee_id', 'attendee_code',
             'registered_at', 'registered_at_millis'
           ]) &&
+          isValidMemberRegistrationUpdate(resource.data, request.resource.data) &&
           isValidMemberDeliveryUpdate(resource.data, request.resource.data) &&
           isValidMemberRefundUpdate(resource.data, request.resource.data)
         )

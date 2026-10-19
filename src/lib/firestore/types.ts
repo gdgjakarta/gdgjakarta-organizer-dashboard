@@ -382,6 +382,9 @@ export interface FirestoreEvent {
   payment_fee_tier_above_percent?: number;
   payment_fee_label?: string;
 
+  // Member Payment Status Check Threshold (Limits self-service payment check calls on My Events)
+  member_payment_check_limit?: number | null; // Default: 3
+
   registration_status?: "Draft" | "Published" | "Closed";
   registration_start_date?: string | null;
   registration_end_date?: string | null;
@@ -635,6 +638,11 @@ export interface FirestoreRegistration {
   payment_fee_amount?: number;
   payment_fee_bearer?: PaymentFeeBearer;
   payment_subtotal_amount?: number;
+  payment_environment?: "production" | "sandbox";
+
+  // Member Payment Check Quota Tracking
+  payment_check_count?: number; // Total number of times payment status has been checked
+  last_payment_checked_at?: string; // ISO date of last payment check
 
   // Voucher tracking
   voucher_id?: string;

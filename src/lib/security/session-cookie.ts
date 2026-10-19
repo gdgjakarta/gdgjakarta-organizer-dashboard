@@ -6,10 +6,7 @@
 
 function getSecretKeyBytes(): Uint8Array {
   const secret =
-    process.env.SESSION_SECRET ||
-    process.env.PAYMENT_WEBHOOK_SECRET ||
-    process.env.NEXT_PUBLIC_FIREBASE_APP_ID ||
-    "gdg-jakarta-secure-hmac-session-secret-2026";
+    process.env.SESSION_SECRET || process.env.PAYMENT_WEBHOOK_SECRET || "gdg-jakarta-secure-hmac-session-secret-2026";
   return new TextEncoder().encode(secret);
 }
 

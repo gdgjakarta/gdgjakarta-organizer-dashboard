@@ -68,7 +68,7 @@
       },
       "nursery": {
         "useSortedClasses": "on",
-        "useNullishCoalescing": "error",
+        "useNullishCoalescing": "off",
         "noFloatingPromises": "error",
         "noMisusedPromises": "error"
       },

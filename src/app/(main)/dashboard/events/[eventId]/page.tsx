@@ -200,6 +200,7 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
         totalApproved={event.total_approved || 0}
         totalWaitlisted={event.total_waitlisted || 0}
         totalCheckedIn={event.total_checked_in || 0}
+        totalRefunds={registrations.filter((r) => Boolean(r.refund_request)).length}
         initialRole={initialRole}
       />
 

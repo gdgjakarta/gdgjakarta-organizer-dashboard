@@ -58,6 +58,25 @@ export function RefundRejectDialog({
         email: user?.email,
       };
 
+      // Perform client SDK update directly for immediate reactive update
+      try {
+        const { updateRefundStatus } = await import("@/lib/firestore/client");
+        await updateRefundStatus(
+          registration.id,
+          "rejected",
+          {
+            rejection_reason: reason.trim(),
+            rejected_at: new Date().toISOString(),
+            rejected_by_id: reviewer.id,
+            rejected_by_name: reviewer.name,
+            rejected_by_email: reviewer.email,
+          },
+          reviewer,
+        );
+      } catch (clientErr) {
+        console.warn("[RefundRejectDialog] Client Firestore update warning:", clientErr);
+      }
+
       const res = await rejectRefundAction({
         registrationId: registration.id,
         eventId,

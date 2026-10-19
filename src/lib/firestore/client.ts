@@ -3375,6 +3375,7 @@ export async function updateEventPaymentConfig(
     payment_fee_tier_below_amount?: number;
     payment_fee_tier_above_percent?: number;
     payment_fee_label?: string | null;
+    member_payment_check_limit?: number | null;
   },
   baseEvent?: Partial<FirestoreEvent>,
 ): Promise<void> {
@@ -3457,6 +3458,11 @@ export async function updateEventPaymentConfig(
               : deleteField(),
         }
       : {}),
+    ...(typeof config.member_payment_check_limit === "number"
+      ? { member_payment_check_limit: config.member_payment_check_limit }
+      : config.member_payment_check_limit === null
+        ? { member_payment_check_limit: deleteField() }
+        : {}),
     updated_at: new Date().toISOString(),
   };
 

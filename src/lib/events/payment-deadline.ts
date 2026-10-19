@@ -208,7 +208,8 @@ export function getEffectiveRegistrationStatus(
   const currentStatus = reg.status;
 
   // Normalized check
-  if (currentStatus === "cancelled") return "canceled";
+  if (currentStatus === "cancelled" || currentStatus === "canceled") return "canceled";
+  if (reg.refund_request?.status === "refund_completed") return "canceled";
 
   // If waiting for payment, check if today's date in minutes is overdue
   if (currentStatus === "waiting_for_payment" || reg.payment_status === "unpaid") {

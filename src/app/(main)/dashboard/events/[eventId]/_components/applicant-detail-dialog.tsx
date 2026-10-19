@@ -6,6 +6,7 @@ import Image from "next/image";
 
 import {
   Briefcase,
+  Building2,
   Check,
   CheckCircle,
   Clock,
@@ -21,6 +22,7 @@ import {
   Loader2,
   type LucideIcon,
   Mail,
+  MoreHorizontal,
   Package,
   PackageCheck,
   Phone,
@@ -43,13 +45,20 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { formatFirestoreDate } from "@/lib/date-utils";
-import { hasRegistrationPaymentRequirements } from "@/lib/events/doku-payment";
 import {
   getEffectiveRegistrationStatus,
   getRegistrationPaymentDeadline,
   isEventCurationMode,
 } from "@/lib/events/payment-deadline";
+import { formatRupiah } from "@/lib/events/refund-utils";
 import { DEFAULT_COMBINED_QUESTIONS } from "@/lib/events/registration-defaults";
 import type {
   CustomQuestion,
@@ -69,9 +78,12 @@ interface ApplicantDetailDialogProps {
   event?: FirestoreEvent;
   isCurationMode?: boolean;
   onClose: () => void;
-  onStatusChange: (registrationId: string, newStatus: RegistrationStatus) => void;
+  onStatusChange: (registrationId: string, newStatus: RegistrationStatus, updatedReg?: FirestoreRegistration) => void;
+  onUpdateRegistration?: (updated: FirestoreRegistration) => void;
   onApprove?: (registration: FirestoreRegistration) => void;
   onReject?: (registration: FirestoreRegistration) => void;
+  onApproveRefund?: (registration: FirestoreRegistration) => void;
+  onRejectRefund?: (registration: FirestoreRegistration) => void;
   onResendInterestEmail?: (registration: FirestoreRegistration) => void;
   onResendWaitlistEmail?: (registration: FirestoreRegistration) => void;
   onResendPaidWaitlistEmail?: (registration: FirestoreRegistration) => void;
@@ -223,14 +235,31 @@ function getTicketTierLabel(type?: string, price?: number): string {
   return `Commitment Fee (Rp ${(price ?? 0).toLocaleString("id-ID")})`;
 }
 
+function getRefundStatusBadgeLabel(status?: string): string {
+  if (status === "waiting_for_approval") return "Waiting for Approval";
+  if (status === "refund_completed") return "Refund Completed";
+  if (status === "rejected") return "Rejected";
+  return "Refund Requested";
+}
+
+function getRefundStatusShortLabel(status?: string): string {
+  if (status === "waiting_for_approval") return "Refund Pending";
+  if (status === "refund_completed") return "Refunded";
+  if (status === "rejected") return "Refund Rejected";
+  return "Refund Requested";
+}
+
 export function ApplicantDetailDialog({
   registration,
   event,
   isCurationMode,
   onClose,
   onStatusChange,
+  onUpdateRegistration,
   onApprove,
   onReject,
+  onApproveRefund,
+  onRejectRefund,
   onResendInterestEmail,
   onResendWaitlistEmail,
   onResendPaidWaitlistEmail,
@@ -451,6 +480,19 @@ export function ApplicantDetailDialog({
       for (const [k, v] of Object.entries(registration.answers)) {
         if (k === "session_id" || k === "session_title") continue;
         lines.push(`• ${formatLabel(k, labelMap)}: ${Array.isArray(v) ? v.join(", ") : String(v)}`);
+      }
+    }
+
+    if (registration.refund_request) {
+      const refReq = registration.refund_request;
+      lines.push("\nRefund Request Application:");
+      lines.push(`• Status: ${refReq.status}`);
+      lines.push(`• Refund Amount: ${formatRupiah(refReq.refund_amount)}`);
+      lines.push(`• Bank: ${refReq.bank_name}`);
+      lines.push(`• Account: ${refReq.bank_account_number} (a/n ${refReq.bank_account_name})`);
+      lines.push(`• Reason: ${refReq.cancellation_reason}`);
+      if (refReq.proof_media_url) {
+        lines.push(`• Proof Document: ${refReq.proof_media_url}`);
       }
     }
 
@@ -748,6 +790,24 @@ export function ApplicantDetailDialog({
               </div>
 
               <div className="flex shrink-0 items-center gap-2">
+                {Boolean(registration.refund_request) && (
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "gap-1 px-2.5 py-1 font-semibold text-xs",
+                      registration.refund_request?.status === "waiting_for_approval" &&
+                        "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+                      registration.refund_request?.status === "refund_completed" &&
+                        "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+                      registration.refund_request?.status === "rejected" &&
+                        "border-destructive/40 bg-destructive/10 text-destructive",
+                    )}
+                  >
+                    <RotateCcw className="size-3" />
+                    <span>{getRefundStatusShortLabel(registration.refund_request?.status)}</span>
+                  </Badge>
+                )}
+
                 <Badge
                   variant="outline"
                   className={cn("gap-1.5 border px-2.5 py-1 font-semibold text-xs", statusMeta.badgeClass)}
@@ -775,6 +835,32 @@ export function ApplicantDetailDialog({
 
             {/* Compact Metadata Attributes Strip */}
             <div className="mt-3.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {/* Refund Request Overview Strip if present */}
+              {Boolean(registration.refund_request) && (
+                <div className="flex items-center justify-between rounded-lg border border-rose-500/30 bg-rose-500/5 px-3 py-2 text-xs">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <RotateCcw className="size-3.5 shrink-0 text-rose-600 dark:text-rose-400" />
+                    <span className="shrink-0 text-[11px] text-muted-foreground">Refund Claim:</span>
+                    <span className="truncate font-semibold text-rose-600 dark:text-rose-400">
+                      {formatRupiah(registration.refund_request?.refund_amount ?? 0)}
+                    </span>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "shrink-0 font-semibold text-[10px]",
+                      registration.refund_request?.status === "waiting_for_approval" &&
+                        "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+                      registration.refund_request?.status === "refund_completed" &&
+                        "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+                      registration.refund_request?.status === "rejected" &&
+                        "border-destructive/40 bg-destructive/10 text-destructive",
+                    )}
+                  >
+                    {getRefundStatusBadgeLabel(registration.refund_request?.status)}
+                  </Badge>
+                </div>
+              )}
               {/* Session Track Banner if present */}
               {Boolean(
                 registration.session_title ?? registration.session_id ?? registration.answers?.session_title,
@@ -833,17 +919,19 @@ export function ApplicantDetailDialog({
                     </span>
                   </div>
                   <div className="flex items-center gap-1">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="xs"
-                      className="h-6 gap-1 border-emerald-500/30 px-2 font-medium text-[11px] text-emerald-600 hover:bg-emerald-500/10 dark:text-emerald-400"
-                      title="Check live DOKU payment status"
-                      onClick={() => setIsCheckPaymentOpen(true)}
-                    >
-                      <CreditCard className="size-3" />
-                      <span>Check Status</span>
-                    </Button>
+                    {rawStatus === "waiting_for_payment" && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="xs"
+                        className="h-6 gap-1 border-emerald-500/30 px-2 font-medium text-[11px] text-emerald-600 hover:bg-emerald-500/10 dark:text-emerald-400"
+                        title="Check live DOKU payment status"
+                        onClick={() => setIsCheckPaymentOpen(true)}
+                      >
+                        <CreditCard className="size-3" />
+                        <span>Check Status</span>
+                      </Button>
+                    )}
                     <Button
                       type="button"
                       variant="ghost"
@@ -1265,6 +1353,253 @@ export function ApplicantDetailDialog({
           {/* Scrollable Questions and Responses */}
           <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
             <div className="space-y-6">
+              {/* Refund Request Dossier Section */}
+              {registration.refund_request && (
+                <div className="space-y-3 rounded-xl border border-rose-500/30 bg-rose-500/5 p-4 text-xs shadow-xs">
+                  {/* Header */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-rose-500/20 border-b pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <div className="rounded-md bg-rose-500/10 p-1.5 text-rose-600 dark:text-rose-400">
+                        <RotateCcw className="size-4" />
+                      </div>
+                      <div>
+                        <h4 className="font-semibold text-foreground text-sm">Refund Request Application</h4>
+                        <p className="text-[11px] text-muted-foreground">
+                          Attendee submitted cancellation and deposit refund details
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          "gap-1.5 px-2.5 py-1 font-semibold text-xs",
+                          registration.refund_request.status === "waiting_for_approval" &&
+                            "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+                          registration.refund_request.status === "refund_completed" &&
+                            "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+                          registration.refund_request.status === "rejected" &&
+                            "border-destructive/40 bg-destructive/10 text-destructive",
+                        )}
+                      >
+                        {registration.refund_request.status === "waiting_for_approval" && <Clock className="size-3" />}
+                        {registration.refund_request.status === "refund_completed" && (
+                          <CheckCircle className="size-3" />
+                        )}
+                        {registration.refund_request.status === "rejected" && <XCircle className="size-3" />}
+                        <span>{getRefundStatusBadgeLabel(registration.refund_request.status)}</span>
+                      </Badge>
+                    </div>
+                  </div>
+
+                  {/* Financial & Bank Account Grid */}
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    {/* Deposit Amount */}
+                    <div className="rounded-lg border border-border/60 bg-background/90 p-3 shadow-2xs">
+                      <span className="font-medium text-[11px] text-muted-foreground">Deposit / Refund Amount</span>
+                      <div className="mt-1 flex items-baseline justify-between">
+                        <span className="font-bold text-foreground text-lg sm:text-xl">
+                          {formatRupiah(registration.refund_request.refund_amount)}
+                        </span>
+                        <Badge variant="secondary" className="text-[10px]">
+                          {registration.ticket_name ?? registration.ticket_tier ?? "Commitment Fee"}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 text-[10px] text-muted-foreground">
+                        Requested on{" "}
+                        {formatFirestoreDate(registration.refund_request.requested_at, "dd MMMM yyyy, HH:mm", "—")}
+                      </p>
+                    </div>
+
+                    {/* Payee Bank Account Details */}
+                    <div className="rounded-lg border border-border/60 bg-background/90 p-3 shadow-2xs">
+                      <span className="font-medium text-[11px] text-muted-foreground">Payee Destination Bank</span>
+                      <div className="mt-1.5 space-y-1.5">
+                        <div className="flex items-center gap-1.5 font-semibold text-foreground text-xs">
+                          <Building2 className="size-3.5 shrink-0 text-primary" />
+                          <span>{registration.refund_request.bank_name}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-1 font-mono text-muted-foreground">
+                            <span>{registration.refund_request.bank_account_number}</span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-xs"
+                              className="size-5 text-muted-foreground hover:text-foreground"
+                              title="Copy account number"
+                              onClick={() =>
+                                handleCopy(
+                                  registration.refund_request?.bank_account_number ?? "",
+                                  "Account number",
+                                  "refund_bank_num",
+                                )
+                              }
+                            >
+                              {copiedKey === "refund_bank_num" ? (
+                                <Check className="size-2.5 text-emerald-600" />
+                              ) : (
+                                <Copy className="size-2.5" />
+                              )}
+                            </Button>
+                          </div>
+                          <div className="flex items-center gap-1 text-muted-foreground">
+                            <span className="max-w-[130px] truncate">
+                              a/n {registration.refund_request.bank_account_name}
+                            </span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-xs"
+                              className="size-5 text-muted-foreground hover:text-foreground"
+                              title="Copy account holder name"
+                              onClick={() =>
+                                handleCopy(
+                                  registration.refund_request?.bank_account_name ?? "",
+                                  "Account holder name",
+                                  "refund_bank_holder",
+                                )
+                              }
+                            >
+                              {copiedKey === "refund_bank_holder" ? (
+                                <Check className="size-2.5 text-emerald-600" />
+                              ) : (
+                                <Copy className="size-2.5" />
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Cancellation Reason & Proof */}
+                  <div className="rounded-lg border border-border/60 bg-background/90 p-3 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-[11px] text-muted-foreground">
+                        Cancellation Reason & Supporting Proof
+                      </span>
+                      {registration.refund_request.proof_media_url && (
+                        <a
+                          href={registration.refund_request.proof_media_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 font-medium text-[11px] text-primary hover:underline"
+                        >
+                          <FileText className="size-3" />
+                          <span>View Attendee Proof ↗</span>
+                        </a>
+                      )}
+                    </div>
+                    <p className="mt-1.5 whitespace-pre-wrap text-foreground text-xs leading-relaxed">
+                      {registration.refund_request.cancellation_reason ?? "No cancellation reason provided."}
+                    </p>
+                  </div>
+
+                  {/* Completed Outcome Details */}
+                  {registration.refund_request.status === "refund_completed" && (
+                    <div className="space-y-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs">
+                      <div className="flex items-center justify-between font-semibold text-emerald-800 dark:text-emerald-300">
+                        <div className="flex items-center gap-1.5">
+                          <CheckCircle className="size-3.5" />
+                          <span>Disbursement Completed</span>
+                        </div>
+                        {registration.refund_request.completed_at && (
+                          <span className="font-normal text-[10px] opacity-80">
+                            {formatFirestoreDate(registration.refund_request.completed_at, "dd MMM yyyy, HH:mm")}
+                          </span>
+                        )}
+                      </div>
+                      {registration.refund_request.completed_by_name && (
+                        <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                          Processed by:{" "}
+                          <span className="font-semibold">{registration.refund_request.completed_by_name}</span>
+                          {registration.refund_request.completed_by_email &&
+                            ` (${registration.refund_request.completed_by_email})`}
+                        </p>
+                      )}
+                      {registration.refund_request.completion_notes && (
+                        <p className="text-[11px] text-muted-foreground">
+                          <strong>Notes:</strong> {registration.refund_request.completion_notes}
+                        </p>
+                      )}
+                      {registration.refund_request.completion_proof_url && (
+                        <div className="pt-1">
+                          <a
+                            href={registration.refund_request.completion_proof_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 font-semibold text-[11px] text-emerald-700 hover:underline dark:text-emerald-300"
+                          >
+                            <FileText className="size-3" />
+                            <span>View Transfer Receipt Proof ↗</span>
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Rejected Outcome Details */}
+                  {registration.refund_request.status === "rejected" && (
+                    <div className="space-y-1 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs">
+                      <div className="flex items-center justify-between font-semibold text-destructive">
+                        <div className="flex items-center gap-1.5">
+                          <XCircle className="size-3.5" />
+                          <span>Refund Request Rejected</span>
+                        </div>
+                        {registration.refund_request.rejected_at && (
+                          <span className="font-normal text-[10px] opacity-80">
+                            {formatFirestoreDate(registration.refund_request.rejected_at, "dd MMM yyyy, HH:mm")}
+                          </span>
+                        )}
+                      </div>
+                      {registration.refund_request.rejected_by_name && (
+                        <p className="text-[11px] text-muted-foreground">
+                          Reviewed by:{" "}
+                          <span className="font-semibold">{registration.refund_request.rejected_by_name}</span>
+                          {registration.refund_request.rejected_by_email &&
+                            ` (${registration.refund_request.rejected_by_email})`}
+                        </p>
+                      )}
+                      {registration.refund_request.rejection_reason && (
+                        <p className="text-[11px] text-destructive">
+                          <strong>Reason:</strong> {registration.refund_request.rejection_reason}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Quick Action Buttons inside dossier */}
+                  {registration.refund_request.status === "waiting_for_approval" &&
+                    (onApproveRefund ?? onRejectRefund) && (
+                      <div className="flex items-center justify-end gap-2 border-rose-500/20 border-t pt-2">
+                        {onRejectRefund && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 gap-1 border-destructive/40 text-destructive text-xs hover:bg-destructive/10"
+                            onClick={() => onRejectRefund(registration)}
+                          >
+                            <XCircle className="size-3" />
+                            Reject Refund
+                          </Button>
+                        )}
+                        {onApproveRefund && (
+                          <Button
+                            size="sm"
+                            className="h-7 gap-1 bg-emerald-600 text-white text-xs hover:bg-emerald-700"
+                            onClick={() => onApproveRefund(registration)}
+                          >
+                            <CheckCircle className="size-3" />
+                            Approve Refund
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                </div>
+              )}
+
               {groupedSections.length > 0 ? (
                 groupedSections.map(([sectionTitle, items]) => {
                   const SectionIcon = SECTION_ICONS[sectionTitle] || HelpCircle;
@@ -1340,30 +1675,33 @@ export function ApplicantDetailDialog({
                       return (
                         <div
                           key={log.id || `log-${idx}`}
-                          className="flex flex-wrap items-center justify-between gap-2 border-border/40 border-b pb-2 last:border-b-0 last:pb-0"
+                          className="flex flex-col gap-1 border-border/40 border-b pb-2 last:border-b-0 last:pb-0"
                         >
-                          <div className="flex items-center gap-2">
-                            <Badge
-                              variant="outline"
-                              className={cn(
-                                "gap-1 border px-2 py-0.5 font-medium text-[11px]",
-                                logStatusMeta.badgeClass,
-                              )}
-                            >
-                              <span className={cn("size-1.5 rounded-full", logStatusMeta.dotClass)} />
-                              {logStatusMeta.label}
-                            </Badge>
-                            <span className="text-muted-foreground text-xs">
-                              by <span className="font-semibold text-foreground">{log.changed_by_name}</span>
-                              {log.changed_by_email && (
-                                <span className="text-[11px] text-muted-foreground"> ({log.changed_by_email})</span>
-                              )}
-                            </span>
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  "gap-1 border px-2 py-0.5 font-medium text-[11px]",
+                                  logStatusMeta.badgeClass,
+                                )}
+                              >
+                                <span className={cn("size-1.5 rounded-full", logStatusMeta.dotClass)} />
+                                {logStatusMeta.label}
+                              </Badge>
+                              <span className="text-muted-foreground text-xs">
+                                by <span className="font-semibold text-foreground">{log.changed_by_name}</span>
+                                {log.changed_by_email && (
+                                  <span className="text-[11px] text-muted-foreground"> ({log.changed_by_email})</span>
+                                )}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                              <Clock className="size-3" />
+                              <span>{logTime}</span>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                            <Clock className="size-3" />
-                            <span>{logTime}</span>
-                          </div>
+                          {log.notes && <p className="pl-1 text-[11px] text-muted-foreground/80 italic">{log.notes}</p>}
                         </div>
                       );
                     })}
@@ -1385,33 +1723,53 @@ export function ApplicantDetailDialog({
               isResendingPaidWaitlist,
               isCancelling,
             ].some(Boolean);
-            return (
-              <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t bg-muted/20 px-6 py-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  {isCuration &&
-                    registration.status !== "waitlisted" &&
-                    registration.status !== "paid_waitlisted" &&
-                    registration.status !== "approved" && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="border-blue-500/30 text-blue-600 text-xs hover:bg-blue-500/10 dark:text-blue-400"
-                        disabled={isActionBlocked}
-                        onClick={() => {
-                          onStatusChange(registration.id, "waitlisted");
-                          onClose();
-                        }}
-                      >
-                        {isWaitlisting ? (
-                          <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                        ) : (
-                          <Clock className="mr-1.5 size-3.5" />
-                        )}
-                        Waitlist
-                      </Button>
-                    )}
+            const isWaitingPayment = rawStatus === "waiting_for_payment";
+            const isStatusPending = rawStatus === "pending";
+            const isWaitlisted = rawStatus === "waitlisted";
+            const isPaidWaitlisted = rawStatus === "paid_waitlisted";
+            const isApproved =
+              rawStatus === "approved" ||
+              rawStatus === "paid_and_registered" ||
+              rawStatus === "confirmed" ||
+              rawStatus === "registered";
+            const isExpired = rawStatus === "expired";
+            const isRejected = rawStatus === "rejected";
 
-                  {isCuration && registration.status !== "pending" && registration.status !== "approved" && (
+            const hasMoreActions = Boolean(
+              (isCuration && isStatusPending && onResendInterestEmail) ||
+                (isCuration && isWaitlisted && onResendWaitlistEmail) ||
+                (isPaidWaitlisted && onResendPaidWaitlistEmail) ||
+                onCancelRegistration ||
+                onDelete,
+            );
+
+            return (
+              <div className="flex shrink-0 flex-wrap items-center justify-between gap-2.5 border-t bg-muted/20 px-6 py-3">
+                {/* Secondary / Lifecycle Management Actions (Left) */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Waitlist button (only when pending review in curation mode) */}
+                  {isCuration && isStatusPending && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-blue-500/30 text-blue-600 text-xs hover:bg-blue-500/10 dark:text-blue-400"
+                      disabled={isActionBlocked}
+                      onClick={() => {
+                        onStatusChange(registration.id, "waitlisted");
+                        onClose();
+                      }}
+                    >
+                      {isWaitlisting ? (
+                        <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                      ) : (
+                        <Clock className="mr-1.5 size-3.5" />
+                      )}
+                      Waitlist
+                    </Button>
+                  )}
+
+                  {/* Set Pending button (when waitlisted or rejected in curation mode) */}
+                  {isCuration && (isWaitlisted || isRejected) && (
                     <Button
                       size="sm"
                       variant="outline"
@@ -1427,70 +1785,14 @@ export function ApplicantDetailDialog({
                     </Button>
                   )}
 
-                  {isCuration && registration.status === "pending" && onResendInterestEmail && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-primary text-xs"
-                      disabled={isActionBlocked}
-                      onClick={() => {
-                        onResendInterestEmail(registration);
-                      }}
-                    >
-                      {isResendingInterest ? (
-                        <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                      ) : (
-                        <Mail className="mr-1.5 size-3.5" />
-                      )}
-                      Resend Interest Email
-                    </Button>
-                  )}
-
-                  {isCuration && registration.status === "waitlisted" && onResendWaitlistEmail && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="border-blue-500/30 text-blue-600 text-xs hover:bg-blue-500/10 dark:text-blue-400"
-                      disabled={isActionBlocked}
-                      onClick={() => {
-                        onResendWaitlistEmail(registration);
-                      }}
-                    >
-                      {isResendingWaitlist ? (
-                        <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                      ) : (
-                        <Mail className="mr-1.5 size-3.5" />
-                      )}
-                      Resend Waitlist Email
-                    </Button>
-                  )}
-
-                  {registration.status === "paid_waitlisted" && onResendPaidWaitlistEmail && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="border-indigo-500/30 text-indigo-600 text-xs hover:bg-indigo-500/10 dark:text-indigo-400"
-                      disabled={isActionBlocked}
-                      onClick={() => {
-                        onResendPaidWaitlistEmail(registration);
-                      }}
-                    >
-                      {isResendingPaidWaitlist ? (
-                        <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                      ) : (
-                        <Mail className="mr-1.5 size-3.5" />
-                      )}
-                      Resend Paid Waitlist Email
-                    </Button>
-                  )}
-
-                  {hasPayableItems && (
+                  {/* Regenerate Payment Link (when payment is required and active or expired) */}
+                  {hasPayableItems && (isWaitingPayment || isExpired || deadlineInfo.isOverdue) && (
                     <Button
                       size="sm"
                       variant="outline"
                       className={cn(
                         "text-xs",
-                        rawStatus === "expired" || deadlineInfo.isOverdue
+                        isExpired || deadlineInfo.isOverdue
                           ? "border-amber-500/40 text-amber-600 hover:bg-amber-500/10"
                           : "border-primary/40 text-primary hover:bg-primary/5",
                       )}
@@ -1502,47 +1804,87 @@ export function ApplicantDetailDialog({
                     </Button>
                   )}
 
-                  {onCancelRegistration && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="border-destructive/30 text-destructive text-xs hover:bg-destructive/10 hover:text-destructive"
-                      disabled={isActionBlocked}
-                      onClick={() => {
-                        onCancelRegistration(registration);
-                      }}
-                    >
-                      {isCancelling ? (
-                        <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                      ) : (
-                        <UserX className="mr-1.5 size-3.5" />
-                      )}
-                      Cancel Registration
-                    </Button>
-                  )}
+                  {/* More Administrative & Destructive Actions Dropdown */}
+                  {hasMoreActions && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 gap-1.5 text-muted-foreground text-xs hover:text-foreground"
+                          disabled={isActionBlocked}
+                        >
+                          <MoreHorizontal className="size-3.5" />
+                          <span>More</span>
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="w-52">
+                        {isCuration && isStatusPending && onResendInterestEmail && (
+                          <DropdownMenuItem
+                            disabled={isActionBlocked || isResendingInterest}
+                            onClick={() => onResendInterestEmail(registration)}
+                          >
+                            <Mail className="mr-2 size-3.5 text-primary" />
+                            Resend Interest Email
+                          </DropdownMenuItem>
+                        )}
 
-                  {onDelete && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="border-muted-foreground/30 text-muted-foreground text-xs hover:bg-muted/50"
-                      disabled={isActionBlocked}
-                      onClick={() => {
-                        onDelete(registration);
-                      }}
-                    >
-                      <Trash2 className="mr-1.5 size-3.5" />
-                      Remove Attendee
-                    </Button>
+                        {isCuration && isWaitlisted && onResendWaitlistEmail && (
+                          <DropdownMenuItem
+                            disabled={isActionBlocked || isResendingWaitlist}
+                            onClick={() => onResendWaitlistEmail(registration)}
+                          >
+                            <Mail className="mr-2 size-3.5 text-blue-600" />
+                            Resend Waitlist Email
+                          </DropdownMenuItem>
+                        )}
+
+                        {isPaidWaitlisted && onResendPaidWaitlistEmail && (
+                          <DropdownMenuItem
+                            disabled={isActionBlocked || isResendingPaidWaitlist}
+                            onClick={() => onResendPaidWaitlistEmail(registration)}
+                          >
+                            <Mail className="mr-2 size-3.5 text-indigo-600" />
+                            Resend Paid Waitlist Email
+                          </DropdownMenuItem>
+                        )}
+
+                        {(onCancelRegistration ?? onDelete) && <DropdownMenuSeparator />}
+
+                        {onCancelRegistration && (
+                          <DropdownMenuItem
+                            disabled={isActionBlocked || isCancelling}
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => onCancelRegistration(registration)}
+                          >
+                            <UserX className="mr-2 size-3.5" />
+                            Cancel Registration
+                          </DropdownMenuItem>
+                        )}
+
+                        {onDelete && (
+                          <DropdownMenuItem
+                            disabled={isActionBlocked}
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => onDelete(registration)}
+                          >
+                            <Trash2 className="mr-2 size-3.5" />
+                            Remove Attendee
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   )}
                 </div>
 
-                <div className="ml-auto flex shrink-0 flex-wrap items-center gap-2">
-                  {isCuration && registration.status !== "rejected" && registration.status !== "approved" && (
+                {/* Primary Decision & Navigation Actions (Right) */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Reject button */}
+                  {isCuration && !isRejected && !isApproved && (
                     <Button
                       size="sm"
                       variant="outline"
-                      className="text-destructive text-xs hover:bg-destructive/10"
+                      className="border-destructive/30 text-destructive text-xs hover:bg-destructive/10"
                       disabled={isActionBlocked}
                       onClick={() => {
                         if (onReject) {
@@ -1562,66 +1904,44 @@ export function ApplicantDetailDialog({
                     </Button>
                   )}
 
+                  {/* Approve / Status Indicator */}
                   {isCuration &&
-                    (() => {
-                      let approveButtonText = "Approve Applicant";
-                      if (isApproving) {
-                        approveButtonText = "Approving...";
-                      } else if (rawStatus === "waiting_for_payment") {
-                        approveButtonText = "Waiting for Payment";
-                      } else if (rawStatus === "expired") {
-                        approveButtonText = "Re-approve Applicant";
-                      }
-
-                      return registration.status === "approved" ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled
-                          className="cursor-default border-emerald-500/30 bg-emerald-500/10 text-emerald-600 text-xs dark:text-emerald-400"
-                        >
-                          <CheckCircle className="mr-1.5 size-3.5" />
-                          Approved
-                        </Button>
-                      ) : (
-                        <Button
-                          size="sm"
-                          className={cn(
-                            "bg-emerald-600 text-white text-xs shadow-xs hover:bg-emerald-700",
-                            rawStatus === "waiting_for_payment" &&
-                              "disabled:pointer-events-auto disabled:cursor-not-allowed",
-                          )}
-                          disabled={isActionBlocked || rawStatus === "waiting_for_payment"}
-                          title={
-                            rawStatus === "waiting_for_payment"
-                              ? "Waiting for payment (Disabled until expired)"
-                              : undefined
+                    !isWaitingPayment &&
+                    (isApproved ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled
+                        className="cursor-default border-emerald-500/30 bg-emerald-500/10 text-emerald-600 text-xs dark:text-emerald-400"
+                      >
+                        <CheckCircle className="mr-1.5 size-3.5" />
+                        Approved
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        className="bg-emerald-600 text-white text-xs shadow-xs hover:bg-emerald-700"
+                        disabled={isActionBlocked}
+                        onClick={() => {
+                          if (onApprove) {
+                            onApprove(registration);
+                          } else {
+                            onStatusChange(registration.id, "approved");
+                            onClose();
                           }
-                          onClick={() => {
-                            if (onApprove) {
-                              onApprove(registration);
-                            } else {
-                              onStatusChange(registration.id, "approved");
-                              onClose();
-                            }
-                          }}
-                        >
-                          {isApproving ? (
-                            <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                          ) : (
-                            <CheckCircle className="mr-1.5 size-3.5" />
-                          )}
-                          {approveButtonText}
-                        </Button>
-                      );
-                    })()}
+                        }}
+                      >
+                        {isApproving ? (
+                          <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                        ) : (
+                          <CheckCircle className="mr-1.5 size-3.5" />
+                        )}
+                        {isExpired ? "Re-approve Applicant" : "Approve Applicant"}
+                      </Button>
+                    ))}
 
-                  {Boolean(
-                    invoiceNumber ||
-                      hasRegistrationPaymentRequirements(registration) ||
-                      rawStatus === "waiting_for_payment" ||
-                      rawStatus === "paid_and_registered",
-                  ) && (
+                  {/* Check Payment (only for waiting_for_payment) */}
+                  {isWaitingPayment && (
                     <Button
                       size="sm"
                       variant="outline"
@@ -1633,6 +1953,7 @@ export function ApplicantDetailDialog({
                     </Button>
                   )}
 
+                  {/* Close Dialog Button */}
                   <Button size="sm" variant="secondary" className="text-xs" onClick={onClose}>
                     Close
                   </Button>
@@ -1665,7 +1986,11 @@ export function ApplicantDetailDialog({
         registration={registration}
         event={event}
         onSuccess={(updatedReg) => {
-          onStatusChange(updatedReg.id, "paid_and_registered");
+          if (onUpdateRegistration) {
+            onUpdateRegistration(updatedReg);
+          } else {
+            onStatusChange(updatedReg.id, "paid_and_registered", updatedReg);
+          }
         }}
       />
     </>

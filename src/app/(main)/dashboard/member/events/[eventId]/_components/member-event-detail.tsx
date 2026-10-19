@@ -19,6 +19,7 @@ import {
   Lock,
   MapPin,
   Radio,
+  RotateCcw,
   Share2,
   Sparkles,
   Truck,
@@ -48,7 +49,12 @@ import { getEffectiveRegistrationStatus, getRegistrationPaymentDeadline } from "
 import { getEventRefundPolicyNotes, isRegistrationEligibleForRefund } from "@/lib/events/refund-utils";
 import { getRegistrationWindowStatus } from "@/lib/events/registration-defaults";
 import { checkEventRegistrationAction } from "@/lib/firestore/actions";
-import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
+import type {
+  FirestoreEvent,
+  FirestoreRegistration,
+  RegistrationStatus,
+  RegistrationStatusLog,
+} from "@/lib/firestore/types";
 import { cn, sanitizeHtml } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
@@ -85,7 +91,7 @@ function getEventEntryFeeDisplay(event: FirestoreEvent, registration?: Firestore
   if (registration) {
     if (registration.ticket_price && registration.ticket_price > 0) {
       return (
-        <strong className="font-semibold text-foreground text-right">
+        <strong className="text-right font-semibold text-foreground">
           Rp {registration.ticket_price.toLocaleString("id-ID")}
           {registration.ticket_name ? ` (${registration.ticket_name})` : ""}
         </strong>
@@ -93,7 +99,7 @@ function getEventEntryFeeDisplay(event: FirestoreEvent, registration?: Firestore
     }
     if (registration.payment_amount && registration.payment_amount > 0) {
       return (
-        <strong className="font-semibold text-foreground text-right">
+        <strong className="text-right font-semibold text-foreground">
           Rp {registration.payment_amount.toLocaleString("id-ID")}
           {registration.ticket_name ? ` (${registration.ticket_name})` : ""}
         </strong>
@@ -101,7 +107,7 @@ function getEventEntryFeeDisplay(event: FirestoreEvent, registration?: Firestore
     }
     if (registration.ticket_type === "free" || registration.ticket_price === 0) {
       return (
-        <strong className="font-semibold text-emerald-600 dark:text-emerald-400 text-right">
+        <strong className="text-right font-semibold text-emerald-600 dark:text-emerald-400">
           Free of Charge
           {registration.ticket_name ? ` (${registration.ticket_name})` : ""}
         </strong>
@@ -117,7 +123,7 @@ function getEventEntryFeeDisplay(event: FirestoreEvent, registration?: Firestore
 
   // If no tickets or bundles configured at all, it's a default free event
   if (activeTickets.length === 0 && activeBundles.length === 0) {
-    return <strong className="font-semibold text-emerald-600 dark:text-emerald-400 text-right">Free of Charge</strong>;
+    return <strong className="text-right font-semibold text-emerald-600 dark:text-emerald-400">Free of Charge</strong>;
   }
 
   const freeTickets = activeTickets.filter((t) => t.type === "free" || (t.price ?? 0) === 0);
@@ -147,7 +153,7 @@ function getEventEntryFeeDisplay(event: FirestoreEvent, registration?: Firestore
   // 1. Both Free and Paid options exist: "can be free but there is a paid pass"
   if (hasFree && hasPaid) {
     return (
-      <strong className="font-semibold text-foreground text-right">
+      <strong className="text-right font-semibold text-foreground">
         <span className="text-emerald-600 dark:text-emerald-400">Free</span>
         <span className="font-normal text-muted-foreground"> / </span>
         <span className="text-blue-600 dark:text-blue-400">Paid Pass ({formattedPrice})</span>
@@ -159,20 +165,20 @@ function getEventEntryFeeDisplay(event: FirestoreEvent, registration?: Firestore
   if (hasPaid && !hasFree) {
     if (isOnlyCommitmentFee) {
       return (
-        <strong className="font-semibold text-amber-600 dark:text-amber-400 text-right">
+        <strong className="text-right font-semibold text-amber-600 dark:text-amber-400">
           Commitment Deposit ({formattedPrice})
         </strong>
       );
     }
     return (
-      <strong className="font-semibold text-blue-600 dark:text-blue-400 text-right">
+      <strong className="text-right font-semibold text-blue-600 dark:text-blue-400">
         Paid Pass ({formattedPrice})
       </strong>
     );
   }
 
   // 3. Only Free pass exists: "free pass"
-  return <strong className="font-semibold text-emerald-600 dark:text-emerald-400 text-right">Free of Charge</strong>;
+  return <strong className="text-right font-semibold text-emerald-600 dark:text-emerald-400">Free of Charge</strong>;
 }
 
 export function MemberEventDetail({ event, initialRegistration = null, from }: MemberEventDetailProps) {
@@ -189,6 +195,7 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
   const [isDeliveryStatusOpen, setIsDeliveryStatusOpen] = useState(false);
   const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
   const [isRefundStatusOpen, setIsRefundStatusOpen] = useState(false);
+  const [isCheckingPayment, setIsCheckingPayment] = useState(false);
   const { isVirtual, isHybrid } = resolveEventAudience(currentEvent.audience_type, currentEvent.is_virtual);
 
   const rawFrom = from ? decodeURIComponent(from) : undefined;
@@ -281,6 +288,59 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
     if (typeof window !== "undefined") {
       void navigator.clipboard.writeText(window.location.href);
       toast.success("Event link copied to clipboard!");
+    }
+  };
+
+  const handleCheckPaymentStatus = async () => {
+    if (!registration?.id || !currentEvent.id) return;
+    setIsCheckingPayment(true);
+    try {
+      const { auth } = await import("@/config/firebase");
+      const idToken = await auth?.currentUser?.getIdToken();
+      const { checkMemberEventPaymentStatusAction } = await import("@/server/payment-actions");
+      const res = await checkMemberEventPaymentStatusAction({
+        eventId: String(currentEvent.id),
+        registrationId: String(registration.id),
+        idToken: idToken || undefined,
+      });
+
+      setRegistration((prev) => {
+        if (!prev) return prev;
+        const newLog: RegistrationStatusLog = res.logEntry ?? {
+          id: `log_${Date.now()}_doku`,
+          status: "paid_and_registered",
+          previous_status: prev.status,
+          changed_at: res.paidAt ?? new Date().toISOString(),
+          changed_by_id: "doku_payment_gateway",
+          changed_by_name: "DOKU Payment Gateway",
+          notes: `Payment confirmed via ${res.paymentChannel ?? "QRIS"}. Status updated to Paid & Registered.`,
+        };
+        return {
+          ...prev,
+          payment_check_count: res.checkCount,
+          ...(res.isPaid
+            ? {
+                status: "paid_and_registered" as RegistrationStatus,
+                payment_status: "paid",
+                paid_at: res.paidAt ?? new Date().toISOString(),
+                status_logs: res.statusLogs ?? [...(prev.status_logs ?? []), newLog],
+              }
+            : {}),
+        };
+      });
+
+      if (res.isPaid) {
+        toast.success(res.message || "Payment confirmed! Your ticket is registered.");
+      } else if (res.success) {
+        toast.info(res.message);
+      } else {
+        toast.error(res.message);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to verify payment status.";
+      toast.error(msg);
+    } finally {
+      setIsCheckingPayment(false);
     }
   };
 
@@ -491,9 +551,35 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
           </a>
         )}
 
+        {/* Check Payment Status Button (only when waiting for payment) */}
+        {isWaitingPayment && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={
+              isCheckingPayment ||
+              (registration.payment_check_count !== undefined &&
+                registration.payment_check_count >= (currentEvent.member_payment_check_limit ?? 3))
+            }
+            onClick={() => void handleCheckPaymentStatus()}
+            className="w-full gap-2 border-primary/40 bg-primary/5 text-primary text-xs shadow-xs hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60"
+            title={
+              (registration.payment_check_count ?? 0) >= (currentEvent.member_payment_check_limit ?? 3)
+                ? "Payment check quota reached for this registration"
+                : "Check latest payment status from DOKU"
+            }
+          >
+            <RotateCcw className={cn("size-3.5", isCheckingPayment && "animate-spin")} />
+            {isCheckingPayment
+              ? "Checking DOKU Payment Status..."
+              : `Check Payment Status (${Math.max(0, (currentEvent.member_payment_check_limit ?? 3) - (registration.payment_check_count ?? 0))} attempts left)`}
+          </Button>
+        )}
+
         {/* Payment window notice */}
         {isWaitingPayment && deadlineInfo && (
-          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-200">
+          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-amber-800 text-xs dark:text-amber-200">
             <div className="flex items-center justify-between font-semibold">
               <span className="flex items-center gap-1.5">
                 <Clock className="size-3.5 text-amber-600 dark:text-amber-400" />
@@ -509,7 +595,7 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
 
         {/* Paid & Registered receipt callout */}
         {isPaidAndRegistered && (
-          <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-800 dark:text-emerald-200">
+          <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-emerald-800 text-xs dark:text-emerald-200">
             <div className="flex items-center justify-between font-semibold">
               <span className="flex items-center gap-1.5">
                 <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" />
@@ -593,7 +679,7 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
             variant="ghost"
             size="sm"
             disabled
-            className="w-full gap-2 font-medium text-xs shadow-xs text-muted-foreground opacity-60 cursor-not-allowed"
+            className="w-full cursor-not-allowed gap-2 font-medium text-muted-foreground text-xs opacity-60 shadow-xs"
           >
             <Lock className="size-3.5" />
             Refund Finalized • Form Locked
@@ -656,11 +742,11 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
                 size="sm"
                 onClick={() => setIsRefundStatusOpen(true)}
                 className={cn(
-                  "w-full gap-2 text-xs shadow-xs font-semibold",
+                  "w-full gap-2 font-semibold text-xs shadow-xs",
                   refundReq.status === "refund_completed" &&
-                    "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/20",
+                    "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300",
                   refundReq.status === "waiting_for_approval" &&
-                    "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20",
+                    "border-amber-500/40 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 dark:text-amber-300",
                   refundReq.status === "rejected" &&
                     "border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20",
                 )}
@@ -988,7 +1074,7 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
               <div className="space-y-2 rounded-lg bg-muted/30 p-3.5 text-xs">
                 <div className="flex items-center justify-between gap-2 text-muted-foreground">
                   <span className="shrink-0">Capacity / RSVPs</span>
-                  <strong className="text-foreground text-right">
+                  <strong className="text-right text-foreground">
                     {currentEvent.total_registrations || event.total_registrations || 0} registered
                   </strong>
                 </div>

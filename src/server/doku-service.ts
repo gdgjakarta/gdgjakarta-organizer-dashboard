@@ -17,31 +17,37 @@ export function resolveDokuCredentials(isProduction?: boolean): DokuCredentials 
   const prod = isProduction ?? process.env.NODE_ENV === "production";
 
   if (prod) {
+    const prodSecret =
+      process.env.DOKU_PROD_SECRET_KEY?.trim() ||
+      process.env.DOKU_SECRET_KEY?.trim() ||
+      process.env.PAYMENT_WEBHOOK_SECRET?.trim() ||
+      "";
+    if (!prodSecret) {
+      console.error("[DOKU Service] CRITICAL: Missing DOKU production secret key in environment variables.");
+    }
     return {
-      clientId:
-        process.env.DOKU_PROD_CLIENT_ID?.trim() || process.env.DOKU_CLIENT_ID?.trim() || "BRN-0272-1766492122366",
-      secretKey:
-        process.env.DOKU_PROD_SECRET_KEY?.trim() ||
-        process.env.DOKU_SECRET_KEY?.trim() ||
-        process.env.PAYMENT_WEBHOOK_SECRET?.trim() ||
-        "SK-MjsZfMysySE6fdliMYbn",
+      clientId: process.env.DOKU_PROD_CLIENT_ID?.trim() || process.env.DOKU_CLIENT_ID?.trim() || "",
+      secretKey: prodSecret,
       baseUrl: process.env.DOKU_PROD_BASE_URL?.trim() || process.env.DOKU_BASE_URL?.trim() || "https://api.doku.com",
       isProduction: true,
     };
   }
 
+  const devSecret =
+    process.env.DOKU_DEV_SECRET_KEY?.trim() ||
+    process.env.DOKU_SECRET_KEY?.trim() ||
+    process.env.PAYMENT_WEBHOOK_SECRET?.trim() ||
+    "";
+  if (!devSecret) {
+    console.warn("[DOKU Service] Warning: Missing DOKU development secret key in environment variables.");
+  }
   return {
-    clientId: process.env.DOKU_DEV_CLIENT_ID?.trim() || "BRN-0233-1766479840736",
-    secretKey:
-      process.env.DOKU_DEV_SECRET_KEY?.trim() ||
-      process.env.DOKU_SECRET_KEY?.trim() ||
-      process.env.PAYMENT_WEBHOOK_SECRET?.trim() ||
-      "SK-bHrzOnAyoAwo42FWWmcf",
+    clientId: process.env.DOKU_DEV_CLIENT_ID?.trim() || process.env.DOKU_CLIENT_ID?.trim() || "",
+    secretKey: devSecret,
     baseUrl: process.env.DOKU_DEV_BASE_URL?.trim() || "https://api-sandbox.doku.com",
     isProduction: false,
   };
 }
-
 /**
  * Computes HMAC-SHA256 signature for DOKU HTTP headers.
  */

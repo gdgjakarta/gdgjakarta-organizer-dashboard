@@ -51,6 +51,7 @@ import { fetchEventRefundRequestsAction, updateEventRefundConfigAction } from "@
 import type { FirestoreEvent, FirestoreRegistration, RefundStatus } from "@/lib/firestore/types";
 import { cn, getInitials } from "@/lib/utils";
 
+import { ApplicantDetailDialog } from "./applicant-detail-dialog";
 import { RefundApprovalDialog } from "./refund-approval-dialog";
 import { RefundRejectDialog } from "./refund-reject-dialog";
 
@@ -105,6 +106,7 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
   // Dialog states
+  const [inspectRegistration, setInspectRegistration] = useState<FirestoreRegistration | null>(null);
   const [approvalModalReg, setApprovalModalReg] = useState<FirestoreRegistration | null>(null);
   const [rejectModalReg, setRejectModalReg] = useState<FirestoreRegistration | null>(null);
   const [viewProofModalReg, setViewProofModalReg] = useState<FirestoreRegistration | null>(null);
@@ -364,7 +366,7 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
               variant="outline"
               size="sm"
               onClick={() => setIsPreviewMemberViewOpen(true)}
-              className="h-8 gap-1.5 text-xs font-medium"
+              className="h-8 gap-1.5 font-medium text-xs"
             >
               <Eye className="size-3.5 text-primary" />
               Preview Member View
@@ -473,7 +475,7 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
                 variant="outline"
                 size="sm"
                 onClick={() => setIsPreviewMemberViewOpen(true)}
-                className="gap-1.5 text-xs font-medium"
+                className="gap-1.5 font-medium text-xs"
               >
                 <Eye className="size-3.5 text-primary" />
                 Preview Member View
@@ -498,7 +500,7 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
               </span>
               <span className="max-w-md truncate">
                 <strong>Policy Guidelines: </strong>
-                <span className="italic text-foreground">
+                <span className="text-foreground italic">
                   &ldquo;
                   {event.refund_policy_notes?.trim() ? event.refund_policy_notes.trim() : DEFAULT_REFUND_POLICY_NOTES}
                   &rdquo;
@@ -629,16 +631,23 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
                     <TableRow key={reg.id} className="text-xs transition-colors hover:bg-muted/30">
                       {/* Attendee */}
                       <TableCell className="align-top">
-                        <div className="flex items-center gap-2.5">
-                          <Avatar className="size-8 border">
+                        <button
+                          type="button"
+                          className="group flex w-full cursor-pointer items-center gap-2.5 text-left"
+                          onClick={() => setInspectRegistration(reg)}
+                          title="View application dossier"
+                        >
+                          <Avatar className="size-8 border transition-transform group-hover:scale-105">
                             <AvatarImage src={reg.member_avatar} alt={reg.member_name} />
                             <AvatarFallback className="text-[10px]">{getInitials(reg.member_name)}</AvatarFallback>
                           </Avatar>
                           <div className="truncate">
-                            <p className="truncate font-semibold text-foreground">{reg.member_name}</p>
+                            <p className="truncate font-semibold text-foreground transition-colors group-hover:text-primary">
+                              {reg.member_name}
+                            </p>
                             <p className="truncate text-[11px] text-muted-foreground">{reg.member_email}</p>
                           </div>
-                        </div>
+                        </button>
                       </TableCell>
 
                       {/* Deposit Amount */}
@@ -725,6 +734,17 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
                       {/* Actions */}
                       <TableCell className="text-right align-top">
                         <div className="flex flex-wrap items-center justify-end gap-1.5">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 gap-1 px-2 text-[11px] text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                            onClick={() => setInspectRegistration(reg)}
+                            title="View application dossier"
+                          >
+                            <Eye className="size-3" />
+                            <span>Dossier</span>
+                          </Button>
+
                           {isPending && (
                             <>
                               <Button
@@ -790,6 +810,7 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
           eventTitle={event.title}
           onSuccess={(updated) => {
             setRegistrations((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+            setInspectRegistration((prev) => (prev?.id === updated.id ? updated : prev));
             setApprovalModalReg(null);
           }}
         />
@@ -804,6 +825,7 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
           eventId={eventId}
           onSuccess={(updated) => {
             setRegistrations((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+            setInspectRegistration((prev) => (prev?.id === updated.id ? updated : prev));
             setRejectModalReg(null);
           }}
         />
@@ -930,17 +952,17 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
               <TabsList className="grid h-auto min-h-9 w-full grid-cols-3 gap-1 p-1 text-xs">
                 <TabsTrigger
                   value="event-details"
-                  className="px-2 py-1.5 text-center text-xs leading-tight whitespace-normal"
+                  className="whitespace-normal px-2 py-1.5 text-center text-xs leading-tight"
                 >
                   1. Event Page
                 </TabsTrigger>
                 <TabsTrigger
                   value="my-events"
-                  className="px-2 py-1.5 text-center text-xs leading-tight whitespace-normal"
+                  className="whitespace-normal px-2 py-1.5 text-center text-xs leading-tight"
                 >
                   2. My Events Card
                 </TabsTrigger>
-                <TabsTrigger value="dialog" className="px-2 py-1.5 text-center text-xs leading-tight whitespace-normal">
+                <TabsTrigger value="dialog" className="whitespace-normal px-2 py-1.5 text-center text-xs leading-tight">
                   3. Refund Dialog
                 </TabsTrigger>
               </TabsList>
@@ -964,7 +986,7 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
                       <p className="font-semibold text-indigo-900 text-xs dark:text-indigo-200">
                         📋 Refund Policy & Window
                       </p>
-                      <p className="break-words text-[11px] text-muted-foreground leading-relaxed whitespace-pre-wrap">
+                      <p className="whitespace-pre-wrap break-words text-[11px] text-muted-foreground leading-relaxed">
                         {effectivePolicyNotes}
                       </p>
                       <div className="flex flex-wrap items-center gap-1.5 pt-1 font-medium text-[11px] text-indigo-700 dark:text-indigo-300">
@@ -1036,7 +1058,7 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
                       <Info className="size-3.5 text-primary" />
                       <span>Refund Policy & Disbursement Guidelines</span>
                     </div>
-                    <p className="break-words whitespace-pre-wrap text-[11px] text-muted-foreground leading-relaxed">
+                    <p className="whitespace-pre-wrap break-words text-[11px] text-muted-foreground leading-relaxed">
                       {effectivePolicyNotes}
                     </p>
                     <div className="flex flex-wrap items-center justify-between gap-2 border-border/50 border-t pt-1.5 text-[10px] text-muted-foreground">
@@ -1048,7 +1070,7 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
                   {/* Checkbox preview */}
                   <div className="flex items-start gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3.5">
                     <Checkbox checked disabled className="mt-0.5 shrink-0 cursor-default" />
-                    <Label className="block cursor-default font-normal text-xs text-foreground leading-relaxed">
+                    <Label className="block cursor-default font-normal text-foreground text-xs leading-relaxed">
                       I understand and agree that submitting this refund request will{" "}
                       <strong className="font-semibold text-destructive">cancel my RSVP</strong> and I will{" "}
                       <strong className="font-semibold text-foreground">forfeit my spot</strong> to join this event.{" "}
@@ -1070,6 +1092,27 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Redesigned Applicant Details Dossier Dialog */}
+      {inspectRegistration && (
+        <ApplicantDetailDialog
+          registration={inspectRegistration}
+          event={event}
+          isCurationMode={event.curation_mode}
+          customQuestions={event.custom_questions}
+          onClose={() => setInspectRegistration(null)}
+          onStatusChange={(regId, newStatus) => {
+            setRegistrations((prev) => prev.map((r) => (r.id === regId ? { ...r, status: newStatus } : r)));
+            setInspectRegistration((prev) => (prev?.id === regId ? { ...prev, status: newStatus } : prev));
+          }}
+          onApproveRefund={(reg) => {
+            setApprovalModalReg(reg);
+          }}
+          onRejectRefund={(reg) => {
+            setRejectModalReg(reg);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -3,7 +3,7 @@
  * Integrates GDG Jakarta Dashboard with n8n Dynamic DOKU Checkout Pipeline.
  */
 
-import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
+import type { FirestoreEvent, FirestoreRegistration, RegistrationStatusLog } from "@/lib/firestore/types";
 import { assertSafeWebhookUrl } from "@/lib/security/webhook-validator";
 
 import { calculatePaymentGatewayFee } from "./payment-fee";
@@ -233,6 +233,8 @@ export interface DokuStatusCheckResult {
   dokuResponse?: DokuCheckStatusResponse | unknown;
   n8nDispatched?: boolean;
   n8nResult?: unknown;
+  statusLogs?: RegistrationStatusLog[];
+  logEntry?: RegistrationStatusLog;
   message: string;
   error?: string;
 }

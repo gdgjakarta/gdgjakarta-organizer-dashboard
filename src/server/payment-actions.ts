@@ -17,14 +17,22 @@ import {
   resolveDokuNotificationWebhookUrl,
   resolvePaymentLinkWebhookUrl,
 } from "@/lib/events/doku-payment";
+import type { FirestoreRegistration, RegistrationStatusLog } from "@/lib/firestore/types";
 import { assertSafeWebhookUrl } from "@/lib/security/webhook-validator";
 import { extractApiMessage } from "@/lib/utils";
+import { verifyFirebaseIdToken } from "@/server/auth-actions";
+import { isAuthorizedOrganizerSession } from "@/server/auth-guard";
 import {
   buildDokuCheckStatusHeaders,
   buildDokuNotificationHeaders,
   buildNotificationPayloadFromCheckStatus,
 } from "@/server/doku-service";
-import { findRegistrationDoc, updateRegistrationFromPayment } from "@/server/firestore-admin";
+import {
+  findRegistrationDoc,
+  getFirestoreDoc,
+  patchFirestoreDoc,
+  updateRegistrationFromPayment,
+} from "@/server/firestore-admin";
 import { revalidateDashboardPath } from "@/server/server-actions";
 
 const paymentItemSchema = z.object({
@@ -341,18 +349,62 @@ const checkPaymentStatusInputSchema = z.object({
   eventId: z.string().optional(),
   registrationId: z.string().optional(),
   isProduction: z.boolean().optional(),
+  idToken: z.string().optional(),
 });
 
 export type CheckPaymentStatusInput = z.input<typeof checkPaymentStatusInputSchema>;
 
 /**
+ * Helper to sanitize DOKU response before returning to clients, stripping sensitive customer PII.
+ */
+function sanitizeDokuResponseForClient(data: DokuCheckStatusResponse | null | string): unknown {
+  if (!data || typeof data !== "object") return data;
+  const copy = { ...data } as Record<string, unknown>;
+  if (copy.customer && typeof copy.customer === "object") {
+    const cust = { ...(copy.customer as Record<string, unknown>) };
+    if (typeof cust.email === "string") {
+      const [local, domain] = cust.email.split("@");
+      cust.email = `${local.slice(0, 2)}***@${domain || ""}`;
+    }
+    if (typeof cust.phone === "string") {
+      cust.phone = `${cust.phone.slice(0, 4)}****${cust.phone.slice(-3)}`;
+    }
+    copy.customer = cust;
+  }
+  if (copy.emoney_payment && typeof copy.emoney_payment === "object") {
+    const em = { ...(copy.emoney_payment as Record<string, unknown>) };
+    delete em.account_id;
+    copy.emoney_payment = em;
+  }
+  return copy;
+}
+
+/**
  * Server Action: Queries DOKU's Check Status API (GET /orders/v1/status/{invoiceNumber}).
- * If the transaction is confirmed SUCCESS / PAID:
- * 1. Dispatches DOKU HTTP notification to n8n (/webhook/payment/doku/notifications).
- * 2. Updates Firestore registration status to "paid_and_registered" and marks payment as "paid".
- * 3. Revalidates dashboard paths.
+ * Restricted strictly to authorized organizers.
  */
 export async function checkDokuPaymentStatusAction(input: CheckPaymentStatusInput): Promise<DokuStatusCheckResult> {
+  if (!(await isAuthorizedOrganizerSession())) {
+    return {
+      success: false,
+      isPaid: false,
+      invoiceNumber: input.invoiceNumber || "",
+      dokuStatus: "UNAUTHORIZED",
+      message: "Unauthorized: Organizer session required for direct status check.",
+      error: "Unauthorized",
+    };
+  }
+
+  return await checkDokuPaymentStatusInternal(input, true);
+}
+
+/**
+ * Internal helper to query DOKU's Check Status API and reconcile payment.
+ */
+export async function checkDokuPaymentStatusInternal(
+  input: CheckPaymentStatusInput,
+  isTeamAccess: boolean,
+): Promise<DokuStatusCheckResult> {
   const parsed = checkPaymentStatusInputSchema.safeParse(input);
   if (!parsed.success) {
     const errorMsg = parsed.error.issues.map((i) => i.message).join(", ");
@@ -366,14 +418,22 @@ export async function checkDokuPaymentStatusAction(input: CheckPaymentStatusInpu
     };
   }
 
-  const { invoiceNumber, eventId } = parsed.data;
+  const { invoiceNumber, eventId, registrationId, idToken } = parsed.data;
 
   // Resolve attendee & event info from Firestore if available
   let existingRegistration: Partial<FirestoreRegistration> | null = null;
   try {
-    const doc = await findRegistrationDoc(invoiceNumber);
-    if (doc?.data) {
-      existingRegistration = doc.data;
+    if (registrationId) {
+      const direct = await getFirestoreDoc("event_registrations", registrationId, idToken);
+      if (direct) {
+        existingRegistration = { id: registrationId, ...direct } as unknown as Partial<FirestoreRegistration>;
+      }
+    }
+    if (!existingRegistration) {
+      const doc = await findRegistrationDoc(invoiceNumber, idToken);
+      if (doc?.data) {
+        existingRegistration = doc.data;
+      }
     }
   } catch (err) {
     console.warn(`[DOKU Check Status] Could not resolve attendee for invoice ${invoiceNumber}:`, err);
@@ -495,14 +555,25 @@ export async function checkDokuPaymentStatusAction(input: CheckPaymentStatusInpu
       }
 
       // Reconcile registration status in Firestore immediately
+      let updatedStatusLogs: RegistrationStatusLog[] | undefined;
+      let newLogEntry: RegistrationStatusLog | undefined;
       try {
-        await updateRegistrationFromPayment({
-          invoiceNumber,
-          status: "paid_and_registered",
-          amount: amount ?? notificationPayload.order.amount,
-          paymentChannel,
-          paidAt,
-        });
+        const updateResult = await updateRegistrationFromPayment(
+          {
+            invoiceNumber,
+            registrationId: registrationId || existingRegistration?.id,
+            status: "paid_and_registered",
+            amount: amount ?? notificationPayload.order.amount,
+            paymentChannel,
+            paidAt,
+            isTeamAccess,
+          },
+          idToken,
+        );
+        if (updateResult.success) {
+          updatedStatusLogs = updateResult.statusLogs;
+          newLogEntry = updateResult.logEntry;
+        }
       } catch (dbErr) {
         console.error(`[DOKU Check Status] Failed to update Firestore registration:`, dbErr);
       }
@@ -526,9 +597,11 @@ export async function checkDokuPaymentStatusAction(input: CheckPaymentStatusInpu
         paymentChannel,
         paidAt,
         approvalCode,
-        dokuResponse: dokuData,
+        dokuResponse: sanitizeDokuResponseForClient(dokuData),
         n8nDispatched,
         n8nResult,
+        statusLogs: updatedStatusLogs,
+        logEntry: newLogEntry,
         message: n8nDispatched
           ? "Payment is confirmed SUCCESS! Attendee status has been updated and synced via n8n."
           : "Payment is confirmed SUCCESS! Attendee status updated in database.",
@@ -552,7 +625,7 @@ export async function checkDokuPaymentStatusAction(input: CheckPaymentStatusInpu
       dokuStatus: txStatus,
       amount,
       paymentChannel,
-      dokuResponse: dokuData,
+      dokuResponse: sanitizeDokuResponseForClient(dokuData),
       n8nDispatched: false,
       message,
     };
@@ -569,4 +642,304 @@ export async function checkDokuPaymentStatusAction(input: CheckPaymentStatusInpu
       dokuResponse: err,
     };
   }
+}
+
+export interface CheckMemberPaymentStatusInput {
+  eventId: string;
+  registrationId: string;
+  idToken?: string;
+}
+
+export interface CheckMemberPaymentStatusResult {
+  success: boolean;
+  message: string;
+  isPaid: boolean;
+  dokuStatus?: string;
+  checksRemaining: number;
+  checkCount: number;
+  limit: number;
+  paymentChannel?: string;
+  approvalCode?: string;
+  paidAt?: string;
+  statusLogs?: RegistrationStatusLog[];
+  logEntry?: RegistrationStatusLog;
+}
+
+/**
+ * Member Self-Service Payment Status Check (with configurable quota limit per event).
+ * Enforces member_payment_check_limit (default: 3) from the Firestore event document.
+ */
+export async function checkMemberEventPaymentStatusAction(
+  input: CheckMemberPaymentStatusInput,
+): Promise<CheckMemberPaymentStatusResult> {
+  const { eventId, registrationId, idToken } = input;
+  if (!eventId || !registrationId) {
+    return {
+      success: false,
+      message: "Event ID and Registration ID are required.",
+      isPaid: false,
+      checksRemaining: 0,
+      checkCount: 0,
+      limit: 3,
+    };
+  }
+
+  // Resolve caller auth token from explicit input or session cookie
+  let authToken = idToken?.trim();
+  if (!authToken) {
+    try {
+      const { cookies } = await import("next/headers");
+      const cookieStore = await cookies();
+      const cookieToken = cookieStore.get("auth_token")?.value;
+      if (cookieToken?.trim()) {
+        authToken = cookieToken.trim();
+      }
+    } catch {
+      // Ignore in non-request contexts
+    }
+  }
+
+  if (!authToken) {
+    return {
+      success: false,
+      message: "Authentication required to check payment status.",
+      isPaid: false,
+      checksRemaining: 0,
+      checkCount: 0,
+      limit: 3,
+    };
+  }
+
+  const tokenVerification = await verifyFirebaseIdToken(authToken);
+  if (!tokenVerification.valid || !tokenVerification.uid) {
+    return {
+      success: false,
+      message: "Invalid or expired session. Please log in again.",
+      isPaid: false,
+      checksRemaining: 0,
+      checkCount: 0,
+      limit: 3,
+    };
+  }
+
+  const callerUid = tokenVerification.uid;
+  const callerEmail = tokenVerification.email;
+  const isOrganizer = await isAuthorizedOrganizerSession();
+
+  // 1. Fetch event doc to get member check limit (default 3)
+  let limit = 3;
+  let isEventProduction: boolean | undefined;
+  try {
+    const eventDoc = await getFirestoreDoc("events", String(eventId), authToken);
+    if (eventDoc) {
+      if (typeof eventDoc.member_payment_check_limit === "number") {
+        limit = Math.max(1, eventDoc.member_payment_check_limit);
+      }
+      if (eventDoc.payment_environment === "production") {
+        isEventProduction = true;
+      } else if (eventDoc.payment_environment === "sandbox") {
+        isEventProduction = false;
+      } else if (eventDoc.is_test) {
+        isEventProduction = false;
+      }
+    }
+  } catch (err) {
+    console.warn(`[checkMemberEventPaymentStatusAction] Could not load event ${eventId}:`, err);
+  }
+
+  // 2. Fetch registration doc
+  let regData: Record<string, unknown> | null = null;
+  let resolvedDocId = registrationId;
+
+  try {
+    regData = await getFirestoreDoc("event_registrations", registrationId, authToken);
+    if (!regData) {
+      const match = await findRegistrationDoc(registrationId, authToken);
+      if (match?.data) {
+        regData = match.data as unknown as Record<string, unknown>;
+        resolvedDocId = match.id;
+      }
+    }
+  } catch (err) {
+    console.warn(`[checkMemberEventPaymentStatusAction] Error fetching registration ${registrationId}:`, err);
+  }
+
+  if (!regData) {
+    return {
+      success: false,
+      message: "Registration record could not be found.",
+      isPaid: false,
+      checksRemaining: 0,
+      checkCount: 0,
+      limit,
+    };
+  }
+
+  // Ownership verification: Caller must own the registration or be an authorized organizer
+  if (!isOrganizer) {
+    const regMemberId = String(regData.member_id || "");
+    const regMemberEmail = String(regData.member_email || "")
+      .toLowerCase()
+      .trim();
+    if (regMemberId !== callerUid && (!callerEmail || regMemberEmail !== callerEmail)) {
+      console.warn(
+        `[Security] Blocked unauthorized check payment status: caller UID ${callerUid} does not match registration member_id ${regMemberId}`,
+      );
+      return {
+        success: false,
+        message: "Unauthorized: You can only check payment status for your own registration.",
+        isPaid: false,
+        checksRemaining: 0,
+        checkCount: 0,
+        limit,
+      };
+    }
+  }
+
+  // Check terminal state
+  const currentRegStatus = String(regData.status || "")
+    .toLowerCase()
+    .trim();
+  if (["cancelled", "canceled", "rejected", "refunded"].includes(currentRegStatus)) {
+    return {
+      success: false,
+      message: "This registration has been cancelled or closed.",
+      isPaid: false,
+      checksRemaining: 0,
+      checkCount: 0,
+      limit,
+    };
+  }
+  if (regData.status === "paid_and_registered" || regData.payment_status === "paid") {
+    return {
+      success: true,
+      message: "Payment is already verified and your spot is confirmed!",
+      isPaid: true,
+      dokuStatus: "SUCCESS",
+      checksRemaining: limit,
+      checkCount: typeof regData.payment_check_count === "number" ? regData.payment_check_count : 0,
+      limit,
+      paymentChannel: (regData.payment_channel as string) || "QRIS",
+      paidAt: (regData.paid_at as string) || undefined,
+    };
+  }
+
+  const currentCount = typeof regData.payment_check_count === "number" ? regData.payment_check_count : 0;
+
+  // 3. Enforce threshold
+  if (currentCount >= limit) {
+    return {
+      success: false,
+      message: `You have reached the maximum of ${limit} payment status checks. If you have already completed payment, please contact the GDG Jakarta organizers.`,
+      isPaid: false,
+      checksRemaining: 0,
+      checkCount: currentCount,
+      limit,
+    };
+  }
+
+  // 4. Resolve Invoice Number
+  const answers = regData.answers as Record<string, unknown> | undefined;
+  const invoiceNumber = (
+    (regData.payment_invoice_number as string | undefined) ||
+    (answers?.payment_invoice_number as string | undefined) ||
+    (answers?.invoice_number as string | undefined) ||
+    (regData.invoice_number as string | undefined) ||
+    ""
+  ).trim();
+
+  if (!invoiceNumber) {
+    return {
+      success: false,
+      message: "No payment invoice found yet. Please click 'Pay Now' to generate your QRIS payment code first.",
+      isPaid: false,
+      checksRemaining: limit - currentCount,
+      checkCount: currentCount,
+      limit,
+    };
+  }
+
+  // 5. Increment check count
+  const nextCount = currentCount + 1;
+  const checksRemaining = Math.max(0, limit - nextCount);
+
+  try {
+    await patchFirestoreDoc(
+      "event_registrations",
+      resolvedDocId,
+      {
+        payment_check_count: nextCount,
+        last_payment_checked_at: new Date().toISOString(),
+      },
+      true,
+      authToken,
+    );
+  } catch (err) {
+    console.warn(`[checkMemberEventPaymentStatusAction] Failed to update payment_check_count:`, err);
+  }
+
+  // 6. Query DOKU internally
+  const dokuResult = await checkDokuPaymentStatusInternal(
+    {
+      invoiceNumber,
+      eventId: String(eventId),
+      registrationId: resolvedDocId,
+      isProduction: isEventProduction,
+      idToken: authToken,
+    },
+    isOrganizer,
+  );
+
+  if (dokuResult.isPaid) {
+    // Cross-check payment amount against registration total
+    const expectedAmount = typeof regData.payment_amount === "number" ? regData.payment_amount : 0;
+    const paidAmount = typeof dokuResult.amount === "number" ? dokuResult.amount : undefined;
+
+    if (expectedAmount > 0 && paidAmount !== undefined && paidAmount < expectedAmount) {
+      console.error(
+        `[Security Alert] Payment underpayment mismatch for registration ${resolvedDocId}: expected ${expectedAmount}, received ${paidAmount}`,
+      );
+      return {
+        success: false,
+        isPaid: false,
+        dokuStatus: "AMOUNT_MISMATCH",
+        message: "Payment amount does not match the registration total. Please contact the organizers.",
+        checksRemaining,
+        checkCount: nextCount,
+        limit,
+      };
+    }
+
+    return {
+      success: true,
+      isPaid: true,
+      dokuStatus: "SUCCESS",
+      message: "Payment confirmed! Your registration has been updated to Paid & Registered.",
+      checksRemaining,
+      checkCount: nextCount,
+      limit,
+      paymentChannel: dokuResult.paymentChannel,
+      approvalCode: dokuResult.approvalCode,
+      paidAt: dokuResult.paidAt,
+      statusLogs: dokuResult.statusLogs,
+      logEntry: dokuResult.logEntry,
+    };
+  }
+  let userFriendlyMsg = dokuResult.message;
+  if (dokuResult.dokuStatus === "PENDING" || dokuResult.dokuStatus === "ORDER_GENERATED") {
+    userFriendlyMsg = `Payment is still pending in DOKU. You have ${checksRemaining} check${checksRemaining === 1 ? "" : "s"} remaining.`;
+  } else if (dokuResult.dokuStatus === "ORDER_EXPIRED" || dokuResult.dokuStatus === "EXPIRED") {
+    userFriendlyMsg = "Payment has expired in DOKU. Please contact the organizers or request a payment link renewal.";
+  }
+
+  return {
+    success: true,
+    isPaid: false,
+    dokuStatus: dokuResult.dokuStatus,
+    message: userFriendlyMsg,
+    checksRemaining,
+    checkCount: nextCount,
+    limit,
+    paymentChannel: dokuResult.paymentChannel,
+  };
 }

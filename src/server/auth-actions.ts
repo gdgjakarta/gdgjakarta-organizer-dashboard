@@ -174,7 +174,9 @@ export async function syncSingleMemberToBevyAction(params: {
  * Cryptographically verifies a Firebase Auth ID Token using Firebase Identity Toolkit REST API.
  * Runs in all JavaScript/Edge/Cloudflare environments via standard fetch.
  */
-async function verifyFirebaseIdToken(idToken: string): Promise<{ valid: boolean; email?: string; uid?: string }> {
+export async function verifyFirebaseIdToken(
+  idToken: string,
+): Promise<{ valid: boolean; email?: string; uid?: string }> {
   if (!idToken) return { valid: false };
   const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "";
   if (!apiKey) {

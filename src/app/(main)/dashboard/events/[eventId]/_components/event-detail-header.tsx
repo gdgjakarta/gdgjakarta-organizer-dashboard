@@ -21,6 +21,7 @@ import {
   QrCode,
   Radio,
   RefreshCw,
+  RotateCcw,
   TrendingDown,
   UserCheck,
   Users,
@@ -65,6 +66,7 @@ interface EventDetailHeaderProps {
   totalPending?: number;
   totalWaitlisted?: number;
   totalCheckedIn?: number;
+  totalRefunds?: number;
   initialRole?: string;
 }
 
@@ -76,6 +78,7 @@ export function EventDetailHeader({
   totalPending = 0,
   totalWaitlisted = 0,
   totalCheckedIn: initialTotalCheckedIn = 0,
+  totalRefunds: initialTotalRefunds = 0,
   initialRole,
 }: EventDetailHeaderProps) {
   const router = useRouter();
@@ -125,11 +128,14 @@ export function EventDetailHeader({
     totalPending,
     totalWaitlisted,
     totalCheckedIn: initialTotalCheckedIn > 0 ? initialTotalCheckedIn : event.total_checked_in,
+    totalRefunds: initialTotalRefunds,
+    totalRefundsPending: 0,
   });
   const [isLoadingTotals, setIsLoadingTotals] = useState(true);
 
   useEffect(() => {
-    setLiveTotals({
+    setLiveTotals((prev) => ({
+      ...prev,
       totalRegistrations,
       totalApproved: initialTotalApproved,
       totalExpected: initialTotalApproved,
@@ -137,7 +143,8 @@ export function EventDetailHeader({
       totalPending,
       totalWaitlisted,
       totalCheckedIn: initialTotalCheckedIn > 0 ? initialTotalCheckedIn : event.total_checked_in,
-    });
+      totalRefunds: initialTotalRefunds,
+    }));
   }, [
     totalRegistrations,
     initialTotalApproved,
@@ -145,6 +152,7 @@ export function EventDetailHeader({
     totalPending,
     totalWaitlisted,
     initialTotalCheckedIn,
+    initialTotalRefunds,
     event.total_checked_in,
   ]);
 
@@ -191,6 +199,10 @@ export function EventDetailHeader({
             const s = (r.status || "").toLowerCase().trim();
             return Boolean(r.is_checked_in) || s === "attended";
           }).length;
+          const refundsCount = directList.filter((r) => Boolean(r.refund_request)).length;
+          const refundsPendingCount = directList.filter(
+            (r) => r.refund_request?.status === "waiting_for_approval",
+          ).length;
 
           setLiveTotals({
             totalRegistrations: directList.length,
@@ -200,6 +212,8 @@ export function EventDetailHeader({
             totalPending: pendingCount,
             totalWaitlisted: waitlistedCount,
             totalCheckedIn: checkedInCount,
+            totalRefunds: refundsCount,
+            totalRefundsPending: refundsPendingCount,
           });
         }
         setIsLoadingTotals(false);
@@ -231,6 +245,8 @@ export function EventDetailHeader({
               const s = (r.status || "").toLowerCase().trim();
               return Boolean(r.is_checked_in) || s === "attended";
             }).length;
+            const refundsCount = list.filter((r) => Boolean(r.refund_request)).length;
+            const refundsPendingCount = list.filter((r) => r.refund_request?.status === "waiting_for_approval").length;
 
             setLiveTotals({
               totalRegistrations: list.length,
@@ -240,6 +256,8 @@ export function EventDetailHeader({
               totalPending: pendingCount,
               totalWaitlisted: waitlistedCount,
               totalCheckedIn: checkedInCount,
+              totalRefunds: refundsCount,
+              totalRefundsPending: refundsPendingCount,
             });
             setIsLoadingTotals(false);
           }
@@ -279,7 +297,6 @@ export function EventDetailHeader({
   const { isVirtual, isHybrid } = resolveEventAudience(event.audience_type, event.is_virtual);
   const liveBevyUrl = getBevyLiveEventUrl(event);
 
-  const totalApproved = liveTotals.totalApproved;
   const totalExpected = liveTotals.totalExpected ?? liveTotals.totalApproved;
   const totalCheckedIn = liveTotals.totalCheckedIn;
   const droppedCount = Math.max(0, totalExpected - totalCheckedIn);
@@ -486,6 +503,45 @@ export function EventDetailHeader({
                     <strong>{liveTotals.totalRejected}</strong>
                   )}{" "}
                   Rejected
+                </span>
+                <span>•</span>
+                <span
+                  className="flex items-center gap-1.5 text-rose-600 dark:text-rose-400"
+                  title={`${liveTotals.totalRefunds} refund request${liveTotals.totalRefunds === 1 ? "" : "s"}${
+                    liveTotals.totalRefundsPending > 0
+                      ? ` (${liveTotals.totalRefundsPending} waiting for approval)`
+                      : ""
+                  }`}
+                >
+                  <RotateCcw className="size-4" />
+                  {isLoadingTotals ? (
+                    <Shimmer className="inline-block h-4 w-6 rounded-xs align-middle" />
+                  ) : (
+                    <strong>{liveTotals.totalRefunds}</strong>
+                  )}{" "}
+                  Refunds
+                  {!isLoadingTotals && liveTotals.totalRefundsPending > 0 && (
+                    <span className="font-normal text-muted-foreground text-xs">
+                      ({liveTotals.totalRefundsPending} pending)
+                    </span>
+                  )}
+                </span>
+              </>
+            )}
+            {!isCurationMode && liveTotals.totalRefunds > 0 && (
+              <>
+                <span>•</span>
+                <span
+                  className="flex items-center gap-1.5 text-rose-600 dark:text-rose-400"
+                  title={`${liveTotals.totalRefunds} refund request${liveTotals.totalRefunds === 1 ? "" : "s"}`}
+                >
+                  <RotateCcw className="size-4" />
+                  {isLoadingTotals ? (
+                    <Shimmer className="inline-block h-4 w-6 rounded-xs align-middle" />
+                  ) : (
+                    <strong>{liveTotals.totalRefunds}</strong>
+                  )}{" "}
+                  Refunds
                 </span>
               </>
             )}

@@ -113,6 +113,26 @@ export function RefundApprovalDialog({
         email: user?.email,
       };
 
+      // Perform client SDK update directly for immediate reactive update
+      try {
+        const { updateRefundStatus } = await import("@/lib/firestore/client");
+        await updateRefundStatus(
+          registration.id,
+          "refund_completed",
+          {
+            completion_proof_url: completionProofUrl.trim(),
+            completion_notes: completionNotes.trim() || undefined,
+            completed_at: new Date().toISOString(),
+            completed_by_id: reviewer.id,
+            completed_by_name: reviewer.name,
+            completed_by_email: reviewer.email,
+          },
+          reviewer,
+        );
+      } catch (clientErr) {
+        console.warn("[RefundApprovalDialog] Client Firestore update warning:", clientErr);
+      }
+
       const res = await approveAndCompleteRefundAction({
         registrationId: registration.id,
         eventId,
@@ -137,6 +157,7 @@ export function RefundApprovalDialog({
         };
         onSuccess({
           ...registration,
+          status: "canceled",
           payment_status: "refunded",
           refund_request: updatedReq,
           updated_at: now,

@@ -666,7 +666,27 @@ export async function submitMerchandiseDeliveryRequestAction(input: SubmitMercha
  */
 export async function confirmMerchandiseDeliveryPaymentAction(registrationId: string, eventId: string) {
   try {
-    const { updateMerchandiseDeliveryStatus } = await import("./client");
+    const { updateMerchandiseDeliveryStatus, getRegistrationById } = await import("./client");
+    const reg = await getRegistrationById(registrationId);
+    if (!reg?.delivery_request) {
+      return { success: false, error: "No delivery request found for this registration." };
+    }
+
+    const deliveryInvoice = reg.delivery_request.payment_invoice_number;
+    if (deliveryInvoice) {
+      const { checkMemberEventPaymentStatusAction } = await import("@/server/payment-actions");
+      const checkRes = await checkMemberEventPaymentStatusAction({
+        eventId,
+        registrationId,
+      });
+      if (!checkRes.isPaid && checkRes.dokuStatus !== "SUCCESS") {
+        return {
+          success: false,
+          error: "Delivery fee payment is not yet confirmed by the payment gateway.",
+        };
+      }
+    }
+
     const now = new Date().toISOString();
 
     await updateMerchandiseDeliveryStatus(registrationId, "pending_review", {
@@ -889,10 +909,10 @@ export interface ApproveRefundInput {
  */
 export async function approveAndCompleteRefundAction(input: ApproveRefundInput) {
   try {
-    const { updateRefundStatus } = await import("./client");
+    const { updateRefundStatusServer } = await import("@/server/firestore-admin");
     const now = new Date().toISOString();
 
-    await updateRefundStatus(
+    const ok = await updateRefundStatusServer(
       input.registrationId,
       "refund_completed",
       {
@@ -905,6 +925,10 @@ export async function approveAndCompleteRefundAction(input: ApproveRefundInput) 
       },
       input.reviewer,
     );
+
+    if (!ok) {
+      console.warn("[approveAndCompleteRefundAction] updateRefundStatusServer returned false");
+    }
 
     await revalidateDashboardPath(`/dashboard/events/${input.eventId}`);
     await revalidateDashboardPath("/dashboard/member/my-events");
@@ -930,10 +954,10 @@ export interface RejectRefundInput {
  */
 export async function rejectRefundAction(input: RejectRefundInput) {
   try {
-    const { updateRefundStatus } = await import("./client");
+    const { updateRefundStatusServer } = await import("@/server/firestore-admin");
     const now = new Date().toISOString();
 
-    await updateRefundStatus(
+    const ok = await updateRefundStatusServer(
       input.registrationId,
       "rejected",
       {
@@ -945,6 +969,10 @@ export async function rejectRefundAction(input: RejectRefundInput) {
       },
       input.reviewer,
     );
+
+    if (!ok) {
+      console.warn("[rejectRefundAction] updateRefundStatusServer returned false");
+    }
 
     await revalidateDashboardPath(`/dashboard/events/${input.eventId}`);
     await revalidateDashboardPath("/dashboard/member/my-events");
@@ -1025,6 +1053,7 @@ export async function updateEventPaymentConfigAction(
     payment_fee_tier_below_amount?: number;
     payment_fee_tier_above_percent?: number;
     payment_fee_label?: string | null;
+    member_payment_check_limit?: number | null;
   },
   baseEvent?: Partial<FirestoreEvent>,
 ) {

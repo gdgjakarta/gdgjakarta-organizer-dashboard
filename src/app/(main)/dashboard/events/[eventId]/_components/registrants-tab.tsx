@@ -89,6 +89,7 @@ import type {
   FirestoreEvent,
   FirestoreRegistration,
   RegistrationStatus,
+  RegistrationStatusLog,
 } from "@/lib/firestore/types";
 import { cn, getInitials } from "@/lib/utils";
 import { checkInBevyAttendeeAction, fetchAllBevyEventAttendeesAction } from "@/server/bevy-actions";
@@ -1508,9 +1509,27 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     currentEvent,
   ]);
 
-  const handleStatusChange = (registrationId: string, newStatus: RegistrationStatus) => {
-    // If attendee is already approved, prevent changing status
+  const handleStatusChange = (
+    registrationId: string,
+    newStatus: RegistrationStatus,
+    updatedRegistration?: FirestoreRegistration,
+  ) => {
+    if (updatedRegistration) {
+      setRegistrationsList((prev) => prev.map((r) => (r.id === registrationId ? { ...r, ...updatedRegistration } : r)));
+      setInspectRegistration((prev) => (prev?.id === registrationId ? { ...prev, ...updatedRegistration } : prev));
+      return;
+    }
+
+    // If attendee is already approved or canceled, prevent changing status
     const targetReg = registrationsList.find((r) => r.id === registrationId);
+    if (
+      targetReg?.status === "canceled" ||
+      targetReg?.status === "cancelled" ||
+      targetReg?.refund_request?.status === "refund_completed"
+    ) {
+      toast.error("This registration has been canceled / refunded and cannot be modified.");
+      return;
+    }
     if (targetReg?.status === "approved" && newStatus !== "approved") {
       toast.error("This attendee is already approved. Their status cannot be changed except by removal.");
       return;
@@ -1537,6 +1556,16 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         const now = new Date().toISOString();
         await updateRegistrationStatusAction(registrationId, eventId, newStatus, reviewerPayload);
         const isPending = newStatus === "pending";
+        const newLogEntry: RegistrationStatusLog = {
+          id: `log_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          status: newStatus,
+          previous_status: targetReg?.status,
+          changed_at: now,
+          changed_by_id: user?.id ?? "unknown",
+          changed_by_name: user?.name ?? "Organizer",
+          changed_by_email: user?.email,
+          notes: newStatus === "paid_and_registered" ? "Marked as Paid & Registered by organizer." : undefined,
+        };
         setRegistrationsList((prev) =>
           prev.map((r) =>
             r.id === registrationId
@@ -1547,6 +1576,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                   reviewed_by_id: isPending ? undefined : (user?.id ?? r.reviewed_by_id),
                   reviewed_by_name: isPending ? undefined : (user?.name ?? r.reviewed_by_name),
                   reviewed_by_email: isPending ? undefined : (user?.email ?? r.reviewed_by_email),
+                  status_logs: [...(r.status_logs ?? []), newLogEntry],
                 }
               : r,
           ),
@@ -1560,6 +1590,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 reviewed_by_id: isPending ? undefined : (user?.id ?? prev.reviewed_by_id),
                 reviewed_by_name: isPending ? undefined : (user?.name ?? prev.reviewed_by_name),
                 reviewed_by_email: isPending ? undefined : (user?.email ?? prev.reviewed_by_email),
+                status_logs: [...(prev.status_logs ?? []), newLogEntry],
               }
             : prev,
         );
@@ -2068,13 +2099,18 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const selectedWithInvoice = useMemo(() => {
     return Array.from(selectedIds).filter((id) => {
       const r = registrationsList.find((reg) => reg.id === id);
-      return Boolean(
-        r?.payment_invoice_number ||
-          (r?.answers?.payment_invoice_number as string | undefined) ||
-          (r?.answers?.invoice_number as string | undefined),
+      if (!r) return false;
+      const status = getEffectiveRegistrationStatus(r, currentEvent);
+      return (
+        status === "waiting_for_payment" &&
+        Boolean(
+          r.payment_invoice_number ||
+            (r.answers?.payment_invoice_number as string | undefined) ||
+            (r.answers?.invoice_number as string | undefined),
+        )
       );
     });
-  }, [selectedIds, registrationsList]);
+  }, [selectedIds, registrationsList, currentEvent]);
 
   const handleBatchCheckPayment = async () => {
     if (selectedWithInvoice.length === 0) return;
@@ -2101,6 +2137,15 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         });
         if (res.isPaid) {
           paidCount++;
+          const newLog: RegistrationStatusLog = res.logEntry ?? {
+            id: `log_${Date.now()}_doku`,
+            status: "paid_and_registered",
+            previous_status: reg?.status,
+            changed_at: res.paidAt ?? new Date().toISOString(),
+            changed_by_id: "doku_payment_gateway",
+            changed_by_name: "DOKU Payment Gateway",
+            notes: `Payment confirmed via ${res.paymentChannel ?? "QRIS"}. Status updated to Paid & Registered.`,
+          };
           setRegistrationsList((prev) =>
             prev.map((r) =>
               r.id === id
@@ -2110,6 +2155,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                     payment_status: "paid",
                     payment_channel: res.paymentChannel ?? r.payment_channel,
                     paid_at: res.paidAt ?? new Date().toISOString(),
+                    status_logs: res.statusLogs ?? [...(r.status_logs ?? []), newLog],
                   }
                 : r,
             ),
@@ -4349,18 +4395,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                   </Button>
                                 )}
 
-                              {/* Quick Check DOKU Payment Status Button */}
-                              {Boolean(
-                                reg.payment_invoice_number ||
-                                  reg.answers?.payment_invoice_number ||
-                                  reg.answers?.invoice_number ||
-                                  (reg as { invoice_number?: string })?.invoice_number ||
-                                  hasRegistrationPaymentRequirements(reg) ||
-                                  reg.status === "waiting_for_payment" ||
-                                  reg.status === "expired" ||
-                                  reg.status === "paid_and_registered" ||
-                                  reg.status === "paid_waitlisted",
-                              ) && (
+                              {/* Quick Check DOKU Payment Status Button (only when waiting for payment) */}
+                              {rawStatus === "waiting_for_payment" && (
                                 <Button
                                   size="icon-xs"
                                   variant="ghost"
@@ -4398,17 +4434,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                     <Eye className="mr-2 size-3.5" />
                                     View application dossier
                                   </DropdownMenuItem>
-                                  {Boolean(
-                                    reg.payment_invoice_number ||
-                                      reg.answers?.payment_invoice_number ||
-                                      reg.answers?.invoice_number ||
-                                      (reg as { invoice_number?: string })?.invoice_number ||
-                                      hasRegistrationPaymentRequirements(reg) ||
-                                      reg.status === "waiting_for_payment" ||
-                                      reg.status === "expired" ||
-                                      reg.status === "paid_and_registered" ||
-                                      reg.status === "paid_waitlisted",
-                                  ) && (
+                                  {rawStatus === "waiting_for_payment" && (
                                     <DropdownMenuItem
                                       onClick={() => {
                                         setCheckingPaymentRegistration(reg);
@@ -4544,6 +4570,10 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         isCurationMode={isCurationMode}
         onClose={() => setInspectRegistration(null)}
         onStatusChange={handleStatusChange}
+        onUpdateRegistration={(updatedReg) => {
+          setRegistrationsList((prev) => prev.map((r) => (r.id === updatedReg.id ? { ...r, ...updatedReg } : r)));
+          setInspectRegistration(updatedReg);
+        }}
         onApprove={handleApproveAttendee}
         onReject={handleRejectAttendee}
         onResendInterestEmail={handleResendInterestEmail}
