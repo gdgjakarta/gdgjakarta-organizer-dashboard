@@ -81,6 +81,7 @@ interface EnrichedTemplateEventOption {
   status: "Completed" | "Published" | "Draft" | "Canceled";
   isCompleted: boolean;
   isCurrent: boolean;
+  isHidden?: boolean;
   thumbnailUrl?: string;
   eventHeaderEmailUrl: string;
   templates: Record<EmailTemplateKey, TemplateDataPerKey>;
@@ -101,7 +102,7 @@ export function CopyTemplateDataDialog({
   const [isLoading, setIsLoading] = useState(false);
   const [events, setEvents] = useState<EnrichedTemplateEventOption[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeFilter, setActiveFilter] = useState<"all" | "custom" | "completed" | "upcoming">("all");
+  const [activeFilter, setActiveFilter] = useState<"all" | "custom" | "hidden" | "completed" | "upcoming">("all");
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [mobileTab, setMobileTab] = useState<"select" | "preview">("select");
 
@@ -151,7 +152,10 @@ export function CopyTemplateDataDialog({
       setIsLoading(true);
       try {
         const { getFirestoreEvents } = await import("@/lib/firestore/client");
-        const [firestoreDocs, bevyResult] = await Promise.all([getFirestoreEvents(100), fetchPublishedEventsAction()]);
+        const [firestoreDocs, bevyResult] = await Promise.all([
+          getFirestoreEvents(500, true),
+          fetchPublishedEventsAction(),
+        ]);
 
         if (!isMounted) return;
 
@@ -225,6 +229,8 @@ export function CopyTemplateDataDialog({
           };
         }
 
+        const isCurrentHidden = Boolean(currentEvent.is_hidden ?? (currentEvent as { hidden?: boolean }).hidden);
+
         eventsById.set(currentEventIdStr, {
           id: currentEventIdStr,
           title: currentEvent.title || "Current Event",
@@ -233,6 +239,7 @@ export function CopyTemplateDataDialog({
           status: currentEvent.status || "Published",
           isCompleted: currentEvent.status === "Completed",
           isCurrent: true,
+          isHidden: isCurrentHidden,
           thumbnailUrl: currentEvent.picture_url ?? currentEvent.banner_url,
           eventHeaderEmailUrl:
             currentEvent.headerEmailUrl ??
@@ -251,6 +258,7 @@ export function CopyTemplateDataDialog({
 
           const bevyMatch = bevyMap.get(docId);
           const rawStart = doc.start_date || bevyMatch?.startDate || "";
+          const isDocHidden = Boolean(doc.is_hidden ?? (doc as { hidden?: boolean }).hidden);
 
           let isCompleted = doc.status === "Completed";
           let formattedDate = "Date TBD";
@@ -324,6 +332,7 @@ export function CopyTemplateDataDialog({
             status: finalStatus,
             isCompleted,
             isCurrent: false,
+            isHidden: isDocHidden,
             thumbnailUrl: doc.picture_url || doc.banner_url || bevyMatch?.thumbnailUrl || bevyMatch?.bannerUrl,
             eventHeaderEmailUrl: eventDefaultBanner,
             templates: templatesMap,
@@ -404,6 +413,78 @@ export function CopyTemplateDataDialog({
     };
   }, [open, currentEvent, currentTemplatesData, selectedEventId]);
 
+  // On-demand fallback: fetch single event details when selected
+  useEffect(() => {
+    if (!selectedEventId || !open) return;
+    const current = events.find((e) => e.id === selectedEventId);
+    if (!current || current.isCurrent) return;
+
+    let isMounted = true;
+    void (async () => {
+      try {
+        const { getFirestoreEventById } = await import("@/lib/firestore/client");
+        const doc = await getFirestoreEventById(selectedEventId);
+        if (!isMounted || !doc) return;
+
+        const isHidden = Boolean(doc.is_hidden || (doc as { hidden?: boolean }).hidden);
+
+        const eventDefaultBanner =
+          doc.headerEmailUrl ||
+          doc.header_email_url ||
+          doc.banner_url ||
+          doc.picture_url ||
+          current.eventHeaderEmailUrl ||
+          FALLBACK_BANNER_URL;
+
+        const updatedTemplates: Record<EmailTemplateKey, TemplateDataPerKey> = { ...current.templates };
+        let customCount = 0;
+
+        for (const cfg of EMAIL_TEMPLATES_CONFIG) {
+          const k = cfg.key;
+          const savedData = doc.email_templates?.templates_data?.[k];
+          const legacySaved = k === "accepted" ? doc.email_templates?.template_data : undefined;
+          const activeSaved = savedData ?? legacySaved;
+
+          const defaultItems = DEFAULT_CHECKLIST_ITEMS_BY_TYPE[k] ?? [];
+          const hasCustomChecklist = Boolean(
+            activeSaved?.eventChecklistItems && activeSaved.eventChecklistItems.length > 0,
+          );
+          if (hasCustomChecklist) customCount++;
+
+          const checklistItems = hasCustomChecklist ? (activeSaved?.eventChecklistItems ?? []) : defaultItems;
+          const hasCustomBanner = Boolean(activeSaved?.headerEmailUrl);
+          const headerEmailUrl = activeSaved?.headerEmailUrl || eventDefaultBanner;
+
+          updatedTemplates[k] = {
+            headerEmailUrl,
+            checklistItems,
+            hasCustomChecklist,
+            hasCustomBanner,
+          };
+        }
+
+        setEvents((prev) =>
+          prev.map((ev) => {
+            if (ev.id !== selectedEventId) return ev;
+            return {
+              ...ev,
+              isHidden,
+              eventHeaderEmailUrl: eventDefaultBanner,
+              templates: updatedTemplates,
+              totalCustomChecklists: customCount,
+            };
+          }),
+        );
+      } catch (err) {
+        console.error("[CopyTemplateDataDialog] Error fetching single event details:", err);
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedEventId, open, events]);
+
   // Filtered events
   const filteredEvents = useMemo(() => {
     return events.filter((ev) => {
@@ -412,11 +493,15 @@ export function CopyTemplateDataDialog({
         const matchesTitle = ev.title.toLowerCase().includes(q);
         const matchesDate = ev.formattedDate.toLowerCase().includes(q);
         const matchesId = ev.id.toLowerCase().includes(q);
-        if (!matchesTitle && !matchesDate && !matchesId) return false;
+        const matchesHidden = Boolean(ev.isHidden && "hidden".includes(q));
+        if (!matchesTitle && !matchesDate && !matchesId && !matchesHidden) return false;
       }
 
       if (activeFilter === "custom") {
         return ev.totalCustomChecklists > 0 || ev.eventHeaderEmailUrl !== FALLBACK_BANNER_URL;
+      }
+      if (activeFilter === "hidden") {
+        return Boolean(ev.isHidden);
       }
       if (activeFilter === "completed") {
         return ev.isCompleted;
@@ -551,6 +636,7 @@ export function CopyTemplateDataDialog({
                   [
                     { id: "all", label: "All" },
                     { id: "custom", label: "With Custom Data" },
+                    { id: "hidden", label: "Hidden" },
                     { id: "completed", label: "Completed" },
                     { id: "upcoming", label: "Upcoming" },
                   ] as const
@@ -574,17 +660,19 @@ export function CopyTemplateDataDialog({
 
             {/* Event List */}
             <ScrollArea className="flex-1 min-h-0">
-              {isLoading ? (
+              {isLoading && (
                 <div className="p-8 flex flex-col items-center justify-center text-center space-y-2">
                   <Loader2 className="size-6 animate-spin text-primary" />
                   <p className="text-xs text-muted-foreground">Loading published and past events...</p>
                 </div>
-              ) : filteredEvents.length === 0 ? (
+              )}
+              {!isLoading && filteredEvents.length === 0 && (
                 <div className="p-8 text-center text-muted-foreground space-y-2">
                   <AlertCircle className="size-6 mx-auto opacity-40" />
                   <p className="text-xs">No events match your search query.</p>
                 </div>
-              ) : (
+              )}
+              {!isLoading && filteredEvents.length > 0 && (
                 <div className="p-2 space-y-1.5">
                   {filteredEvents.map((ev) => {
                     const isSelected = ev.id === selectedEventId;
@@ -604,10 +692,18 @@ export function CopyTemplateDataDialog({
                         )}
                       >
                         <div className="flex items-start justify-between gap-2">
-                          <div className="flex items-center gap-1.5 min-w-0">
+                          <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                             {ev.isCurrent && (
                               <Badge variant="default" className="text-[9px] h-4 px-1.5 shrink-0 bg-blue-600">
                                 Current Event
+                              </Badge>
+                            )}
+                            {ev.isHidden && (
+                              <Badge
+                                variant="outline"
+                                className="text-[9px] h-4 px-1.5 shrink-0 border-amber-500/40 text-amber-600 dark:text-amber-400 bg-amber-500/10"
+                              >
+                                Hidden
                               </Badge>
                             )}
                             <Badge
@@ -678,10 +774,18 @@ export function CopyTemplateDataDialog({
                   <div className="rounded-xl border border-border/60 bg-card p-3.5 shadow-2xs">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <div className="flex items-center gap-1.5 mb-1">
+                        <div className="flex items-center gap-1.5 mb-1 flex-wrap">
                           {selectedEvent.isCurrent && (
                             <Badge variant="default" className="text-[9px] h-4 px-1.5 bg-blue-600">
                               Current Event
+                            </Badge>
+                          )}
+                          {selectedEvent.isHidden && (
+                            <Badge
+                              variant="outline"
+                              className="text-[9px] h-4 px-1.5 border-amber-500/40 text-amber-600 dark:text-amber-400 bg-amber-500/10"
+                            >
+                              Hidden
                             </Badge>
                           )}
                           <Badge variant="outline" className="text-[10px]">
