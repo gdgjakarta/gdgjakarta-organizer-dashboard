@@ -19,7 +19,7 @@ import {
 export async function fetchBevyChapterEventsAction(
   pageSize = 100,
   page = 1,
-  includeHidden = false,
+  includeHidden = true,
   status = "Published",
 ) {
   return await getBevyChapterEvents(undefined, pageSize, page, includeHidden, status);
@@ -28,7 +28,7 @@ export async function fetchBevyChapterEventsAction(
 /**
  * Server action to fetch all Bevy chapter events across all pages safely on the server
  */
-export async function fetchAllBevyChapterEventsAction(includeHidden = false, status = "All") {
+export async function fetchAllBevyChapterEventsAction(includeHidden = true, status = "All") {
   return await getAllBevyChapterEvents(undefined, includeHidden, status);
 }
 

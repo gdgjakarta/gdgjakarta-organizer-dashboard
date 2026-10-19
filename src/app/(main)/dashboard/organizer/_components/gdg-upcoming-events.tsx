@@ -83,14 +83,9 @@ function DropRateBadge({
 }
 
 export function GDGUpcomingEvents({ events }: GDGUpcomingEventsProps) {
-  // Pick up to 5 upcoming or recent published non-test events (including hidden events)
+  // Pick up to 5 upcoming or recent published events (including hidden and test events)
   const displayedEvents = events
-    .filter(
-      (e) =>
-        !e.is_test &&
-        !/^\s*(\[test\]|\(test\)|test:)/i.test(e.title || "") &&
-        (e.status ? e.status.toLowerCase() === "published" || e.status === "Completed" : true),
-    )
+    .filter((e) => (e.status ? e.status.toLowerCase() === "published" || e.status === "Completed" : true))
     .slice(0, 5);
 
   return (

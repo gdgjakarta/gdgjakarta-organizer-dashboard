@@ -55,13 +55,12 @@ export default async function Home(props: HomeProps) {
 
   // Fetch upcoming events and chapter sponsors in parallel
   const [eventsData, sponsors] = await Promise.all([
-    getBevyChapterEvents(BEVY_CONFIG.chapterId, 6, 1, false, "Published"),
+    getBevyChapterEvents(BEVY_CONFIG.chapterId, 6, 1, true, "Published"),
     getBevyChapterSponsors(BEVY_CONFIG.chapterSlug || BEVY_CONFIG.chapterId),
   ]);
 
-  const upcomingEvents = (eventsData?.results ?? []).filter(
-    (e) =>
-      !e.is_hidden && !(e as { hidden?: boolean }).hidden && (e.status ? e.status.toLowerCase() === "published" : true),
+  const upcomingEvents = (eventsData?.results ?? []).filter((e) =>
+    e.status ? e.status.toLowerCase() === "published" : true,
   );
 
   return (

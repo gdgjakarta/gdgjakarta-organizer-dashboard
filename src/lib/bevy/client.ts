@@ -70,7 +70,8 @@ export async function bevyFetchWithResponse<T>(
   const isMutation = method !== "GET" && method !== "HEAD";
   const isProtectedPath =
     endpoint.includes("/attendee") ||
-    endpoint.includes("/members") ||
+    endpoint.includes("/member") ||
+    endpoint.includes("/event/") ||
     endpoint.includes("/team/") ||
     endpoint.includes("/teammember") ||
     endpoint.startsWith("/user/") ||
@@ -669,7 +670,7 @@ export async function getBevyChapterEvents(
   chapterId: string = BEVY_CONFIG.chapterId,
   pageSize = 100,
   page = 1,
-  includeHidden = false,
+  includeHidden = true,
   status = "Published",
 ): Promise<BevyEventsResponse | null> {
   const isAllStatus = !status || status.toLowerCase() === "all";
@@ -705,7 +706,7 @@ export async function getBevyChapterEvents(
  */
 export async function getAllBevyChapterEvents(
   chapterId: string = BEVY_CONFIG.chapterId,
-  includeHidden = false,
+  includeHidden = true,
   status = "All",
 ): Promise<{ results: BevyEvent[]; count: number }> {
   const pageSize = 100;
@@ -735,7 +736,7 @@ export async function getAllBevyChapterEvents(
  */
 export async function getAllEvents(
   chapterId: string = BEVY_CONFIG.chapterId,
-  includeHidden = false,
+  includeHidden = true,
   status = "All",
 ): Promise<{ results: BevyEvent[]; count: number }> {
   return await getAllBevyChapterEvents(chapterId, includeHidden, status);

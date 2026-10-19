@@ -9,14 +9,9 @@ export default async function MyEventsPage() {
   let allEvents: FirestoreEvent[] = [];
 
   try {
-    const bevy = await getBevyChapterEvents(undefined, 100, 1, false, "Published");
+    const bevy = await getBevyChapterEvents(undefined, 100, 1, true, "Published");
     allEvents = (bevy?.results ?? [])
-      .filter(
-        (e) =>
-          !e.is_hidden &&
-          !(e as { hidden?: boolean }).hidden &&
-          (e.status ? e.status.toLowerCase() === "published" : true),
-      )
+      .filter((e) => (e.status ? e.status.toLowerCase() === "published" : true))
       .map((e) => {
         const { audienceType, isVirtual } = resolveEventAudience(e.audience_type, e.is_virtual_event);
         return {

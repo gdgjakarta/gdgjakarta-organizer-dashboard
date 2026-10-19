@@ -118,7 +118,7 @@ import type {
 
 // ── Events ──────────────────────────────────────────────────────────────────
 
-export async function getFirestoreEvents(maxResults = 250, includeHidden = false): Promise<FirestoreEvent[]> {
+export async function getFirestoreEvents(maxResults = 250, includeHidden = true): Promise<FirestoreEvent[]> {
   if (typeof window === "undefined") return [];
   try {
     const eventsRef = collection(db, "events");

@@ -42,25 +42,10 @@ export default async function Page() {
     ]);
 
     const rawEvents = eventsResponse?.results ?? [];
-
-    const isTestEvent = (e: { is_test?: boolean; title?: string }) => {
-      if (e.is_test || (e as { is_test?: boolean }).is_test) return true;
-      const title = (e.title ?? "").trim().toLowerCase();
-      return (
-        title.startsWith("[test]") ||
-        title.startsWith("(test)") ||
-        title === "test" ||
-        title.startsWith("test ") ||
-        title.startsWith("test:") ||
-        title.startsWith("test -")
-      );
-    };
-
-    const nonTestEvents = rawEvents.filter((e) => !isTestEvent(e));
-    totalEventsCount = nonTestEvents.length;
+    totalEventsCount = eventsResponse?.count ?? rawEvents.length;
     totalMembersCount = chapterSlim?.members_count ?? membersResponse?.count;
 
-    events = nonTestEvents.map((e) => {
+    events = rawEvents.map((e) => {
       const { audienceType, isVirtual } = resolveEventAudience(e.audience_type, e.is_virtual_event);
       return {
         id: String(e.id),
