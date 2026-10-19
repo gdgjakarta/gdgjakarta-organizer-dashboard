@@ -124,7 +124,10 @@ export function CopyEventFormDialog({ open, onOpenChange, currentEventId, onAppl
       setIsLoading(true);
       try {
         const { getFirestoreEvents } = await import("@/lib/firestore/client");
-        const [firestoreDocs, bevyResult] = await Promise.all([getFirestoreEvents(100), fetchPublishedEventsAction()]);
+        const [firestoreDocs, bevyResult] = await Promise.all([
+          getFirestoreEvents(500, true),
+          fetchPublishedEventsAction(),
+        ]);
 
         if (!isMounted) return;
 
@@ -273,6 +276,46 @@ export function CopyEventFormDialog({ open, onOpenChange, currentEventId, onAppl
   const selectedEvent = useMemo(() => {
     return events.find((e) => e.id === selectedEventId) || null;
   }, [events, selectedEventId]);
+
+  // On-demand fallback: if an event is selected and has 0 questions, check if Firestore has it directly
+  useEffect(() => {
+    if (!selectedEventId || !open) return;
+    const current = events.find((e) => e.id === selectedEventId);
+    if (current && current.questions.length === 0) {
+      let isMounted = true;
+      void (async () => {
+        try {
+          const { getFirestoreEventById } = await import("@/lib/firestore/client");
+          const doc = await getFirestoreEventById(selectedEventId);
+          if (!isMounted || !doc) return;
+          const questions = doc.custom_questions && Array.isArray(doc.custom_questions) ? doc.custom_questions : [];
+          if (questions.length > 0) {
+            setEvents((prev) =>
+              prev.map((ev) => {
+                if (ev.id !== selectedEventId) return ev;
+                return {
+                  ...ev,
+                  questions,
+                  sessions: doc.sessions && Array.isArray(doc.sessions) ? doc.sessions : ev.sessions,
+                  tickets: doc.tickets && Array.isArray(doc.tickets) ? doc.tickets : ev.tickets,
+                  requiresApproval: Boolean(
+                    doc.requires_approval || (doc as unknown as Record<string, unknown>).curation_mode,
+                  ),
+                  allowWaitlist: doc.allow_waitlist !== false,
+                  maxAttendees: doc.max_attendees ? String(doc.max_attendees) : ev.maxAttendees,
+                };
+              }),
+            );
+          }
+        } catch (err) {
+          console.error("[CopyEventFormDialog] Error fetching single event details:", err);
+        }
+      })();
+      return () => {
+        isMounted = false;
+      };
+    }
+  }, [selectedEventId, open, events]);
 
   // Group questions by section for clean preview
   const questionsBySection = useMemo(() => {

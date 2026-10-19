@@ -134,7 +134,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
   // 3. Event Sessions (Split into Sessions with Limited Capacity or Single Session Defaults)
   const [sessions, setSessions] = useState<EventSession[]>(event.sessions ?? []);
   const [defaultSessionName, setDefaultSessionName] = useState<string>(
-    event.default_session_name?.trim() || "Full session",
+    event.default_session_name?.trim() || "Full Session",
   );
   const [defaultSessionTime, setDefaultSessionTime] = useState<string>(event.default_session_time ?? "");
   const [defaultSessionCheckinDeadline, setDefaultSessionCheckinDeadline] = useState<string>(
@@ -385,7 +385,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
         const loadedStartDate = toDateTimeLocal(docData?.registration_start_date ?? event.registration_start_date);
         const loadedEndDate = toDateTimeLocal(docData?.registration_end_date ?? event.registration_end_date);
         const loadedDefaultSessionName =
-          docData?.default_session_name?.trim() || event.default_session_name?.trim() || "Full session";
+          docData?.default_session_name?.trim() || event.default_session_name?.trim() || "Full Session";
         const loadedDefaultSessionTime = docData?.default_session_time ?? event.default_session_time ?? "";
         const loadedDefaultSessionCheckinDeadline =
           docData?.default_session_checkin_deadline ?? event.default_session_checkin_deadline ?? "";
@@ -442,7 +442,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
           allowWaitlist: event.allow_waitlist !== false,
           maxAttendees: event.max_attendees ? String(event.max_attendees) : "",
           sessions: event.sessions ?? [],
-          defaultSessionName: event.default_session_name?.trim() || "Full session",
+          defaultSessionName: event.default_session_name?.trim() || "Full Session",
           defaultSessionTime: event.default_session_time ?? "",
           defaultSessionCheckinDeadline: event.default_session_checkin_deadline ?? "",
           defaultSessionLocation: event.default_session_location ?? "",
@@ -916,7 +916,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
             max_attendees: resolvedMaxAttendees,
             webhook_url: event.webhook_url ? event.webhook_url : deleteField(),
             sessions: sessions.length > 0 ? sessions : deleteField(),
-            default_session_name: defaultSessionName.trim() ? defaultSessionName.trim() : "Full session",
+            default_session_name: defaultSessionName.trim() ? defaultSessionName.trim() : "Full Session",
             default_session_time: defaultSessionTime.trim() ? defaultSessionTime.trim() : deleteField(),
             default_session_checkin_deadline: defaultSessionCheckinDeadline.trim()
               ? defaultSessionCheckinDeadline.trim()
@@ -943,7 +943,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
             allowWaitlist,
             maxAttendees,
             sessions,
-            defaultSessionName: defaultSessionName.trim() || "Full session",
+            defaultSessionName: defaultSessionName.trim() || "Full Session",
             defaultSessionTime,
             defaultSessionCheckinDeadline,
             defaultSessionLocation,
@@ -1763,14 +1763,14 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
                 <Field className="sm:col-span-2 lg:col-span-1">
                   <FieldLabel className="text-xs">Default Session Title *</FieldLabel>
                   <Input
-                    placeholder="Full session"
+                    placeholder="Full Session"
                     value={defaultSessionName}
                     onChange={(e) => setDefaultSessionName(e.target.value)}
                     className="h-9 text-xs"
                   />
                   <p className="pt-1 text-[10px] text-muted-foreground">
                     Assigned session name for attendees and n8n webhook automation (defaults to{" "}
-                    <strong>Full session</strong>).
+                    <strong>Full Session</strong>).
                   </p>
                 </Field>
 
@@ -2034,7 +2034,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
                   <Layers className="size-3.5 text-primary" />
                   <span>
                     Fallback Default Session:{" "}
-                    <strong className="text-foreground">{defaultSessionName || "Full session"}</strong>
+                    <strong className="text-foreground">{defaultSessionName || "Full Session"}</strong>
                   </span>
                 </div>
                 <span className="text-[10px]">

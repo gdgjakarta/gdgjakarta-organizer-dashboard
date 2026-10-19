@@ -156,14 +156,14 @@ export function resolveRegistrationSession(
     (registration.answers?.session as string | undefined) ??
     "";
 
-  let sessionTitle = event?.default_session_name?.trim() || "Full session";
+  let sessionTitle = event?.default_session_name?.trim() || "Full Session";
   if (rawSession && typeof rawSession === "string") {
     const cleaned = rawSession.split(",")[0].trim();
     if (cleaned) {
       sessionTitle = cleaned;
     }
   } else if (event?.sessions && event.sessions.length > 0) {
-    sessionTitle = event.sessions[0].title.trim() || event?.default_session_name?.trim() || "Full session";
+    sessionTitle = event.sessions[0].title.trim() || event?.default_session_name?.trim() || "Full Session";
   }
 
   let matchedSessionId = registration.session_id ?? undefined;

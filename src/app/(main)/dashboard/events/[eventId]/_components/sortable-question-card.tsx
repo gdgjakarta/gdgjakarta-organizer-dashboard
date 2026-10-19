@@ -343,8 +343,12 @@ export function SortableQuestionCard({
               </Badge>
             ) : (
               q.section && (
-                <Badge variant="outline" className="hidden max-w-[140px] shrink-0 truncate text-[10px] md:inline-flex">
-                  {q.section}
+                <Badge
+                  variant="outline"
+                  className="hidden shrink-0 text-[10px] md:inline-flex"
+                  title={`Section: ${q.section}`}
+                >
+                  <span className="max-w-[160px] truncate">{q.section}</span>
                 </Badge>
               )
             )}

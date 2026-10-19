@@ -118,7 +118,7 @@ import type {
 
 // ── Events ──────────────────────────────────────────────────────────────────
 
-export async function getFirestoreEvents(maxResults = 100): Promise<FirestoreEvent[]> {
+export async function getFirestoreEvents(maxResults = 250, includeHidden = false): Promise<FirestoreEvent[]> {
   if (typeof window === "undefined") return [];
   try {
     const eventsRef = collection(db, "events");
@@ -127,7 +127,7 @@ export async function getFirestoreEvents(maxResults = 100): Promise<FirestoreEve
 
     return snapshot.docs
       .map((docSnap) => normalizeEventDoc(docSnap.data() as Record<string, unknown>, docSnap.id))
-      .filter((e) => !e.is_hidden && !(e as { hidden?: boolean }).hidden);
+      .filter((e) => includeHidden || (!e.is_hidden && !(e as { hidden?: boolean }).hidden));
   } catch (error) {
     console.error("[Firestore] getFirestoreEvents error:", error);
     return [];
@@ -1771,7 +1771,7 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
     registration.session_title ??
     (eventData?.sessions && eventData.sessions.length > 0
       ? eventData.sessions[0].title
-      : eventData?.default_session_name?.trim() || "Full session");
+      : eventData?.default_session_name?.trim() || "Full Session");
 
   // Include session_id, session_title and payment metadata inside answers for backward compatibility
   const updatedAnswers = {

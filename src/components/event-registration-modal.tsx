@@ -1529,7 +1529,7 @@ export function EventRegistrationModal({
         );
         const isCurated = isEventCurationMode(eventConfig);
 
-        const sessionKey = selectedSession?.title ?? (eventConfig.default_session_name?.trim() || "Full session");
+        const sessionKey = selectedSession?.title ?? (eventConfig.default_session_name?.trim() || "Full Session");
         const combinedAnswers = {
           ...answers,
           Session: sessionKey,
@@ -3713,7 +3713,7 @@ export function EventRegistrationModal({
                               <span>
                                 Session:{" "}
                                 <strong className="text-foreground">
-                                  {eventConfig.default_session_name?.trim() || "Full session"}
+                                  {eventConfig.default_session_name?.trim() || "Full Session"}
                                 </strong>
                               </span>
                             </span>

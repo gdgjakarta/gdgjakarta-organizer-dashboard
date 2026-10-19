@@ -52,14 +52,14 @@ export function resolveSessionInfo(
     (registration.answers?.session as string | undefined) ??
     "";
 
-  let sessionName = event?.default_session_name?.trim() || "Full session";
+  let sessionName = event?.default_session_name?.trim() || "Full Session";
   if (rawSession && typeof rawSession === "string") {
     const cleaned = rawSession.split(",")[0].trim();
     if (cleaned) {
       sessionName = cleaned;
     }
   } else if (event?.sessions && event.sessions.length > 0) {
-    sessionName = event.sessions[0].title.trim() || event?.default_session_name?.trim() || "Full session";
+    sessionName = event.sessions[0].title.trim() || event?.default_session_name?.trim() || "Full Session";
   }
 
   let sessionCapacity = 100;

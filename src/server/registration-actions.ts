@@ -116,7 +116,7 @@ function resolveWebhookUrl(eventWebhookUrl?: string): string | null {
  * Automatically resolves session metadata matching GDG Jakarta n8n workflow rules:
  * - "Morning Session" (105 cap, 08:15 WIB - 12:00 WIB, deadline: 09:05 WIB)
  * - "Afternoon Session" (100 cap, 13:10 WIB - 16:55 WIB, deadline: 14:00 WIB)
- * - "Full session" (136 cap, 12:15 WIB - 17:00 WIB, deadline: 13:15 WIB)
+ * - "Full Session" (136 cap, 12:15 WIB - 17:00 WIB, deadline: 13:15 WIB)
  */
 export async function dispatchRegistrationWebhookAction(
   payload: RegistrationWebhookPayload,
@@ -131,7 +131,7 @@ export async function dispatchRegistrationWebhookAction(
     (payload.answers.session as string | undefined) ??
     "";
 
-  let sessionKey = payload.event.default_session_name?.trim() || "Full session";
+  let sessionKey = payload.event.default_session_name?.trim() || "Full Session";
   if (rawSession) {
     if (rawSession.includes(",")) {
       sessionKey = rawSession.split(",")[0].trim();
@@ -453,7 +453,7 @@ export type { ApproveAttendeeWebhookResult, ApprovedAttendeeWebhookPayload };
  *   "status": "approved",
  *   "bevyEventId": "12345",
  *   "bevyChapterId": "678",
- *   "sessionName": "Full session",
+ *   "sessionName": "Full Session",
  *   "sessionCapacity": 100,
  *   "subjectEmail": "Your Official Ticket: GDG DevFest Jakarta",
  *   "bodyEmail": "<!DOCTYPE html>...<img src=\"data:image/png;base64,{{ $('Generate QR Code').item.json.qrCode }}\">...Ref: {{ $('Add Bevy Attendee API').item.json.attendee_code }}...</html>"

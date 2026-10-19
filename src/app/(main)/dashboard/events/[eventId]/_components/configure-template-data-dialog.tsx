@@ -8,14 +8,20 @@ import {
   CalendarIcon,
   CheckCircle2Icon,
   ClockIcon,
+  CopyIcon,
+  CreditCardIcon,
   ExternalLinkIcon,
   ImageIcon,
   ListChecksIcon,
+  MailIcon,
   MapPinIcon,
   PlusIcon,
   RotateCcwIcon,
+  SparklesIcon,
   Trash2Icon,
   UserIcon,
+  UserXIcon,
+  XCircleIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -31,6 +37,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   DEFAULT_CHECKLIST_ITEMS_BY_TYPE,
   EMAIL_TEMPLATES_CONFIG,
@@ -41,6 +48,8 @@ import {
   type TemplateSimulatedData,
 } from "@/lib/events/email-templates";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
+
+import { CopyTemplateDataDialog, type CopyTemplateDataResult } from "./copy-template-data-dialog";
 
 interface ConfigureTemplateDataDialogProps {
   open: boolean;
@@ -63,6 +72,8 @@ export function ConfigureTemplateDataDialog({
 }: ConfigureTemplateDataDialogProps) {
   const [selectedKey, setSelectedKey] = useState<EmailTemplateKey>(activeTemplateKey);
   const [newChecklistItem, setNewChecklistItem] = useState("");
+  const [isCopyDialogOpen, setIsCopyDialogOpen] = useState(false);
+  const [copyDialogInitialTarget, setCopyDialogInitialTarget] = useState<"all" | "banner" | "checklist">("all");
 
   // Sync selectedKey whenever dialog opens or activeTemplateKey changes
   useEffect(() => {
@@ -93,6 +104,72 @@ export function ConfigureTemplateDataDialog({
   const handleUpdate = (updater: (prev: TemplateSimulatedData) => TemplateSimulatedData) => {
     const next = updater(currentData);
     onChangeData(currentKey, next);
+  };
+
+  const handleOpenCopyDialog = (target: "all" | "banner" | "checklist") => {
+    setCopyDialogInitialTarget(target);
+    setIsCopyDialogOpen(true);
+  };
+
+  const handleApplyCopiedData = (result: CopyTemplateDataResult) => {
+    const {
+      copyBanner,
+      bannerUrl,
+      copyChecklist,
+      checklistItems,
+      checklistMode,
+      applyToAllTemplates,
+      sourceEventTitle,
+    } = result;
+
+    if (applyToAllTemplates) {
+      for (const cfg of EMAIL_TEMPLATES_CONFIG) {
+        const k = cfg.key;
+        const prev = templatesData[k] ?? getDefaultTemplateDataForType(k, event);
+        let nextItems = prev.event.eventChecklistItems;
+        if (copyChecklist && checklistItems) {
+          if (checklistMode === "replace") {
+            nextItems = [...checklistItems];
+          } else {
+            const set = new Set(prev.event.eventChecklistItems);
+            const toAdd = checklistItems.filter((i) => !set.has(i));
+            nextItems = [...prev.event.eventChecklistItems, ...toAdd];
+          }
+        }
+        const next: TemplateSimulatedData = {
+          ...prev,
+          event: {
+            ...prev.event,
+            headerEmailUrl: copyBanner && bannerUrl ? bannerUrl : prev.event.headerEmailUrl,
+            eventChecklistItems: nextItems,
+          },
+        };
+        onChangeData(k, next);
+      }
+      toast.success(`Copied template data from "${sourceEventTitle}" to all templates!`);
+    } else {
+      handleUpdate((prev) => {
+        let nextItems = prev.event.eventChecklistItems;
+        if (copyChecklist && checklistItems) {
+          if (checklistMode === "replace") {
+            nextItems = [...checklistItems];
+          } else {
+            const set = new Set(prev.event.eventChecklistItems);
+            const toAdd = checklistItems.filter((i) => !set.has(i));
+            nextItems = [...prev.event.eventChecklistItems, ...toAdd];
+          }
+        }
+        return {
+          ...prev,
+          event: {
+            ...prev.event,
+            headerEmailUrl: copyBanner && bannerUrl ? bannerUrl : prev.event.headerEmailUrl,
+            eventChecklistItems: nextItems,
+          },
+        };
+      });
+      toast.success(`Copied template data from "${sourceEventTitle}" to ${currentMeta.name}!`);
+    }
   };
 
   const handleQuickSelectAttendee = (regId: string) => {
@@ -182,27 +259,61 @@ export function ConfigureTemplateDataDialog({
                 immediately in the live preview.
               </DialogDescription>
             </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => handleOpenCopyDialog("all")}
+              className="shrink-0 text-xs h-8 gap-1.5 font-medium border-primary/30 text-primary hover:bg-primary/10"
+            >
+              <SparklesIcon className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Copy from Existing Event</span>
+              <span className="sm:hidden">Copy Event</span>
+            </Button>
           </div>
 
-          {/* Template Segmented Switcher */}
-          <div className="flex flex-wrap gap-1.5 mt-4 pt-1 border-t">
-            {EMAIL_TEMPLATES_CONFIG.map((cfg) => {
-              const isSelected = cfg.key === currentKey;
-              return (
-                <button
-                  key={cfg.key}
-                  type="button"
-                  onClick={() => setSelectedKey(cfg.key)}
-                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                    isSelected
-                      ? "bg-primary text-primary-foreground shadow-xs"
-                      : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
-                  }`}
+          {/* Template Selector Dropdown */}
+          <div className="mt-4 pt-3 border-t flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 flex-1 max-w-md">
+              <Label
+                htmlFor="template-selector-dropdown"
+                className="text-xs font-semibold text-foreground whitespace-nowrap"
+              >
+                Email Template:
+              </Label>
+              <Select value={currentKey} onValueChange={(val) => setSelectedKey(val as EmailTemplateKey)}>
+                <SelectTrigger
+                  id="template-selector-dropdown"
+                  className="h-8.5 w-full text-xs font-medium bg-background shadow-2xs"
                 >
-                  {cfg.name}
-                </button>
-              );
-            })}
+                  <SelectValue placeholder="Choose a template..." />
+                </SelectTrigger>
+                <SelectContent className="max-h-72">
+                  {EMAIL_TEMPLATES_CONFIG.map((cfg) => (
+                    <SelectItem key={cfg.key} value={cfg.key} className="text-xs py-2">
+                      <div className="flex items-center gap-2">
+                        {cfg.key === "interest" && <MailIcon className="size-3.5 text-blue-500 shrink-0" />}
+                        {cfg.key === "accepted" && <CheckCircle2Icon className="size-3.5 text-emerald-500 shrink-0" />}
+                        {cfg.key === "waitlisted" && <ClockIcon className="size-3.5 text-amber-500 shrink-0" />}
+                        {cfg.key === "paid_waitlisted" && (
+                          <CreditCardIcon className="size-3.5 text-indigo-500 shrink-0" />
+                        )}
+                        {cfg.key.startsWith("cancelled") && <UserXIcon className="size-3.5 text-amber-500 shrink-0" />}
+                        {cfg.key.startsWith("rejected") && <XCircleIcon className="size-3.5 text-red-500 shrink-0" />}
+                        <span className="font-medium">{cfg.name}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground self-start sm:self-center">
+              <span className="text-[11px]">Workflow Phase:</span>
+              <Badge variant="secondary" className="text-[10px] h-5 px-2 font-normal">
+                {currentMeta.badge}
+              </Badge>
+            </div>
           </div>
         </DialogHeader>
 
@@ -316,17 +427,30 @@ export function ConfigureTemplateDataDialog({
                   <Label htmlFor={headerUrlId} className="text-xs font-medium">
                     Header Banner Image URL ({"{{ headerEmailUrl }}"})
                   </Label>
-                  {currentData.event.headerEmailUrl && (
-                    <a
-                      href={currentData.event.headerEmailUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-[10px] text-primary hover:underline inline-flex items-center gap-1"
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleOpenCopyDialog("banner")}
+                      className="h-6 text-[11px] gap-1 px-1.5 text-primary hover:text-primary hover:bg-primary/10"
+                      title="Copy header banner image URL from an existing event"
                     >
-                      <span>Open image</span>
-                      <ExternalLinkIcon className="h-2.5 w-2.5" />
-                    </a>
-                  )}
+                      <CopyIcon className="h-3 w-3" />
+                      <span>Copy from Event</span>
+                    </Button>
+                    {currentData.event.headerEmailUrl && (
+                      <a
+                        href={currentData.event.headerEmailUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[10px] text-primary hover:underline inline-flex items-center gap-1"
+                      >
+                        <span>Open image</span>
+                        <ExternalLinkIcon className="h-2.5 w-2.5" />
+                      </a>
+                    )}
+                  </div>
                 </div>
                 <Input
                   id={headerUrlId}
@@ -502,16 +626,29 @@ export function ConfigureTemplateDataDialog({
                   Checklist Items ({currentData.event.eventChecklistItems.length})
                 </h4>
               </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={handleResetChecklistDefaults}
-                className="h-7 text-[11px] gap-1 px-2 text-muted-foreground hover:text-foreground"
-              >
-                <RotateCcwIcon className="h-3 w-3" />
-                <span>Reset to Defaults</span>
-              </Button>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleOpenCopyDialog("checklist")}
+                  className="h-7 text-[11px] gap-1 px-2 text-primary border-primary/30 hover:bg-primary/10"
+                  title="Copy checklist items from an existing event"
+                >
+                  <CopyIcon className="h-3 w-3" />
+                  <span>Copy from Existing Event</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleResetChecklistDefaults}
+                  className="h-7 text-[11px] gap-1 px-2 text-muted-foreground hover:text-foreground"
+                >
+                  <RotateCcwIcon className="h-3 w-3" />
+                  <span>Reset to Defaults</span>
+                </Button>
+              </div>
             </div>
 
             <p className="text-xs text-muted-foreground">
@@ -613,6 +750,16 @@ export function ConfigureTemplateDataDialog({
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      <CopyTemplateDataDialog
+        open={isCopyDialogOpen}
+        onOpenChange={setIsCopyDialogOpen}
+        currentEvent={event}
+        activeTemplateKey={currentKey}
+        currentTemplatesData={templatesData}
+        initialTarget={copyDialogInitialTarget}
+        onApply={handleApplyCopiedData}
+      />
     </Dialog>
   );
 }
