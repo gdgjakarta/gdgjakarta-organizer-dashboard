@@ -3181,9 +3181,10 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
 
         <CardContent className="space-y-4 p-4">
           {/* Filtration Controls */}
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <InputGroup className="h-8 w-64 sm:w-72">
+          <div className="flex flex-col gap-3">
+            {/* Search Row */}
+            <div className="flex items-center gap-2">
+              <InputGroup className="h-8 w-full">
                 <InputGroupAddon align="inline-start">
                   <Search className="size-3.5" />
                 </InputGroupAddon>
@@ -3211,186 +3212,148 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
               {searchTokens.length > 1 && (
                 <Badge
                   variant="outline"
-                  className="h-8 gap-1 border-primary/30 bg-primary/5 px-2 font-medium text-primary text-xs"
+                  className="h-8 shrink-0 gap-1 border-primary/30 bg-primary/5 px-2 font-medium text-primary text-xs"
                 >
                   <span>{searchTokens.length} filter terms</span>
                 </Badge>
               )}
+            </div>
 
-              <div className="flex items-center gap-1">
-                <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
-                  <SelectTrigger size="sm" className="h-8 text-xs">
-                    <span className="text-muted-foreground">Status:</span>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      <SelectItem value="all">All Statuses ({isLoading ? "..." : statusCounts.all})</SelectItem>
-                      {isCurationMode && (
-                        <SelectItem value="pending">
-                          Pending Review ({isLoading ? "..." : statusCounts.pending})
-                        </SelectItem>
-                      )}
-                      <SelectItem value="waiting_for_payment">
-                        Waiting for Payment ({isLoading ? "..." : statusCounts.waiting_for_payment})
-                      </SelectItem>
-                      <SelectItem value="paid_and_registered">
-                        Paid & Registered ({isLoading ? "..." : statusCounts.paid_and_registered})
-                      </SelectItem>
-                      <SelectItem value="paid_waitlisted">
-                        Paid Waitlist ({isLoading ? "..." : statusCounts.paid_waitlisted})
-                      </SelectItem>
-                      <SelectItem value="expired">Expired ({isLoading ? "..." : statusCounts.expired})</SelectItem>
-                      <SelectItem value="failed">Failed ({isLoading ? "..." : statusCounts.failed})</SelectItem>
-                      <SelectItem value="canceled">Canceled ({isLoading ? "..." : statusCounts.canceled})</SelectItem>
-                      {isCurationMode && (
-                        <SelectItem value="approved">Approved ({isLoading ? "..." : statusCounts.approved})</SelectItem>
-                      )}
-                      <SelectItem value="checked_in">
-                        Checked In ({isLoading ? "..." : statusCounts.checked_in})
-                      </SelectItem>
-                      <SelectItem value="not_checked_in">
-                        Not Checked In (Drop) ({isLoading ? "..." : statusCounts.not_checked_in})
-                      </SelectItem>
-                      {isCurationMode && (
-                        <SelectItem value="waitlisted">
-                          Waitlisted ({isLoading ? "..." : statusCounts.waitlisted})
-                        </SelectItem>
-                      )}
-                      {isCurationMode && (
-                        <SelectItem value="rejected">Rejected ({isLoading ? "..." : statusCounts.rejected})</SelectItem>
-                      )}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => setIsStatusGuideOpen(true)}
-                  className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
-                  title="Attendee Status & Metric Reference Guide"
-                >
-                  <BookOpen className="size-3.5 text-primary" />
-                </Button>
-              </div>
-
-              {hasSessions && (
-                <Select value={sessionFilter} onValueChange={handleSessionFilterChange}>
-                  <SelectTrigger size="sm" className="h-8 text-xs">
-                    <span className="text-muted-foreground">Session:</span>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      <SelectItem value="all">All Sessions ({registrationsList.length})</SelectItem>
-                      {sessions.map((s) => (
-                        <SelectItem key={s.id} value={s.id}>
-                          {s.title}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              )}
-
-              {hasTickets && (
-                <Select value={ticketFilter} onValueChange={handleTicketFilterChange}>
-                  <SelectTrigger size="sm" className="h-8 text-xs">
-                    <Ticket className="mr-1 size-3 shrink-0 text-muted-foreground" />
-                    <span className="text-muted-foreground">Ticket:</span>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      <SelectItem value="all">All Ticket Passes</SelectItem>
-                      {availableTickets.map((t) => (
-                        <SelectItem key={t.id} value={t.name}>
-                          {t.name}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              )}
-
-              {hasMerchandise && (
-                <>
-                  <Select value={merchandiseFilter} onValueChange={handleMerchandiseFilterChange}>
+            {/* Filters & Actions Controls */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-1">
+                  <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
                     <SelectTrigger size="sm" className="h-8 text-xs">
-                      <Package className="mr-1 size-3 shrink-0 text-muted-foreground" />
-                      <span className="text-muted-foreground">Merchandise:</span>
+                      <span className="text-muted-foreground">Status:</span>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectGroup>
-                        <SelectItem value="all">
-                          All Merchandise (
-                          {merchandiseFilterOptions.totalWithMerch + merchandiseFilterOptions.totalWithoutMerch})
+                        <SelectItem value="all">All Statuses ({isLoading ? "..." : statusCounts.all})</SelectItem>
+                        {isCurationMode && (
+                          <SelectItem value="pending">
+                            Pending Review ({isLoading ? "..." : statusCounts.pending})
+                          </SelectItem>
+                        )}
+                        <SelectItem value="waiting_for_payment">
+                          Waiting for Payment ({isLoading ? "..." : statusCounts.waiting_for_payment})
                         </SelectItem>
-                        <SelectItem value="has_merchandise">
-                          Has Merchandise ({merchandiseFilterOptions.totalWithMerch})
+                        <SelectItem value="paid_and_registered">
+                          Paid & Registered ({isLoading ? "..." : statusCounts.paid_and_registered})
                         </SelectItem>
-                        <SelectItem value="no_merchandise">
-                          No Merchandise ({merchandiseFilterOptions.totalWithoutMerch})
+                        <SelectItem value="paid_waitlisted">
+                          Paid Waitlist ({isLoading ? "..." : statusCounts.paid_waitlisted})
                         </SelectItem>
-                        {merchandiseFilterOptions.items.length > 0 && (
-                          <>
-                            <SelectItem
-                              disabled
-                              value="__items_header__"
-                              className="font-semibold text-[10px] text-muted-foreground uppercase"
-                            >
-                              By Product Item
-                            </SelectItem>
-                            {merchandiseFilterOptions.items.map((item) => (
-                              <SelectItem key={item.id} value={item.name}>
-                                {item.name} ({item.count})
-                              </SelectItem>
-                            ))}
-                          </>
+                        <SelectItem value="expired">Expired ({isLoading ? "..." : statusCounts.expired})</SelectItem>
+                        <SelectItem value="failed">Failed ({isLoading ? "..." : statusCounts.failed})</SelectItem>
+                        <SelectItem value="canceled">Canceled ({isLoading ? "..." : statusCounts.canceled})</SelectItem>
+                        {isCurationMode && (
+                          <SelectItem value="approved">
+                            Approved ({isLoading ? "..." : statusCounts.approved})
+                          </SelectItem>
+                        )}
+                        <SelectItem value="checked_in">
+                          Checked In ({isLoading ? "..." : statusCounts.checked_in})
+                        </SelectItem>
+                        <SelectItem value="not_checked_in">
+                          Not Checked In (Drop) ({isLoading ? "..." : statusCounts.not_checked_in})
+                        </SelectItem>
+                        {isCurationMode && (
+                          <SelectItem value="waitlisted">
+                            Waitlisted ({isLoading ? "..." : statusCounts.waitlisted})
+                          </SelectItem>
+                        )}
+                        {isCurationMode && (
+                          <SelectItem value="rejected">
+                            Rejected ({isLoading ? "..." : statusCounts.rejected})
+                          </SelectItem>
                         )}
                       </SelectGroup>
                     </SelectContent>
                   </Select>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setIsStatusGuideOpen(true)}
+                    className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
+                    title="Attendee Status & Metric Reference Guide"
+                  >
+                    <BookOpen className="size-3.5 text-primary" />
+                  </Button>
+                </div>
 
-                  {(merchandiseFilterOptions.sizes.length > 0 || merchandiseFilterOptions.variants.length > 0) && (
-                    <Select value={merchandiseVariantFilter} onValueChange={handleMerchandiseVariantFilterChange}>
+                {hasSessions && (
+                  <Select value={sessionFilter} onValueChange={handleSessionFilterChange}>
+                    <SelectTrigger size="sm" className="h-8 text-xs">
+                      <span className="text-muted-foreground">Session:</span>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectItem value="all">All Sessions ({registrationsList.length})</SelectItem>
+                        {sessions.map((s) => (
+                          <SelectItem key={s.id} value={s.id}>
+                            {s.title}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                )}
+
+                {hasTickets && (
+                  <Select value={ticketFilter} onValueChange={handleTicketFilterChange}>
+                    <SelectTrigger size="sm" className="h-8 text-xs">
+                      <Ticket className="mr-1 size-3 shrink-0 text-muted-foreground" />
+                      <span className="text-muted-foreground">Ticket:</span>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectItem value="all">All Ticket Passes</SelectItem>
+                        {availableTickets.map((t) => (
+                          <SelectItem key={t.id} value={t.name}>
+                            {t.name}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                )}
+
+                {hasMerchandise && (
+                  <>
+                    <Select value={merchandiseFilter} onValueChange={handleMerchandiseFilterChange}>
                       <SelectTrigger size="sm" className="h-8 text-xs">
-                        <Layers className="mr-1 size-3 shrink-0 text-muted-foreground" />
-                        <span className="text-muted-foreground">Variant / Size:</span>
+                        <Package className="mr-1 size-3 shrink-0 text-muted-foreground" />
+                        <span className="text-muted-foreground">Merchandise:</span>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectGroup>
-                          <SelectItem value="all">All Variants & Sizes</SelectItem>
-                          {merchandiseFilterOptions.sizes.length > 0 && (
+                          <SelectItem value="all">
+                            All Merchandise (
+                            {merchandiseFilterOptions.totalWithMerch + merchandiseFilterOptions.totalWithoutMerch})
+                          </SelectItem>
+                          <SelectItem value="has_merchandise">
+                            Has Merchandise ({merchandiseFilterOptions.totalWithMerch})
+                          </SelectItem>
+                          <SelectItem value="no_merchandise">
+                            No Merchandise ({merchandiseFilterOptions.totalWithoutMerch})
+                          </SelectItem>
+                          {merchandiseFilterOptions.items.length > 0 && (
                             <>
                               <SelectItem
                                 disabled
-                                value="__size_header__"
+                                value="__items_header__"
                                 className="font-semibold text-[10px] text-muted-foreground uppercase"
                               >
-                                Sizes
+                                By Product Item
                               </SelectItem>
-                              {merchandiseFilterOptions.sizes.map((s) => (
-                                <SelectItem key={s.value} value={s.value}>
-                                  {s.label} ({s.count})
-                                </SelectItem>
-                              ))}
-                            </>
-                          )}
-                          {merchandiseFilterOptions.variants.length > 0 && (
-                            <>
-                              <SelectItem
-                                disabled
-                                value="__variant_header__"
-                                className="font-semibold text-[10px] text-muted-foreground uppercase"
-                              >
-                                Other Variations
-                              </SelectItem>
-                              {merchandiseFilterOptions.variants.map((v) => (
-                                <SelectItem key={v.value} value={v.value}>
-                                  {v.label} ({v.count})
+                              {merchandiseFilterOptions.items.map((item) => (
+                                <SelectItem key={item.id} value={item.name}>
+                                  {item.name} ({item.count})
                                 </SelectItem>
                               ))}
                             </>
@@ -3398,124 +3361,175 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                         </SelectGroup>
                       </SelectContent>
                     </Select>
-                  )}
-                </>
-              )}
 
-              {isCurationMode && availableReviewers.length > 0 && (
-                <Select value={reviewerFilter} onValueChange={handleReviewerFilterChange}>
-                  <SelectTrigger size="sm" className="h-8 text-xs">
-                    <UserCheck className="mr-1 size-3 shrink-0 text-muted-foreground" />
-                    <span className="text-muted-foreground">Reviewer:</span>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      <SelectItem value="all">All Reviewers ({availableReviewers.length})</SelectItem>
-                      <SelectItem value="unreviewed">Not Reviewed Yet</SelectItem>
-                      {availableReviewers.map((name) => (
-                        <SelectItem key={name} value={name}>
-                          {name}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              )}
+                    {(merchandiseFilterOptions.sizes.length > 0 || merchandiseFilterOptions.variants.length > 0) && (
+                      <Select value={merchandiseVariantFilter} onValueChange={handleMerchandiseVariantFilterChange}>
+                        <SelectTrigger size="sm" className="h-8 text-xs">
+                          <Layers className="mr-1 size-3 shrink-0 text-muted-foreground" />
+                          <span className="text-muted-foreground">Variant / Size:</span>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            <SelectItem value="all">All Variants & Sizes</SelectItem>
+                            {merchandiseFilterOptions.sizes.length > 0 && (
+                              <>
+                                <SelectItem
+                                  disabled
+                                  value="__size_header__"
+                                  className="font-semibold text-[10px] text-muted-foreground uppercase"
+                                >
+                                  Sizes
+                                </SelectItem>
+                                {merchandiseFilterOptions.sizes.map((s) => (
+                                  <SelectItem key={s.value} value={s.value}>
+                                    {s.label} ({s.count})
+                                  </SelectItem>
+                                ))}
+                              </>
+                            )}
+                            {merchandiseFilterOptions.variants.length > 0 && (
+                              <>
+                                <SelectItem
+                                  disabled
+                                  value="__variant_header__"
+                                  className="font-semibold text-[10px] text-muted-foreground uppercase"
+                                >
+                                  Other Variations
+                                </SelectItem>
+                                {merchandiseFilterOptions.variants.map((v) => (
+                                  <SelectItem key={v.value} value={v.value}>
+                                    {v.label} ({v.count})
+                                  </SelectItem>
+                                ))}
+                              </>
+                            )}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </>
+                )}
 
-              {/* Dynamic Question Field Filters */}
-              {selectedQuestionColumns.map((qKey) => {
-                const fieldInfo = availableQuestionFields.find((f) => f.key === qKey) || {
-                  key: qKey,
-                  label: formatQuestionLabel(qKey),
-                  responseCount: 0,
-                };
-                const qLabel = fieldInfo.label;
-                const options = getQuestionFilterOptions(fieldInfo, registrationsList, questionLabelMap);
-                if (options.length === 0) return null;
-
-                const currentVal = questionFilters[qKey] || "all";
-
-                return (
-                  <Select key={qKey} value={currentVal} onValueChange={(val) => handleQuestionFilterChange(qKey, val)}>
-                    <SelectTrigger size="sm" className="h-8 max-w-[220px] text-xs">
-                      <Filter className="mr-1 size-3 shrink-0 text-muted-foreground" />
-                      <span className="truncate text-muted-foreground">{qLabel}:</span>
+                {isCurationMode && availableReviewers.length > 0 && (
+                  <Select value={reviewerFilter} onValueChange={handleReviewerFilterChange}>
+                    <SelectTrigger size="sm" className="h-8 text-xs">
+                      <UserCheck className="mr-1 size-3 shrink-0 text-muted-foreground" />
+                      <span className="text-muted-foreground">Reviewer:</span>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectGroup>
-                        <SelectItem value="all">All {qLabel}</SelectItem>
-                        {options.map((opt) => (
-                          <SelectItem key={opt.value} value={opt.value}>
-                            {opt.label}
+                        <SelectItem value="all">All Reviewers ({availableReviewers.length})</SelectItem>
+                        <SelectItem value="unreviewed">Not Reviewed Yet</SelectItem>
+                        {availableReviewers.map((name) => (
+                          <SelectItem key={name} value={name}>
+                            {name}
                           </SelectItem>
                         ))}
                       </SelectGroup>
                     </SelectContent>
                   </Select>
-                );
-              })}
-            </div>
+                )}
 
-            <div className="flex flex-wrap items-center gap-2">
-              <ColumnCustomizer
-                availableQuestions={availableQuestionFields}
-                selectedQuestionKeys={selectedQuestionColumns}
-                onToggleQuestion={handleToggleQuestion}
-                onSelectAllQuestions={handleSelectAllQuestions}
-                onClearAllQuestions={handleClearAllQuestions}
-                visibleStandardColumns={visibleStandardColumns}
-                onToggleStandardColumn={handleToggleStandardColumn}
-                hasSessions={hasSessions}
-                hasTickets={hasTickets}
-                hasMerchandise={hasMerchandise}
-                isCurationMode={isCurationMode}
-                onResetDefaults={handleResetColumnDefaults}
-              />
+                {/* Dynamic Question Field Filters */}
+                {selectedQuestionColumns.map((qKey) => {
+                  const fieldInfo = availableQuestionFields.find((f) => f.key === qKey) || {
+                    key: qKey,
+                    label: formatQuestionLabel(qKey),
+                    responseCount: 0,
+                  };
+                  const qLabel = fieldInfo.label;
+                  const options = getQuestionFilterOptions(fieldInfo, registrationsList, questionLabelMap);
+                  if (options.length === 0) return null;
 
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  setCheckingPaymentRegistration(null);
-                  setIsCheckPaymentDialogOpen(true);
-                }}
-                className="h-8 gap-1.5 border-emerald-500/30 text-emerald-600 text-xs hover:bg-emerald-500/10 dark:text-emerald-400"
-                title="Check DOKU payment status by invoice number or attendee"
-              >
-                <CreditCard className="size-3.5" />
-                <span>Check Payment</span>
-              </Button>
+                  const currentVal = questionFilters[qKey] || "all";
 
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleSyncBevyAttendeeStatus}
-                disabled={isSyncingStatus || isSyncingBevy}
-                className="h-8 gap-1.5 text-xs"
-                title="Check if attendees are removed on Bevy and reset their status back to Pending Review"
-              >
-                <RotateCcw className={cn("size-3", isSyncingStatus && "animate-spin")} />
-                <span>{isSyncingStatus ? "Syncing Status..." : "Sync Bevy Attendee Status"}</span>
-              </Button>
+                  return (
+                    <Select
+                      key={qKey}
+                      value={currentVal}
+                      onValueChange={(val) => handleQuestionFilterChange(qKey, val)}
+                    >
+                      <SelectTrigger size="sm" className="h-8 max-w-[220px] text-xs">
+                        <Filter className="mr-1 size-3 shrink-0 text-muted-foreground" />
+                        <span className="truncate text-muted-foreground">{qLabel}:</span>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectItem value="all">All {qLabel}</SelectItem>
+                          {options.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  );
+                })}
+              </div>
 
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => syncBevyAttendees(true)}
-                disabled={isSyncingBevy || isSyncingStatus}
-                className="h-8 gap-1.5 text-xs"
-                title="Sync attendee roster and live on-site check-in statuses from Bevy API"
-              >
-                <RefreshCw className={cn("size-3", isSyncingBevy && "animate-spin")} />
-                <span>{isSyncingBevy ? "Syncing Bevy..." : "Sync Bevy Check-Ins"}</span>
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <ColumnCustomizer
+                  availableQuestions={availableQuestionFields}
+                  selectedQuestionKeys={selectedQuestionColumns}
+                  onToggleQuestion={handleToggleQuestion}
+                  onSelectAllQuestions={handleSelectAllQuestions}
+                  onClearAllQuestions={handleClearAllQuestions}
+                  visibleStandardColumns={visibleStandardColumns}
+                  onToggleStandardColumn={handleToggleStandardColumn}
+                  hasSessions={hasSessions}
+                  hasTickets={hasTickets}
+                  hasMerchandise={hasMerchandise}
+                  isCurationMode={isCurationMode}
+                  onResetDefaults={handleResetColumnDefaults}
+                />
 
-              <Button size="sm" variant="outline" onClick={handleExportCsv} className="h-8 gap-1 text-xs">
-                <Download className="size-3" />
-                Export CSV
-              </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setCheckingPaymentRegistration(null);
+                    setIsCheckPaymentDialogOpen(true);
+                  }}
+                  className="h-8 gap-1.5 border-emerald-500/30 text-emerald-600 text-xs hover:bg-emerald-500/10 dark:text-emerald-400"
+                  title="Check DOKU payment status by invoice number or attendee"
+                >
+                  <CreditCard className="size-3.5" />
+                  <span>Check Payment</span>
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleSyncBevyAttendeeStatus}
+                  disabled={isSyncingStatus || isSyncingBevy}
+                  className="h-8 gap-1.5 text-xs"
+                  title="Check if attendees are removed on Bevy and reset their status back to Pending Review"
+                >
+                  <RotateCcw className={cn("size-3", isSyncingStatus && "animate-spin")} />
+                  <span>{isSyncingStatus ? "Syncing Status..." : "Sync Bevy Attendee Status"}</span>
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => syncBevyAttendees(true)}
+                  disabled={isSyncingBevy || isSyncingStatus}
+                  className="h-8 gap-1.5 text-xs"
+                  title="Sync attendee roster and live on-site check-in statuses from Bevy API"
+                >
+                  <RefreshCw className={cn("size-3", isSyncingBevy && "animate-spin")} />
+                  <span>{isSyncingBevy ? "Syncing Bevy..." : "Sync Bevy Check-Ins"}</span>
+                </Button>
+
+                <Button size="sm" variant="outline" onClick={handleExportCsv} className="h-8 gap-1 text-xs">
+                  <Download className="size-3" />
+                  Export CSV
+                </Button>
+              </div>
             </div>
           </div>
 
