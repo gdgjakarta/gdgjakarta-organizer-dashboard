@@ -1571,7 +1571,12 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
 
   // 1. Check if member / email already registered for this event
   const existing = await checkExistingRegistration(eventIdStr, effectiveMemberId, normalizedEmail);
-  if (existing) {
+  if (
+    existing &&
+    existing.status !== "canceled" &&
+    existing.status !== "cancelled" &&
+    existing.refund_request?.status !== "refund_completed"
+  ) {
     throw new Error(`Email ${normalizedEmail} is already registered for this event.`);
   }
 
@@ -2428,6 +2433,20 @@ export async function updateRegistrationStatus(
   } catch (err) {
     console.warn("[Firestore] Failed to recalculate event counters and session capacities:", err);
   }
+}
+
+/**
+ * Persists status logs for an existing registration document directly to Firestore.
+ */
+export async function updateRegistrationStatusLogsInFirestore(
+  registrationId: string,
+  logs: RegistrationStatusLog[],
+): Promise<void> {
+  const docRef = doc(db, "event_registrations", registrationId);
+  await updateDoc(docRef, {
+    status_logs: logs,
+    updated_at: new Date().toISOString(),
+  });
 }
 
 /**

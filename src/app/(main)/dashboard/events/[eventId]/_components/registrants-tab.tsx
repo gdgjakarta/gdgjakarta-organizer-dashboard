@@ -4005,7 +4005,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                       rawStatus === "cancelled" ||
                       reg.status === "canceled" ||
                       reg.status === "cancelled" ||
-                      reg.refund_request?.status === "refund_completed";
+                      reg.refund_request?.status === "refund_completed" ||
+                      reg.payment_status === "refunded";
 
                     let approveTitle = "Approve application";
                     if (isCanceled) {

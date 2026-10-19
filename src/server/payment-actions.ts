@@ -811,6 +811,22 @@ export async function checkMemberEventPaymentStatusAction(
     };
   }
   if (regData.status === "paid_and_registered" || regData.payment_status === "paid") {
+    const existingLogs = Array.isArray(regData.status_logs) ? regData.status_logs : [];
+    const hasPaidLog = existingLogs.some((l) => l.status === "paid_and_registered");
+    if (!hasPaidLog) {
+      try {
+        await updateRegistrationFromPayment({
+          registrationId,
+          status: "paid_and_registered",
+          paymentChannel: (regData.payment_channel as string) || "QRIS",
+          paidAt: (regData.paid_at as string) || undefined,
+          isTeamAccess: false,
+        });
+      } catch (healErr) {
+        console.warn("[checkMemberEventPaymentStatusAction] Background status log repair failed:", healErr);
+      }
+    }
+
     return {
       success: true,
       message: "Payment is already verified and your spot is confirmed!",

@@ -1989,7 +1989,14 @@ export function EventRegistrationModal({
     );
   }
 
-  if (activeRegistration) {
+  const isRegCanceled = Boolean(
+    activeRegistration &&
+      (activeRegistration.status.toLowerCase() === "canceled" ||
+        activeRegistration.status.toLowerCase() === "cancelled" ||
+        activeRegistration.refund_request?.status === "refund_completed"),
+  );
+
+  if (activeRegistration && !isRegCanceled) {
     let isFullWidth = Boolean(className?.includes("w-full"));
     let buttonSize: "default" | "sm" | "lg" | "icon" = "sm";
 

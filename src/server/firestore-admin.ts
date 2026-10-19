@@ -2,10 +2,12 @@ import { cache } from "react";
 
 import { DEFAULT_MAINTENANCE_CONFIG, type MaintenanceConfig } from "@/config/maintenance-config";
 import { buildApprovedAttendeePayload } from "@/lib/events/approved-attendee-webhook";
-import { normalizeEventDoc } from "@/lib/firestore/normalization";
+import { normalizeEventDoc, normalizeRegistrationDoc } from "@/lib/firestore/normalization";
 import type {
   FirestoreEvent,
   FirestoreRegistration,
+  RefundRequest,
+  RefundStatus,
   RegistrationStatus,
   RegistrationStatusLog,
 } from "@/lib/firestore/types";
@@ -268,7 +270,7 @@ async function queryRegistrationDoc(
     const doc = items[0].document;
     const id = doc.name?.split("/").pop() ?? "";
     const decoded = decodeFirestoreDoc(doc);
-    return decoded ? { id, data: { id, ...decoded } as unknown as FirestoreRegistration } : null;
+    return decoded ? { id, data: normalizeRegistrationDoc(decoded, id) } : null;
   } catch {
     return null;
   }
@@ -342,14 +344,14 @@ export async function findRegistrationDoc(
   const strippedId = invoiceNumber.replace(/^INV-/, "");
   try {
     const data = await getFirestoreDoc("event_registrations", strippedId, token);
-    if (data) return { id: strippedId, data: { id: strippedId, ...data } as unknown as FirestoreRegistration };
+    if (data) return { id: strippedId, data: normalizeRegistrationDoc(data, strippedId) };
   } catch {
     // Ignore and proceed to alternate lookup
   }
 
   try {
     const data = await getFirestoreDoc("event_registrations", invoiceNumber, token);
-    if (data) return { id: invoiceNumber, data: { id: invoiceNumber, ...data } as unknown as FirestoreRegistration };
+    if (data) return { id: invoiceNumber, data: normalizeRegistrationDoc(data, invoiceNumber) };
   } catch {
     // Ignore and proceed to alternate lookup
   }
@@ -449,7 +451,7 @@ export async function updateRegistrationFromPayment(input: UpdateRegistrationFro
     if (directDoc) {
       targetDoc = {
         id: registrationId,
-        data: { id: registrationId, ...directDoc } as unknown as FirestoreRegistration,
+        data: normalizeRegistrationDoc(directDoc, registrationId),
       };
     }
   }
@@ -747,12 +749,15 @@ export async function updateRefundStatusServer(
       changed_by_id: reviewer?.id ?? details?.completed_by_id ?? details?.rejected_by_id ?? "organizer",
       changed_by_name: reviewer?.name ?? details?.completed_by_name ?? details?.rejected_by_name ?? "Organizer",
       changed_by_email: reviewer?.email ?? details?.completed_by_email ?? details?.rejected_by_email,
-      notes:
-        status === "refund_completed"
-          ? `Refund completed. Proof uploaded by ${reviewer?.name ?? "organizer"}.`
-          : status === "rejected"
-            ? `Refund rejected: ${details?.rejection_reason ?? "No reason specified"}`
-            : "Refund request resubmitted.",
+      notes: (() => {
+        if (status === "refund_completed") {
+          return `Refund completed. Proof uploaded by ${reviewer?.name ?? "organizer"}.`;
+        }
+        if (status === "rejected") {
+          return `Refund rejected: ${details?.rejection_reason ?? "No reason specified"}`;
+        }
+        return "Refund request resubmitted.";
+      })(),
     };
     updatePayload.status_logs = [...existingLogs, logEntry];
 

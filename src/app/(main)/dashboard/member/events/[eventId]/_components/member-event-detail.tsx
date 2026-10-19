@@ -25,6 +25,7 @@ import {
   Truck,
   Users,
   UserX,
+  XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -347,21 +348,32 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
   const effectiveStatus = registration ? getEffectiveRegistrationStatus(registration, currentEvent) : null;
   const deadlineInfo = registration ? getRegistrationPaymentDeadline(registration, currentEvent) : null;
 
-  const isPaidAndRegistered = effectiveStatus === "paid_and_registered";
+  const isCanceled =
+    effectiveStatus === "canceled" ||
+    effectiveStatus === "cancelled" ||
+    registration?.status === "canceled" ||
+    registration?.status === "cancelled" ||
+    registration?.refund_request?.status === "refund_completed";
+  const isRejected = effectiveStatus === "rejected" || registration?.status === "rejected";
+  const isPaidAndRegistered = !isCanceled && !isRejected && effectiveStatus === "paid_and_registered";
   const isApproved =
-    effectiveStatus === "approved" ||
-    effectiveStatus === "registered" ||
-    effectiveStatus === "attended" ||
-    isPaidAndRegistered;
-  const isWaitlisted = effectiveStatus === "waitlisted";
-  const isWaitingPayment = effectiveStatus === "waiting_for_payment";
-  const isExpired = effectiveStatus === "expired";
-  const isFailed = effectiveStatus === "failed";
+    !isCanceled &&
+    !isRejected &&
+    (effectiveStatus === "approved" ||
+      effectiveStatus === "registered" ||
+      effectiveStatus === "attended" ||
+      isPaidAndRegistered);
+  const isWaitlisted = !isCanceled && !isRejected && effectiveStatus === "waitlisted";
+  const isWaitingPayment = !isCanceled && !isRejected && effectiveStatus === "waiting_for_payment";
+  const isExpired = !isCanceled && !isRejected && effectiveStatus === "expired";
+  const isFailed = !isCanceled && !isRejected && effectiveStatus === "failed";
   const isPending =
     !isWaitlisted &&
     !isWaitingPayment &&
     !isExpired &&
     !isFailed &&
+    !isCanceled &&
+    !isRejected &&
     (effectiveStatus === "pending" ||
       Boolean(
         registration &&
@@ -390,6 +402,12 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
   } else if (isWaitlisted) {
     statusBadgeClass = "border border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400";
     statusBadgeText = "Waitlisted";
+  } else if (isCanceled) {
+    statusBadgeClass = "border border-zinc-500/40 bg-zinc-500/15 text-zinc-700 dark:text-zinc-400 font-medium";
+    statusBadgeText = registration?.refund_request?.status === "refund_completed" ? "Canceled (Refunded)" : "Canceled";
+  } else if (isRejected) {
+    statusBadgeClass = "border border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-400";
+    statusBadgeText = "Application Rejected";
   } else if (isPending) {
     statusBadgeClass = "border border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400";
     statusBadgeText = "Pending Review";
@@ -417,6 +435,13 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
     } else if (isWaitlisted) {
       registrationStatusDescription =
         "Your registration is on the Waitlist. Organizers will review and notify you if capacity becomes available.";
+    } else if (isCanceled) {
+      registrationStatusDescription =
+        registration.refund_request?.status === "refund_completed"
+          ? "Your registration has been canceled and refund has been disbursed to your bank account."
+          : "Your registration for this event has been canceled.";
+    } else if (isRejected) {
+      registrationStatusDescription = "Your application was not approved by organizers.";
     } else {
       registrationStatusDescription =
         "Your application has been received and is currently Pending Review by organizers.";
@@ -534,6 +559,11 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
             if (isExpired) return "⚠️ Payment deadline expired. This ticket reservation has been released.";
             if (isWaitlisted)
               return "⏳ You are on the waitlist. Organizers will notify you if capacity becomes available.";
+            if (isCanceled)
+              return registration.refund_request?.status === "refund_completed"
+                ? "ℹ️ Registration canceled and refund finalized. You may re-register if capacity is available."
+                : "ℹ️ Your registration has been canceled.";
+            if (isRejected) return "⚠️ Your application was not approved by organizers.";
             return "⏳ You have applied. Your registration is Pending Review by organizers.";
           })()}
         </div>
@@ -621,8 +651,10 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
               "border-blue-500/40 bg-blue-500/10 text-blue-700 dark:border-blue-500/30 dark:bg-blue-950/40 dark:text-blue-300",
             isWaitingPayment &&
               "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-300",
-            isExpired &&
+            (isExpired || isCanceled) &&
               "border-zinc-500/40 bg-zinc-500/10 text-zinc-700 dark:border-zinc-500/30 dark:bg-zinc-950/40 dark:text-zinc-300",
+            isRejected &&
+              "border-rose-500/40 bg-rose-500/10 text-rose-700 dark:border-rose-500/30 dark:bg-rose-950/40 dark:text-rose-300",
             isPending &&
               "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-300",
             isTransitioning && "fade-in-50 zoom-in-95 scale-[1.01] animate-in ring-2 ring-emerald-500/40",
@@ -630,6 +662,16 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
           size="lg"
         >
           {(() => {
+            if (isCanceled || isRejected) {
+              return (
+                <XCircle
+                  className={cn(
+                    "relative z-10 size-4 text-zinc-600 transition-transform duration-500 dark:text-zinc-400",
+                    isTransitioning && "scale-110",
+                  )}
+                />
+              );
+            }
             if (isWaitlisted) {
               return (
                 <Clock
@@ -785,22 +827,62 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
           return null;
         })()}
 
-        {/* Cancel Registration Button (only if event is not concluded and registration is not attended and not paid) */}
-        {!isPast &&
-          registration.status !== "attended" &&
-          !isPaidAndRegistered &&
-          registration.refund_request?.status !== "refund_completed" && (
+        {/* Re-register for Event when registration is canceled or refunded */}
+        {isCanceled && !isPast && (windowStatus.isOpen || windowStatus.isWaitlist) && (
+          <EventRegistrationModal
+            event={currentEvent}
+            existingRegistration={null}
+            onSuccess={(newReg) => {
+              setIsTransitioning(true);
+              setRegistration(newReg);
+              setTimeout(() => setIsTransitioning(false), 1500);
+            }}
+          >
+            <Button
+              type="button"
+              size="sm"
+              className="w-full gap-2 bg-primary font-semibold text-primary-foreground text-xs shadow-xs hover:bg-primary/90"
+            >
+              <RotateCcw className="size-3.5" />
+              Cancel Registration & Re-register
+            </Button>
+          </EventRegistrationModal>
+        )}
+
+        {/* Cancel Registration Buttons (only if event is not concluded and registration is not attended, not paid, and not already canceled) */}
+        {!isPast && !isCanceled && registration.status !== "attended" && !isPaidAndRegistered && (
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <Button
               type="button"
               variant="outline"
               size="sm"
               onClick={() => setIsCancelModalOpen(true)}
-              className="w-full gap-2 border-destructive/30 text-destructive text-xs shadow-xs hover:bg-destructive/10 hover:text-destructive"
+              className="flex-1 gap-2 border-destructive/30 text-destructive text-xs shadow-xs hover:bg-destructive/10 hover:text-destructive"
             >
               <UserX className="size-3.5" />
               Cancel Registration
             </Button>
-          )}
+            <EventRegistrationModal
+              event={currentEvent}
+              existingRegistration={null}
+              onSuccess={(newReg) => {
+                setIsTransitioning(true);
+                setRegistration(newReg);
+                setTimeout(() => setIsTransitioning(false), 1500);
+              }}
+            >
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="flex-1 gap-2 border-primary/40 bg-primary/5 text-primary text-xs shadow-xs hover:bg-primary/10"
+              >
+                <RotateCcw className="size-3.5" />
+                Cancel & Re-register
+              </Button>
+            </EventRegistrationModal>
+          </div>
+        )}
 
         {/* Merchandise Delivery Claim for No-Show Attendees */}
         {isPast &&

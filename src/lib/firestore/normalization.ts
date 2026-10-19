@@ -1,6 +1,11 @@
 import { toISOStringSafe } from "@/lib/date-utils";
 import { ensureEventTickets } from "@/lib/events/ticket-templates";
-import type { EventTicketTier, FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
+import type {
+  EventTicketTier,
+  FirestoreEvent,
+  FirestoreRegistration,
+  RegistrationStatusLog,
+} from "@/lib/firestore/types";
 
 /**
  * Normalizes a Firestore event registration document, guaranteeing that all timestamp
@@ -24,9 +29,9 @@ export function normalizeRegistrationDoc(docData: Record<string, unknown>, id: s
     toISOStringSafe(docData.checkin_date) ?? (typeof docData.checkin_date === "string" ? docData.checkin_date : null);
 
   // Normalize status_logs
-  let statusLogs = docData.status_logs;
-  if (Array.isArray(statusLogs)) {
-    statusLogs = statusLogs.map((log: unknown) => {
+  let statusLogs: RegistrationStatusLog[] = [];
+  if (Array.isArray(docData.status_logs)) {
+    statusLogs = docData.status_logs.map((log: unknown) => {
       if (typeof log === "object" && log !== null) {
         const logObj = log as Record<string, unknown>;
         return {
@@ -34,10 +39,49 @@ export function normalizeRegistrationDoc(docData: Record<string, unknown>, id: s
           changed_at:
             toISOStringSafe(logObj.changed_at) ??
             (typeof logObj.changed_at === "string" ? logObj.changed_at : new Date().toISOString()),
-        };
+        } as RegistrationStatusLog;
       }
-      return log;
+      return log as RegistrationStatusLog;
     });
+  }
+
+  // Ensure paid_and_registered status log exists if registration is paid
+  const isPaid =
+    docData.status === "paid_and_registered" ||
+    String(docData.payment_status).toLowerCase() === "paid" ||
+    Boolean(paidAtStr) ||
+    String((docData.answers as Record<string, unknown> | undefined)?.payment_status).toLowerCase() === "paid";
+
+  if (isPaid) {
+    const hasPaidLog = statusLogs.some((l) => l.status === "paid_and_registered");
+    if (!hasPaidLog) {
+      const invoiceNum =
+        (docData.payment_invoice_number as string | undefined) ??
+        ((docData.answers as Record<string, unknown> | undefined)?.payment_invoice_number as string | undefined) ??
+        ((docData.answers as Record<string, unknown> | undefined)?.invoice_number as string | undefined) ??
+        (docData.invoice_number as string | undefined);
+      const paymentChannel =
+        (docData.payment_channel as string | undefined) ??
+        ((docData.answers as Record<string, unknown> | undefined)?.payment_channel as string | undefined) ??
+        "QRIS";
+      const changedAt =
+        paidAtStr ||
+        reviewedAtStr ||
+        (toISOStringSafe(docData.updated_at) ??
+          (typeof docData.updated_at === "string" ? docData.updated_at : undefined)) ||
+        new Date().toISOString();
+
+      statusLogs.push({
+        id: `synthetic_paid_${id}`,
+        status: "paid_and_registered",
+        previous_status: "waiting_for_payment",
+        changed_at: changedAt,
+        changed_by_id: (docData.reviewed_by_id as string | undefined) || "doku_payment_gateway",
+        changed_by_name: (docData.reviewed_by_name as string | undefined) || "DOKU Payment Gateway",
+        changed_by_email: docData.reviewed_by_email as string | undefined,
+        notes: `Payment confirmed via ${paymentChannel}${invoiceNum ? ` (${invoiceNum})` : ""}. Status: Paid & Registered.`,
+      });
+    }
   }
 
   // Normalize answers if any answer contains a timestamp object

@@ -430,6 +430,75 @@ export function ApplicantDetailDialog({
     });
   }, [registration?.answers, labelMap, sectionMap]);
 
+  // Status logs guarantee: ensure paid_and_registered entry exists for paid registrations
+  const effectiveStatusLogs = useMemo(() => {
+    if (!registration) return [];
+    const logs = Array.isArray(registration.status_logs) ? [...registration.status_logs] : [];
+
+    const isPaid =
+      registration.status === "paid_and_registered" ||
+      String(registration.payment_status).toLowerCase() === "paid" ||
+      Boolean(registration.paid_at) ||
+      String(registration.answers?.payment_status).toLowerCase() === "paid";
+
+    const hasPaidLog = logs.some((l) => l.status === "paid_and_registered");
+
+    if (isPaid && !hasPaidLog) {
+      const invoiceNum =
+        registration.payment_invoice_number ??
+        (registration.answers?.payment_invoice_number as string | undefined) ??
+        (registration.answers?.invoice_number as string | undefined);
+      const channel =
+        registration.payment_channel ?? (registration.answers?.payment_channel as string | undefined) ?? "QRIS";
+      const paidTime =
+        registration.paid_at || registration.reviewed_at || registration.updated_at || new Date().toISOString();
+
+      logs.push({
+        id: `synthetic_paid_${registration.id}`,
+        status: "paid_and_registered",
+        previous_status: "waiting_for_payment",
+        changed_at: paidTime,
+        changed_by_id: registration.reviewed_by_id || "doku_payment_gateway",
+        changed_by_name: registration.reviewed_by_name || "DOKU Payment Gateway",
+        changed_by_email: registration.reviewed_by_email,
+        notes: `Payment confirmed via ${channel}${invoiceNum ? ` (${invoiceNum})` : ""}. Status: Paid & Registered.`,
+      });
+    }
+
+    return logs;
+  }, [registration]);
+
+  // Self-heal missing paid_and_registered status log in Firestore if attendee is already paid
+  useEffect(() => {
+    if (!registration?.id) return;
+    const isPaid =
+      registration.status === "paid_and_registered" ||
+      String(registration.payment_status).toLowerCase() === "paid" ||
+      Boolean(registration.paid_at) ||
+      String(registration.answers?.payment_status).toLowerCase() === "paid";
+
+    const rawLogs = Array.isArray(registration.status_logs) ? registration.status_logs : [];
+    const hasPaidLog = rawLogs.some((l) => l.status === "paid_and_registered");
+
+    if (isPaid && !hasPaidLog && effectiveStatusLogs.length > rawLogs.length) {
+      if (onUpdateRegistration) {
+        onUpdateRegistration({
+          ...registration,
+          status_logs: effectiveStatusLogs,
+        });
+      }
+      import("@/lib/firestore/client")
+        .then(({ updateRegistrationStatusLogsInFirestore }) => {
+          if (updateRegistrationStatusLogsInFirestore) {
+            void updateRegistrationStatusLogsInFirestore(registration.id, effectiveStatusLogs);
+          }
+        })
+        .catch(() => {
+          // ignore background self-heal errors
+        });
+    }
+  }, [registration, effectiveStatusLogs, onUpdateRegistration]);
+
   if (!registration) return null;
 
   const deadlineInfo = getRegistrationPaymentDeadline(registration, event);
@@ -1493,7 +1562,7 @@ export function ApplicantDetailDialog({
                       )}
                     </div>
                     <p className="mt-1.5 whitespace-pre-wrap text-foreground text-xs leading-relaxed">
-                      {registration.refund_request.cancellation_reason ?? "No cancellation reason provided."}
+                      {registration.refund_request.cancellation_reason || "No cancellation reason provided."}
                     </p>
                   </div>
 
@@ -1652,19 +1721,18 @@ export function ApplicantDetailDialog({
               )}
 
               {/* Audit & Review History Timeline */}
-              {Boolean(registration.status_logs && registration.status_logs.length > 0) && (
+              {effectiveStatusLogs.length > 0 && (
                 <div className="space-y-3">
                   <div className="flex items-center gap-2 border-border/40 border-b pb-1.5 font-semibold text-muted-foreground text-xs uppercase tracking-wider">
                     <ShieldCheck className="size-3.5 text-primary" />
                     <span>Review & Status Audit History</span>
                     <span className="font-normal text-[11px] text-muted-foreground/70">
-                      ({registration.status_logs?.length} {registration.status_logs?.length === 1 ? "entry" : "entries"}
-                      )
+                      ({effectiveStatusLogs.length} {effectiveStatusLogs.length === 1 ? "entry" : "entries"})
                     </span>
                   </div>
 
                   <div className="space-y-2 rounded-lg border border-border/60 bg-muted/20 p-3">
-                    {registration.status_logs?.map((log, idx) => {
+                    {effectiveStatusLogs.map((log, idx) => {
                       const logStatusMeta = STATUS_VARIANTS[log.status] || {
                         label: log.status,
                         badgeClass: "border-muted bg-muted",
@@ -1734,18 +1802,20 @@ export function ApplicantDetailDialog({
               rawStatus === "registered";
             const isExpired = rawStatus === "expired";
             const isRejected = rawStatus === "rejected";
+            const isDisbursementCompleted =
+              registration.refund_request?.status === "refund_completed" || registration.payment_status === "refunded";
             const isCanceled =
               rawStatus === "canceled" ||
               rawStatus === "cancelled" ||
               registration.status === "canceled" ||
               registration.status === "cancelled" ||
-              registration.refund_request?.status === "refund_completed";
+              isDisbursementCompleted;
 
             const hasMoreActions = Boolean(
-              (!isCanceled && isCuration && isStatusPending && onResendInterestEmail) ||
-                (!isCanceled && isCuration && isWaitlisted && onResendWaitlistEmail) ||
-                (!isCanceled && isPaidWaitlisted && onResendPaidWaitlistEmail) ||
-                (!isCanceled && onCancelRegistration) ||
+              (!isCanceled && !isDisbursementCompleted && isCuration && isStatusPending && onResendInterestEmail) ||
+                (!isCanceled && !isDisbursementCompleted && isCuration && isWaitlisted && onResendWaitlistEmail) ||
+                (!isCanceled && !isDisbursementCompleted && isPaidWaitlisted && onResendPaidWaitlistEmail) ||
+                (!isCanceled && !isDisbursementCompleted && onCancelRegistration) ||
                 onDelete,
             );
 
@@ -1775,7 +1845,7 @@ export function ApplicantDetailDialog({
                   )}
 
                   {/* Set Pending button (when waitlisted or rejected in curation mode) */}
-                  {isCuration && (isWaitlisted || isRejected) && (
+                  {isCuration && (isWaitlisted || isRejected) && !isCanceled && (
                     <Button
                       size="sm"
                       variant="outline"
@@ -1792,7 +1862,7 @@ export function ApplicantDetailDialog({
                   )}
 
                   {/* Regenerate Payment Link (when payment is required and active or expired) */}
-                  {hasPayableItems && (isWaitingPayment || isExpired || deadlineInfo.isOverdue) && (
+                  {hasPayableItems && (isWaitingPayment || isExpired || deadlineInfo.isOverdue) && !isCanceled && (
                     <Button
                       size="sm"
                       variant="outline"
@@ -1857,7 +1927,7 @@ export function ApplicantDetailDialog({
 
                         {(onCancelRegistration ?? onDelete) && <DropdownMenuSeparator />}
 
-                        {onCancelRegistration && (
+                        {onCancelRegistration && !isCanceled && (
                           <DropdownMenuItem
                             disabled={isActionBlocked || isCancelling}
                             className="text-destructive focus:text-destructive"
@@ -1886,7 +1956,8 @@ export function ApplicantDetailDialog({
                 {/* Primary Decision & Navigation Actions (Right) */}
                 <div className="flex flex-wrap items-center gap-2">
                   {/* Reject button */}
-                  {isCuration && !isRejected && !isApproved && (
+                  {/* Reject button - disappears when disbursement completed or canceled */}
+                  {isCuration && !isRejected && !isApproved && !isCanceled && !isDisbursementCompleted && (
                     <Button
                       size="sm"
                       variant="outline"
@@ -1913,38 +1984,56 @@ export function ApplicantDetailDialog({
                   {/* Approve / Status Indicator */}
                   {isCuration &&
                     !isWaitingPayment &&
-                    (isApproved ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled
-                        className="cursor-default border-emerald-500/30 bg-emerald-500/10 text-emerald-600 text-xs dark:text-emerald-400"
-                      >
-                        <CheckCircle className="mr-1.5 size-3.5" />
-                        Approved
-                      </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        className="bg-emerald-600 text-white text-xs shadow-xs hover:bg-emerald-700"
-                        disabled={isActionBlocked}
-                        onClick={() => {
-                          if (onApprove) {
-                            onApprove(registration);
-                          } else {
-                            onStatusChange(registration.id, "approved");
-                            onClose();
-                          }
-                        }}
-                      >
-                        {isApproving ? (
-                          <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                        ) : (
-                          <CheckCircle className="mr-1.5 size-3.5" />
-                        )}
-                        {isExpired ? "Re-approve Applicant" : "Approve Applicant"}
-                      </Button>
-                    ))}
+                    (() => {
+                      if (isApproved) {
+                        return (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled
+                            className="cursor-default border-emerald-500/30 bg-emerald-500/10 text-emerald-600 text-xs dark:text-emerald-400"
+                          >
+                            <CheckCircle className="mr-1.5 size-3.5" />
+                            Approved
+                          </Button>
+                        );
+                      }
+                      if (isCanceled) {
+                        return (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled
+                            className="cursor-default border-zinc-500/30 bg-zinc-500/10 text-xs text-zinc-600 dark:text-zinc-400"
+                          >
+                            <XCircle className="mr-1.5 size-3.5" />
+                            Canceled
+                          </Button>
+                        );
+                      }
+                      return (
+                        <Button
+                          size="sm"
+                          className="bg-emerald-600 text-white text-xs shadow-xs hover:bg-emerald-700"
+                          disabled={isActionBlocked}
+                          onClick={() => {
+                            if (onApprove) {
+                              onApprove(registration);
+                            } else {
+                              onStatusChange(registration.id, "approved");
+                              onClose();
+                            }
+                          }}
+                        >
+                          {isApproving ? (
+                            <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                          ) : (
+                            <CheckCircle className="mr-1.5 size-3.5" />
+                          )}
+                          {isExpired ? "Re-approve Applicant" : "Approve Applicant"}
+                        </Button>
+                      );
+                    })()}
 
                   {/* Check Payment (only for waiting_for_payment) */}
                   {isWaitingPayment && (
