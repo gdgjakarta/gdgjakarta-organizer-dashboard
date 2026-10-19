@@ -63,3 +63,7 @@ ui-debug.log*
 *.swo
 Thumbs.db
 
+# graphify
+graphify-out/
+.graphify_*.json
+

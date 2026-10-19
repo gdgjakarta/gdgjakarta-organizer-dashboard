@@ -47,26 +47,59 @@ export interface BevyFetchResponse<T> {
  * Dynamically resolves session cookies and CSRF tokens from Firebase Remote Config
  * (keys: cfg_bevy_cookie, cfg_bevy_x_csrftoken) aligned with KawalEvent.
  */
+export interface BevyFetchOptions extends RequestInit {
+  requireAuth?: boolean;
+}
+
+/**
+ * Server-only fetch wrapper for Bevy API returning status code, ok flag, and parsed data.
+ * Dynamically resolves session cookies and CSRF tokens from Firebase Remote Config
+ * (keys: cfg_bevy_cookie, cfg_bevy_x_csrftoken) aligned with KawalEvent.
+ */
 export async function bevyFetchWithResponse<T>(
   endpoint: string,
-  options: RequestInit = {},
+  options: BevyFetchOptions = {},
   chapterId: string | number = BEVY_CONFIG.chapterId,
 ): Promise<BevyFetchResponse<T>> {
   const url = `${BEVY_CONFIG.baseUrl}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
+  const method = (options.method || "GET").toUpperCase();
 
-  // Dynamically resolve Bevy session cookies and CSRF tokens from Remote Config (like KawalEvent)
-  const { cookie, csrfToken } = await getBevyAuthCredentials(chapterId);
+  // Dynamically resolve Bevy session cookies and CSRF tokens from Remote Config only when required.
+  // Public endpoints (e.g. events, sponsors, slim chapter info) do not incur extra Remote Config overhead.
+  const isExplicitAuth = options.requireAuth === true;
+  const isMutation = method !== "GET" && method !== "HEAD";
+  const isProtectedPath =
+    endpoint.includes("/attendee") ||
+    endpoint.includes("/members") ||
+    endpoint.includes("/team/") ||
+    endpoint.includes("/teammember") ||
+    endpoint.startsWith("/user/") ||
+    endpoint.startsWith("user/");
+  const needsAuth = isExplicitAuth || isMutation || isProtectedPath;
+
+  let cookie = "";
+  let csrfToken = "";
+  if (needsAuth) {
+    try {
+      const creds = await getBevyAuthCredentials(chapterId);
+      cookie = creds.cookie;
+      csrfToken = creds.csrfToken;
+    } catch (authErr) {
+      console.warn(`[Bevy API] Could not load auth credentials for ${endpoint}:`, authErr);
+    }
+  }
 
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
     Accept: "application/json, version=bevy.1.0",
+    "User-Agent": "GDGJakartaDashboard/2.2 (compatible; CloudflareWorkers/1.0)",
+    ...(options.body ? { "Content-Type": "application/json" } : {}),
     ...(csrfToken ? { "X-Csrftoken": csrfToken } : {}),
     ...(cookie ? { Cookie: cookie } : {}),
     ...(BEVY_CONFIG.apiToken ? { Authorization: `Token ${BEVY_CONFIG.apiToken}` } : {}),
     ...(options.headers as Record<string, string>),
   };
 
-  const timeoutSignal = typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(10_000) : undefined;
+  const timeoutSignal = typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(6_000) : undefined;
   const signal = options.signal || timeoutSignal;
 
   try {
@@ -109,7 +142,7 @@ export async function bevyFetchWithResponse<T>(
  */
 export async function bevyFetch<T>(
   endpoint: string,
-  options: RequestInit = {},
+  options: BevyFetchOptions = {},
   chapterId: string | number = BEVY_CONFIG.chapterId,
 ): Promise<T | null> {
   const result = await bevyFetchWithResponse<T>(endpoint, options, chapterId);
@@ -772,8 +805,16 @@ export async function getBevyEventById(
 export const getPublicEventById = cache(
   async (eventId: string | number, chapterId: string | number = BEVY_CONFIG.chapterId): Promise<BevyEvent | null> => {
     if (!eventId) return null;
-    const direct = await getBevyEventById(eventId, chapterId);
+    const cleanId = String(eventId).trim();
+    const direct = await getBevyEventById(cleanId, chapterId);
     if (direct) return direct;
+
+    // For numeric IDs (e.g. 132640), the direct endpoint /event/{id}/ is authoritative.
+    // Avoid running an expensive chapter-wide scan across all events when direct lookup returns 404 or null.
+    const isNumericId = /^\d+$/.test(cleanId);
+    if (isNumericId) {
+      return null;
+    }
 
     try {
       const { results: chapterEvents } = await getAllBevyChapterEvents(
@@ -783,13 +824,15 @@ export const getPublicEventById = cache(
       );
       const matched = chapterEvents.find(
         (e) =>
-          String(e.id) === String(eventId) ||
-          e.url?.includes(String(eventId)) ||
-          e.static_url?.includes(String(eventId)),
+          String(e.id) === cleanId ||
+          e.url?.includes(cleanId) ||
+          e.static_url?.includes(cleanId) ||
+          e.slug === cleanId ||
+          e.short_id === cleanId,
       );
       if (matched) {
-        // Re-fetch full event detail by numeric ID only if matched.id is different from eventId (e.g. eventId was a slug)
-        if (String(matched.id) !== String(eventId)) {
+        // Re-fetch full event detail by numeric ID only if matched.id is different from cleanId (e.g. cleanId was a slug)
+        if (String(matched.id) !== cleanId) {
           const fullEvent = await getBevyEventById(matched.id, chapterId);
           if (fullEvent) return fullEvent;
         }
