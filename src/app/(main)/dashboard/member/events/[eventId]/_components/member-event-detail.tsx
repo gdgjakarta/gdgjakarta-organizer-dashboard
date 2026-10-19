@@ -831,7 +831,8 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
         {isCanceled && !isPast && (windowStatus.isOpen || windowStatus.isWaitlist) && (
           <EventRegistrationModal
             event={currentEvent}
-            existingRegistration={null}
+            existingRegistration={registration}
+            allowReRegister
             onSuccess={(newReg) => {
               setIsTransitioning(true);
               setRegistration(newReg);
@@ -864,7 +865,8 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
             </Button>
             <EventRegistrationModal
               event={currentEvent}
-              existingRegistration={null}
+              existingRegistration={registration}
+              allowReRegister
               onSuccess={(newReg) => {
                 setIsTransitioning(true);
                 setRegistration(newReg);

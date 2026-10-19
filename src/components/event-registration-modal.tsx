@@ -112,6 +112,7 @@ import { useAuthStore } from "@/stores/auth/auth-provider";
 interface EventRegistrationModalProps {
   event: FirestoreEvent;
   existingRegistration?: FirestoreRegistration | null;
+  allowReRegister?: boolean;
   children?: React.ReactNode;
   className?: string;
   isChecking?: boolean;
@@ -227,6 +228,7 @@ function getMerchPriceDisplay(
 export function EventRegistrationModal({
   event,
   existingRegistration,
+  allowReRegister = false,
   children,
   className,
   isChecking,
@@ -1652,6 +1654,96 @@ export function EventRegistrationModal({
           initialStatus = isCurated ? "pending" : "approved";
         }
 
+        // If cancelling & re-registering (or a previous registration exists), execute Cancel Registration flow
+        // FIRST (call Bevy Remove Attendee API, cancel DOKU order, send cancel email, delete prior registration)
+        // BEFORE submitting new registration data.
+        const priorReg =
+          activeRegistration ?? (await checkEventRegistrationAction(String(event.id), user.id, attendeeEmail));
+        let preservedRefundHistory: NonNullable<FirestoreRegistration["refund_history"]> = [];
+
+        if (priorReg) {
+          const priorEmail = (priorReg.member_email || attendeeEmail || user.email).toLowerCase().trim();
+          const priorName = priorReg.member_name || attendeeName || user.name || "Attendee";
+          const eventIdStr = String(event.id);
+
+          const combinedRefunds = [
+            ...(priorReg.refund_history ?? []),
+            ...(priorReg.refund_request ? [priorReg.refund_request] : []),
+          ];
+          const seenRefundKeys = new Set<string>();
+          preservedRefundHistory = combinedRefunds.filter((r) => {
+            const key = `${r.requested_at}_${r.status}_${r.refund_amount}`;
+            if (seenRefundKeys.has(key)) return false;
+            seenRefundKeys.add(key);
+            return true;
+          });
+
+          // 1. Call remove attendee Bevy API BEFORE removing it from the dashboard & submitting new data
+          const { removeAttendeeFromBevyAction } = await import("@/server/bevy-actions");
+          const bevyRes = await removeAttendeeFromBevyAction({
+            eventId: eventIdStr,
+            attendeeId: priorReg.bevy_attendee_id,
+            attendeeEmail: priorEmail,
+          });
+          if (!bevyRes.success) {
+            console.warn("[Registration Modal] Warning while removing previous attendee from Bevy:", bevyRes.error);
+          }
+
+          // 2. Cancel active unexpired DOKU payment order if present
+          const { shouldCancelPaymentOrder } = await import("@/lib/events/payment-deadline");
+          if (shouldCancelPaymentOrder(priorReg, eventConfig)) {
+            try {
+              const { cancelPaymentLinkAction } = await import("@/server/payment-actions");
+              const { buildCancelPaymentPayload } = await import("@/lib/events/doku-payment");
+              const cancelRes = await cancelPaymentLinkAction(
+                buildCancelPaymentPayload(priorReg, eventConfig, "Attendee cancelled RSVP"),
+              );
+              if (!cancelRes.success) {
+                console.warn("[Registration Modal] DOKU order cancellation warning:", cancelRes.error);
+              }
+            } catch (payCancelErr) {
+              console.warn("[Registration Modal] Failed to cancel previous DOKU order:", payCancelErr);
+            }
+          }
+
+          // 3. Send attendee cancellation email notification via webhook API
+          const { sendAttendeeCancelEmailAction } = await import("@/server/email-template-actions");
+          const cancelEmailRes = await sendAttendeeCancelEmailAction({
+            registrationId: priorReg.id,
+            eventId: eventIdStr,
+            attendeeName: priorName,
+            attendeeEmail: priorEmail,
+            eventData: eventConfig,
+          });
+          if (!cancelEmailRes.success) {
+            toast.error(cancelEmailRes.error ?? "Failed to send cancellation email. Registration was not cancelled.");
+            return;
+          }
+
+          // 4. Delete previous registration from Firestore & recalculate capacity counters before submitting new data
+          const deleteRes = await deleteEventRegistrationAction(
+            priorReg.id,
+            eventIdStr,
+            priorReg.bevy_attendee_id,
+            priorEmail,
+            priorReg,
+            { skipBevyRemoval: true, skipPaymentCancel: true },
+          );
+          if (!deleteRes.success) {
+            toast.error(deleteRes.error ?? "Failed to remove previous event registration.");
+            return;
+          }
+        } else if (allowReRegister) {
+          const { removeAttendeeFromBevyAction } = await import("@/server/bevy-actions");
+          const bevyRes = await removeAttendeeFromBevyAction({
+            eventId: String(event.id),
+            attendeeEmail: (attendeeEmail || user.email).toLowerCase().trim(),
+          });
+          if (!bevyRes.success) {
+            console.warn("[Registration Modal] Warning while removing attendee from Bevy:", bevyRes.error);
+          }
+        }
+
         // For non-curated events with payable items, generate DOKU payment link immediately upon registration.
         // For curated events and waitlisted applicants, payment link generation is deferred until organizer approval.
         let generatedPaymentUrl: string | undefined;
@@ -1731,6 +1823,7 @@ export function EventRegistrationModal({
           payment_fee_amount: isWaitlistMode ? undefined : requiresPayment ? gatewayFeeCalc.feeAmount : undefined,
           payment_fee_bearer: isWaitlistMode ? undefined : requiresPayment ? gatewayFeeCalc.feeBearer : undefined,
           payment_subtotal_amount: isWaitlistMode ? undefined : requiresPayment ? netSubtotal : undefined,
+          refund_history: preservedRefundHistory.length > 0 ? preservedRefundHistory : undefined,
         };
 
         const rollbackRegistration = async (regId?: string | null) => {
@@ -1909,6 +2002,7 @@ export function EventRegistrationModal({
           payment_fee_amount: requiresPayment ? gatewayFeeCalc.feeAmount : undefined,
           payment_fee_bearer: requiresPayment ? gatewayFeeCalc.feeBearer : undefined,
           payment_subtotal_amount: requiresPayment ? netSubtotal : undefined,
+          refund_history: preservedRefundHistory.length > 0 ? preservedRefundHistory : undefined,
         };
 
         setIsTransitioning(true);
@@ -1996,7 +2090,7 @@ export function EventRegistrationModal({
         activeRegistration.refund_request?.status === "refund_completed"),
   );
 
-  if (activeRegistration && !isRegCanceled) {
+  if (activeRegistration && !isRegCanceled && !allowReRegister) {
     let isFullWidth = Boolean(className?.includes("w-full"));
     let buttonSize: "default" | "sm" | "lg" | "icon" = "sm";
 

@@ -1879,9 +1879,18 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
   // Re-registering over a canceled/refunded doc: overwrite it fully (no merge) so stale review, check-in,
   // payment and refund fields don't leak into the new registration. Past refunds move to refund_history.
   const isReRegistration = Boolean(existing && existing.id === regId);
-  const refundHistory = isReRegistration
-    ? [...(existing?.refund_history ?? []), ...(existing?.refund_request ? [existing.refund_request] : [])]
-    : [];
+  const combinedRefundHistory = [
+    ...(registration.refund_history ?? []),
+    ...(isReRegistration ? (existing?.refund_history ?? []) : []),
+    ...(isReRegistration && existing?.refund_request ? [existing.refund_request] : []),
+  ];
+  const seenRefundKeys = new Set<string>();
+  const refundHistory = combinedRefundHistory.filter((r) => {
+    const key = `${r.requested_at}_${r.status}_${r.refund_amount}`;
+    if (seenRefundKeys.has(key)) return false;
+    seenRefundKeys.add(key);
+    return true;
+  });
   const writePayload = refundHistory.length > 0 ? { ...cleanPayload, refund_history: refundHistory } : cleanPayload;
 
   try {

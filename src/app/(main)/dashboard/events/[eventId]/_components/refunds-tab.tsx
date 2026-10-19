@@ -626,7 +626,7 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
                 <TableHead className="w-[160px] py-3.5 font-semibold text-muted-foreground text-xs uppercase tracking-wider">
                   Status
                 </TableHead>
-                <TableHead className="w-[190px] py-3.5 pr-4 text-right font-semibold text-muted-foreground text-xs uppercase tracking-wider">
+                <TableHead className="w-[120px] py-3.5 pr-4 text-right font-semibold text-muted-foreground text-xs uppercase tracking-wider">
                   Actions
                 </TableHead>
               </TableRow>
@@ -759,10 +759,10 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
                       </TableCell>
 
                       {/* Cancellation Reason & Proof */}
-                      <TableCell className="max-w-[260px] py-3.5 align-top">
+                      <TableCell className="min-w-[220px] max-w-[280px] whitespace-normal py-3.5 align-top">
                         <div className="space-y-1.5">
                           <p
-                            className="line-clamp-2 text-foreground text-xs leading-relaxed"
+                            className="wrap-break-word whitespace-normal text-foreground text-xs leading-relaxed"
                             title={req.cancellation_reason}
                           >
                             {req.cancellation_reason || (
@@ -813,36 +813,38 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
 
                       {/* Actions */}
                       <TableCell className="py-3.5 pr-4 text-right align-top">
-                        <div className="flex flex-wrap items-center justify-end gap-1.5">
+                        <div className="flex items-center justify-end gap-1.5">
                           <Button
-                            size="sm"
+                            size="icon-sm"
                             variant="outline"
-                            className="h-7.5 gap-1.5 px-2.5 text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                            className="size-7.5 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                             onClick={() => setInspectRegistration(reg)}
                             title="View attendee application dossier"
+                            aria-label="View attendee application dossier"
                           >
                             <Eye className="size-3.5" />
-                            <span>Dossier</span>
                           </Button>
 
                           {isPending && (
                             <>
                               <Button
-                                size="sm"
-                                className="h-7.5 gap-1.5 bg-emerald-600 px-2.5 text-white text-xs shadow-xs hover:bg-emerald-700"
+                                size="icon-sm"
+                                className="size-7.5 bg-emerald-600 text-white shadow-xs hover:bg-emerald-700"
                                 onClick={() => setApprovalModalReg(reg)}
+                                title="Approve refund request"
+                                aria-label="Approve refund request"
                               >
                                 <CheckCircle2 className="size-3.5" />
-                                <span>Approve</span>
                               </Button>
                               <Button
                                 variant="outline"
-                                size="sm"
-                                className="h-7.5 gap-1.5 border-destructive/40 px-2.5 text-destructive text-xs hover:bg-destructive/10 hover:text-destructive"
+                                size="icon-sm"
+                                className="size-7.5 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
                                 onClick={() => setRejectModalReg(reg)}
+                                title="Reject refund request"
+                                aria-label="Reject refund request"
                               >
                                 <XCircle className="size-3.5" />
-                                <span>Reject</span>
                               </Button>
                             </>
                           )}
@@ -850,26 +852,26 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
                           {isCompleted && req.completion_proof_url && (
                             <Button
                               variant="outline"
-                              size="sm"
-                              className="h-7.5 gap-1.5 border-emerald-500/30 bg-emerald-500/5 px-2.5 text-emerald-700 text-xs hover:bg-emerald-500/10 dark:text-emerald-300"
+                              size="icon-sm"
+                              className="size-7.5 border-emerald-500/30 bg-emerald-500/5 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300"
                               onClick={() => setViewProofModalReg(reg)}
                               title="View disbursement transfer receipt"
+                              aria-label="View disbursement transfer receipt"
                             >
                               <Receipt className="size-3.5" />
-                              <span>Transfer Receipt</span>
                             </Button>
                           )}
 
                           {isRejected && (
                             <Button
                               variant="outline"
-                              size="sm"
-                              className="h-7.5 gap-1.5 border-destructive/30 bg-destructive/5 px-2.5 text-destructive text-xs hover:bg-destructive/10"
+                              size="icon-sm"
+                              className="size-7.5 border-destructive/30 bg-destructive/5 text-destructive hover:bg-destructive/10"
                               onClick={() => setViewReasonModalReg(reg)}
                               title="View rejection reason"
+                              aria-label="View rejection reason"
                             >
                               <AlertCircle className="size-3.5" />
-                              <span>Rejection Reason</span>
                             </Button>
                           )}
                         </div>
