@@ -1734,12 +1734,18 @@ export function ApplicantDetailDialog({
               rawStatus === "registered";
             const isExpired = rawStatus === "expired";
             const isRejected = rawStatus === "rejected";
+            const isCanceled =
+              rawStatus === "canceled" ||
+              rawStatus === "cancelled" ||
+              registration.status === "canceled" ||
+              registration.status === "cancelled" ||
+              registration.refund_request?.status === "refund_completed";
 
             const hasMoreActions = Boolean(
-              (isCuration && isStatusPending && onResendInterestEmail) ||
-                (isCuration && isWaitlisted && onResendWaitlistEmail) ||
-                (isPaidWaitlisted && onResendPaidWaitlistEmail) ||
-                onCancelRegistration ||
+              (!isCanceled && isCuration && isStatusPending && onResendInterestEmail) ||
+                (!isCanceled && isCuration && isWaitlisted && onResendWaitlistEmail) ||
+                (!isCanceled && isPaidWaitlisted && onResendPaidWaitlistEmail) ||
+                (!isCanceled && onCancelRegistration) ||
                 onDelete,
             );
 
@@ -1748,7 +1754,7 @@ export function ApplicantDetailDialog({
                 {/* Secondary / Lifecycle Management Actions (Left) */}
                 <div className="flex flex-wrap items-center gap-2">
                   {/* Waitlist button (only when pending review in curation mode) */}
-                  {isCuration && isStatusPending && (
+                  {isCuration && isStatusPending && !isCanceled && (
                     <Button
                       size="sm"
                       variant="outline"
