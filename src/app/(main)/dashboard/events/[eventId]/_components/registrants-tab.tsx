@@ -55,7 +55,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { BevyAttendee } from "@/lib/bevy/types";
@@ -395,6 +395,47 @@ function RegistrantsTableSkeleton({
         </TableRow>
       ))}
     </>
+  );
+}
+
+function parseSearchTokens(query: string): string[] {
+  if (!query.trim()) return [];
+  const tokens = query
+    .split(";")
+    .map((token) => token.trim())
+    .filter(Boolean);
+  return Array.from(new Set(tokens));
+}
+
+function matchesRegistrationToken(reg: FirestoreRegistration, tokenLower: string): boolean {
+  if (!tokenLower) return true;
+
+  const matchesMerch = Boolean(
+    reg.selected_merchandise?.some((m) => {
+      if (m.name.toLowerCase().includes(tokenLower)) return true;
+      if (m.selected_size?.toLowerCase().includes(tokenLower)) return true;
+      if (m.selected_variant?.toLowerCase().includes(tokenLower)) return true;
+      if (m.selected_variations) {
+        return Object.entries(m.selected_variations).some(
+          ([k, v]) => k.toLowerCase().includes(tokenLower) || v.toLowerCase().includes(tokenLower),
+        );
+      }
+      return false;
+    }),
+  );
+
+  return Boolean(
+    reg.member_name.toLowerCase().includes(tokenLower) ||
+      reg.member_email.toLowerCase().includes(tokenLower) ||
+      Boolean(reg.referral_code?.toLowerCase().includes(tokenLower)) ||
+      Boolean(reg.referrer_name?.toLowerCase().includes(tokenLower)) ||
+      Boolean(reg.voucher_code?.toLowerCase().includes(tokenLower)) ||
+      Boolean(reg.reviewed_by_name?.toLowerCase().includes(tokenLower)) ||
+      Boolean(reg.reviewed_by_email?.toLowerCase().includes(tokenLower)) ||
+      Boolean(reg.ticket_name?.toLowerCase().includes(tokenLower)) ||
+      Boolean(reg.bundle_name?.toLowerCase().includes(tokenLower)) ||
+      matchesMerch ||
+      (reg.answers && JSON.stringify(reg.answers).toLowerCase().includes(tokenLower)),
   );
 }
 
@@ -780,6 +821,17 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const handleSearchChange = (val: string) => {
     setIsFiltering(true);
     setSearch(val);
+    setTimeout(() => {
+      setIsFiltering(false);
+    }, 150);
+  };
+
+  const searchTokens = useMemo(() => parseSearchTokens(search), [search]);
+
+  const handleRemoveSearchToken = (indexToRemove: number) => {
+    setIsFiltering(true);
+    const updatedTokens = searchTokens.filter((_, idx) => idx !== indexToRemove);
+    setSearch(updatedTokens.join("; "));
     setTimeout(() => {
       setIsFiltering(false);
     }, 150);
@@ -1305,35 +1357,11 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
 
   // Filter logic
   const filtered = useMemo(() => {
-    return registrationsList.filter((reg) => {
-      const searchLower = search.trim().toLowerCase();
-      const matchesMerchSearch = Boolean(
-        reg.selected_merchandise?.some((m) => {
-          if (m.name.toLowerCase().includes(searchLower)) return true;
-          if (m.selected_size?.toLowerCase().includes(searchLower)) return true;
-          if (m.selected_variant?.toLowerCase().includes(searchLower)) return true;
-          if (m.selected_variations) {
-            return Object.entries(m.selected_variations).some(
-              ([k, v]) => k.toLowerCase().includes(searchLower) || v.toLowerCase().includes(searchLower),
-            );
-          }
-          return false;
-        }),
-      );
+    const tokensLower = searchTokens.map((t) => t.toLowerCase());
 
+    return registrationsList.filter((reg) => {
       const matchesSearch =
-        !searchLower ||
-        reg.member_name.toLowerCase().includes(searchLower) ||
-        reg.member_email.toLowerCase().includes(searchLower) ||
-        Boolean(reg.referral_code?.toLowerCase().includes(searchLower)) ||
-        Boolean(reg.referrer_name?.toLowerCase().includes(searchLower)) ||
-        Boolean(reg.voucher_code?.toLowerCase().includes(searchLower)) ||
-        Boolean(reg.reviewed_by_name?.toLowerCase().includes(searchLower)) ||
-        Boolean(reg.reviewed_by_email?.toLowerCase().includes(searchLower)) ||
-        Boolean(reg.ticket_name?.toLowerCase().includes(searchLower)) ||
-        Boolean(reg.bundle_name?.toLowerCase().includes(searchLower)) ||
-        matchesMerchSearch ||
-        (reg.answers && JSON.stringify(reg.answers).toLowerCase().includes(searchLower));
+        tokensLower.length === 0 || tokensLower.some((tokenLower) => matchesRegistrationToken(reg, tokenLower));
 
       const effectiveStatus = getEffectiveRegistrationStatus(reg, currentEvent);
       const regStatus = (effectiveStatus ?? "").toLowerCase().trim();
@@ -1467,7 +1495,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     });
   }, [
     registrationsList,
-    search,
+    searchTokens,
     statusFilter,
     sessionFilter,
     ticketFilter,
@@ -3155,17 +3183,39 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
           {/* Filtration Controls */}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-3">
-              <InputGroup className="h-8 w-60">
+              <InputGroup className="h-8 w-64 sm:w-72">
                 <InputGroupAddon align="inline-start">
                   <Search className="size-3.5" />
                 </InputGroupAddon>
                 <InputGroupInput
                   className="h-8 text-xs"
-                  placeholder="Search name, email, details..."
+                  placeholder="Search name, email, details... (';' to multi-filter)"
                   value={search}
                   onChange={(e) => handleSearchChange(e.target.value)}
                 />
+                {search.length > 0 && (
+                  <InputGroupAddon align="inline-end">
+                    <InputGroupButton
+                      size="icon-xs"
+                      variant="ghost"
+                      onClick={() => handleSearchChange("")}
+                      aria-label="Clear search text"
+                      className="size-5 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+                    >
+                      <X className="size-3" />
+                    </InputGroupButton>
+                  </InputGroupAddon>
+                )}
               </InputGroup>
+
+              {searchTokens.length > 1 && (
+                <Badge
+                  variant="outline"
+                  className="h-8 gap-1 border-primary/30 bg-primary/5 px-2 font-medium text-primary text-xs"
+                >
+                  <span>{searchTokens.length} filter terms</span>
+                </Badge>
+              )}
 
               <div className="flex items-center gap-1">
                 <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
@@ -3597,9 +3647,23 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
           {hasActiveFilters && (
             <div className="flex flex-wrap items-center gap-1.5 pt-1 text-xs">
               <span className="font-medium text-muted-foreground text-xs">Active Filters:</span>
-              {search.trim() && (
+              {searchTokens.length > 1 ? (
+                searchTokens.map((token, index) => (
+                  <Badge key={token} variant="secondary" className="gap-1 font-normal text-xs">
+                    <span>Search: &quot;{token}&quot;</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveSearchToken(index)}
+                      className="ml-0.5 rounded-full p-0.5 hover:bg-muted-foreground/20"
+                      aria-label={`Clear search filter for ${token}`}
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </Badge>
+                ))
+              ) : search.trim() ? (
                 <Badge variant="secondary" className="gap-1 font-normal text-xs">
-                  <span>Search: &quot;{search}&quot;</span>
+                  <span>Search: &quot;{searchTokens[0] ?? search.trim()}&quot;</span>
                   <button
                     type="button"
                     onClick={() => handleSearchChange("")}
@@ -3609,7 +3673,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                     <X className="size-3" />
                   </button>
                 </Badge>
-              )}
+              ) : null}
               {statusFilter !== "all" && (
                 <Badge variant="secondary" className="gap-1 font-normal text-xs">
                   <span>
