@@ -149,3 +149,33 @@ export function extractApiMessage(input: unknown, fallback = "An unexpected erro
 
   return String(input) || fallback;
 }
+
+/**
+ * Sanitizes an untrusted HTML string to prevent Cross-Site Scripting (XSS).
+ * Strips script tags, event handlers (onclick, onload, etc.), dangerous elements (iframe, object, embed),
+ * and javascript: / data: pseudo-protocols.
+ */
+export function sanitizeHtml(html: string | undefined | null): string {
+  if (!html || typeof html !== "string") return "";
+
+  let clean = html;
+
+  // 1. Remove dangerous blocks: <script>...</script>, <style>...</style>
+  clean = clean.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script\s*>/gi, "");
+  clean = clean.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style\s*>/gi, "");
+
+  // 2. Remove dangerous executable/embedding elements: iframe, object, embed, applet, meta, link, base, form
+  clean = clean.replace(
+    /<\/?(?:iframe|object|embed|applet|meta|link|base|form|input|button|textarea|select)\b[^>]*>/gi,
+    "",
+  );
+
+  // 3. Strip all inline event handlers (e.g. onload=, onerror=, onclick=)
+  clean = clean.replace(/\s+on[a-z]+(\s*=\s*(?:'[^']*'|"[^"]*"|[^\s>]+))?/gi, "");
+
+  // 4. Strip javascript:, vbscript:, and data: pseudo-protocols from href and src attributes
+  clean = clean.replace(/(href|src)\s*=\s*(['"])\s*(?:javascript|vbscript|data):[\s\S]*?\2/gi, '$1="#"');
+  clean = clean.replace(/(href|src)\s*=\s*(?:javascript|vbscript|data):[^\s>]+/gi, '$1="#"');
+
+  return clean;
+}

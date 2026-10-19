@@ -34,21 +34,7 @@ export async function fetchAllBevyChapterEventsAction(includeHidden = false, sta
 
 export const getAllEventsAction = fetchAllBevyChapterEventsAction;
 
-import { cookies } from "next/headers";
-
-/**
- * Verifies that the caller has an active, authenticated organizer session.
- */
-async function isAuthorizedOrganizerSession(): Promise<boolean> {
-  try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("auth_token")?.value;
-    const role = cookieStore.get("auth_role")?.value;
-    return Boolean(token) && (role === "organizer" || role === "core_team" || role === "googler");
-  } catch {
-    return false;
-  }
-}
+import { isAuthorizedOrganizerSession } from "./auth-guard";
 
 /**
  * Server action to fetch Bevy chapter members safely on the server.

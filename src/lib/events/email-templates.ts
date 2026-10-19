@@ -1,5 +1,6 @@
 import { resolveEventAudience } from "@/lib/bevy/audience";
 import type { EmailTemplateKey, FirestoreEvent } from "@/lib/firestore/types";
+import { assertSafeWebhookUrl } from "@/lib/security/webhook-validator";
 
 export type { EmailTemplateKey };
 
@@ -1392,36 +1393,39 @@ export function buildRenderedEmailForAttendee({
  * Resolves the webhook URL for send-email (reusable across interest, rejected hybrid/in-person/virtual).
  */
 export function resolveSendEmailWebhookUrl(customBaseUrl?: string): string {
+  const defaultFallback = "https://n8n.gdgjakarta.com/webhook/api/send-email";
+  const safeCustom = customBaseUrl ? assertSafeWebhookUrl(customBaseUrl, "") : "";
+
+  let target = "";
   if (process.env.N8N_SEND_EMAIL_WEBHOOK_URL) {
-    return process.env.N8N_SEND_EMAIL_WEBHOOK_URL.trim();
-  }
-  if (process.env.N8N_SEND_INTEREST_EMAIL_WEBHOOK_URL) {
+    target = process.env.N8N_SEND_EMAIL_WEBHOOK_URL.trim();
+  } else if (process.env.N8N_SEND_INTEREST_EMAIL_WEBHOOK_URL) {
     const custom = process.env.N8N_SEND_INTEREST_EMAIL_WEBHOOK_URL.trim();
     if (custom.endsWith("/send-interest-email")) {
-      return custom.replace(/\/send-interest-email$/, "/send-email");
+      target = custom.replace(/\/send-interest-email$/, "/send-email");
+    } else {
+      target = custom;
     }
-    return custom;
-  }
-  const base = (customBaseUrl ?? process.env.N8N_WEBHOOK_BASE_URL ?? "https://n8n.gdgjakarta.com/webhook/api")
-    .trim()
-    .replace(/\/+$/, "");
+  } else {
+    const base = (safeCustom || process.env.N8N_WEBHOOK_BASE_URL || "https://n8n.gdgjakarta.com/webhook/api")
+      .trim()
+      .replace(/\/+$/, "");
 
-  if (base.endsWith("/send-email")) {
-    return base;
+    if (base.endsWith("/send-email")) {
+      target = base;
+    } else if (base.endsWith("/send-interest-email")) {
+      target = base.replace(/\/send-interest-email$/, "/send-email");
+    } else if (base.endsWith("/webhook/api")) {
+      target = `${base}/send-email`;
+    } else if (base.endsWith("/webhook")) {
+      target = `${base}/api/send-email`;
+    } else if (base.endsWith("/api")) {
+      target = `${base.slice(0, -4)}/webhook/api/send-email`;
+    } else {
+      target = `${base}/webhook/api/send-email`;
+    }
   }
-  if (base.endsWith("/send-interest-email")) {
-    return base.replace(/\/send-interest-email$/, "/send-email");
-  }
-  if (base.endsWith("/webhook/api")) {
-    return `${base}/send-email`;
-  }
-  if (base.endsWith("/webhook")) {
-    return `${base}/api/send-email`;
-  }
-  if (base.endsWith("/api")) {
-    return `${base.slice(0, -4)}/webhook/api/send-email`;
-  }
-  return `${base}/webhook/api/send-email`;
+  return assertSafeWebhookUrl(target, defaultFallback);
 }
 
 /**

@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { cookies } from "next/headers";
 
 import {
   createShortFolder,
@@ -22,20 +21,7 @@ import type {
   UpdateShortLinkInput,
 } from "@/lib/shortio/types";
 
-/**
- * Verifies that the caller has an active, authenticated organizer session.
- * RBAC Guard: Organizers, Core Team, and Googlers only.
- */
-async function isAuthorizedOrganizerSession(): Promise<boolean> {
-  try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get("auth_token")?.value;
-    const role = cookieStore.get("auth_role")?.value;
-    return Boolean(token) && (role === "organizer" || role === "core_team" || role === "googler");
-  } catch {
-    return false;
-  }
-}
+import { isAuthorizedOrganizerSession } from "./auth-guard";
 
 export async function fetchShortLinksAction(options?: {
   folderId?: string;

@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { isCoreTeamOrStaff, isExecutiveOrganizer } from "@/lib/auth-roles";
 import { getUserById, importMemberToBevy, validateBevyOrganizer } from "@/lib/bevy/client";
 import { type BevyUser, ChapterRole, type OrganizerValidationResult } from "@/lib/bevy/types";
+import { signRoleCookie } from "@/lib/security/session-cookie";
 import { splitFullName } from "@/lib/utils";
 
 const AUTH_COOKIE = "auth_token";
@@ -175,7 +176,13 @@ export async function syncSingleMemberToBevyAction(params: {
  */
 async function verifyFirebaseIdToken(idToken: string): Promise<{ valid: boolean; email?: string; uid?: string }> {
   if (!idToken) return { valid: false };
-  const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyCVk8ECyA8Lqd7KNqdnItxYUu9jdFzoohU";
+  const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "";
+  if (!apiKey) {
+    console.error(
+      "[Auth Token Verification] Configuration error: Missing NEXT_PUBLIC_FIREBASE_API_KEY environment variable.",
+    );
+    return { valid: false };
+  }
   try {
     const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`, {
       method: "POST",
@@ -342,31 +349,60 @@ async function setAuthSessionCookie(token: string, role: string, remember = true
       options.maxAge = COOKIE_MAX_AGE;
     }
 
-    console.log(`[Auth Cookie] Setting cookies: auth_token (len=${token.length}), auth_role=${role}`);
+    const signedRole = await signRoleCookie(role);
+    console.log(`[Auth Cookie] Setting cookies: auth_token (len=${token.length}), auth_role=${role} (signed)`);
     cookieStore.set(AUTH_COOKIE, token, options);
-    cookieStore.set(ROLE_COOKIE, role, options);
+    cookieStore.set(ROLE_COOKIE, signedRole, options);
   } catch (err) {
     console.error("[Auth Cookie] Error setting session cookies:", err);
   }
 }
 
 /**
- * Restores or refreshes HTTP-only auth cookies directly from the client's verified Firestore profile
- * without querying the Bevy API.
+ * Restores HTTP-only auth cookies with server-side Bevy role re-validation
+ * to prevent client-side privilege escalation.
  */
-export async function restoreSessionCookieAction(token: string, role: string): Promise<boolean> {
+export async function restoreSessionCookieAction(token: string): Promise<{ success: boolean; role: string }> {
   try {
-    if (!token) return false;
+    if (!token) return { success: false, role: "member" };
     const tokenVerification = await verifyFirebaseIdToken(token);
-    if (!tokenVerification.valid) {
-      console.warn("[Auth Restore] Invalid token supplied to restoreSessionCookieAction");
-      return false;
+    if (!tokenVerification.valid || !tokenVerification.email) {
+      console.warn("[Auth Restore] Invalid or unverified token supplied to restoreSessionCookieAction");
+      return { success: false, role: "member" };
     }
+
+    const verifiedEmail = tokenVerification.email.toLowerCase().trim();
+    let validation: OrganizerValidationResult = {
+      isValidOrganizer: false,
+      role: "member",
+      bevyUserId: null,
+      chapterRole: "Member",
+    };
+    try {
+      validation = await validateBevyOrganizer(verifiedEmail);
+    } catch (valErr) {
+      console.error("[Auth Restore] Validation error:", valErr);
+    }
+
+    const isExecutive = isExecutiveOrganizer({
+      role: validation.role,
+      chapterRole: validation.chapterRole,
+      chapterRoleType: validation.chapterRoleType,
+      roleId: validation.roleId,
+    });
+    const isCoreStaff = isCoreTeamOrStaff({
+      role: validation.role,
+      chapterRole: validation.chapterRole,
+      chapterRoleType: validation.chapterRoleType,
+      roleId: validation.roleId,
+    });
+
+    const role = isExecutive ? "organizer" : isCoreStaff ? "core_team" : "member";
     await setAuthSessionCookie(token, role, true);
-    return true;
+    return { success: true, role };
   } catch (err) {
     console.error("[Auth Restore] Failed to restore session cookie:", err);
-    return false;
+    return { success: false, role: "member" };
   }
 }
 

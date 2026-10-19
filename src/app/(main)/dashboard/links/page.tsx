@@ -1,10 +1,10 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import type { Metadata } from "next";
 
 import { listAllShortLinks, listShortFolders } from "@/lib/shortio/client";
 import type { ShortFolder, ShortLinkItem } from "@/lib/shortio/types";
+import { isAuthorizedOrganizerSession } from "@/server/auth-guard";
 
 import { Links } from "./_components/links";
 
@@ -17,12 +17,7 @@ export const metadata: Metadata = {
 
 export default async function LinksPage() {
   // Defense-in-depth: Strict Organizer-only guard
-  const cookieStore = await cookies();
-  const token = cookieStore.get("auth_token")?.value;
-  const role = cookieStore.get("auth_role")?.value;
-
-  const isOrganizer = Boolean(token) && (role === "organizer" || role === "core_team" || role === "googler");
-
+  const isOrganizer = await isAuthorizedOrganizerSession();
   if (!isOrganizer) {
     redirect("/dashboard/member");
   }

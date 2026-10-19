@@ -5,6 +5,21 @@ import { sanitizeStorageName } from "@/lib/r2/utils";
 
 export const dynamic = "force-dynamic";
 
+const ALLOWED_MIME_TYPES: Record<string, true> = {
+  "image/jpeg": true,
+  "image/png": true,
+  "image/webp": true,
+  "application/pdf": true,
+};
+
+const ALLOWED_EXTENSIONS: Record<string, true> = {
+  jpg: true,
+  jpeg: true,
+  png: true,
+  webp: true,
+  pdf: true,
+};
+
 /**
  * POST /api/events/upload-question-media
  * Uploads attendee response media to bucket storage in folder:
@@ -21,6 +36,34 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No valid file provided in upload payload" }, { status: 400 });
     }
 
+    // Path traversal check on filename
+    if (file.name.includes("..") || file.name.includes("/") || file.name.includes("\\")) {
+      return NextResponse.json({ error: "Invalid filename: path traversal sequences are forbidden." }, { status: 400 });
+    }
+
+    // Strict MIME type allowlist check - explicitly blocks SVG, HTML, scripts
+    const mimeType = (file.type || "").toLowerCase().trim();
+    if (!ALLOWED_MIME_TYPES[mimeType]) {
+      return NextResponse.json(
+        { error: "Disallowed file type. Only JPEG, PNG, WebP images, and PDF documents are permitted." },
+        { status: 400 },
+      );
+    }
+
+    const lastDotIndex = file.name.lastIndexOf(".");
+    const rawExt =
+      lastDotIndex > 0
+        ? file.name
+            .slice(lastDotIndex + 1)
+            .toLowerCase()
+            .trim()
+        : "";
+    if (!ALLOWED_EXTENSIONS[rawExt]) {
+      return NextResponse.json(
+        { error: "Disallowed file extension. Only .jpg, .jpeg, .png, .webp, and .pdf are permitted." },
+        { status: 400 },
+      );
+    }
     // Configurable maximum size check (default 10 MB, cap at 50 MB)
     const configuredMaxSizeMb = rawMaxSizeMb && !Number.isNaN(Number(rawMaxSizeMb)) ? Number(rawMaxSizeMb) : 10;
     const maxLimitMb = Math.max(1, Math.min(configuredMaxSizeMb, 50));
@@ -40,9 +83,7 @@ export async function POST(request: NextRequest) {
     const prefix = `temp/${sanitizedEventName}/`;
 
     // Construct file name: <uploaded-file-name>-<timestamp>.<ext>
-    const lastDotIndex = file.name.lastIndexOf(".");
     const rawBase = lastDotIndex > 0 ? file.name.slice(0, lastDotIndex) : file.name;
-    const rawExt = lastDotIndex > 0 ? file.name.slice(lastDotIndex + 1) : "";
 
     const cleanBase = sanitizeStorageName(rawBase, false) || "uploaded-file";
     const cleanExt = rawExt ? sanitizeStorageName(rawExt, false) : "";

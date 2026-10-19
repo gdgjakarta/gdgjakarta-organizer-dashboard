@@ -9,9 +9,10 @@ import {
   GDG_SESSION_CHECKIN_DEADLINE_MAP,
   GDG_SESSION_TIME_MAP,
 } from "@/lib/events/registration-defaults";
+import { assertSafeWebhookUrl } from "@/lib/security/webhook-validator";
 
+import { isAuthorizedOrganizerOrSelfEmail, isAuthorizedOrganizerSession } from "./auth-guard";
 import { sendEmailWebhookAction } from "./email-template-actions";
-
 export interface RegistrationWebhookPayload {
   // Top-level compatibility fields for n8n workflows
   Session?: string;
@@ -93,19 +94,25 @@ export interface WebhookDispatchResult {
  * Checks environment variables first, then event-level override.
  */
 function resolveWebhookUrl(eventWebhookUrl?: string): string | null {
-  if (eventWebhookUrl && eventWebhookUrl.trim().length > 0) {
-    return eventWebhookUrl.trim();
-  }
-
   const envUrl =
     process.env.EVENT_REGISTRATION_WEBHOOK_URL ||
     process.env.N8N_REGISTRATION_WEBHOOK_URL ||
     process.env.N8N_EVENT_REGISTRATION_WEBHOOK_URL ||
     process.env.N8N_WEBHOOK_URL ||
-    process.env.REGISTRATION_WEBHOOK_URL;
+    process.env.REGISTRATION_WEBHOOK_URL ||
+    "";
 
-  if (envUrl && envUrl.trim().length > 0) {
-    return envUrl.trim();
+  const safeEnvUrl = envUrl ? assertSafeWebhookUrl(envUrl, "") : "";
+
+  if (eventWebhookUrl && eventWebhookUrl.trim().length > 0) {
+    const safeUrl = assertSafeWebhookUrl(eventWebhookUrl, safeEnvUrl);
+    if (safeUrl) {
+      return safeUrl;
+    }
+  }
+
+  if (safeEnvUrl) {
+    return safeEnvUrl;
   }
 
   return null;
@@ -319,12 +326,20 @@ export async function dispatchRegistrationWebhookAction(
  * Server Action: Sends a test ping to verify webhook connectivity from Organizer dashboard.
  */
 export async function testRegistrationWebhookAction(targetUrl: string): Promise<WebhookDispatchResult> {
-  const cleanUrl = targetUrl.trim();
+  if (!(await isAuthorizedOrganizerSession())) {
+    return {
+      success: false,
+      dispatched: false,
+      error: "Unauthorized: Organizer session required.",
+    };
+  }
+
+  const cleanUrl = assertSafeWebhookUrl(targetUrl, "");
   if (!cleanUrl) {
     return {
       success: false,
       dispatched: false,
-      error: "Please provide a valid Webhook URL to test.",
+      error: "Target Webhook URL must be an authorized HTTPS endpoint on gdgjakarta.com.",
     };
   }
 
@@ -462,6 +477,13 @@ export type { ApproveAttendeeWebhookResult, ApprovedAttendeeWebhookPayload };
 export async function approveAttendeeWebhookAction(
   payload: ApprovedAttendeeWebhookPayload,
 ): Promise<ApproveAttendeeWebhookResult> {
+  if (!(await isAuthorizedOrganizerOrSelfEmail(payload.email))) {
+    return {
+      success: false,
+      error: "Unauthorized: Organizer session or verified attendee session required.",
+    };
+  }
+
   const customBaseUrl = process.env.N8N_WEBHOOK_BASE_URL ?? process.env.N8N_BASE_URL;
   let webhookUrl = resolveApprovedAttendeeWebhookUrl(customBaseUrl);
 

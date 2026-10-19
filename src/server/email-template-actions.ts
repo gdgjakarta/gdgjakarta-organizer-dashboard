@@ -12,6 +12,8 @@ import {
 import type { FirestoreEvent } from "@/lib/firestore/types";
 import { extractApiMessage } from "@/lib/utils";
 
+import { isAuthorizedOrganizerOrSelfEmail, isAuthorizedOrganizerSession } from "./auth-guard";
+
 const sendEmailSchema = z.object({
   first_name: z.string().min(1, "First name is required"),
   last_name: z.string().min(1, "Last name is required"),
@@ -56,6 +58,9 @@ export interface EmailDispatchResult {
  *      }'
  */
 export async function sendEmailWebhookAction(data: SendEmailInput): Promise<EmailDispatchResult> {
+  if (!(await isAuthorizedOrganizerOrSelfEmail(data.email))) {
+    return { success: false, error: "Unauthorized: Organizer session required." };
+  }
   const safeData = {
     ...data,
     first_name: data.first_name.trim() || "Attendee",
@@ -213,6 +218,9 @@ export type SendTemplateEmailRequestInput = z.infer<typeof sendTemplateEmailRequ
 export async function sendTemplateEmailRequestAction(
   data: SendTemplateEmailRequestInput,
 ): Promise<EmailDispatchResult> {
+  if (!(await isAuthorizedOrganizerSession())) {
+    return { success: false, error: "Unauthorized: Organizer session required." };
+  }
   const parsed = sendTemplateEmailRequestSchema.safeParse(data);
   if (!parsed.success) {
     const errorMsg = parsed.error.issues.map((i) => i.message).join(", ");
@@ -382,6 +390,9 @@ export interface RejectAttendeeResult extends EmailDispatchResult {
  * - In-Person event -> uses "rejected_non_hybrid" template
  */
 export async function rejectAttendeeAction(input: RejectAttendeeInput): Promise<RejectAttendeeResult> {
+  if (!(await isAuthorizedOrganizerSession())) {
+    return { success: false, error: "Unauthorized: Organizer session required." };
+  }
   try {
     let event: FirestoreEvent | Partial<FirestoreEvent> | undefined = input.eventData;
     if (!event) {
@@ -482,6 +493,9 @@ export interface ResendInterestEmailInput {
  * Dispatches via reusable n8n /send-email webhook.
  */
 export async function resendInterestEmailAction(input: ResendInterestEmailInput): Promise<EmailDispatchResult> {
+  if (!(await isAuthorizedOrganizerSession())) {
+    return { success: false, error: "Unauthorized: Organizer session required." };
+  }
   try {
     let event: FirestoreEvent | Partial<FirestoreEvent> | undefined = input.eventData;
     if (!event) {
@@ -581,6 +595,9 @@ export interface CancelAttendeeEmailResult extends EmailDispatchResult {
 export async function sendCancelAttendeeEmailAction(
   input: CancelAttendeeEmailInput,
 ): Promise<CancelAttendeeEmailResult> {
+  if (!(await isAuthorizedOrganizerSession())) {
+    return { success: false, error: "Unauthorized: Organizer session required." };
+  }
   try {
     let event: FirestoreEvent | Partial<FirestoreEvent> | undefined = input.eventData;
     if (!event) {
@@ -668,6 +685,9 @@ export async function sendCancelAttendeeEmailAction(
 export async function sendAttendeeCancelEmailAction(
   input: CancelAttendeeEmailInput,
 ): Promise<CancelAttendeeEmailResult> {
+  if (!(await isAuthorizedOrganizerOrSelfEmail(input.attendeeEmail))) {
+    return { success: false, error: "Unauthorized: Organizer session required." };
+  }
   try {
     let event: FirestoreEvent | Partial<FirestoreEvent> | undefined = input.eventData;
     if (!event) {
@@ -772,6 +792,9 @@ export interface WaitlistAttendeeEmailResult extends EmailDispatchResult {
 export async function sendWaitlistAttendeeEmailAction(
   input: WaitlistAttendeeEmailInput,
 ): Promise<WaitlistAttendeeEmailResult> {
+  if (!(await isAuthorizedOrganizerSession())) {
+    return { success: false, error: "Unauthorized: Organizer session required." };
+  }
   try {
     let event: FirestoreEvent | Partial<FirestoreEvent> | undefined = input.eventData;
     if (!event) {
@@ -879,6 +902,9 @@ export interface PaidWaitlistAttendeeEmailResult extends EmailDispatchResult {
 export async function sendPaidWaitlistAttendeeEmailAction(
   input: PaidWaitlistAttendeeEmailInput,
 ): Promise<PaidWaitlistAttendeeEmailResult> {
+  if (!(await isAuthorizedOrganizerSession())) {
+    return { success: false, error: "Unauthorized: Organizer session required." };
+  }
   try {
     let event: FirestoreEvent | Partial<FirestoreEvent> | undefined = input.eventData;
     if (!event) {

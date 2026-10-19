@@ -28,7 +28,7 @@
     "NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "883556294048",
     "NEXT_PUBLIC_FIREBASE_PROJECT_ID": "gdgjakarta-app",
     "N8N_WEBHOOK_BASE_URL": "https://n8n.gdgjakarta.com/webhook/api",
-    "SHORTIO_API_KEY": "sk_m72xJGlHTlfVygzd",
+    // SHORTIO_API_KEY must be configured as a secret via `wrangler secret put SHORTIO_API_KEY`
     "SHORTIO_DOMAIN": "gdgjakarta.org",
     "SHORTIO_DOMAIN_ID": "1516440"
   },
@@ -76,7 +76,7 @@
       "NEXT_PUBLIC_FIREBASE_PROJECT_ID": "gdgjakarta-app",
       "NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET": "gdgjakarta-app.firebasestorage.app",
       "N8N_WEBHOOK_BASE_URL": "https://n8n.gdgjakarta.com/webhook/api",
-      "SHORTIO_API_KEY": "sk_m72xJGlHTlfVygzd",
+      // SHORTIO_API_KEY must be configured as a secret via `wrangler secret put SHORTIO_API_KEY`
       "SHORTIO_DOMAIN": "gdgjakarta.org",
       "SHORTIO_DOMAIN_ID": "1516440"
     },

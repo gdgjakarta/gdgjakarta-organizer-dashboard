@@ -5,6 +5,13 @@ import { splitStorageKey } from "@/lib/r2/utils";
 
 export const dynamic = "force-dynamic";
 
+const SAFE_INLINE_MIME_TYPES: Record<string, true> = {
+  "image/jpeg": true,
+  "image/png": true,
+  "image/webp": true,
+  "image/gif": true,
+};
+
 interface RouteParams {
   params: Promise<{
     path?: string[];
@@ -37,14 +44,16 @@ export async function GET(request: NextRequest, context: RouteParams) {
 
     const { name } = splitStorageKey(rawKey);
     const contentType = object.httpMetadata?.contentType || "application/octet-stream";
-    const dispositionType = isDownload ? "attachment" : "inline";
+    const isSafeInline = SAFE_INLINE_MIME_TYPES[contentType.toLowerCase().trim()] === true;
+    const dispositionType = isDownload || !isSafeInline ? "attachment" : "inline";
 
     const headers = new Headers();
     headers.set("Content-Type", contentType);
     headers.set("Accept-Ranges", "bytes");
     headers.set("Content-Disposition", `${dispositionType}; filename="${encodeURIComponent(name)}"`);
+    headers.set("Content-Security-Policy", "default-src 'none'; sandbox");
+    headers.set("X-Content-Type-Options", "nosniff");
     headers.set("Cache-Control", "public, max-age=31536000, immutable");
-
     if (object.etag) {
       headers.set("ETag", `"${object.etag}"`);
     }

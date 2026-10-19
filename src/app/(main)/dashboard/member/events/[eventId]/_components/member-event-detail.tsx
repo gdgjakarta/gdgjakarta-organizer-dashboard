@@ -49,7 +49,7 @@ import { getEventRefundPolicyNotes, isRegistrationEligibleForRefund } from "@/li
 import { getRegistrationWindowStatus } from "@/lib/events/registration-defaults";
 import { checkEventRegistrationAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
-import { cn } from "@/lib/utils";
+import { cn, sanitizeHtml } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
 interface MemberEventDetailProps {
@@ -63,7 +63,7 @@ function EventDescriptionContent({ html }: { html: string }) {
     <div
       className="prose prose-sm dark:prose-invert max-w-none space-y-4 leading-relaxed [&_a]:text-primary [&_a]:underline [&_p]:mb-3 [&_ul]:list-disc [&_ul]:pl-5"
       // biome-ignore lint/security/noDangerouslySetInnerHtml: Bevy verified event HTML content
-      dangerouslySetInnerHTML={{ __html: html }}
+      dangerouslySetInnerHTML={{ __html: sanitizeHtml(html) }}
     />
   );
 }

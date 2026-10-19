@@ -1,11 +1,10 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import type { Metadata } from "next";
 
-import { isExecutiveOrganizer } from "@/lib/auth-roles";
 import { listDirectoryContent } from "@/lib/r2/client";
 import type { R2DirectoryContent } from "@/lib/r2/types";
+import { isAuthorizedExecutiveOrganizerSession } from "@/server/auth-guard";
 
 import { MediaView } from "./_components/media-view";
 
@@ -19,11 +18,7 @@ export const metadata: Metadata = {
 export default async function MediaPage() {
   // Defense-in-depth: Strict Executive Organizer guard
   // Team members, check-in staff, core team, and members cannot access or view Bucket Storage
-  const cookieStore = await cookies();
-  const token = cookieStore.get("auth_token")?.value;
-  const role = cookieStore.get("auth_role")?.value;
-
-  const isOrganizer = Boolean(token) && isExecutiveOrganizer(role);
+  const isOrganizer = await isAuthorizedExecutiveOrganizerSession();
 
   if (!isOrganizer) {
     redirect("/dashboard/member");

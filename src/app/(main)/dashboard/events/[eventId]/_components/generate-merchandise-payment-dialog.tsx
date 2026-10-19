@@ -304,7 +304,6 @@ export function GenerateMerchandisePaymentDialog({
           },
           referenceId: `MERCH-${Date.now().toString(36).toUpperCase()}`,
           isProduction: paymentEnvironment === "production",
-          webhookUrl: latestEventConfig?.payment_webhook_url ?? event.payment_webhook_url ?? undefined,
         });
 
         if (res.success && res.paymentUrl) {

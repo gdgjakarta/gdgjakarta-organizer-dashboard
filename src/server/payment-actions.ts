@@ -13,6 +13,7 @@ import {
   resolveCancelPaymentLinkWebhookUrl,
   resolvePaymentLinkWebhookUrl,
 } from "@/lib/events/doku-payment";
+import { assertSafeWebhookUrl } from "@/lib/security/webhook-validator";
 import { extractApiMessage } from "@/lib/utils";
 
 const paymentItemSchema = z.object({
@@ -59,7 +60,6 @@ const dokuPaymentRequestSchema = z.object({
   referenceId: z.string().optional(),
   requestId: z.string().optional(),
   isProduction: z.boolean().optional(),
-  webhookUrl: z.string().optional(),
 });
 
 export type DokuPaymentRequestInput = z.input<typeof dokuPaymentRequestSchema>;
@@ -96,7 +96,10 @@ export async function generatePaymentLinkAction(input: DokuPaymentRequestInput):
     };
   }
 
-  const webhookUrl = resolvePaymentLinkWebhookUrl(parsed.data.webhookUrl, isProduction);
+  const webhookUrl = assertSafeWebhookUrl(
+    resolvePaymentLinkWebhookUrl(undefined, isProduction),
+    "https://n8n.gdgjakarta.com/webhook/api/generate-payment-link",
+  );
   const apiKey =
     process.env.N8N_PAYMENT_LINK_API_KEY || process.env.N8N_WEBHOOK_API_KEY || process.env.N8N_AUTH_SECRET || "";
 
@@ -213,7 +216,6 @@ const dokuCancelOrderRequestSchema = z.object({
     .optional(),
   referenceId: z.string().optional(),
   isProduction: z.boolean().optional(),
-  webhookUrl: z.string().optional(),
 });
 
 export type DokuCancelOrderRequestInput = z.input<typeof dokuCancelOrderRequestSchema>;
@@ -232,7 +234,10 @@ export async function cancelPaymentLinkAction(input: DokuCancelOrderRequestInput
   const isProduction =
     parsed.data.isProduction !== undefined ? parsed.data.isProduction : process.env.NODE_ENV === "production";
 
-  const webhookUrl = resolveCancelPaymentLinkWebhookUrl(parsed.data.webhookUrl, isProduction);
+  const webhookUrl = assertSafeWebhookUrl(
+    resolveCancelPaymentLinkWebhookUrl(undefined, isProduction),
+    "https://n8n.gdgjakarta.com/webhook/api/cancel-payment-link",
+  );
   const apiKey =
     process.env.N8N_PAYMENT_LINK_API_KEY || process.env.N8N_WEBHOOK_API_KEY || process.env.N8N_AUTH_SECRET || "";
 

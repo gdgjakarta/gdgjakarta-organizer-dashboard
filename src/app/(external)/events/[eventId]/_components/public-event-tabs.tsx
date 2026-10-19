@@ -27,6 +27,7 @@ import type { BevyEvent, BevyPartner, BevySpeaker } from "@/lib/bevy/types";
 import { buildUnifiedAgenda } from "@/lib/events/agenda-unification";
 import { parsePhotoAlbum, parseVideoUrl } from "@/lib/events/media-utils";
 import type { EventSession, FirestoreEvent } from "@/lib/firestore/types";
+import { sanitizeHtml } from "@/lib/utils";
 
 import { UnifiedAgendaTimeline } from "./unified-agenda-timeline";
 
@@ -192,7 +193,7 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
             <div
               className="prose dark:prose-invert max-w-none prose-img:rounded-xl prose-headings:font-bold prose-a:text-primary text-foreground/90 text-sm leading-relaxed prose-headings:tracking-tight hover:prose-a:underline sm:text-base"
               // biome-ignore lint/security/noDangerouslySetInnerHtml: Bevy trusted description
-              dangerouslySetInnerHTML={{ __html: event.description }}
+              dangerouslySetInnerHTML={{ __html: sanitizeHtml(event.description) }}
             />
           ) : (
             <div className="flex flex-col items-center justify-center rounded-2xl border border-border/70 border-dashed p-10 text-center">
@@ -411,7 +412,7 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
                   <div
                     className="prose dark:prose-invert max-w-none text-foreground/90 text-sm leading-relaxed"
                     // biome-ignore lint/security/noDangerouslySetInnerHtml: Event organizer recap
-                    dangerouslySetInnerHTML={{ __html: recapDescription }}
+                    dangerouslySetInnerHTML={{ __html: sanitizeHtml(recapDescription) }}
                   />
                 </div>
               </Card>
@@ -593,7 +594,7 @@ function SpeakerCard({ speaker }: { speaker: BevySpeaker }) {
           <div
             className="line-clamp-3 text-muted-foreground text-xs leading-relaxed break-words prose prose-sm dark:prose-invert max-w-none [&_h1]:my-0.5 [&_h1]:text-xs [&_h1]:font-semibold [&_h1]:text-foreground [&_h2]:my-0.5 [&_h2]:text-xs [&_h2]:font-semibold [&_h2]:text-foreground [&_h3]:my-0.5 [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:text-foreground [&_h4]:my-0.5 [&_h4]:text-xs [&_h4]:font-semibold [&_h4]:text-foreground [&_p]:my-0.5 [&_strong]:font-semibold [&_strong]:text-foreground [&_a]:text-primary hover:[&_a]:underline"
             // biome-ignore lint/security/noDangerouslySetInnerHtml: Bevy verified speaker bio HTML
-            dangerouslySetInnerHTML={{ __html: speaker.bio }}
+            dangerouslySetInnerHTML={{ __html: sanitizeHtml(speaker.bio) }}
           />
         )}
       </div>

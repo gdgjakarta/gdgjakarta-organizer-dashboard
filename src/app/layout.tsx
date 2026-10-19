@@ -118,6 +118,7 @@ import { cookies } from "next/headers";
 import { MaintenanceGate } from "@/components/maintenance/maintenance-gate";
 import { DEFAULT_MAINTENANCE_CONFIG } from "@/config/maintenance-config";
 import { isExecutiveOrganizer } from "@/lib/auth-roles";
+import { getVerifiedSessionRole } from "@/server/auth-guard";
 import { getMaintenanceConfigServer } from "@/server/firestore-admin";
 
 export default async function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
@@ -128,8 +129,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   let isOrganizer = false;
 
   try {
-    const cookieStore = await cookies();
-    const role = cookieStore.get("auth_role")?.value;
+    const role = await getVerifiedSessionRole();
     isOrganizer = isExecutiveOrganizer(role);
     initialMaintenance = await getMaintenanceConfigServer();
   } catch (err) {

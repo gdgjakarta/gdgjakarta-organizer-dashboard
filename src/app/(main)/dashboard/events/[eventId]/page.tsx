@@ -1,8 +1,8 @@
-import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 
 import { getAllBevyChapterEvents, getBevyEventById, resolveEventAudience } from "@/lib/bevy/client";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
+import { getVerifiedSessionRole } from "@/server/auth-guard";
 
 import { EventDetailHeader } from "./_components/event-detail-header";
 import { EventDetailTabs } from "./_components/event-detail-tabs";
@@ -190,8 +190,7 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
     notFound();
   }
 
-  const cookieStore = await cookies();
-  const initialRole = cookieStore.get("auth_role")?.value;
+  const initialRole = (await getVerifiedSessionRole()) ?? "member";
 
   return (
     <div className="flex flex-col gap-6">

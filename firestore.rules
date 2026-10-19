@@ -631,12 +631,18 @@ service cloud.firestore {
           ('role' in request.auth.token && (request.auth.token.role in ['organizer', 'core_team', 'googler', 'check_in_staff', 'team_member'])) ||
           (newData.role is string && newData.role.lower() in ['member'])
         ) &&
-
         // Team check: if untouched, allowed; if touched, cannot escalate
         (!newData.diff(existingData).affectedKeys().hasAny(['team']) ||
           isTeamData(existingData) ||
           ('role' in request.auth.token && (request.auth.token.role in ['organizer', 'core_team', 'googler', 'check_in_staff', 'team_member'])) ||
           (newData.team is string && newData.team.lower() in ['community'])
+        ) &&
+
+        // Chapter role check: if untouched, allowed; if touched, cannot escalate
+        (!newData.diff(existingData).affectedKeys().hasAny(['chapter_role']) ||
+          isTeamData(existingData) ||
+          ('role' in request.auth.token && (request.auth.token.role in ['organizer', 'core_team', 'googler', 'check_in_staff', 'team_member'])) ||
+          (newData.chapter_role is string && newData.chapter_role.lower() in ['member'])
         )
       );
     }
@@ -1026,7 +1032,10 @@ service cloud.firestore {
           (!('id' in request.resource.data) || request.resource.data.id == request.auth.uid || request.resource.data.id == memberId) &&
           (!('uid' in request.resource.data) || request.resource.data.uid == null || request.resource.data.uid == request.auth.uid) &&
           (!('referral_points' in request.resource.data) || request.resource.data.referral_points == 0) &&
-          (!('referrals_count' in request.resource.data) || request.resource.data.referrals_count == 0)
+          (!('referrals_count' in request.resource.data) || request.resource.data.referrals_count == 0) &&
+          (!('role' in request.resource.data) || request.resource.data.role.lower() == 'member') &&
+          (!('team' in request.resource.data) || request.resource.data.team.lower() in ['community']) &&
+          (!('chapter_role' in request.resource.data) || request.resource.data.chapter_role == null || request.resource.data.chapter_role.lower() == 'member')
         ) ||
         hasTeamAccess()
       );
@@ -1246,6 +1255,9 @@ service cloud.firestore {
 
       // Create: Team access (Organizers & Staff), validating schema, required fields, and bounds.
       allow create: if hasTeamAccess() && isValidAuditLog(request.resource.data);
+
+      // Immutability: Audit log entries can never be modified or deleted once created.
+      allow update, delete: if false;
     }
 
     // -------------------------------------------------------------

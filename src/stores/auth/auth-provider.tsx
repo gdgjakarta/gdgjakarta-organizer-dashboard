@@ -2,13 +2,14 @@
 
 import { createContext, use, useEffect, useState } from "react";
 
-import { getAdditionalUserInfo, onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
+import { getAdditionalUserInfo, onAuthStateChanged, signInWithPopup, signOut, type User } from "firebase/auth";
 import { type StoreApi, useStore } from "zustand";
 
 import { auth, googleProvider } from "@/config/firebase";
+import type { OrganizerValidationResult } from "@/lib/bevy/types";
 import type { FirestoreMember } from "@/lib/firestore/types";
 import { splitFullName } from "@/lib/utils";
-import { clearAuthSessionCookie, handleUserPostLoginAction } from "@/server/auth-actions";
+import { clearAuthSessionCookie, handleUserPostLoginAction, restoreSessionCookieAction } from "@/server/auth-actions";
 
 import {
   type AuthOrganizer,
@@ -25,10 +26,7 @@ const AuthStoreContext = createContext<StoreApi<AuthState> | null>(null);
 let globalStore: StoreApi<AuthState> | null = null;
 let isSigningInWithGoogle = false;
 
-function mapFirebaseUserToOrganizer(
-  user: import("firebase/auth").User,
-  validation?: import("@/lib/bevy/types").OrganizerValidationResult,
-): AuthOrganizer {
+function mapFirebaseUserToOrganizer(user: User, validation?: OrganizerValidationResult): AuthOrganizer {
   const isOrg = validation?.isValidOrganizer ?? false;
   return {
     id: user.uid,
@@ -205,9 +203,8 @@ export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
               roleId: isOrg ? 1 : typeof memberDoc.bevy_member_id === "number" ? memberDoc.bevy_member_id : undefined,
             };
 
-            const { restoreSessionCookieAction } = await import("@/server/auth-actions");
-            await restoreSessionCookieAction(token, role);
-
+            const restoreRes = await restoreSessionCookieAction(token);
+            organizer.role = restoreRes.role;
             store.getState().setUser(organizer, firebaseUser);
 
             if (!memberDoc.bevy_user_id) {

@@ -9,7 +9,13 @@ import type { EventVoucher, VoucherStatus } from "@/lib/firestore/types";
 import { getFirestoreEventByIdServer } from "@/server/firestore-admin";
 
 const FIREBASE_PROJECT_ID = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "gdgjakarta-app";
-const FIREBASE_API_KEY = process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyCVk8ECyA8Lqd7KNqdnItxYUu9jdFzoohU";
+function getFirebaseApiKey(): string {
+  const key = process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "";
+  if (!key) {
+    throw new Error("Configuration error: Missing NEXT_PUBLIC_FIREBASE_API_KEY environment variable.");
+  }
+  return key;
+}
 const FIRESTORE_BASE_URL = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
 
 /**
@@ -45,7 +51,7 @@ function decodeValue(val: unknown): unknown {
 async function getVoucherDocDirect(eventId: string, code: string): Promise<EventVoucher | null> {
   try {
     const docId = `${eventId}_${code.toUpperCase()}`;
-    const url = `${FIRESTORE_BASE_URL}/event_vouchers/${encodeURIComponent(docId)}?key=${FIREBASE_API_KEY}`;
+    const url = `${FIRESTORE_BASE_URL}/event_vouchers/${encodeURIComponent(docId)}?key=${getFirebaseApiKey()}`;
     const res = await fetch(url, {
       method: "GET",
       headers: { Accept: "application/json" },

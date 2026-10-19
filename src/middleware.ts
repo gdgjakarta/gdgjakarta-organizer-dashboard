@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
 import { hasTeamOperationalAccess, isExecutiveOrganizer } from "@/lib/auth-roles";
+import { verifyRoleCookie } from "@/lib/security/session-cookie";
 
 const AUTH_COOKIE = "auth_token";
 const ROLE_COOKIE = "auth_role";
@@ -102,7 +103,7 @@ function isSuspiciousOrSecretProbe(pathname: string): boolean {
   return false;
 }
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Immediately terminate secret-file and scanner probes with 404 to avoid invoking SSR
@@ -116,11 +117,12 @@ export function middleware(request: NextRequest) {
   }
 
   const token = request.cookies.get(AUTH_COOKIE)?.value;
-  const role = request.cookies.get(ROLE_COOKIE)?.value;
+  const rawRole = request.cookies.get(ROLE_COOKIE)?.value;
+  const verifiedRole = await verifyRoleCookie(rawRole);
+  const role = verifiedRole ?? "member";
   const isAuthenticated = Boolean(token);
   const isExecutive = isExecutiveOrganizer(role);
   const isTeam = hasTeamOperationalAccess(role);
-
   // Protected route: not authenticated → redirect to unified login with callbackUrl
   if (isProtected(pathname) && !isAuthenticated) {
     console.log(`[Middleware] Unauthenticated access to protected route "${pathname}". Redirecting to /auth/login`);

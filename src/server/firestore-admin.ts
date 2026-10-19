@@ -16,7 +16,13 @@ import type {
  * avoiding the protobufjs eval/codegen EvalError in Cloudflare Workers V8 isolates.
  */
 const FIREBASE_PROJECT_ID = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "gdgjakarta-app";
-const FIREBASE_API_KEY = process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyCVk8ECyA8Lqd7KNqdnItxYUu9jdFzoohU";
+function getFirebaseApiKey(): string {
+  const key = process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "";
+  if (!key) {
+    throw new Error("Configuration error: Missing NEXT_PUBLIC_FIREBASE_API_KEY environment variable.");
+  }
+  return key;
+}
 const FIRESTORE_BASE_URL = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
 
 /**
@@ -129,7 +135,7 @@ function encodeFirestoreFields(data: Record<string, unknown>): Record<string, un
  */
 async function getFirestoreDoc(collectionName: string, docId: string): Promise<Record<string, unknown> | null> {
   try {
-    const url = `${FIRESTORE_BASE_URL}/${collectionName}/${encodeURIComponent(docId)}?key=${FIREBASE_API_KEY}`;
+    const url = `${FIRESTORE_BASE_URL}/${collectionName}/${encodeURIComponent(docId)}?key=${getFirebaseApiKey()}`;
     const res = await fetch(url, {
       method: "GET",
       headers: { Accept: "application/json" },
@@ -161,7 +167,7 @@ async function patchFirestoreDoc(
 ): Promise<boolean> {
   try {
     const searchParams = new URLSearchParams();
-    searchParams.set("key", FIREBASE_API_KEY);
+    searchParams.set("key", getFirebaseApiKey());
     const keys = Object.keys(data).filter((k) => data[k] !== undefined);
     if (merge) {
       for (const k of keys) {
@@ -197,7 +203,7 @@ async function queryRegistrationDoc(
   value: string,
 ): Promise<{ id: string; data: FirestoreRegistration } | null> {
   try {
-    const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents:runQuery?key=${FIREBASE_API_KEY}`;
+    const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents:runQuery?key=${getFirebaseApiKey()}`;
     const body = {
       structuredQuery: {
         from: [{ collectionId: "event_registrations" }],

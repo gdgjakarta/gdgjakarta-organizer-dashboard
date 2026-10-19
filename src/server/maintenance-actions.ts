@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 
 import type { MaintenanceConfig } from "@/config/maintenance-config";
-import { isExecutiveOrganizer } from "@/lib/auth-roles";
+import { isAuthorizedExecutiveOrganizerSession } from "@/server/auth-guard";
 import { getMaintenanceConfigServer } from "@/server/firestore-admin";
 
 const AUTH_ROLE_COOKIE = "auth_role";
@@ -19,11 +19,7 @@ export async function saveMaintenanceConfigAction(
   config: Partial<MaintenanceConfig>,
 ): Promise<{ success: boolean; error?: string; config?: MaintenanceConfig }> {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get(AUTH_TOKEN_COOKIE)?.value;
-    const role = cookieStore.get(AUTH_ROLE_COOKIE)?.value;
-
-    if (!token || !isExecutiveOrganizer(role)) {
+    if (!(await isAuthorizedExecutiveOrganizerSession())) {
       return {
         success: false,
         error:
@@ -31,6 +27,7 @@ export async function saveMaintenanceConfigAction(
       };
     }
 
+    const cookieStore = await cookies();
     // Set or clear the fast edge cookie for middleware / initial response
     if (config.enabled) {
       cookieStore.set(MAINTENANCE_COOKIE, "1", {

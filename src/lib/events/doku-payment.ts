@@ -4,6 +4,7 @@
  */
 
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
+import { assertSafeWebhookUrl } from "@/lib/security/webhook-validator";
 
 import { calculatePaymentGatewayFee } from "./payment-fee";
 
@@ -55,7 +56,6 @@ export interface DokuPaymentLinkRequest {
   referenceId?: string;
   requestId?: string;
   isProduction?: boolean;
-  webhookUrl?: string;
 }
 
 export interface DokuPaymentLinkResponse {
@@ -90,7 +90,6 @@ export interface DokuCancelOrderRequest {
   event?: Partial<PaymentEventData>;
   referenceId?: string;
   isProduction?: boolean;
-  webhookUrl?: string;
 }
 
 export interface DokuCancelOrderResponse {
@@ -112,83 +111,84 @@ export interface CancelOrderDispatchResult {
  * Resolves the webhook URL for the DOKU payment link generator in n8n.
  */
 export function resolvePaymentLinkWebhookUrl(customBaseUrl?: string, isProduction?: boolean): string {
+  const defaultFallback = "https://n8n.gdgjakarta.com/webhook/api/generate-payment-link";
+
   if (customBaseUrl && customBaseUrl.trim().length > 0) {
-    return customBaseUrl.trim();
+    const safeCustom = assertSafeWebhookUrl(customBaseUrl, "");
+    if (safeCustom) {
+      return safeCustom;
+    }
   }
 
+  let targetUrl = "";
   if (isProduction === false && process.env.N8N_PAYMENT_LINK_DEV_WEBHOOK_URL) {
-    return process.env.N8N_PAYMENT_LINK_DEV_WEBHOOK_URL.trim();
+    targetUrl = process.env.N8N_PAYMENT_LINK_DEV_WEBHOOK_URL.trim();
+  } else if (isProduction === true && process.env.N8N_PAYMENT_LINK_PROD_WEBHOOK_URL) {
+    targetUrl = process.env.N8N_PAYMENT_LINK_PROD_WEBHOOK_URL.trim();
+  } else if (process.env.N8N_PAYMENT_LINK_WEBHOOK_URL) {
+    targetUrl = process.env.N8N_PAYMENT_LINK_WEBHOOK_URL.trim();
+  } else {
+    const base = (process.env.N8N_WEBHOOK_BASE_URL ?? "https://n8n.gdgjakarta.com/webhook/api")
+      .trim()
+      .replace(/\/+$/, "");
+
+    if (base.endsWith("/generate-payment-link")) {
+      targetUrl = base;
+    } else if (base.endsWith("/webhook/api")) {
+      targetUrl = `${base}/generate-payment-link`;
+    } else if (base.endsWith("/webhook")) {
+      targetUrl = `${base}/api/generate-payment-link`;
+    } else if (base.endsWith("/api")) {
+      targetUrl = `${base.slice(0, -4)}/webhook/api/generate-payment-link`;
+    } else {
+      targetUrl = `${base}/webhook/api/generate-payment-link`;
+    }
   }
 
-  if (isProduction === true && process.env.N8N_PAYMENT_LINK_PROD_WEBHOOK_URL) {
-    return process.env.N8N_PAYMENT_LINK_PROD_WEBHOOK_URL.trim();
-  }
-
-  if (process.env.N8N_PAYMENT_LINK_WEBHOOK_URL) {
-    return process.env.N8N_PAYMENT_LINK_WEBHOOK_URL.trim();
-  }
-
-  const base = (process.env.N8N_WEBHOOK_BASE_URL ?? "https://n8n.gdgjakarta.com/webhook/api")
-    .trim()
-    .replace(/\/+$/, "");
-
-  if (base.endsWith("/generate-payment-link")) {
-    return base;
-  }
-  if (base.endsWith("/webhook/api")) {
-    return `${base}/generate-payment-link`;
-  }
-  if (base.endsWith("/webhook")) {
-    return `${base}/api/generate-payment-link`;
-  }
-  if (base.endsWith("/api")) {
-    return `${base.slice(0, -4)}/webhook/api/generate-payment-link`;
-  }
-
-  return `${base}/webhook/api/generate-payment-link`;
+  return assertSafeWebhookUrl(targetUrl, defaultFallback);
 }
 
 /**
  * Resolves the webhook URL for the DOKU cancel order API in n8n.
  */
 export function resolveCancelPaymentLinkWebhookUrl(customBaseUrl?: string, isProduction?: boolean): string {
+  const defaultFallback = "https://n8n.gdgjakarta.com/webhook/api/cancel-payment-link";
+
   if (customBaseUrl && customBaseUrl.trim().length > 0) {
-    return customBaseUrl.trim();
+    const safeCustom = assertSafeWebhookUrl(customBaseUrl, "");
+    if (safeCustom) {
+      return safeCustom;
+    }
   }
 
+  let targetUrl = "";
   if (isProduction === false && process.env.N8N_CANCEL_PAYMENT_LINK_DEV_WEBHOOK_URL) {
-    return process.env.N8N_CANCEL_PAYMENT_LINK_DEV_WEBHOOK_URL.trim();
+    targetUrl = process.env.N8N_CANCEL_PAYMENT_LINK_DEV_WEBHOOK_URL.trim();
+  } else if (isProduction === true && process.env.N8N_CANCEL_PAYMENT_LINK_PROD_WEBHOOK_URL) {
+    targetUrl = process.env.N8N_CANCEL_PAYMENT_LINK_PROD_WEBHOOK_URL.trim();
+  } else if (process.env.N8N_CANCEL_PAYMENT_LINK_WEBHOOK_URL) {
+    targetUrl = process.env.N8N_CANCEL_PAYMENT_LINK_WEBHOOK_URL.trim();
+  } else {
+    const base = (process.env.N8N_WEBHOOK_BASE_URL ?? "https://n8n.gdgjakarta.com/webhook/api")
+      .trim()
+      .replace(/\/+$/, "");
+
+    if (base.endsWith("/cancel-payment-link")) {
+      targetUrl = base;
+    } else if (base.endsWith("/generate-payment-link")) {
+      targetUrl = `${base.slice(0, -"/generate-payment-link".length)}/cancel-payment-link`;
+    } else if (base.endsWith("/webhook/api")) {
+      targetUrl = `${base}/cancel-payment-link`;
+    } else if (base.endsWith("/webhook")) {
+      targetUrl = `${base}/api/cancel-payment-link`;
+    } else if (base.endsWith("/api")) {
+      targetUrl = `${base.slice(0, -4)}/webhook/api/cancel-payment-link`;
+    } else {
+      targetUrl = `${base}/webhook/api/cancel-payment-link`;
+    }
   }
 
-  if (isProduction === true && process.env.N8N_CANCEL_PAYMENT_LINK_PROD_WEBHOOK_URL) {
-    return process.env.N8N_CANCEL_PAYMENT_LINK_PROD_WEBHOOK_URL.trim();
-  }
-
-  if (process.env.N8N_CANCEL_PAYMENT_LINK_WEBHOOK_URL) {
-    return process.env.N8N_CANCEL_PAYMENT_LINK_WEBHOOK_URL.trim();
-  }
-
-  const base = (process.env.N8N_WEBHOOK_BASE_URL ?? "https://n8n.gdgjakarta.com/webhook/api")
-    .trim()
-    .replace(/\/+$/, "");
-
-  if (base.endsWith("/cancel-payment-link")) {
-    return base;
-  }
-  if (base.endsWith("/generate-payment-link")) {
-    return `${base.slice(0, -"/generate-payment-link".length)}/cancel-payment-link`;
-  }
-  if (base.endsWith("/webhook/api")) {
-    return `${base}/cancel-payment-link`;
-  }
-  if (base.endsWith("/webhook")) {
-    return `${base}/api/cancel-payment-link`;
-  }
-  if (base.endsWith("/api")) {
-    return `${base.slice(0, -4)}/webhook/api/cancel-payment-link`;
-  }
-
-  return `${base}/webhook/api/cancel-payment-link`;
+  return assertSafeWebhookUrl(targetUrl, defaultFallback);
 }
 
 /**
@@ -491,7 +491,6 @@ export function buildRegistrationPaymentPayload(
     requestId:
       options?.requestId ?? registration.payment_request_id ?? `REQ-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
     isProduction,
-    webhookUrl: event.payment_webhook_url ?? undefined,
   };
 }
 
@@ -544,6 +543,5 @@ export function buildCancelPaymentPayload(
     },
     referenceId: registration.id,
     isProduction,
-    webhookUrl: event?.payment_webhook_url ?? undefined,
   };
 }

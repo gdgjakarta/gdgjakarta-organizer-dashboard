@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import type { BevyAgenda, BevySpeaker } from "@/lib/bevy/types";
 import { buildUnifiedAgenda, type UnifiedAgendaItem } from "@/lib/events/agenda-unification";
 import type { EventSession } from "@/lib/firestore/types";
-import { cn } from "@/lib/utils";
+import { cn, sanitizeHtml } from "@/lib/utils";
 
 function formatAudienceType(audienceType?: string): string {
   if (!audienceType) return "";
@@ -88,7 +88,7 @@ function AgendaItemCard({ item }: AgendaItemCardProps) {
               <div
                 className="prose prose-sm dark:prose-invert max-w-none text-muted-foreground text-xs leading-relaxed break-words [&_p]:my-1 [&_a]:text-primary [&_a]:underline"
                 // biome-ignore lint/security/noDangerouslySetInnerHtml: Bevy verified agenda HTML content
-                dangerouslySetInnerHTML={{ __html: item.description }}
+                dangerouslySetInnerHTML={{ __html: sanitizeHtml(item.description) }}
               />
             ) : (
               <p className="whitespace-pre-line text-muted-foreground text-xs leading-relaxed break-words">
@@ -313,7 +313,7 @@ export function UnifiedAgendaTimeline({ bevyAgenda, speakers, firestoreSessions 
                         <div
                           className="prose prose-sm dark:prose-invert max-w-none text-muted-foreground text-xs leading-relaxed break-words [&_p]:my-1 [&_a]:text-primary [&_a]:underline"
                           // biome-ignore lint/security/noDangerouslySetInnerHtml: Session description HTML content
-                          dangerouslySetInnerHTML={{ __html: group.description }}
+                          dangerouslySetInnerHTML={{ __html: sanitizeHtml(group.description) }}
                         />
                       ) : (
                         <p className="whitespace-pre-line">{group.description}</p>

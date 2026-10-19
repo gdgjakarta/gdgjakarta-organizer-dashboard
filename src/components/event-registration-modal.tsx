@@ -100,7 +100,7 @@ import type {
   RegistrationStatus,
   SelectedMerchandiseOrder,
 } from "@/lib/firestore/types";
-import { cn } from "@/lib/utils";
+import { cn, sanitizeHtml } from "@/lib/utils";
 import { generatePaymentLinkAction } from "@/server/payment-actions";
 import {
   approveAttendeeWebhookAction,
@@ -2503,7 +2503,7 @@ export function EventRegistrationModal({
                                     <div
                                       className="prose prose-xs dark:prose-invert max-w-none text-muted-foreground text-xs leading-relaxed [&_a]:text-primary [&_a]:underline [&_ol]:list-decimal [&_ol]:pl-4 [&_ul]:list-disc [&_ul]:pl-4"
                                       // biome-ignore lint/security/noDangerouslySetInnerHtml: Event organizer session description
-                                      dangerouslySetInnerHTML={{ __html: sess.description }}
+                                      dangerouslySetInnerHTML={{ __html: sanitizeHtml(sess.description) }}
                                     />
                                   )}
 

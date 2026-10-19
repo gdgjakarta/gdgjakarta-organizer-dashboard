@@ -6,6 +6,7 @@ import {
   interpolateTemplateSubject,
 } from "@/lib/events/email-templates";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
+import { assertSafeWebhookUrl } from "@/lib/security/webhook-validator";
 
 export interface ApprovedAttendeeWebhookPayload {
   email: string;
@@ -265,26 +266,28 @@ export function buildApprovedAttendeePayload(
  * Gracefully handles base URLs ending in /webhook/api, /api, /webhook, or bare domain.
  */
 export function resolveAddBevyAttendeeWebhookUrl(baseUrl?: string): string {
-  const raw = (baseUrl ?? "https://n8n.gdgjakarta.com").trim().replace(/\/+$/, "");
+  const defaultFallback = "https://n8n.gdgjakarta.com/webhook/api/add-bevy-attendee";
+  const safeBase = baseUrl ? assertSafeWebhookUrl(baseUrl, "") : "";
+  const raw = (safeBase || "https://n8n.gdgjakarta.com").trim().replace(/\/+$/, "");
 
+  let targetUrl = "";
   if (
     raw.endsWith("/webhook/api/add-bevy-attendee") ||
     raw.endsWith("/add-bevy-attendee") ||
     raw.endsWith("/webhook/api/approved-attendee") ||
     raw.endsWith("/approved-attendee")
   ) {
-    return raw;
+    targetUrl = raw;
+  } else if (raw.endsWith("/webhook/api")) {
+    targetUrl = `${raw}/add-bevy-attendee`;
+  } else if (raw.endsWith("/webhook")) {
+    targetUrl = `${raw}/api/add-bevy-attendee`;
+  } else if (raw.endsWith("/api")) {
+    targetUrl = `${raw.slice(0, -4)}/webhook/api/add-bevy-attendee`;
+  } else {
+    targetUrl = `${raw}/webhook/api/add-bevy-attendee`;
   }
-  if (raw.endsWith("/webhook/api")) {
-    return `${raw}/add-bevy-attendee`;
-  }
-  if (raw.endsWith("/webhook")) {
-    return `${raw}/api/add-bevy-attendee`;
-  }
-  if (raw.endsWith("/api")) {
-    return `${raw.slice(0, -4)}/webhook/api/add-bevy-attendee`;
-  }
-  return `${raw}/webhook/api/add-bevy-attendee`;
+  return assertSafeWebhookUrl(targetUrl, defaultFallback);
 }
 
 export const resolveApprovedAttendeeWebhookUrl = resolveAddBevyAttendeeWebhookUrl;

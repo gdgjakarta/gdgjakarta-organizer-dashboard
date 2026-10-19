@@ -47,7 +47,15 @@ const nextConfig = {
         headers: [
           {
             key: "Cross-Origin-Opener-Policy",
-            value: "unsafe-none",
+            value: "same-origin-allow-popups",
+          },
+          {
+            key: "Strict-Transport-Security",
+            value: "max-age=63072000; includeSubDomains; preload",
+          },
+          {
+            key: "Permissions-Policy",
+            value: "camera=(self), microphone=(), geolocation=(), browsing-topics=()",
           },
           {
             key: "X-Frame-Options",
