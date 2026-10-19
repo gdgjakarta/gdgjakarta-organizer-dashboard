@@ -28,6 +28,13 @@
     "NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "883556294048",
     "NEXT_PUBLIC_FIREBASE_PROJECT_ID": "gdgjakarta-app",
     "N8N_WEBHOOK_BASE_URL": "https://n8n.gdgjakarta.com/webhook/api",
+    "N8N_DOKU_NOTIFICATION_WEBHOOK_URL": "https://n8n.gdgjakarta.com/webhook/payment/doku/notifications",
+    "DOKU_DEV_CLIENT_ID": "BRN-0233-1766479840736",
+    "DOKU_DEV_BASE_URL": "https://api-sandbox.doku.com",
+    "DOKU_PROD_CLIENT_ID": "BRN-0272-1766492122366",
+    "DOKU_PROD_BASE_URL": "https://api.doku.com",
+    "DOKU_CLIENT_ID": "BRN-0272-1766492122366",
+    "DOKU_BASE_URL": "https://api.doku.com",
     // SHORTIO_API_KEY must be configured as a secret via `wrangler secret put SHORTIO_API_KEY`
     "SHORTIO_DOMAIN": "gdgjakarta.org",
     "SHORTIO_DOMAIN_ID": "1516440"
@@ -76,6 +83,13 @@
       "NEXT_PUBLIC_FIREBASE_PROJECT_ID": "gdgjakarta-app",
       "NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET": "gdgjakarta-app.firebasestorage.app",
       "N8N_WEBHOOK_BASE_URL": "https://n8n.gdgjakarta.com/webhook/api",
+      "N8N_DOKU_NOTIFICATION_WEBHOOK_URL": "https://n8n.gdgjakarta.com/webhook/payment/doku/notifications",
+      "DOKU_DEV_CLIENT_ID": "BRN-0233-1766479840736",
+      "DOKU_DEV_BASE_URL": "https://api-sandbox.doku.com",
+      "DOKU_PROD_CLIENT_ID": "BRN-0272-1766492122366",
+      "DOKU_PROD_BASE_URL": "https://api.doku.com",
+      "DOKU_CLIENT_ID": "BRN-0272-1766492122366",
+      "DOKU_BASE_URL": "https://api.doku.com",
       // SHORTIO_API_KEY must be configured as a secret via `wrangler secret put SHORTIO_API_KEY`
       "SHORTIO_DOMAIN": "gdgjakarta.org",
       "SHORTIO_DOMAIN_ID": "1516440"

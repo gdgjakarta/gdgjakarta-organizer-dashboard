@@ -593,10 +593,10 @@ export function EditRegistrationModal({
               return (
                 <div
                   key={itemKey}
-                  className="inline-flex max-w-full items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-2.5 py-1 text-xs break-words"
+                  className="inline-flex max-w-full items-center gap-1 break-words rounded-md border border-primary/30 bg-primary/5 px-2.5 py-1 text-xs"
                 >
                   <span className="shrink-0 font-semibold text-primary">Other:</span>
-                  <span className="text-foreground break-words">{customVal || "Custom"}</span>
+                  <span className="break-words text-foreground">{customVal || "Custom"}</span>
                 </div>
               );
             }
@@ -625,7 +625,7 @@ export function EditRegistrationModal({
           >
             Other
           </Badge>
-          <span className="font-medium text-foreground text-xs break-words sm:text-sm">
+          <span className="break-words font-medium text-foreground text-xs sm:text-sm">
             {customVal || "(None specified)"}
           </span>
         </div>
@@ -662,14 +662,14 @@ export function EditRegistrationModal({
     }
 
     // Standard string
-    return <span className="font-medium text-foreground text-xs break-words sm:text-sm">{strVal}</span>;
+    return <span className="break-words font-medium text-foreground text-xs sm:text-sm">{strVal}</span>;
   };
 
   return (
     <>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger asChild>{triggerButton || children || defaultTrigger}</DialogTrigger>
-        <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden p-0 sm:max-w-2xl">
+        <DialogContent className="flex max-h-[90vh] w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl md:max-w-3xl lg:max-w-4xl">
           {/* Sticky Header */}
           <div className="shrink-0 border-b bg-muted/20 px-6 pt-6 pb-4">
             <DialogHeader>
@@ -708,7 +708,7 @@ export function EditRegistrationModal({
           </div>
 
           {/* Scrollable Body */}
-          <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5 space-y-6">
+          <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-6 py-5">
             {/* Status Explanation Banner */}
             {statusBanner}
 
@@ -764,7 +764,7 @@ export function EditRegistrationModal({
                           <p className="text-[11px] text-muted-foreground">Locked selection for this registration.</p>
                         </div>
                       </div>
-                      <Badge variant="secondary" className="gap-1 text-[10px] font-semibold uppercase tracking-wider">
+                      <Badge variant="secondary" className="gap-1 font-semibold text-[10px] uppercase tracking-wider">
                         <Lock className="size-2.5" />
                         Locked
                       </Badge>
@@ -854,25 +854,25 @@ export function EditRegistrationModal({
                       </div>
                       <Badge
                         variant="outline"
-                        className="font-mono text-xs font-semibold border-purple-500/30 bg-purple-500/10 text-purple-700 dark:text-purple-300"
+                        className="border-purple-500/30 bg-purple-500/10 font-mono font-semibold text-purple-700 text-xs dark:text-purple-300"
                       >
                         {registration.referral_code}
                       </Badge>
                     </div>
 
                     <div className="flex items-center justify-between rounded-lg border border-purple-500/20 bg-background/80 p-3 text-xs">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <User className="size-3.5 text-muted-foreground shrink-0" />
+                      <div className="flex min-w-0 items-center gap-2">
+                        <User className="size-3.5 shrink-0 text-muted-foreground" />
                         <span className="text-muted-foreground">Belongs to:</span>
-                        <span className="font-semibold text-foreground truncate">
+                        <span className="truncate font-semibold text-foreground">
                           {referrerInfo?.name || registration.referrer_name || "Community Member"}
                         </span>
                         {referrerInfo?.email && (
-                          <span className="text-muted-foreground text-[11px] truncate">({referrerInfo.email})</span>
+                          <span className="truncate text-[11px] text-muted-foreground">({referrerInfo.email})</span>
                         )}
                       </div>
                       {referrerInfo?.role && (
-                        <Badge variant="secondary" className="text-[10px] capitalize shrink-0">
+                        <Badge variant="secondary" className="shrink-0 text-[10px] capitalize">
                           {referrerInfo.role.replace(/_/g, " ")}
                         </Badge>
                       )}
@@ -914,7 +914,7 @@ export function EditRegistrationModal({
                             <div
                               key={q.id}
                               className={cn(
-                                "flex flex-col justify-between rounded-lg border border-border/60 bg-card p-3 shadow-2xs transition-colors hover:border-border min-w-0 overflow-hidden",
+                                "flex min-w-0 flex-col justify-between overflow-hidden rounded-lg border border-border/60 bg-card p-3 shadow-2xs transition-colors hover:border-border",
                                 isWide && "sm:col-span-2",
                               )}
                             >
@@ -953,7 +953,7 @@ export function EditRegistrationModal({
                           </p>
                         </div>
                       </div>
-                      <Badge variant="secondary" className="gap-1 text-[10px] font-semibold uppercase tracking-wider">
+                      <Badge variant="secondary" className="gap-1 font-semibold text-[10px] uppercase tracking-wider">
                         <Lock className="size-2.5" />
                         Locked
                       </Badge>
@@ -1164,7 +1164,7 @@ export function EditRegistrationModal({
                                       unoptimized
                                       className="h-auto max-h-56 w-auto rounded object-contain transition-transform group-hover:scale-[1.01]"
                                     />
-                                    <div className="absolute right-2 bottom-2 flex items-center gap-1 rounded bg-background/85 px-2 py-0.5 font-medium text-[11px] text-foreground shadow-xs backdrop-blur-xs opacity-0 transition-opacity group-hover:opacity-100">
+                                    <div className="absolute right-2 bottom-2 flex items-center gap-1 rounded bg-background/85 px-2 py-0.5 font-medium text-[11px] text-foreground opacity-0 shadow-xs backdrop-blur-xs transition-opacity group-hover:opacity-100">
                                       <ExternalLink className="size-3" />
                                       <span>Open Full Size</span>
                                     </div>
@@ -1184,11 +1184,11 @@ export function EditRegistrationModal({
                                     }
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="group inline-flex items-center gap-1.5 rounded-md border border-primary/25 bg-primary/5 px-2.5 py-1 text-xs font-medium text-primary shadow-2xs transition-all hover:border-primary/50 hover:bg-primary/10"
+                                    className="group inline-flex items-center gap-1.5 rounded-md border border-primary/25 bg-primary/5 px-2.5 py-1 font-medium text-primary text-xs shadow-2xs transition-all hover:border-primary/50 hover:bg-primary/10"
                                     title={`Open ${q.helper_link_label || "Reference Link"} in new tab`}
                                   >
                                     <ExternalLink className="size-3.5 shrink-0 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-                                    <span className="truncate max-w-[280px] sm:max-w-md">
+                                    <span className="max-w-[280px] truncate sm:max-w-md">
                                       {q.helper_link_label?.trim()
                                         ? q.helper_link_label
                                         : "Reference Link / Guidelines"}
@@ -1651,7 +1651,7 @@ export function EditRegistrationModal({
           </div>
 
           {/* Sticky Footer */}
-          <div className="shrink-0 flex items-center justify-between gap-2 border-t bg-muted/20 px-6 py-3.5">
+          <div className="flex shrink-0 items-center justify-between gap-2 border-t bg-muted/20 px-6 py-3.5">
             {canEdit && (
               <Button
                 type="button"

@@ -107,6 +107,136 @@ export interface CancelOrderDispatchResult {
   details?: unknown;
 }
 
+export interface DokuCheckStatusResponse {
+  order?: {
+    invoice_number?: string;
+    amount?: number;
+    status?: "ORDER_GENERATED" | "ORDER_EXPIRED" | "ORDER_RECOVERED" | "SUCCESS" | "PAID" | string;
+    date?: string;
+    tips?: number;
+    terminal_id?: string;
+  };
+  transaction?: {
+    status?: "SUCCESS" | "PENDING" | "FAILED" | "EXPIRED" | "PAID" | string;
+    date?: string;
+    original_request_id?: string;
+  };
+  service?: {
+    id?: string | null;
+    name?: string | null;
+  };
+  acquirer?: {
+    id?: string | null;
+    name?: string | null;
+  };
+  channel?: {
+    id?: string | null;
+    name?: string | null;
+  };
+  issuer?: {
+    id?: string | null;
+    name?: string | null;
+  };
+  customer?: {
+    doku_id?: string;
+    name?: string;
+    email?: string;
+    phone?: string;
+  };
+  merchant?: {
+    name?: string;
+    pan?: string;
+  };
+  emoney_payment?: {
+    account_id?: string;
+    approval_code?: string;
+  };
+  additional_info?: {
+    line_items?: Array<{
+      sku?: string;
+      name?: string;
+      type?: string;
+      price?: string | number;
+      quantity?: number;
+      image_url?: string;
+    }>;
+  };
+  error?: {
+    message?: string;
+    code?: string;
+  };
+}
+
+export interface DokuNotificationPayload {
+  service?: {
+    id: string;
+    name: string;
+  };
+  acquirer?: {
+    id: string;
+    name: string;
+  };
+  issuer?: {
+    id: string;
+    name: string;
+  };
+  channel?: {
+    id: string;
+    name: string;
+  };
+  customer?: {
+    doku_id?: string;
+    name: string;
+    email: string;
+    phone: string;
+  };
+  merchant?: {
+    name: string;
+    pan?: string;
+  };
+  order: {
+    invoice_number: string;
+    amount: number;
+    tips?: number;
+    terminal_id?: string;
+  };
+  emoney_payment?: {
+    account_id?: string;
+    approval_code?: string;
+  };
+  transaction: {
+    status: "SUCCESS" | "FAILED" | "PENDING" | "EXPIRED" | string;
+    date: string;
+    original_request_id?: string;
+  };
+  additional_info?: {
+    line_items?: Array<{
+      sku?: string;
+      name?: string;
+      type?: string;
+      price?: string | number;
+      quantity?: number;
+      image_url?: string;
+    }>;
+  };
+}
+
+export interface DokuStatusCheckResult {
+  success: boolean;
+  isPaid: boolean;
+  invoiceNumber: string;
+  dokuStatus: "SUCCESS" | "PENDING" | "ORDER_EXPIRED" | "FAILED" | "UNKNOWN" | string;
+  amount?: number;
+  paymentChannel?: string;
+  paidAt?: string;
+  approvalCode?: string;
+  dokuResponse?: DokuCheckStatusResponse | unknown;
+  n8nDispatched?: boolean;
+  n8nResult?: unknown;
+  message: string;
+  error?: string;
+}
+
 /**
  * Resolves the webhook URL for the DOKU payment link generator in n8n.
  */
@@ -332,7 +462,7 @@ export function extractCustomerEmail(
     ans.work_email ??
     ans["Work Email"] ??
     ans["Email Address"] ??
-    ans["email"] ??
+    ans.email ??
     registration.member_email ??
     fallbackUser?.email ??
     "";
@@ -544,4 +674,34 @@ export function buildCancelPaymentPayload(
     referenceId: registration.id,
     isProduction,
   };
+}
+
+/**
+ * Resolves the n8n webhook URL for DOKU HTTP notifications.
+ */
+export function resolveDokuNotificationWebhookUrl(customBaseUrl?: string): string {
+  const defaultFallback = "https://n8n.gdgjakarta.com/webhook/payment/doku/notifications";
+
+  if (customBaseUrl && customBaseUrl.trim().length > 0) {
+    const safeCustom = assertSafeWebhookUrl(customBaseUrl, "");
+    if (safeCustom) {
+      return safeCustom;
+    }
+  }
+
+  if (process.env.N8N_DOKU_NOTIFICATION_WEBHOOK_URL) {
+    return assertSafeWebhookUrl(process.env.N8N_DOKU_NOTIFICATION_WEBHOOK_URL.trim(), defaultFallback);
+  }
+
+  return defaultFallback;
+}
+
+/**
+ * Evaluates whether a DOKU check status API response represents a successful/paid transaction.
+ */
+export function isDokuPaymentSuccess(res?: DokuCheckStatusResponse | null): boolean {
+  if (!res) return false;
+  const txStatus = res.transaction?.status?.toUpperCase()?.trim();
+  const orderStatus = res.order?.status?.toUpperCase()?.trim();
+  return txStatus === "SUCCESS" || txStatus === "PAID" || orderStatus === "SUCCESS" || orderStatus === "PAID";
 }

@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 
-import { format, parseISO } from "date-fns";
+import { format } from "date-fns";
 import {
   BookOpen,
   Check,
   Clock,
   Copy,
+  CreditCard,
   Download,
   Eye,
   Filter,
@@ -58,7 +59,7 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/in
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { BevyAttendee } from "@/lib/bevy/types";
-import { formatFirestoreDate, parseFirestoreDate } from "@/lib/date-utils";
+import { formatFirestoreDate } from "@/lib/date-utils";
 import { buildApprovedAttendeePayload } from "@/lib/events/approved-attendee-webhook";
 import { validateAttendeeApprovalCapacity, validateBatchApprovalCapacity } from "@/lib/events/capacity-validator";
 import {
@@ -98,12 +99,13 @@ import {
   sendPaidWaitlistAttendeeEmailAction,
   sendWaitlistAttendeeEmailAction,
 } from "@/server/email-template-actions";
-import { generatePaymentLinkAction } from "@/server/payment-actions";
+import { checkDokuPaymentStatusAction, generatePaymentLinkAction } from "@/server/payment-actions";
 import { approveAttendeeWebhookAction } from "@/server/registration-actions";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
 import { ApplicantDetailDialog } from "./applicant-detail-dialog";
 import { AttendeeStatusGuideDialog } from "./attendee-status-guide-dialog";
+import { CheckPaymentStatusDialog } from "./check-payment-status-dialog";
 import { type AvailableQuestionField, ColumnCustomizer } from "./column-customizer";
 import {
   collectMerchandiseFilterOptions,
@@ -474,6 +476,9 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const [isResendingWaitlistId, setIsResendingWaitlistId] = useState<string | null>(null);
   const [isResendingPaidWaitlistId, setIsResendingPaidWaitlistId] = useState<string | null>(null);
   const [resendPaymentRegistration, setResendPaymentRegistration] = useState<FirestoreRegistration | null>(null);
+  const [checkingPaymentRegistration, setCheckingPaymentRegistration] = useState<FirestoreRegistration | null>(null);
+  const [isCheckPaymentDialogOpen, setIsCheckPaymentDialogOpen] = useState(false);
+  const [isBatchCheckingPayment, setIsBatchCheckingPayment] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -2032,6 +2037,68 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     }).length;
   }, [selectedIds, registrationsList]);
 
+  const selectedWithInvoice = useMemo(() => {
+    return Array.from(selectedIds).filter((id) => {
+      const r = registrationsList.find((reg) => reg.id === id);
+      return Boolean(
+        r?.payment_invoice_number ||
+          (r?.answers?.payment_invoice_number as string | undefined) ||
+          (r?.answers?.invoice_number as string | undefined),
+      );
+    });
+  }, [selectedIds, registrationsList]);
+
+  const handleBatchCheckPayment = async () => {
+    if (selectedWithInvoice.length === 0) return;
+    setIsBatchCheckingPayment(true);
+    toast.loading(`Checking DOKU payment status for ${selectedWithInvoice.length} attendees...`, {
+      id: "batch-payment-check",
+    });
+    let paidCount = 0;
+    let checkedCount = 0;
+    try {
+      for (const id of selectedWithInvoice) {
+        const reg = registrationsList.find((r) => r.id === id);
+        const inv =
+          reg?.payment_invoice_number ||
+          (reg?.answers?.payment_invoice_number as string) ||
+          (reg?.answers?.invoice_number as string);
+        if (!inv) continue;
+        checkedCount++;
+        const res = await checkDokuPaymentStatusAction({
+          invoiceNumber: inv,
+          eventId: currentEvent?.id ? String(currentEvent.id) : reg?.event_id,
+          registrationId: reg?.id,
+          isProduction: currentEvent?.payment_environment === "production" || !currentEvent?.is_test,
+        });
+        if (res.isPaid) {
+          paidCount++;
+          setRegistrationsList((prev) =>
+            prev.map((r) =>
+              r.id === id
+                ? {
+                    ...r,
+                    status: "paid_and_registered",
+                    payment_status: "paid",
+                    payment_channel: res.paymentChannel ?? r.payment_channel,
+                    paid_at: res.paidAt ?? new Date().toISOString(),
+                  }
+                : r,
+            ),
+          );
+        }
+      }
+      toast.success(`Checked ${checkedCount} attendees. ${paidCount} confirmed paid & updated!`, {
+        id: "batch-payment-check",
+      });
+    } catch (err) {
+      console.error("Batch payment check error:", err);
+      toast.error("Failed to finish batch payment check.", { id: "batch-payment-check" });
+    } finally {
+      setIsBatchCheckingPayment(false);
+    }
+  };
+
   const handleBatchApprove = async () => {
     if (selectedIds.size === 0) return;
     const toApprove = registrationsList.filter((r) => {
@@ -3015,6 +3082,31 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                   </>
                 )}
 
+                {selectedWithInvoice.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 gap-1.5 border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 dark:text-emerald-400"
+                    onClick={() => void handleBatchCheckPayment()}
+                    disabled={
+                      isPending ||
+                      isDeleting ||
+                      isCancelling ||
+                      isBatchApproving ||
+                      isBatchRejecting ||
+                      isBatchCheckingPayment
+                    }
+                    title="Check live DOKU payment status and sync for selected attendees"
+                  >
+                    {isBatchCheckingPayment ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <CreditCard className="size-3.5" />
+                    )}
+                    <span>Check Payment ({selectedWithInvoice.length})</span>
+                  </Button>
+                )}
+
                 <div className="mx-0.5 hidden h-4 w-px bg-border/80 sm:block" />
 
                 <Button
@@ -3196,7 +3288,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                             <SelectItem
                               disabled
                               value="__items_header__"
-                              className="font-semibold text-muted-foreground text-[10px] uppercase"
+                              className="font-semibold text-[10px] text-muted-foreground uppercase"
                             >
                               By Product Item
                             </SelectItem>
@@ -3226,7 +3318,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                               <SelectItem
                                 disabled
                                 value="__size_header__"
-                                className="font-semibold text-muted-foreground text-[10px] uppercase"
+                                className="font-semibold text-[10px] text-muted-foreground uppercase"
                               >
                                 Sizes
                               </SelectItem>
@@ -3242,7 +3334,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                               <SelectItem
                                 disabled
                                 value="__variant_header__"
-                                className="font-semibold text-muted-foreground text-[10px] uppercase"
+                                className="font-semibold text-[10px] text-muted-foreground uppercase"
                               >
                                 Other Variations
                               </SelectItem>
@@ -3331,6 +3423,20 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 isCurationMode={isCurationMode}
                 onResetDefaults={handleResetColumnDefaults}
               />
+
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setCheckingPaymentRegistration(null);
+                  setIsCheckPaymentDialogOpen(true);
+                }}
+                className="h-8 gap-1.5 border-emerald-500/30 text-emerald-600 text-xs hover:bg-emerald-500/10 dark:text-emerald-400"
+                title="Check DOKU payment status by invoice number or attendee"
+              >
+                <CreditCard className="size-3.5" />
+                <span>Check Payment</span>
+              </Button>
 
               <Button
                 size="sm"
@@ -3476,7 +3582,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                     <span>{item.label}</span>
                     <span
                       className={cn(
-                        "rounded-full px-1.5 py-0 text-[10px] font-semibold tabular-nums",
+                        "rounded-full px-1.5 py-0 font-semibold text-[10px] tabular-nums",
                         isActive ? "bg-background/80" : "bg-muted text-foreground",
                       )}
                     >
@@ -3820,12 +3926,12 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                 {statusMeta.label}
                               </Badge>
                               {rawStatus === "expired" && deadlineInfo.timeStatusText && (
-                                <span className="text-[10px] font-medium text-rose-500">
+                                <span className="font-medium text-[10px] text-rose-500">
                                   {deadlineInfo.timeStatusText}
                                 </span>
                               )}
                               {rawStatus === "waiting_for_payment" && deadlineInfo.timeStatusText && (
-                                <span className="text-[10px] font-normal text-amber-600 dark:text-amber-400">
+                                <span className="font-normal text-[10px] text-amber-600 dark:text-amber-400">
                                   {deadlineInfo.timeStatusText}
                                 </span>
                               )}
@@ -3916,7 +4022,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                         {hasMerchandise && visibleStandardColumns.merchandise !== false && (
                           <TableCell onClick={() => setInspectRegistration(reg)}>
                             {reg.selected_merchandise && reg.selected_merchandise.length > 0 ? (
-                              <div className="flex flex-col gap-1.5 min-w-[140px] max-w-[260px]">
+                              <div className="flex min-w-[140px] max-w-[260px] flex-col gap-1.5">
                                 {reg.selected_merchandise.map((m, mIdx) => {
                                   const variations = parseMerchandiseVariations(m, reg.answers);
                                   return (
@@ -3936,9 +4042,9 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                               key={v.key + v.value}
                                               variant="outline"
                                               className={cn(
-                                                "h-4 px-1 py-0 text-[9px] font-medium leading-none",
+                                                "h-4 px-1 py-0 font-medium text-[9px] leading-none",
                                                 v.isSize
-                                                  ? "border-primary/40 bg-primary/10 text-primary font-semibold"
+                                                  ? "border-primary/40 bg-primary/10 font-semibold text-primary"
                                                   : "border-muted-foreground/30 bg-muted/60 text-muted-foreground",
                                               )}
                                             >
@@ -4165,6 +4271,32 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                   </Button>
                                 )}
 
+                              {/* Quick Check DOKU Payment Status Button */}
+                              {Boolean(
+                                reg.payment_invoice_number ||
+                                  reg.answers?.payment_invoice_number ||
+                                  reg.answers?.invoice_number ||
+                                  (reg as { invoice_number?: string })?.invoice_number ||
+                                  hasRegistrationPaymentRequirements(reg) ||
+                                  reg.status === "waiting_for_payment" ||
+                                  reg.status === "expired" ||
+                                  reg.status === "paid_and_registered" ||
+                                  reg.status === "paid_waitlisted",
+                              ) && (
+                                <Button
+                                  size="icon-xs"
+                                  variant="ghost"
+                                  className="size-7 text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700"
+                                  title="Check DOKU payment status & sync"
+                                  onClick={() => {
+                                    setCheckingPaymentRegistration(reg);
+                                    setIsCheckPaymentDialogOpen(true);
+                                  }}
+                                >
+                                  <CreditCard className="size-3.5" />
+                                </Button>
+                              )}
+
                               {/* 4. View Dossier / Details Button */}
                               <Button
                                 size="icon-xs"
@@ -4188,6 +4320,27 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                     <Eye className="mr-2 size-3.5" />
                                     View application dossier
                                   </DropdownMenuItem>
+                                  {Boolean(
+                                    reg.payment_invoice_number ||
+                                      reg.answers?.payment_invoice_number ||
+                                      reg.answers?.invoice_number ||
+                                      (reg as { invoice_number?: string })?.invoice_number ||
+                                      hasRegistrationPaymentRequirements(reg) ||
+                                      reg.status === "waiting_for_payment" ||
+                                      reg.status === "expired" ||
+                                      reg.status === "paid_and_registered" ||
+                                      reg.status === "paid_waitlisted",
+                                  ) && (
+                                    <DropdownMenuItem
+                                      onClick={() => {
+                                        setCheckingPaymentRegistration(reg);
+                                        setIsCheckPaymentDialogOpen(true);
+                                      }}
+                                    >
+                                      <CreditCard className="mr-2 size-3.5 text-emerald-600" />
+                                      Check payment status (DOKU)
+                                    </DropdownMenuItem>
+                                  )}
                                   {(rawStatus === "expired" || rawStatus === "waiting_for_payment") &&
                                     hasRegistrationPaymentRequirements(reg) && (
                                       <DropdownMenuItem onClick={() => setResendPaymentRegistration(reg)}>
@@ -4528,6 +4681,22 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         open={Boolean(resendPaymentRegistration)}
         onOpenChange={(open) => !open && setResendPaymentRegistration(null)}
         registration={resendPaymentRegistration}
+        event={currentEvent}
+        onSuccess={(updatedReg) => {
+          setRegistrationsList((prev) => prev.map((r) => (r.id === updatedReg.id ? updatedReg : r)));
+        }}
+      />
+
+      {/* Check DOKU Payment Status Dialog */}
+      <CheckPaymentStatusDialog
+        open={isCheckPaymentDialogOpen}
+        onOpenChange={(open) => {
+          setIsCheckPaymentDialogOpen(open);
+          if (!open) {
+            setCheckingPaymentRegistration(null);
+          }
+        }}
+        registration={checkingPaymentRegistration}
         event={currentEvent}
         onSuccess={(updatedReg) => {
           setRegistrationsList((prev) => prev.map((r) => (r.id === updatedReg.id ? updatedReg : r)));

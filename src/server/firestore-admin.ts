@@ -292,7 +292,9 @@ function splitName(fullName: string): { firstName: string; lastName: string } {
  * 4. answers.payment_invoice_number field
  * 5. top-level invoice_number field
  */
-async function findRegistrationDoc(invoiceNumber: string): Promise<{ id: string; data: FirestoreRegistration } | null> {
+export async function findRegistrationDoc(
+  invoiceNumber: string,
+): Promise<{ id: string; data: FirestoreRegistration } | null> {
   const strippedId = invoiceNumber.replace(/^INV-/, "");
   try {
     const data = await getFirestoreDoc("event_registrations", strippedId);

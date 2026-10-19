@@ -10,6 +10,7 @@ import {
   CheckCircle,
   Clock,
   Copy,
+  CreditCard,
   ExternalLink,
   FileText,
   Globe,
@@ -43,6 +44,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { formatFirestoreDate } from "@/lib/date-utils";
+import { hasRegistrationPaymentRequirements } from "@/lib/events/doku-payment";
 import {
   getEffectiveRegistrationStatus,
   getRegistrationPaymentDeadline,
@@ -58,6 +60,7 @@ import type {
 } from "@/lib/firestore/types";
 import { cn, getInitials } from "@/lib/utils";
 
+import { CheckPaymentStatusDialog } from "./check-payment-status-dialog";
 import { parseMerchandiseVariations } from "./merchandise-helpers";
 import { ResendPaymentLinkDialog } from "./resend-payment-link-dialog";
 
@@ -250,6 +253,7 @@ export function ApplicantDetailDialog({
   const [loadedQuestions, setLoadedQuestions] = useState<CustomQuestion[]>([]);
   const [paymentLinkInfo, setPaymentLinkInfo] = useState<{ url: string; invoiceNumber: string } | null>(null);
   const [isResendPaymentOpen, setIsResendPaymentOpen] = useState(false);
+  const [isCheckPaymentOpen, setIsCheckPaymentOpen] = useState(false);
   const [referrerInfo, setReferrerInfo] = useState<ReferralOwnerInfo | null>(null);
 
   // Fetch referrer profile ("Who does the referral belong to") if referral code was used
@@ -630,10 +634,10 @@ export function ApplicantDetailDialog({
               return (
                 <div
                   key={itemKey}
-                  className="inline-flex max-w-full items-center gap-1 rounded-md border border-primary/30 bg-primary/5 px-2.5 py-1 text-xs break-words"
+                  className="inline-flex max-w-full items-center gap-1 break-words rounded-md border border-primary/30 bg-primary/5 px-2.5 py-1 text-xs"
                 >
                   <span className="shrink-0 font-semibold text-primary">Other:</span>
-                  <span className="text-foreground break-words">{customVal || "Custom"}</span>
+                  <span className="break-words text-foreground">{customVal || "Custom"}</span>
                 </div>
               );
             }
@@ -714,7 +718,7 @@ export function ApplicantDetailDialog({
   return (
     <>
       <Dialog open={Boolean(registration)} onOpenChange={(open) => !open && onClose()}>
-        <DialogContent className="flex max-h-[92vh] flex-col overflow-hidden p-0 sm:max-w-xl md:max-w-2xl lg:max-w-3xl">
+        <DialogContent className="flex max-h-[90vh] w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl md:max-w-4xl lg:max-w-5xl">
           {/* Header Bar */}
           <div className="shrink-0 border-b bg-muted/20 px-6 pt-5 pb-4">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:pr-8">
@@ -828,20 +832,33 @@ export function ApplicantDetailDialog({
                       {invoiceNumber}
                     </span>
                   </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    className="size-6 shrink-0 text-muted-foreground hover:text-foreground"
-                    title="Copy invoice number"
-                    onClick={() => handleCopy(invoiceNumber ?? "", "Invoice number", "invoice_number")}
-                  >
-                    {copiedKey === "invoice_number" ? (
-                      <Check className="size-3 text-emerald-600" />
-                    ) : (
-                      <Copy className="size-3" />
-                    )}
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="xs"
+                      className="h-6 gap-1 border-emerald-500/30 px-2 font-medium text-[11px] text-emerald-600 hover:bg-emerald-500/10 dark:text-emerald-400"
+                      title="Check live DOKU payment status"
+                      onClick={() => setIsCheckPaymentOpen(true)}
+                    >
+                      <CreditCard className="size-3" />
+                      <span>Check Status</span>
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-xs"
+                      className="size-6 shrink-0 text-muted-foreground hover:text-foreground"
+                      title="Copy invoice number"
+                      onClick={() => handleCopy(invoiceNumber ?? "", "Invoice number", "invoice_number")}
+                    >
+                      {copiedKey === "invoice_number" ? (
+                        <Check className="size-3 text-emerald-600" />
+                      ) : (
+                        <Copy className="size-3" />
+                      )}
+                    </Button>
+                  </div>
                 </div>
               )}
 
@@ -944,7 +961,7 @@ export function ApplicantDetailDialog({
                   </div>
                   <Badge
                     variant="outline"
-                    className="shrink-0 border-primary/30 bg-primary/10 text-[10px] font-semibold text-primary"
+                    className="shrink-0 border-primary/30 bg-primary/10 font-semibold text-[10px] text-primary"
                   >
                     {(() => {
                       if (registration.bundle_price === undefined || registration.bundle_price === null) {
@@ -961,7 +978,7 @@ export function ApplicantDetailDialog({
 
               {/* Merchandise Add-on Details if present */}
               {Boolean(registration.selected_merchandise && registration.selected_merchandise.length > 0) && (
-                <div className="rounded-lg border bg-muted/30 p-2.5 text-xs space-y-2">
+                <div className="space-y-2 rounded-lg border bg-muted/30 p-2.5 text-xs">
                   <div className="flex items-center justify-between border-b pb-1.5 text-[11px] text-muted-foreground">
                     <div className="flex items-center gap-1.5 font-medium text-foreground">
                       <Package className="size-3.5 text-primary" />
@@ -977,9 +994,9 @@ export function ApplicantDetailDialog({
                       return (
                         <div
                           key={item.id || idx}
-                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 rounded-md border border-border/40 bg-background/60 p-2"
+                          className="flex flex-col justify-between gap-1.5 rounded-md border border-border/40 bg-background/60 p-2 sm:flex-row sm:items-center"
                         >
-                          <div className="flex flex-col gap-1 min-w-0">
+                          <div className="flex min-w-0 flex-col gap-1">
                             <div className="flex items-center gap-1.5 font-medium text-[11px] text-foreground">
                               <span className="font-semibold text-primary">{item.quantity || 1}x</span>
                               <span className="truncate">{item.name}</span>
@@ -991,9 +1008,9 @@ export function ApplicantDetailDialog({
                                     key={v.key + v.value}
                                     variant="outline"
                                     className={cn(
-                                      "h-4.5 px-1.5 py-0 text-[10px] font-medium",
+                                      "h-4.5 px-1.5 py-0 font-medium text-[10px]",
                                       v.isSize
-                                        ? "border-primary/40 bg-primary/10 text-primary font-semibold"
+                                        ? "border-primary/40 bg-primary/10 font-semibold text-primary"
                                         : "border-muted-foreground/30 bg-muted/60 text-muted-foreground",
                                     )}
                                   >
@@ -1006,7 +1023,7 @@ export function ApplicantDetailDialog({
                           </div>
                           <Badge
                             variant="outline"
-                            className="w-fit shrink-0 text-[10px] font-mono text-muted-foreground self-start sm:self-auto"
+                            className="w-fit shrink-0 self-start font-mono text-[10px] text-muted-foreground sm:self-auto"
                           >
                             {item.price
                               ? `Rp ${(item.price * (item.quantity || 1)).toLocaleString("id-ID")}`
@@ -1031,7 +1048,7 @@ export function ApplicantDetailDialog({
                   </div>
                   <Badge
                     variant="outline"
-                    className="shrink-0 border-primary/30 bg-primary/10 text-[10px] font-semibold text-primary"
+                    className="shrink-0 border-primary/30 bg-primary/10 font-semibold text-[10px] text-primary"
                   >
                     -Rp {(registration.voucher_discount_amount ?? 0).toLocaleString("id-ID")}
                   </Badge>
@@ -1044,7 +1061,7 @@ export function ApplicantDetailDialog({
                   <div className="flex items-center justify-between">
                     <div className="flex min-w-0 items-center gap-1.5">
                       <Sparkles className="size-3.5 shrink-0 text-purple-600 dark:text-purple-400" />
-                      <span className="shrink-0 text-[11px] font-medium text-muted-foreground">Referral Code:</span>
+                      <span className="shrink-0 font-medium text-[11px] text-muted-foreground">Referral Code:</span>
                       <span className="truncate font-mono font-semibold text-[11px] text-foreground">
                         {registration.referral_code}
                       </span>
@@ -1064,10 +1081,11 @@ export function ApplicantDetailDialog({
                       </Button>
                     </div>
 
-                    {(registration.referral_discount_amount || registration.referral_discount_percent) && (
+                    {(Boolean(registration.referral_discount_amount) ||
+                      Boolean(registration.referral_discount_percent)) && (
                       <Badge
                         variant="outline"
-                        className="shrink-0 border-purple-500/30 bg-purple-500/10 font-mono text-[10px] font-semibold text-purple-700 dark:text-purple-300"
+                        className="shrink-0 border-purple-500/30 bg-purple-500/10 font-mono font-semibold text-[10px] text-purple-700 dark:text-purple-300"
                       >
                         {registration.referral_discount_type === "fixed" || registration.referral_discount_amount
                           ? `-Rp ${(registration.referral_discount_amount ?? 0).toLocaleString("id-ID")}`
@@ -1078,30 +1096,30 @@ export function ApplicantDetailDialog({
 
                   {/* Referrer Details ("Who does the referral belong to") */}
                   <div className="flex items-center justify-between rounded-md border border-purple-500/20 bg-background/80 px-2.5 py-1.5 text-xs">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Avatar className="size-6 border border-border/60 shrink-0">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Avatar className="size-6 shrink-0 border border-border/60">
                         <AvatarImage
                           src={referrerInfo?.avatar_url ?? undefined}
                           alt={referrerInfo?.name || "Referrer"}
                         />
-                        <AvatarFallback className="text-[9px] font-semibold">
+                        <AvatarFallback className="font-semibold text-[9px]">
                           {getInitials(referrerInfo?.name || registration.referrer_name || "Ref")}
                         </AvatarFallback>
                       </Avatar>
-                      <div className="min-w-0 flex flex-col">
+                      <div className="flex min-w-0 flex-col">
                         <div className="flex items-center gap-1.5">
-                          <span className="text-[10px] text-muted-foreground shrink-0">Belongs to:</span>
-                          <span className="font-semibold text-foreground text-[11px] truncate">
+                          <span className="shrink-0 text-[10px] text-muted-foreground">Belongs to:</span>
+                          <span className="truncate font-semibold text-[11px] text-foreground">
                             {referrerInfo?.name || registration.referrer_name || "Community Member"}
                           </span>
                         </div>
                         {Boolean(referrerInfo?.email) && (
-                          <span className="text-[10px] text-muted-foreground truncate">{referrerInfo?.email}</span>
+                          <span className="truncate text-[10px] text-muted-foreground">{referrerInfo?.email}</span>
                         )}
                       </div>
                     </div>
                     {referrerInfo?.role && (
-                      <Badge variant="secondary" className="text-[9px] capitalize px-1.5 py-0 shrink-0">
+                      <Badge variant="secondary" className="shrink-0 px-1.5 py-0 text-[9px] capitalize">
                         {referrerInfo.role.replace(/_/g, " ")}
                       </Badge>
                     )}
@@ -1151,7 +1169,7 @@ export function ApplicantDetailDialog({
                   type="button"
                   size="sm"
                   variant="outline"
-                  className="h-7 shrink-0 border-amber-500/40 bg-background text-amber-700 hover:bg-amber-500/20 text-xs dark:text-amber-300"
+                  className="h-7 shrink-0 border-amber-500/40 bg-background text-amber-700 text-xs hover:bg-amber-500/20 dark:text-amber-300"
                   onClick={() => setIsResendPaymentOpen(true)}
                 >
                   <RefreshCw className="mr-1.5 size-3" />
@@ -1275,7 +1293,7 @@ export function ApplicantDetailDialog({
                             <div
                               key={item.key}
                               className={cn(
-                                "flex flex-col justify-between rounded-lg border border-border/60 bg-card p-3 shadow-2xs transition-colors hover:border-border min-w-0 overflow-hidden",
+                                "flex min-w-0 flex-col justify-between overflow-hidden rounded-lg border border-border/60 bg-card p-3 shadow-2xs transition-colors hover:border-border",
                                 isWide && "sm:col-span-2",
                               )}
                             >
@@ -1368,8 +1386,8 @@ export function ApplicantDetailDialog({
               isCancelling,
             ].some(Boolean);
             return (
-              <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t bg-muted/20 px-6 py-3.5">
-                <div className="flex items-center gap-2">
+              <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t bg-muted/20 px-6 py-3">
+                <div className="flex flex-wrap items-center gap-2">
                   {isCuration &&
                     registration.status !== "waitlisted" &&
                     registration.status !== "paid_waitlisted" &&
@@ -1519,7 +1537,7 @@ export function ApplicantDetailDialog({
                   )}
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="ml-auto flex shrink-0 flex-wrap items-center gap-2">
                   {isCuration && registration.status !== "rejected" && registration.status !== "approved" && (
                     <Button
                       size="sm"
@@ -1598,6 +1616,23 @@ export function ApplicantDetailDialog({
                       );
                     })()}
 
+                  {Boolean(
+                    invoiceNumber ||
+                      hasRegistrationPaymentRequirements(registration) ||
+                      rawStatus === "waiting_for_payment" ||
+                      rawStatus === "paid_and_registered",
+                  ) && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5 border-emerald-500/30 text-emerald-600 text-xs hover:bg-emerald-500/10 dark:text-emerald-400"
+                      onClick={() => setIsCheckPaymentOpen(true)}
+                    >
+                      <CreditCard className="size-3.5" />
+                      <span>Check Payment</span>
+                    </Button>
+                  )}
+
                   <Button size="sm" variant="secondary" className="text-xs" onClick={onClose}>
                     Close
                   </Button>
@@ -1621,6 +1656,16 @@ export function ApplicantDetailDialog({
               invoiceNumber: updatedReg.payment_invoice_number,
             });
           }
+        }}
+      />
+
+      <CheckPaymentStatusDialog
+        open={isCheckPaymentOpen}
+        onOpenChange={setIsCheckPaymentOpen}
+        registration={registration}
+        event={event}
+        onSuccess={(updatedReg) => {
+          onStatusChange(updatedReg.id, "paid_and_registered");
         }}
       />
     </>
