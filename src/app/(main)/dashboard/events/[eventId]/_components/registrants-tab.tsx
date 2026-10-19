@@ -1609,8 +1609,20 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       registration.status === "approved" ||
       effectiveStatus === "approved" ||
       effectiveStatus === "paid_and_registered" ||
-      effectiveStatus === "waiting_for_payment"
+      effectiveStatus === "waiting_for_payment" ||
+      effectiveStatus === "canceled" ||
+      registration.status === "canceled" ||
+      registration.status === "cancelled" ||
+      registration.refund_request?.status === "refund_completed"
     ) {
+      if (
+        effectiveStatus === "canceled" ||
+        registration.status === "canceled" ||
+        registration.status === "cancelled" ||
+        registration.refund_request?.status === "refund_completed"
+      ) {
+        toast.error("This registration has been canceled / refunded and cannot be approved.");
+      }
       return;
     }
 
@@ -1790,6 +1802,14 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   };
 
   const handleRejectAttendee = async (registration: FirestoreRegistration) => {
+    if (
+      registration.status === "canceled" ||
+      registration.status === "cancelled" ||
+      registration.refund_request?.status === "refund_completed"
+    ) {
+      toast.error("This registration has been canceled / refunded and cannot be modified.");
+      return;
+    }
     if (registration.status === "approved") {
       toast.error("This attendee is already approved. Their status cannot be changed except by removal.");
       return;
@@ -3980,8 +4000,17 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
 
                     const regDate = formatFirestoreDate(reg.registered_at, "dd MMM yyyy, h:mm a");
 
+                    const isCanceled =
+                      rawStatus === "canceled" ||
+                      rawStatus === "cancelled" ||
+                      reg.status === "canceled" ||
+                      reg.status === "cancelled" ||
+                      reg.refund_request?.status === "refund_completed";
+
                     let approveTitle = "Approve application";
-                    if (rawStatus === "approved" || rawStatus === "paid_and_registered") {
+                    if (isCanceled) {
+                      approveTitle = "Registration canceled (Refunded / Canceled)";
+                    } else if (rawStatus === "approved" || rawStatus === "paid_and_registered") {
                       approveTitle = rawStatus === "paid_and_registered" ? "Paid & Registered" : "Approved";
                     } else if (rawStatus === "waiting_for_payment") {
                       approveTitle = "Waiting for payment (Disabled until expired)";
@@ -3992,12 +4021,16 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                     }
 
                     let pendingTitle = reg.status === "pending" ? "Pending Review" : "Mark as Pending";
-                    if (reg.status === "approved") {
+                    if (isCanceled) {
+                      pendingTitle = "Status locked (Canceled)";
+                    } else if (reg.status === "approved") {
                       pendingTitle = "Status locked (Approved)";
                     }
 
                     let rejectTitle = reg.status === "rejected" ? "Rejected" : "Reject application";
-                    if (reg.status === "approved") {
+                    if (isCanceled) {
+                      rejectTitle = "Status locked (Canceled)";
+                    } else if (reg.status === "approved") {
                       rejectTitle = "Status locked (Approved)";
                     }
 
@@ -4310,8 +4343,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                       rawStatus === "approved" || rawStatus === "paid_and_registered"
                                         ? "cursor-default bg-emerald-600 text-white opacity-90 shadow-xs hover:bg-emerald-600"
                                         : "text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-700",
-                                      rawStatus === "waiting_for_payment" &&
-                                        "disabled:pointer-events-auto disabled:cursor-not-allowed",
+                                      (rawStatus === "waiting_for_payment" || isCanceled) &&
+                                        "disabled:pointer-events-auto disabled:cursor-not-allowed opacity-40",
                                     )}
                                     title={approveTitle}
                                     onClick={() => handleApproveAttendee(reg)}
@@ -4320,7 +4353,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                       approvingRegistrationId === reg.id ||
                                       rawStatus === "approved" ||
                                       rawStatus === "paid_and_registered" ||
-                                      rawStatus === "waiting_for_payment"
+                                      rawStatus === "waiting_for_payment" ||
+                                      isCanceled
                                     }
                                   >
                                     {approvingRegistrationId === reg.id ? (
@@ -4339,6 +4373,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                       reg.status === "pending"
                                         ? "bg-amber-600 text-white shadow-xs hover:bg-amber-700"
                                         : "text-amber-600 hover:bg-amber-500/10 hover:text-amber-700",
+                                      isCanceled &&
+                                        "disabled:pointer-events-auto disabled:cursor-not-allowed opacity-40",
                                     )}
                                     title={pendingTitle}
                                     onClick={() => handleStatusChange(reg.id, "pending")}
@@ -4346,7 +4382,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                       isPending ||
                                       approvingRegistrationId === reg.id ||
                                       rawStatus === "approved" ||
-                                      rawStatus === "paid_and_registered"
+                                      rawStatus === "paid_and_registered" ||
+                                      isCanceled
                                     }
                                   >
                                     <Clock className="size-3.5" />
@@ -4361,6 +4398,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                       reg.status === "rejected"
                                         ? "bg-destructive text-white shadow-xs hover:bg-destructive/90"
                                         : "text-destructive hover:bg-destructive/10 hover:text-destructive",
+                                      isCanceled &&
+                                        "disabled:pointer-events-auto disabled:cursor-not-allowed opacity-40",
                                     )}
                                     title={rejectTitle}
                                     onClick={() => handleStatusChange(reg.id, "rejected")}
@@ -4369,7 +4408,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                       approvingRegistrationId === reg.id ||
                                       rejectingRegistrationId === reg.id ||
                                       rawStatus === "approved" ||
-                                      rawStatus === "paid_and_registered"
+                                      rawStatus === "paid_and_registered" ||
+                                      isCanceled
                                     }
                                   >
                                     {rejectingRegistrationId === reg.id ? (
