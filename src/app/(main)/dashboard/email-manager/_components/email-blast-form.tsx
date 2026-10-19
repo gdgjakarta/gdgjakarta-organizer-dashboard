@@ -11,6 +11,7 @@ import {
   FileSpreadsheet,
   Loader2,
   Mail,
+  Plus,
   RefreshCw,
   RotateCcw,
   Send,
@@ -51,10 +52,20 @@ import { sendQuickEmail } from "../_actions/send-quick-email";
 import {
   type AttendeeDynamicPlaceholders,
   buildDefaultEventPlaceholders,
+  type CustomPlaceholderDefinition,
   defaultAttendeePlaceholders,
   type EventDynamicPlaceholders,
+  extractTokensFromHtml,
+  formatTokenKeyToLabel,
+  getStoredCustomAttendeePlaceholders,
+  getStoredCustomEventPlaceholders,
   type PublishedEventOption,
+  STANDARD_ATTENDEE_PLACEHOLDER_KEYS,
+  STANDARD_EVENT_PLACEHOLDER_KEYS,
+  saveStoredCustomAttendeePlaceholders,
+  saveStoredCustomEventPlaceholders,
 } from "../_types/placeholders";
+import { AddPlaceholderDialog } from "./add-placeholder-dialog";
 import { AudienceSelector } from "./audience-selector";
 import { ConfirmEmailDialog } from "./confirm-email-dialog";
 import {
@@ -125,7 +136,7 @@ export interface EmailBlastFormProps {
 }
 
 interface AttendeeFieldItem {
-  key: keyof AttendeeDynamicPlaceholders;
+  key: string;
   label: string;
   tag: string;
   placeholder: string;
@@ -173,6 +184,16 @@ export function EmailBlastForm({
   const [internalLoadingDetail, setInternalLoadingDetail] = useState(false);
   const [isPlaceholdersOpen, setIsPlaceholdersOpen] = useState(false);
   const [isAttendeePlaceholdersOpen, setIsAttendeePlaceholdersOpen] = useState(false);
+
+  // Dynamic custom placeholders state
+  const [customEventPlaceholders, setCustomEventPlaceholders] = useState<CustomPlaceholderDefinition[]>(() =>
+    getStoredCustomEventPlaceholders(),
+  );
+  const [customAttendeePlaceholders, setCustomAttendeePlaceholders] = useState<CustomPlaceholderDefinition[]>(() =>
+    getStoredCustomAttendeePlaceholders(),
+  );
+  const [isAddPlaceholderOpen, setIsAddPlaceholderOpen] = useState(false);
+  const [addPlaceholderCategory, setAddPlaceholderCategory] = useState<"event" | "attendee">("event");
 
   // Email blast templates state
   const [templatesData, setTemplatesData] = useState(() => getAllEmailBlastTemplates());
@@ -295,6 +316,7 @@ export function EmailBlastForm({
   const lastFetchedUrl = useRef("");
   const lastFetchedSheetName = useRef("");
   const hasInitializedEventRef = useRef(false);
+  const dismissedTokensRef = useRef<Set<string>>(new Set());
 
   // Function to load detail event and autofill dynamic placeholders + header banner
   const loadEventDetail = useCallback(
@@ -471,56 +493,217 @@ export function EmailBlastForm({
     }
   };
 
-  const handlePlaceholderChange = (key: keyof EventDynamicPlaceholders, val: string) => {
-    const updated = {
-      ...eventPlaceholders,
-      [key]: val,
-    };
-    if (key === "EventBannerUrl") {
-      setValue("headerUrl", val);
-    }
-    if (propOnChangePlaceholders) {
-      propOnChangePlaceholders(updated);
-    } else {
-      setInternalPlaceholders(updated);
-    }
-  };
+  const handlePlaceholderChange = useCallback(
+    (key: string, val: string) => {
+      const updated = {
+        ...eventPlaceholders,
+        [key]: val,
+      };
+      if (key === "EventBannerUrl") {
+        setValue("headerUrl", val);
+      }
+      if (propOnChangePlaceholders) {
+        propOnChangePlaceholders(updated);
+      } else {
+        setInternalPlaceholders(updated);
+      }
+    },
+    [eventPlaceholders, setValue, propOnChangePlaceholders],
+  );
 
   const handleResetPlaceholders = () => {
     if (propOnResetPlaceholders) {
       propOnResetPlaceholders();
     } else if (selectedEvent) {
       const resetVals = buildDefaultEventPlaceholders(selectedEvent);
-      setInternalPlaceholders(resetVals);
-      setValue("headerUrl", resetVals.EventBannerUrl);
+      const customEntries: Record<string, string> = {};
+      for (const [k, v] of Object.entries(eventPlaceholders)) {
+        if (!STANDARD_EVENT_PLACEHOLDER_KEYS.includes(k)) {
+          customEntries[k] = v;
+        }
+      }
+      const merged = { ...resetVals, ...customEntries };
+      setInternalPlaceholders(merged);
+      setValue("headerUrl", merged.EventBannerUrl);
       toast.success("Placeholders Reset", {
         description: "Dynamic placeholders reset to Bevy event defaults.",
       });
     }
   };
 
-  const handleAttendeePlaceholderChange = (key: keyof AttendeeDynamicPlaceholders, val: string) => {
-    const updated = {
-      ...attendeePlaceholders,
-      [key]: val,
-    };
-    if (propOnChangeAttendeePlaceholders) {
-      propOnChangeAttendeePlaceholders(updated);
-    } else {
-      setInternalAttendeePlaceholders(updated);
-    }
-  };
+  const handleAttendeePlaceholderChange = useCallback(
+    (key: string, val: string) => {
+      const updated = {
+        ...attendeePlaceholders,
+        [key]: val,
+      };
+      if (propOnChangeAttendeePlaceholders) {
+        propOnChangeAttendeePlaceholders(updated);
+      } else {
+        setInternalAttendeePlaceholders(updated);
+      }
+    },
+    [attendeePlaceholders, propOnChangeAttendeePlaceholders],
+  );
 
   const handleResetAttendeePlaceholders = () => {
     if (propOnResetAttendeePlaceholders) {
       propOnResetAttendeePlaceholders();
     } else {
-      setInternalAttendeePlaceholders(defaultAttendeePlaceholders);
+      const customEntries: Record<string, string> = {};
+      for (const [k, v] of Object.entries(attendeePlaceholders)) {
+        if (!STANDARD_ATTENDEE_PLACEHOLDER_KEYS.includes(k)) {
+          customEntries[k] = v;
+        }
+      }
+      setInternalAttendeePlaceholders({ ...defaultAttendeePlaceholders, ...customEntries });
       toast.success("Attendee Placeholders Reset", {
         description: "Restored sample attendee values to defaults.",
       });
     }
   };
+
+  const handleOpenAddPlaceholder = useCallback((cat: "event" | "attendee") => {
+    setAddPlaceholderCategory(cat);
+    setIsAddPlaceholderOpen(true);
+  }, []);
+
+  const handleAddCustomPlaceholder = useCallback(
+    (newPlaceholder: CustomPlaceholderDefinition) => {
+      dismissedTokensRef.current.delete(newPlaceholder.key.toLowerCase());
+      if (newPlaceholder.category === "event") {
+        setCustomEventPlaceholders((prev) => {
+          const next = [...prev.filter((p) => p.key !== newPlaceholder.key), newPlaceholder];
+          saveStoredCustomEventPlaceholders(next);
+          return next;
+        });
+        handlePlaceholderChange(newPlaceholder.key, newPlaceholder.sampleValue);
+        setIsPlaceholdersOpen(true);
+      } else {
+        setCustomAttendeePlaceholders((prev) => {
+          const next = [...prev.filter((p) => p.key !== newPlaceholder.key), newPlaceholder];
+          saveStoredCustomAttendeePlaceholders(next);
+          return next;
+        });
+        handleAttendeePlaceholderChange(newPlaceholder.key, newPlaceholder.sampleValue);
+        setIsAttendeePlaceholdersOpen(true);
+      }
+    },
+    [handlePlaceholderChange, handleAttendeePlaceholderChange],
+  );
+
+  const handleDeleteCustomPlaceholder = useCallback(
+    (key: string, category: "event" | "attendee") => {
+      dismissedTokensRef.current.add(key.toLowerCase());
+      if (category === "event") {
+        setCustomEventPlaceholders((prev) => {
+          const next = prev.filter((p) => p.key !== key);
+          saveStoredCustomEventPlaceholders(next);
+          return next;
+        });
+        const updated = { ...eventPlaceholders };
+        delete updated[key];
+        if (propOnChangePlaceholders) {
+          propOnChangePlaceholders(updated);
+        } else {
+          setInternalPlaceholders(updated);
+        }
+        toast.success(`Removed [[${key}]]`, {
+          description: "Removed custom event placeholder.",
+        });
+      } else {
+        setCustomAttendeePlaceholders((prev) => {
+          const next = prev.filter((p) => p.key !== key);
+          saveStoredCustomAttendeePlaceholders(next);
+          return next;
+        });
+        const updated = { ...attendeePlaceholders };
+        delete updated[key];
+        if (propOnChangeAttendeePlaceholders) {
+          propOnChangeAttendeePlaceholders(updated);
+        } else {
+          setInternalAttendeePlaceholders(updated);
+        }
+        toast.success(`Removed [[${key}]]`, {
+          description: "Removed custom attendee placeholder.",
+        });
+      }
+    },
+    [eventPlaceholders, attendeePlaceholders, propOnChangePlaceholders, propOnChangeAttendeePlaceholders],
+  );
+
+  // Auto-detect new placeholders from HTML body content
+  useEffect(() => {
+    if (!bodyValue) return;
+
+    const timer = setTimeout(() => {
+      const detectedTokens = extractTokensFromHtml(bodyValue);
+      if (detectedTokens.length === 0) return;
+
+      const knownEventKeys = new Set([
+        ...STANDARD_EVENT_PLACEHOLDER_KEYS.map((k) => k.toLowerCase()),
+        ...customEventPlaceholders.map((p) => p.key.toLowerCase()),
+      ]);
+
+      const knownAttendeeKeys = new Set([
+        ...STANDARD_ATTENDEE_PLACEHOLDER_KEYS.map((k) => k.toLowerCase()),
+        ...customAttendeePlaceholders.map((p) => p.key.toLowerCase()),
+      ]);
+
+      const newlyDetected: CustomPlaceholderDefinition[] = [];
+
+      for (const tokenKey of detectedTokens) {
+        const lower = tokenKey.toLowerCase();
+        if (knownEventKeys.has(lower) || knownAttendeeKeys.has(lower)) {
+          continue;
+        }
+        if (dismissedTokensRef.current.has(lower)) {
+          continue;
+        }
+
+        const label = formatTokenKeyToLabel(tokenKey);
+        newlyDetected.push({
+          key: tokenKey,
+          label,
+          sampleValue: `[${label}]`,
+          category: "attendee",
+          description: "Auto-detected from HTML template",
+        });
+      }
+
+      if (newlyDetected.length === 0) return;
+
+      setCustomAttendeePlaceholders((prev) => {
+        const next = [...prev, ...newlyDetected];
+        saveStoredCustomAttendeePlaceholders(next);
+        return next;
+      });
+
+      const updatedValues: AttendeeDynamicPlaceholders = { ...attendeePlaceholders };
+      for (const item of newlyDetected) {
+        updatedValues[item.key] = item.sampleValue;
+      }
+
+      if (propOnChangeAttendeePlaceholders) {
+        propOnChangeAttendeePlaceholders(updatedValues);
+      } else {
+        setInternalAttendeePlaceholders(updatedValues);
+      }
+
+      const tokenNames = newlyDetected.map((d) => `[[${d.key}]]`).join(", ");
+      toast.info(`Detected New Placeholder${newlyDetected.length > 1 ? "s" : ""}`, {
+        description: `Added ${tokenNames} to attendee placeholders.`,
+      });
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, [
+    bodyValue,
+    customEventPlaceholders,
+    customAttendeePlaceholders,
+    attendeePlaceholders,
+    propOnChangeAttendeePlaceholders,
+  ]);
 
   const handleAudienceTypeChange = useCallback(
     (audience: AudienceType) => {
@@ -701,6 +884,23 @@ export function EmailBlastForm({
       const eventTitle = selectedEvent?.title;
 
       if (data.recipientSource === "single") {
+        const customEventMap: Record<string, string> = {};
+        if (eventPlaceholders) {
+          for (const [k, v] of Object.entries(eventPlaceholders)) {
+            if (!STANDARD_EVENT_PLACEHOLDER_KEYS.includes(k) && v) {
+              customEventMap[k] = v;
+            }
+          }
+        }
+        const customAttendeeMap: Record<string, string> = {};
+        if (attendeePlaceholders) {
+          for (const [k, v] of Object.entries(attendeePlaceholders)) {
+            if (!STANDARD_ATTENDEE_PLACEHOLDER_KEYS.includes(k) && v) {
+              customAttendeeMap[k] = v;
+            }
+          }
+        }
+
         const result = await sendQuickEmail({
           eventId: data.eventId,
           eventTitle,
@@ -710,6 +910,8 @@ export function EmailBlastForm({
           headerUrl: data.headerUrl,
           body: data.body,
           sessionTitle: eventPlaceholders?.SessionTitle,
+          customEventPlaceholders: customEventMap,
+          customAttendeePlaceholders: customAttendeeMap,
           eventDetails: selectedEvent
             ? {
                 formattedDate: selectedEvent.formattedDate,
@@ -741,6 +943,20 @@ export function EmailBlastForm({
 
       // Bulk Email dispatch
       const isSheetSource = data.recipientSource === "spreadsheet";
+
+      // Pre-interpolate custom event-level placeholders into subject and body
+      let blastSubject = data.subject;
+      let blastBody = data.body;
+      if (eventPlaceholders) {
+        for (const [k, v] of Object.entries(eventPlaceholders)) {
+          if (!STANDARD_EVENT_PLACEHOLDER_KEYS.includes(k) && v) {
+            const escaped = k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            blastSubject = blastSubject.replace(new RegExp(`\\[\\[\\s*${escaped}\\s*\\]\\]`, "gi"), String(v));
+            blastBody = blastBody.replace(new RegExp(`\\[\\[\\s*${escaped}\\s*\\]\\]`, "gi"), String(v));
+          }
+        }
+      }
+
       const result = await sendEmailBlast({
         eventId: data.eventId,
         eventTitle,
@@ -751,9 +967,9 @@ export function EmailBlastForm({
         sheetName: data.sheetName,
         headerRow: data.headerRow ?? 1,
         sheetRowCount: isSheetSource ? sheetRowCount : undefined,
-        subject: data.subject,
+        subject: blastSubject,
         headerUrl: data.headerUrl,
-        body: data.body,
+        body: blastBody,
         recipients: data.recipientSource === "audience" ? resolvedRecipients : undefined,
       });
 
@@ -1436,6 +1652,17 @@ export function EmailBlastForm({
                   variant="outline"
                   size="sm"
                   className="h-7 gap-1 px-2 text-xs"
+                  onClick={() => handleOpenAddPlaceholder("event")}
+                  disabled={isSubmitting}
+                >
+                  <Plus className="size-3 text-sky-500" />
+                  Add Event Token
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1 px-2 text-xs"
                   onClick={handleResetPlaceholders}
                   disabled={isSubmitting || isLoadingEventDetail}
                 >
@@ -1601,6 +1828,46 @@ export function EmailBlastForm({
                     />
                   )}
                 </div>
+
+                {customEventPlaceholders.map((custom) => (
+                  <div
+                    key={`custom_event_${custom.key}`}
+                    className="space-y-1 rounded-md border border-sky-500/30 bg-sky-500/5 p-2.5"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <FieldLabel className="text-xs font-medium text-foreground truncate">{custom.label}</FieldLabel>
+                        <Badge
+                          variant="outline"
+                          className="h-4 px-1 font-normal text-[9px] border-sky-500/40 text-sky-600 dark:text-sky-400"
+                        >
+                          Custom
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <code className="text-[10px] text-sky-600 dark:text-sky-400">[[{custom.key}]]</code>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="size-6 text-muted-foreground hover:text-destructive"
+                          onClick={() => handleDeleteCustomPlaceholder(custom.key, "event")}
+                          title={`Remove [[${custom.key}]]`}
+                        >
+                          <Trash2 className="size-3" />
+                          <span className="sr-only">Remove</span>
+                        </Button>
+                      </div>
+                    </div>
+                    <Input
+                      value={eventPlaceholders?.[custom.key] ?? custom.sampleValue}
+                      onChange={(e) => handlePlaceholderChange(custom.key, e.target.value)}
+                      disabled={isSubmitting}
+                      placeholder={custom.sampleValue || `Value for [[${custom.key}]]`}
+                      className="h-8 text-xs bg-background"
+                    />
+                  </div>
+                ))}
               </div>
             </CollapsibleContent>
           </Collapsible>
@@ -1626,6 +1893,17 @@ export function EmailBlastForm({
                 </div>
               </div>
               <div className="flex items-center gap-1.5">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1 px-2 text-xs"
+                  onClick={() => handleOpenAddPlaceholder("attendee")}
+                  disabled={isSubmitting}
+                >
+                  <Plus className="size-3 text-emerald-500" />
+                  Add Attendee Token
+                </Button>
                 <Button
                   type="button"
                   variant="outline"
@@ -1668,6 +1946,46 @@ export function EmailBlastForm({
                     />
                   </div>
                 ))}
+
+                {customAttendeePlaceholders.map((custom) => (
+                  <div
+                    key={`custom_attendee_${custom.key}`}
+                    className="space-y-1 rounded-md border border-emerald-500/30 bg-emerald-500/5 p-2.5"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <FieldLabel className="text-xs font-medium text-foreground truncate">{custom.label}</FieldLabel>
+                        <Badge
+                          variant="outline"
+                          className="h-4 px-1 font-normal text-[9px] border-emerald-500/40 text-emerald-600 dark:text-emerald-400"
+                        >
+                          Custom
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <code className="text-[10px] text-emerald-600 dark:text-emerald-400">[[{custom.key}]]</code>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="size-6 text-muted-foreground hover:text-destructive"
+                          onClick={() => handleDeleteCustomPlaceholder(custom.key, "attendee")}
+                          title={`Remove [[${custom.key}]]`}
+                        >
+                          <Trash2 className="size-3" />
+                          <span className="sr-only">Remove</span>
+                        </Button>
+                      </div>
+                    </div>
+                    <Input
+                      value={attendeePlaceholders?.[custom.key] ?? custom.sampleValue}
+                      onChange={(e) => handleAttendeePlaceholderChange(custom.key, e.target.value)}
+                      disabled={isSubmitting}
+                      placeholder={custom.sampleValue || `Sample for [[${custom.key}]]`}
+                      className="h-8 text-xs bg-background"
+                    />
+                  </div>
+                ))}
               </div>
             </CollapsibleContent>
           </Collapsible>
@@ -1686,6 +2004,9 @@ export function EmailBlastForm({
                 availableTags={availableTags}
                 isLoadingTags={isLoadingTags}
                 sheetSampleData={sheetSampleRow}
+                customEventTokens={customEventPlaceholders}
+                customAttendeeTokens={customAttendeePlaceholders}
+                onOpenAddPlaceholder={handleOpenAddPlaceholder}
               />
               {errors.body && <FieldError>{errors.body.message}</FieldError>}
             </FieldContent>
@@ -1741,6 +2062,15 @@ export function EmailBlastForm({
             onTemplateChange(newTpl);
           }
         }}
+      />
+
+      <AddPlaceholderDialog
+        open={isAddPlaceholderOpen}
+        onOpenChange={setIsAddPlaceholderOpen}
+        defaultCategory={addPlaceholderCategory}
+        existingEventKeys={customEventPlaceholders.map((p) => p.key)}
+        existingAttendeeKeys={customAttendeePlaceholders.map((p) => p.key)}
+        onAdd={handleAddCustomPlaceholder}
       />
 
       <ConfirmEmailDialog

@@ -2,11 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import { Calendar, Code, FileSpreadsheet, GripVertical, Loader2, Sparkles, User } from "lucide-react";
+import { Calendar, Code, FileSpreadsheet, GripVertical, Loader2, Plus, Sparkles, User } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+
+import type { CustomPlaceholderDefinition } from "../_types/placeholders";
 
 interface DraggableTokenItem {
   id: string;
@@ -177,6 +179,9 @@ interface DraggableTokensPanelProps {
   onInsertToken: (tokenOrSnippet: string) => void;
   sheetTokens?: string[];
   isLoadingSheetTokens?: boolean;
+  customEventTokens?: CustomPlaceholderDefinition[];
+  customAttendeeTokens?: CustomPlaceholderDefinition[];
+  onOpenAddPlaceholder?: (category: "event" | "attendee") => void;
   className?: string;
 }
 
@@ -184,6 +189,9 @@ export function DraggableTokensPanel({
   onInsertToken,
   sheetTokens = [],
   isLoadingSheetTokens = false,
+  customEventTokens = [],
+  customAttendeeTokens = [],
+  onOpenAddPlaceholder,
   className,
 }: DraggableTokensPanelProps) {
   const [activeTab, setActiveTab] = useState<string>("event");
@@ -221,10 +229,20 @@ export function DraggableTokensPanel({
           <TabsTrigger value="event" className="gap-1 text-[11px]">
             <Calendar className="size-3 text-sky-500" />
             Event Data
+            {customEventTokens.length > 0 && (
+              <Badge variant="secondary" className="h-4 px-1 font-normal text-[9px]">
+                +{customEventTokens.length}
+              </Badge>
+            )}
           </TabsTrigger>
           <TabsTrigger value="attendee" className="gap-1 text-[11px]">
             <User className="size-3 text-emerald-500" />
             Attendee Data
+            {customAttendeeTokens.length > 0 && (
+              <Badge variant="secondary" className="h-4 px-1 font-normal text-[9px]">
+                +{customAttendeeTokens.length}
+              </Badge>
+            )}
           </TabsTrigger>
           {hasSheetTokens && (
             <TabsTrigger value="sheet" className="gap-1 text-[11px]">
@@ -244,7 +262,7 @@ export function DraggableTokensPanel({
         </TabsList>
 
         {/* Tab 1: Event Data Tokens */}
-        <TabsContent value="event" className="mt-2.5 space-y-1.5">
+        <TabsContent value="event" className="mt-2.5 space-y-2">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {EVENT_DATA_TOKENS.map((token) => (
               <button
@@ -258,16 +276,60 @@ export function DraggableTokensPanel({
               >
                 <GripVertical className="size-3 text-sky-500/50 group-hover:text-sky-500" />
                 <div className="flex min-w-0 flex-1 flex-col">
-                  <span className="font-semibold text-[11px] text-sky-700 dark:text-sky-300">{token.label}</span>
-                  <span className="font-mono text-[9px] text-muted-foreground">{token.tag}</span>
+                  <span className="truncate font-semibold text-[11px] text-sky-700 dark:text-sky-300">
+                    {token.label}
+                  </span>
+                  <span className="truncate font-mono text-[9px] text-muted-foreground">{token.tag}</span>
                 </div>
               </button>
             ))}
+
+            {customEventTokens.map((token) => {
+              const tag = `[[${token.key}]]`;
+              return (
+                <button
+                  type="button"
+                  key={`custom_event_${token.key}`}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, tag)}
+                  onClick={() => onInsertToken(tag)}
+                  title={`${token.description || token.label} (Custom Event Token - Drag or click to insert)`}
+                  className="group flex cursor-grab items-center gap-1.5 rounded-md border border-sky-500/35 bg-sky-500/10 px-2 py-1.5 text-left transition-all hover:border-sky-500/60 hover:bg-sky-500/15 active:cursor-grabbing"
+                >
+                  <GripVertical className="size-3 text-sky-600/50 group-hover:text-sky-600 dark:text-sky-400" />
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <div className="flex items-center gap-1 min-w-0">
+                      <span className="truncate font-semibold text-[11px] text-sky-700 dark:text-sky-300">
+                        {token.label}
+                      </span>
+                      <Badge
+                        variant="outline"
+                        className="h-3.5 px-1 font-normal text-[8px] border-sky-500/40 text-sky-600 dark:text-sky-400"
+                      >
+                        Custom
+                      </Badge>
+                    </div>
+                    <span className="truncate font-mono text-[9px] text-muted-foreground">{tag}</span>
+                  </div>
+                </button>
+              );
+            })}
+
+            {onOpenAddPlaceholder && (
+              <button
+                type="button"
+                onClick={() => onOpenAddPlaceholder("event")}
+                className="flex items-center justify-center gap-1.5 rounded-md border border-dashed border-sky-500/40 bg-sky-500/5 px-2 py-1.5 text-xs text-sky-700 hover:bg-sky-500/10 dark:text-sky-300 transition-colors"
+              >
+                <Plus className="size-3.5" />
+                <span className="text-[11px] font-medium">+ Add Event Token</span>
+              </button>
+            )}
           </div>
         </TabsContent>
 
         {/* Tab 2: Attendee Data Tokens */}
-        <TabsContent value="attendee" className="mt-2.5 space-y-1.5">
+        <TabsContent value="attendee" className="mt-2.5 space-y-2">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {ATTENDEE_DATA_TOKENS.map((token) => (
               <button
@@ -281,13 +343,55 @@ export function DraggableTokensPanel({
               >
                 <GripVertical className="size-3 text-emerald-500/50 group-hover:text-emerald-500" />
                 <div className="flex min-w-0 flex-1 flex-col">
-                  <span className="font-semibold text-[11px] text-emerald-700 dark:text-emerald-300">
+                  <span className="truncate font-semibold text-[11px] text-emerald-700 dark:text-emerald-300">
                     {token.label}
                   </span>
-                  <span className="font-mono text-[9px] text-muted-foreground">{token.tag}</span>
+                  <span className="truncate font-mono text-[9px] text-muted-foreground">{token.tag}</span>
                 </div>
               </button>
             ))}
+
+            {customAttendeeTokens.map((token) => {
+              const tag = `[[${token.key}]]`;
+              return (
+                <button
+                  type="button"
+                  key={`custom_attendee_${token.key}`}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, tag)}
+                  onClick={() => onInsertToken(tag)}
+                  title={`${token.description || token.label} (Custom Attendee Token - Drag or click to insert)`}
+                  className="group flex cursor-grab items-center gap-1.5 rounded-md border border-emerald-500/35 bg-emerald-500/10 px-2 py-1.5 text-left transition-all hover:border-emerald-500/60 hover:bg-emerald-500/15 active:cursor-grabbing"
+                >
+                  <GripVertical className="size-3 text-emerald-600/50 group-hover:text-emerald-600 dark:text-emerald-400" />
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <div className="flex items-center gap-1 min-w-0">
+                      <span className="truncate font-semibold text-[11px] text-emerald-700 dark:text-emerald-300">
+                        {token.label}
+                      </span>
+                      <Badge
+                        variant="outline"
+                        className="h-3.5 px-1 font-normal text-[8px] border-emerald-500/40 text-emerald-600 dark:text-emerald-400"
+                      >
+                        Custom
+                      </Badge>
+                    </div>
+                    <span className="truncate font-mono text-[9px] text-muted-foreground">{tag}</span>
+                  </div>
+                </button>
+              );
+            })}
+
+            {onOpenAddPlaceholder && (
+              <button
+                type="button"
+                onClick={() => onOpenAddPlaceholder("attendee")}
+                className="flex items-center justify-center gap-1.5 rounded-md border border-dashed border-emerald-500/40 bg-emerald-500/5 px-2 py-1.5 text-xs text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300 transition-colors"
+              >
+                <Plus className="size-3.5" />
+                <span className="text-[11px] font-medium">+ Add Attendee Token</span>
+              </button>
+            )}
           </div>
         </TabsContent>
 

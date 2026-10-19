@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 
 import type {
   AttendeeDynamicPlaceholders,
+  CustomPlaceholderDefinition,
   EventDynamicPlaceholders,
   PublishedEventOption,
 } from "../_types/placeholders";
@@ -29,6 +30,9 @@ interface HtmlEditorPreviewProps {
   availableTags?: string[];
   isLoadingTags?: boolean;
   sheetSampleData?: Record<string, string>;
+  customEventTokens?: CustomPlaceholderDefinition[];
+  customAttendeeTokens?: CustomPlaceholderDefinition[];
+  onOpenAddPlaceholder?: (category: "event" | "attendee") => void;
 }
 
 export function HtmlEditorPreview({
@@ -41,6 +45,9 @@ export function HtmlEditorPreview({
   availableTags = [],
   isLoadingTags = false,
   sheetSampleData,
+  customEventTokens,
+  customAttendeeTokens,
+  onOpenAddPlaceholder,
 }: HtmlEditorPreviewProps) {
   const editorRef = useRef<EditorInstance | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -110,42 +117,66 @@ export function HtmlEditorPreview({
   const renderedHtml = useMemo(() => {
     if (!interpolatePreview) return value;
 
-    const eventName = eventPlaceholders?.EventName ?? selectedEvent?.title ?? "DevFest Jakarta 2026";
-    const eventDate = eventPlaceholders?.EventDate ?? selectedEvent?.formattedDate ?? "Friday, Oct 23, 2026";
-    const eventTime = eventPlaceholders?.EventTime ?? selectedEvent?.formattedTime ?? "10:00 AM - 05:00 PM";
-    const eventVenue = eventPlaceholders?.EventVenue ?? selectedEvent?.venueName ?? "Jakarta Convention Center";
-    const eventAddress = eventPlaceholders?.EventAddress ?? selectedEvent?.venueAddress ?? "Jl. Gatot Subroto, Jakarta";
-    const eventUrl = eventPlaceholders?.EventUrl ?? selectedEvent?.url ?? "https://gdg.community.dev/gdg-jakarta/";
-    const eventBannerUrl =
-      headerUrl ??
-      eventPlaceholders?.EventBannerUrl ??
-      selectedEvent?.bannerUrl ??
-      "https://assets.gdgjakarta.org/gdg-jakarta/gdg-jakarta-emailheaders-1244x388-blue.png";
-    const eventDesc =
-      eventPlaceholders?.EventDescription ??
-      selectedEvent?.descriptionShort ??
-      "Join the largest Google developer community conference in Jakarta!";
+    let result = value;
 
-    const sessionTitle = eventPlaceholders?.SessionTitle ?? "Keynote: Building Production AI Agents with Gemini";
+    // 1. Interpolate all event placeholders (standard + custom)
+    if (eventPlaceholders) {
+      for (const [key, val] of Object.entries(eventPlaceholders)) {
+        if (val !== undefined && val !== null) {
+          const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          result = result.replace(new RegExp(`\\[\\[\\s*${escaped}\\s*\\]\\]`, "gi"), String(val));
+        }
+      }
+    } else {
+      const eventName = selectedEvent?.title ?? "DevFest Jakarta 2026";
+      const eventDate = selectedEvent?.formattedDate ?? "Friday, Oct 23, 2026";
+      const eventTime = selectedEvent?.formattedTime ?? "10:00 AM - 05:00 PM";
+      const eventVenue = selectedEvent?.venueName ?? "Jakarta Convention Center";
+      const eventAddress = selectedEvent?.venueAddress ?? "Jl. Gatot Subroto, Jakarta";
+      const eventUrl = selectedEvent?.url ?? "https://gdg.community.dev/gdg-jakarta/";
+      const eventBannerUrl =
+        headerUrl ??
+        selectedEvent?.bannerUrl ??
+        "https://assets.gdgjakarta.org/gdg-jakarta/gdg-jakarta-emailheaders-1244x388-blue.png";
+      const eventDesc =
+        selectedEvent?.descriptionShort ?? "Join the largest Google developer community conference in Jakarta!";
+      const sessionTitle = "Keynote: Building Production AI Agents with Gemini";
 
-    let result = value
-      .replace(/\[\[EventName\]\]/g, eventName)
-      .replace(/\[\[EventDate\]\]/g, eventDate)
-      .replace(/\[\[EventTime\]\]/g, eventTime)
-      .replace(/\[\[EventVenue\]\]/g, eventVenue)
-      .replace(/\[\[EventAddress\]\]/g, eventAddress)
-      .replace(/\[\[EventUrl\]\]/g, eventUrl)
-      .replace(/\[\[EventBannerUrl\]\]/g, eventBannerUrl)
-      .replace(/\[\[EventDescription\]\]/g, eventDesc)
-      .replace(/\[\[SessionTitle\]\]/g, sessionTitle)
-      // Attendee placeholders simulation (customizable preview)
-      .replace(/\[\[Name\]\]/g, attendeePlaceholders?.Name ?? "Budi Santoso")
-      .replace(/\[\[FirstName\]\]/g, attendeePlaceholders?.FirstName ?? "Budi")
-      .replace(/\[\[LastName\]\]/g, attendeePlaceholders?.LastName ?? "Santoso")
-      .replace(/\[\[Email\]\]/g, attendeePlaceholders?.Email ?? "budi.santoso@example.com")
-      .replace(/\[\[TicketType\]\]/g, attendeePlaceholders?.TicketType ?? "In-Person Pass (Free)")
-      .replace(/\[\[CheckinStatus\]\]/g, attendeePlaceholders?.CheckinStatus ?? "Checked In");
+      result = result
+        .replace(/\[\[EventName\]\]/g, eventName)
+        .replace(/\[\[EventDate\]\]/g, eventDate)
+        .replace(/\[\[EventTime\]\]/g, eventTime)
+        .replace(/\[\[EventVenue\]\]/g, eventVenue)
+        .replace(/\[\[EventAddress\]\]/g, eventAddress)
+        .replace(/\[\[EventUrl\]\]/g, eventUrl)
+        .replace(/\[\[EventBannerUrl\]\]/g, eventBannerUrl)
+        .replace(/\[\[EventDescription\]\]/g, eventDesc)
+        .replace(/\[\[SessionTitle\]\]/g, sessionTitle);
+    }
 
+    if (headerUrl) {
+      result = result.replace(/\[\[EventBannerUrl\]\]/g, headerUrl);
+    }
+
+    // 2. Interpolate all attendee placeholders (standard + custom)
+    if (attendeePlaceholders) {
+      for (const [key, val] of Object.entries(attendeePlaceholders)) {
+        if (val !== undefined && val !== null) {
+          const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          result = result.replace(new RegExp(`\\[\\[\\s*${escaped}\\s*\\]\\]`, "gi"), String(val));
+        }
+      }
+    } else {
+      result = result
+        .replace(/\[\[Name\]\]/g, "Budi Santoso")
+        .replace(/\[\[FirstName\]\]/g, "Budi")
+        .replace(/\[\[LastName\]\]/g, "Santoso")
+        .replace(/\[\[Email\]\]/g, "budi.santoso@example.com")
+        .replace(/\[\[TicketType\]\]/g, "In-Person Pass (Free)")
+        .replace(/\[\[CheckinStatus\]\]/g, "Checked In");
+    }
+
+    // 3. Interpolate sheet sample data if available
     if (sheetSampleData && Object.keys(sheetSampleData).length > 0) {
       for (const [tag, sampleVal] of Object.entries(sheetSampleData)) {
         if (sampleVal) {
@@ -165,6 +196,9 @@ export function HtmlEditorPreview({
         onInsertToken={insertContent}
         sheetTokens={availableTags}
         isLoadingSheetTokens={isLoadingTags}
+        customEventTokens={customEventTokens}
+        customAttendeeTokens={customAttendeeTokens}
+        onOpenAddPlaceholder={onOpenAddPlaceholder}
       />
 
       {/* Editor & Preview Grid */}

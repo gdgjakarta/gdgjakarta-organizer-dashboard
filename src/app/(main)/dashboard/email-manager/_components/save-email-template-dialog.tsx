@@ -92,14 +92,14 @@ export function SaveEmailTemplateDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-lg w-full overflow-hidden">
+        <DialogHeader className="min-w-0">
           <div className="flex items-center gap-2">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
               <Bookmark className="size-4 text-amber-500" />
             </div>
-            <div>
-              <DialogTitle className="text-lg">Save as Email Template</DialogTitle>
+            <div className="min-w-0 flex-1">
+              <DialogTitle className="text-base sm:text-lg">Save as Email Template</DialogTitle>
               <DialogDescription className="text-xs">
                 Save your subject line, header image, and HTML layout for reuse across future campaigns.
               </DialogDescription>
@@ -107,12 +107,12 @@ export function SaveEmailTemplateDialog({
           </div>
         </DialogHeader>
 
-        <div className="space-y-4 py-2 text-xs">
+        <div className="space-y-4 py-2 text-xs min-w-0">
           {activeTemplate?.isCustom && (
-            <div className="flex items-center justify-between rounded-lg border bg-muted/40 p-2.5">
-              <div className="flex flex-col">
-                <span className="font-semibold text-foreground">Editing: {activeTemplate.name}</span>
-                <span className="text-[11px] text-muted-foreground">
+            <div className="flex items-center justify-between gap-2 rounded-lg border bg-muted/40 p-2.5 min-w-0">
+              <div className="flex flex-col min-w-0 flex-1">
+                <span className="font-semibold text-foreground truncate">Editing: {activeTemplate.name}</span>
+                <span className="text-[11px] text-muted-foreground truncate">
                   You can overwrite this template or save as a new one.
                 </span>
               </div>
@@ -120,7 +120,7 @@ export function SaveEmailTemplateDialog({
                 type="button"
                 variant={isUpdatingExisting ? "default" : "outline"}
                 size="sm"
-                className="h-7 text-xs"
+                className="h-7 text-xs shrink-0"
                 onClick={() => setIsUpdatingExisting(!isUpdatingExisting)}
               >
                 {isUpdatingExisting ? "Overwrite" : "Save as New"}
@@ -128,7 +128,7 @@ export function SaveEmailTemplateDialog({
             </div>
           )}
 
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 min-w-0">
             <Label htmlFor="template-name" className="text-xs font-semibold">
               Template Name <span className="text-destructive">*</span>
             </Label>
@@ -137,13 +137,13 @@ export function SaveEmailTemplateDialog({
               placeholder="e.g. VIP Speaker Invitation Keynote"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="h-9 text-xs"
+              className="h-9 w-full min-w-0 text-xs"
               autoFocus
             />
           </div>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 min-w-0">
+            <div className="space-y-1.5 min-w-0">
               <Label htmlFor="template-badge" className="text-xs font-semibold">
                 Badge / Tag
               </Label>
@@ -152,20 +152,20 @@ export function SaveEmailTemplateDialog({
                 placeholder="e.g. Speaker Outreach"
                 value={badge}
                 onChange={(e) => setBadge(e.target.value)}
-                className="h-9 text-xs"
+                className="h-9 w-full min-w-0 text-xs"
               />
             </div>
 
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 min-w-0">
               <Label className="text-xs font-semibold">Content Summary</Label>
-              <div className="flex h-9 items-center gap-2 rounded-md border bg-muted/30 px-3 text-xs text-muted-foreground">
-                <FileText className="size-3.5" />
-                <span>{currentBody.length.toLocaleString()} chars HTML</span>
+              <div className="flex h-9 items-center gap-2 rounded-md border bg-muted/30 px-3 text-xs text-muted-foreground min-w-0">
+                <FileText className="size-3.5 shrink-0" />
+                <span className="truncate">{currentBody.length.toLocaleString()} chars HTML</span>
               </div>
             </div>
           </div>
 
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 min-w-0">
             <Label htmlFor="template-desc" className="text-xs font-semibold">
               Description (Optional)
             </Label>
@@ -174,22 +174,22 @@ export function SaveEmailTemplateDialog({
               placeholder="Brief note about when to use this template..."
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="min-h-16 resize-none text-xs"
+              className="min-h-16 w-full resize-none text-xs"
             />
           </div>
 
-          <div className="rounded-lg border bg-muted/20 p-2.5">
+          <div className="rounded-lg border bg-muted/20 p-2.5 min-w-0">
             <div className="flex items-center gap-1.5 font-semibold text-foreground text-xs">
-              <Sparkles className="size-3.5 text-amber-500" />
+              <Sparkles className="size-3.5 text-amber-500 shrink-0" />
               <span>Snapshot to be saved:</span>
             </div>
-            <div className="mt-1.5 space-y-1 text-[11px] text-muted-foreground">
-              <div className="truncate">
+            <div className="mt-1.5 space-y-1 text-[11px] text-muted-foreground min-w-0">
+              <div className="truncate min-w-0" title={currentSubject || "Important Update: [[EventName]]"}>
                 <strong className="text-foreground">Subject:</strong>{" "}
                 {currentSubject || "Important Update: [[EventName]]"}
               </div>
               {currentHeaderUrl && (
-                <div className="truncate">
+                <div className="truncate min-w-0 break-all" title={currentHeaderUrl}>
                   <strong className="text-foreground">Header URL:</strong> {currentHeaderUrl}
                 </div>
               )}

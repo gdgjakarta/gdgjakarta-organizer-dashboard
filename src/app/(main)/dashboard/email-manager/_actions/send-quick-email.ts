@@ -17,6 +17,8 @@ const quickEmailSchema = z.object({
   headerUrl: z.string().optional(),
   body: z.string().min(1, "Email HTML body is required"),
   sessionTitle: z.string().optional(),
+  customEventPlaceholders: z.record(z.string(), z.string()).optional(),
+  customAttendeePlaceholders: z.record(z.string(), z.string()).optional(),
   eventDetails: z
     .object({
       formattedDate: z.string().optional(),
@@ -72,7 +74,7 @@ export async function sendQuickEmail(input: QuickEmailInput) {
 
     // 4. Interpolate Event Placeholders
     const replaceEventPlaceholders = (text: string) => {
-      return text
+      let t = text
         .replaceAll("[[EventName]]", eventName)
         .replaceAll("[[EventDate]]", eventDate)
         .replaceAll("[[EventTime]]", eventTime)
@@ -82,17 +84,35 @@ export async function sendQuickEmail(input: QuickEmailInput) {
         .replaceAll("[[EventBannerUrl]]", headerBannerUrl)
         .replaceAll("[[EventDescription]]", eventDesc)
         .replaceAll("[[SessionTitle]]", sessionTitle);
+
+      if (data.customEventPlaceholders) {
+        for (const [key, val] of Object.entries(data.customEventPlaceholders)) {
+          if (val !== undefined && val !== null) {
+            t = t.replaceAll(`[[${key}]]`, String(val));
+          }
+        }
+      }
+      return t;
     };
 
     // 5. Interpolate Recipient Placeholders
     const replaceRecipientPlaceholders = (text: string) => {
-      return text
+      let t = text
         .replaceAll("[[Name]]", displayName)
         .replaceAll("[[FirstName]]", firstName)
         .replaceAll("[[LastName]]", lastName)
         .replaceAll("[[Email]]", data.recipientEmail)
         .replaceAll("[[TicketType]]", "Confirmed Entry Pass")
         .replaceAll("[[CheckinStatus]]", "Confirmed");
+
+      if (data.customAttendeePlaceholders) {
+        for (const [key, val] of Object.entries(data.customAttendeePlaceholders)) {
+          if (val !== undefined && val !== null) {
+            t = t.replaceAll(`[[${key}]]`, String(val));
+          }
+        }
+      }
+      return t;
     };
 
     cleanSubject = replaceRecipientPlaceholders(replaceEventPlaceholders(cleanSubject));

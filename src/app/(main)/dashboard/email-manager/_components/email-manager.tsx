@@ -18,7 +18,11 @@ import {
   buildDefaultEventPlaceholders,
   defaultAttendeePlaceholders,
   type EventDynamicPlaceholders,
+  getStoredCustomAttendeePlaceholders,
+  getStoredCustomEventPlaceholders,
   type PublishedEventOption,
+  STANDARD_ATTENDEE_PLACEHOLDER_KEYS,
+  STANDARD_EVENT_PLACEHOLDER_KEYS,
 } from "../_types/placeholders";
 import { EmailBlastForm } from "./email-blast-form";
 
@@ -74,18 +78,63 @@ export function EmailManager() {
   );
   const [isLoadingEventDetail, setIsLoadingEventDetail] = useState(false);
 
+  // Load stored custom placeholders on client mount
+  useEffect(() => {
+    const customEvents = getStoredCustomEventPlaceholders();
+    if (customEvents.length > 0) {
+      setEventPlaceholders((prev) => {
+        const additions: Record<string, string> = {};
+        for (const c of customEvents) {
+          if (!(c.key in prev)) {
+            additions[c.key] = c.sampleValue;
+          }
+        }
+        return { ...prev, ...additions };
+      });
+    }
+
+    const customAttendees = getStoredCustomAttendeePlaceholders();
+    if (customAttendees.length > 0) {
+      setAttendeePlaceholders((prev) => {
+        const additions: Record<string, string> = {};
+        for (const c of customAttendees) {
+          if (!(c.key in prev)) {
+            additions[c.key] = c.sampleValue;
+          }
+        }
+        return { ...prev, ...additions };
+      });
+    }
+  }, []);
+
   // Function to load detail event and autofill dynamic placeholders + header banner
   const handleSelectEvent = useCallback(async (ev: PublishedEventOption, forceRefresh?: boolean) => {
     setSelectedEvent(ev);
-    const initialDefaults = buildDefaultEventPlaceholders(ev);
-    setEventPlaceholders(initialDefaults);
+    setEventPlaceholders((prev) => {
+      const customEntries: Record<string, string> = {};
+      for (const [k, v] of Object.entries(prev)) {
+        if (!STANDARD_EVENT_PLACEHOLDER_KEYS.includes(k)) {
+          customEntries[k] = v;
+        }
+      }
+      return { ...buildDefaultEventPlaceholders(ev), ...customEntries };
+    });
 
     setIsLoadingEventDetail(true);
     try {
       const res = await fetchBevyEventDetailAction(ev.id, { forceRefresh });
       if (res.success && res.event && res.placeholders) {
         setSelectedEvent(res.event);
-        setEventPlaceholders(res.placeholders);
+        const fetchedPlaceholders: EventDynamicPlaceholders = res.placeholders;
+        setEventPlaceholders((prev) => {
+          const customEntries: Record<string, string> = {};
+          for (const [k, v] of Object.entries(prev)) {
+            if (!STANDARD_EVENT_PLACEHOLDER_KEYS.includes(k)) {
+              customEntries[k] = v;
+            }
+          }
+          return { ...fetchedPlaceholders, ...customEntries };
+        });
       }
     } catch (err) {
       console.error("Failed to load Bevy event detail:", err);
@@ -179,8 +228,15 @@ export function EmailManager() {
 
   const handleResetPlaceholders = () => {
     if (selectedEvent) {
-      const resetVals = buildDefaultEventPlaceholders(selectedEvent);
-      setEventPlaceholders(resetVals);
+      setEventPlaceholders((prev) => {
+        const customEntries: Record<string, string> = {};
+        for (const [k, v] of Object.entries(prev)) {
+          if (!STANDARD_EVENT_PLACEHOLDER_KEYS.includes(k)) {
+            customEntries[k] = v;
+          }
+        }
+        return { ...buildDefaultEventPlaceholders(selectedEvent), ...customEntries };
+      });
       toast.success("Placeholders Reset", {
         description: `Reset to Bevy defaults for "${selectedEvent.title}".`,
       });
@@ -188,7 +244,15 @@ export function EmailManager() {
   };
 
   const handleResetAttendeePlaceholders = () => {
-    setAttendeePlaceholders(defaultAttendeePlaceholders);
+    setAttendeePlaceholders((prev) => {
+      const customEntries: Record<string, string> = {};
+      for (const [k, v] of Object.entries(prev)) {
+        if (!STANDARD_ATTENDEE_PLACEHOLDER_KEYS.includes(k)) {
+          customEntries[k] = v;
+        }
+      }
+      return { ...defaultAttendeePlaceholders, ...customEntries };
+    });
     toast.success("Attendee Placeholders Reset", {
       description: "Restored sample attendee values to defaults.",
     });
