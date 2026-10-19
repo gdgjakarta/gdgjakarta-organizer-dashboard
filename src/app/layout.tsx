@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import Script from "next/script";
+
 import type { Metadata, Viewport } from "next";
 
 import { ApiLoggerBoot } from "@/components/api-logger-boot";
@@ -113,8 +115,6 @@ export const metadata: Metadata = {
   },
 };
 
-import { cookies } from "next/headers";
-
 import { MaintenanceGate } from "@/components/maintenance/maintenance-gate";
 import { DEFAULT_MAINTENANCE_CONFIG } from "@/config/maintenance-config";
 import { isExecutiveOrganizer } from "@/lib/auth-roles";
@@ -166,6 +166,13 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
             </PreferencesStoreProvider>
           </AuthStoreProvider>
         </TooltipProvider>
+        {/* Cloudflare Web Analytics */}
+        <Script
+          type="module"
+          src="https://static.cloudflareinsights.com/beacon.min.js"
+          data-cf-beacon='{"token": "47c99f8f97fd44689a4e81ec4e4fdb24"}'
+        />
+        {/* End Cloudflare Web Analytics */}
       </body>
     </html>
   );
