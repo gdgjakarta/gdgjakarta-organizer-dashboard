@@ -152,14 +152,16 @@ export function logApiTransaction(params: {
  * in beautified JSON format. Skips internal Next.js assets/HMR requests.
  */
 export function initGlobalApiLogger() {
-  if (typeof globalThis === "undefined" || typeof globalThis.fetch !== "function") return;
+  // Only patch fetch in the browser environment (client-side) to avoid
+  // stream teeing deadlocks and internal fetch corruption in Cloudflare Workers / Node.js
+  if (typeof window === "undefined" || typeof window.fetch !== "function") return;
 
   // Prevent multiple patching
-  if ((globalThis.fetch as { __isApiLoggerPatched?: boolean }).__isApiLoggerPatched) {
+  if ((window.fetch as { __isApiLoggerPatched?: boolean }).__isApiLoggerPatched) {
     return;
   }
 
-  const originalFetch = globalThis.fetch;
+  const originalFetch = window.fetch.bind(window);
 
   const patchedFetch: typeof fetch = async (input, init) => {
     let url = "";
@@ -260,10 +262,5 @@ export function initGlobalApiLogger() {
   };
 
   (patchedFetch as { __isApiLoggerPatched?: boolean }).__isApiLoggerPatched = true;
-  globalThis.fetch = patchedFetch;
-}
-
-// Auto-initialize if running in Node or browser
-if (typeof globalThis !== "undefined" && typeof globalThis.fetch === "function") {
-  initGlobalApiLogger();
+  window.fetch = patchedFetch;
 }

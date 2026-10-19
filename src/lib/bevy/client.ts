@@ -1,5 +1,6 @@
+import { cache } from "react";
+
 import { BEVY_CONFIG, getBevyAuthCredentials, getBevyRefererUrl } from "@/config/bevy-config";
-import "@/lib/api-logger";
 import { extractApiMessage, splitFullName } from "@/lib/utils";
 
 export {
@@ -65,10 +66,14 @@ export async function bevyFetchWithResponse<T>(
     ...(options.headers as Record<string, string>),
   };
 
+  const timeoutSignal = typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(10_000) : undefined;
+  const signal = options.signal || timeoutSignal;
+
   try {
     const response = await fetch(url, {
       ...options,
       headers,
+      signal,
       cache: "no-store", // Always fetch fresh user validation from Bevy
     });
 
@@ -764,34 +769,41 @@ export async function getBevyEventById(
  * Fetch full event details by ID directly from Bevy for public event pages,
  * with fallback lookup by chapter events list if direct ID lookup fails.
  */
-export async function getPublicEventById(
-  eventId: string | number,
-  chapterId: string | number = BEVY_CONFIG.chapterId,
-): Promise<BevyEvent | null> {
-  if (!eventId) return null;
-  const direct = await getBevyEventById(eventId, chapterId);
-  if (direct) return direct;
+export const getPublicEventById = cache(
+  async (eventId: string | number, chapterId: string | number = BEVY_CONFIG.chapterId): Promise<BevyEvent | null> => {
+    if (!eventId) return null;
+    const direct = await getBevyEventById(eventId, chapterId);
+    if (direct) return direct;
 
-  try {
-    const { results: chapterEvents } = await getAllBevyChapterEvents(undefined, true, "All");
-    const matched = chapterEvents.find(
-      (e) =>
-        String(e.id) === String(eventId) || e.url?.includes(String(eventId)) || e.static_url?.includes(String(eventId)),
-    );
-    if (matched) {
-      // Re-fetch full event detail by numeric ID so agenda, speakers, and sponsors are populated
-      const fullEvent = await getBevyEventById(matched.id, chapterId);
-      if (fullEvent) return fullEvent;
+    try {
+      const { results: chapterEvents } = await getAllBevyChapterEvents(
+        chapterId ? String(chapterId) : undefined,
+        true,
+        "All",
+      );
+      const matched = chapterEvents.find(
+        (e) =>
+          String(e.id) === String(eventId) ||
+          e.url?.includes(String(eventId)) ||
+          e.static_url?.includes(String(eventId)),
+      );
+      if (matched) {
+        // Re-fetch full event detail by numeric ID only if matched.id is different from eventId (e.g. eventId was a slug)
+        if (String(matched.id) !== String(eventId)) {
+          const fullEvent = await getBevyEventById(matched.id, chapterId);
+          if (fullEvent) return fullEvent;
+        }
 
-      matched.partners = extractEventPartners(matched);
-      return matched;
+        matched.partners = extractEventPartners(matched);
+        return matched;
+      }
+    } catch (error) {
+      console.warn("[BevyClient] getPublicEventById fallback search failed:", error);
     }
-  } catch (error) {
-    console.warn("[BevyClient] getPublicEventById fallback search failed:", error);
-  }
 
-  return null;
-}
+    return null;
+  },
+);
 
 /**
  * Fetch chapter sponsors & partners from Bevy

@@ -51,6 +51,7 @@ async function getInstallationAuth(apiKey: string, projectId: string, appId: str
       "Content-Type": "application/json",
       "x-goog-api-key": apiKey,
     },
+    signal: typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(8_000) : undefined,
     body: JSON.stringify({
       appId,
       authVersion: "FIS_v2",
@@ -104,6 +105,7 @@ async function fetchServerRemoteConfigEntries(): Promise<Record<string, string>>
       headers: {
         "Content-Type": "application/json",
       },
+      signal: typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(8_000) : undefined,
       body: JSON.stringify({
         app_id: appId,
         app_instance_id: auth.fid,

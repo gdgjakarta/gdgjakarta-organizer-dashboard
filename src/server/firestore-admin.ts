@@ -1,3 +1,5 @@
+import { cache } from "react";
+
 import { DEFAULT_MAINTENANCE_CONFIG, type MaintenanceConfig } from "@/config/maintenance-config";
 import { buildApprovedAttendeePayload } from "@/lib/events/approved-attendee-webhook";
 import { normalizeEventDoc } from "@/lib/firestore/normalization";
@@ -132,6 +134,7 @@ async function getFirestoreDoc(collectionName: string, docId: string): Promise<R
       method: "GET",
       headers: { Accept: "application/json" },
       cache: "no-store",
+      signal: typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(8_000) : undefined,
     });
     if (res.status === 404) return null;
     if (!res.ok) {
@@ -507,24 +510,23 @@ export async function updateRegistrationFromPayment(input: UpdateRegistrationFro
 /**
  * Loads an event from Firestore on the server (Node/RSC/Cloudflare Worker) via native REST.
  */
-export async function getFirestoreEventByIdServer(
-  eventId: string,
-  options?: { includeVouchers?: boolean },
-): Promise<FirestoreEvent | null> {
-  try {
-    const data = await getFirestoreDoc("events", String(eventId));
-    if (!data) return null;
-    const normalized = normalizeEventDoc(data, String(eventId));
-    if (!options?.includeVouchers && normalized && "vouchers" in normalized) {
-      const { vouchers: _stripped, ...safe } = normalized;
-      return safe as FirestoreEvent;
+export const getFirestoreEventByIdServer = cache(
+  async (eventId: string, options?: { includeVouchers?: boolean }): Promise<FirestoreEvent | null> => {
+    try {
+      const data = await getFirestoreDoc("events", String(eventId));
+      if (!data) return null;
+      const normalized = normalizeEventDoc(data, String(eventId));
+      if (!options?.includeVouchers && normalized && "vouchers" in normalized) {
+        const { vouchers: _stripped, ...safe } = normalized;
+        return safe as FirestoreEvent;
+      }
+      return normalized;
+    } catch (err) {
+      console.error(`[Firestore Server] getFirestoreEventByIdServer error for ${eventId}:`, err);
+      return null;
     }
-    return normalized;
-  } catch (err) {
-    console.error(`[Firestore Server] getFirestoreEventByIdServer error for ${eventId}:`, err);
-    return null;
-  }
-}
+  },
+);
 
 /**
  * Updates an event's short link properties in Firestore on the server via native REST.
