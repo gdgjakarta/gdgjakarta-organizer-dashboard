@@ -737,8 +737,8 @@ export function EventCardItem({
                 </a>
               )}
 
-              {/* Check Payment Status button (only when waiting for payment) */}
-              {isWaitingPayment && (
+              {/* Check Payment Status button (when waiting for payment or expired) */}
+              {(isWaitingPayment || _isExpired) && (
                 <Button
                   size="sm"
                   variant="outline"

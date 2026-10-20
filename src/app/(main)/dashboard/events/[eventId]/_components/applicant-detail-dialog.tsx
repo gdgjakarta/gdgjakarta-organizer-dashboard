@@ -430,10 +430,23 @@ export function ApplicantDetailDialog({
     });
   }, [registration?.answers, labelMap, sectionMap]);
 
-  // Status logs guarantee: ensure paid_and_registered entry exists for paid registrations
+  // Status logs guarantee: ensure paid_and_registered entry exists for paid registrations & deduplicate consecutive identical expired logs
   const effectiveStatusLogs = useMemo(() => {
     if (!registration) return [];
-    const logs = Array.isArray(registration.status_logs) ? [...registration.status_logs] : [];
+    const rawLogs = Array.isArray(registration.status_logs) ? registration.status_logs : [];
+    const logs = rawLogs.filter((log, idx, arr) => {
+      if (idx === 0) return true;
+      const prev = arr[idx - 1];
+      if (
+        log.status === "expired" &&
+        prev.status === "expired" &&
+        log.notes === prev.notes &&
+        log.changed_by_name === prev.changed_by_name
+      ) {
+        return false;
+      }
+      return true;
+    });
 
     const isPaid =
       registration.status === "paid_and_registered" ||
@@ -468,7 +481,7 @@ export function ApplicantDetailDialog({
     return logs;
   }, [registration]);
 
-  // Self-heal missing paid_and_registered status log in Firestore if attendee is already paid
+  // Self-heal missing paid_and_registered status log or duplicate expired logs in Firestore
   useEffect(() => {
     if (!registration?.id) return;
     const isPaid =
@@ -479,8 +492,9 @@ export function ApplicantDetailDialog({
 
     const rawLogs = Array.isArray(registration.status_logs) ? registration.status_logs : [];
     const hasPaidLog = rawLogs.some((l) => l.status === "paid_and_registered");
+    const hasDuplicateExpired = effectiveStatusLogs.length < rawLogs.length;
 
-    if (isPaid && !hasPaidLog && effectiveStatusLogs.length > rawLogs.length) {
+    if ((isPaid && !hasPaidLog && effectiveStatusLogs.length > rawLogs.length) || hasDuplicateExpired) {
       if (onUpdateRegistration) {
         onUpdateRegistration({
           ...registration,
@@ -988,7 +1002,7 @@ export function ApplicantDetailDialog({
                     </span>
                   </div>
                   <div className="flex items-center gap-1">
-                    {rawStatus === "waiting_for_payment" && (
+                    {(rawStatus === "waiting_for_payment" || rawStatus === "expired") && (
                       <Button
                         type="button"
                         variant="outline"
@@ -2025,18 +2039,20 @@ export function ApplicantDetailDialog({
                       );
                     })()}
 
-                  {/* Check Payment (only for active waiting_for_payment) */}
-                  {isWaitingPayment && !isCanceled && !isDisbursementCompleted && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="gap-1.5 border-emerald-500/30 text-emerald-600 text-xs hover:bg-emerald-500/10 dark:text-emerald-400"
-                      onClick={() => setIsCheckPaymentOpen(true)}
-                    >
-                      <CreditCard className="size-3.5" />
-                      <span>Check Payment</span>
-                    </Button>
-                  )}
+                  {/* Check Payment (for waiting_for_payment or expired) */}
+                  {(isWaitingPayment || (isExpired && (hasPayableItems || Boolean(invoiceNumber)))) &&
+                    !isCanceled &&
+                    !isDisbursementCompleted && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1.5 border-emerald-500/30 text-emerald-600 text-xs hover:bg-emerald-500/10 dark:text-emerald-400"
+                        onClick={() => setIsCheckPaymentOpen(true)}
+                      >
+                        <CreditCard className="size-3.5" />
+                        <span>Check Payment</span>
+                      </Button>
+                    )}
 
                   {/* Close Dialog Button */}
                   <Button size="sm" variant="secondary" className="text-xs" onClick={onClose}>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { format } from "date-fns";
 import {
@@ -901,15 +901,24 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     }
   }, [isCurationMode, statusFilter, reviewerFilter]);
 
+  const autoSyncingExpiredIdsRef = useRef<Set<string>>(new Set());
+
   // Auto-sync overdue registrations to 'expired' in Firestore
   useEffect(() => {
     if (!currentEvent || registrationsList.length === 0) return;
 
     const overdueRegistrations = registrationsList.filter(
-      (r) => r.status === "waiting_for_payment" && isRegistrationPaymentOverdue(r, currentEvent),
+      (r) =>
+        r.status === "waiting_for_payment" &&
+        !autoSyncingExpiredIdsRef.current.has(r.id) &&
+        isRegistrationPaymentOverdue(r, currentEvent),
     );
 
     if (overdueRegistrations.length === 0) return;
+
+    for (const reg of overdueRegistrations) {
+      autoSyncingExpiredIdsRef.current.add(reg.id);
+    }
 
     let isCancelled = false;
     void (async () => {
@@ -926,6 +935,9 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
           );
         }
       } catch (err) {
+        for (const reg of overdueRegistrations) {
+          autoSyncingExpiredIdsRef.current.delete(reg.id);
+        }
         console.warn("[RegistrantsTab] Background expired status sync:", err);
       }
     })();
@@ -2122,7 +2134,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       if (!r) return false;
       const status = getEffectiveRegistrationStatus(r, currentEvent);
       return (
-        status === "waiting_for_payment" &&
+        (status === "waiting_for_payment" || status === "expired") &&
         Boolean(
           r.payment_invoice_number ||
             (r.answers?.payment_invoice_number as string | undefined) ||
@@ -4436,8 +4448,9 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                   </Button>
                                 )}
 
-                              {/* Quick Check DOKU Payment Status Button (only when waiting for payment) */}
-                              {rawStatus === "waiting_for_payment" && (
+                              {/* Quick Check DOKU Payment Status Button (when waiting for payment or expired) */}
+                              {(rawStatus === "waiting_for_payment" ||
+                                (rawStatus === "expired" && hasRegistrationPaymentRequirements(reg))) && (
                                 <Button
                                   size="icon-xs"
                                   variant="ghost"
@@ -4475,7 +4488,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                                     <Eye className="mr-2 size-3.5" />
                                     View application dossier
                                   </DropdownMenuItem>
-                                  {rawStatus === "waiting_for_payment" && (
+                                  {(rawStatus === "waiting_for_payment" ||
+                                    (rawStatus === "expired" && hasRegistrationPaymentRequirements(reg))) && (
                                     <DropdownMenuItem
                                       onClick={() => {
                                         setCheckingPaymentRegistration(reg);

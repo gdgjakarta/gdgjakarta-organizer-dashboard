@@ -2377,6 +2377,13 @@ export async function updateRegistrationStatus(
     console.warn("[updateRegistrationStatus] Failed to read existing registration for audit log:", readErr);
   }
 
+  const isNoopStatusChange = previousStatus === status;
+  const hasSameDuplicateLog =
+    isNoopStatusChange &&
+    existingLogs.length > 0 &&
+    existingLogs[existingLogs.length - 1]?.status === status &&
+    (notes === undefined || existingLogs[existingLogs.length - 1]?.notes === notes);
+
   const logEntry: RegistrationStatusLog = {
     id: `log_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
     status,
@@ -2388,7 +2395,22 @@ export async function updateRegistrationStatus(
     notes,
   };
 
-  const updatedLogs = [...existingLogs, logEntry];
+  // Deduplicate existing consecutive identical auto-expired logs while preserving other entries
+  const dedupedLogs = existingLogs.filter((log, idx, arr) => {
+    if (idx === 0) return true;
+    const prev = arr[idx - 1];
+    if (
+      log.status === "expired" &&
+      prev.status === "expired" &&
+      log.notes === prev.notes &&
+      log.changed_by_name === prev.changed_by_name
+    ) {
+      return false;
+    }
+    return true;
+  });
+
+  const updatedLogs = hasSameDuplicateLog ? dedupedLogs : [...dedupedLogs, logEntry];
 
   const isPending = status === "pending";
 
@@ -2423,30 +2445,32 @@ export async function updateRegistrationStatus(
 
   await updateDoc(docRef, updatePayload);
 
-  // Dedicated audit_logs collection entry
-  try {
-    const auditEntry: AuditLogEntry = {
-      action: "registration_status_change",
-      entity_type: "registration",
-      entity_id: registrationId,
-      event_id: eventId,
-      event_title: eventTitle,
-      member_name: memberName,
-      member_email: memberEmail,
-      actor_id: reviewer?.id ?? "unknown",
-      actor_name: reviewer?.name ?? "Organizer",
-      actor_email: reviewer?.email,
-      previous_value: previousStatus,
-      new_value: status,
-      notes,
-      timestamp: now,
-    };
-    await addDoc(collection(db, "audit_logs"), sanitizeFirestoreData(auditEntry));
-    console.log(
-      `[Organizer Review Audit] Organizer ${reviewer?.name ?? "Organizer"} (${reviewer?.email ?? "unknown"}) updated registration ${registrationId} (${memberName}) to ${status}.`,
-    );
-  } catch (auditErr) {
-    console.warn("[updateRegistrationStatus] Failed to write audit log entry:", auditErr);
+  // Dedicated audit_logs collection entry (skip if already in target status with duplicate log)
+  if (!hasSameDuplicateLog) {
+    try {
+      const auditEntry: AuditLogEntry = {
+        action: "registration_status_change",
+        entity_type: "registration",
+        entity_id: registrationId,
+        event_id: eventId,
+        event_title: eventTitle,
+        member_name: memberName,
+        member_email: memberEmail,
+        actor_id: reviewer?.id ?? "unknown",
+        actor_name: reviewer?.name ?? "Organizer",
+        actor_email: reviewer?.email,
+        previous_value: previousStatus,
+        new_value: status,
+        notes,
+        timestamp: now,
+      };
+      await addDoc(collection(db, "audit_logs"), sanitizeFirestoreData(auditEntry));
+      console.log(
+        `[Organizer Review Audit] Organizer ${reviewer?.name ?? "Organizer"} (${reviewer?.email ?? "unknown"}) updated registration ${registrationId} (${memberName}) to ${status}.`,
+      );
+    } catch (auditErr) {
+      console.warn("[updateRegistrationStatus] Failed to write audit log entry:", auditErr);
+    }
   }
 
   // Recalculate event counters, session capacities & ticket counters

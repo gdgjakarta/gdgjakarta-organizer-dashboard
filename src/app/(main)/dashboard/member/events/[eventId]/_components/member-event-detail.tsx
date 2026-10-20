@@ -581,8 +581,8 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
           </a>
         )}
 
-        {/* Check Payment Status Button (only when waiting for payment) */}
-        {isWaitingPayment && (
+        {/* Check Payment Status Button (when waiting for payment or expired) */}
+        {(isWaitingPayment || isExpired) && (
           <Button
             type="button"
             variant="outline"
