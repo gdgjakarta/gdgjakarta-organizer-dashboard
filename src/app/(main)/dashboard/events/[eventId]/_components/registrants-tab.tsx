@@ -521,6 +521,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const [checkingPaymentRegistration, setCheckingPaymentRegistration] = useState<FirestoreRegistration | null>(null);
   const [isCheckPaymentDialogOpen, setIsCheckPaymentDialogOpen] = useState(false);
   const [isBatchCheckingPayment, setIsBatchCheckingPayment] = useState(false);
+  const [isBatchResendPaymentOpen, setIsBatchResendPaymentOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -2144,6 +2145,16 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     });
   }, [selectedIds, registrationsList, currentEvent]);
 
+  const selectedForRegeneratePayment = useMemo(() => {
+    return Array.from(selectedIds)
+      .map((id) => registrationsList.find((reg) => reg.id === id))
+      .filter((r): r is FirestoreRegistration => {
+        if (!r) return false;
+        const status = getEffectiveRegistrationStatus(r, currentEvent);
+        return (status === "waiting_for_payment" || status === "expired") && hasRegistrationPaymentRequirements(r);
+      });
+  }, [selectedIds, registrationsList, currentEvent]);
+
   const handleBatchCheckPayment = async () => {
     if (selectedWithInvoice.length === 0) return;
     setIsBatchCheckingPayment(true);
@@ -3210,6 +3221,27 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                       <CreditCard className="size-3.5" />
                     )}
                     <span>Check Payment ({selectedWithInvoice.length})</span>
+                  </Button>
+                )}
+
+                {selectedForRegeneratePayment.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 gap-1.5 border-amber-500/30 text-amber-600 hover:bg-amber-500/10 dark:text-amber-400"
+                    onClick={() => setIsBatchResendPaymentOpen(true)}
+                    disabled={
+                      isPending ||
+                      isDeleting ||
+                      isCancelling ||
+                      isBatchApproving ||
+                      isBatchRejecting ||
+                      isBatchCheckingPayment
+                    }
+                    title="Regenerate payment link with new deadline for selected waiting or expired attendees"
+                  >
+                    <RefreshCw className="size-3.5" />
+                    <span>Regenerate Payment ({selectedForRegeneratePayment.length})</span>
                   </Button>
                 )}
 
@@ -4841,12 +4873,22 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
 
       {/* Resend Payment Link Dialog */}
       <ResendPaymentLinkDialog
-        open={Boolean(resendPaymentRegistration)}
-        onOpenChange={(open) => !open && setResendPaymentRegistration(null)}
+        open={Boolean(resendPaymentRegistration) || isBatchResendPaymentOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setResendPaymentRegistration(null);
+            setIsBatchResendPaymentOpen(false);
+          }
+        }}
         registration={resendPaymentRegistration}
+        registrations={isBatchResendPaymentOpen ? selectedForRegeneratePayment : undefined}
         event={currentEvent}
         onSuccess={(updatedReg) => {
           setRegistrationsList((prev) => prev.map((r) => (r.id === updatedReg.id ? updatedReg : r)));
+        }}
+        onBatchSuccess={(updatedRegs) => {
+          const byId = new Map(updatedRegs.map((r) => [r.id, r]));
+          setRegistrationsList((prev) => prev.map((r) => byId.get(r.id) ?? r));
         }}
       />
 

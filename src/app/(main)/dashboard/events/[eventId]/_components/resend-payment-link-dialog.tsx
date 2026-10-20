@@ -42,8 +42,37 @@ interface ResendPaymentLinkDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   registration: FirestoreRegistration | null;
+  /** When non-empty, the dialog runs in bulk mode and `registration` is ignored. */
+  registrations?: FirestoreRegistration[];
   event?: FirestoreEvent;
   onSuccess?: (updatedReg: FirestoreRegistration) => void;
+  onBatchSuccess?: (updatedRegs: FirestoreRegistration[]) => void;
+}
+
+interface BatchResultRow {
+  id: string;
+  name: string;
+  email: string;
+  success: boolean;
+  error?: string;
+  paymentUrl?: string;
+  invoiceNumber?: string;
+}
+
+/** Computes subtotal, gateway fee and total payable amount for a registration. */
+function computeRegistrationPaymentBreakdown(reg: FirestoreRegistration, event?: FirestoreEvent) {
+  let netSubtotal: number;
+  if (reg.payment_subtotal_amount !== undefined && reg.payment_subtotal_amount > 0) {
+    netSubtotal = reg.payment_subtotal_amount;
+  } else {
+    const merchTotal = (reg.selected_merchandise ?? []).reduce((acc, m) => acc + (m.price ?? 0) * (m.quantity ?? 1), 0);
+    const discount = (reg.voucher_discount_amount ?? 0) + (reg.referral_discount_amount ?? 0);
+    netSubtotal = Math.max(0, (reg.ticket_price ?? 0) + merchTotal + (reg.bundle_price ?? 0) - discount);
+  }
+  const gatewayFeeCalc = event ? calculatePaymentGatewayFee(netSubtotal, event) : null;
+  const computedTotal = netSubtotal + (gatewayFeeCalc?.isPassedToAttendee ? gatewayFeeCalc.feeAmount : 0);
+  const payableAmount = computedTotal > 0 ? computedTotal : (reg.payment_amount ?? 0);
+  return { netSubtotal, gatewayFeeCalc, payableAmount };
 }
 
 const PRESET_DEADLINES = [
@@ -59,9 +88,20 @@ export function ResendPaymentLinkDialog({
   open,
   onOpenChange,
   registration,
+  registrations,
   event,
   onSuccess,
+  onBatchSuccess,
 }: ResendPaymentLinkDialogProps) {
+  const isBulk = Boolean(registrations && registrations.length > 0);
+  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
+  const [batchResults, setBatchResults] = useState<BatchResultRow[] | null>(null);
+  const bulkTotalAmount = useMemo(
+    () =>
+      (registrations ?? []).reduce((acc, r) => acc + computeRegistrationPaymentBreakdown(r, event).payableAmount, 0),
+    [registrations, event],
+  );
+
   const [selectedMinutes, setSelectedMinutes] = useState<number>(1440);
   const [customMinutes, setCustomMinutes] = useState<string>("");
   const [isCustom, setIsCustom] = useState<boolean>(false);
@@ -139,12 +179,109 @@ export function ResendPaymentLinkDialog({
   const [emailTemplate, setEmailTemplate] = useState<string>(defaultTemplate);
 
   const handleClose = () => {
+    if (batchProgress) return;
     setGeneratedResult(null);
+    setBatchResults(null);
     setHasCopied(false);
     setIsCustom(false);
     setSelectedMinutes(1440);
     setEmailTemplate(defaultTemplate);
     onOpenChange(false);
+  };
+
+  const handleBatchGenerate = async () => {
+    if (!registrations || registrations.length === 0 || !event) return;
+
+    const rows: BatchResultRow[] = [];
+    const updatedRegs: FirestoreRegistration[] = [];
+    setIsSubmitting(true);
+    setBatchProgress({ current: 0, total: registrations.length });
+
+    for (const [index, reg] of registrations.entries()) {
+      setBatchProgress({ current: index + 1, total: registrations.length });
+      const base = { id: reg.id, name: reg.member_name, email: reg.member_email };
+      try {
+        const { netSubtotal, gatewayFeeCalc, payableAmount: amount } = computeRegistrationPaymentBreakdown(reg, event);
+        if (amount <= 0) {
+          rows.push({ ...base, success: false, error: "Total payable amount is Rp 0 or free." });
+          continue;
+        }
+
+        if (shouldCancelPaymentOrder(reg, event)) {
+          try {
+            const cancelRes = await cancelPaymentLinkAction(
+              buildCancelPaymentPayload(reg, event, "Regenerating payment link with new deadline"),
+            );
+            if (!cancelRes.success) {
+              console.warn("[ResendPaymentLinkDialog] DOKU order cancellation warning:", cancelRes.error);
+            }
+          } catch (cancelErr) {
+            console.warn("[ResendPaymentLinkDialog] Failed to cancel previous active order:", cancelErr);
+          }
+        }
+
+        const res = await generatePaymentLinkAction(
+          buildRegistrationPaymentPayload(reg, event, {
+            sendEmail,
+            paymentDeadlineMinutes: activeMinutes,
+            emailTemplate,
+          }),
+        );
+        if (!res.success || !res.paymentUrl) {
+          rows.push({ ...base, success: false, error: res.error ?? "Failed to generate payment link." });
+          continue;
+        }
+
+        const invoiceNum = res.invoiceNumber ?? `INV-${Date.now()}`;
+        const newExpiredDatetime =
+          res.expiredDatetime ?? new Date(Date.now() + activeMinutes * 60 * 1000).toISOString();
+        const paymentFields: Partial<FirestoreRegistration> = {
+          payment_status: "unpaid",
+          payment_url: res.paymentUrl,
+          payment_invoice_number: invoiceNum,
+          payment_request_id: res.requestId,
+          payment_amount: res.amount ?? amount,
+          payment_subtotal_amount: netSubtotal,
+          payment_fee_amount: gatewayFeeCalc?.feeAmount ?? 0,
+          payment_fee_bearer: gatewayFeeCalc?.feeBearer ?? "attendee",
+          payment_expired_datetime: newExpiredDatetime,
+        };
+
+        await updateRegistrationStatusAction(
+          reg.id,
+          event.id,
+          "waiting_for_payment",
+          undefined,
+          `Payment link regenerated in bulk with new deadline (${activeMinutes}m). Expiration: ${format(
+            new Date(newExpiredDatetime),
+            "dd MMM yyyy, HH:mm",
+          )}`,
+          paymentFields,
+        );
+
+        updatedRegs.push({
+          ...reg,
+          ...paymentFields,
+          status: "waiting_for_payment",
+          reviewed_at: new Date().toISOString(),
+        });
+        rows.push({ ...base, success: true, paymentUrl: res.paymentUrl, invoiceNumber: invoiceNum });
+      } catch (err) {
+        console.error("[ResendPaymentLinkDialog] Bulk item error:", err);
+        rows.push({ ...base, success: false, error: "Unexpected error." });
+      }
+    }
+
+    setBatchProgress(null);
+    setIsSubmitting(false);
+    setBatchResults(rows);
+    if (updatedRegs.length > 0) onBatchSuccess?.(updatedRegs);
+    const failed = rows.length - updatedRegs.length;
+    if (failed === 0) {
+      toast.success(`Regenerated ${updatedRegs.length} payment link(s).`);
+    } else {
+      toast.warning(`Regenerated ${updatedRegs.length} payment link(s); ${failed} failed.`);
+    }
   };
 
   const handleCopyLink = () => {
@@ -266,7 +403,7 @@ export function ResendPaymentLinkDialog({
     }
   };
 
-  if (!registration) return null;
+  if (!registration && !isBulk) return null;
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -277,7 +414,9 @@ export function ResendPaymentLinkDialog({
               <RefreshCw className="size-4" />
             </div>
             <div>
-              <DialogTitle className="text-base sm:text-lg">Regenerate Payment Link</DialogTitle>
+              <DialogTitle className="text-base sm:text-lg">
+                {isBulk ? `Regenerate Payment Links (${registrations?.length})` : "Regenerate Payment Link"}
+              </DialogTitle>
               <DialogDescription className="text-xs">
                 Regenerate checkout payment link with a renewed expiration deadline.
               </DialogDescription>
@@ -285,7 +424,46 @@ export function ResendPaymentLinkDialog({
           </div>
         </DialogHeader>
 
-        {generatedResult ? (
+        {batchResults ? (
+          <div className="space-y-3 py-2">
+            <div className="rounded-xl border bg-muted/30 p-3 text-xs">
+              <span className="font-semibold text-emerald-700 dark:text-emerald-400">
+                {batchResults.filter((r) => r.success).length} succeeded
+              </span>
+              {" · "}
+              <span className="font-semibold text-rose-600">
+                {batchResults.filter((r) => !r.success).length} failed
+              </span>
+            </div>
+            <ul className="max-h-64 space-y-1.5 overflow-y-auto">
+              {batchResults.map((r) => (
+                <li key={r.id} className="flex items-center justify-between gap-2 rounded-lg border p-2 text-xs">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{r.name}</p>
+                    <p className={r.success ? "truncate text-muted-foreground" : "truncate text-rose-600"}>
+                      {r.success ? r.invoiceNumber : r.error}
+                    </p>
+                  </div>
+                  {r.success && r.paymentUrl && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 shrink-0 gap-1 text-xs"
+                      onClick={() => {
+                        void navigator.clipboard.writeText(r.paymentUrl ?? "");
+                        toast.success("Payment link copied to clipboard!");
+                      }}
+                    >
+                      <Copy className="size-3" />
+                      Copy
+                    </Button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : generatedResult ? (
           /* Success Result View */
           <div className="space-y-4 py-2">
             <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
@@ -295,7 +473,7 @@ export function ResendPaymentLinkDialog({
               </div>
               <p className="mt-1 text-emerald-700 text-xs dark:text-emerald-400">
                 {sendEmail
-                  ? `An email with invoice #${generatedResult.invoiceNumber} has been dispatched to ${registration.member_email}.`
+                  ? `An email with invoice #${generatedResult.invoiceNumber} has been dispatched to ${registration?.member_email}.`
                   : "The checkout link is active and ready to be shared with the attendee."}
               </p>
             </div>
@@ -338,52 +516,88 @@ export function ResendPaymentLinkDialog({
           /* Form Configuration View */
           <div className="space-y-4 py-1">
             {/* Attendee & Order Summary Card */}
-            <div className="rounded-xl border bg-card p-3.5 shadow-2xs space-y-2.5">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <h4 className="font-semibold text-sm text-foreground">{registration.member_name}</h4>
-                  <p className="text-xs text-muted-foreground">{registration.member_email}</p>
+            {isBulk ? (
+              <div className="rounded-xl border bg-card p-3.5 shadow-2xs space-y-2.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="text-xs text-muted-foreground">
+                    <h4 className="font-semibold text-sm text-foreground">
+                      {registrations?.length} attendees selected
+                    </h4>
+                    {registrations?.filter((r) => r.status === "expired").length ?? 0} expired ·{" "}
+                    {registrations?.filter((r) => r.status !== "expired").length ?? 0} waiting for payment
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className="border-amber-500/30 bg-amber-500/10 text-amber-700 text-[11px] dark:text-amber-400"
+                  >
+                    Rp {bulkTotalAmount.toLocaleString("id-ID")}
+                  </Badge>
                 </div>
-                <Badge
-                  variant="outline"
-                  className="border-amber-500/30 bg-amber-500/10 text-amber-700 text-[11px] dark:text-amber-400"
-                >
-                  Rp {payableAmount.toLocaleString("id-ID")}
-                </Badge>
+                <ul className="max-h-40 space-y-1 overflow-y-auto border-t pt-2">
+                  {registrations?.map((r) => (
+                    <li key={r.id} className="flex items-center justify-between gap-2 text-xs">
+                      <span className="truncate">
+                        {r.member_name} <span className="text-muted-foreground">({r.member_email})</span>
+                      </span>
+                      <span className="shrink-0 text-muted-foreground">
+                        Rp {computeRegistrationPaymentBreakdown(r, event).payableAmount.toLocaleString("id-ID")}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               </div>
+            ) : (
+              registration && (
+                <div className="rounded-xl border bg-card p-3.5 shadow-2xs space-y-2.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <h4 className="font-semibold text-sm text-foreground">{registration.member_name}</h4>
+                      <p className="text-xs text-muted-foreground">{registration.member_email}</p>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className="border-amber-500/30 bg-amber-500/10 text-amber-700 text-[11px] dark:text-amber-400"
+                    >
+                      Rp {payableAmount.toLocaleString("id-ID")}
+                    </Badge>
+                  </div>
 
-              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground border-t pt-2">
-                {registration.ticket_name && (
-                  <Badge variant="secondary" className="text-[10px] font-normal">
-                    Ticket: {registration.ticket_name}
-                  </Badge>
-                )}
-                {registration.selected_merchandise && registration.selected_merchandise.length > 0 && (
-                  <Badge variant="secondary" className="text-[10px] font-normal">
-                    {registration.selected_merchandise.length} Merch Item(s)
-                  </Badge>
-                )}
-                {gatewayFeeCalc && gatewayFeeCalc.isEnabled && gatewayFeeCalc.feeAmount > 0 && (
-                  <Badge variant="outline" className="text-[10px] font-normal">
-                    {gatewayFeeCalc.feeLabel}:{" "}
-                    {gatewayFeeCalc.isPassedToAttendee
-                      ? `+Rp ${gatewayFeeCalc.feeAmount.toLocaleString("id-ID")}`
-                      : "Absorbed"}
-                  </Badge>
-                )}
-                {existingDeadlineInfo?.formattedDeadline && (
-                  <span className="text-[11px] text-muted-foreground">
-                    Previous Deadline:{" "}
-                    <strong className="text-foreground">{existingDeadlineInfo.formattedDeadline}</strong>
-                    {existingDeadlineInfo.isOverdue && (
-                      <span className="ml-1 text-rose-500 font-medium">({existingDeadlineInfo.timeStatusText})</span>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground border-t pt-2">
+                    {registration.ticket_name && (
+                      <Badge variant="secondary" className="text-[10px] font-normal">
+                        Ticket: {registration.ticket_name}
+                      </Badge>
                     )}
-                  </span>
-                )}
-              </div>
-            </div>
+                    {registration.selected_merchandise && registration.selected_merchandise.length > 0 && (
+                      <Badge variant="secondary" className="text-[10px] font-normal">
+                        {registration.selected_merchandise.length} Merch Item(s)
+                      </Badge>
+                    )}
+                    {gatewayFeeCalc && gatewayFeeCalc.isEnabled && gatewayFeeCalc.feeAmount > 0 && (
+                      <Badge variant="outline" className="text-[10px] font-normal">
+                        {gatewayFeeCalc.feeLabel}:{" "}
+                        {gatewayFeeCalc.isPassedToAttendee
+                          ? `+Rp ${gatewayFeeCalc.feeAmount.toLocaleString("id-ID")}`
+                          : "Absorbed"}
+                      </Badge>
+                    )}
+                    {existingDeadlineInfo?.formattedDeadline && (
+                      <span className="text-[11px] text-muted-foreground">
+                        Previous Deadline:{" "}
+                        <strong className="text-foreground">{existingDeadlineInfo.formattedDeadline}</strong>
+                        {existingDeadlineInfo.isOverdue && (
+                          <span className="ml-1 text-rose-500 font-medium">
+                            ({existingDeadlineInfo.timeStatusText})
+                          </span>
+                        )}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )
+            )}
 
-            {payableAmount <= 0 && (
+            {!isBulk && payableAmount <= 0 && (
               <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-3 text-xs text-blue-700 dark:text-blue-300">
                 This registration has a net total of Rp 0 (free) and does not require a payment link.
               </div>
@@ -515,7 +729,7 @@ export function ResendPaymentLinkDialog({
         )}
 
         <DialogFooter className="gap-2">
-          {generatedResult ? (
+          {generatedResult || batchResults ? (
             <Button type="button" size="sm" onClick={handleClose}>
               Done
             </Button>
@@ -528,11 +742,17 @@ export function ResendPaymentLinkDialog({
                 type="button"
                 size="sm"
                 className="gap-1.5 bg-primary text-primary-foreground shadow-xs"
-                onClick={handleGenerateAndResend}
-                disabled={isSubmitting || activeMinutes <= 0 || payableAmount <= 0}
+                onClick={isBulk ? handleBatchGenerate : handleGenerateAndResend}
+                disabled={isSubmitting || activeMinutes <= 0 || (!isBulk && payableAmount <= 0)}
               >
                 {isSubmitting ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
-                {isSubmitting ? "Generating Link..." : "Regenerate Payment Link"}
+                {batchProgress
+                  ? `Generating (${batchProgress.current}/${batchProgress.total})...`
+                  : isSubmitting
+                    ? "Generating Link..."
+                    : isBulk
+                      ? `Regenerate ${registrations?.length} Links`
+                      : "Regenerate Payment Link"}
               </Button>
             </>
           )}
