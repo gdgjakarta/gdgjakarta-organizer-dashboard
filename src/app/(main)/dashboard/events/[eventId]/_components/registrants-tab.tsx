@@ -63,6 +63,7 @@ import { formatFirestoreDate } from "@/lib/date-utils";
 import { buildApprovedAttendeePayload } from "@/lib/events/approved-attendee-webhook";
 import { validateAttendeeApprovalCapacity, validateBatchApprovalCapacity } from "@/lib/events/capacity-validator";
 import {
+  buildCancelPaymentPayload,
   buildRegistrationPaymentPayload,
   calculateRegistrationTotalAmount,
   hasRegistrationPaymentRequirements,
@@ -73,6 +74,7 @@ import {
   isEventCurationMode,
   isPaidRegistration,
   isRegistrationPaymentOverdue,
+  shouldCancelPaymentOrder,
 } from "@/lib/events/payment-deadline";
 import { calculatePaymentGatewayFee } from "@/lib/events/payment-fee";
 import { DEFAULT_COMBINED_QUESTIONS } from "@/lib/events/registration-defaults";
@@ -100,7 +102,11 @@ import {
   sendPaidWaitlistAttendeeEmailAction,
   sendWaitlistAttendeeEmailAction,
 } from "@/server/email-template-actions";
-import { checkDokuPaymentStatusAction, generatePaymentLinkAction } from "@/server/payment-actions";
+import {
+  cancelPaymentLinkAction,
+  checkDokuPaymentStatusAction,
+  generatePaymentLinkAction,
+} from "@/server/payment-actions";
 import { approveAttendeeWebhookAction } from "@/server/registration-actions";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
@@ -1691,6 +1697,23 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
           const subtotal = Math.max(0, ticketPrice + merchTotal + bundlePrice - discount);
           const feeResult = calculatePaymentGatewayFee(subtotal, currentEvent);
 
+          if (shouldCancelPaymentOrder(registration, currentEvent)) {
+            try {
+              const cancelRes = await cancelPaymentLinkAction(
+                buildCancelPaymentPayload(
+                  registration,
+                  currentEvent,
+                  "Re-approving applicant and regenerating payment link",
+                ),
+              );
+              if (!cancelRes.success) {
+                console.warn("[RegistrantsTab] DOKU order cancellation warning:", cancelRes.error);
+              }
+            } catch (cancelErr) {
+              console.warn("[RegistrantsTab] Failed to cancel previous DOKU payment order:", cancelErr);
+            }
+          }
+
           const paymentPayload = buildRegistrationPaymentPayload(registration, currentEvent, { sendEmail: true });
           const payRes = await generatePaymentLinkAction(paymentPayload);
           if (payRes.success && payRes.paymentUrl) {
@@ -2274,6 +2297,19 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
             const discount = (reg.voucher_discount_amount ?? 0) + (reg.referral_discount_amount ?? 0);
             const subtotal = Math.max(0, ticketPrice + merchTotal + bundlePrice - discount);
             const feeResult = calculatePaymentGatewayFee(subtotal, currentEvent);
+
+            if (shouldCancelPaymentOrder(reg, currentEvent)) {
+              try {
+                const cancelRes = await cancelPaymentLinkAction(
+                  buildCancelPaymentPayload(reg, currentEvent, "Batch re-approving and regenerating payment link"),
+                );
+                if (!cancelRes.success) {
+                  console.warn("[RegistrantsTab] Batch DOKU order cancellation warning:", cancelRes.error);
+                }
+              } catch (cancelErr) {
+                console.warn("[RegistrantsTab] Failed to cancel previous DOKU payment order in batch:", cancelErr);
+              }
+            }
 
             const paymentPayload = buildRegistrationPaymentPayload(reg, currentEvent, { sendEmail: true });
             const payRes = await generatePaymentLinkAction(paymentPayload);
