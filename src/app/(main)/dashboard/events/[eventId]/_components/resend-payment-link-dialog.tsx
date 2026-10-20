@@ -31,12 +31,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { buildCancelPaymentPayload, buildRegistrationPaymentPayload } from "@/lib/events/doku-payment";
-import { getRegistrationPaymentDeadline, shouldCancelPaymentOrder } from "@/lib/events/payment-deadline";
+import { buildRegistrationPaymentPayload } from "@/lib/events/doku-payment";
+import { getRegistrationPaymentDeadline } from "@/lib/events/payment-deadline";
 import { calculatePaymentGatewayFee } from "@/lib/events/payment-fee";
 import { updateRegistrationStatusAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
-import { cancelPaymentLinkAction, generatePaymentLinkAction } from "@/server/payment-actions";
+import { generatePaymentLinkAction } from "@/server/payment-actions";
 
 interface ResendPaymentLinkDialogProps {
   open: boolean;
@@ -207,19 +207,6 @@ export function ResendPaymentLinkDialog({
           continue;
         }
 
-        if (shouldCancelPaymentOrder(reg, event)) {
-          try {
-            const cancelRes = await cancelPaymentLinkAction(
-              buildCancelPaymentPayload(reg, event, "Regenerating payment link with new deadline"),
-            );
-            if (!cancelRes.success) {
-              console.warn("[ResendPaymentLinkDialog] DOKU order cancellation warning:", cancelRes.error);
-            }
-          } catch (cancelErr) {
-            console.warn("[ResendPaymentLinkDialog] Failed to cancel previous active order:", cancelErr);
-          }
-        }
-
         const res = await generatePaymentLinkAction(
           buildRegistrationPaymentPayload(reg, event, {
             sendEmail,
@@ -302,27 +289,6 @@ export function ResendPaymentLinkDialog({
 
     setIsSubmitting(true);
     try {
-      // If previous payment order exists and is not expired yet, cancel it via DOKU
-      if (shouldCancelPaymentOrder(registration, event)) {
-        try {
-          const cancelPayload = buildCancelPaymentPayload(
-            registration,
-            event,
-            "Regenerating payment link with new deadline",
-          );
-          const cancelRes = await cancelPaymentLinkAction(cancelPayload);
-          if (cancelRes.success) {
-            console.log(
-              `[ResendPaymentLinkDialog] Successfully cancelled previous active order: ${cancelRes.invoiceNumber}`,
-            );
-          } else {
-            console.warn("[ResendPaymentLinkDialog] DOKU order cancellation warning:", cancelRes.error);
-          }
-        } catch (cancelErr) {
-          console.warn("[ResendPaymentLinkDialog] Failed to cancel previous active order:", cancelErr);
-        }
-      }
-
       const paymentPayload = buildRegistrationPaymentPayload(registration, event, {
         sendEmail,
         paymentDeadlineMinutes: activeMinutes,

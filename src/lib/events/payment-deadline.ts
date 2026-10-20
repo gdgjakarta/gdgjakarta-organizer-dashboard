@@ -227,13 +227,12 @@ export function getEffectiveRegistrationStatus(
 }
 
 /**
- * Determines whether a registration has an unpaid payment order with DOKU
- * that should be cancelled when the attendee cancels RSVP, organizer cancels or removes attendee,
- * or when regenerating a payment link.
+ * Determines whether a registration has an active, unexpired, unpaid payment order with DOKU
+ * that should be cancelled when the attendee cancels RSVP, organizer cancels or removes attendee.
  */
 export function shouldCancelPaymentOrder(
   registration?: Partial<FirestoreRegistration> | null,
-  _event?: Partial<FirestoreEvent> | null,
+  event?: Partial<FirestoreEvent> | null,
 ): boolean {
   if (!registration) return false;
 
@@ -253,13 +252,24 @@ export function shouldCancelPaymentOrder(
     paymentStatus === "paid" ||
     paymentStatus === "refunded" ||
     paymentStatus === "canceled" ||
-    paymentStatus === "cancelled"
+    paymentStatus === "cancelled" ||
+    paymentStatus === "expired"
   ) {
     return false;
   }
 
   const regStatus = (registration.status ?? "").toLowerCase().trim();
-  if (regStatus === "paid_and_registered" || regStatus === "approved" || regStatus === "attended") {
+  if (
+    regStatus === "paid_and_registered" ||
+    regStatus === "approved" ||
+    regStatus === "attended" ||
+    regStatus === "expired"
+  ) {
+    return false;
+  }
+
+  // If already overdue or expired according to payment deadline, DOKU automatically expires it
+  if (isRegistrationPaymentOverdue(registration, event ?? undefined)) {
     return false;
   }
 
