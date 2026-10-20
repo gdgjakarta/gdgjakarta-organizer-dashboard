@@ -92,16 +92,12 @@ export function getRegistrationPaymentDeadline(
     };
   }
 
-  // If manually failed, canceled, rejected, pending review, or waitlisted (not yet waiting for payment)
+  // If manually failed or canceled
   if (
     statusLower === "failed" ||
     statusLower === "canceled" ||
     statusLower === "cancelled" ||
-    statusLower === "rejected" ||
-    statusLower === "pending" ||
-    statusLower === "applied" ||
-    statusLower === "review" ||
-    statusLower === "waitlisted"
+    statusLower === "rejected"
   ) {
     return {
       deadlineDate: null,
@@ -197,7 +193,6 @@ export function isRegistrationPaymentOverdue(
   event?: Partial<FirestoreEvent>,
 ): boolean {
   if (reg.status === "expired") return true;
-  if (reg.status !== "waiting_for_payment") return false;
   const { isOverdue } = getRegistrationPaymentDeadline(reg, event);
   return isOverdue;
 }
@@ -216,8 +211,8 @@ export function getEffectiveRegistrationStatus(
   if (currentStatus === "cancelled" || currentStatus === "canceled") return "canceled";
   if (reg.refund_request?.status === "refund_completed" || reg.payment_status === "refunded") return "canceled";
 
-  // Only change status to "expired" when current status is "waiting_for_payment" and deadline is overdue
-  if (currentStatus === "waiting_for_payment") {
+  // If waiting for payment, check if today's date in minutes is overdue
+  if (currentStatus === "waiting_for_payment" || reg.payment_status === "unpaid") {
     if (isRegistrationPaymentOverdue(reg, event)) {
       return "expired";
     }
@@ -227,13 +222,13 @@ export function getEffectiveRegistrationStatus(
 }
 
 /**
- * Determines whether a registration has an unpaid payment order with DOKU
+ * Determines whether a registration has an active, unexpired, unpaid payment order with DOKU
  * that should be cancelled when the attendee cancels RSVP, organizer cancels or removes attendee,
  * or when regenerating a payment link.
  */
 export function shouldCancelPaymentOrder(
   registration?: Partial<FirestoreRegistration> | null,
-  _event?: Partial<FirestoreEvent> | null,
+  event?: Partial<FirestoreEvent> | null,
 ): boolean {
   if (!registration) return false;
 
@@ -241,8 +236,7 @@ export function shouldCancelPaymentOrder(
     registration.payment_invoice_number ??
     (typeof registration.answers?.payment_invoice_number === "string"
       ? registration.answers.payment_invoice_number
-      : undefined) ??
-    (typeof registration.answers?.invoice_number === "string" ? registration.answers.invoice_number : undefined);
+      : undefined);
 
   if (!invoiceNumber || invoiceNumber.trim().length === 0) {
     return false;
@@ -253,13 +247,24 @@ export function shouldCancelPaymentOrder(
     paymentStatus === "paid" ||
     paymentStatus === "refunded" ||
     paymentStatus === "canceled" ||
-    paymentStatus === "cancelled"
+    paymentStatus === "cancelled" ||
+    paymentStatus === "expired"
   ) {
     return false;
   }
 
   const regStatus = (registration.status ?? "").toLowerCase().trim();
-  if (regStatus === "paid_and_registered" || regStatus === "approved" || regStatus === "attended") {
+  if (
+    regStatus === "paid_and_registered" ||
+    regStatus === "approved" ||
+    regStatus === "attended" ||
+    regStatus === "expired"
+  ) {
+    return false;
+  }
+
+  // If already overdue or expired according to payment deadline, DOKU automatically expires it
+  if (isRegistrationPaymentOverdue(registration, event ?? undefined)) {
     return false;
   }
 

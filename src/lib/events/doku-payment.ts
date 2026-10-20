@@ -637,8 +637,7 @@ export function buildCancelPaymentPayload(
   const answers = (registration.answers ?? {}) as Record<string, unknown>;
   const invoiceNumber =
     registration.payment_invoice_number ??
-    (typeof answers.payment_invoice_number === "string" ? answers.payment_invoice_number : undefined) ??
-    (typeof answers.invoice_number === "string" ? answers.invoice_number : undefined) ??
+    (typeof answers.payment_invoice_number === "string" ? answers.payment_invoice_number : "") ??
     "";
 
   let isProduction: boolean | undefined;
