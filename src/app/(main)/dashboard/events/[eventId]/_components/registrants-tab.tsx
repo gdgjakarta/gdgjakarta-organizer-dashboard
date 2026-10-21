@@ -468,6 +468,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const [cancelConfirmRegistration, setCancelConfirmRegistration] = useState<FirestoreRegistration | null>(null);
   const [isBatchCancelConfirmOpen, setIsBatchCancelConfirmOpen] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [rejectConfirmRegistration, setRejectConfirmRegistration] = useState<FirestoreRegistration | null>(null);
+  const [isBatchRejectConfirmOpen, setIsBatchRejectConfirmOpen] = useState(false);
   const [capacityAlert, setCapacityAlert] = useState<{
     open: boolean;
     title: string;
@@ -1554,7 +1556,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     }
 
     if (newStatus === "rejected" && targetReg) {
-      void handleRejectAttendee(targetReg);
+      setRejectConfirmRegistration(targetReg);
       return;
     }
 
@@ -1887,6 +1889,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       toast.error(msg);
     } finally {
       setRejectingRegistrationId(null);
+      setRejectConfirmRegistration(null);
     }
   };
 
@@ -2426,6 +2429,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       toast.error("Batch reject failed.");
     } finally {
       setIsBatchRejecting(false);
+      setIsBatchRejectConfirmOpen(false);
     }
   };
 
@@ -2550,7 +2554,14 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       return;
     }
     if (newStatus === "rejected") {
-      void handleBatchReject();
+      const toReject = registrationsList.filter(
+        (r) => selectedIds.has(r.id) && r.status !== "approved" && r.status !== "rejected",
+      );
+      if (toReject.length === 0) {
+        toast.info("All selected attendees are already approved or rejected.");
+        return;
+      }
+      setIsBatchRejectConfirmOpen(true);
       return;
     }
     if (newStatus === "waitlisted") {
@@ -2619,7 +2630,6 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       if (inspectRegistration?.id === registration.id) {
         setInspectRegistration(null);
       }
-      setDeleteConfirmRegistration(null);
 
       try {
         const res = await deleteEventRegistrationAction(
@@ -2653,6 +2663,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         toast.error("Failed to remove attendee registration.");
       } finally {
         setIsDeleting(false);
+        setDeleteConfirmRegistration(null);
       }
     });
   };
@@ -2680,7 +2691,6 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       if (inspectRegistration && selectedIds.has(inspectRegistration.id)) {
         setInspectRegistration(null);
       }
-      setIsBatchDeleteConfirmOpen(false);
 
       try {
         const res = await deleteBatchEventRegistrationsAction(idsToDelete, eventId, matchedBevyIds);
@@ -2711,6 +2721,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         toast.error("Failed to remove selected attendees.");
       } finally {
         setIsDeleting(false);
+        setIsBatchDeleteConfirmOpen(false);
       }
     });
   };
@@ -2793,7 +2804,6 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
 
     startTransition(async () => {
       setIsCancelling(true);
-      setIsBatchCancelConfirmOpen(false);
 
       let successCount = 0;
       let failCount = 0;
@@ -2846,6 +2856,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         setInspectRegistration(null);
       }
       setIsCancelling(false);
+      setIsBatchCancelConfirmOpen(false);
 
       if (successCount > 0 && failCount === 0) {
         toast.success(`Cancelled ${successCount} registration${successCount === 1 ? "" : "s"} and sent notifications.`);
@@ -4662,7 +4673,10 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
           setInspectRegistration(updatedReg);
         }}
         onApprove={handleApproveAttendee}
-        onReject={handleRejectAttendee}
+        onReject={(reg) => {
+          setInspectRegistration(null);
+          setRejectConfirmRegistration(reg);
+        }}
         onResendInterestEmail={handleResendInterestEmail}
         onResendWaitlistEmail={handleResendWaitlistEmail}
         onResendPaidWaitlistEmail={handleResendPaidWaitlistEmail}
@@ -4686,10 +4700,100 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         isCancelling={isCancelling}
       />
 
+      {/* Confirmation Dialog: Single Attendee Rejection */}
+      <AlertDialog
+        open={Boolean(rejectConfirmRegistration)}
+        onOpenChange={(open) => !open && !rejectingRegistrationId && setRejectConfirmRegistration(null)}
+      >
+        <AlertDialogContent className="data-[size=default]:max-w-md sm:max-w-lg data-[size=default]:sm:max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reject Applicant</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2.5 pt-1 text-left text-sm">
+              <span className="block text-foreground">
+                Are you sure you want to reject the registration for{" "}
+                <strong>{rejectConfirmRegistration?.member_name}</strong>
+                {rejectConfirmRegistration?.member_email ? ` (${rejectConfirmRegistration.member_email})` : ""}?
+              </span>
+              <span className="block text-muted-foreground text-xs leading-relaxed">
+                Their application status will be marked as Rejected and a regret email will be sent to their address
+                informing them of the decision.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <AlertDialogCancel disabled={Boolean(rejectingRegistrationId)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              className="bg-destructive text-white shadow-xs hover:bg-destructive/90"
+              disabled={Boolean(rejectingRegistrationId)}
+              onClick={(e) => {
+                e.preventDefault();
+                if (rejectConfirmRegistration) {
+                  void handleRejectAttendee(rejectConfirmRegistration);
+                }
+              }}
+            >
+              {rejectingRegistrationId ? (
+                <>
+                  <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                  Rejecting...
+                </>
+              ) : (
+                "Reject & Send Email"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmation Dialog: Batch Attendee Rejection */}
+      <AlertDialog
+        open={isBatchRejectConfirmOpen}
+        onOpenChange={(open) => !open && !isBatchRejecting && setIsBatchRejectConfirmOpen(false)}
+      >
+        <AlertDialogContent className="data-[size=default]:max-w-md sm:max-w-lg data-[size=default]:sm:max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reject Selected Applicants</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2.5 pt-1 text-left text-sm">
+              <span className="block text-foreground">
+                Are you sure you want to reject <strong className="text-foreground">{selectedIds.size}</strong> selected
+                applicant
+                {selectedIds.size === 1 ? "" : "s"}?
+              </span>
+              <span className="block text-muted-foreground text-xs leading-relaxed">
+                Each eligible applicant will have their status marked as Rejected and will receive a regret email
+                notifying them of the decision.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <AlertDialogCancel disabled={isBatchRejecting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              className="bg-destructive text-white shadow-xs hover:bg-destructive/90"
+              disabled={isBatchRejecting}
+              onClick={(e) => {
+                e.preventDefault();
+                void handleBatchReject();
+              }}
+            >
+              {isBatchRejecting ? (
+                <>
+                  <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                  Rejecting {selectedIds.size}...
+                </>
+              ) : (
+                `Reject ${selectedIds.size} Applicant${selectedIds.size === 1 ? "" : "s"} & Send Emails`
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Confirmation Dialog: Single Attendee Cancellation */}
       <AlertDialog
         open={Boolean(cancelConfirmRegistration)}
-        onOpenChange={(open) => !open && setCancelConfirmRegistration(null)}
+        onOpenChange={(open) => !open && !isCancelling && setCancelConfirmRegistration(null)}
       >
         <AlertDialogContent className="data-[size=default]:max-w-md sm:max-w-lg data-[size=default]:sm:max-w-lg">
           <AlertDialogHeader>
@@ -4717,7 +4821,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
               variant="destructive"
               className="bg-destructive text-white shadow-xs hover:bg-destructive/90"
               disabled={isCancelling}
-              onClick={() => {
+              onClick={(e) => {
+                e.preventDefault();
                 if (cancelConfirmRegistration) {
                   handleCancelRegistration(cancelConfirmRegistration);
                 }
@@ -4737,7 +4842,10 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       </AlertDialog>
 
       {/* Confirmation Dialog: Batch Attendee Cancellation */}
-      <AlertDialog open={isBatchCancelConfirmOpen} onOpenChange={(open) => !open && setIsBatchCancelConfirmOpen(false)}>
+      <AlertDialog
+        open={isBatchCancelConfirmOpen}
+        onOpenChange={(open) => !open && !isCancelling && setIsBatchCancelConfirmOpen(false)}
+      >
         <AlertDialogContent className="data-[size=default]:max-w-md sm:max-w-lg data-[size=default]:sm:max-w-lg">
           <AlertDialogHeader>
             <AlertDialogTitle>Cancel Selected Registrations</AlertDialogTitle>
@@ -4764,7 +4872,10 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
               variant="destructive"
               className="bg-destructive text-white shadow-xs hover:bg-destructive/90"
               disabled={isCancelling}
-              onClick={handleBatchCancel}
+              onClick={(e) => {
+                e.preventDefault();
+                handleBatchCancel();
+              }}
             >
               {isCancelling ? (
                 <>
@@ -4782,7 +4893,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       {/* Confirmation Dialog: Single Attendee Removal */}
       <AlertDialog
         open={Boolean(deleteConfirmRegistration)}
-        onOpenChange={(open) => !open && setDeleteConfirmRegistration(null)}
+        onOpenChange={(open) => !open && !isDeleting && setDeleteConfirmRegistration(null)}
       >
         <AlertDialogContent className="data-[size=default]:max-w-md sm:max-w-lg data-[size=default]:sm:max-w-lg">
           <AlertDialogHeader>
@@ -4804,20 +4915,31 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
               variant="destructive"
               className="bg-destructive text-white shadow-xs hover:bg-destructive/90"
               disabled={isDeleting}
-              onClick={() => {
+              onClick={(e) => {
+                e.preventDefault();
                 if (deleteConfirmRegistration) {
                   handleDeleteRegistration(deleteConfirmRegistration);
                 }
               }}
             >
-              {isDeleting ? "Removing..." : "Remove Attendee"}
+              {isDeleting ? (
+                <>
+                  <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                  Removing...
+                </>
+              ) : (
+                "Remove Attendee"
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
       {/* Confirmation Dialog: Batch Attendee Removal */}
-      <AlertDialog open={isBatchDeleteConfirmOpen} onOpenChange={(open) => !open && setIsBatchDeleteConfirmOpen(false)}>
+      <AlertDialog
+        open={isBatchDeleteConfirmOpen}
+        onOpenChange={(open) => !open && !isDeleting && setIsBatchDeleteConfirmOpen(false)}
+      >
         <AlertDialogContent className="data-[size=default]:max-w-md sm:max-w-lg data-[size=default]:sm:max-w-lg">
           <AlertDialogHeader>
             <AlertDialogTitle>Remove Selected Attendees</AlertDialogTitle>
@@ -4838,9 +4960,19 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
               variant="destructive"
               className="bg-destructive text-white shadow-xs hover:bg-destructive/90"
               disabled={isDeleting}
-              onClick={handleBatchDelete}
+              onClick={(e) => {
+                e.preventDefault();
+                handleBatchDelete();
+              }}
             >
-              {isDeleting ? "Removing..." : `Remove ${selectedIds.size} Attendee${selectedIds.size === 1 ? "" : "s"}`}
+              {isDeleting ? (
+                <>
+                  <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                  Removing {selectedIds.size}...
+                </>
+              ) : (
+                `Remove ${selectedIds.size} Attendee${selectedIds.size === 1 ? "" : "s"}`
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
