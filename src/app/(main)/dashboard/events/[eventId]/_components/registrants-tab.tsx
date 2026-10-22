@@ -715,19 +715,39 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       }
       setBevyAttendeesMap(nextBevyMap);
 
-      // 2. Identify attendees who are approved on dashboard but NOT in Bevy
+      // 2. Identify attendees who are approved (or paid & registered on paid events) on dashboard but NOT in Bevy
+      const activeEvent = firestoreEventDoc ?? event;
+      const isPaidEvent =
+        Boolean(
+          activeEvent?.tickets?.some(
+            (t) => t.type === "paid" || t.type === "commitment_fee" || (t.price && t.price > 0),
+          ),
+        ) ||
+        Boolean(activeEvent?.merchandise && activeEvent.merchandise.length > 0) ||
+        Boolean(activeEvent?.bundles && activeEvent.bundles.length > 0) ||
+        registrationsList.some(
+          (r) => isPaidRegistration(r) || (r.status ?? "").toLowerCase().trim() === "paid_and_registered",
+        );
+
+      const isEligibleForBevySync = (reg: FirestoreRegistration) => {
+        const status = (reg.status ?? "").toLowerCase().trim();
+        if (status === "approved") return true;
+        if (isPaidEvent && status === "paid_and_registered") return true;
+        return false;
+      };
+
       const missingApproved = registrationsList.filter((reg) => {
-        const isApproved = (reg.status ?? "").toLowerCase().trim() === "approved";
-        if (!isApproved) return false;
+        if (!isEligibleForBevySync(reg)) return false;
         const email = (reg.member_email || "").toLowerCase().trim();
         return !email || !bevyEmailSet.has(email);
       });
 
       if (missingApproved.length === 0) {
-        const totalApproved = registrationsList.filter(
-          (reg) => (reg.status ?? "").toLowerCase().trim() === "approved",
-        ).length;
-        toast.success(`Bevy attendee sync complete. All ${totalApproved} approved attendee(s) are present in Bevy.`);
+        const totalApproved = registrationsList.filter(isEligibleForBevySync).length;
+        const statusDesc = isPaidEvent ? "approved / paid & registered" : "approved";
+        toast.success(
+          `Bevy attendee sync complete. All ${totalApproved} ${statusDesc} attendee(s) are present in Bevy.`,
+        );
         return;
       }
 
@@ -790,7 +810,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     } finally {
       setIsSyncingStatus(false);
     }
-  }, [eventId, registrationsList]);
+  }, [eventId, registrationsList, event, firestoreEventDoc]);
 
   useEffect(() => {
     if (eventId) {
@@ -949,82 +969,6 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       isCancelled = true;
     };
   }, [registrationsList, currentEvent, eventId]);
-
-  // Status Counters for Filters & Badges
-  const statusCounts = useMemo(() => {
-    let pending = 0;
-    let waitingPayment = 0;
-    let paidRegistered = 0;
-    let expired = 0;
-    let failed = 0;
-    let canceled = 0;
-    let approved = 0;
-    let checkedIn = 0;
-    let notCheckedIn = 0;
-    let waitlisted = 0;
-    let paidWaitlisted = 0;
-    let rejected = 0;
-
-    for (const reg of registrationsList) {
-      const eff = getEffectiveRegistrationStatus(reg, currentEvent);
-      const s = (eff ?? "").toLowerCase().trim();
-      const ps = (reg.payment_status ?? "").toLowerCase().trim();
-
-      if (s === "pending" || s === "applied" || s === "review" || !s) {
-        pending++;
-      } else if (s === "waiting_for_payment") {
-        waitingPayment++;
-      } else if (s === "expired") {
-        expired++;
-      } else if (s === "failed" || ps === "failed") {
-        failed++;
-      } else if (s === "canceled" || s === "cancelled") {
-        canceled++;
-      } else if (s === "waitlisted") {
-        waitlisted++;
-      } else if (s === "paid_waitlisted") {
-        paidWaitlisted++;
-      } else if (s === "rejected") {
-        rejected++;
-      }
-
-      if (
-        s === "paid_and_registered" ||
-        ((s === "approved" || s === "registered" || s === "attended") && (isPaidRegistration(reg) || ps === "paid"))
-      ) {
-        paidRegistered++;
-      }
-
-      const isAppr =
-        s === "approved" || s === "paid_and_registered" || s === "attended" || s === "confirmed" || s === "registered";
-      if (isAppr) {
-        approved++;
-        if (reg.is_checked_in || s === "attended") {
-          checkedIn++;
-        } else {
-          notCheckedIn++;
-        }
-      } else if (reg.is_checked_in || s === "attended") {
-        checkedIn++;
-      }
-    }
-
-    return {
-      all: registrationsList.length,
-      pending,
-      waiting_for_payment: waitingPayment,
-      paid_and_registered: paidRegistered,
-      paid_waitlisted: paidWaitlisted,
-      expired,
-      failed,
-      canceled,
-      approved,
-      checked_in: checkedIn,
-      not_checked_in: notCheckedIn,
-      waitlisted,
-      rejected,
-    };
-  }, [registrationsList, currentEvent]);
 
   // Compute email occurrences to detect duplicate registrant attempts
   const emailCounts = new Map<string, number>();
@@ -1371,57 +1315,13 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     }, 200);
   };
 
-  // Filter logic
-  const filtered = useMemo(() => {
+  // Filter logic (all non-status filters first so status counters reflect active filters)
+  const preStatusFiltered = useMemo(() => {
     const tokensLower = searchTokens.map((t) => t.toLowerCase());
 
     return registrationsList.filter((reg) => {
       const matchesSearch =
         tokensLower.length === 0 || tokensLower.some((tokenLower) => matchesRegistrationToken(reg, tokenLower));
-
-      const effectiveStatus = getEffectiveRegistrationStatus(reg, currentEvent);
-      const regStatus = (effectiveStatus ?? "").toLowerCase().trim();
-      const filterStatus = (statusFilter ?? "all").toLowerCase().trim();
-
-      // "all" matches ANY status without exception
-      let matchesStatus = filterStatus === "all";
-      if (!matchesStatus) {
-        if (filterStatus === "not_checked_in") {
-          const isApproved =
-            regStatus === "approved" ||
-            regStatus === "paid_and_registered" ||
-            regStatus === "attended" ||
-            regStatus === "confirmed" ||
-            regStatus === "registered";
-          const isCheckedIn = Boolean(reg.is_checked_in) || regStatus === "attended";
-          matchesStatus = isApproved && !isCheckedIn;
-        } else if (filterStatus === "checked_in") {
-          matchesStatus = Boolean(reg.is_checked_in) || regStatus === "attended";
-        } else if (filterStatus === "approved") {
-          matchesStatus =
-            regStatus === "approved" ||
-            regStatus === "attended" ||
-            regStatus === "confirmed" ||
-            regStatus === "registered";
-        } else if (filterStatus === "paid_and_registered") {
-          matchesStatus =
-            regStatus === "paid_and_registered" ||
-            ((regStatus === "approved" || regStatus === "registered" || regStatus === "attended") &&
-              (isPaidRegistration(reg) || reg.payment_status === "paid"));
-        } else if (filterStatus === "waiting_for_payment") {
-          matchesStatus = regStatus === "waiting_for_payment";
-        } else if (filterStatus === "expired") {
-          matchesStatus = regStatus === "expired";
-        } else if (filterStatus === "failed") {
-          matchesStatus = regStatus === "failed" || reg.payment_status === "failed";
-        } else if (filterStatus === "canceled") {
-          matchesStatus = regStatus === "canceled" || regStatus === "cancelled";
-        } else if (filterStatus === "pending") {
-          matchesStatus = regStatus === "pending" || regStatus === "applied" || regStatus === "review";
-        } else {
-          matchesStatus = regStatus === filterStatus;
-        }
-      }
 
       const matchesSession =
         sessionFilter === "all" ||
@@ -1472,7 +1372,6 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
 
       if (
         !matchesSearch ||
-        !matchesStatus ||
         !matchesSession ||
         !matchesTicket ||
         !matchesReviewer ||
@@ -1512,7 +1411,6 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   }, [
     registrationsList,
     searchTokens,
-    statusFilter,
     sessionFilter,
     ticketFilter,
     merchandiseFilter,
@@ -1521,8 +1419,138 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     selectedQuestionColumns,
     questionFilters,
     questionLabelMap,
-    currentEvent,
   ]);
+
+  // Status Counters for Filters & Badges (reflects active non-status filters)
+  const statusCounts = useMemo(() => {
+    let pending = 0;
+    let waitingPayment = 0;
+    let paidRegistered = 0;
+    let expired = 0;
+    let failed = 0;
+    let canceled = 0;
+    let approved = 0;
+    let checkedIn = 0;
+    let notCheckedIn = 0;
+    let waitlisted = 0;
+    let paidWaitlisted = 0;
+    let rejected = 0;
+
+    for (const reg of preStatusFiltered) {
+      const eff = getEffectiveRegistrationStatus(reg, currentEvent);
+      const s = (eff ?? "").toLowerCase().trim();
+      const ps = (reg.payment_status ?? "").toLowerCase().trim();
+
+      if (s === "pending" || s === "applied" || s === "review" || !s) {
+        pending++;
+      } else if (s === "waiting_for_payment") {
+        waitingPayment++;
+      } else if (s === "expired") {
+        expired++;
+      } else if (s === "failed" || ps === "failed") {
+        failed++;
+      } else if (s === "canceled" || s === "cancelled") {
+        canceled++;
+      } else if (s === "waitlisted") {
+        waitlisted++;
+      } else if (s === "paid_waitlisted") {
+        paidWaitlisted++;
+      } else if (s === "rejected") {
+        rejected++;
+      }
+
+      if (
+        s === "paid_and_registered" ||
+        ((s === "approved" || s === "registered" || s === "attended") && (isPaidRegistration(reg) || ps === "paid"))
+      ) {
+        paidRegistered++;
+      }
+
+      const isAppr =
+        s === "approved" || s === "paid_and_registered" || s === "attended" || s === "confirmed" || s === "registered";
+      if (isAppr) {
+        approved++;
+        if (reg.is_checked_in || s === "attended") {
+          checkedIn++;
+        } else {
+          notCheckedIn++;
+        }
+      } else if (reg.is_checked_in || s === "attended") {
+        checkedIn++;
+      }
+    }
+
+    return {
+      all: preStatusFiltered.length,
+      pending,
+      waiting_for_payment: waitingPayment,
+      paid_and_registered: paidRegistered,
+      paid_waitlisted: paidWaitlisted,
+      expired,
+      failed,
+      canceled,
+      approved,
+      checked_in: checkedIn,
+      not_checked_in: notCheckedIn,
+      waitlisted,
+      rejected,
+    };
+  }, [preStatusFiltered, currentEvent]);
+
+  const filtered = useMemo(() => {
+    const filterStatus = (statusFilter ?? "all").toLowerCase().trim();
+    if (filterStatus === "all") return preStatusFiltered;
+
+    return preStatusFiltered.filter((reg) => {
+      const effectiveStatus = getEffectiveRegistrationStatus(reg, currentEvent);
+      const regStatus = (effectiveStatus ?? "").toLowerCase().trim();
+
+      if (filterStatus === "not_checked_in") {
+        const isApproved =
+          regStatus === "approved" ||
+          regStatus === "paid_and_registered" ||
+          regStatus === "attended" ||
+          regStatus === "confirmed" ||
+          regStatus === "registered";
+        const isCheckedIn = Boolean(reg.is_checked_in) || regStatus === "attended";
+        return isApproved && !isCheckedIn;
+      }
+      if (filterStatus === "checked_in") {
+        return Boolean(reg.is_checked_in) || regStatus === "attended";
+      }
+      if (filterStatus === "approved") {
+        return (
+          regStatus === "approved" ||
+          regStatus === "attended" ||
+          regStatus === "confirmed" ||
+          regStatus === "registered"
+        );
+      }
+      if (filterStatus === "paid_and_registered") {
+        return (
+          regStatus === "paid_and_registered" ||
+          ((regStatus === "approved" || regStatus === "registered" || regStatus === "attended") &&
+            (isPaidRegistration(reg) || reg.payment_status === "paid"))
+        );
+      }
+      if (filterStatus === "waiting_for_payment") {
+        return regStatus === "waiting_for_payment";
+      }
+      if (filterStatus === "expired") {
+        return regStatus === "expired";
+      }
+      if (filterStatus === "failed") {
+        return regStatus === "failed" || reg.payment_status === "failed";
+      }
+      if (filterStatus === "canceled") {
+        return regStatus === "canceled" || regStatus === "cancelled";
+      }
+      if (filterStatus === "pending") {
+        return regStatus === "pending" || regStatus === "applied" || regStatus === "review";
+      }
+      return regStatus === filterStatus;
+    });
+  }, [preStatusFiltered, statusFilter, currentEvent]);
 
   const handleStatusChange = (
     registrationId: string,
