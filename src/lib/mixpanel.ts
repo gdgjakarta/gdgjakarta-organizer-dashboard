@@ -1,6 +1,6 @@
 import mixpanel from "mixpanel-browser";
 
-export const MIXPANEL_TOKEN = process.env.NEXT_PUBLIC_MIXPANEL_TOKEN || "def94c39818ec4a9cbdf240b1238c899";
+export const MIXPANEL_TOKEN = process.env.NEXT_PUBLIC_MIXPANEL_TOKEN;
 
 let isInitialized = false;
 
@@ -16,9 +16,12 @@ export function initMixpanel(): void {
   }
 
   mixpanel.init(MIXPANEL_TOKEN, {
+    debug: true,
+    track_pageview: true,
+    persistence: "localStorage",
+    record_heatmap_data: true,
     autocapture: true,
     record_sessions_percent: 100,
-    debug: process.env.NODE_ENV === "development",
   });
 
   isInitialized = true;
