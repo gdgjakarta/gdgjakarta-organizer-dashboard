@@ -1747,7 +1747,11 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     try {
       const reviewerPayload = user ? { id: user.id, name: user.name, email: user.email } : undefined;
       const now = new Date().toISOString();
-      const isAlreadyPaid = registration.status === "paid_waitlisted" || isPaidRegistration(registration);
+      const isAlreadyPaid =
+        registration.status === "paid_waitlisted" ||
+        registration.status === "paid_and_registered" ||
+        (registration.payment_status ?? "").toLowerCase().trim() === "paid" ||
+        Boolean(registration.paid_at);
       const requiresPayment =
         !isAlreadyPaid &&
         hasRegistrationPaymentRequirements(registration) &&
@@ -1917,7 +1921,11 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     setRejectingRegistrationId(registration.id);
     try {
       const reviewerPayload = user ? { id: user.id, name: user.name, email: user.email } : undefined;
-      const isPaid = registration.status === "paid_waitlisted" || isPaidRegistration(registration);
+      const isPaid =
+        registration.status === "paid_waitlisted" ||
+        registration.status === "paid_and_registered" ||
+        (registration.payment_status ?? "").toLowerCase().trim() === "paid" ||
+        Boolean(registration.paid_at);
       const paidAmountNum = registration.payment_amount ?? registration.ticket_price ?? registration.bundle_price ?? 0;
       const sessionName =
         registration.session_title ??
@@ -2455,7 +2463,11 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       const failedErrors: string[] = [];
 
       for (const reg of toApprove) {
-        const isAlreadyPaid = reg.status === "paid_waitlisted" || isPaidRegistration(reg);
+        const isAlreadyPaid =
+          reg.status === "paid_waitlisted" ||
+          reg.status === "paid_and_registered" ||
+          (reg.payment_status ?? "").toLowerCase().trim() === "paid" ||
+          Boolean(reg.paid_at);
         const requiresPayment =
           !isAlreadyPaid &&
           hasRegistrationPaymentRequirements(reg) &&
@@ -2585,7 +2597,11 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
 
       // Process one by one sequentially
       for (const reg of toReject) {
-        const isPaid = reg.status === "paid_waitlisted" || isPaidRegistration(reg);
+        const isPaid =
+          reg.status === "paid_waitlisted" ||
+          reg.status === "paid_and_registered" ||
+          (reg.payment_status ?? "").toLowerCase().trim() === "paid" ||
+          Boolean(reg.paid_at);
         const paidAmountNum = reg.payment_amount ?? reg.ticket_price ?? reg.bundle_price ?? 0;
         const sessionName =
           reg.session_title ??
