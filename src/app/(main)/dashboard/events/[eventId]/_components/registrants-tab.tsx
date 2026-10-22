@@ -1923,7 +1923,6 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       const reviewerPayload = user ? { id: user.id, name: user.name, email: user.email } : undefined;
       const isPaid =
         registration.status === "paid_waitlisted" ||
-        registration.status === "paid_and_registered" ||
         (registration.payment_status ?? "").toLowerCase().trim() === "paid" ||
         Boolean(registration.paid_at);
       const paidAmountNum = registration.payment_amount ?? registration.ticket_price ?? registration.bundle_price ?? 0;
