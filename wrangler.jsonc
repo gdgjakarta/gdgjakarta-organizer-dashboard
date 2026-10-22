@@ -62,7 +62,8 @@
     },
     {
       "binding": "MEDIA_BUCKET",
-      "bucket_name": "gdgjakarta-assets"
+      "bucket_name": "gdgjakarta-assets",
+      "remote": true
     }
   ],
   "images": {
@@ -101,7 +102,8 @@
       },
       {
         "binding": "MEDIA_BUCKET",
-        "bucket_name": "gdgjakarta-assets"
+        "bucket_name": "gdgjakarta-assets",
+        "remote": true
       }
     ],
     "images": {
