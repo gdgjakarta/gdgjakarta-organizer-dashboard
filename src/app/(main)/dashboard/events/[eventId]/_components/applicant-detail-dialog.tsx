@@ -1971,7 +1971,11 @@ export function ApplicantDetailDialog({
                 <div className="flex flex-wrap items-center gap-2">
                   {/* Reject button */}
                   {/* Reject button - disappears when disbursement completed or canceled */}
-                  {isCuration && !isRejected && !isApproved && !isCanceled && !isDisbursementCompleted && (
+                  {(isCuration || isWaitlisted || isPaidWaitlisted) &&
+                    !isRejected &&
+                    !isApproved &&
+                    !isCanceled &&
+                    !isDisbursementCompleted && (
                     <Button
                       size="sm"
                       variant="outline"
@@ -1996,7 +2000,7 @@ export function ApplicantDetailDialog({
                   )}
 
                   {/* Approve / Status Indicator */}
-                  {isCuration &&
+                  {(isCuration || isWaitlisted || isPaidWaitlisted) &&
                     !isWaitingPayment &&
                     (() => {
                       if (isCanceled || isDisbursementCompleted) {

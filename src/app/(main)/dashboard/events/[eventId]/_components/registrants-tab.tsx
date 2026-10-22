@@ -751,10 +751,29 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         return;
       }
 
-      // 3. Reset missing approved attendees to "pending" (Pending Review)
-      const missingIds = new Set(missingApproved.map((r) => r.id));
+      // 3. Move missing paid attendees to "paid_waitlisted" and unpaid approved attendees to "pending"
+      const reviewerPayload = user ? { id: user.id, name: user.name, email: user.email } : undefined;
+      const syncTime = new Date().toISOString();
+      const targetStatusById = new Map<string, RegistrationStatus>();
+      let paidWaitlistedCount = 0;
+      let pendingResetCount = 0;
+
       const updatePromises = missingApproved.map(async (reg) => {
-        await updateRegistrationStatusAction(reg.id, eventId, "pending");
+        const isPaid =
+          (reg.status ?? "").toLowerCase().trim() === "paid_and_registered" || isPaidRegistration(reg);
+        const targetStatus: RegistrationStatus = isPaid ? "paid_waitlisted" : "pending";
+        targetStatusById.set(reg.id, targetStatus);
+        if (isPaid) {
+          paidWaitlistedCount++;
+        } else {
+          pendingResetCount++;
+        }
+
+        const syncNote = isPaid
+          ? "Synced with Bevy: Paid attendee not found in Bevy roster; moved to Paid Waitlisted."
+          : "Synced with Bevy: Attendee not found in Bevy roster; reset to Pending Review.";
+
+        await updateRegistrationStatusAction(reg.id, eventId, targetStatus, reviewerPayload, syncNote);
         if (reg.is_checked_in || reg.bevy_attendee_id) {
           await updateRegistrationCheckInAction(reg.id, eventId, false, null, null);
         }
@@ -765,14 +784,16 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       // 4. Synchronize local registrations state
       setRegistrationsList((prev) =>
         prev.map((reg) => {
-          if (missingIds.has(reg.id)) {
+          const targetStatus = targetStatusById.get(reg.id);
+          if (targetStatus) {
+            const isPendingReset = targetStatus === "pending";
             return {
               ...reg,
-              status: "pending",
-              reviewed_at: undefined,
-              reviewed_by_id: undefined,
-              reviewed_by_name: undefined,
-              reviewed_by_email: undefined,
+              status: targetStatus,
+              reviewed_at: isPendingReset ? undefined : syncTime,
+              reviewed_by_id: isPendingReset ? undefined : (user?.id ?? reg.reviewed_by_id),
+              reviewed_by_name: isPendingReset ? undefined : (user?.name ?? reg.reviewed_by_name),
+              reviewed_by_email: isPendingReset ? undefined : (user?.email ?? reg.reviewed_by_email),
               is_checked_in: false,
               bevy_attendee_id: undefined,
               checkin_date: undefined,
@@ -784,33 +805,42 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       );
 
       setInspectRegistration((prev) => {
-        if (prev && missingIds.has(prev.id)) {
-          return {
-            ...prev,
-            status: "pending",
-            reviewed_at: undefined,
-            reviewed_by_id: undefined,
-            reviewed_by_name: undefined,
-            reviewed_by_email: undefined,
-            is_checked_in: false,
-            bevy_attendee_id: undefined,
-            checkin_date: undefined,
-            checked_in_at: undefined,
-          };
+        if (prev) {
+          const targetStatus = targetStatusById.get(prev.id);
+          if (targetStatus) {
+            const isPendingReset = targetStatus === "pending";
+            return {
+              ...prev,
+              status: targetStatus,
+              reviewed_at: isPendingReset ? undefined : syncTime,
+              reviewed_by_id: isPendingReset ? undefined : (user?.id ?? prev.reviewed_by_id),
+              reviewed_by_name: isPendingReset ? undefined : (user?.name ?? prev.reviewed_by_name),
+              reviewed_by_email: isPendingReset ? undefined : (user?.email ?? prev.reviewed_by_email),
+              is_checked_in: false,
+              bevy_attendee_id: undefined,
+              checkin_date: undefined,
+              checked_in_at: undefined,
+            };
+          }
         }
         return prev;
       });
 
-      toast.success(
-        `Synced Bevy attendee status: ${missingApproved.length} attendee(s) removed from Bevy reset to Pending Review.`,
-      );
+      const summaryParts: string[] = [];
+      if (paidWaitlistedCount > 0) {
+        summaryParts.push(`${paidWaitlistedCount} paid attendee(s) moved to Paid Waitlisted`);
+      }
+      if (pendingResetCount > 0) {
+        summaryParts.push(`${pendingResetCount} unpaid attendee(s) reset to Pending Review`);
+      }
+      toast.success(`Synced Bevy attendee status: ${summaryParts.join(", ")}.`);
     } catch (err) {
       console.error("[RegistrantsTab] Error syncing Bevy attendee status:", err);
       toast.error("Failed to sync attendee status from Bevy.");
     } finally {
       setIsSyncingStatus(false);
     }
-  }, [eventId, registrationsList, event, firestoreEventDoc]);
+  }, [eventId, registrationsList, event, firestoreEventDoc, user]);
 
   useEffect(() => {
     if (eventId) {
@@ -1705,7 +1735,9 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     try {
       const reviewerPayload = user ? { id: user.id, name: user.name, email: user.email } : undefined;
       const now = new Date().toISOString();
+      const isAlreadyPaid = registration.status === "paid_waitlisted" || isPaidRegistration(registration);
       const requiresPayment =
+        !isAlreadyPaid &&
         hasRegistrationPaymentRequirements(registration) &&
         calculateRegistrationTotalAmount(registration, currentEvent) > 0;
 
@@ -1793,8 +1825,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         return;
       }
 
-      // If event ticket is free (no merchandise to sell):
-      // Curation accepted -> Call Add Bevy Attendee API -> Attendee Status Approved
+      // If event ticket is free (no merchandise to sell) or attendee already paid (Paid Waitlisted):
+      // Call Add Bevy Attendee API -> Attendee Status Approved / Paid & Registered
       const payload = buildApprovedAttendeePayload(registration, currentEvent);
       const res = await approveAttendeeWebhookAction(payload);
 
@@ -1806,15 +1838,20 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         return;
       }
 
+      const finalStatus: RegistrationStatus = isAlreadyPaid ? "paid_and_registered" : "approved";
+      const approvalNote = isAlreadyPaid
+        ? "Approved from Paid Waitlist by organizer and registered on Bevy."
+        : undefined;
+
       // Success: persist status to Firestore and update local state
-      await updateRegistrationStatusAction(registration.id, eventId, "approved", reviewerPayload);
+      await updateRegistrationStatusAction(registration.id, eventId, finalStatus, reviewerPayload, approvalNote);
 
       setRegistrationsList((prev) =>
         prev.map((r) =>
           r.id === registration.id
             ? {
                 ...r,
-                status: "approved",
+                status: finalStatus,
                 reviewed_at: now,
                 reviewed_by_id: user?.id ?? r.reviewed_by_id,
                 reviewed_by_name: user?.name ?? r.reviewed_by_name,
@@ -1828,7 +1865,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         prev?.id === registration.id
           ? {
               ...prev,
-              status: "approved",
+              status: finalStatus,
               reviewed_at: now,
               reviewed_by_id: user?.id ?? prev.reviewed_by_id,
               reviewed_by_name: user?.name ?? prev.reviewed_by_name,
@@ -1837,7 +1874,11 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
           : prev,
       );
 
-      toast.success(`${registration.member_name} approved successfully!`);
+      toast.success(
+        isAlreadyPaid
+          ? `${registration.member_name} approved and moved to Paid & Registered!`
+          : `${registration.member_name} approved successfully!`,
+      );
     } catch (err) {
       console.error("[RegistrantsTab] Error approving attendee:", err);
       const msg = err instanceof Error ? err.message : "Failed to approve applicant.";
@@ -1856,7 +1897,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       toast.error("This registration has been canceled / refunded and cannot be modified.");
       return;
     }
-    if (registration.status === "approved") {
+    if (registration.status === "approved" || registration.status === "paid_and_registered") {
       toast.error("This attendee is already approved. Their status cannot be changed except by removal.");
       return;
     }
@@ -1864,6 +1905,14 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     setRejectingRegistrationId(registration.id);
     try {
       const reviewerPayload = user ? { id: user.id, name: user.name, email: user.email } : undefined;
+      const isPaid = registration.status === "paid_waitlisted" || isPaidRegistration(registration);
+      const paidAmountNum =
+        registration.payment_amount ?? registration.ticket_price ?? registration.bundle_price ?? 0;
+      const sessionName =
+        registration.session_title ??
+        (registration.answers?.session_title as string | undefined) ??
+        currentEvent.sessions?.find((s) => s.id === registration.session_id)?.title;
+
       const res = await rejectAttendeeAction({
         registrationId: registration.id,
         eventId,
@@ -1871,6 +1920,11 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         attendeeEmail: registration.member_email,
         reviewer: reviewerPayload,
         eventData: currentEvent,
+        previousStatus: registration.status,
+        isPaid,
+        invoiceNumber: registration.payment_invoice_number,
+        paidAmount: paidAmountNum > 0 ? formatRupiah(paidAmountNum) : undefined,
+        sessionName,
       });
 
       if (!res.success) {
@@ -1881,8 +1935,16 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         return;
       }
 
+      let rejectNote: string | undefined;
+      if (isPaid) {
+        rejectNote =
+          "Rejected from Paid Waitlist by organizer. Attendee remains eligible to submit a refund request.";
+      } else if (registration.status === "waitlisted") {
+        rejectNote = "Rejected from Waitlist by organizer.";
+      }
+
       // Persist status update in Firestore (client-side)
-      await updateRegistrationStatusAction(registration.id, eventId, "rejected", reviewerPayload);
+      await updateRegistrationStatusAction(registration.id, eventId, "rejected", reviewerPayload, rejectNote);
 
       const now = new Date().toISOString();
       setRegistrationsList((prev) =>
@@ -2295,8 +2357,11 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       const failedErrors: string[] = [];
 
       for (const reg of toApprove) {
+        const isAlreadyPaid = reg.status === "paid_waitlisted" || isPaidRegistration(reg);
         const requiresPayment =
-          hasRegistrationPaymentRequirements(reg) && calculateRegistrationTotalAmount(reg, currentEvent) > 0;
+          !isAlreadyPaid &&
+          hasRegistrationPaymentRequirements(reg) &&
+          calculateRegistrationTotalAmount(reg, currentEvent) > 0;
         if (requiresPayment) {
           try {
             const ticketPrice = reg.ticket_price ?? 0;
@@ -2357,14 +2422,18 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
           const payload = buildApprovedAttendeePayload(reg, currentEvent);
           const res = await approveAttendeeWebhookAction(payload);
           if (res.success) {
-            await updateRegistrationStatusAction(reg.id, eventId, "approved", reviewerPayload);
+            const finalStatus: RegistrationStatus = isAlreadyPaid ? "paid_and_registered" : "approved";
+            const approvalNote = isAlreadyPaid
+              ? "Batch approved from Paid Waitlist and registered on Bevy."
+              : undefined;
+            await updateRegistrationStatusAction(reg.id, eventId, finalStatus, reviewerPayload, approvalNote);
             successCount++;
             setRegistrationsList((prev) =>
               prev.map((r) =>
                 r.id === reg.id
                   ? {
                       ...r,
-                      status: "approved",
+                      status: finalStatus,
                       reviewed_at: now,
                       reviewed_by_id: user?.id ?? r.reviewed_by_id,
                       reviewed_by_name: user?.name ?? r.reviewed_by_name,
@@ -2399,7 +2468,11 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const handleBatchReject = async () => {
     if (selectedIds.size === 0) return;
     const toReject = registrationsList.filter(
-      (r) => selectedIds.has(r.id) && r.status !== "approved" && r.status !== "rejected",
+      (r) =>
+        selectedIds.has(r.id) &&
+        r.status !== "approved" &&
+        r.status !== "paid_and_registered" &&
+        r.status !== "rejected",
     );
     if (toReject.length === 0) {
       toast.info("All selected attendees are already approved or rejected.");
@@ -2414,6 +2487,13 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
 
       // Process one by one sequentially
       for (const reg of toReject) {
+        const isPaid = reg.status === "paid_waitlisted" || isPaidRegistration(reg);
+        const paidAmountNum = reg.payment_amount ?? reg.ticket_price ?? reg.bundle_price ?? 0;
+        const sessionName =
+          reg.session_title ??
+          (reg.answers?.session_title as string | undefined) ??
+          currentEvent.sessions?.find((s) => s.id === reg.session_id)?.title;
+
         const res = await rejectAttendeeAction({
           registrationId: reg.id,
           eventId,
@@ -2421,10 +2501,22 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
           attendeeEmail: reg.member_email,
           reviewer: reviewerPayload,
           eventData: currentEvent,
+          previousStatus: reg.status,
+          isPaid,
+          invoiceNumber: reg.payment_invoice_number,
+          paidAmount: paidAmountNum > 0 ? formatRupiah(paidAmountNum) : undefined,
+          sessionName,
         });
 
         if (res.success) {
-          await updateRegistrationStatusAction(reg.id, eventId, "rejected", reviewerPayload);
+          let rejectNote: string | undefined;
+          if (isPaid) {
+            rejectNote =
+              "Batch rejected from Paid Waitlist by organizer. Attendee remains eligible to submit a refund request.";
+          } else if (reg.status === "waitlisted") {
+            rejectNote = "Batch rejected from Waitlist by organizer.";
+          }
+          await updateRegistrationStatusAction(reg.id, eventId, "rejected", reviewerPayload, rejectNote);
           successCount++;
           const now = new Date().toISOString();
           setRegistrationsList((prev) =>
@@ -4404,8 +4496,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                         {visibleStandardColumns.actions !== false && (
                           <TableCell className="whitespace-nowrap text-right" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-end gap-1">
-                              {/* Curation Action Buttons: Approve, Pending, Reject */}
-                              {isCurationMode && (
+                              {/* Curation / Waitlist Action Buttons: Approve, Pending, Reject */}
+                              {(isCurationMode || rawStatus === "paid_waitlisted" || rawStatus === "waitlisted") && (
                                 <>
                                   {/* 1. Approve Button */}
                                   <Button

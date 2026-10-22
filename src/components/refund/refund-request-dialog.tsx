@@ -244,16 +244,18 @@ export function RefundRequestDialog({
         <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs">
           <div className="flex items-center justify-between">
             <span className="font-medium text-foreground">
-              {registration.status === "paid_waitlisted"
-                ? "Refundable Commitment Deposit:"
+              {registration.status === "paid_waitlisted" || registration.status === "rejected"
+                ? "Refundable Waitlist / Ticket Amount:"
                 : "Refundable Ticket Amount:"}
             </span>
             <span className="font-bold text-primary">{formatRupiah(refundAmount)}</span>
           </div>
           <p className="mt-1 text-[11px] text-muted-foreground leading-relaxed">
-            {registration.status === "paid_waitlisted"
-              ? "Because this session was over capacity, your waitlist fee is refundable. Please provide valid bank account information to receive your transfer."
-              : "Please provide valid Indonesian bank account details to receive your refund transfer. Requesting this refund will forfeit your attendance spot."}
+            {registration.status === "rejected"
+              ? "Because your paid waitlist registration could not be accommodated due to venue capacity, your payment is eligible for a full refund (even after the standard refund cutoff date). Please provide valid bank account details below."
+              : registration.status === "paid_waitlisted"
+                ? "Because this session was over capacity, your waitlist fee is refundable. Please provide valid bank account information to receive your transfer."
+                : "Please provide valid Indonesian bank account details to receive your refund transfer. Requesting this refund will forfeit your attendance spot."}
           </p>
         </div>
 

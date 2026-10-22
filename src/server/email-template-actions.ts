@@ -370,6 +370,11 @@ export interface RejectAttendeeInput {
   eventId: string;
   attendeeName: string;
   attendeeEmail: string;
+  previousStatus?: string;
+  isPaid?: boolean;
+  invoiceNumber?: string;
+  paidAmount?: string;
+  sessionName?: string;
   reviewer?: {
     id?: string;
     name?: string;
@@ -384,7 +389,9 @@ export interface RejectAttendeeResult extends EmailDispatchResult {
 
 /**
  * Server Action: Rejects an attendee and automatically sends the appropriate regret email via n8n send-email webhook.
- * Validates event type:
+ * Validates previous waitlist/paid state or event type:
+ * - Paid waitlisted / paid attendee -> uses "rejected_paid_waitlisted" template
+ * - Unpaid waitlisted attendee -> uses "rejected_waitlisted" template
  * - Hybrid event -> uses "rejected_hybrid" template
  * - Virtual event -> uses "rejected_virtual" template
  * - In-Person event -> uses "rejected_non_hybrid" template
@@ -428,7 +435,15 @@ export async function rejectAttendeeAction(input: RejectAttendeeInput): Promise<
       return { success: false, error: "Event not found." };
     }
 
-    const templateKey = resolveRejectedTemplateKeyForEvent(event);
+    let templateKey: EmailTemplateKey;
+    if (input.previousStatus === "paid_waitlisted" || input.isPaid) {
+      templateKey = "rejected_paid_waitlisted";
+    } else if (input.previousStatus === "waitlisted") {
+      templateKey = "rejected_waitlisted";
+    } else {
+      templateKey = resolveRejectedTemplateKeyForEvent(event);
+    }
+
     const rendered = buildRenderedEmailForAttendee({
       templateKey,
       attendee: {
@@ -436,6 +451,9 @@ export async function rejectAttendeeAction(input: RejectAttendeeInput): Promise<
         email: input.attendeeEmail,
       },
       event,
+      invoiceNumber: input.invoiceNumber,
+      paidAmount: input.paidAmount,
+      sessionName: input.sessionName,
     });
 
     // 1. Dispatch rejection email to reusable n8n /send-email endpoint
@@ -456,7 +474,11 @@ export async function rejectAttendeeAction(input: RejectAttendeeInput): Promise<
     }
 
     let friendlyTypeName = "In-Person";
-    if (templateKey === "rejected_hybrid") {
+    if (templateKey === "rejected_paid_waitlisted") {
+      friendlyTypeName = "Rejected Paid Waitlisted";
+    } else if (templateKey === "rejected_waitlisted") {
+      friendlyTypeName = "Rejected Waitlisted";
+    } else if (templateKey === "rejected_hybrid") {
       friendlyTypeName = "Hybrid";
     } else if (templateKey === "rejected_virtual") {
       friendlyTypeName = "Virtual";

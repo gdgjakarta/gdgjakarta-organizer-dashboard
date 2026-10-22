@@ -98,6 +98,9 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
       accepted: acceptedHtml,
       waitlisted: event.email_templates?.waitlisted ?? getDefaultTemplateByKey("waitlisted"),
       paid_waitlisted: event.email_templates?.paid_waitlisted ?? getDefaultTemplateByKey("paid_waitlisted"),
+      rejected_waitlisted: event.email_templates?.rejected_waitlisted ?? getDefaultTemplateByKey("rejected_waitlisted"),
+      rejected_paid_waitlisted:
+        event.email_templates?.rejected_paid_waitlisted ?? getDefaultTemplateByKey("rejected_paid_waitlisted"),
       rejected_hybrid: event.email_templates?.rejected_hybrid ?? getDefaultTemplateByKey("rejected_hybrid"),
       rejected_non_hybrid: event.email_templates?.rejected_non_hybrid ?? getDefaultTemplateByKey("rejected_non_hybrid"),
       rejected_virtual: event.email_templates?.rejected_virtual ?? getDefaultTemplateByKey("rejected_virtual"),
@@ -116,6 +119,9 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
       accepted: acceptedHtml,
       waitlisted: event.email_templates?.waitlisted ?? getDefaultTemplateByKey("waitlisted"),
       paid_waitlisted: event.email_templates?.paid_waitlisted ?? getDefaultTemplateByKey("paid_waitlisted"),
+      rejected_waitlisted: event.email_templates?.rejected_waitlisted ?? getDefaultTemplateByKey("rejected_waitlisted"),
+      rejected_paid_waitlisted:
+        event.email_templates?.rejected_paid_waitlisted ?? getDefaultTemplateByKey("rejected_paid_waitlisted"),
       rejected_hybrid: event.email_templates?.rejected_hybrid ?? getDefaultTemplateByKey("rejected_hybrid"),
       rejected_non_hybrid: event.email_templates?.rejected_non_hybrid ?? getDefaultTemplateByKey("rejected_non_hybrid"),
       rejected_virtual: event.email_templates?.rejected_virtual ?? getDefaultTemplateByKey("rejected_virtual"),
@@ -177,6 +183,10 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
               ),
               waitlisted: docData.email_templates.waitlisted ?? getDefaultTemplateByKey("waitlisted"),
               paid_waitlisted: docData.email_templates.paid_waitlisted ?? getDefaultTemplateByKey("paid_waitlisted"),
+              rejected_waitlisted:
+                docData.email_templates.rejected_waitlisted ?? getDefaultTemplateByKey("rejected_waitlisted"),
+              rejected_paid_waitlisted:
+                docData.email_templates.rejected_paid_waitlisted ?? getDefaultTemplateByKey("rejected_paid_waitlisted"),
               rejected_hybrid: docData.email_templates.rejected_hybrid ?? getDefaultTemplateByKey("rejected_hybrid"),
               rejected_non_hybrid:
                 docData.email_templates.rejected_non_hybrid ?? getDefaultTemplateByKey("rejected_non_hybrid"),
@@ -207,6 +217,8 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
       templates.accepted !== savedTemplates.accepted ||
       templates.waitlisted !== savedTemplates.waitlisted ||
       templates.paid_waitlisted !== savedTemplates.paid_waitlisted ||
+      templates.rejected_waitlisted !== savedTemplates.rejected_waitlisted ||
+      templates.rejected_paid_waitlisted !== savedTemplates.rejected_paid_waitlisted ||
       templates.rejected_hybrid !== savedTemplates.rejected_hybrid ||
       templates.rejected_non_hybrid !== savedTemplates.rejected_non_hybrid ||
       templates.rejected_virtual !== savedTemplates.rejected_virtual ||
@@ -298,6 +310,8 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
       accepted: getDefaultTemplateByKey("accepted"),
       waitlisted: getDefaultTemplateByKey("waitlisted"),
       paid_waitlisted: getDefaultTemplateByKey("paid_waitlisted"),
+      rejected_waitlisted: getDefaultTemplateByKey("rejected_waitlisted"),
+      rejected_paid_waitlisted: getDefaultTemplateByKey("rejected_paid_waitlisted"),
       rejected_hybrid: getDefaultTemplateByKey("rejected_hybrid"),
       rejected_non_hybrid: getDefaultTemplateByKey("rejected_non_hybrid"),
       rejected_virtual: getDefaultTemplateByKey("rejected_virtual"),
@@ -318,6 +332,8 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
       accepted: getDefaultTemplateByKey("accepted"),
       waitlisted: getDefaultTemplateByKey("waitlisted"),
       paid_waitlisted: getDefaultTemplateByKey("paid_waitlisted"),
+      rejected_waitlisted: getDefaultTemplateByKey("rejected_waitlisted"),
+      rejected_paid_waitlisted: getDefaultTemplateByKey("rejected_paid_waitlisted"),
       rejected_hybrid: getDefaultTemplateByKey("rejected_hybrid"),
       rejected_non_hybrid: getDefaultTemplateByKey("rejected_non_hybrid"),
       rejected_virtual: getDefaultTemplateByKey("rejected_virtual"),
@@ -335,6 +351,8 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
           accepted: allDefaults.accepted,
           waitlisted: allDefaults.waitlisted,
           paid_waitlisted: allDefaults.paid_waitlisted,
+          rejected_waitlisted: allDefaults.rejected_waitlisted,
+          rejected_paid_waitlisted: allDefaults.rejected_paid_waitlisted,
           rejected_hybrid: allDefaults.rejected_hybrid,
           rejected_non_hybrid: allDefaults.rejected_non_hybrid,
           rejected_virtual: allDefaults.rejected_virtual,
@@ -386,6 +404,22 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
               eventChecklistItems: cleanData.paid_waitlisted.event.eventChecklistItems,
               attendeeName: cleanData.paid_waitlisted.attendee.name,
               attendeeEmail: cleanData.paid_waitlisted.attendee.email,
+            },
+            rejected_waitlisted: {
+              headerEmailUrl: cleanData.rejected_waitlisted.event.headerEmailUrl,
+              eventName: cleanData.rejected_waitlisted.event.eventName,
+              eventCtaUrl: cleanData.rejected_waitlisted.event.eventCtaUrl,
+              eventChecklistItems: cleanData.rejected_waitlisted.event.eventChecklistItems,
+              attendeeName: cleanData.rejected_waitlisted.attendee.name,
+              attendeeEmail: cleanData.rejected_waitlisted.attendee.email,
+            },
+            rejected_paid_waitlisted: {
+              headerEmailUrl: cleanData.rejected_paid_waitlisted.event.headerEmailUrl,
+              eventName: cleanData.rejected_paid_waitlisted.event.eventName,
+              eventCtaUrl: cleanData.rejected_paid_waitlisted.event.eventCtaUrl,
+              eventChecklistItems: cleanData.rejected_paid_waitlisted.event.eventChecklistItems,
+              attendeeName: cleanData.rejected_paid_waitlisted.attendee.name,
+              attendeeEmail: cleanData.rejected_paid_waitlisted.attendee.email,
             },
             rejected_hybrid: {
               headerEmailUrl: cleanData.rejected_hybrid.event.headerEmailUrl,
@@ -480,6 +514,8 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
           accepted: templates.accepted,
           waitlisted: templates.waitlisted,
           paid_waitlisted: templates.paid_waitlisted,
+          rejected_waitlisted: templates.rejected_waitlisted,
+          rejected_paid_waitlisted: templates.rejected_paid_waitlisted,
           rejected_hybrid: templates.rejected_hybrid,
           rejected_non_hybrid: templates.rejected_non_hybrid,
           rejected_virtual: templates.rejected_virtual,
@@ -533,6 +569,22 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
               eventChecklistItems: templatesData.paid_waitlisted.event.eventChecklistItems,
               attendeeName: templatesData.paid_waitlisted.attendee.name,
               attendeeEmail: templatesData.paid_waitlisted.attendee.email,
+            },
+            rejected_waitlisted: {
+              headerEmailUrl: templatesData.rejected_waitlisted.event.headerEmailUrl,
+              eventName: templatesData.rejected_waitlisted.event.eventName,
+              eventCtaUrl: templatesData.rejected_waitlisted.event.eventCtaUrl,
+              eventChecklistItems: templatesData.rejected_waitlisted.event.eventChecklistItems,
+              attendeeName: templatesData.rejected_waitlisted.attendee.name,
+              attendeeEmail: templatesData.rejected_waitlisted.attendee.email,
+            },
+            rejected_paid_waitlisted: {
+              headerEmailUrl: templatesData.rejected_paid_waitlisted.event.headerEmailUrl,
+              eventName: templatesData.rejected_paid_waitlisted.event.eventName,
+              eventCtaUrl: templatesData.rejected_paid_waitlisted.event.eventCtaUrl,
+              eventChecklistItems: templatesData.rejected_paid_waitlisted.event.eventChecklistItems,
+              attendeeName: templatesData.rejected_paid_waitlisted.attendee.name,
+              attendeeEmail: templatesData.rejected_paid_waitlisted.attendee.email,
             },
             rejected_hybrid: {
               headerEmailUrl: templatesData.rejected_hybrid.event.headerEmailUrl,

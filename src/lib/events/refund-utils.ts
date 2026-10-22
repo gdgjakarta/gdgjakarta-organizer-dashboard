@@ -141,12 +141,33 @@ export function isRegistrationEligibleForRefund(
     registration.status === "paid_waitlisted" ||
     registration.status === "paid_and_registered" ||
     registration.status === "registered" ||
-    registration.status === "approved";
+    registration.status === "approved" ||
+    registration.status === "rejected";
 
   const hasPaidAmount =
+    registration.payment_status === "paid" ||
+    Boolean(registration.paid_at) ||
     (typeof registration.payment_amount === "number" && registration.payment_amount > 0) ||
     (typeof registration.ticket_price === "number" && registration.ticket_price > 0) ||
     registration.ticket_type === "commitment_fee";
+
+  // For rejected paid registrations, must have actually completed payment (or had a paid waitlist / paid status)
+  const isRejectedStatus = registration.status === "rejected";
+  const hasConfirmedPaymentForRejected =
+    registration.payment_status === "paid" ||
+    Boolean(registration.paid_at) ||
+    Boolean(registration.payment_invoice_number && (registration.payment_amount ?? 0) > 0) ||
+    Boolean(registration.status_logs?.some((l) => l.status === "paid_waitlisted" || l.status === "paid_and_registered"));
+
+  if (isRejectedStatus && !hasConfirmedPaymentForRejected && !hasActiveRequest) {
+    return {
+      isEligible: false,
+      canSubmitNew: false,
+      hasActiveRequest: false,
+      reason: "Refund is only applicable for rejected registrations that have completed payment.",
+      cutoffInfo,
+    };
+  }
 
   if (!isEligibleStatus && !hasActiveRequest) {
     return {
@@ -177,7 +198,8 @@ export function isRegistrationEligibleForRefund(
     };
   }
 
-  if (cutoffInfo.isExpired) {
+  // Rejected paid waitlisted attendees can submit a refund request even if the refund cutoff date has passed
+  if (cutoffInfo.isExpired && !isRejectedStatus) {
     return {
       isEligible: false,
       canSubmitNew: false,

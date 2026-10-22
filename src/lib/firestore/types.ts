@@ -242,6 +242,8 @@ export type EmailTemplateKey =
   | "rejected_hybrid"
   | "rejected_non_hybrid"
   | "rejected_virtual"
+  | "rejected_waitlisted"
+  | "rejected_paid_waitlisted"
   | "cancelled"
   | "cancelled_attendee"
   | "waitlisted"
@@ -269,6 +271,8 @@ export interface EventEmailTemplates {
   rejected_hybrid?: string;
   rejected_non_hybrid?: string;
   rejected_virtual?: string;
+  rejected_waitlisted?: string;
+  rejected_paid_waitlisted?: string;
   direct_ticket?: string;
   cancelled?: string;
   cancelled_attendee?: string;
@@ -281,6 +285,8 @@ export interface EventEmailTemplates {
   rejected_hybrid_subject?: string;
   rejected_non_hybrid_subject?: string;
   rejected_virtual_subject?: string;
+  rejected_waitlisted_subject?: string;
+  rejected_paid_waitlisted_subject?: string;
   cancelled_subject?: string;
   cancelled_attendee_subject?: string;
   waitlisted_subject?: string;

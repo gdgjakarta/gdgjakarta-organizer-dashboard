@@ -563,7 +563,10 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
               return registration.refund_request?.status === "refund_completed"
                 ? "ℹ️ Registration canceled and refund finalized. You may re-register if capacity is available."
                 : "ℹ️ Your registration has been canceled.";
-            if (isRejected) return "⚠️ Your application was not approved by organizers.";
+            if (isRejected)
+              return isRegistrationEligibleForRefund(registration, currentEvent).canSubmitNew
+                ? "⚠️ Your paid waitlist registration could not be accommodated. Please submit a refund request below."
+                : "⚠️ Your application was not approved by organizers.";
             return "⏳ You have applied. Your registration is Pending Review by organizers.";
           })()}
         </div>
@@ -812,7 +815,9 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
                   <CreditCard className="size-3.5" />
                   {registration.status === "paid_waitlisted"
                     ? "Request Commitment Fee Refund 💸"
-                    : "Request Ticket Refund 💸"}
+                    : registration.status === "rejected"
+                      ? "Request Waitlist Refund 💸"
+                      : "Request Ticket Refund 💸"}
                 </Button>
                 <div className="rounded-md border border-border/80 bg-muted/40 p-2.5 text-xs">
                   <p className="font-semibold text-[11px] text-foreground">Refund Policy:</p>

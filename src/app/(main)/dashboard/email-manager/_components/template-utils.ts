@@ -6,7 +6,9 @@ import {
   DEFAULT_PAID_WAITLISTED_EMAIL_HTML,
   DEFAULT_REJECTED_HYBRID_EMAIL_HTML,
   DEFAULT_REJECTED_NON_HYBRID_EMAIL_HTML,
+  DEFAULT_REJECTED_PAID_WAITLISTED_EMAIL_HTML,
   DEFAULT_REJECTED_VIRTUAL_EMAIL_HTML,
+  DEFAULT_REJECTED_WAITLISTED_EMAIL_HTML,
   DEFAULT_WAITLISTED_EMAIL_HTML,
 } from "@/lib/events/email-templates";
 
@@ -144,6 +146,25 @@ export const EMAIL_FEATURE_TEMPLATES: EmailFeatureTemplateItem[] = [
     defaultSubject: "Payment Confirmed - Waitlist Priority: [[EventName]]",
     description: "Confirms payment receipt and notifies of priority waitlist queuing and refund privileges.",
     getRawHtml: () => convertTemplateToCleanTokens(DEFAULT_PAID_WAITLISTED_EMAIL_HTML),
+  },
+  {
+    id: "rejected_waitlisted",
+    name: "Rejected Waitlisted (Free Event)",
+    category: "waitlist",
+    badge: "Waitlist Closed",
+    defaultSubject: "Waitlist Update: [[EventName]]",
+    description: "Notifies waitlisted attendees on a free event that all seats remained full and the waitlist is closed.",
+    getRawHtml: () => convertTemplateToCleanTokens(DEFAULT_REJECTED_WAITLISTED_EMAIL_HTML),
+  },
+  {
+    id: "rejected_paid_waitlisted",
+    name: "Rejected Paid Waitlisted (Refund Eligible)",
+    category: "waitlist",
+    badge: "Refund Eligible",
+    defaultSubject: "Waitlist Update & Refund Instructions: [[EventName]]",
+    description:
+      "Notifies paid waitlisted attendees that capacity remained full and instructs them to submit a 100% refund request on their dashboard.",
+    getRawHtml: () => convertTemplateToCleanTokens(DEFAULT_REJECTED_PAID_WAITLISTED_EMAIL_HTML),
   },
   {
     id: "rejected_hybrid",
