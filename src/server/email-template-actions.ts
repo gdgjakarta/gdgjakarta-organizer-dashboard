@@ -9,7 +9,7 @@ import {
   resolveSendEmailWebhookUrl,
   splitFullName,
 } from "@/lib/events/email-templates";
-import type { FirestoreEvent } from "@/lib/firestore/types";
+import type { EmailTemplateKey, FirestoreEvent } from "@/lib/firestore/types";
 import { extractApiMessage } from "@/lib/utils";
 
 import { isAuthorizedOrganizerOrSelfEmail, isAuthorizedOrganizerSession } from "./auth-guard";
