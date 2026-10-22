@@ -40,7 +40,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { getBevyLiveEventUrl, getBevyManageEventUrl } from "@/config/remote-config-utils";
+import { getBevyLiveEventUrl, getBevyManageEventUrl, getBevyOldManageEventUrl } from "@/config/remote-config-utils";
 import { isExecutiveOrganizer } from "@/lib/auth-roles";
 import { resolveEventAudience } from "@/lib/bevy/audience";
 import { formatFirestoreDate } from "@/lib/date-utils";
@@ -649,13 +649,30 @@ export function EventDetailHeader({
             </DropdownMenu>
           )}
 
-          <Button size="sm" asChild className="gap-1.5">
-            <a href={getBevyManageEventUrl(event.id)} target="_blank" rel="noopener noreferrer">
-              <ExternalLink className="size-3.5" />
-              <span className="hidden sm:inline">Manage in Bevy</span>
-              <span className="sm:hidden">Bevy</span>
-            </a>
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" className="gap-1.5">
+                <ExternalLink className="size-3.5" />
+                <span className="hidden sm:inline">Manage in Bevy</span>
+                <span className="sm:hidden">Bevy</span>
+                <ChevronDown className="size-3 opacity-70" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem asChild>
+                <a href={getBevyManageEventUrl(event.id)} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="mr-2 size-3.5" />
+                  New Dashboard
+                </a>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <a href={getBevyOldManageEventUrl(event.id)} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="mr-2 size-3.5" />
+                  Old Dashboard
+                </a>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     </div>

@@ -2,8 +2,8 @@ export const DEFAULT_CHAPTER_ID = process.env.BEVY_CHAPTER_ID || "642";
 export const DEFAULT_CHAPTER_SLUG = process.env.BEVY_CHAPTER_SLUG || "gdg-jakarta";
 
 /**
- * Resolves the Bevy organizer management overview URL for a specific event.
- * Format: https://gdg.community.dev/dashboard/{chapterSlug}/events/{eventId}/overview
+ * Resolves the Bevy organizer management overview URL for a specific event (New Dashboard).
+ * Format: https://gdg.community.dev/dashboard/{chapterSlug}/events/{eventId}/overview/
  */
 export function getBevyManageEventUrl(
   eventId?: string | number | null,
@@ -13,7 +13,22 @@ export function getBevyManageEventUrl(
   if (!eventId) {
     return `https://gdg.community.dev/dashboard/${slug}/events/`;
   }
-  return `https://gdg.community.dev/dashboard/${slug}/events/${eventId}/overview`;
+  return `https://gdg.community.dev/dashboard/${slug}/events/${eventId}/overview/`;
+}
+
+/**
+ * Resolves the legacy Bevy organizer management URL for a specific event (Old Dashboard).
+ * Format: https://gdg.community.dev/accounts/dashboard/#/chapter-{chapterId}/event-{eventId}/manage
+ */
+export function getBevyOldManageEventUrl(
+  eventId?: string | number | null,
+  chapterId: string | number = DEFAULT_CHAPTER_ID,
+): string {
+  const id = chapterId || "642";
+  if (!eventId) {
+    return `https://gdg.community.dev/accounts/dashboard/#/chapter-${id}/events`;
+  }
+  return `https://gdg.community.dev/accounts/dashboard/#/chapter-${id}/event-${eventId}/manage`;
 }
 
 /**

@@ -30,9 +30,12 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { getBevyLiveEventUrl, getBevyManageEventUrl } from "@/config/remote-config-utils";
+import { getBevyLiveEventUrl, getBevyManageEventUrl, getBevyOldManageEventUrl } from "@/config/remote-config-utils";
 import type { DataTableFeatures } from "@/lib/data-table-features";
 import type { ShortLinkItem } from "@/lib/shortio/types";
 import { cn } from "@/lib/utils";
@@ -281,20 +284,42 @@ function EventActionsMenu({ row }: { row: { original: EventRow } }) {
             ))}
 
           <DropdownMenuSeparator />
-          <DropdownMenuItem asChild>
-            <a
-              href={
-                row.original.id
-                  ? getBevyManageEventUrl(row.original.id)
-                  : (row.original.url ?? "https://gdg.community.dev/gdg-jakarta/")
-              }
-              target="_blank"
-              rel="noopener noreferrer"
-            >
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
               <ExternalLink className="mr-2 size-3.5" />
               Manage in Bevy
-            </a>
-          </DropdownMenuItem>
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="w-44">
+              <DropdownMenuItem asChild>
+                <a
+                  href={
+                    row.original.id
+                      ? getBevyManageEventUrl(row.original.id)
+                      : (row.original.url ?? "https://gdg.community.dev/gdg-jakarta/")
+                  }
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <ExternalLink className="mr-2 size-3.5" />
+                  New Dashboard
+                </a>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <a
+                  href={
+                    row.original.id
+                      ? getBevyOldManageEventUrl(row.original.id)
+                      : (row.original.url ?? "https://gdg.community.dev/gdg-jakarta/")
+                  }
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <ExternalLink className="mr-2 size-3.5" />
+                  Old Dashboard
+                </a>
+              </DropdownMenuItem>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
