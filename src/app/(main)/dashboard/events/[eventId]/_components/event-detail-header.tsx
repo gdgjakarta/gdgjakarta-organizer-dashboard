@@ -10,6 +10,7 @@ import {
   Calendar,
   CheckCircle2,
   ChevronDown,
+  ChevronsUpDown,
   Clock,
   Copy,
   CreditCard,
@@ -17,6 +18,7 @@ import {
   Eye,
   Globe,
   Hourglass,
+  Loader2,
   MapPin,
   QrCode,
   Radio,
@@ -29,9 +31,15 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import {
+  fetchPublishedEventsAction,
+  type PublishedEventOption,
+} from "@/app/(main)/dashboard/email-manager/_actions/fetch-published-events";
 import { Shimmer } from "@/components/shimmer";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,6 +48,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { getBevyLiveEventUrl, getBevyManageEventUrl, getBevyOldManageEventUrl } from "@/config/remote-config-utils";
 import { isExecutiveOrganizer } from "@/lib/auth-roles";
 import { resolveEventAudience } from "@/lib/bevy/audience";
@@ -304,6 +313,82 @@ export function EventDetailHeader({
   const dropRateNumber = totalExpected > 0 ? (droppedCount / totalExpected) * 100 : 0;
   const formattedDropRate = `${dropRateNumber % 1 === 0 ? dropRateNumber.toFixed(0) : dropRateNumber.toFixed(1)}%`;
 
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [switcherEvents, setSwitcherEvents] = useState<PublishedEventOption[]>([]);
+  const [isLoadingSwitcher, setIsLoadingSwitcher] = useState(false);
+  const [isSwitchingEvent, startSwitchTransition] = useTransition();
+
+  const handleSwitcherOpenChange = (open: boolean) => {
+    setSwitcherOpen(open);
+    if (open && switcherEvents.length === 0 && !isLoadingSwitcher) {
+      setIsLoadingSwitcher(true);
+      void (async () => {
+        try {
+          const res = await fetchPublishedEventsAction();
+          if (res.success && res.events) {
+            setSwitcherEvents(res.events);
+          }
+        } catch (err) {
+          console.warn("[EventDetailHeader] Failed to load events for switcher:", err);
+        } finally {
+          setIsLoadingSwitcher(false);
+        }
+      })();
+    }
+  };
+
+  const { upcomingEvents, pastEvents } = useMemo(() => {
+    const now = Date.now();
+    const upcoming: PublishedEventOption[] = [];
+    const past: PublishedEventOption[] = [];
+    for (const item of switcherEvents) {
+      const startMs = item.startDate ? new Date(item.startDate).getTime() : 0;
+      if (startMs >= now) {
+        upcoming.push(item);
+      } else {
+        past.push(item);
+      }
+    }
+    return { upcomingEvents: upcoming, pastEvents: past };
+  }, [switcherEvents]);
+
+  const handleSelectSwitchEvent = (targetId: string) => {
+    setSwitcherOpen(false);
+    if (String(targetId) === String(event.id)) return;
+    startSwitchTransition(() => {
+      router.push(`/dashboard/events/${targetId}`);
+    });
+  };
+
+  const renderSwitchEventItem = (item: PublishedEventOption) => {
+    const isCurrent = String(item.id) === String(event.id);
+    return (
+      <CommandItem
+        key={item.id}
+        value={`${item.title} ${item.formattedDate} ${item.venueName ?? ""} ${item.id}`}
+        data-checked={isCurrent}
+        onSelect={() => handleSelectSwitchEvent(item.id)}
+        className="flex cursor-pointer items-center justify-between gap-3 px-3 py-2 transition-colors aria-selected:bg-accent group-data-[checked=true]/command-item:[&>svg:last-child]:text-primary"
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-2.5">
+          <Avatar className="size-8 shrink-0 rounded-md border bg-muted/40">
+            {item.thumbnailUrl && <AvatarImage src={item.thumbnailUrl} alt={item.title} className="object-cover" />}
+            <AvatarFallback className="rounded-md bg-primary/10 text-primary">
+              <Calendar className="size-3.5" />
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex min-w-0 flex-1 flex-col text-left">
+            <span className="font-semibold text-[10px] text-sky-600 uppercase tracking-wider dark:text-sky-400">
+              {item.formattedDate}
+            </span>
+            <span className="truncate font-medium text-foreground text-xs">{item.title}</span>
+            {item.venueName && <span className="truncate text-[11px] text-muted-foreground">{item.venueName}</span>}
+          </div>
+        </div>
+      </CommandItem>
+    );
+  };
+
   const handleCopyLivePage = () => {
     if (!event.id) return;
     const origin = typeof window !== "undefined" ? window.location.origin : "";
@@ -320,14 +405,66 @@ export function EventDetailHeader({
 
   return (
     <div className="flex flex-col gap-4 border-b pb-6">
-      {/* Back button */}
-      <div>
+      {/* Top navigation & Event Switcher */}
+      <div className="flex flex-wrap items-center gap-1.5">
         <Button variant="ghost" size="sm" asChild className="-ml-2 gap-1.5 text-muted-foreground hover:text-foreground">
           <Link href="/dashboard/events">
             <ArrowLeft className="size-4" />
             Back to Events
           </Link>
         </Button>
+
+        <span className="select-none text-muted-foreground/40 text-sm">/</span>
+
+        <Popover open={switcherOpen} onOpenChange={handleSwitcherOpenChange}>
+          <PopoverTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              role="combobox"
+              aria-expanded={switcherOpen}
+              aria-label="Switch event"
+              disabled={isSwitchingEvent}
+              className="h-8 max-w-[260px] gap-2 px-2.5 font-medium text-foreground hover:bg-muted sm:max-w-[360px]"
+            >
+              {isSwitchingEvent ? (
+                <Loader2 className="size-3.5 shrink-0 animate-spin text-primary" />
+              ) : (
+                <Calendar className="size-3.5 shrink-0 text-muted-foreground" />
+              )}
+              <span className="truncate">{event.title}</span>
+              <ChevronsUpDown className="size-3.5 shrink-0 opacity-50" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-[340px] p-0 sm:w-[400px]">
+            <Command>
+              <CommandInput placeholder="Switch event by title or date..." />
+              <CommandList className="max-h-80">
+                {isLoadingSwitcher ? (
+                  <div className="flex items-center justify-center gap-2 py-6 text-muted-foreground text-xs">
+                    <Loader2 className="size-4 animate-spin text-primary" />
+                    <span>Loading chapter events...</span>
+                  </div>
+                ) : (
+                  <>
+                    <CommandEmpty>No matching events found.</CommandEmpty>
+                    {upcomingEvents.length > 0 && (
+                      <CommandGroup heading={`Upcoming Events (${upcomingEvents.length})`}>
+                        {upcomingEvents.map(renderSwitchEventItem)}
+                      </CommandGroup>
+                    )}
+                    {pastEvents.length > 0 && (
+                      <CommandGroup heading={`Past Events (${pastEvents.length})`}>
+                        {pastEvents.map(renderSwitchEventItem)}
+                      </CommandGroup>
+                    )}
+                  </>
+                )}
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
       </div>
 
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
