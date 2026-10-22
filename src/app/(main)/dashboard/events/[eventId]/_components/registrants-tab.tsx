@@ -1466,10 +1466,13 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         paidRegistered++;
       }
 
-      const isAppr =
-        s === "approved" || s === "paid_and_registered" || s === "attended" || s === "confirmed" || s === "registered";
-      if (isAppr) {
+      if (s === "approved" || s === "attended" || s === "confirmed" || s === "registered") {
         approved++;
+      }
+
+      const isConfirmed =
+        s === "approved" || s === "paid_and_registered" || s === "attended" || s === "confirmed" || s === "registered";
+      if (isConfirmed) {
         if (reg.is_checked_in || s === "attended") {
           checkedIn++;
         } else {
