@@ -415,9 +415,21 @@ export async function updateMediaMetadata(
  * Retrieves a media object stream and metadata for HTTP response streaming.
  */
 export async function getMediaObjectStream(key: string, options?: R2GetOptions): Promise<R2ObjectBody | null> {
-  const bucket = await getMediaBucket();
-  const obj = await bucket.get(key, options);
-  return obj;
+  try {
+    const bucket = await getMediaBucket();
+    return await bucket.get(key, options);
+  } catch (err) {
+    const accountId = process.env.R2_ACCOUNT_ID ?? process.env.CF_ACCOUNT_ID;
+    const accessKeyId = process.env.R2_ACCESS_KEY_ID;
+    const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
+    const bucketName = process.env.R2_BUCKET_NAME ?? "gdgjakarta-assets";
+    if (accountId && accessKeyId && secretAccessKey) {
+      const s3Bucket = createS3R2Adapter({ accountId, accessKeyId, secretAccessKey, bucketName });
+      return await s3Bucket.get(key, options);
+    }
+    console.warn(`[R2] Failed to read '${key}' from R2 binding:`, err instanceof Error ? err.message : err);
+    return null;
+  }
 }
 
 /**

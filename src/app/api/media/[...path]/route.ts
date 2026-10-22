@@ -18,6 +18,29 @@ interface RouteParams {
   }>;
 }
 
+function parseRangeHeader(rangeHeader: string | null): R2Range | undefined {
+  if (!rangeHeader) return undefined;
+  const match = /^bytes=(\d*)-(\d*)$/i.exec(rangeHeader.trim());
+  if (!match) return undefined;
+  const [, startStr, endStr] = match;
+  if (!startStr && endStr) {
+    const suffix = Number.parseInt(endStr, 10);
+    return Number.isFinite(suffix) && suffix > 0 ? { suffix } : undefined;
+  }
+  if (startStr) {
+    const offset = Number.parseInt(startStr, 10);
+    if (!Number.isFinite(offset) || offset < 0) return undefined;
+    if (endStr) {
+      const end = Number.parseInt(endStr, 10);
+      if (Number.isFinite(end) && end >= offset) {
+        return { offset, length: end - offset + 1 };
+      }
+    }
+    return { offset };
+  }
+  return undefined;
+}
+
 /**
  * GET /api/media/[...path]
  * Streams media stored in Cloudflare R2 with aggressive HTTP caching and proper MIME headers.
@@ -34,9 +57,8 @@ export async function GET(request: NextRequest, context: RouteParams) {
   const isDownload = request.nextUrl.searchParams.get("download") === "1";
 
   try {
-    const object = await getMediaObjectStream(rawKey, {
-      range: request.headers,
-    });
+    const parsedRange = parseRangeHeader(request.headers.get("range"));
+    const object = await getMediaObjectStream(rawKey, parsedRange ? { range: parsedRange } : undefined);
 
     if (!object) {
       return NextResponse.json({ error: "Media file not found in R2" }, { status: 404 });

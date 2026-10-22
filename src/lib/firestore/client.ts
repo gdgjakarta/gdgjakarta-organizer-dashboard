@@ -2679,26 +2679,25 @@ export async function updateRegistrationMerchandiseCollection(
   await updateDoc(docRef, updatePayload);
 
   try {
-    const auditRef = doc(collection(db, "audit_logs"));
     const auditEntry: AuditLogEntry = sanitizeFirestoreData({
-      id: auditRef.id,
-      action: "merchandise_collection_change",
+      action: "registration_status_change",
       entity_type: "registration",
       entity_id: registrationId,
       event_id: eventId,
-      event_title: existingData?.event_title,
+      event_title: existingData?.event_title ? existingData.event_title.slice(0, 300) : undefined,
       member_id: existingData?.member_id,
       member_name: existingData?.member_name,
-      member_email: existingData?.member_email,
+      member_email:
+        existingData?.member_email && existingData.member_email.includes("@") ? existingData.member_email : undefined,
       actor_id: actorId,
       actor_name: actorName,
-      actor_email: actorEmail,
-      previous_value: Boolean(existingData?.is_merchandise_collected),
-      new_value: isCollected,
+      actor_email: actorEmail && actorEmail.includes("@") ? actorEmail : undefined,
+      previous_value: existingData?.is_merchandise_collected ? "merchandise_collected" : "merchandise_uncollected",
+      new_value: actionStatus,
       notes: reviewer?.notes || defaultNote,
       timestamp: now,
     });
-    await setDoc(auditRef, auditEntry);
+    await addDoc(collection(db, "audit_logs"), auditEntry);
   } catch (err) {
     console.warn("[Firestore] Failed to write merchandise audit log entry:", err);
   }
