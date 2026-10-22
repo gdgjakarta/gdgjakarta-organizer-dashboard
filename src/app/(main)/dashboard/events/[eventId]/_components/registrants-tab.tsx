@@ -18,6 +18,7 @@ import {
   Mail,
   MoreHorizontal,
   Package,
+  PackageCheck,
   RefreshCw,
   RotateCcw,
   Search,
@@ -75,11 +76,13 @@ import {
   isRegistrationPaymentOverdue,
 } from "@/lib/events/payment-deadline";
 import { calculatePaymentGatewayFee } from "@/lib/events/payment-fee";
+import { formatRupiah } from "@/lib/events/refund-utils";
 import { DEFAULT_COMBINED_QUESTIONS } from "@/lib/events/registration-defaults";
 import {
   deleteBatchEventRegistrationsAction,
   deleteEventRegistrationAction,
   updateRegistrationCheckInAction,
+  updateRegistrationMerchandiseCollectionAction,
   updateRegistrationStatusAction,
 } from "@/lib/firestore/actions";
 import { normalizeRegistrationDoc } from "@/lib/firestore/normalization";
@@ -351,6 +354,13 @@ function RegistrantsTableSkeleton({
               </div>
             </TableCell>
           )}
+          {hasMerchandise && visibleStandardColumns.merchandise_collected !== false && (
+            <TableCell>
+              <div className="relative h-5 w-20 overflow-hidden rounded-md bg-muted">
+                <div className="shimmer-wave" aria-hidden="true" />
+              </div>
+            </TableCell>
+          )}
           {hasSessions && visibleStandardColumns.session !== false && (
             <TableCell>
               <div className="relative h-4 w-24 overflow-hidden rounded bg-muted">
@@ -498,6 +508,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     reviewed_by: true,
     ticket: true,
     merchandise: true,
+    merchandise_collected: true,
     session: true,
     checkin: true,
     all_responses: true,
@@ -509,6 +520,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const [isSyncingBevy, setIsSyncingBevy] = useState(false);
   const [isSyncingStatus, setIsSyncingStatus] = useState(false);
   const [isCheckingInId, setIsCheckingInId] = useState<string | null>(null);
+  const [isCollectingMerchId, setIsCollectingMerchId] = useState<string | null>(null);
   const [approvingRegistrationId, setApprovingRegistrationId] = useState<string | null>(null);
   const [isBatchApproving, setIsBatchApproving] = useState(false);
   const [rejectingRegistrationId, setRejectingRegistrationId] = useState<string | null>(null);
@@ -759,8 +771,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       let pendingResetCount = 0;
 
       const updatePromises = missingApproved.map(async (reg) => {
-        const isPaid =
-          (reg.status ?? "").toLowerCase().trim() === "paid_and_registered" || isPaidRegistration(reg);
+        const isPaid = (reg.status ?? "").toLowerCase().trim() === "paid_and_registered" || isPaidRegistration(reg);
         const targetStatus: RegistrationStatus = isPaid ? "paid_waitlisted" : "pending";
         targetStatusById.set(reg.id, targetStatus);
         if (isPaid) {
@@ -1246,6 +1257,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       reviewed_by: true,
       ticket: hasTickets,
       merchandise: hasMerchandise,
+      merchandise_collected: hasMerchandise,
       session: hasSessions,
       checkin: true,
       all_responses: true,
@@ -1906,8 +1918,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     try {
       const reviewerPayload = user ? { id: user.id, name: user.name, email: user.email } : undefined;
       const isPaid = registration.status === "paid_waitlisted" || isPaidRegistration(registration);
-      const paidAmountNum =
-        registration.payment_amount ?? registration.ticket_price ?? registration.bundle_price ?? 0;
+      const paidAmountNum = registration.payment_amount ?? registration.ticket_price ?? registration.bundle_price ?? 0;
       const sessionName =
         registration.session_title ??
         (registration.answers?.session_title as string | undefined) ??
@@ -1937,8 +1948,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
 
       let rejectNote: string | undefined;
       if (isPaid) {
-        rejectNote =
-          "Rejected from Paid Waitlist by organizer. Attendee remains eligible to submit a refund request.";
+        rejectNote = "Rejected from Paid Waitlist by organizer. Attendee remains eligible to submit a refund request.";
       } else if (registration.status === "waitlisted") {
         rejectNote = "Rejected from Waitlist by organizer.";
       }
@@ -2139,6 +2149,18 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   };
 
   const handleToggleCheckIn = async (registration: FirestoreRegistration, isCheckedIn: boolean) => {
+    const effectiveStatus = getEffectiveRegistrationStatus(registration, currentEvent);
+    const rawStatus = ((effectiveStatus as string) || "").toLowerCase().trim();
+    const regStatus = ((registration.status as string) || "").toLowerCase().trim();
+    const canCheckIn =
+      ["paid_and_registered", "paid_registered", "approved", "registered"].includes(rawStatus) ||
+      ["paid_and_registered", "paid_registered", "approved", "registered"].includes(regStatus);
+
+    if (isCheckedIn && !canCheckIn) {
+      toast.error("Check-in is only enabled for attendees with Paid & Registered, Approved, or Registered status.");
+      return;
+    }
+
     setIsCheckingInId(registration.id);
     try {
       const email = (registration.member_email || "").toLowerCase().trim();
@@ -2208,6 +2230,82 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       toast.error("Failed to update check-in status.");
     } finally {
       setIsCheckingInId(null);
+    }
+  };
+
+  const handleToggleMerchandiseCollected = async (registration: FirestoreRegistration, isCollected: boolean) => {
+    const hasAttendeeMerch = Boolean(registration.selected_merchandise && registration.selected_merchandise.length > 0);
+    const effectiveStatus = getEffectiveRegistrationStatus(registration, currentEvent);
+    const rawStatus = ((effectiveStatus as string) || "").toLowerCase().trim();
+    const regStatus = ((registration.status as string) || "").toLowerCase().trim();
+    const isPaidAndRegistered =
+      rawStatus === "paid_and_registered" ||
+      rawStatus === "paid_registered" ||
+      regStatus === "paid_and_registered" ||
+      regStatus === "paid_registered";
+
+    if (!hasAttendeeMerch || !isPaidAndRegistered) {
+      toast.error(
+        "Merchandise collection is only enabled when the attendee has merchandise and status is Paid & Registered.",
+      );
+      return;
+    }
+
+    setIsCollectingMerchId(registration.id);
+    try {
+      const reviewerPayload = user
+        ? { id: user.id, name: user.name, email: user.email }
+        : { id: "system_organizer", name: "GDG Organizer" };
+
+      const res = await updateRegistrationMerchandiseCollectionAction(
+        registration.id,
+        eventId,
+        isCollected,
+        reviewerPayload,
+      );
+
+      if (!res.success) {
+        toast.error(res.error ?? "Failed to update merchandise collection status.");
+        return;
+      }
+
+      const now = res.collectedAt ?? new Date().toISOString();
+      const newStatusLog: RegistrationStatusLog = res.statusLog ?? {
+        id: `merch_${Date.now()}`,
+        status: isCollected ? "merchandise_collected" : "merchandise_uncollected",
+        previous_status: registration.is_merchandise_collected ? "merchandise_collected" : "merchandise_uncollected",
+        changed_at: now,
+        changed_by_id: reviewerPayload.id,
+        changed_by_name: reviewerPayload.name,
+        changed_by_email: reviewerPayload.email,
+        notes: isCollected
+          ? `Merchandise marked as collected by ${reviewerPayload.name}.`
+          : `Merchandise collection reverted to not collected by ${reviewerPayload.name}.`,
+      };
+
+      const updateFields = (r: FirestoreRegistration): FirestoreRegistration => ({
+        ...r,
+        is_merchandise_collected: isCollected,
+        merchandise_collected_at: isCollected ? now : null,
+        merchandise_collected_by_id: isCollected ? reviewerPayload.id : null,
+        merchandise_collected_by_name: isCollected ? reviewerPayload.name : null,
+        merchandise_collected_by_email: isCollected ? (reviewerPayload.email ?? null) : null,
+        status_logs: [...(r.status_logs ?? []), newStatusLog],
+      });
+
+      setRegistrationsList((prev) => prev.map((r) => (r.id === registration.id ? updateFields(r) : r)));
+      setInspectRegistration((prev) => (prev?.id === registration.id ? updateFields(prev) : prev));
+
+      toast.success(
+        isCollected
+          ? `Marked merchandise as collected for ${registration.member_name}`
+          : `Merchandise collection undone for ${registration.member_name}`,
+      );
+    } catch (err) {
+      console.error("[handleToggleMerchandiseCollected] error:", err);
+      toast.error("Failed to update merchandise collection status.");
+    } finally {
+      setIsCollectingMerchId(null);
     }
   };
 
@@ -3020,7 +3118,9 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       "Status",
       ...(isCurationMode ? ["Reviewed By", "Reviewed At"] : []),
       ...(hasTickets ? ["Ticket Pass", "Ticket Type", "Ticket Price", "Bundle Package", "Bundle Price"] : []),
-      ...(hasMerchandise ? ["Merchandise Orders"] : []),
+      ...(hasMerchandise
+        ? ["Merchandise Orders", "Merchandise Collected", "Merchandise Collected By", "Merchandise Collected At"]
+        : []),
       "Voucher Code",
       "Voucher Discount",
       "Referral Code",
@@ -3073,7 +3173,14 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
               `"${r.bundle_price || 0}"`,
             ]
           : []),
-        ...(hasMerchandise ? [`"${merchText.replace(/"/g, '""')}"`] : []),
+        ...(hasMerchandise
+          ? [
+              `"${merchText.replace(/"/g, '""')}"`,
+              `"${r.is_merchandise_collected ? "Collected" : r.selected_merchandise && r.selected_merchandise.length > 0 ? "Not Collected" : "N/A"}"`,
+              `"${(r.merchandise_collected_by_name || "").replace(/"/g, '""')}"`,
+              `"${formatFirestoreDate(r.merchandise_collected_at ?? undefined, "yyyy-MM-dd HH:mm:ss", "").replace(/"/g, '""')}"`,
+            ]
+          : []),
         `"${(r.voucher_code || "").replace(/"/g, '""')}"`,
         `"${r.voucher_discount_amount || 0}"`,
         `"${(r.referral_code || "").replace(/"/g, '""')}"`,
@@ -3107,6 +3214,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     if (isCurationMode && visibleStandardColumns.reviewed_by !== false) count += 1;
     if (hasTickets && visibleStandardColumns.ticket !== false) count += 1;
     if (hasMerchandise && visibleStandardColumns.merchandise !== false) count += 1;
+    if (hasMerchandise && visibleStandardColumns.merchandise_collected !== false) count += 1;
     if (hasSessions && visibleStandardColumns.session !== false) count += 1;
     if (visibleStandardColumns.checkin !== false) count += 1;
     count += selectedQuestionColumns.length;
@@ -4067,6 +4175,9 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                   {isCurationMode && visibleStandardColumns.reviewed_by !== false && <TableHead>Reviewed By</TableHead>}
                   {hasTickets && visibleStandardColumns.ticket !== false && <TableHead>Ticket Pass</TableHead>}
                   {hasMerchandise && visibleStandardColumns.merchandise !== false && <TableHead>Merchandise</TableHead>}
+                  {hasMerchandise && visibleStandardColumns.merchandise_collected !== false && (
+                    <TableHead>Collected</TableHead>
+                  )}
                   {hasSessions && visibleStandardColumns.session !== false && <TableHead>Session Track</TableHead>}
                   {visibleStandardColumns.checkin !== false && <TableHead>Check-In (Bevy)</TableHead>}
                   {selectedQuestionColumns.map((qKey) => {
@@ -4411,6 +4522,80 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                           </TableCell>
                         )}
 
+                        {hasMerchandise && visibleStandardColumns.merchandise_collected !== false && (
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            {(() => {
+                              const hasAttendeeMerch = Boolean(
+                                reg.selected_merchandise && reg.selected_merchandise.length > 0,
+                              );
+                              const regStatusStr = ((reg.status as string) || "").toLowerCase().trim();
+                              const isPaidAndRegistered =
+                                rawStatus === "paid_and_registered" ||
+                                rawStatus === "paid_registered" ||
+                                regStatusStr === "paid_and_registered" ||
+                                regStatusStr === "paid_registered";
+                              const canCollectMerch = hasAttendeeMerch && isPaidAndRegistered;
+
+                              if (!hasAttendeeMerch) {
+                                return <span className="text-muted-foreground text-xs">—</span>;
+                              }
+
+                              if (reg.is_merchandise_collected) {
+                                return (
+                                  <div className="flex flex-col gap-0.5">
+                                    <div className="flex items-center gap-1.5">
+                                      <Badge
+                                        variant="outline"
+                                        className="gap-1 border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-medium text-[11px] text-emerald-600 dark:text-emerald-400"
+                                      >
+                                        <PackageCheck className="size-3" />
+                                        <span>Collected</span>
+                                      </Badge>
+                                      <Button
+                                        size="icon-xs"
+                                        variant="ghost"
+                                        className="size-6 text-muted-foreground hover:text-destructive"
+                                        title={
+                                          canCollectMerch
+                                            ? "Undo merchandise collection"
+                                            : "Merchandise collection is only enabled when status is Paid & Registered"
+                                        }
+                                        onClick={() => handleToggleMerchandiseCollected(reg, false)}
+                                        disabled={isCollectingMerchId === reg.id || !canCollectMerch}
+                                      >
+                                        <RotateCcw className="size-3" />
+                                      </Button>
+                                    </div>
+                                    {reg.merchandise_collected_by_name && (
+                                      <span className="truncate text-[10px] text-muted-foreground">
+                                        by {reg.merchandise_collected_by_name}
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              }
+
+                              return (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-6 gap-1 px-2 font-normal text-[11px] text-muted-foreground hover:border-emerald-500/40 hover:bg-emerald-500/10 hover:text-emerald-600"
+                                  title={
+                                    canCollectMerch
+                                      ? "Mark merchandise as collected"
+                                      : "Only enabled when attendee has merchandise and status is Paid & Registered"
+                                  }
+                                  onClick={() => handleToggleMerchandiseCollected(reg, true)}
+                                  disabled={isCollectingMerchId === reg.id || !canCollectMerch}
+                                >
+                                  <PackageCheck className="size-3" />
+                                  <span>Not Collected</span>
+                                </Button>
+                              );
+                            })()}
+                          </TableCell>
+                        )}
+
                         {hasSessions && visibleStandardColumns.session !== false && (
                           <TableCell onClick={() => setInspectRegistration(reg)}>
                             {sessionTitle ? (
@@ -4426,38 +4611,58 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
 
                         {visibleStandardColumns.checkin !== false && (
                           <TableCell onClick={(e) => e.stopPropagation()}>
-                            {reg.is_checked_in ? (
-                              <div className="flex items-center gap-1.5">
-                                <Badge
+                            {(() => {
+                              const regStatusStr = ((reg.status as string) || "").toLowerCase().trim();
+                              const canCheckIn =
+                                ["paid_and_registered", "paid_registered", "approved", "registered"].includes(
+                                  rawStatus,
+                                ) ||
+                                ["paid_and_registered", "paid_registered", "approved", "registered"].includes(
+                                  regStatusStr,
+                                );
+
+                              if (reg.is_checked_in) {
+                                return (
+                                  <div className="flex items-center gap-1.5">
+                                    <Badge
+                                      variant="outline"
+                                      className="gap-1 border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-medium text-[11px] text-emerald-600 dark:text-emerald-400"
+                                    >
+                                      <UserCheck className="size-3" />
+                                      <span>Checked In</span>
+                                    </Badge>
+                                    <Button
+                                      size="icon-xs"
+                                      variant="ghost"
+                                      className="size-6 text-muted-foreground hover:text-destructive"
+                                      title="Undo check-in in Bevy"
+                                      onClick={() => handleToggleCheckIn(reg, false)}
+                                      disabled={isCheckingInId === reg.id}
+                                    >
+                                      <RotateCcw className="size-3" />
+                                    </Button>
+                                  </div>
+                                );
+                              }
+
+                              return (
+                                <Button
+                                  size="sm"
                                   variant="outline"
-                                  className="gap-1 border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-medium text-[11px] text-emerald-600 dark:text-emerald-400"
+                                  className="h-6 gap-1 px-2 font-normal text-[11px] text-muted-foreground hover:border-emerald-500/40 hover:bg-emerald-500/10 hover:text-emerald-600"
+                                  title={
+                                    canCheckIn
+                                      ? "Check in attendee"
+                                      : "Check-in is only enabled when status is Paid & Registered, Approved, or Registered"
+                                  }
+                                  onClick={() => handleToggleCheckIn(reg, true)}
+                                  disabled={isCheckingInId === reg.id || !canCheckIn}
                                 >
                                   <UserCheck className="size-3" />
-                                  <span>Checked In</span>
-                                </Badge>
-                                <Button
-                                  size="icon-xs"
-                                  variant="ghost"
-                                  className="size-6 text-muted-foreground hover:text-destructive"
-                                  title="Undo check-in in Bevy"
-                                  onClick={() => handleToggleCheckIn(reg, false)}
-                                  disabled={isCheckingInId === reg.id}
-                                >
-                                  <RotateCcw className="size-3" />
+                                  <span>Check In</span>
                                 </Button>
-                              </div>
-                            ) : (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-6 gap-1 px-2 font-normal text-[11px] text-muted-foreground hover:border-emerald-500/40 hover:bg-emerald-500/10 hover:text-emerald-600"
-                                onClick={() => handleToggleCheckIn(reg, true)}
-                                disabled={isCheckingInId === reg.id}
-                              >
-                                <UserCheck className="size-3" />
-                                <span>Check In</span>
-                              </Button>
-                            )}
+                              );
+                            })()}
                           </TableCell>
                         )}
 
@@ -4794,6 +4999,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         onResendWaitlistEmail={handleResendWaitlistEmail}
         onResendPaidWaitlistEmail={handleResendPaidWaitlistEmail}
         onToggleCheckIn={handleToggleCheckIn}
+        onToggleMerchandiseCollected={handleToggleMerchandiseCollected}
         onCancelRegistration={(reg) => {
           setInspectRegistration(null);
           setCancelConfirmRegistration(reg);
@@ -4804,6 +5010,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         }}
         customQuestions={customQuestions}
         isPending={isPending || isCheckingInId === inspectRegistration?.id}
+        isCollectingMerch={isCollectingMerchId === inspectRegistration?.id}
         isApproving={approvingRegistrationId === inspectRegistration?.id}
         isRejecting={rejectingRegistrationId === inspectRegistration?.id}
         isWaitlisting={waitlistingRegistrationId === inspectRegistration?.id}

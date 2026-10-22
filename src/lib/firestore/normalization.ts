@@ -27,6 +27,9 @@ export function normalizeRegistrationDoc(docData: Record<string, unknown>, id: s
     (typeof docData.payment_expired_datetime === "string" ? docData.payment_expired_datetime : undefined);
   const checkinDateStr =
     toISOStringSafe(docData.checkin_date) ?? (typeof docData.checkin_date === "string" ? docData.checkin_date : null);
+  const merchCollectedAtStr =
+    toISOStringSafe(docData.merchandise_collected_at) ??
+    (typeof docData.merchandise_collected_at === "string" ? docData.merchandise_collected_at : null);
 
   // Normalize status_logs
   let statusLogs: RegistrationStatusLog[] = [];
@@ -116,6 +119,7 @@ export function normalizeRegistrationDoc(docData: Record<string, unknown>, id: s
     paid_at: paidAtStr,
     payment_expired_datetime: paymentExpiredStr,
     checkin_date: checkinDateStr,
+    merchandise_collected_at: merchCollectedAtStr,
     status_logs: statusLogs,
     answers,
   } as FirestoreRegistration;

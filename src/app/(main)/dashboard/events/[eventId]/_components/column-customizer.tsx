@@ -84,7 +84,14 @@ export function ColumnCustomizer({
     }
 
     if (hasMerchandise) {
-      list.push({ id: "merchandise", label: "Merchandise", description: "Ordered event merchandise items and addons" });
+      list.push(
+        { id: "merchandise", label: "Merchandise", description: "Ordered event merchandise items and addons" },
+        {
+          id: "merchandise_collected",
+          label: "Collected",
+          description: "On-site merchandise collection toggle and status",
+        },
+      );
     }
 
     if (hasSessions) {

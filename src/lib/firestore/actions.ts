@@ -337,6 +337,32 @@ export async function updateRegistrationCheckInAction(
 }
 
 /**
+ * Update attendee merchandise collection status in Firestore and record audit log
+ */
+export async function updateRegistrationMerchandiseCollectionAction(
+  registrationId: string,
+  eventId: string,
+  isCollected: boolean,
+  reviewer?: {
+    id: string;
+    name: string;
+    email?: string;
+    notes?: string;
+  },
+) {
+  try {
+    const { updateRegistrationMerchandiseCollection } = await import("./client");
+    const res = await updateRegistrationMerchandiseCollection(registrationId, eventId, isCollected, reviewer);
+    await revalidateDashboardPath(`/dashboard/events/${eventId}`);
+    return { success: true, statusLog: res.statusLog, collectedAt: res.collectedAt };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to update merchandise collection status.";
+    console.error("[updateRegistrationMerchandiseCollectionAction] error:", message);
+    return { success: false, error: message };
+  }
+}
+
+/**
  * Update event highlights and post-event media
  */
 export async function updateEventHighlightsMediaAction(

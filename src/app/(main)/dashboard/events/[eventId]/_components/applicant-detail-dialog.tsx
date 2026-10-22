@@ -65,6 +65,7 @@ import type {
   FirestoreEvent,
   FirestoreRegistration,
   ReferralOwnerInfo,
+  RegistrationAuditActionStatus,
   RegistrationStatus,
 } from "@/lib/firestore/types";
 import { cn, getInitials } from "@/lib/utils";
@@ -88,10 +89,12 @@ interface ApplicantDetailDialogProps {
   onResendWaitlistEmail?: (registration: FirestoreRegistration) => void;
   onResendPaidWaitlistEmail?: (registration: FirestoreRegistration) => void;
   onToggleCheckIn?: (registration: FirestoreRegistration, isCheckedIn: boolean) => void;
+  onToggleMerchandiseCollected?: (registration: FirestoreRegistration, isCollected: boolean) => void;
   onCancelRegistration?: (registration: FirestoreRegistration) => void;
   onDelete?: (registration: FirestoreRegistration) => void;
   customQuestions?: CustomQuestion[];
   isPending?: boolean;
+  isCollectingMerch?: boolean;
   isApproving?: boolean;
   isRejecting?: boolean;
   isWaitlisting?: boolean;
@@ -101,73 +104,84 @@ interface ApplicantDetailDialogProps {
   isCancelling?: boolean;
 }
 
-const STATUS_VARIANTS: Record<RegistrationStatus, { label: string; badgeClass: string; dotClass: string }> = {
-  pending: {
-    label: "Pending Review",
-    badgeClass: "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400",
-    dotClass: "bg-amber-500",
-  },
-  waiting_for_payment: {
-    label: "Waiting for Payment",
-    badgeClass: "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400",
-    dotClass: "bg-amber-500",
-  },
-  paid_and_registered: {
-    label: "Paid & Registered",
-    badgeClass: "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-    dotClass: "bg-emerald-500",
-  },
-  expired: {
-    label: "Expired",
-    badgeClass: "border-zinc-500/20 bg-zinc-500/10 text-zinc-600 dark:text-zinc-400",
-    dotClass: "bg-zinc-500",
-  },
-  failed: {
-    label: "Failed",
-    badgeClass: "border-rose-500/20 bg-rose-500/10 text-rose-600 dark:text-rose-400",
-    dotClass: "bg-rose-500",
-  },
-  canceled: {
-    label: "Canceled",
-    badgeClass: "border-slate-500/20 bg-slate-500/10 text-slate-600 dark:text-slate-400",
-    dotClass: "bg-slate-500",
-  },
-  cancelled: {
-    label: "Canceled",
-    badgeClass: "border-slate-500/20 bg-slate-500/10 text-slate-600 dark:text-slate-400",
-    dotClass: "bg-slate-500",
-  },
-  approved: {
-    label: "Approved",
-    badgeClass: "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-    dotClass: "bg-emerald-500",
-  },
-  registered: {
-    label: "Registered",
-    badgeClass: "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-    dotClass: "bg-emerald-500",
-  },
-  rejected: {
-    label: "Rejected",
-    badgeClass: "border-destructive/20 bg-destructive/10 text-destructive",
-    dotClass: "bg-destructive",
-  },
-  waitlisted: {
-    label: "Waitlisted",
-    badgeClass: "border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400",
-    dotClass: "bg-blue-500",
-  },
-  paid_waitlisted: {
-    label: "Paid Waitlist",
-    badgeClass: "border-indigo-500/20 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400",
-    dotClass: "bg-indigo-500",
-  },
-  attended: {
-    label: "Attended",
-    badgeClass: "border-purple-500/20 bg-purple-500/10 text-purple-600 dark:text-purple-400",
-    dotClass: "bg-purple-500",
-  },
-};
+const STATUS_VARIANTS: Record<RegistrationAuditActionStatus, { label: string; badgeClass: string; dotClass: string }> =
+  {
+    pending: {
+      label: "Pending Review",
+      badgeClass: "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400",
+      dotClass: "bg-amber-500",
+    },
+    waiting_for_payment: {
+      label: "Waiting for Payment",
+      badgeClass: "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400",
+      dotClass: "bg-amber-500",
+    },
+    paid_and_registered: {
+      label: "Paid & Registered",
+      badgeClass: "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+      dotClass: "bg-emerald-500",
+    },
+    expired: {
+      label: "Expired",
+      badgeClass: "border-zinc-500/20 bg-zinc-500/10 text-zinc-600 dark:text-zinc-400",
+      dotClass: "bg-zinc-500",
+    },
+    failed: {
+      label: "Failed",
+      badgeClass: "border-rose-500/20 bg-rose-500/10 text-rose-600 dark:text-rose-400",
+      dotClass: "bg-rose-500",
+    },
+    canceled: {
+      label: "Canceled",
+      badgeClass: "border-slate-500/20 bg-slate-500/10 text-slate-600 dark:text-slate-400",
+      dotClass: "bg-slate-500",
+    },
+    cancelled: {
+      label: "Canceled",
+      badgeClass: "border-slate-500/20 bg-slate-500/10 text-slate-600 dark:text-slate-400",
+      dotClass: "bg-slate-500",
+    },
+    approved: {
+      label: "Approved",
+      badgeClass: "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+      dotClass: "bg-emerald-500",
+    },
+    registered: {
+      label: "Registered",
+      badgeClass: "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+      dotClass: "bg-emerald-500",
+    },
+    rejected: {
+      label: "Rejected",
+      badgeClass: "border-destructive/20 bg-destructive/10 text-destructive",
+      dotClass: "bg-destructive",
+    },
+    waitlisted: {
+      label: "Waitlisted",
+      badgeClass: "border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400",
+      dotClass: "bg-blue-500",
+    },
+    paid_waitlisted: {
+      label: "Paid Waitlist",
+      badgeClass: "border-indigo-500/20 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400",
+      dotClass: "bg-indigo-500",
+    },
+    attended: {
+      label: "Attended",
+      badgeClass: "border-purple-500/20 bg-purple-500/10 text-purple-600 dark:text-purple-400",
+      dotClass: "bg-purple-500",
+    },
+    merchandise_collected: {
+      label: "Merchandise Collected",
+      badgeClass: "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+      dotClass: "bg-emerald-500",
+    },
+    merchandise_uncollected: {
+      label: "Merchandise Uncollected",
+      badgeClass: "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400",
+      dotClass: "bg-amber-500",
+    },
+  };
 
 const SECTION_ORDER = [
   "Personal & Contact Information",
@@ -264,9 +278,11 @@ export function ApplicantDetailDialog({
   onResendWaitlistEmail,
   onResendPaidWaitlistEmail,
   onToggleCheckIn,
+  onToggleMerchandiseCollected,
   onDelete,
   customQuestions = [],
   isPending = false,
+  isCollectingMerch = false,
   isApproving = false,
   isRejecting = false,
   isWaitlisting = false,
@@ -1092,32 +1108,50 @@ export function ApplicantDetailDialog({
                   )}
                 </div>
 
-                {onToggleCheckIn && (
-                  <Button
-                    size="sm"
-                    variant={registration.is_checked_in ? "ghost" : "outline"}
-                    className={cn(
-                      "h-6 px-2 text-[11px]",
-                      registration.is_checked_in
-                        ? "text-muted-foreground hover:text-destructive"
-                        : "border-primary/30 text-primary hover:bg-primary/5",
-                    )}
-                    disabled={isPending}
-                    onClick={() => onToggleCheckIn(registration, !registration.is_checked_in)}
-                  >
-                    {registration.is_checked_in ? (
-                      <>
-                        <RotateCcw className="mr-1 size-2.5" />
-                        Undo
-                      </>
-                    ) : (
-                      <>
-                        <UserCheck className="mr-1 size-2.5" />
-                        Check In
-                      </>
-                    )}
-                  </Button>
-                )}
+                {onToggleCheckIn &&
+                  (() => {
+                    const isEligibleForCheckIn =
+                      rawStatus === "paid_and_registered" ||
+                      rawStatus === "paid_registered" ||
+                      rawStatus === "approved" ||
+                      rawStatus === "registered" ||
+                      registration.status === "paid_and_registered" ||
+                      registration.status === "approved" ||
+                      registration.status === "registered" ||
+                      (registration.status as string) === "paid_registered";
+                    const canToggleCheckIn = Boolean(registration.is_checked_in) || isEligibleForCheckIn;
+                    return (
+                      <Button
+                        size="sm"
+                        variant={registration.is_checked_in ? "ghost" : "outline"}
+                        className={cn(
+                          "h-6 px-2 text-[11px]",
+                          registration.is_checked_in
+                            ? "text-muted-foreground hover:text-destructive"
+                            : "border-primary/30 text-primary hover:bg-primary/5",
+                        )}
+                        disabled={isPending || !canToggleCheckIn}
+                        title={
+                          !canToggleCheckIn
+                            ? "Check-in is only enabled when status is Paid & Registered, Approved, or Registered"
+                            : undefined
+                        }
+                        onClick={() => onToggleCheckIn(registration, !registration.is_checked_in)}
+                      >
+                        {registration.is_checked_in ? (
+                          <>
+                            <RotateCcw className="mr-1 size-2.5" />
+                            Undo
+                          </>
+                        ) : (
+                          <>
+                            <UserCheck className="mr-1 size-2.5" />
+                            Check In
+                          </>
+                        )}
+                      </Button>
+                    );
+                  })()}
               </div>
 
               {/* Bundling Package Details if registered via bundle */}
@@ -1204,6 +1238,88 @@ export function ApplicantDetailDialog({
                       );
                     })}
                   </div>
+
+                  {/* Merchandise Collection Status & Action */}
+                  {(() => {
+                    const hasAttendeeMerch = Boolean(
+                      registration.selected_merchandise && registration.selected_merchandise.length > 0,
+                    );
+                    const isPaidAndRegistered =
+                      rawStatus === "paid_and_registered" ||
+                      rawStatus === "paid_registered" ||
+                      registration.status === "paid_and_registered" ||
+                      (registration.status as string) === "paid_registered";
+                    const canCollectMerch =
+                      Boolean(registration.is_merchandise_collected) || (hasAttendeeMerch && isPaidAndRegistered);
+
+                    return (
+                      <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 border-border/50 border-t pt-2.5">
+                        <div className="flex min-w-0 flex-col gap-0.5">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="shrink-0 font-medium text-[11px] text-muted-foreground">Collection:</span>
+                            {registration.is_merchandise_collected ? (
+                              <Badge
+                                variant="outline"
+                                className="gap-1 border-emerald-500/30 bg-emerald-500/10 font-medium text-[10px] text-emerald-600 dark:text-emerald-400"
+                              >
+                                <PackageCheck className="size-3" /> Collected
+                                {registration.merchandise_collected_at &&
+                                  ` • ${formatFirestoreDate(registration.merchandise_collected_at, "dd MMM yyyy, HH:mm")}`}
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                                Not Collected
+                              </Badge>
+                            )}
+                          </div>
+                          {registration.is_merchandise_collected && registration.merchandise_collected_by_name && (
+                            <span className="text-[10px] text-muted-foreground">
+                              Marked by{" "}
+                              <span className="font-semibold text-foreground">
+                                {registration.merchandise_collected_by_name}
+                              </span>
+                            </span>
+                          )}
+                        </div>
+
+                        {onToggleMerchandiseCollected && (
+                          <Button
+                            size="sm"
+                            variant={registration.is_merchandise_collected ? "ghost" : "outline"}
+                            className={cn(
+                              "h-6 px-2 text-[11px]",
+                              registration.is_merchandise_collected
+                                ? "text-muted-foreground hover:text-destructive"
+                                : "border-primary/30 text-primary hover:bg-primary/5",
+                            )}
+                            disabled={isPending || isCollectingMerch || !canCollectMerch}
+                            title={
+                              !canCollectMerch
+                                ? "Collection is only enabled when attendee has merchandise and status is Paid & Registered"
+                                : undefined
+                            }
+                            onClick={() =>
+                              onToggleMerchandiseCollected(registration, !registration.is_merchandise_collected)
+                            }
+                          >
+                            {isCollectingMerch && <Loader2 className="mr-1 size-2.5 animate-spin" />}
+                            {!isCollectingMerch && registration.is_merchandise_collected && (
+                              <>
+                                <RotateCcw className="mr-1 size-2.5" />
+                                Undo
+                              </>
+                            )}
+                            {!isCollectingMerch && !registration.is_merchandise_collected && (
+                              <>
+                                <PackageCheck className="mr-1 size-2.5" />
+                                Collected
+                              </>
+                            )}
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -1797,6 +1913,7 @@ export function ApplicantDetailDialog({
           {(() => {
             const isActionBlocked = [
               isPending,
+              isCollectingMerch,
               isApproving,
               isRejecting,
               isWaitlisting,
@@ -1976,28 +2093,28 @@ export function ApplicantDetailDialog({
                     !isApproved &&
                     !isCanceled &&
                     !isDisbursementCompleted && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="border-destructive/30 text-destructive text-xs hover:bg-destructive/10"
-                      disabled={isActionBlocked}
-                      onClick={() => {
-                        if (onReject) {
-                          onReject(registration);
-                        } else {
-                          onStatusChange(registration.id, "rejected");
-                        }
-                        onClose();
-                      }}
-                    >
-                      {isRejecting ? (
-                        <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                      ) : (
-                        <XCircle className="mr-1.5 size-3.5" />
-                      )}
-                      Reject
-                    </Button>
-                  )}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-destructive/30 text-destructive text-xs hover:bg-destructive/10"
+                        disabled={isActionBlocked}
+                        onClick={() => {
+                          if (onReject) {
+                            onReject(registration);
+                          } else {
+                            onStatusChange(registration.id, "rejected");
+                          }
+                          onClose();
+                        }}
+                      >
+                        {isRejecting ? (
+                          <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                        ) : (
+                          <XCircle className="mr-1.5 size-3.5" />
+                        )}
+                        Reject
+                      </Button>
+                    )}
 
                   {/* Approve / Status Indicator */}
                   {(isCuration || isWaitlisted || isPaidWaitlisted) &&

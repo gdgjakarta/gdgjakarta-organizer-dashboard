@@ -563,10 +563,12 @@ export interface RefundRequest {
   updated_at: string;
 }
 
+export type RegistrationAuditActionStatus = RegistrationStatus | "merchandise_collected" | "merchandise_uncollected";
+
 export interface RegistrationStatusLog {
   id: string;
-  status: RegistrationStatus;
-  previous_status?: RegistrationStatus;
+  status: RegistrationAuditActionStatus;
+  previous_status?: RegistrationAuditActionStatus;
   changed_at: string;
   changed_by_id: string;
   changed_by_name: string;
@@ -576,7 +578,7 @@ export interface RegistrationStatusLog {
 
 export interface AuditLogEntry {
   id?: string;
-  action: "registration_status_change" | "event_update" | "member_update";
+  action: "registration_status_change" | "merchandise_collection_change" | "event_update" | "member_update";
   entity_type: "registration" | "event" | "member";
   entity_id: string;
   event_id?: string;
@@ -631,6 +633,11 @@ export interface FirestoreRegistration {
   bevy_attendee_id?: number | null;
   checkin_date?: string | null;
   attendee_code?: string | null;
+  is_merchandise_collected?: boolean;
+  merchandise_collected_at?: string | null;
+  merchandise_collected_by_id?: string | null;
+  merchandise_collected_by_name?: string | null;
+  merchandise_collected_by_email?: string | null;
 
   // Payment tracking (DOKU Checkout API)
   payment_status?: "unpaid" | "pending" | "paid" | "expired" | "failed" | "canceled" | "cancelled" | "refunded";

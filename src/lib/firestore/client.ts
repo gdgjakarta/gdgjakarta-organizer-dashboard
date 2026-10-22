@@ -2611,6 +2611,101 @@ export async function updateRegistrationCheckIn(
   }
 }
 
+export async function updateRegistrationMerchandiseCollection(
+  registrationId: string,
+  eventId: string,
+  isCollected: boolean,
+  reviewer?: {
+    id: string;
+    name: string;
+    email?: string;
+    notes?: string;
+  },
+): Promise<{ statusLog: RegistrationStatusLog; collectedAt: string }> {
+  if (typeof window === "undefined") {
+    throw new Error("Client Firestore call not supported on server.");
+  }
+  const docRef = doc(db, "event_registrations", registrationId);
+  const existingSnap = await getDoc(docRef);
+  const existingData = existingSnap.exists() ? (existingSnap.data() as FirestoreRegistration) : null;
+
+  const now = new Date().toISOString();
+  const actorId = reviewer?.id || "system_organizer";
+  const actorName = reviewer?.name || "GDG Organizer";
+  const actorEmail = reviewer?.email;
+
+  const merchSummary =
+    existingData?.selected_merchandise && existingData.selected_merchandise.length > 0
+      ? existingData.selected_merchandise
+          .map((m) => {
+            const itemName = m.name || m.merchandise_title || "Merchandise";
+            const varEntries = m.selected_variations ? Object.values(m.selected_variations).filter(Boolean) : [];
+            const fallbackVariant = m.selected_variant || m.selected_size || "";
+            const variantText = varEntries.length > 0 ? varEntries.join(", ") : fallbackVariant;
+            const variantLabel = variantText ? ` (${variantText})` : "";
+            return `${m.quantity || 1}x ${itemName}${variantLabel}`;
+          })
+          .join(", ")
+      : "Event Merchandise";
+
+  const actionStatus = isCollected ? "merchandise_collected" : "merchandise_uncollected";
+  const defaultNote = isCollected
+    ? `Merchandise marked as collected (${merchSummary}) by ${actorName}.`
+    : `Merchandise collection reverted to not collected (${merchSummary}) by ${actorName}.`;
+
+  const statusLog: RegistrationStatusLog = sanitizeFirestoreData({
+    id: `merch_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    status: actionStatus,
+    previous_status: existingData?.is_merchandise_collected ? "merchandise_collected" : "merchandise_uncollected",
+    changed_at: now,
+    changed_by_id: actorId,
+    changed_by_name: actorName,
+    ...(actorEmail ? { changed_by_email: actorEmail } : {}),
+    notes: reviewer?.notes || defaultNote,
+  });
+
+  const existingLogs = Array.isArray(existingData?.status_logs) ? existingData.status_logs : [];
+  const updatedLogs = [...existingLogs, statusLog];
+
+  const updatePayload = sanitizeFirestoreData<Partial<FirestoreRegistration>>({
+    is_merchandise_collected: isCollected,
+    merchandise_collected_at: isCollected ? now : null,
+    merchandise_collected_by_id: isCollected ? actorId : null,
+    merchandise_collected_by_name: isCollected ? actorName : null,
+    merchandise_collected_by_email: isCollected ? (actorEmail ?? null) : null,
+    status_logs: updatedLogs,
+  });
+
+  await updateDoc(docRef, updatePayload);
+
+  try {
+    const auditRef = doc(collection(db, "audit_logs"));
+    const auditEntry: AuditLogEntry = sanitizeFirestoreData({
+      id: auditRef.id,
+      action: "merchandise_collection_change",
+      entity_type: "registration",
+      entity_id: registrationId,
+      event_id: eventId,
+      event_title: existingData?.event_title,
+      member_id: existingData?.member_id,
+      member_name: existingData?.member_name,
+      member_email: existingData?.member_email,
+      actor_id: actorId,
+      actor_name: actorName,
+      actor_email: actorEmail,
+      previous_value: Boolean(existingData?.is_merchandise_collected),
+      new_value: isCollected,
+      notes: reviewer?.notes || defaultNote,
+      timestamp: now,
+    });
+    await setDoc(auditRef, auditEntry);
+  } catch (err) {
+    console.warn("[Firestore] Failed to write merchandise audit log entry:", err);
+  }
+
+  return { statusLog, collectedAt: now };
+}
+
 /**
  * Permanently deletes an event registration document and recalculates event counters,
  * freeing up capacity and allowing the attendee to re-register again.
