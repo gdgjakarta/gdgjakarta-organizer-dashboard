@@ -22,6 +22,7 @@ import {
   RefreshCw,
   RotateCcw,
   Search,
+  Tag,
   Ticket,
   Trash2,
   Truck,
@@ -462,6 +463,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [sessionFilter, setSessionFilter] = useState<string>("all");
   const [ticketFilter, setTicketFilter] = useState<string>("all");
+  const [promoReferralFilter, setPromoReferralFilter] = useState<string>("all");
   const [merchandiseFilter, setMerchandiseFilter] = useState<string>("all");
   const [merchandiseVariantFilter, setMerchandiseVariantFilter] = useState<string>("all");
   const [reviewerFilter, setReviewerFilter] = useState<string>("all");
@@ -1055,6 +1057,71 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     return collectMerchandiseFilterOptions(registrationsList, event?.merchandise);
   }, [registrationsList, event?.merchandise]);
 
+  const promoReferralFilterMeta = useMemo(() => {
+    const voucherMap = new Map<string, number>();
+    const referralMap = new Map<string, { count: number; referrerName?: string }>();
+    let hasAnyCount = 0;
+    let hasVoucherCount = 0;
+    let hasReferralCount = 0;
+    let noneCount = 0;
+
+    if (currentEvent?.vouchers) {
+      for (const v of currentEvent.vouchers) {
+        const code = v.code?.trim().toUpperCase();
+        if (code && !voucherMap.has(code)) {
+          voucherMap.set(code, 0);
+        }
+      }
+    }
+
+    for (const reg of registrationsList) {
+      const vCode = reg.voucher_code?.trim().toUpperCase() || "";
+      const rCode = reg.referral_code?.trim().toUpperCase() || "";
+
+      if (vCode) {
+        hasVoucherCount += 1;
+        voucherMap.set(vCode, (voucherMap.get(vCode) ?? 0) + 1);
+      }
+      if (rCode) {
+        hasReferralCount += 1;
+        const existing = referralMap.get(rCode);
+        const refName = reg.referrer_name?.trim() || existing?.referrerName;
+        referralMap.set(rCode, { count: (existing?.count ?? 0) + 1, referrerName: refName });
+      }
+      if (vCode || rCode) {
+        hasAnyCount += 1;
+      } else {
+        noneCount += 1;
+      }
+    }
+
+    const vouchers = Array.from(voucherMap.entries())
+      .map(([code, count]) => ({ code, count }))
+      .sort((a, b) => b.count - a.count || a.code.localeCompare(b.code));
+
+    const referrals = Array.from(referralMap.entries())
+      .map(([code, data]) => ({ code, count: data.count, referrerName: data.referrerName }))
+      .sort((a, b) => b.count - a.count || a.code.localeCompare(b.code));
+
+    return {
+      total: registrationsList.length,
+      hasAnyCount,
+      hasVoucherCount,
+      hasReferralCount,
+      noneCount,
+      vouchers,
+      referrals,
+    };
+  }, [registrationsList, currentEvent?.vouchers]);
+
+  const hasPromoOrReferral = useMemo(() => {
+    return (
+      Boolean(currentEvent?.vouchers && currentEvent.vouchers.length > 0) ||
+      promoReferralFilterMeta.hasAnyCount > 0 ||
+      hasTickets
+    );
+  }, [currentEvent?.vouchers, promoReferralFilterMeta.hasAnyCount, hasTickets]);
+
   // Map question IDs/keys to human-readable question labels
   const questionLabelMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -1342,11 +1409,20 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     }, 200);
   }, []);
 
+  const handlePromoReferralFilterChange = useCallback((val: string) => {
+    setIsFiltering(true);
+    setPromoReferralFilter(val);
+    setTimeout(() => {
+      setIsFiltering(false);
+    }, 200);
+  }, []);
+
   const handleResetAllFilters = () => {
     setIsFiltering(true);
     setStatusFilter("all");
     setSessionFilter("all");
     setTicketFilter("all");
+    setPromoReferralFilter("all");
     setMerchandiseFilter("all");
     setMerchandiseVariantFilter("all");
     setReviewerFilter("all");
@@ -1379,6 +1455,27 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       const matchesReviewer =
         reviewerFilter === "all" ||
         (reviewerFilter === "unreviewed" ? !reg.reviewed_by_name : reg.reviewed_by_name === reviewerFilter);
+
+      let matchesPromoReferral = true;
+      if (promoReferralFilter !== "all") {
+        const vCode = (reg.voucher_code || "").trim().toUpperCase();
+        const rCode = (reg.referral_code || "").trim().toUpperCase();
+        if (promoReferralFilter === "has_any") {
+          matchesPromoReferral = Boolean(vCode || rCode);
+        } else if (promoReferralFilter === "has_voucher") {
+          matchesPromoReferral = Boolean(vCode);
+        } else if (promoReferralFilter === "has_referral") {
+          matchesPromoReferral = Boolean(rCode);
+        } else if (promoReferralFilter === "none") {
+          matchesPromoReferral = !vCode && !rCode;
+        } else if (promoReferralFilter.startsWith("voucher:")) {
+          const targetCode = promoReferralFilter.slice("voucher:".length).trim().toUpperCase();
+          matchesPromoReferral = vCode === targetCode;
+        } else if (promoReferralFilter.startsWith("referral:")) {
+          const targetCode = promoReferralFilter.slice("referral:".length).trim().toUpperCase();
+          matchesPromoReferral = rCode === targetCode;
+        }
+      }
 
       let matchesMerchandise = true;
       if (merchandiseFilter !== "all") {
@@ -1417,6 +1514,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         !matchesSession ||
         !matchesTicket ||
         !matchesReviewer ||
+        !matchesPromoReferral ||
         !matchesMerchandise ||
         !matchesMerchandiseVariant
       ) {
@@ -1455,6 +1553,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     searchTokens,
     sessionFilter,
     ticketFilter,
+    promoReferralFilter,
     merchandiseFilter,
     merchandiseVariantFilter,
     reviewerFilter,
@@ -3248,6 +3347,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       statusFilter !== "all" ||
       sessionFilter !== "all" ||
       ticketFilter !== "all" ||
+      promoReferralFilter !== "all" ||
       merchandiseFilter !== "all" ||
       merchandiseVariantFilter !== "all" ||
       reviewerFilter !== "all" ||
@@ -3268,6 +3368,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         onSelectSearchFilter={handleSearchChange}
         onSelectSessionFilter={handleSessionFilterChange}
         onSelectMerchandiseFilter={handleMerchandiseStatsFilter}
+        onSelectPromoReferralFilter={handlePromoReferralFilterChange}
       />
 
       <Card>
@@ -3674,6 +3775,65 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                             {t.name}
                           </SelectItem>
                         ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                )}
+
+                {hasPromoOrReferral && (
+                  <Select value={promoReferralFilter} onValueChange={handlePromoReferralFilterChange}>
+                    <SelectTrigger size="sm" className="h-8 text-xs">
+                      <Tag className="mr-1 size-3 shrink-0 text-muted-foreground" />
+                      <span className="text-muted-foreground">Promo / Referral:</span>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectItem value="all">All Promo / Referral ({promoReferralFilterMeta.total})</SelectItem>
+                        <SelectItem value="has_any">
+                          Has Voucher or Referral ({promoReferralFilterMeta.hasAnyCount})
+                        </SelectItem>
+                        <SelectItem value="has_voucher">
+                          Has Voucher ({promoReferralFilterMeta.hasVoucherCount})
+                        </SelectItem>
+                        <SelectItem value="has_referral">
+                          Has Referral ({promoReferralFilterMeta.hasReferralCount})
+                        </SelectItem>
+                        <SelectItem value="none">
+                          No Voucher / Referral ({promoReferralFilterMeta.noneCount})
+                        </SelectItem>
+                        {promoReferralFilterMeta.vouchers.length > 0 && (
+                          <>
+                            <SelectItem
+                              disabled
+                              value="__voucher_header__"
+                              className="font-semibold text-[10px] text-muted-foreground uppercase"
+                            >
+                              By Voucher Code
+                            </SelectItem>
+                            {promoReferralFilterMeta.vouchers.map((v) => (
+                              <SelectItem key={`voucher:${v.code}`} value={`voucher:${v.code}`}>
+                                {v.code} ({v.count})
+                              </SelectItem>
+                            ))}
+                          </>
+                        )}
+                        {promoReferralFilterMeta.referrals.length > 0 && (
+                          <>
+                            <SelectItem
+                              disabled
+                              value="__referral_header__"
+                              className="font-semibold text-[10px] text-muted-foreground uppercase"
+                            >
+                              By Referral Code
+                            </SelectItem>
+                            {promoReferralFilterMeta.referrals.map((r) => (
+                              <SelectItem key={`referral:${r.code}`} value={`referral:${r.code}`}>
+                                {r.referrerName ? `${r.code} · ${r.referrerName}` : r.code} ({r.count})
+                              </SelectItem>
+                            ))}
+                          </>
+                        )}
                       </SelectGroup>
                     </SelectContent>
                   </Select>
@@ -4092,6 +4252,35 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                   </button>
                 </Badge>
               )}
+              {promoReferralFilter !== "all" && (
+                <Badge variant="secondary" className="gap-1 font-normal text-xs">
+                  <Tag className="size-3 text-primary" />
+                  <span>
+                    Promo / Referral:{" "}
+                    {promoReferralFilter === "has_any"
+                      ? "Has Voucher or Referral"
+                      : promoReferralFilter === "has_voucher"
+                        ? "Has Voucher"
+                        : promoReferralFilter === "has_referral"
+                          ? "Has Referral"
+                          : promoReferralFilter === "none"
+                            ? "No Voucher / Referral"
+                            : promoReferralFilter.startsWith("voucher:")
+                              ? `Voucher ${promoReferralFilter.slice("voucher:".length)}`
+                              : promoReferralFilter.startsWith("referral:")
+                                ? `Referral ${promoReferralFilter.slice("referral:".length)}`
+                                : promoReferralFilter}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handlePromoReferralFilterChange("all")}
+                    className="ml-0.5 rounded-full p-0.5 hover:bg-muted-foreground/20"
+                    aria-label="Clear promo or referral filter"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </Badge>
+              )}
               {merchandiseFilter !== "all" && (
                 <Badge variant="secondary" className="gap-1 font-normal text-xs">
                   <Package className="size-3 text-primary" />
@@ -4458,6 +4647,14 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                             ) : (
                               <div className="flex flex-col gap-0.5">
                                 <span className="text-muted-foreground text-xs">General RSVP</span>
+                                {reg.voucher_code && (
+                                  <Badge
+                                    variant="outline"
+                                    className="w-fit border-primary/30 bg-primary/10 px-1.5 py-0 font-mono font-semibold text-[9px] text-primary"
+                                  >
+                                    Promo: {reg.voucher_code}
+                                  </Badge>
+                                )}
                                 {reg.referral_code && (
                                   <Badge
                                     variant="outline"

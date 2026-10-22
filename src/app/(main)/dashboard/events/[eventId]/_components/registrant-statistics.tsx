@@ -53,6 +53,7 @@ interface RegistrantStatisticsProps {
   onSelectSearchFilter?: (term: string) => void;
   onSelectSessionFilter?: (sessionId: string) => void;
   onSelectMerchandiseFilter?: (merchandise: string, variant?: string) => void;
+  onSelectPromoReferralFilter?: (filterValue: string) => void;
 }
 
 interface DistributionItem {
@@ -100,6 +101,7 @@ export function RegistrantStatistics({
   onSelectSearchFilter,
   onSelectSessionFilter,
   onSelectMerchandiseFilter,
+  onSelectPromoReferralFilter,
 }: RegistrantStatisticsProps) {
   // Primary selected field to analyze in detail
   const [selectedField, setSelectedField] = useState<string>("professional_background");
@@ -245,6 +247,15 @@ export function RegistrantStatistics({
       });
     }
 
+    // 0. Promo & Referral Codes
+    if (registrations.some((r) => Boolean(r.voucher_code?.trim() || r.referral_code?.trim()))) {
+      fieldMap.set("voucher_referral", {
+        id: "voucher_referral",
+        label: "Promo & Referral Codes",
+        count: registrations.filter((r) => Boolean(r.voucher_code?.trim() || r.referral_code?.trim())).length,
+      });
+    }
+
     // 1. Session Track
     if (sessions.length > 0) {
       fieldMap.set("session_track", {
@@ -386,6 +397,25 @@ export function RegistrantStatistics({
             totalCounted += 1;
           }
         }
+      } else if (fieldId === "voucher_referral") {
+        for (const r of targetPool) {
+          const vCode = r.voucher_code?.trim().toUpperCase();
+          const rCode = r.referral_code?.trim().toUpperCase();
+          if (vCode) {
+            const label = `Promo: ${vCode}`;
+            counts.set(label, (counts.get(label) ?? 0) + 1);
+            totalCounted += 1;
+          }
+          if (rCode) {
+            const label = `Referral: ${rCode}`;
+            counts.set(label, (counts.get(label) ?? 0) + 1);
+            totalCounted += 1;
+          }
+          if (!vCode && !rCode) {
+            counts.set("No Voucher / Referral", (counts.get("No Voucher / Referral") ?? 0) + 1);
+            totalCounted += 1;
+          }
+        }
       } else {
         for (const r of targetPool) {
           const raw = r.answers?.[fieldId];
@@ -504,6 +534,22 @@ export function RegistrantStatistics({
           onSelectMerchandiseFilter(productName, variationStr);
           return;
         }
+      }
+    }
+    if (selectedField === "voucher_referral" && onSelectPromoReferralFilter) {
+      if (item.key === "No Voucher / Referral") {
+        onSelectPromoReferralFilter("none");
+        return;
+      }
+      if (item.key.startsWith("Promo: ")) {
+        const code = item.key.slice("Promo: ".length).trim().toUpperCase();
+        onSelectPromoReferralFilter(`voucher:${code}`);
+        return;
+      }
+      if (item.key.startsWith("Referral: ")) {
+        const code = item.key.slice("Referral: ".length).trim().toUpperCase();
+        onSelectPromoReferralFilter(`referral:${code}`);
+        return;
       }
     }
     if (onSelectSearchFilter && item.key !== "Not Specified") {
