@@ -52,6 +52,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { isEventCurationMode } from "@/lib/events/payment-deadline";
 import {
   COMMITMENT_FEE_TEMPLATE,
   COMMON_MEETUP_TEMPLATE,
@@ -116,9 +118,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
-  const [requiresApproval, setRequiresApproval] = useState(
-    Boolean(event.requires_approval || (event as unknown as Record<string, unknown>).curation_mode),
-  );
+  const [requiresApproval, setRequiresApproval] = useState(() => isEventCurationMode(event));
   const [allowWaitlist, setAllowWaitlist] = useState(event.allow_waitlist !== false);
   const [maxAttendees, setMaxAttendees] = useState(event.max_attendees ? String(event.max_attendees) : "");
 
@@ -336,67 +336,67 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
   const pendingNavigationRef = useRef<(() => void) | null>(null);
 
+  const eventRef = useRef(event);
+  eventRef.current = event;
+
   // Load any previously saved Firestore settings on client mount
   useEffect(() => {
+    const eventId = String(event.id);
+    const currentEvent = eventRef.current;
+    setIsInitialLoaded(false);
+
     async function loadSavedFirestoreConfig() {
       try {
         const { getFirestoreEventById, getEventSessionRegistrationCounts } = await import("@/lib/firestore/client");
         const [docData, liveSessionCounts] = await Promise.all([
-          getFirestoreEventById(String(event.id)),
-          getEventSessionRegistrationCounts(String(event.id)),
+          getFirestoreEventById(eventId),
+          getEventSessionRegistrationCounts(eventId),
         ]);
 
-        const docRecord = docData as unknown as Record<string, unknown> | null;
-        let loadedApproval: boolean;
-        if (docData?.requires_approval !== undefined) {
-          loadedApproval = docData.requires_approval;
-        } else if (docRecord?.curation_mode !== undefined) {
-          loadedApproval = Boolean(docRecord.curation_mode);
-        } else {
-          loadedApproval = Boolean(
-            event.requires_approval || (event as unknown as Record<string, unknown>).curation_mode,
-          );
-        }
+        const loadedApproval = docData ? isEventCurationMode(docData) : isEventCurationMode(currentEvent);
         const loadedAllowWaitlist =
-          docData?.allow_waitlist !== undefined ? docData.allow_waitlist : event.allow_waitlist !== false;
+          docData?.allow_waitlist !== undefined ? docData.allow_waitlist : currentEvent.allow_waitlist !== false;
         let loadedMaxAttendees = "";
         if (docData?.max_attendees !== undefined && docData.max_attendees !== null) {
           loadedMaxAttendees = String(docData.max_attendees);
-        } else if (event.max_attendees) {
-          loadedMaxAttendees = String(event.max_attendees);
+        } else if (currentEvent.max_attendees) {
+          loadedMaxAttendees = String(currentEvent.max_attendees);
         }
-        let loadedSessions = Array.isArray(docData?.sessions) ? docData.sessions : (event.sessions ?? []);
+        let loadedSessions = Array.isArray(docData?.sessions) ? docData.sessions : (currentEvent.sessions ?? []);
         if (Object.keys(liveSessionCounts).length > 0) {
           loadedSessions = loadedSessions.map((sess) => ({
             ...sess,
             total_registered: liveSessionCounts[sess.id] ?? sess.total_registered ?? 0,
           }));
         }
-        const loadedTickets = Array.isArray(docData?.tickets) ? docData.tickets : (event.tickets ?? []);
+        const loadedTickets = Array.isArray(docData?.tickets) ? docData.tickets : (currentEvent.tickets ?? []);
         let loadedQuestions = DEFAULT_COMBINED_QUESTIONS;
         if (docData?.custom_questions && docData.custom_questions.length > 0) {
           loadedQuestions = docData.custom_questions;
-        } else if (event.custom_questions && event.custom_questions.length > 0) {
-          loadedQuestions = event.custom_questions;
+        } else if (currentEvent.custom_questions && currentEvent.custom_questions.length > 0) {
+          loadedQuestions = currentEvent.custom_questions;
         }
         const loadedStatus = (docData?.registration_status ||
-          event.registration_status ||
-          (event.status === "Draft" ? "Draft" : "Published")) as "Draft" | "Published" | "Closed";
-        const loadedStartDate = toDateTimeLocal(docData?.registration_start_date ?? event.registration_start_date);
-        const loadedEndDate = toDateTimeLocal(docData?.registration_end_date ?? event.registration_end_date);
+          currentEvent.registration_status ||
+          (currentEvent.status === "Draft" ? "Draft" : "Published")) as "Draft" | "Published" | "Closed";
+        const loadedStartDate = toDateTimeLocal(
+          docData?.registration_start_date ?? currentEvent.registration_start_date,
+        );
+        const loadedEndDate = toDateTimeLocal(docData?.registration_end_date ?? currentEvent.registration_end_date);
         const loadedDefaultSessionName =
-          docData?.default_session_name?.trim() || event.default_session_name?.trim() || "Full Session";
-        const loadedDefaultSessionTime = docData?.default_session_time ?? event.default_session_time ?? "";
+          docData?.default_session_name?.trim() || currentEvent.default_session_name?.trim() || "Full Session";
+        const loadedDefaultSessionTime = docData?.default_session_time ?? currentEvent.default_session_time ?? "";
         const loadedDefaultSessionCheckinDeadline =
-          docData?.default_session_checkin_deadline ?? event.default_session_checkin_deadline ?? "";
-        const loadedDefaultSessionLocation = docData?.default_session_location ?? event.default_session_location ?? "";
+          docData?.default_session_checkin_deadline ?? currentEvent.default_session_checkin_deadline ?? "";
+        const loadedDefaultSessionLocation =
+          docData?.default_session_location ?? currentEvent.default_session_location ?? "";
         const loadedDefaultSessionLocationUrl =
-          docData?.default_session_location_url ?? event.default_session_location_url ?? "";
+          docData?.default_session_location_url ?? currentEvent.default_session_location_url ?? "";
         const loadedGoogleMapsUrl = (
           docData?.google_maps_url ??
           docData?.venue?.google_maps_url ??
-          event.google_maps_url ??
-          event.venue?.google_maps_url ??
+          currentEvent.google_maps_url ??
+          currentEvent.venue?.google_maps_url ??
           ""
         ).trim();
 
@@ -436,36 +436,32 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
       } catch (err) {
         console.warn("[CustomFormTab] Failed to load Firestore document:", err);
         initialSnapshotRef.current ??= JSON.stringify({
-          requiresApproval: Boolean(
-            event.requires_approval || (event as unknown as Record<string, unknown>).curation_mode,
-          ),
-          allowWaitlist: event.allow_waitlist !== false,
-          maxAttendees: event.max_attendees ? String(event.max_attendees) : "",
-          sessions: event.sessions ?? [],
-          defaultSessionName: event.default_session_name?.trim() || "Full Session",
-          defaultSessionTime: event.default_session_time ?? "",
-          defaultSessionCheckinDeadline: event.default_session_checkin_deadline ?? "",
-          defaultSessionLocation: event.default_session_location ?? "",
-          defaultSessionLocationUrl: event.default_session_location_url ?? "",
-          tickets: event.tickets ?? [],
+          requiresApproval: isEventCurationMode(currentEvent),
+          allowWaitlist: currentEvent.allow_waitlist !== false,
+          maxAttendees: currentEvent.max_attendees ? String(currentEvent.max_attendees) : "",
+          sessions: currentEvent.sessions ?? [],
+          defaultSessionName: currentEvent.default_session_name?.trim() || "Full Session",
+          defaultSessionTime: currentEvent.default_session_time ?? "",
+          defaultSessionCheckinDeadline: currentEvent.default_session_checkin_deadline ?? "",
+          defaultSessionLocation: currentEvent.default_session_location ?? "",
+          defaultSessionLocationUrl: currentEvent.default_session_location_url ?? "",
+          tickets: currentEvent.tickets ?? [],
           questions:
-            event.custom_questions && event.custom_questions.length > 0
-              ? event.custom_questions
+            currentEvent.custom_questions && currentEvent.custom_questions.length > 0
+              ? currentEvent.custom_questions
               : DEFAULT_COMBINED_QUESTIONS,
-          registrationStatus: (event.registration_status ?? (event.status === "Draft" ? "Draft" : "Published")) as
-            | "Draft"
-            | "Published"
-            | "Closed",
-          registrationStartDate: toDateTimeLocal(event.registration_start_date),
-          registrationEndDate: toDateTimeLocal(event.registration_end_date),
-          googleMapsUrlOverride: (event.google_maps_url ?? event.venue?.google_maps_url ?? "").trim(),
+          registrationStatus: (currentEvent.registration_status ??
+            (currentEvent.status === "Draft" ? "Draft" : "Published")) as "Draft" | "Published" | "Closed",
+          registrationStartDate: toDateTimeLocal(currentEvent.registration_start_date),
+          registrationEndDate: toDateTimeLocal(currentEvent.registration_end_date),
+          googleMapsUrlOverride: (currentEvent.google_maps_url ?? currentEvent.venue?.google_maps_url ?? "").trim(),
         });
       } finally {
         setIsInitialLoaded(true);
       }
     }
     void loadSavedFirestoreConfig();
-  }, [event]);
+  }, [event.id]);
 
   // Intercept navigation & tab leaving when dirty
   useEffect(() => {
@@ -1367,27 +1363,42 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-start gap-3 rounded-lg border bg-muted/20 p-4">
-            <Checkbox
-              id="requires-approval"
-              checked={requiresApproval}
-              onCheckedChange={(checked) => setRequiresApproval(Boolean(checked))}
-            />
-            <div className="space-y-1">
-              <label htmlFor="requires-approval" className="cursor-pointer font-medium text-sm leading-none">
-                Require Organizer Approval (Curation Mode)
-              </label>
-              <p className="text-muted-foreground text-xs leading-relaxed">
-                When enabled, new registrants are marked as <strong>Pending Review</strong> and must be approved by an
-                organizer in the Registrants tab before their ticket is confirmed.
-              </p>
-              {requiresApproval && (
-                <div className="mt-2 rounded-md border border-blue-500/20 bg-blue-500/10 p-2.5 text-xs text-blue-800 dark:text-blue-300">
-                  <span className="font-semibold">💡 Curation Requirement Note:</span> Registrants must provide a public
-                  LinkedIn profile that is <strong>not set to a private account</strong> so the organizing committee can
-                  review and verify their experience.
+            {!isInitialLoaded ? (
+              <div className="flex w-full items-start gap-3" aria-busy="true" aria-live="polite">
+                <Skeleton className="mt-0.5 size-4 shrink-0 rounded-[4px]" />
+                <div className="w-full space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Skeleton className="h-4 w-64" />
+                    <span className="animate-pulse text-muted-foreground text-xs">Syncing curation state...</span>
+                  </div>
+                  <Skeleton className="h-3.5 w-full max-w-lg" />
                 </div>
-              )}
-            </div>
+              </div>
+            ) : (
+              <>
+                <Checkbox
+                  id="requires-approval"
+                  checked={requiresApproval}
+                  onCheckedChange={(checked) => setRequiresApproval(Boolean(checked))}
+                />
+                <div className="space-y-1">
+                  <label htmlFor="requires-approval" className="cursor-pointer font-medium text-sm leading-none">
+                    Require Organizer Approval (Curation Mode)
+                  </label>
+                  <p className="text-muted-foreground text-xs leading-relaxed">
+                    When enabled, new registrants are marked as <strong>Pending Review</strong> and must be approved by
+                    an organizer in the Registrants tab before their ticket is confirmed.
+                  </p>
+                  {requiresApproval && (
+                    <div className="mt-2 rounded-md border border-blue-500/20 bg-blue-500/10 p-2.5 text-xs text-blue-800 dark:text-blue-300">
+                      <span className="font-semibold">💡 Curation Requirement Note:</span> Registrants must provide a
+                      public LinkedIn profile that is <strong>not set to a private account</strong> so the organizing
+                      committee can review and verify their experience.
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </div>
 
           <div className="flex items-start gap-3 rounded-lg border bg-muted/20 p-4">
