@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 
 import { format } from "date-fns";
 import {
+  AlertTriangle,
   CalendarClock,
   Check,
   Clock,
@@ -17,6 +18,16 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,7 +43,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { buildRegistrationPaymentPayload } from "@/lib/events/doku-payment";
-import { getRegistrationPaymentDeadline } from "@/lib/events/payment-deadline";
+import { getEffectiveRegistrationStatus, getRegistrationPaymentDeadline } from "@/lib/events/payment-deadline";
 import { calculatePaymentGatewayFee } from "@/lib/events/payment-fee";
 import { updateRegistrationStatusAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
@@ -96,11 +107,26 @@ export function ResendPaymentLinkDialog({
   const isBulk = Boolean(registrations && registrations.length > 0);
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
   const [batchResults, setBatchResults] = useState<BatchResultRow[] | null>(null);
+  const [isConfirmOpen, setIsConfirmOpen] = useState<boolean>(false);
   const bulkTotalAmount = useMemo(
     () =>
       (registrations ?? []).reduce((acc, r) => acc + computeRegistrationPaymentBreakdown(r, event).payableAmount, 0),
     [registrations, event],
   );
+
+  const waitingForPaymentRegs = useMemo(
+    () => (registrations ?? []).filter((r) => getEffectiveRegistrationStatus(r, event) === "waiting_for_payment"),
+    [registrations, event],
+  );
+  const expiredRegs = useMemo(
+    () => (registrations ?? []).filter((r) => getEffectiveRegistrationStatus(r, event) !== "waiting_for_payment"),
+    [registrations, event],
+  );
+  const isSingleWaitingForPayment = useMemo(
+    () => Boolean(registration && getEffectiveRegistrationStatus(registration, event) === "waiting_for_payment"),
+    [registration, event],
+  );
+  const hasWaitingForPayment = isBulk ? waitingForPaymentRegs.length > 0 : isSingleWaitingForPayment;
 
   const [selectedMinutes, setSelectedMinutes] = useState<number>(1440);
   const [customMinutes, setCustomMinutes] = useState<string>("");
@@ -180,6 +206,7 @@ export function ResendPaymentLinkDialog({
 
   const handleClose = () => {
     if (batchProgress) return;
+    setIsConfirmOpen(false);
     setGeneratedResult(null);
     setBatchResults(null);
     setHasCopied(false);
@@ -187,6 +214,18 @@ export function ResendPaymentLinkDialog({
     setSelectedMinutes(1440);
     setEmailTemplate(defaultTemplate);
     onOpenChange(false);
+  };
+
+  const handlePrimarySubmitClick = () => {
+    if (hasWaitingForPayment) {
+      setIsConfirmOpen(true);
+      return;
+    }
+    if (isBulk) {
+      void handleBatchGenerate();
+    } else {
+      void handleGenerateAndResend();
+    }
   };
 
   const handleBatchGenerate = async () => {
@@ -372,359 +411,465 @@ export function ResendPaymentLinkDialog({
   if (!registration && !isBulk) return null;
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-lg sm:max-w-xl">
-        <DialogHeader>
-          <div className="flex items-center gap-2">
-            <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <RefreshCw className="size-4" />
-            </div>
-            <div>
-              <DialogTitle className="text-base sm:text-lg">
-                {isBulk ? `Regenerate Payment Links (${registrations?.length})` : "Regenerate Payment Link"}
-              </DialogTitle>
-              <DialogDescription className="text-xs">
-                Regenerate checkout payment link with a renewed expiration deadline.
-              </DialogDescription>
-            </div>
-          </div>
-        </DialogHeader>
-
-        {batchResults ? (
-          <div className="space-y-3 py-2">
-            <div className="rounded-xl border bg-muted/30 p-3 text-xs">
-              <span className="font-semibold text-emerald-700 dark:text-emerald-400">
-                {batchResults.filter((r) => r.success).length} succeeded
-              </span>
-              {" · "}
-              <span className="font-semibold text-rose-600">
-                {batchResults.filter((r) => !r.success).length} failed
-              </span>
-            </div>
-            <ul className="max-h-64 space-y-1.5 overflow-y-auto">
-              {batchResults.map((r) => (
-                <li key={r.id} className="flex items-center justify-between gap-2 rounded-lg border p-2 text-xs">
-                  <div className="min-w-0">
-                    <p className="truncate font-medium">{r.name}</p>
-                    <p className={r.success ? "truncate text-muted-foreground" : "truncate text-rose-600"}>
-                      {r.success ? r.invoiceNumber : r.error}
-                    </p>
-                  </div>
-                  {r.success && r.paymentUrl && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-7 shrink-0 gap-1 text-xs"
-                      onClick={() => {
-                        void navigator.clipboard.writeText(r.paymentUrl ?? "");
-                        toast.success("Payment link copied to clipboard!");
-                      }}
-                    >
-                      <Copy className="size-3" />
-                      Copy
-                    </Button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : generatedResult ? (
-          /* Success Result View */
-          <div className="space-y-4 py-2">
-            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
-              <div className="flex items-center gap-2 font-semibold text-emerald-800 text-sm dark:text-emerald-300">
-                <Check className="size-4" />
-                <span>Payment Link Created & Status Updated to "Waiting for Payment"</span>
+    <>
+      <Dialog open={open} onOpenChange={handleClose}>
+        <DialogContent className="max-w-lg sm:max-w-xl">
+          <DialogHeader>
+            <div className="flex items-center gap-2">
+              <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <RefreshCw className="size-4" />
               </div>
-              <p className="mt-1 text-emerald-700 text-xs dark:text-emerald-400">
-                {sendEmail
-                  ? `An email with invoice #${generatedResult.invoiceNumber} has been dispatched to ${registration?.member_email}.`
-                  : "The checkout link is active and ready to be shared with the attendee."}
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-xs font-medium">Checkout URL</Label>
-              <div className="flex items-center gap-2">
-                <Input readOnly value={generatedResult.paymentUrl} className="h-9 font-mono text-xs" />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-9 shrink-0 gap-1.5 text-xs"
-                  onClick={handleCopyLink}
-                >
-                  {hasCopied ? <Check className="size-3.5 text-emerald-600" /> : <Copy className="size-3.5" />}
-                  {hasCopied ? "Copied" : "Copy"}
-                </Button>
-                <Button type="button" size="sm" className="h-9 shrink-0 gap-1.5 text-xs" asChild>
-                  <a href={generatedResult.paymentUrl} target="_blank" rel="noopener noreferrer">
-                    <ExternalLink className="size-3.5" />
-                    Open
-                  </a>
-                </Button>
+              <div>
+                <DialogTitle className="text-base sm:text-lg">
+                  {isBulk ? `Regenerate Payment Links (${registrations?.length})` : "Regenerate Payment Link"}
+                </DialogTitle>
+                <DialogDescription className="text-xs">
+                  Regenerate checkout payment link with a renewed expiration deadline.
+                </DialogDescription>
               </div>
             </div>
+          </DialogHeader>
 
-            <div className="rounded-lg border bg-muted/30 p-3 text-xs">
-              <div className="flex items-center justify-between text-muted-foreground">
-                <span>New Expiration Deadline:</span>
-                <span className="font-semibold text-foreground">
-                  {generatedResult.expiredDatetime
-                    ? format(new Date(generatedResult.expiredDatetime), "dd MMM yyyy, HH:mm")
-                    : format(newExpirationDate, "dd MMM yyyy, HH:mm")}
+          {batchResults ? (
+            <div className="space-y-3 py-2">
+              <div className="rounded-xl border bg-muted/30 p-3 text-xs">
+                <span className="font-semibold text-emerald-700 dark:text-emerald-400">
+                  {batchResults.filter((r) => r.success).length} succeeded
+                </span>
+                {" · "}
+                <span className="font-semibold text-rose-600">
+                  {batchResults.filter((r) => !r.success).length} failed
                 </span>
               </div>
+              <ul className="max-h-64 space-y-1.5 overflow-y-auto">
+                {batchResults.map((r) => (
+                  <li key={r.id} className="flex items-center justify-between gap-2 rounded-lg border p-2 text-xs">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{r.name}</p>
+                      <p className={r.success ? "truncate text-muted-foreground" : "truncate text-rose-600"}>
+                        {r.success ? r.invoiceNumber : r.error}
+                      </p>
+                    </div>
+                    {r.success && r.paymentUrl && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 shrink-0 gap-1 text-xs"
+                        onClick={() => {
+                          void navigator.clipboard.writeText(r.paymentUrl ?? "");
+                          toast.success("Payment link copied to clipboard!");
+                        }}
+                      >
+                        <Copy className="size-3" />
+                        Copy
+                      </Button>
+                    )}
+                  </li>
+                ))}
+              </ul>
             </div>
-          </div>
-        ) : (
-          /* Form Configuration View */
-          <div className="space-y-4 py-1">
-            {/* Attendee & Order Summary Card */}
-            {isBulk ? (
-              <div className="rounded-xl border bg-card p-3.5 shadow-2xs space-y-2.5">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="text-xs text-muted-foreground">
-                    <h4 className="font-semibold text-sm text-foreground">
-                      {registrations?.length} attendees selected
-                    </h4>
-                    {registrations?.filter((r) => r.status === "expired").length ?? 0} expired ·{" "}
-                    {registrations?.filter((r) => r.status !== "expired").length ?? 0} waiting for payment
-                  </div>
-                  <Badge
-                    variant="outline"
-                    className="border-amber-500/30 bg-amber-500/10 text-amber-700 text-[11px] dark:text-amber-400"
-                  >
-                    Rp {bulkTotalAmount.toLocaleString("id-ID")}
-                  </Badge>
+          ) : generatedResult ? (
+            /* Success Result View */
+            <div className="space-y-4 py-2">
+              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+                <div className="flex items-center gap-2 font-semibold text-emerald-800 text-sm dark:text-emerald-300">
+                  <Check className="size-4" />
+                  <span>Payment Link Created & Status Updated to "Waiting for Payment"</span>
                 </div>
-                <ul className="max-h-40 space-y-1 overflow-y-auto border-t pt-2">
-                  {registrations?.map((r) => (
-                    <li key={r.id} className="flex items-center justify-between gap-2 text-xs">
-                      <span className="truncate">
-                        {r.member_name} <span className="text-muted-foreground">({r.member_email})</span>
-                      </span>
-                      <span className="shrink-0 text-muted-foreground">
-                        Rp {computeRegistrationPaymentBreakdown(r, event).payableAmount.toLocaleString("id-ID")}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+                <p className="mt-1 text-emerald-700 text-xs dark:text-emerald-400">
+                  {sendEmail
+                    ? `An email with invoice #${generatedResult.invoiceNumber} has been dispatched to ${registration?.member_email}.`
+                    : "The checkout link is active and ready to be shared with the attendee."}
+                </p>
               </div>
-            ) : (
-              registration && (
+
+              <div className="space-y-2">
+                <Label className="text-xs font-medium">Checkout URL</Label>
+                <div className="flex items-center gap-2">
+                  <Input readOnly value={generatedResult.paymentUrl} className="h-9 font-mono text-xs" />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-9 shrink-0 gap-1.5 text-xs"
+                    onClick={handleCopyLink}
+                  >
+                    {hasCopied ? <Check className="size-3.5 text-emerald-600" /> : <Copy className="size-3.5" />}
+                    {hasCopied ? "Copied" : "Copy"}
+                  </Button>
+                  <Button type="button" size="sm" className="h-9 shrink-0 gap-1.5 text-xs" asChild>
+                    <a href={generatedResult.paymentUrl} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="size-3.5" />
+                      Open
+                    </a>
+                  </Button>
+                </div>
+              </div>
+
+              <div className="rounded-lg border bg-muted/30 p-3 text-xs">
+                <div className="flex items-center justify-between text-muted-foreground">
+                  <span>New Expiration Deadline:</span>
+                  <span className="font-semibold text-foreground">
+                    {generatedResult.expiredDatetime
+                      ? format(new Date(generatedResult.expiredDatetime), "dd MMM yyyy, HH:mm")
+                      : format(newExpirationDate, "dd MMM yyyy, HH:mm")}
+                  </span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* Form Configuration View */
+            <div className="space-y-4 py-1">
+              {/* Attendee & Order Summary Card */}
+              {isBulk ? (
                 <div className="rounded-xl border bg-card p-3.5 shadow-2xs space-y-2.5">
                   <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <h4 className="font-semibold text-sm text-foreground">{registration.member_name}</h4>
-                      <p className="text-xs text-muted-foreground">{registration.member_email}</p>
+                    <div className="text-xs text-muted-foreground">
+                      <h4 className="font-semibold text-sm text-foreground">
+                        {registrations?.length} attendees selected
+                      </h4>
+                      {expiredRegs.length} expired · {waitingForPaymentRegs.length} waiting for payment
                     </div>
                     <Badge
                       variant="outline"
                       className="border-amber-500/30 bg-amber-500/10 text-amber-700 text-[11px] dark:text-amber-400"
                     >
-                      Rp {payableAmount.toLocaleString("id-ID")}
+                      Rp {bulkTotalAmount.toLocaleString("id-ID")}
                     </Badge>
                   </div>
+                  <ul className="max-h-40 space-y-1 overflow-y-auto border-t pt-2">
+                    {registrations?.map((r) => (
+                      <li key={r.id} className="flex items-center justify-between gap-2 text-xs">
+                        <span className="truncate">
+                          {r.member_name} <span className="text-muted-foreground">({r.member_email})</span>
+                        </span>
+                        <span className="shrink-0 text-muted-foreground">
+                          Rp {computeRegistrationPaymentBreakdown(r, event).payableAmount.toLocaleString("id-ID")}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : (
+                registration && (
+                  <div className="rounded-xl border bg-card p-3.5 shadow-2xs space-y-2.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <h4 className="font-semibold text-sm text-foreground">{registration.member_name}</h4>
+                        <p className="text-xs text-muted-foreground">{registration.member_email}</p>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className="border-amber-500/30 bg-amber-500/10 text-amber-700 text-[11px] dark:text-amber-400"
+                      >
+                        Rp {payableAmount.toLocaleString("id-ID")}
+                      </Badge>
+                    </div>
 
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground border-t pt-2">
-                    {registration.ticket_name && (
-                      <Badge variant="secondary" className="text-[10px] font-normal">
-                        Ticket: {registration.ticket_name}
-                      </Badge>
-                    )}
-                    {registration.selected_merchandise && registration.selected_merchandise.length > 0 && (
-                      <Badge variant="secondary" className="text-[10px] font-normal">
-                        {registration.selected_merchandise.length} Merch Item(s)
-                      </Badge>
-                    )}
-                    {gatewayFeeCalc && gatewayFeeCalc.isEnabled && gatewayFeeCalc.feeAmount > 0 && (
-                      <Badge variant="outline" className="text-[10px] font-normal">
-                        {gatewayFeeCalc.feeLabel}:{" "}
-                        {gatewayFeeCalc.isPassedToAttendee
-                          ? `+Rp ${gatewayFeeCalc.feeAmount.toLocaleString("id-ID")}`
-                          : "Absorbed"}
-                      </Badge>
-                    )}
-                    {existingDeadlineInfo?.formattedDeadline && (
-                      <span className="text-[11px] text-muted-foreground">
-                        Previous Deadline:{" "}
-                        <strong className="text-foreground">{existingDeadlineInfo.formattedDeadline}</strong>
-                        {existingDeadlineInfo.isOverdue && (
-                          <span className="ml-1 text-rose-500 font-medium">
-                            ({existingDeadlineInfo.timeStatusText})
-                          </span>
-                        )}
-                      </span>
-                    )}
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground border-t pt-2">
+                      {registration.ticket_name && (
+                        <Badge variant="secondary" className="text-[10px] font-normal">
+                          Ticket: {registration.ticket_name}
+                        </Badge>
+                      )}
+                      {registration.selected_merchandise && registration.selected_merchandise.length > 0 && (
+                        <Badge variant="secondary" className="text-[10px] font-normal">
+                          {registration.selected_merchandise.length} Merch Item(s)
+                        </Badge>
+                      )}
+                      {gatewayFeeCalc && gatewayFeeCalc.isEnabled && gatewayFeeCalc.feeAmount > 0 && (
+                        <Badge variant="outline" className="text-[10px] font-normal">
+                          {gatewayFeeCalc.feeLabel}:{" "}
+                          {gatewayFeeCalc.isPassedToAttendee
+                            ? `+Rp ${gatewayFeeCalc.feeAmount.toLocaleString("id-ID")}`
+                            : "Absorbed"}
+                        </Badge>
+                      )}
+                      {existingDeadlineInfo?.formattedDeadline && (
+                        <span className="text-[11px] text-muted-foreground">
+                          Previous Deadline:{" "}
+                          <strong className="text-foreground">{existingDeadlineInfo.formattedDeadline}</strong>
+                          {existingDeadlineInfo.isOverdue && (
+                            <span className="ml-1 text-rose-500 font-medium">
+                              ({existingDeadlineInfo.timeStatusText})
+                            </span>
+                          )}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </div>
-              )
-            )}
+                )
+              )}
 
-            {!isBulk && payableAmount <= 0 && (
-              <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-3 text-xs text-blue-700 dark:text-blue-300">
-                This registration has a net total of Rp 0 (free) and does not require a payment link.
-              </div>
-            )}
-
-            {/* Expiration Deadline Selection */}
-            <div className="space-y-2.5">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs font-medium flex items-center gap-1.5">
-                  <CalendarClock className="size-3.5 text-primary" />
-                  Select New Payment Deadline
-                </Label>
-                <span className="text-[11px] text-muted-foreground">Duration from now</span>
-              </div>
-
-              {/* Preset buttons */}
-              <div className="grid grid-cols-3 gap-2">
-                {PRESET_DEADLINES.map((preset) => {
-                  const isSelected = !isCustom && selectedMinutes === preset.minutes;
-                  return (
-                    <Button
-                      key={preset.minutes}
-                      type="button"
-                      variant={isSelected ? "default" : "outline"}
-                      size="sm"
-                      className="h-8 text-xs font-normal"
-                      onClick={() => {
-                        setIsCustom(false);
-                        setSelectedMinutes(preset.minutes);
-                      }}
-                    >
-                      {preset.label}
-                    </Button>
-                  );
-                })}
-              </div>
-
-              {/* Custom Minutes Input */}
-              <div className="pt-1">
-                <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    variant={isCustom ? "default" : "outline"}
-                    size="sm"
-                    className="h-8 text-xs shrink-0"
-                    onClick={() => {
-                      setIsCustom(true);
-                      if (!customMinutes) setCustomMinutes("1440");
-                    }}
-                  >
-                    Custom Minutes:
-                  </Button>
-                  <Input
-                    type="number"
-                    min="5"
-                    step="5"
-                    placeholder="e.g. 1440"
-                    value={customMinutes}
-                    onChange={(e) => {
-                      setIsCustom(true);
-                      setCustomMinutes(e.target.value);
-                    }}
-                    className="h-8 text-xs"
-                    disabled={!isCustom}
-                  />
-                </div>
-              </div>
-
-              {/* Live Preview Banner */}
-              <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
-                <div className="flex items-center gap-1.5 text-primary font-medium">
-                  <Clock className="size-3.5" />
-                  <span>New Expiration:</span>
-                </div>
-                <span className="font-semibold text-foreground">
-                  {format(newExpirationDate, "dd MMM yyyy, HH:mm")}
-                  <span className="ml-1 text-[11px] text-muted-foreground font-normal">
-                    ({activeMinutes >= 60 ? `${Math.round(activeMinutes / 60)}h` : `${activeMinutes}m`} from now)
-                  </span>
-                </span>
-              </div>
-            </div>
-
-            {/* Email Dispatch Switch */}
-            <div className="space-y-3 rounded-lg border p-3">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label
-                    htmlFor="send-email-switch"
-                    className="text-xs font-medium flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Mail className="size-3.5 text-muted-foreground" />
-                    Send Payment Link Email
-                  </Label>
-                  <p className="text-[11px] text-muted-foreground">
-                    Dispatches checkout instructions and invoice directly to attendee's email.
-                  </p>
-                </div>
-                <Switch id="send-email-switch" checked={sendEmail} onCheckedChange={setSendEmail} />
-              </div>
-
-              {sendEmail && (
-                <div className="border-t pt-2.5 space-y-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <Label className="text-[11px] font-medium text-muted-foreground">Email Template:</Label>
-                    <Select value={emailTemplate} onValueChange={setEmailTemplate}>
-                      <SelectTrigger className="h-7 w-48 text-xs">
-                        <SelectValue placeholder="Select template" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Ticketing" className="text-xs">
-                          Ticketing
-                        </SelectItem>
-                        <SelectItem value="Commitment Fee" className="text-xs">
-                          Commitment Fee
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
+              {hasWaitingForPayment && (
+                <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-800 dark:text-amber-300">
+                  <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                  <div className="space-y-1 leading-relaxed">
+                    <p className="font-semibold">
+                      {isBulk
+                        ? `${waitingForPaymentRegs.length} attendee${waitingForPaymentRegs.length === 1 ? " is" : "s are"} still Waiting for Payment`
+                        : "Status is still Waiting for Payment"}
+                    </p>
+                    <p className="text-amber-700/90 dark:text-amber-300/90">
+                      Once regenerated, the previous payment link will be canceled. If the attendee has already paid,
+                      you will no longer be able to check the payment status because the invoice number will be renewed
+                      and updated.
+                    </p>
                   </div>
-                  <p className="text-[10px] text-muted-foreground">
-                    {emailTemplate === "Commitment Fee"
-                      ? "Routes to n8n 'Send Payment Commitment Fee Email' node."
-                      : "Routes to n8n 'Send Payment Ticket Email' node."}
-                  </p>
                 </div>
               )}
-            </div>
-          </div>
-        )}
 
-        <DialogFooter className="gap-2">
-          {generatedResult || batchResults ? (
-            <Button type="button" size="sm" onClick={handleClose}>
-              Done
-            </Button>
-          ) : (
-            <>
-              <Button type="button" variant="ghost" size="sm" onClick={handleClose} disabled={isSubmitting}>
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                className="gap-1.5 bg-primary text-primary-foreground shadow-xs"
-                onClick={isBulk ? handleBatchGenerate : handleGenerateAndResend}
-                disabled={isSubmitting || activeMinutes <= 0 || (!isBulk && payableAmount <= 0)}
-              >
-                {isSubmitting ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
-                {batchProgress
-                  ? `Generating (${batchProgress.current}/${batchProgress.total})...`
-                  : isSubmitting
-                    ? "Generating Link..."
-                    : isBulk
-                      ? `Regenerate ${registrations?.length} Links`
-                      : "Regenerate Payment Link"}
-              </Button>
-            </>
+              {!isBulk && payableAmount <= 0 && (
+                <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-3 text-xs text-blue-700 dark:text-blue-300">
+                  This registration has a net total of Rp 0 (free) and does not require a payment link.
+                </div>
+              )}
+
+              {/* Expiration Deadline Selection */}
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-medium flex items-center gap-1.5">
+                    <CalendarClock className="size-3.5 text-primary" />
+                    Select New Payment Deadline
+                  </Label>
+                  <span className="text-[11px] text-muted-foreground">Duration from now</span>
+                </div>
+
+                {/* Preset buttons */}
+                <div className="grid grid-cols-3 gap-2">
+                  {PRESET_DEADLINES.map((preset) => {
+                    const isSelected = !isCustom && selectedMinutes === preset.minutes;
+                    return (
+                      <Button
+                        key={preset.minutes}
+                        type="button"
+                        variant={isSelected ? "default" : "outline"}
+                        size="sm"
+                        className="h-8 text-xs font-normal"
+                        onClick={() => {
+                          setIsCustom(false);
+                          setSelectedMinutes(preset.minutes);
+                        }}
+                      >
+                        {preset.label}
+                      </Button>
+                    );
+                  })}
+                </div>
+
+                {/* Custom Minutes Input */}
+                <div className="pt-1">
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant={isCustom ? "default" : "outline"}
+                      size="sm"
+                      className="h-8 text-xs shrink-0"
+                      onClick={() => {
+                        setIsCustom(true);
+                        if (!customMinutes) setCustomMinutes("1440");
+                      }}
+                    >
+                      Custom Minutes:
+                    </Button>
+                    <Input
+                      type="number"
+                      min="5"
+                      step="5"
+                      placeholder="e.g. 1440"
+                      value={customMinutes}
+                      onChange={(e) => {
+                        setIsCustom(true);
+                        setCustomMinutes(e.target.value);
+                      }}
+                      className="h-8 text-xs"
+                      disabled={!isCustom}
+                    />
+                  </div>
+                </div>
+
+                {/* Live Preview Banner */}
+                <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
+                  <div className="flex items-center gap-1.5 text-primary font-medium">
+                    <Clock className="size-3.5" />
+                    <span>New Expiration:</span>
+                  </div>
+                  <span className="font-semibold text-foreground">
+                    {format(newExpirationDate, "dd MMM yyyy, HH:mm")}
+                    <span className="ml-1 text-[11px] text-muted-foreground font-normal">
+                      ({activeMinutes >= 60 ? `${Math.round(activeMinutes / 60)}h` : `${activeMinutes}m`} from now)
+                    </span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Email Dispatch Switch */}
+              <div className="space-y-3 rounded-lg border p-3">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label
+                      htmlFor="send-email-switch"
+                      className="text-xs font-medium flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Mail className="size-3.5 text-muted-foreground" />
+                      Send Payment Link Email
+                    </Label>
+                    <p className="text-[11px] text-muted-foreground">
+                      Dispatches checkout instructions and invoice directly to attendee's email.
+                    </p>
+                  </div>
+                  <Switch id="send-email-switch" checked={sendEmail} onCheckedChange={setSendEmail} />
+                </div>
+
+                {sendEmail && (
+                  <div className="border-t pt-2.5 space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <Label className="text-[11px] font-medium text-muted-foreground">Email Template:</Label>
+                      <Select value={emailTemplate} onValueChange={setEmailTemplate}>
+                        <SelectTrigger className="h-7 w-48 text-xs">
+                          <SelectValue placeholder="Select template" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Ticketing" className="text-xs">
+                            Ticketing
+                          </SelectItem>
+                          <SelectItem value="Commitment Fee" className="text-xs">
+                            Commitment Fee
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">
+                      {emailTemplate === "Commitment Fee"
+                        ? "Routes to n8n 'Send Payment Commitment Fee Email' node."
+                        : "Routes to n8n 'Send Payment Ticket Email' node."}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
           )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+
+          <DialogFooter className="gap-2">
+            {generatedResult || batchResults ? (
+              <Button type="button" size="sm" onClick={handleClose}>
+                Done
+              </Button>
+            ) : (
+              <>
+                <Button type="button" variant="ghost" size="sm" onClick={handleClose} disabled={isSubmitting}>
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="gap-1.5 bg-primary text-primary-foreground shadow-xs"
+                  onClick={handlePrimarySubmitClick}
+                  disabled={isSubmitting || activeMinutes <= 0 || (!isBulk && payableAmount <= 0)}
+                >
+                  {isSubmitting ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+                  {batchProgress
+                    ? `Generating (${batchProgress.current}/${batchProgress.total})...`
+                    : isSubmitting
+                      ? "Generating Link..."
+                      : isBulk
+                        ? `Regenerate ${registrations?.length} Links`
+                        : "Regenerate Payment Link"}
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={isConfirmOpen} onOpenChange={(val) => !isSubmitting && setIsConfirmOpen(val)}>
+        <AlertDialogContent className="data-[size=default]:max-w-md sm:max-w-lg data-[size=default]:sm:max-w-lg">
+          <AlertDialogHeader>
+            <div className="flex items-center gap-2.5 text-amber-600 dark:text-amber-400">
+              <div className="rounded-full bg-amber-500/10 p-2">
+                <AlertTriangle className="size-5" />
+              </div>
+              <AlertDialogTitle className="font-semibold text-base">
+                {isBulk ? "Regenerate Active Payment Links?" : "Regenerate Active Payment Link?"}
+              </AlertDialogTitle>
+            </div>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 pt-2 text-left text-xs sm:text-sm">
+                <p className="text-foreground">
+                  {isBulk ? (
+                    <>
+                      <strong>{waitingForPaymentRegs.length}</strong> of the{" "}
+                      <strong>{registrations?.length ?? 0}</strong> selected attendee
+                      {waitingForPaymentRegs.length === 1 ? " is" : "s are"} still in{" "}
+                      <strong>Waiting for Payment</strong> status:
+                    </>
+                  ) : (
+                    <>
+                      The registration for <strong>{registration?.member_name}</strong>
+                      {registration?.member_email ? ` (${registration.member_email})` : ""} is still in{" "}
+                      <strong>Waiting for Payment</strong> status
+                      {registration?.payment_invoice_number ? ` (Invoice: ${registration.payment_invoice_number})` : ""}
+                      .
+                    </>
+                  )}
+                </p>
+
+                {isBulk && waitingForPaymentRegs.length > 0 && (
+                  <ul className="max-h-28 space-y-1 overflow-y-auto rounded-lg border bg-muted/30 p-2 text-xs">
+                    {waitingForPaymentRegs.map((r) => (
+                      <li key={r.id} className="flex items-center justify-between gap-2">
+                        <span className="truncate font-medium text-foreground">
+                          {r.member_name} <span className="font-normal text-muted-foreground">({r.member_email})</span>
+                        </span>
+                        {r.payment_invoice_number && (
+                          <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
+                            {r.payment_invoice_number}
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-amber-800 text-xs leading-relaxed dark:text-amber-300">
+                  <p className="font-semibold">Warning before regenerating:</p>
+                  <ul className="mt-1 list-disc space-y-1 pl-4">
+                    <li>
+                      Once regenerated, the <strong>previous payment link will be canceled</strong>.
+                    </li>
+                    <li>
+                      If the attendee has already paid using the previous link,{" "}
+                      <strong>you will not be able to check or sync the payment status anymore</strong> because the
+                      invoice number will be renewed and updated.
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              className="bg-amber-600 text-white shadow-xs hover:bg-amber-700 dark:bg-amber-600 dark:hover:bg-amber-500"
+              disabled={isSubmitting}
+              onClick={(e) => {
+                e.preventDefault();
+                setIsConfirmOpen(false);
+                if (isBulk) {
+                  void handleBatchGenerate();
+                } else {
+                  void handleGenerateAndResend();
+                }
+              }}
+            >
+              {isBulk ? `Yes, Regenerate ${registrations?.length} Links` : "Yes, Regenerate Payment Link"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 
