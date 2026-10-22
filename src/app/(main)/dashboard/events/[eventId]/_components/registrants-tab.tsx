@@ -2644,62 +2644,60 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     });
   };
 
-  const handleDeleteRegistration = (registration: FirestoreRegistration) => {
+  const handleDeleteRegistration = async (registration: FirestoreRegistration) => {
     const email = (registration.member_email || "").toLowerCase().trim();
     const matchedBevyAttendeeId =
       registration.bevy_attendee_id ?? (email ? bevyAttendeesMap.get(email)?.id : undefined);
 
-    startTransition(async () => {
-      setIsDeleting(true);
-      // Optimistic removal from table
-      setRegistrationsList((prev) => prev.filter((r) => r.id !== registration.id));
-      setSelectedIds((prev) => {
-        const next = new Set(prev);
-        next.delete(registration.id);
-        return next;
-      });
-      if (inspectRegistration?.id === registration.id) {
-        setInspectRegistration(null);
-      }
-
-      try {
-        const res = await deleteEventRegistrationAction(
-          registration.id,
-          eventId,
-          matchedBevyAttendeeId,
-          email,
-          registration,
-        );
-        if (res.success) {
-          if (email && bevyAttendeesMap.has(email)) {
-            setBevyAttendeesMap((prev) => {
-              const next = new Map(prev);
-              next.delete(email);
-              return next;
-            });
-          }
-          toast.success(
-            matchedBevyAttendeeId
-              ? `Removed ${registration.member_name} from dashboard & Bevy.`
-              : `Removed ${registration.member_name}. They can now re-register.`,
-          );
-        } else {
-          // Revert on failure
-          setRegistrationsList((prev) => [registration, ...prev]);
-          toast.error(res.error ?? "Failed to remove attendee registration.");
-        }
-      } catch (err) {
-        console.error("[handleDeleteRegistration] error:", err);
-        setRegistrationsList((prev) => [registration, ...prev]);
-        toast.error("Failed to remove attendee registration.");
-      } finally {
-        setIsDeleting(false);
-        setDeleteConfirmRegistration(null);
-      }
+    setIsDeleting(true);
+    // Optimistic removal from table
+    setRegistrationsList((prev) => prev.filter((r) => r.id !== registration.id));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(registration.id);
+      return next;
     });
+    if (inspectRegistration?.id === registration.id) {
+      setInspectRegistration(null);
+    }
+
+    try {
+      const res = await deleteEventRegistrationAction(
+        registration.id,
+        eventId,
+        matchedBevyAttendeeId,
+        email,
+        registration,
+      );
+      if (res.success) {
+        if (email && bevyAttendeesMap.has(email)) {
+          setBevyAttendeesMap((prev) => {
+            const next = new Map(prev);
+            next.delete(email);
+            return next;
+          });
+        }
+        toast.success(
+          matchedBevyAttendeeId
+            ? `Removed ${registration.member_name} from dashboard & Bevy.`
+            : `Removed ${registration.member_name}. They can now re-register.`,
+        );
+      } else {
+        // Revert on failure
+        setRegistrationsList((prev) => [registration, ...prev]);
+        toast.error(res.error ?? "Failed to remove attendee registration.");
+      }
+    } catch (err) {
+      console.error("[handleDeleteRegistration] error:", err);
+      setRegistrationsList((prev) => [registration, ...prev]);
+      toast.error("Failed to remove attendee registration.");
+    } finally {
+      setIsDeleting(false);
+      setDeleteConfirmRegistration(null);
+    }
   };
 
-  const handleBatchDelete = () => {
+  const handleBatchDelete = async () => {
     if (selectedIds.size === 0) return;
     const idsToDelete = Array.from(selectedIds);
     const regsToDelete = registrationsList.filter((r) => selectedIds.has(r.id));
@@ -2714,128 +2712,119 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       }
     }
 
-    startTransition(async () => {
-      setIsDeleting(true);
-      // Optimistic removal
-      setRegistrationsList((prev) => prev.filter((r) => !selectedIds.has(r.id)));
-      setSelectedIds(new Set());
-      if (inspectRegistration && selectedIds.has(inspectRegistration.id)) {
-        setInspectRegistration(null);
-      }
+    setIsDeleting(true);
+    // Optimistic removal
+    setRegistrationsList((prev) => prev.filter((r) => !selectedIds.has(r.id)));
+    setSelectedIds(new Set());
+    if (inspectRegistration && selectedIds.has(inspectRegistration.id)) {
+      setInspectRegistration(null);
+    }
 
-      try {
-        const res = await deleteBatchEventRegistrationsAction(idsToDelete, eventId, matchedBevyIds);
-        if (res.success) {
-          if (matchedBevyIds.length > 0) {
-            setBevyAttendeesMap((prev) => {
-              const next = new Map(prev);
-              for (const r of regsToDelete) {
-                const email = (r.member_email || "").toLowerCase().trim();
-                if (email) next.delete(email);
-              }
-              return next;
-            });
-          }
-          toast.success(
-            matchedBevyIds.length > 0
-              ? `Removed ${count} attendee${count === 1 ? "" : "s"} from dashboard & Bevy.`
-              : `Removed ${count} attendee${count === 1 ? "" : "s"}. They can now re-register.`,
-          );
-        } else {
-          // Revert on failure
-          setRegistrationsList((prev) => [...regsToDelete, ...prev]);
-          toast.error(res.error ?? "Failed to remove selected attendees.");
+    try {
+      const res = await deleteBatchEventRegistrationsAction(idsToDelete, eventId, matchedBevyIds);
+      if (res.success) {
+        if (matchedBevyIds.length > 0) {
+          setBevyAttendeesMap((prev) => {
+            const next = new Map(prev);
+            for (const r of regsToDelete) {
+              const email = (r.member_email || "").toLowerCase().trim();
+              if (email) next.delete(email);
+            }
+            return next;
+          });
         }
-      } catch (err) {
-        console.error("[handleBatchDelete] error:", err);
+        toast.success(
+          matchedBevyIds.length > 0
+            ? `Removed ${count} attendee${count === 1 ? "" : "s"} from dashboard & Bevy.`
+            : `Removed ${count} attendee${count === 1 ? "" : "s"}. They can now re-register.`,
+        );
+      } else {
+        // Revert on failure
         setRegistrationsList((prev) => [...regsToDelete, ...prev]);
-        toast.error("Failed to remove selected attendees.");
-      } finally {
-        setIsDeleting(false);
-        setIsBatchDeleteConfirmOpen(false);
+        toast.error(res.error ?? "Failed to remove selected attendees.");
       }
-    });
+    } catch (err) {
+      console.error("[handleBatchDelete] error:", err);
+      setRegistrationsList((prev) => [...regsToDelete, ...prev]);
+      toast.error("Failed to remove selected attendees.");
+    } finally {
+      setIsDeleting(false);
+      setIsBatchDeleteConfirmOpen(false);
+    }
   };
 
-  const handleCancelRegistration = (registration: FirestoreRegistration) => {
+  const handleCancelRegistration = async (registration: FirestoreRegistration) => {
     const email = (registration.member_email || "").toLowerCase().trim();
     const matchedBevyAttendeeId =
       registration.bevy_attendee_id ?? (email ? bevyAttendeesMap.get(email)?.id : undefined);
 
-    startTransition(async () => {
-      setIsCancelling(true);
-      try {
-        // 1. Dispatch cancellation email to attendee
-        const reviewerPayload = user ? { id: user.id, name: user.name, email: user.email } : undefined;
-        const emailRes = await sendCancelAttendeeEmailAction({
-          registrationId: registration.id,
-          eventId,
-          attendeeName: registration.member_name,
-          attendeeEmail: registration.member_email,
-          reviewer: reviewerPayload,
-          eventData: currentEvent,
+    setIsCancelling(true);
+    try {
+      // 1. Dispatch cancellation email to attendee
+      const reviewerPayload = user ? { id: user.id, name: user.name, email: user.email } : undefined;
+      const emailRes = await sendCancelAttendeeEmailAction({
+        registrationId: registration.id,
+        eventId,
+        attendeeName: registration.member_name,
+        attendeeEmail: registration.member_email,
+        reviewer: reviewerPayload,
+        eventData: currentEvent,
+      });
+
+      if (!emailRes.success) {
+        toast.error(emailRes.error ?? "Failed to send cancellation email. Registration not removed.", {
+          description: typeof emailRes.details === "string" ? emailRes.details : undefined,
         });
+        return;
+      }
 
-        if (!emailRes.success) {
-          toast.error(emailRes.error ?? "Failed to send cancellation email. Registration not removed.", {
-            description: typeof emailRes.details === "string" ? emailRes.details : undefined,
-          });
-          setIsCancelling(false);
-          return;
-        }
+      // 2. Remove registration from Firestore and Bevy
+      const deleteRes = await deleteEventRegistrationAction(
+        registration.id,
+        eventId,
+        matchedBevyAttendeeId,
+        email,
+        registration,
+      );
+      if (!deleteRes.success) {
+        toast.error(deleteRes.error ?? "Cancellation email sent, but failed to remove registration from database.");
+        return;
+      }
 
-        // 2. Remove registration from Firestore and Bevy
-        const deleteRes = await deleteEventRegistrationAction(
-          registration.id,
-          eventId,
-          matchedBevyAttendeeId,
-          email,
-          registration,
-        );
-        if (!deleteRes.success) {
-          toast.error(deleteRes.error ?? "Cancellation email sent, but failed to remove registration from database.");
-          setIsCancelling(false);
-          return;
-        }
-
-        // 3. Update local state
-        setRegistrationsList((prev) => prev.filter((r) => r.id !== registration.id));
-        setSelectedIds((prev) => {
-          const next = new Set(prev);
-          next.delete(registration.id);
+      // 3. Update local state
+      setRegistrationsList((prev) => prev.filter((r) => r.id !== registration.id));
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(registration.id);
+        return next;
+      });
+      if (email && bevyAttendeesMap.has(email)) {
+        setBevyAttendeesMap((prev) => {
+          const next = new Map(prev);
+          next.delete(email);
           return next;
         });
-        if (email && bevyAttendeesMap.has(email)) {
-          setBevyAttendeesMap((prev) => {
-            const next = new Map(prev);
-            next.delete(email);
-            return next;
-          });
-        }
-        if (inspectRegistration?.id === registration.id) {
-          setInspectRegistration(null);
-        }
-        setCancelConfirmRegistration(null);
-
-        toast.success(
-          `Registration cancelled for ${registration.member_name}. Notification sent and capacity released.`,
-        );
-      } catch (err) {
-        console.error("[handleCancelRegistration] error:", err);
-        toast.error("Failed to cancel attendee registration.");
-      } finally {
-        setIsCancelling(false);
       }
-    });
+      if (inspectRegistration?.id === registration.id) {
+        setInspectRegistration(null);
+      }
+
+      toast.success(`Registration cancelled for ${registration.member_name}. Notification sent and capacity released.`);
+    } catch (err) {
+      console.error("[handleCancelRegistration] error:", err);
+      toast.error("Failed to cancel attendee registration.");
+    } finally {
+      setIsCancelling(false);
+      setCancelConfirmRegistration(null);
+    }
   };
 
-  const handleBatchCancel = () => {
+  const handleBatchCancel = async () => {
     if (selectedIds.size === 0) return;
     const regsToCancel = registrationsList.filter((r) => selectedIds.has(r.id));
 
-    startTransition(async () => {
-      setIsCancelling(true);
-
+    setIsCancelling(true);
+    try {
       let successCount = 0;
       let failCount = 0;
       const reviewerPayload = user ? { id: user.id, name: user.name, email: user.email } : undefined;
@@ -2886,8 +2875,6 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       if (inspectRegistration && selectedIds.has(inspectRegistration.id)) {
         setInspectRegistration(null);
       }
-      setIsCancelling(false);
-      setIsBatchCancelConfirmOpen(false);
 
       if (successCount > 0 && failCount === 0) {
         toast.success(`Cancelled ${successCount} registration${successCount === 1 ? "" : "s"} and sent notifications.`);
@@ -2896,7 +2883,10 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       } else {
         toast.error("Failed to cancel selected registrations.");
       }
-    });
+    } finally {
+      setIsCancelling(false);
+      setIsBatchCancelConfirmOpen(false);
+    }
   };
 
   const toggleSelectAll = () => {
@@ -4855,7 +4845,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
               onClick={(e) => {
                 e.preventDefault();
                 if (cancelConfirmRegistration) {
-                  handleCancelRegistration(cancelConfirmRegistration);
+                  void handleCancelRegistration(cancelConfirmRegistration);
                 }
               }}
             >
@@ -4905,7 +4895,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
               disabled={isCancelling}
               onClick={(e) => {
                 e.preventDefault();
-                handleBatchCancel();
+                void handleBatchCancel();
               }}
             >
               {isCancelling ? (
@@ -4949,7 +4939,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
               onClick={(e) => {
                 e.preventDefault();
                 if (deleteConfirmRegistration) {
-                  handleDeleteRegistration(deleteConfirmRegistration);
+                  void handleDeleteRegistration(deleteConfirmRegistration);
                 }
               }}
             >
@@ -4993,7 +4983,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
               disabled={isDeleting}
               onClick={(e) => {
                 e.preventDefault();
-                handleBatchDelete();
+                void handleBatchDelete();
               }}
             >
               {isDeleting ? (
