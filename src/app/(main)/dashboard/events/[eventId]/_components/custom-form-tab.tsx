@@ -10,6 +10,7 @@ import {
   AlertTriangle,
   CalendarClock,
   CheckCircle2,
+  ChevronDown,
   ChevronsDownUp,
   ChevronsUpDown,
   Clock,
@@ -40,6 +41,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -53,6 +62,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { findMatchingSpeaker, normalizeStr } from "@/lib/events/agenda-unification";
 import { isEventCurationMode } from "@/lib/events/payment-deadline";
 import {
   COMMITMENT_FEE_TEMPLATE,
@@ -493,7 +503,9 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
         target.closest("[data-slot='dialog-content']") ||
         target.closest("[role='dialog']") ||
         target.closest("[data-slot='select-content']") ||
-        target.closest("[role='listbox']")
+        target.closest("[role='listbox']") ||
+        target.closest("[data-slot='dropdown-menu-content']") ||
+        target.closest("[role='menu']")
       ) {
         return;
       }
@@ -548,6 +560,90 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
       document.removeEventListener("click", handleClickCapture, true);
     };
   }, [isDirty, showUnsavedDialog, router]);
+
+  // Extract all activity items from existing Bevy agenda
+  const agendaActivities = useMemo(() => {
+    const list: Array<{
+      id: string;
+      time: string;
+      activity: string;
+      speakerName: string;
+      description?: string;
+    }> = [];
+
+    const days = event.agenda?.days ?? [];
+    days.forEach((day, dIdx) => {
+      const items = day.items ?? day.agenda ?? [];
+      items.forEach((item, iIdx) => {
+        if (!item.activity?.trim()) return;
+        const speakerMatch =
+          findMatchingSpeaker(item.description || "", event.speakers) ??
+          findMatchingSpeaker(item.activity, event.speakers);
+        list.push({
+          id: `item-${dIdx}-${iIdx}`,
+          time: item.time,
+          activity: item.activity.trim(),
+          speakerName: speakerMatch?.speakerName ?? "",
+          description: item.description,
+        });
+      });
+    });
+
+    return list;
+  }, [event.agenda, event.speakers]);
+
+  const isActivityAdded = (act: { id: string; activity: string }) => {
+    const norm = normalizeStr(act.activity);
+    return sessions.some((s) => s.agenda_activity_id === act.id || normalizeStr(s.title) === norm);
+  };
+
+  const handleAddFromAgenda = (act: {
+    id: string;
+    time: string;
+    activity: string;
+    speakerName: string;
+    description?: string;
+  }) => {
+    if (isActivityAdded(act)) {
+      toast.info(`"${act.activity}" is already in your sessions list.`);
+      return;
+    }
+
+    const created: EventSession = {
+      id: `sess_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      title: act.activity,
+      time_slot: act.time,
+      capacity: 50,
+      total_registered: 0,
+      agenda_activity_id: act.id,
+      ...(act.speakerName ? { speaker_name: act.speakerName } : {}),
+      ...(act.description?.trim() ? { description: act.description.trim() } : {}),
+    };
+    setSessions((prev) => [...prev, created]);
+    toast.success(`Added session "${act.activity}" from agenda.`);
+  };
+
+  const handleAddAllFromAgenda = () => {
+    const unadded = agendaActivities.filter((act) => !isActivityAdded(act));
+    if (unadded.length === 0) {
+      toast.info("All agenda activities are already added.");
+      return;
+    }
+
+    const newSessions: EventSession[] = unadded.map((act, idx) => ({
+      id: `sess_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 6)}`,
+      title: act.activity,
+      time_slot: act.time,
+      capacity: 50,
+      total_registered: 0,
+      agenda_activity_id: act.id,
+      ...(act.speakerName ? { speaker_name: act.speakerName } : {}),
+      ...(act.description?.trim() ? { description: act.description.trim() } : {}),
+    }));
+
+    setSessions((prev) => [...prev, ...newSessions]);
+    toast.success(`Added ${newSessions.length} session${newSessions.length > 1 ? "s" : ""} from agenda.`);
+  };
 
   // Session Handlers
   const handleLoadStandardSessions = () => {
@@ -1552,15 +1648,84 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
               <Layers className="size-3.5" />
               Load Default Sessions
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setShowAddSession(!showAddSession)}
-              className="gap-1.5 self-start text-xs"
-            >
-              <Plus className="size-3.5" />
-              {showAddSession ? "Cancel" : "Add Session"}
-            </Button>
+            {showAddSession ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setShowAddSession(false)}
+                className="gap-1.5 self-start text-xs"
+              >
+                <Plus className="size-3.5" />
+                Cancel
+              </Button>
+            ) : agendaActivities.length > 0 ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button size="sm" variant="outline" className="gap-1.5 self-start text-xs">
+                    <Plus className="size-3.5 text-primary" />
+                    <span>Add Session</span>
+                    <ChevronDown className="size-3 opacity-60" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="max-h-80 w-80 overflow-y-auto">
+                  <DropdownMenuLabel className="text-xs">Select from Existing Agenda</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {agendaActivities.map((act) => {
+                    const added = isActivityAdded(act);
+                    return (
+                      <DropdownMenuItem
+                        key={act.id}
+                        disabled={added}
+                        onClick={() => handleAddFromAgenda(act)}
+                        className="flex cursor-pointer flex-col items-start gap-0.5 py-2"
+                      >
+                        <div className="flex w-full items-center justify-between gap-2">
+                          <span className="truncate font-semibold text-foreground text-xs">{act.activity}</span>
+                          {added ? (
+                            <Badge variant="secondary" className="h-4 shrink-0 px-1.5 text-[10px]">
+                              Added
+                            </Badge>
+                          ) : (
+                            <span className="shrink-0 text-[10px] text-muted-foreground">{act.time}</span>
+                          )}
+                        </div>
+                        {act.speakerName && (
+                          <span className="truncate text-[11px] text-muted-foreground">Speaker: {act.speakerName}</span>
+                        )}
+                      </DropdownMenuItem>
+                    );
+                  })}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={handleAddAllFromAgenda}
+                    disabled={agendaActivities.every((act) => isActivityAdded(act))}
+                    className="cursor-pointer gap-2 font-medium text-primary text-xs"
+                  >
+                    <Sparkles className="size-3.5" />
+                    <span>
+                      Add All from Agenda ({agendaActivities.filter((a) => !isActivityAdded(a)).length} remaining)
+                    </span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => setShowAddSession(true)}
+                    className="cursor-pointer gap-2 text-muted-foreground text-xs"
+                  >
+                    <Plus className="size-3.5" />
+                    <span>Custom / Manual Session (Not in Agenda)</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setShowAddSession(true)}
+                className="gap-1.5 self-start text-xs"
+              >
+                <Plus className="size-3.5" />
+                Add Session
+              </Button>
+            )}
           </div>
         </CardHeader>
 
