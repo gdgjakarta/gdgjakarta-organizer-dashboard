@@ -16,6 +16,7 @@ import { AuthStoreProvider } from "@/stores/auth/auth-provider";
 import { PreferencesStoreProvider } from "@/stores/preferences/preferences-provider";
 
 import "./globals.css";
+import { MixpanelProvider } from "@/components/mixpanel-provider";
 
 export const viewport: Viewport = {
   themeColor: [
@@ -156,6 +157,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         <ApiLoggerBoot />
         <TooltipProvider>
           <AuthStoreProvider>
+            <MixpanelProvider />
             <PreferencesStoreProvider initialValues={PREFERENCE_DEFAULTS}>
               <NavigationProgressProvider>
                 <MaintenanceGate initialConfig={initialMaintenance} initialIsOrganizer={isOrganizer}>
