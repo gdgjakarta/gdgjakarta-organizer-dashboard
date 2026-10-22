@@ -31,11 +31,9 @@ interface RemoteConfigCache {
 
 let cachedAuth: InstallationAuth | null = null;
 let cachedEntries: RemoteConfigCache | null = null;
-let inFlightAuthPromise: Promise<InstallationAuth> | null = null;
-let inFlightEntriesPromise: Promise<Record<string, string>> | null = null;
 
-// Cache TTL: 60 seconds (aligned with KawalEvent MINIMUM_FETCH_INTERVAL)
-const CACHE_TTL_MS = 60 * 1000;
+// Cache TTL: 5 minutes (stale entries served on error/refresh)
+const CACHE_TTL_MS = 5 * 60 * 1000;
 
 /**
  * Retrieves a valid Firebase Installation ID and Auth Token for REST calls.
@@ -45,54 +43,43 @@ async function getInstallationAuth(apiKey: string, projectId: string, appId: str
   if (cachedAuth && now < cachedAuth.expiresAt - 60_000) {
     return cachedAuth;
   }
-  if (inFlightAuthPromise !== null) {
-    return inFlightAuthPromise;
+
+  const url = `https://firebaseinstallations.googleapis.com/v1/projects/${projectId}/installations`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": apiKey,
+    },
+    signal: typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(6_000) : undefined,
+    body: JSON.stringify({
+      appId,
+      authVersion: "FIS_v2",
+      sdkVersion: "w:0.6.14",
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Firebase Installations request failed with status ${response.status}`);
   }
 
-  inFlightAuthPromise = (async () => {
-    try {
-      const url = `https://firebaseinstallations.googleapis.com/v1/projects/${projectId}/installations`;
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": apiKey,
-        },
-        signal: typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(6_000) : undefined,
-        body: JSON.stringify({
-          appId,
-          authVersion: "FIS_v2",
-          sdkVersion: "w:0.6.14",
-        }),
-      });
+  const data = (await response.json()) as {
+    fid: string;
+    authToken?: { token?: string; expiresIn?: string };
+  };
 
-      if (!response.ok) {
-        throw new Error(`Firebase Installations request failed with status ${response.status}`);
-      }
+  if (!data.fid || !data.authToken?.token) {
+    throw new Error("Invalid installation response received from Firebase");
+  }
 
-      const data = (await response.json()) as {
-        fid: string;
-        authToken?: { token?: string; expiresIn?: string };
-      };
+  const expiresInSec = Number.parseInt(data.authToken.expiresIn ?? "604800", 10);
+  cachedAuth = {
+    fid: data.fid,
+    token: data.authToken.token,
+    expiresAt: Date.now() + expiresInSec * 1000,
+  };
 
-      if (!data.fid || !data.authToken?.token) {
-        throw new Error("Invalid installation response received from Firebase");
-      }
-
-      const expiresInSec = Number.parseInt(data.authToken.expiresIn ?? "604800", 10);
-      cachedAuth = {
-        fid: data.fid,
-        token: data.authToken.token,
-        expiresAt: Date.now() + expiresInSec * 1000,
-      };
-
-      return cachedAuth;
-    } finally {
-      inFlightAuthPromise = null;
-    }
-  })();
-
-  return inFlightAuthPromise;
+  return cachedAuth;
 }
 
 /**
@@ -104,59 +91,50 @@ async function fetchServerRemoteConfigEntries(): Promise<Record<string, string>>
   if (cachedEntries && now - cachedEntries.fetchedAt < CACHE_TTL_MS) {
     return cachedEntries.entries;
   }
-  if (inFlightEntriesPromise !== null) {
-    return inFlightEntriesPromise;
-  }
 
-  inFlightEntriesPromise = (async () => {
-    const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyCVk8ECyA8Lqd7KNqdnItxYUu9jdFzoohU";
-    const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "gdgjakarta-app";
-    const appId = process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:883556294048:web:364631a561bd411a0ed8c5";
+  const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyCVk8ECyA8Lqd7KNqdnItxYUu9jdFzoohU";
+  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "gdgjakarta-app";
+  const appId = process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:883556294048:web:364631a561bd411a0ed8c5";
 
-    try {
-      const auth = await getInstallationAuth(apiKey, projectId, appId);
-      const rcUrl = `https://firebaseremoteconfig.googleapis.com/v1/projects/${projectId}/namespaces/firebase:fetch?key=${apiKey}`;
+  try {
+    const auth = await getInstallationAuth(apiKey, projectId, appId);
+    const rcUrl = `https://firebaseremoteconfig.googleapis.com/v1/projects/${projectId}/namespaces/firebase:fetch?key=${apiKey}`;
 
-      const response = await fetch(rcUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        signal: typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(6_000) : undefined,
-        body: JSON.stringify({
-          app_id: appId,
-          app_instance_id: auth.fid,
-          app_instance_id_token: auth.token,
-          sdk_version: "2.1.0",
-        }),
-      });
+    const response = await fetch(rcUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      signal: typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(6_000) : undefined,
+      body: JSON.stringify({
+        app_id: appId,
+        app_instance_id: auth.fid,
+        app_instance_id_token: auth.token,
+        sdk_version: "2.1.0",
+      }),
+    });
 
-      if (!response.ok) {
-        console.warn(`[Remote Config REST] Fetch returned HTTP ${response.status}`);
-        return cachedEntries?.entries ?? {};
-      }
-
-      const data = (await response.json()) as {
-        entries?: Record<string, string>;
-        state?: string;
-      };
-
-      const entries = data.entries ?? {};
-      cachedEntries = {
-        entries,
-        fetchedAt: Date.now(),
-      };
-
-      return entries;
-    } catch (error) {
-      console.warn("[Remote Config REST] Failed to fetch remote config parameters:", error);
+    if (!response.ok) {
+      console.warn(`[Remote Config REST] Fetch returned HTTP ${response.status}`);
       return cachedEntries?.entries ?? {};
-    } finally {
-      inFlightEntriesPromise = null;
     }
-  })();
 
-  return inFlightEntriesPromise;
+    const data = (await response.json()) as {
+      entries?: Record<string, string>;
+      state?: string;
+    };
+
+    const entries = data.entries ?? {};
+    cachedEntries = {
+      entries,
+      fetchedAt: Date.now(),
+    };
+
+    return entries;
+  } catch (error) {
+    console.warn("[Remote Config REST] Failed to fetch remote config parameters:", error);
+    return cachedEntries?.entries ?? {};
+  }
 }
 
 /**

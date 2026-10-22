@@ -1,3 +1,7 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
 import Link from "next/link";
 
 import { format, isFuture, parseISO } from "date-fns";
@@ -83,8 +87,98 @@ function DropRateBadge({
 }
 
 export function GDGUpcomingEvents({ events }: GDGUpcomingEventsProps) {
+  const [resolvedEvents, setResolvedEvents] = useState<FirestoreEvent[]>(events);
+
+  useEffect(() => {
+    if (events.length > 0) {
+      setResolvedEvents(events);
+    }
+  }, [events]);
+
+  // Client recovery if SSR events arrive empty on fresh visit or after idle
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function recoverOrganizerEvents() {
+      if (resolvedEvents.length > 0) return;
+
+      try {
+        const { fetchAllBevyChapterEventsAction } = await import("@/server/bevy-actions");
+        const res = await fetchAllBevyChapterEventsAction(true, "All");
+        if (!isCancelled && res?.results && res.results.length > 0) {
+          const { resolveEventAudience } = await import("@/lib/bevy/client");
+          const mapped: FirestoreEvent[] = res.results.map((e) => {
+            const { audienceType, isVirtual } = resolveEventAudience(e.audience_type, e.is_virtual_event);
+            return {
+              id: String(e.id),
+              title: e.title || "Untitled Event",
+              description: e.description,
+              description_short: e.description_short,
+              status: (e.status as FirestoreEvent["status"]) || "Published",
+              start_date: e.start_date || new Date().toISOString(),
+              end_date: e.end_date || e.start_date || new Date().toISOString(),
+              picture_url:
+                e.picture?.url ||
+                e.picture?.thumbnail_url ||
+                e.cropped_picture_url ||
+                e.banner?.url ||
+                e.banner?.thumbnail_url ||
+                e.cropped_banner_url ||
+                undefined,
+              banner_url:
+                e.banner?.url ||
+                e.banner?.thumbnail_url ||
+                e.cropped_banner_url ||
+                e.picture?.url ||
+                e.cropped_picture_url ||
+                undefined,
+              event_type_title: e.event_type_title || "Standard Event",
+              audience_type: audienceType,
+              is_virtual: isVirtual,
+              venue:
+                e.venue_name || e.venue_address || e.venue_city
+                  ? {
+                      name: e.venue_name,
+                      address: e.venue_address,
+                      city: e.venue_city,
+                    }
+                  : undefined,
+              url: e.url,
+              static_url: e.static_url,
+              tags: e.tags || [],
+              requires_approval: false,
+              total_registrations: e.total_attendees ?? 0,
+              total_approved: e.total_attendees ?? 0,
+              total_checked_in: e.checkin_count ?? 0,
+              is_hidden: Boolean(e.is_hidden || (e as { hidden?: boolean }).hidden),
+              is_test: Boolean(e.is_test),
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            };
+          });
+          setResolvedEvents(mapped);
+          return;
+        }
+
+        const { getFirestoreEvents } = await import("@/lib/firestore/client");
+        const fsEvents = await getFirestoreEvents(100);
+        if (!isCancelled && fsEvents.length > 0) {
+          setResolvedEvents(fsEvents);
+        }
+      } catch (err) {
+        console.warn("[GDGUpcomingEvents] Failed to recover events on client:", err);
+      }
+    }
+
+    void recoverOrganizerEvents();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [resolvedEvents.length]);
+
   // Pick up to 5 upcoming or recent published events (including hidden and test events)
-  const displayedEvents = events
+  const displayedEvents = resolvedEvents
     .filter((e) => (e.status ? e.status.toLowerCase() === "published" || e.status === "Completed" : true))
     .slice(0, 5);
 

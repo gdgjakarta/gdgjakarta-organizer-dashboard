@@ -203,9 +203,14 @@ export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
               roleId: isOrg ? 1 : typeof memberDoc.bevy_member_id === "number" ? memberDoc.bevy_member_id : undefined,
             };
 
-            const restoreRes = await restoreSessionCookieAction(token);
-            organizer.role = restoreRes.role;
+            // Set state in client store immediately so UI is interactive without blocking
             store.getState().setUser(organizer, firebaseUser);
+
+            const restoreRes = await restoreSessionCookieAction(token, role);
+            if (restoreRes.role && restoreRes.role !== role) {
+              organizer.role = restoreRes.role;
+              store.getState().setUser(organizer, firebaseUser);
+            }
 
             if (!memberDoc.bevy_user_id) {
               await syncBevyUserToFirestore(firebaseUser.uid, email);

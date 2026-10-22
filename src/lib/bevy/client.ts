@@ -51,6 +51,14 @@ export interface BevyFetchOptions extends RequestInit {
   requireAuth?: boolean;
 }
 
+// In-memory Last-Known-Good (LKG) cache for chapter events to survive transient failures and concurrent bursts
+interface CachedEventsEntry {
+  data: BevyEventsResponse;
+  timestamp: number;
+}
+const eventsLkgCache = new Map<string, CachedEventsEntry>();
+const EVENTS_CACHE_TTL_MS = 60_000; // 1 minute fresh TTL
+
 /**
  * Server-only fetch wrapper for Bevy API returning status code, ok flag, and parsed data.
  * Dynamically resolves session cookies and CSRF tokens from Firebase Remote Config
@@ -90,34 +98,33 @@ export async function bevyFetchWithResponse<T>(
     }
   }
 
-  const headers: Record<string, string> = {
+  const buildHeaders = (includeAuth: boolean) => ({
     Accept: "application/json, version=bevy.1.0",
     "User-Agent": "GDGJakartaDashboard/2.2 (compatible; CloudflareWorkers/1.0)",
     ...(options.body ? { "Content-Type": "application/json" } : {}),
-    ...(csrfToken ? { "X-Csrftoken": csrfToken } : {}),
-    ...(cookie ? { Cookie: cookie } : {}),
+    ...(includeAuth && csrfToken ? { "X-Csrftoken": csrfToken } : {}),
+    ...(includeAuth && cookie ? { Cookie: cookie } : {}),
     ...(BEVY_CONFIG.apiToken ? { Authorization: `Token ${BEVY_CONFIG.apiToken}` } : {}),
     ...(options.headers as Record<string, string>),
-  };
+  });
 
   const timeoutSignal = typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(6_000) : undefined;
   const signal = options.signal || timeoutSignal;
 
-  try {
+  const executeFetch = async (headers: Record<string, string>) => {
     const response = await fetch(url, {
       ...options,
       headers,
       signal,
-      cache: "no-store", // Always fetch fresh user validation from Bevy
+      cache: "no-store",
     });
 
     if (!response.ok) {
-      console.warn(`[Bevy API] Request to ${url} returned status ${response.status}`);
-      return { status: response.status, ok: false, data: null };
+      return { response, ok: false, status: response.status, data: null as T | null };
     }
 
     if (response.status === 204) {
-      return { status: response.status, ok: true, data: null };
+      return { response, ok: true, status: response.status, data: null as T | null };
     }
 
     const text = await response.text();
@@ -129,8 +136,42 @@ export async function bevyFetchWithResponse<T>(
         // Response is non-JSON
       }
     }
-    return { status: response.status, ok: true, data };
+    return { response, ok: true, status: response.status, data };
+  };
+
+  try {
+    let result = await executeFetch(buildHeaders(true));
+
+    // If an authenticated GET to /event/ failed (e.g. expired spoofed cookie or 401/403/5xx),
+    // retry once without spoofed cookie headers so published events still load.
+    if (!result.ok && method === "GET" && endpoint.includes("/event/") && (cookie || csrfToken)) {
+      console.warn(`[Bevy API] Auth fetch to ${url} returned ${result.status}. Retrying unauthenticated...`);
+      try {
+        result = await executeFetch(buildHeaders(false));
+      } catch (retryErr) {
+        console.warn(`[Bevy API] Unauthenticated retry failed for ${url}:`, retryErr);
+      }
+    }
+
+    if (!result.ok) {
+      console.warn(`[Bevy API] Request to ${url} returned status ${result.status}`);
+      return { status: result.status, ok: false, data: null };
+    }
+
+    return { status: result.status, ok: true, data: result.data };
   } catch (error) {
+    // If initial fetch failed on error (e.g. timeout with cookies), retry without auth if endpoint is /event/
+    if (method === "GET" && endpoint.includes("/event/") && (cookie || csrfToken)) {
+      try {
+        const retryResult = await executeFetch(buildHeaders(false));
+        if (retryResult.ok) {
+          return { status: retryResult.status, ok: true, data: retryResult.data };
+        }
+      } catch {
+        // Ignore fallback error
+      }
+    }
+
     console.error(`[Bevy API Error] Failed to fetch ${url}:`, error);
     return { status: 500, ok: false, data: null };
   }
@@ -673,6 +714,15 @@ export async function getBevyChapterEvents(
   includeHidden = true,
   status = "Published",
 ): Promise<BevyEventsResponse | null> {
+  const cacheKey = `${chapterId}:${pageSize}:${page}:${includeHidden}:${status}`;
+  const now = Date.now();
+  const cached = eventsLkgCache.get(cacheKey);
+
+  // Return fresh cache if within TTL
+  if (cached && now - cached.timestamp < EVENTS_CACHE_TTL_MS) {
+    return cached.data;
+  }
+
   const isAllStatus = !status || status.toLowerCase() === "all";
   const fields =
     "id,title,description_short,description,event_type_title,audience_type,is_virtual_event,start_date,end_date,status,picture,banner,cropped_banner_url,cropped_picture_url,url,static_url,total_attendees,checkin_count,total_tickets,total_rsvps_sold,completed,tags,chapter,is_hidden,is_test,venue_name,venue_address,venue_city";
@@ -696,6 +746,20 @@ export async function getBevyChapterEvents(
       }
       return true;
     });
+
+    // Store in Last-Known-Good cache
+    eventsLkgCache.set(cacheKey, {
+      data: result,
+      timestamp: now,
+    });
+
+    return result;
+  }
+
+  // If live fetch failed/returned null, serve Last-Known-Good stale entry if present
+  if (cached?.data) {
+    console.warn(`[Bevy Events] Serving Last-Known-Good cache for ${cacheKey}`);
+    return cached.data;
   }
 
   return result;

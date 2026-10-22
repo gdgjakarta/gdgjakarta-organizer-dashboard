@@ -335,6 +335,16 @@ export async function handleUserPostLoginAction(params: UserAuthSyncParams): Pro
 async function setAuthSessionCookie(token: string, role: string, remember = true): Promise<void> {
   try {
     const cookieStore = await cookies();
+    const signedRole = await signRoleCookie(role);
+
+    // Prevent redundant cookie writes if tokens and roles haven't changed.
+    // Avoids triggering automatic Next.js router cache invalidation and page RSC re-render!
+    const currentToken = cookieStore.get(AUTH_COOKIE)?.value;
+    const currentRole = cookieStore.get(ROLE_COOKIE)?.value;
+    if (currentToken === token && currentRole === signedRole) {
+      return;
+    }
+
     const options: {
       httpOnly: boolean;
       secure: boolean;
@@ -351,7 +361,6 @@ async function setAuthSessionCookie(token: string, role: string, remember = true
       options.maxAge = COOKIE_MAX_AGE;
     }
 
-    const signedRole = await signRoleCookie(role);
     console.log(`[Auth Cookie] Setting cookies: auth_token (len=${token.length}), auth_role=${role} (signed)`);
     cookieStore.set(AUTH_COOKIE, token, options);
     cookieStore.set(ROLE_COOKIE, signedRole, options);
@@ -364,9 +373,28 @@ async function setAuthSessionCookie(token: string, role: string, remember = true
  * Restores HTTP-only auth cookies with server-side Bevy role re-validation
  * to prevent client-side privilege escalation.
  */
-export async function restoreSessionCookieAction(token: string): Promise<{ success: boolean; role: string }> {
+export async function restoreSessionCookieAction(
+  token: string,
+  cachedRole?: string,
+): Promise<{ success: boolean; role: string }> {
   try {
     if (!token) return { success: false, role: "member" };
+
+    const cookieStore = await cookies();
+    const existingToken = cookieStore.get(AUTH_COOKIE)?.value;
+    const existingRoleCookie = cookieStore.get(ROLE_COOKIE)?.value;
+
+    const { verifyRoleCookie } = await import("@/lib/security/session-cookie");
+    const verifiedExistingRole = await verifyRoleCookie(existingRoleCookie);
+
+    // Fast-path: If the existing cookies are already set and cryptographically valid,
+    // and match the current token/role, skip redundant Bevy validation and cookie mutations.
+    if (existingToken === token && verifiedExistingRole) {
+      if (!cachedRole || cachedRole.toLowerCase() === verifiedExistingRole.toLowerCase()) {
+        return { success: true, role: verifiedExistingRole };
+      }
+    }
+
     const tokenVerification = await verifyFirebaseIdToken(token);
     if (!tokenVerification.valid || !tokenVerification.email) {
       console.warn("[Auth Restore] Invalid or unverified token supplied to restoreSessionCookieAction");
@@ -374,32 +402,42 @@ export async function restoreSessionCookieAction(token: string): Promise<{ succe
     }
 
     const verifiedEmail = tokenVerification.email.toLowerCase().trim();
-    let validation: OrganizerValidationResult = {
-      isValidOrganizer: false,
-      role: "member",
-      bevyUserId: null,
-      chapterRole: "Member",
-    };
-    try {
-      validation = await validateBevyOrganizer(verifiedEmail);
-    } catch (valErr) {
-      console.error("[Auth Restore] Validation error:", valErr);
+
+    // If existing signed role was already valid or cached role is standard member,
+    // reuse verified role without hammering Bevy API on every fresh visit / idle wake
+    let role = verifiedExistingRole || cachedRole?.toLowerCase() || "member";
+
+    // Only run expensive Bevy organizer validation if user claims to be an organizer/staff
+    // or if no trusted role cookie exists yet
+    if (!verifiedExistingRole || role === "organizer" || role === "core_team") {
+      let validation: OrganizerValidationResult = {
+        isValidOrganizer: false,
+        role: "member",
+        bevyUserId: null,
+        chapterRole: "Member",
+      };
+      try {
+        validation = await validateBevyOrganizer(verifiedEmail);
+      } catch (valErr) {
+        console.error("[Auth Restore] Validation error:", valErr);
+      }
+
+      const isExecutive = isExecutiveOrganizer({
+        role: validation.role,
+        chapterRole: validation.chapterRole,
+        chapterRoleType: validation.chapterRoleType,
+        roleId: validation.roleId,
+      });
+      const isCoreStaff = isCoreTeamOrStaff({
+        role: validation.role,
+        chapterRole: validation.chapterRole,
+        chapterRoleType: validation.chapterRoleType,
+        roleId: validation.roleId,
+      });
+
+      role = isExecutive ? "organizer" : isCoreStaff ? "core_team" : "member";
     }
 
-    const isExecutive = isExecutiveOrganizer({
-      role: validation.role,
-      chapterRole: validation.chapterRole,
-      chapterRoleType: validation.chapterRoleType,
-      roleId: validation.roleId,
-    });
-    const isCoreStaff = isCoreTeamOrStaff({
-      role: validation.role,
-      chapterRole: validation.chapterRole,
-      chapterRoleType: validation.chapterRoleType,
-      roleId: validation.roleId,
-    });
-
-    const role = isExecutive ? "organizer" : isCoreStaff ? "core_team" : "member";
     await setAuthSessionCookie(token, role, true);
     return { success: true, role };
   } catch (err) {
