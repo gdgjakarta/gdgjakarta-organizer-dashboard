@@ -35,6 +35,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { BevyAttendee } from "@/lib/bevy/types";
 import {
   updateBreakoutSessionCheckInAction,
   updateRegistrationCheckInAction,
@@ -42,11 +43,7 @@ import {
 } from "@/lib/firestore/actions";
 import type { CustomQuestion, EventSession, FirestoreRegistration, RegistrationStatus } from "@/lib/firestore/types";
 import { cn, getInitials } from "@/lib/utils";
-import {
-  type BevyAttendeeItem,
-  checkInBevyAttendeeAction,
-  fetchAllBevyEventAttendeesAction,
-} from "@/server/bevy-actions";
+import { checkInBevyAttendeeAction, fetchAllBevyEventAttendeesAction } from "@/server/bevy-actions";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
 export type QrScannerMode = "event_checkin" | "session_checkin" | "merchandise_collection";
@@ -206,7 +203,7 @@ export function QrCheckInScannerDialog({
     code: "",
     time: 0,
   });
-  const bevyAttendeesCacheRef = React.useRef<BevyAttendeeItem[] | null>(null);
+  const bevyAttendeesCacheRef = React.useRef<BevyAttendee[] | null>(null);
 
   const selectedSession = React.useMemo(
     () => sessions.find((s) => s.id === selectedSessionId) ?? null,
@@ -353,8 +350,8 @@ export function QrCheckInScannerDialog({
         // 2. Fallback lookup via Bevy Event Attendees API -> match email
         if (!bevyAttendeesCacheRef.current) {
           const res = await fetchAllBevyEventAttendeesAction(eventId);
-          if (res.success && res.attendees) {
-            bevyAttendeesCacheRef.current = res.attendees;
+          if (res.success && res.results) {
+            bevyAttendeesCacheRef.current = res.results;
           }
         }
         const bevyAttendee = bevyAttendeesCacheRef.current?.find((a) => Number(a.id) === Number(bevyAttendeeId));
@@ -410,8 +407,8 @@ export function QrCheckInScannerDialog({
             if (!finalBevyId) {
               if (!bevyAttendeesCacheRef.current) {
                 const res = await fetchAllBevyEventAttendeesAction(eventId);
-                if (res.success && res.attendees) {
-                  bevyAttendeesCacheRef.current = res.attendees;
+                if (res.success && res.results) {
+                  bevyAttendeesCacheRef.current = res.results;
                 }
               }
               const matched = bevyAttendeesCacheRef.current?.find(
@@ -443,7 +440,7 @@ export function QrCheckInScannerDialog({
           const updated: FirestoreRegistration = {
             ...reg,
             is_checked_in: targetStatus,
-            checked_in_at: nowIso,
+            checked_in_at: nowIso ?? undefined,
             bevy_attendee_id: attendeeIdToUse ?? reg.bevy_attendee_id,
           };
           setActiveReg(updated);
