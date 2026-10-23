@@ -273,11 +273,10 @@ export function isRegistrationInSession(
 
   const regSession =
     reg.session_title ??
-    reg.ticket_name ??
-    reg.ticket_tier ??
     (reg.answers?.Session as string | undefined) ??
     (reg.answers?.session as string | undefined) ??
     (reg.answers?.session_title as string | undefined) ??
+    (!sessions || sessions.length === 0 ? (reg.ticket_name ?? reg.ticket_tier) : undefined) ??
     "";
 
   if (typeof regSession !== "string" || !regSession.trim() || !sessionTitle.trim()) {

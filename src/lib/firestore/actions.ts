@@ -400,10 +400,11 @@ export async function removeRegistrantFromBreakoutSessionAction(
   eventId: string,
   sessionId: string,
   registrationId: string,
+  sessionTitle?: string,
 ) {
   try {
     const { removeRegistrantFromBreakoutSession } = await import("./client");
-    await removeRegistrantFromBreakoutSession(eventId, sessionId, registrationId);
+    await removeRegistrantFromBreakoutSession(eventId, sessionId, registrationId, sessionTitle);
     await revalidateDashboardPath(`/dashboard/events/${eventId}`);
     return { success: true };
   } catch (err) {

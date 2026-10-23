@@ -3292,6 +3292,7 @@ export async function removeRegistrantFromBreakoutSession(
   eventId: string,
   sessionId: string,
   registrationId: string,
+  sessionTitle?: string,
 ): Promise<void> {
   if (typeof window === "undefined" || !registrationId) return;
   const regRef = doc(db, "event_registrations", registrationId);
@@ -3310,9 +3311,61 @@ export async function removeRegistrantFromBreakoutSession(
     updated_at: now,
   };
 
-  if (data.session_id === sessionId) {
+  const normTitle = (sessionTitle ?? "").trim().toLowerCase();
+  const matchesPrimarySession =
+    data.session_id === sessionId ||
+    data.answers?.session_id === sessionId ||
+    (normTitle.length > 0 &&
+      typeof data.session_title === "string" &&
+      data.session_title.trim().toLowerCase() === normTitle);
+
+  if (matchesPrimarySession) {
     updateFields.session_id = deleteField();
     updateFields.session_title = deleteField();
+  }
+
+  if (data.answers && typeof data.answers === "object") {
+    const updatedAnswers = { ...data.answers };
+    let answersChanged = false;
+
+    const matchesAnswerTitle = (val: unknown) => {
+      if (typeof val !== "string" || !normTitle) return false;
+      const clean = val.toLowerCase().split(",")[0].trim();
+      return clean === normTitle || clean.includes(normTitle) || normTitle.includes(clean);
+    };
+
+    if (matchesPrimarySession || updatedAnswers.session_id === sessionId) {
+      if ("session_id" in updatedAnswers) {
+        delete updatedAnswers.session_id;
+        answersChanged = true;
+      }
+      if ("session_title" in updatedAnswers) {
+        delete updatedAnswers.session_title;
+        answersChanged = true;
+      }
+    }
+    if (matchesPrimarySession || matchesAnswerTitle(updatedAnswers.session_title)) {
+      if ("session_title" in updatedAnswers) {
+        delete updatedAnswers.session_title;
+        answersChanged = true;
+      }
+    }
+    if (matchesPrimarySession || matchesAnswerTitle(updatedAnswers.session)) {
+      if ("session" in updatedAnswers) {
+        delete updatedAnswers.session;
+        answersChanged = true;
+      }
+    }
+    if (matchesPrimarySession || matchesAnswerTitle(updatedAnswers.Session)) {
+      if ("Session" in updatedAnswers) {
+        delete updatedAnswers.Session;
+        answersChanged = true;
+      }
+    }
+
+    if (answersChanged) {
+      updateFields.answers = updatedAnswers;
+    }
   }
 
   await updateDoc(regRef, updateFields);

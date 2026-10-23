@@ -236,6 +236,23 @@ function getRegistrantRole(reg: FirestoreRegistration, questions?: CustomQuestio
   );
 }
 
+function getRegistrantYoe(reg: FirestoreRegistration, questions?: CustomQuestion[]): string {
+  return getAnswerDisplay(
+    reg,
+    [
+      "years_of_experience",
+      "yoe",
+      "experience_years",
+      "years_experience",
+      "work_experience",
+      "pengalaman_kerja",
+      "lama_pengalaman",
+    ],
+    questions,
+    ["years of professional experience", "years of experience", "pengalaman kerja", "lama pengalaman"],
+  );
+}
+
 function formatAnswerLabel(qId: string, questions: CustomQuestion[]): string {
   const trimmed = qId.trim();
   const lower = trimmed.toLowerCase();
@@ -1039,6 +1056,7 @@ export function QrCheckInScannerDialog({
     : "";
   const orgVal = activeReg ? getRegistrantOrg(activeReg, questions) : "";
   const roleVal = activeReg ? getRegistrantRole(activeReg, questions) : "";
+  const yoeVal = activeReg ? getRegistrantYoe(activeReg, questions) : "";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1344,8 +1362,10 @@ export function QrCheckInScannerDialog({
                     <div className="flex items-center gap-1.5">
                       <Building2 className="size-3.5 shrink-0 text-muted-foreground" />
                       <span className="truncate">
-                        {orgVal || roleVal
-                          ? [roleVal, orgVal].filter(Boolean).join(" @ ")
+                        {orgVal || roleVal || yoeVal
+                          ? [[roleVal, yoeVal ? `(${yoeVal})` : ""].filter(Boolean).join(" "), orgVal]
+                              .filter(Boolean)
+                              .join(" @ ")
                           : "No organization / role specified"}
                       </span>
                     </div>

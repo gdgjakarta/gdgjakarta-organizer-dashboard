@@ -243,6 +243,23 @@ function getRegistrantRole(reg: FirestoreRegistration, questions?: CustomQuestio
   );
 }
 
+function getRegistrantYoe(reg: FirestoreRegistration, questions?: CustomQuestion[]): string {
+  return getAnswerDisplay(
+    reg,
+    [
+      "years_of_experience",
+      "yoe",
+      "experience_years",
+      "years_experience",
+      "work_experience",
+      "pengalaman_kerja",
+      "lama_pengalaman",
+    ],
+    questions,
+    ["years of professional experience", "years of experience", "pengalaman kerja", "lama pengalaman"],
+  );
+}
+
 function formatAnswerLabel(qId: string, questions: CustomQuestion[]): string {
   const trimmed = qId.trim();
   const lower = trimmed.toLowerCase();
@@ -863,6 +880,7 @@ export function BreakoutSessionsTab({
       ).toLowerCase();
       const org = getRegistrantOrg(reg, questions).toLowerCase();
       const role = getRegistrantRole(reg, questions).toLowerCase();
+      const yoe = getRegistrantYoe(reg, questions).toLowerCase();
 
       return (
         (reg.member_name || "").toLowerCase().includes(q) ||
@@ -870,6 +888,7 @@ export function BreakoutSessionsTab({
         phone.includes(q) ||
         org.includes(q) ||
         role.includes(q) ||
+        yoe.includes(q) ||
         String(reg.bevy_attendee_id || "").includes(q)
       );
     });
@@ -886,11 +905,13 @@ export function BreakoutSessionsTab({
       const q = addRegistrantSearch.trim().toLowerCase();
       const org = getRegistrantOrg(reg, questions).toLowerCase();
       const role = getRegistrantRole(reg, questions).toLowerCase();
+      const yoe = getRegistrantYoe(reg, questions).toLowerCase();
       return (
         (reg.member_name || "").toLowerCase().includes(q) ||
         (reg.member_email || "").toLowerCase().includes(q) ||
         org.includes(q) ||
-        role.includes(q)
+        role.includes(q) ||
+        yoe.includes(q)
       );
     });
   }, [localRegistrations, activeRosterSessionId, sessions, addRegistrantSearch, questions]);
@@ -964,23 +985,50 @@ export function BreakoutSessionsTab({
   const handleRemoveFromSession = async (reg: FirestoreRegistration) => {
     setRemovingRegId(reg.id);
     try {
-      const res = await removeRegistrantFromBreakoutSessionAction(eventId, activeRosterSessionId, reg.id);
+      const targetTitle = activeRosterSession?.title ?? "";
+      const res = await removeRegistrantFromBreakoutSessionAction(eventId, activeRosterSessionId, reg.id, targetTitle);
       if (!res.success) {
         toast.error(res.error || "Failed to remove registrant from session.");
         return;
       }
 
+      const normTitle = targetTitle.trim().toLowerCase();
       setLocalRegistrations((prev) =>
         prev.map((item) => {
           if (item.id !== reg.id) return item;
           const nextBreakout = (item.breakout_session_ids ?? []).filter((id) => id !== activeRosterSessionId);
           const nextCheckIns = { ...(item.session_check_ins ?? {}) };
           delete nextCheckIns[activeRosterSessionId];
+
+          const matchesPrimary =
+            item.session_id === activeRosterSessionId ||
+            item.answers?.session_id === activeRosterSessionId ||
+            (normTitle.length > 0 &&
+              typeof item.session_title === "string" &&
+              item.session_title.trim().toLowerCase() === normTitle);
+
+          const nextAnswers = item.answers ? { ...item.answers } : undefined;
+          if (nextAnswers) {
+            if (matchesPrimary || nextAnswers.session_id === activeRosterSessionId) {
+              delete nextAnswers.session_id;
+              delete nextAnswers.session_title;
+            }
+            const matchesText = (val: unknown) => {
+              if (typeof val !== "string" || !normTitle) return false;
+              const clean = val.toLowerCase().split(",")[0].trim();
+              return clean === normTitle || clean.includes(normTitle) || normTitle.includes(clean);
+            };
+            if (matchesPrimary || matchesText(nextAnswers.session_title)) delete nextAnswers.session_title;
+            if (matchesPrimary || matchesText(nextAnswers.session)) delete nextAnswers.session;
+            if (matchesPrimary || matchesText(nextAnswers.Session)) delete nextAnswers.Session;
+          }
+
           return {
             ...item,
             breakout_session_ids: nextBreakout,
-            session_id: item.session_id === activeRosterSessionId ? null : item.session_id,
-            session_title: item.session_id === activeRosterSessionId ? null : item.session_title,
+            session_id: matchesPrimary ? null : item.session_id,
+            session_title: matchesPrimary ? null : item.session_title,
+            answers: nextAnswers,
             session_check_ins: nextCheckIns,
           };
         }),
@@ -1831,7 +1879,8 @@ export function BreakoutSessionsTab({
                     filteredRosterRegistrations.map((reg) => {
                       const checkInRec = reg.session_check_ins?.[activeRosterSessionId];
                       const isSessionCheckedIn = Boolean(checkInRec?.is_checked_in);
-                      const isFromPreEventForm = reg.session_id === activeRosterSessionId;
+                      const isFromPreEventForm =
+                        reg.session_id === activeRosterSessionId || reg.answers?.session_id === activeRosterSessionId;
                       const phone =
                         getAnswerDisplay(
                           reg,
@@ -1843,6 +1892,7 @@ export function BreakoutSessionsTab({
                         "";
                       const org = getRegistrantOrg(reg, questions);
                       const role = getRegistrantRole(reg, questions);
+                      const yoe = getRegistrantYoe(reg, questions);
 
                       return (
                         <TableRow key={reg.id}>
@@ -1875,7 +1925,7 @@ export function BreakoutSessionsTab({
                           </TableCell>
 
                           <TableCell className="text-xs">
-                            {org || role ? (
+                            {org || role || yoe ? (
                               <div className="space-y-0.5">
                                 {org && (
                                   <p className="flex items-center gap-1 font-medium">
@@ -1883,7 +1933,11 @@ export function BreakoutSessionsTab({
                                     {org}
                                   </p>
                                 )}
-                                {role && <p className="text-[11px] text-muted-foreground">{role}</p>}
+                                {(role || yoe) && (
+                                  <p className="text-[11px] text-muted-foreground">
+                                    {[role, yoe].filter(Boolean).join(" • ")}
+                                  </p>
+                                )}
                               </div>
                             ) : (
                               <span className="text-muted-foreground">—</span>
@@ -2084,7 +2138,9 @@ export function BreakoutSessionsTab({
                   const checked = selectedRegIdsToAdd.includes(reg.id);
                   const org = getRegistrantOrg(reg, questions);
                   const role = getRegistrantRole(reg, questions);
-                  const orgRoleSummary = [role, org].filter(Boolean).join(" @ ");
+                  const yoe = getRegistrantYoe(reg, questions);
+                  const roleWithYoe = [role, yoe ? `(${yoe})` : ""].filter(Boolean).join(" ");
+                  const orgRoleSummary = [roleWithYoe, org].filter(Boolean).join(" @ ");
                   return (
                     <label
                       key={reg.id}
