@@ -89,6 +89,14 @@ export interface EventSession {
   location_url?: string;
   capacity: number;
   total_registered?: number;
+  total_checked_in?: number;
+
+  /** Whether this session is selectable on the pre-event registration form (defaults to true for backward compatibility) */
+  include_in_registration?: boolean;
+  /** Whether this session has its own separate check-in tracking */
+  separate_check_in?: boolean;
+  /** Whether checking in to this session should also call the Bevy Check-in API (defaults to false for breakout sessions) */
+  sync_check_in_to_bevy?: boolean;
 
   // Speaker slides & resources
   slides_url?: string;
@@ -96,6 +104,20 @@ export interface EventSession {
   speaker_name?: string;
   related_links?: SessionRelatedLink[];
   agenda_activity_id?: string;
+}
+
+export interface SessionCheckInRecord {
+  session_id: string;
+  session_title: string;
+  is_checked_in: boolean;
+  checked_in_at?: string | null;
+  checked_in_by_id?: string | null;
+  checked_in_by_name?: string | null;
+  checked_in_by_email?: string | null;
+  check_in_method?: "qr_scan" | "manual";
+  raw_qr_text?: string;
+  bevy_attendee_id?: number | string | null;
+  synced_to_bevy?: boolean;
 }
 
 export interface MerchandiseVariationOptionDetail {
@@ -611,6 +633,8 @@ export interface FirestoreRegistration {
   answers?: Record<string, unknown>;
   session_id?: string | null;
   session_title?: string | null;
+  breakout_session_ids?: string[];
+  session_check_ins?: Record<string, SessionCheckInRecord>;
   notes?: string;
   ticket_tier?: string;
   ticket_id?: string | null;

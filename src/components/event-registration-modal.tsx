@@ -470,7 +470,10 @@ export function EventRegistrationModal({
   }, [activeRegistration]);
   const isPast = isEventPast(eventConfig);
 
-  const hasSessions = Array.isArray(eventConfig.sessions) && eventConfig.sessions.length > 0;
+  const preEventSessions = useMemo(() => {
+    return (eventConfig.sessions ?? []).filter((s) => s.include_in_registration !== false);
+  }, [eventConfig.sessions]);
+  const hasSessions = preEventSessions.length > 0;
 
   const availableTickets = useMemo(() => {
     const raw = ensureEventTickets(eventConfig.tickets);
@@ -566,10 +569,10 @@ export function EventRegistrationModal({
 
   // Auto-select session if only 1 session track exists
   useEffect(() => {
-    if (Array.isArray(eventConfig.sessions) && eventConfig.sessions.length === 1 && !selectedSessionId) {
-      setSelectedSessionId(eventConfig.sessions[0].id);
+    if (preEventSessions.length === 1 && !selectedSessionId) {
+      setSelectedSessionId(preEventSessions[0].id);
     }
-  }, [eventConfig.sessions, selectedSessionId]);
+  }, [preEventSessions, selectedSessionId]);
 
   // Auto-select first open ticket if none selected or if currently selected ticket is closed/unavailable
   useEffect(() => {
@@ -592,8 +595,8 @@ export function EventRegistrationModal({
   }, [availableTickets, selectedTicketId]);
 
   const selectedSession = useMemo(() => {
-    return eventConfig.sessions?.find((s) => s.id === selectedSessionId) ?? null;
-  }, [eventConfig.sessions, selectedSessionId]);
+    return preEventSessions.find((s) => s.id === selectedSessionId) ?? null;
+  }, [preEventSessions, selectedSessionId]);
 
   const ticketPrice = selectedTicket ? selectedTicket.price || 0 : 0;
   const effectiveBasePrice = useMemo(() => {
@@ -2559,7 +2562,7 @@ export function EventRegistrationModal({
                           onValueChange={setSelectedSessionId}
                           className="grid grid-cols-1 gap-2.5 pt-1"
                         >
-                          {eventConfig.sessions.map((sess) => {
+                          {preEventSessions.map((sess) => {
                             const available = isSessionAvailable(sess);
                             const remaining = getSessionRemainingSeats(sess);
                             const registered = sess.total_registered || 0;
