@@ -51,7 +51,7 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { findMatchingSpeaker, normalizeStr } from "@/lib/events/agenda-unification";
 import { isRegistrationInSession } from "@/lib/events/capacity-validator";
-import { DEFAULT_GDG_SESSIONS } from "@/lib/events/registration-defaults";
+import { DEFAULT_COMBINED_QUESTIONS, DEFAULT_GDG_SESSIONS } from "@/lib/events/registration-defaults";
 import {
   assignRegistrantsToBreakoutSessionAction,
   removeRegistrantFromBreakoutSessionAction,
@@ -160,14 +160,136 @@ interface BreakoutSessionsTabProps {
   isSuperAdmin?: boolean;
 }
 
-function getAnswerDisplay(reg: FirestoreRegistration, keys: string[]): string {
+function getAnswerDisplay(
+  reg: FirestoreRegistration,
+  keys: string[],
+  questions?: CustomQuestion[],
+  labelKeywords?: string[],
+): string {
   if (!reg.answers) return "";
   for (const key of keys) {
     const val = reg.answers[key];
     if (Array.isArray(val) && val.length > 0) return val.join(", ");
     if (typeof val === "string" && val.trim()) return val.trim();
   }
+  if (labelKeywords && labelKeywords.length > 0) {
+    for (const [qId, val] of Object.entries(reg.answers)) {
+      if (qId === "session_id" || qId === "session_title" || qId === "session" || qId === "bevy_user_id") continue;
+      const strVal = Array.isArray(val) ? val.join(", ") : typeof val === "string" ? val.trim() : "";
+      if (!strVal) continue;
+      const customLabel = questions?.find((q) => q.id.toLowerCase() === qId.toLowerCase())?.label ?? "";
+      const defaultLabel =
+        DEFAULT_COMBINED_QUESTIONS.find((q) => q.id.toLowerCase() === qId.toLowerCase())?.label ?? "";
+      const haystack = `${qId} ${customLabel} ${defaultLabel}`.toLowerCase();
+      if (labelKeywords.some((kw) => haystack.includes(kw))) {
+        return strVal;
+      }
+    }
+  }
   return "";
+}
+
+function getRegistrantOrg(reg: FirestoreRegistration, questions?: CustomQuestion[]): string {
+  return getAnswerDisplay(
+    reg,
+    [
+      "company_or_institution",
+      "institution",
+      "company",
+      "organization",
+      "university",
+      "company_name",
+      "institution_name",
+      "school",
+      "instansi",
+      "kampus",
+      "perusahaan",
+    ],
+    questions,
+    [
+      "institution",
+      "company",
+      "organization",
+      "university",
+      "school",
+      "employer",
+      "instansi",
+      "kampus",
+      "perusahaan",
+      "universitas",
+    ],
+  );
+}
+
+function getRegistrantRole(reg: FirestoreRegistration, questions?: CustomQuestion[]): string {
+  return getAnswerDisplay(
+    reg,
+    [
+      "role_or_title",
+      "job_title",
+      "current_role",
+      "job_role",
+      "role",
+      "position",
+      "occupation",
+      "profession",
+      "pekerjaan",
+      "jabatan",
+      "persona_description",
+      "professional_background",
+    ],
+    questions,
+    ["job title", "current role", "role / occupation", "occupation", "position", "profession", "pekerjaan", "jabatan"],
+  );
+}
+
+function formatAnswerLabel(qId: string, questions: CustomQuestion[]): string {
+  const trimmed = qId.trim();
+  const lower = trimmed.toLowerCase();
+
+  const customMatch = questions.find((q) => q.id.toLowerCase() === lower);
+  if (customMatch?.label) return customMatch.label;
+
+  const defaultMatch = DEFAULT_COMBINED_QUESTIONS.find((q) => q.id.toLowerCase() === lower);
+  if (defaultMatch?.label) return defaultMatch.label;
+
+  const commonLabels: Record<string, string> = {
+    session_title: "Session Title",
+    session: "Breakout Session",
+    name: "Full Name",
+    full_name: "Full Name",
+    email: "Email Address",
+    whatsapp: "WhatsApp Number",
+    phone: "Phone Number",
+    phone_number: "Phone Number",
+  };
+  if (commonLabels[lower]) return commonLabels[lower];
+
+  if (/^q_\d+/i.test(trimmed)) return "Archived Form Question";
+  if (/[A-Z]/.test(trimmed) && trimmed.includes(" ") && !trimmed.includes("_")) return trimmed;
+
+  const words = trimmed
+    .replace(/[_-]+/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((word) => {
+      const w = word.toLowerCase();
+      if (w === "url") return "URL";
+      if (w === "id") return "ID";
+      if (w === "github") return "GitHub";
+      if (w === "linkedin") return "LinkedIn";
+      if (w === "whatsapp") return "WhatsApp";
+      if (w === "ai") return "AI";
+      if (w === "gdg") return "GDG";
+      if (w === "rsvp") return "RSVP";
+      if (w === "faq") return "FAQ";
+      if (w === "ui") return "UI";
+      if (w === "ux") return "UX";
+      if (w === "cv") return "CV";
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    });
+
+  return words.join(" ") || trimmed;
 }
 
 interface BreakoutConfigSnapshot {
@@ -730,27 +852,28 @@ export function BreakoutSessionsTab({
       if (!rosterSearch.trim()) return true;
       const q = rosterSearch.trim().toLowerCase();
       const phone = (
-        getAnswerDisplay(reg, ["whatsapp", "phone", "phone_number", "no_hp", "no_wa"]) ||
+        getAnswerDisplay(
+          reg,
+          ["whatsapp", "phone", "phone_number", "no_hp", "no_wa", "nomor_whatsapp", "mobile"],
+          questions,
+          ["whatsapp", "phone", "no hp", "nomor wa"],
+        ) ||
         reg.member_phone ||
         ""
       ).toLowerCase();
-      const org = getAnswerDisplay(reg, [
-        "institution",
-        "company",
-        "organization",
-        "university",
-        "instansi",
-      ]).toLowerCase();
+      const org = getRegistrantOrg(reg, questions).toLowerCase();
+      const role = getRegistrantRole(reg, questions).toLowerCase();
 
       return (
         (reg.member_name || "").toLowerCase().includes(q) ||
         (reg.member_email || "").toLowerCase().includes(q) ||
         phone.includes(q) ||
         org.includes(q) ||
+        role.includes(q) ||
         String(reg.bevy_attendee_id || "").includes(q)
       );
     });
-  }, [sessionRosterRegistrations, activeRosterSessionId, rosterFilter, rosterSearch]);
+  }, [sessionRosterRegistrations, activeRosterSessionId, rosterFilter, rosterSearch, questions]);
 
   // Registrants available to add manually to the active session
   const availableRegistrantsToAdd = React.useMemo(() => {
@@ -761,20 +884,16 @@ export function BreakoutSessionsTab({
       }
       if (!addRegistrantSearch.trim()) return true;
       const q = addRegistrantSearch.trim().toLowerCase();
-      const org = getAnswerDisplay(reg, [
-        "institution",
-        "company",
-        "organization",
-        "university",
-        "instansi",
-      ]).toLowerCase();
+      const org = getRegistrantOrg(reg, questions).toLowerCase();
+      const role = getRegistrantRole(reg, questions).toLowerCase();
       return (
         (reg.member_name || "").toLowerCase().includes(q) ||
         (reg.member_email || "").toLowerCase().includes(q) ||
-        org.includes(q)
+        org.includes(q) ||
+        role.includes(q)
       );
     });
-  }, [localRegistrations, activeRosterSessionId, sessions, addRegistrantSearch]);
+  }, [localRegistrations, activeRosterSessionId, sessions, addRegistrantSearch, questions]);
 
   // Handle manual check-in / undo check-in from roster table
   const handleToggleSessionCheckIn = async (reg: FirestoreRegistration, targetStatus: boolean) => {
@@ -1714,30 +1833,16 @@ export function BreakoutSessionsTab({
                       const isSessionCheckedIn = Boolean(checkInRec?.is_checked_in);
                       const isFromPreEventForm = reg.session_id === activeRosterSessionId;
                       const phone =
-                        getAnswerDisplay(reg, [
-                          "whatsapp",
-                          "phone",
-                          "phone_number",
-                          "no_hp",
-                          "no_wa",
-                          "nomor_whatsapp",
-                          "mobile",
-                        ]) ||
+                        getAnswerDisplay(
+                          reg,
+                          ["whatsapp", "phone", "phone_number", "no_hp", "no_wa", "nomor_whatsapp", "mobile"],
+                          questions,
+                          ["whatsapp", "phone", "no hp", "nomor wa"],
+                        ) ||
                         reg.member_phone ||
                         "";
-                      const org = getAnswerDisplay(reg, [
-                        "institution",
-                        "company",
-                        "organization",
-                        "university",
-                        "instansi",
-                        "kampus",
-                        "perusahaan",
-                      ]);
-                      const role =
-                        getAnswerDisplay(reg, ["role", "job_title", "position", "pekerjaan", "jabatan"]) ||
-                        reg.member_role ||
-                        "";
+                      const org = getRegistrantOrg(reg, questions);
+                      const role = getRegistrantRole(reg, questions);
 
                       return (
                         <TableRow key={reg.id}>
@@ -1977,13 +2082,9 @@ export function BreakoutSessionsTab({
               ) : (
                 availableRegistrantsToAdd.map((reg) => {
                   const checked = selectedRegIdsToAdd.includes(reg.id);
-                  const org = getAnswerDisplay(reg, [
-                    "institution",
-                    "company",
-                    "organization",
-                    "university",
-                    "instansi",
-                  ]);
+                  const org = getRegistrantOrg(reg, questions);
+                  const role = getRegistrantRole(reg, questions);
+                  const orgRoleSummary = [role, org].filter(Boolean).join(" @ ");
                   return (
                     <label
                       key={reg.id}
@@ -2004,7 +2105,7 @@ export function BreakoutSessionsTab({
                           <p className="font-medium text-xs">{reg.member_name || "Unnamed Registrant"}</p>
                           <p className="text-[11px] text-muted-foreground">
                             {reg.member_email}
-                            {org ? ` • ${org}` : ""}
+                            {orgRoleSummary ? ` • ${orgRoleSummary}` : ""}
                           </p>
                         </div>
                       </div>
@@ -2100,18 +2201,21 @@ export function BreakoutSessionsTab({
 
               <div className="space-y-1.5 rounded-lg border p-3">
                 <h4 className="font-semibold text-xs">Submitted Form Answers</h4>
-                {inspectReg.answers && Object.keys(inspectReg.answers).length > 0 ? (
+                {inspectReg.answers &&
+                Object.keys(inspectReg.answers).some((k) => k !== "session_id" && k !== "bevy_user_id") ? (
                   <div className="divide-y">
-                    {Object.entries(inspectReg.answers).map(([qId, val]) => {
-                      const label = questions.find((q) => q.id === qId)?.label || qId;
-                      const formatted = Array.isArray(val) ? val.join(", ") : String(val || "-");
-                      return (
-                        <div key={qId} className="grid grid-cols-3 gap-2 py-1.5">
-                          <span className="font-medium text-muted-foreground">{label}</span>
-                          <span className="col-span-2 break-words">{formatted}</span>
-                        </div>
-                      );
-                    })}
+                    {Object.entries(inspectReg.answers)
+                      .filter(([qId]) => qId !== "session_id" && qId !== "bevy_user_id")
+                      .map(([qId, val]) => {
+                        const label = formatAnswerLabel(qId, questions);
+                        const formatted = Array.isArray(val) ? val.join(", ") : String(val || "-");
+                        return (
+                          <div key={qId} className="grid grid-cols-3 items-baseline gap-2 py-2">
+                            <span className="font-medium text-muted-foreground">{label}</span>
+                            <span className="col-span-2 break-words font-medium text-foreground">{formatted}</span>
+                          </div>
+                        );
+                      })}
                   </div>
                 ) : (
                   <p className="text-muted-foreground">No custom form answers submitted.</p>

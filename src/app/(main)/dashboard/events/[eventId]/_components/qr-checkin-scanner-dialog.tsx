@@ -36,6 +36,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { BevyAttendee } from "@/lib/bevy/types";
+import { DEFAULT_COMBINED_QUESTIONS } from "@/lib/events/registration-defaults";
 import {
   updateBreakoutSessionCheckInAction,
   updateRegistrationCheckInAction,
@@ -152,14 +153,136 @@ interface ScanHistoryEntry {
   actionSummary: string;
 }
 
-function getAnswerDisplay(reg: FirestoreRegistration, keys: string[]): string {
+function getAnswerDisplay(
+  reg: FirestoreRegistration,
+  keys: string[],
+  questions?: CustomQuestion[],
+  labelKeywords?: string[],
+): string {
   if (!reg.answers) return "";
   for (const key of keys) {
     const val = reg.answers[key];
     if (Array.isArray(val) && val.length > 0) return val.join(", ");
     if (typeof val === "string" && val.trim()) return val.trim();
   }
+  if (labelKeywords && labelKeywords.length > 0) {
+    for (const [qId, val] of Object.entries(reg.answers)) {
+      if (qId === "session_id" || qId === "session_title" || qId === "session" || qId === "bevy_user_id") continue;
+      const strVal = Array.isArray(val) ? val.join(", ") : typeof val === "string" ? val.trim() : "";
+      if (!strVal) continue;
+      const customLabel = questions?.find((q) => q.id.toLowerCase() === qId.toLowerCase())?.label ?? "";
+      const defaultLabel =
+        DEFAULT_COMBINED_QUESTIONS.find((q) => q.id.toLowerCase() === qId.toLowerCase())?.label ?? "";
+      const haystack = `${qId} ${customLabel} ${defaultLabel}`.toLowerCase();
+      if (labelKeywords.some((kw) => haystack.includes(kw))) {
+        return strVal;
+      }
+    }
+  }
   return "";
+}
+
+function getRegistrantOrg(reg: FirestoreRegistration, questions?: CustomQuestion[]): string {
+  return getAnswerDisplay(
+    reg,
+    [
+      "company_or_institution",
+      "institution",
+      "company",
+      "organization",
+      "university",
+      "company_name",
+      "institution_name",
+      "school",
+      "instansi",
+      "kampus",
+      "perusahaan",
+    ],
+    questions,
+    [
+      "institution",
+      "company",
+      "organization",
+      "university",
+      "school",
+      "employer",
+      "instansi",
+      "kampus",
+      "perusahaan",
+      "universitas",
+    ],
+  );
+}
+
+function getRegistrantRole(reg: FirestoreRegistration, questions?: CustomQuestion[]): string {
+  return getAnswerDisplay(
+    reg,
+    [
+      "role_or_title",
+      "job_title",
+      "current_role",
+      "job_role",
+      "role",
+      "position",
+      "occupation",
+      "profession",
+      "pekerjaan",
+      "jabatan",
+      "persona_description",
+      "professional_background",
+    ],
+    questions,
+    ["job title", "current role", "role / occupation", "occupation", "position", "profession", "pekerjaan", "jabatan"],
+  );
+}
+
+function formatAnswerLabel(qId: string, questions: CustomQuestion[]): string {
+  const trimmed = qId.trim();
+  const lower = trimmed.toLowerCase();
+
+  const customMatch = questions.find((q) => q.id.toLowerCase() === lower);
+  if (customMatch?.label) return customMatch.label;
+
+  const defaultMatch = DEFAULT_COMBINED_QUESTIONS.find((q) => q.id.toLowerCase() === lower);
+  if (defaultMatch?.label) return defaultMatch.label;
+
+  const commonLabels: Record<string, string> = {
+    session_title: "Session Title",
+    session: "Breakout Session",
+    name: "Full Name",
+    full_name: "Full Name",
+    email: "Email Address",
+    whatsapp: "WhatsApp Number",
+    phone: "Phone Number",
+    phone_number: "Phone Number",
+  };
+  if (commonLabels[lower]) return commonLabels[lower];
+
+  if (/^q_\d+/i.test(trimmed)) return "Archived Form Question";
+  if (/[A-Z]/.test(trimmed) && trimmed.includes(" ") && !trimmed.includes("_")) return trimmed;
+
+  const words = trimmed
+    .replace(/[_-]+/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((word) => {
+      const w = word.toLowerCase();
+      if (w === "url") return "URL";
+      if (w === "id") return "ID";
+      if (w === "github") return "GitHub";
+      if (w === "linkedin") return "LinkedIn";
+      if (w === "whatsapp") return "WhatsApp";
+      if (w === "ai") return "AI";
+      if (w === "gdg") return "GDG";
+      if (w === "rsvp") return "RSVP";
+      if (w === "faq") return "FAQ";
+      if (w === "ui") return "UI";
+      if (w === "ux") return "UX";
+      if (w === "cv") return "CV";
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    });
+
+  return words.join(" ") || trimmed;
 }
 
 export function QrCheckInScannerDialog({
@@ -905,34 +1028,17 @@ export function QrCheckInScannerDialog({
   }, [activeReg, activeSessionCheckIn, mode]);
 
   const phoneVal = activeReg
-    ? getAnswerDisplay(activeReg, [
-        "whatsapp",
-        "phone",
-        "phone_number",
-        "no_hp",
-        "no_wa",
-        "nomor_whatsapp",
-        "mobile",
-      ]) ||
+    ? getAnswerDisplay(
+        activeReg,
+        ["whatsapp", "phone", "phone_number", "no_hp", "no_wa", "nomor_whatsapp", "mobile"],
+        questions,
+        ["whatsapp", "phone", "no hp", "nomor wa"],
+      ) ||
       activeReg.member_phone ||
       ""
     : "";
-  const orgVal = activeReg
-    ? getAnswerDisplay(activeReg, [
-        "institution",
-        "company",
-        "organization",
-        "university",
-        "instansi",
-        "kampus",
-        "perusahaan",
-      ])
-    : "";
-  const roleVal = activeReg
-    ? getAnswerDisplay(activeReg, ["role", "job_title", "position", "pekerjaan", "jabatan"]) ||
-      activeReg.member_role ||
-      ""
-    : "";
+  const orgVal = activeReg ? getRegistrantOrg(activeReg, questions) : "";
+  const roleVal = activeReg ? getRegistrantRole(activeReg, questions) : "";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1399,17 +1505,25 @@ export function QrCheckInScannerDialog({
 
                     {showFullAnswers && (
                       <div className="max-h-44 space-y-1.5 overflow-y-auto rounded-lg border bg-muted/20 p-2.5 text-xs">
-                        {activeReg.answers && Object.keys(activeReg.answers).length > 0 ? (
-                          Object.entries(activeReg.answers).map(([qId, val]) => {
-                            const qLabel = questions.find((q) => q.id === qId)?.label || qId;
-                            const formatted = Array.isArray(val) ? val.join(", ") : String(val || "-");
-                            return (
-                              <div key={qId} className="grid grid-cols-3 gap-2 border-b pb-1 last:border-b-0 last:pb-0">
-                                <span className="font-medium text-muted-foreground">{qLabel}</span>
-                                <span className="col-span-2 break-words">{formatted}</span>
-                              </div>
-                            );
-                          })
+                        {activeReg.answers &&
+                        Object.keys(activeReg.answers).some((k) => k !== "session_id" && k !== "bevy_user_id") ? (
+                          Object.entries(activeReg.answers)
+                            .filter(([qId]) => qId !== "session_id" && qId !== "bevy_user_id")
+                            .map(([qId, val]) => {
+                              const qLabel = formatAnswerLabel(qId, questions);
+                              const formatted = Array.isArray(val) ? val.join(", ") : String(val || "-");
+                              return (
+                                <div
+                                  key={qId}
+                                  className="grid grid-cols-3 items-baseline gap-2 border-b pb-1.5 last:border-b-0 last:pb-0"
+                                >
+                                  <span className="font-medium text-muted-foreground">{qLabel}</span>
+                                  <span className="col-span-2 break-words font-medium text-foreground">
+                                    {formatted}
+                                  </span>
+                                </div>
+                              );
+                            })
                         ) : (
                           <p className="text-muted-foreground">No custom form answers submitted.</p>
                         )}
