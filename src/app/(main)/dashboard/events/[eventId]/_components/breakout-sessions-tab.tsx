@@ -1919,7 +1919,7 @@ export function BreakoutSessionsTab({
                 </div>
                 <CardDescription className="text-xs">
                   View attendees assigned or checked into each breakout session using their submitted registration form
-                  data, assign registrants manually, or scan their Bevy QR (<code>{eventId}:attendeeId</code>).
+                  data, assign registrants manually, or scan their Bevy QR.
                 </CardDescription>
               </div>
 

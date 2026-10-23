@@ -1069,7 +1069,7 @@ export function QrCheckInScannerDialog({
             <div>
               <DialogTitle className="text-lg">Bevy QR Scanner & On-Site Desk</DialogTitle>
               <DialogDescription className="text-xs">
-                Scan Bevy QR codes (<code className="font-mono">{eventId}:attendeeId</code>) for{" "}
+                Scan Bevy QR codes for{" "}
                 <span className="font-medium text-foreground">{eventTitle || `Event #${eventId}`}</span>
               </DialogDescription>
             </div>
@@ -1166,36 +1166,31 @@ export function QrCheckInScannerDialog({
                 {cameraActive ? (
                   <>
                     <div className="pointer-events-none absolute inset-6 z-10 rounded-xl border-2 border-primary/80 border-dashed shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]" />
-                    <div className="absolute right-2.5 bottom-2.5 left-2.5 z-20 flex items-center justify-between gap-2">
-                      <Badge variant="secondary" className="bg-black/70 text-[10px] text-white">
-                        Scanning eventId:attendeeId...
-                      </Badge>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="secondary"
-                          className="h-7 px-2 text-[11px]"
-                          onClick={() => {
-                            const nextMode = facingMode === "environment" ? "user" : "environment";
-                            setFacingMode(nextMode);
-                            void startCamera(nextMode);
-                          }}
-                        >
-                          <RefreshCw className="mr-1 size-3" />
-                          Flip
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="destructive"
-                          className="h-7 px-2 text-[11px]"
-                          onClick={stopCamera}
-                        >
-                          <CameraOff className="mr-1 size-3" />
-                          Stop
-                        </Button>
-                      </div>
+                    <div className="absolute right-2.5 bottom-3 left-2.5 z-20 flex items-center justify-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        className="h-7 px-2.5 text-[11px] shadow-sm"
+                        onClick={() => {
+                          const nextMode = facingMode === "environment" ? "user" : "environment";
+                          setFacingMode(nextMode);
+                          void startCamera(nextMode);
+                        }}
+                      >
+                        <RefreshCw className="mr-1 size-3" />
+                        Flip
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="destructive"
+                        className="h-7 bg-destructive px-2.5 text-[11px] text-white shadow-sm hover:bg-destructive/90 dark:bg-destructive dark:hover:bg-destructive/90"
+                        onClick={stopCamera}
+                      >
+                        <CameraOff className="mr-1 size-3" />
+                        Stop
+                      </Button>
                     </div>
                   </>
                 ) : (
@@ -1205,9 +1200,7 @@ export function QrCheckInScannerDialog({
                     </div>
                     <div className="space-y-1">
                       <p className="font-medium text-xs">Camera QR Scanner Ready</p>
-                      <p className="text-[11px] text-white/60">
-                        Point camera at attendee&apos;s Bevy ticket QR code (<code>{eventId}:attendeeId</code>)
-                      </p>
+                      <p className="text-[11px] text-white/60">Point camera at attendee&apos;s Bevy ticket QR code</p>
                     </div>
                     <div className="flex flex-wrap items-center justify-center gap-2">
                       <Button type="button" size="sm" onClick={() => void startCamera()} className="mt-1 gap-1.5">
@@ -1285,7 +1278,7 @@ export function QrCheckInScannerDialog({
                   <Input
                     value={qrInput}
                     onChange={(e) => setQrInput(e.target.value)}
-                    placeholder={`${eventId}:987654 or email...`}
+                    placeholder="Attendee ID or email..."
                     className="h-9 font-mono text-xs"
                   />
                   <Button
@@ -1299,7 +1292,7 @@ export function QrCheckInScannerDialog({
                   </Button>
                 </div>
                 <p className="text-[11px] text-muted-foreground">
-                  Supports USB barcode scanners, <code>eventId:attendeeId</code>, Bevy attendee ID, or registrant email.
+                  Supports USB barcode scanners, Bevy attendee ID, or registrant email.
                 </p>
               </form>
             </div>
@@ -1556,8 +1549,8 @@ export function QrCheckInScannerDialog({
                   <Sparkles className="mb-2 size-8 text-muted-foreground/60" />
                   <p className="font-medium text-sm">Scan or Lookup an Attendee</p>
                   <p className="mt-1 max-w-xs text-muted-foreground text-xs">
-                    Scan an attendee&apos;s Bevy QR (<code className="font-mono">{eventId}:attendeeId</code>) to view
-                    their registration form data and record check-in or merchandise collection.
+                    Scan an attendee&apos;s Bevy QR to view their registration form data and record check-in or
+                    merchandise collection.
                   </p>
                 </div>
               )}
