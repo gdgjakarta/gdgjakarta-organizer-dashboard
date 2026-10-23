@@ -460,7 +460,6 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     registrations.map((r) => normalizeRegistrationDoc(r as unknown as Record<string, unknown>, r.id)),
   );
   const [isLoading, setIsLoading] = useState(registrations.length === 0);
-  const [isFiltering, setIsFiltering] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [sessionFilter, setSessionFilter] = useState<string>("all");
@@ -865,46 +864,26 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   }, [eventId, syncBevyAttendees]);
 
   const handleStatusFilterChange = (val: string) => {
-    setIsFiltering(true);
     setStatusFilter(val);
-    setTimeout(() => {
-      setIsFiltering(false);
-    }, 200);
   };
 
   const handleSessionFilterChange = (val: string) => {
-    setIsFiltering(true);
     setSessionFilter(val);
-    setTimeout(() => {
-      setIsFiltering(false);
-    }, 200);
   };
 
   const handleTicketFilterChange = (val: string) => {
-    setIsFiltering(true);
     setTicketFilter(val);
-    setTimeout(() => {
-      setIsFiltering(false);
-    }, 200);
   };
 
   const handleSearchChange = (val: string) => {
-    setIsFiltering(true);
     setSearch(val);
-    setTimeout(() => {
-      setIsFiltering(false);
-    }, 150);
   };
 
   const searchTokens = useMemo(() => parseSearchTokens(search), [search]);
 
   const handleRemoveSearchToken = (indexToRemove: number) => {
-    setIsFiltering(true);
     const updatedTokens = searchTokens.filter((_, idx) => idx !== indexToRemove);
     setSearch(updatedTokens.join("; "));
-    setTimeout(() => {
-      setIsFiltering(false);
-    }, 150);
   };
 
   useEffect(() => {
@@ -1017,13 +996,16 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   }, [registrationsList, currentEvent, eventId]);
 
   // Compute email occurrences to detect duplicate registrant attempts
-  const emailCounts = new Map<string, number>();
-  for (const r of registrationsList) {
-    const email = (r.member_email || "").toLowerCase();
-    if (email) {
-      emailCounts.set(email, (emailCounts.get(email) || 0) + 1);
+  const emailCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const r of registrationsList) {
+      const email = (r.member_email || "").toLowerCase();
+      if (email) {
+        counts.set(email, (counts.get(email) || 0) + 1);
+      }
     }
-  }
+    return counts;
+  }, [registrationsList]);
 
   const availableTickets = useMemo(() => {
     const list: Array<{ id: string; name: string; type?: string }> = [];
@@ -1342,15 +1324,27 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   };
 
   const handleQuestionFilterChange = (qKey: string, val: string) => {
-    setIsFiltering(true);
     setQuestionFilters((prev) => ({
       ...prev,
       [qKey]: val,
     }));
-    setTimeout(() => {
-      setIsFiltering(false);
-    }, 200);
   };
+
+  const questionFilterOptionsByKey = useMemo(() => {
+    const map = new Map<string, { label: string; options: Array<{ value: string; label: string }> }>();
+    for (const qKey of selectedQuestionColumns) {
+      const fieldInfo = availableQuestionFields.find((f) => f.key === qKey) || {
+        key: qKey,
+        label: formatQuestionLabel(qKey),
+        responseCount: 0,
+      };
+      map.set(qKey, {
+        label: fieldInfo.label,
+        options: getQuestionFilterOptions(fieldInfo, registrationsList, questionLabelMap),
+      });
+    }
+    return map;
+  }, [selectedQuestionColumns, availableQuestionFields, registrationsList, questionLabelMap, formatQuestionLabel]);
 
   const availableReviewers = useMemo(() => {
     const names = new Set<string>();
@@ -1363,34 +1357,21 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   }, [registrationsList]);
 
   const handleReviewerFilterChange = (val: string) => {
-    setIsFiltering(true);
     setReviewerFilter(val);
-    setTimeout(() => {
-      setIsFiltering(false);
-    }, 200);
   };
 
   const handleMerchandiseFilterChange = (val: string) => {
-    setIsFiltering(true);
     setMerchandiseFilter(val);
     if (val === "no_merchandise" || val === "all") {
       setMerchandiseVariantFilter("all");
     }
-    setTimeout(() => {
-      setIsFiltering(false);
-    }, 200);
   };
 
   const handleMerchandiseVariantFilterChange = (val: string) => {
-    setIsFiltering(true);
     setMerchandiseVariantFilter(val);
-    setTimeout(() => {
-      setIsFiltering(false);
-    }, 200);
   };
 
   const handleMerchandiseStatsFilter = useCallback((merchandise: string, variant?: string) => {
-    setIsFiltering(true);
     if (merchandise === "no_merchandise") {
       setMerchandiseFilter("no_merchandise");
       setMerchandiseVariantFilter("all");
@@ -1407,21 +1388,13 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         setMerchandiseVariantFilter("all");
       }
     }
-    setTimeout(() => {
-      setIsFiltering(false);
-    }, 200);
   }, []);
 
   const handlePromoReferralFilterChange = useCallback((val: string) => {
-    setIsFiltering(true);
     setPromoReferralFilter(val);
-    setTimeout(() => {
-      setIsFiltering(false);
-    }, 200);
   }, []);
 
   const handleResetAllFilters = () => {
-    setIsFiltering(true);
     setStatusFilter("all");
     setSessionFilter("all");
     setTicketFilter("all");
@@ -1431,9 +1404,6 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     setReviewerFilter("all");
     setSearch("");
     setQuestionFilters({});
-    setTimeout(() => {
-      setIsFiltering(false);
-    }, 200);
   };
 
   // Filter logic (all non-status filters first so status counters reflect active filters)
@@ -3689,7 +3659,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                       <span className="text-muted-foreground">Status:</span>
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent position="popper">
                       <SelectGroup>
                         <SelectItem value="all">All Statuses ({isLoading ? "..." : statusCounts.all})</SelectItem>
                         {isCurationMode && (
@@ -3750,7 +3720,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                       <span className="text-muted-foreground">Session:</span>
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent position="popper">
                       <SelectGroup>
                         <SelectItem value="all">All Sessions ({registrationsList.length})</SelectItem>
                         {sessions.map((s) => (
@@ -3770,7 +3740,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                       <span className="text-muted-foreground">Ticket:</span>
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent position="popper">
                       <SelectGroup>
                         <SelectItem value="all">All Ticket Passes</SelectItem>
                         {availableTickets.map((t) => (
@@ -3790,7 +3760,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                       <span className="text-muted-foreground">Promo / Referral:</span>
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent position="popper">
                       <SelectGroup>
                         <SelectItem value="all">All Promo / Referral ({promoReferralFilterMeta.total})</SelectItem>
                         <SelectItem value="has_any">
@@ -3850,7 +3820,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                         <span className="text-muted-foreground">Merchandise:</span>
                         <SelectValue />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent position="popper">
                         <SelectGroup>
                           <SelectItem value="all">
                             All Merchandise (
@@ -3889,7 +3859,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                           <span className="text-muted-foreground">Variant / Size:</span>
                           <SelectValue />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent position="popper">
                           <SelectGroup>
                             <SelectItem value="all">All Variants & Sizes</SelectItem>
                             {merchandiseFilterOptions.sizes.length > 0 && (
@@ -3938,7 +3908,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                       <span className="text-muted-foreground">Reviewer:</span>
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent position="popper">
                       <SelectGroup>
                         <SelectItem value="all">All Reviewers ({availableReviewers.length})</SelectItem>
                         <SelectItem value="unreviewed">Not Reviewed Yet</SelectItem>
@@ -3954,14 +3924,9 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
 
                 {/* Dynamic Question Field Filters */}
                 {selectedQuestionColumns.map((qKey) => {
-                  const fieldInfo = availableQuestionFields.find((f) => f.key === qKey) || {
-                    key: qKey,
-                    label: formatQuestionLabel(qKey),
-                    responseCount: 0,
-                  };
-                  const qLabel = fieldInfo.label;
-                  const options = getQuestionFilterOptions(fieldInfo, registrationsList, questionLabelMap);
-                  if (options.length === 0) return null;
+                  const meta = questionFilterOptionsByKey.get(qKey);
+                  if (!meta || meta.options.length === 0) return null;
+                  const { label: qLabel, options } = meta;
 
                   const currentVal = questionFilters[qKey] || "all";
 
@@ -3976,7 +3941,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                         <span className="truncate text-muted-foreground">{qLabel}:</span>
                         <SelectValue />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent position="popper">
                         <SelectGroup>
                           <SelectItem value="all">All {qLabel}</SelectItem>
                           {options.map((opt) => (
@@ -4427,7 +4392,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(isLoading || isFiltering) && (
+                {isLoading && (
                   <RegistrantsTableSkeleton
                     hasSessions={hasSessions}
                     hasTickets={hasTickets}
@@ -4438,7 +4403,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                   />
                 )}
 
-                {!isLoading && !isFiltering && filtered.length === 0 && (
+                {!isLoading && filtered.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={totalColumnCount} className="h-40 text-center text-muted-foreground text-sm">
                       {registrationsList.length === 0 ? (
@@ -4480,7 +4445,6 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 )}
 
                 {!isLoading &&
-                  !isFiltering &&
                   filtered.map((reg) => {
                     const effectiveStatus = getEffectiveRegistrationStatus(reg, currentEvent);
                     const rawStatus = ((effectiveStatus as string) || "").toLowerCase().trim();
