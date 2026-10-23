@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { format } from "date-fns";
 import {
   BookOpen,
   Check,
+  ChevronDown,
   Clock,
   Copy,
   CreditCard,
@@ -55,11 +56,20 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { BevyAttendee } from "@/lib/bevy/types";
 import { formatFirestoreDate } from "@/lib/date-utils";
@@ -453,6 +463,85 @@ function matchesRegistrationToken(reg: FirestoreRegistration, tokenLower: string
   );
 }
 
+interface FilterSelectOption {
+  value: string;
+  label: string;
+  isHeader?: boolean;
+}
+
+function FilterSelect({
+  value,
+  onValueChange,
+  options,
+  icon,
+  prefix,
+  placeholder,
+  className,
+  align = "start",
+}: {
+  value: string;
+  onValueChange: (value: string) => void;
+  options: FilterSelectOption[];
+  icon?: ReactNode;
+  prefix?: string;
+  placeholder?: string;
+  className?: string;
+  align?: "start" | "center" | "end";
+}) {
+  const selectedLabel = options.find((opt) => !opt.isHeader && opt.value === value)?.label ?? placeholder ?? value;
+
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            "flex h-8 w-fit items-center justify-between gap-1.5 rounded-[min(var(--radius-md),10px)] border border-input bg-transparent py-2 pr-2 pl-2.5 text-xs whitespace-nowrap transition-colors outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30 dark:hover:bg-input/50",
+            className,
+          )}
+        >
+          <span className="flex min-w-0 items-center gap-1.5 truncate">
+            {icon}
+            {prefix && <span className="shrink-0 text-muted-foreground">{prefix}</span>}
+            <span className="truncate">{selectedLabel}</span>
+          </span>
+          <ChevronDown className="pointer-events-none size-4 shrink-0 text-muted-foreground" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align={align} className="max-h-80 w-auto min-w-(--radix-dropdown-menu-trigger-width)">
+        {options.map((opt) =>
+          opt.isHeader ? (
+            <DropdownMenuLabel
+              key={opt.value}
+              className="px-1.5 py-1 font-semibold text-[10px] text-muted-foreground uppercase"
+            >
+              {opt.label}
+            </DropdownMenuLabel>
+          ) : (
+            <DropdownMenuItem
+              key={opt.value}
+              onSelect={() => onValueChange(opt.value)}
+              className="justify-between gap-3 text-xs"
+            >
+              <span className="truncate">{opt.label}</span>
+              {value === opt.value && <Check className="size-3.5 shrink-0" />}
+            </DropdownMenuItem>
+          ),
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function getPageNumbers(currentPage: number, pageCount: number) {
+  if (pageCount <= 3) {
+    return Array.from({ length: pageCount }, (_, index) => index + 1);
+  }
+  if (currentPage <= 2) return [1, 2, 3];
+  if (currentPage >= pageCount - 1) return [pageCount - 2, pageCount - 1, pageCount];
+  return [currentPage - 1, currentPage, currentPage + 1];
+}
+
 export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTabProps) {
   const user = useAuthStore((s) => s.user);
   const isAuthLoading = useAuthStore((s) => s.isLoading || s.isLoggingOut);
@@ -468,6 +557,8 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const [merchandiseFilter, setMerchandiseFilter] = useState<string>("all");
   const [merchandiseVariantFilter, setMerchandiseVariantFilter] = useState<string>("all");
   const [reviewerFilter, setReviewerFilter] = useState<string>("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
   const [isStatusGuideOpen, setIsStatusGuideOpen] = useState(false);
   const [sessions, setSessions] = useState<EventSession[]>(event?.sessions ?? []);
   const [customQuestions, setCustomQuestions] = useState<CustomQuestion[]>(event?.custom_questions ?? []);
@@ -865,18 +956,22 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
 
   const handleStatusFilterChange = (val: string) => {
     setStatusFilter(val);
+    setCurrentPage(1);
   };
 
   const handleSessionFilterChange = (val: string) => {
     setSessionFilter(val);
+    setCurrentPage(1);
   };
 
   const handleTicketFilterChange = (val: string) => {
     setTicketFilter(val);
+    setCurrentPage(1);
   };
 
   const handleSearchChange = (val: string) => {
     setSearch(val);
+    setCurrentPage(1);
   };
 
   const searchTokens = useMemo(() => parseSearchTokens(search), [search]);
@@ -884,6 +979,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const handleRemoveSearchToken = (indexToRemove: number) => {
     const updatedTokens = searchTokens.filter((_, idx) => idx !== indexToRemove);
     setSearch(updatedTokens.join("; "));
+    setCurrentPage(1);
   };
 
   useEffect(() => {
@@ -1328,6 +1424,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       ...prev,
       [qKey]: val,
     }));
+    setCurrentPage(1);
   };
 
   const questionFilterOptionsByKey = useMemo(() => {
@@ -1358,6 +1455,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
 
   const handleReviewerFilterChange = (val: string) => {
     setReviewerFilter(val);
+    setCurrentPage(1);
   };
 
   const handleMerchandiseFilterChange = (val: string) => {
@@ -1365,10 +1463,12 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     if (val === "no_merchandise" || val === "all") {
       setMerchandiseVariantFilter("all");
     }
+    setCurrentPage(1);
   };
 
   const handleMerchandiseVariantFilterChange = (val: string) => {
     setMerchandiseVariantFilter(val);
+    setCurrentPage(1);
   };
 
   const handleMerchandiseStatsFilter = useCallback((merchandise: string, variant?: string) => {
@@ -1388,10 +1488,12 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
         setMerchandiseVariantFilter("all");
       }
     }
+    setCurrentPage(1);
   }, []);
 
   const handlePromoReferralFilterChange = useCallback((val: string) => {
     setPromoReferralFilter(val);
+    setCurrentPage(1);
   }, []);
 
   const handleResetAllFilters = () => {
@@ -1404,6 +1506,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
     setReviewerFilter("all");
     setSearch("");
     setQuestionFilters({});
+    setCurrentPage(1);
   };
 
   // Filter logic (all non-status filters first so status counters reflect active filters)
@@ -1668,6 +1771,14 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
       return regStatus === filterStatus;
     });
   }, [preStatusFiltered, statusFilter, currentEvent]);
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const safeCurrentPage = Math.min(currentPage, pageCount);
+  const pageNumbers = useMemo(() => getPageNumbers(safeCurrentPage, pageCount), [safeCurrentPage, pageCount]);
+  const paginatedFiltered = useMemo(() => {
+    const start = (safeCurrentPage - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, safeCurrentPage, pageSize]);
 
   const handleStatusChange = (
     registrationId: string,
@@ -3654,55 +3765,49 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-3">
                 <div className="flex items-center gap-1">
-                  <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
-                    <SelectTrigger size="sm" className="h-8 text-xs">
-                      <span className="text-muted-foreground">Status:</span>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent position="popper">
-                      <SelectGroup>
-                        <SelectItem value="all">All Statuses ({isLoading ? "..." : statusCounts.all})</SelectItem>
-                        {isCurationMode && (
-                          <SelectItem value="pending">
-                            Pending Review ({isLoading ? "..." : statusCounts.pending})
-                          </SelectItem>
-                        )}
-                        <SelectItem value="waiting_for_payment">
-                          Waiting for Payment ({isLoading ? "..." : statusCounts.waiting_for_payment})
-                        </SelectItem>
-                        <SelectItem value="paid_and_registered">
-                          Paid & Registered ({isLoading ? "..." : statusCounts.paid_and_registered})
-                        </SelectItem>
-                        <SelectItem value="paid_waitlisted">
-                          Paid Waitlist ({isLoading ? "..." : statusCounts.paid_waitlisted})
-                        </SelectItem>
-                        <SelectItem value="expired">Expired ({isLoading ? "..." : statusCounts.expired})</SelectItem>
-                        <SelectItem value="failed">Failed ({isLoading ? "..." : statusCounts.failed})</SelectItem>
-                        <SelectItem value="canceled">Canceled ({isLoading ? "..." : statusCounts.canceled})</SelectItem>
-                        {isCurationMode && (
-                          <SelectItem value="approved">
-                            Approved ({isLoading ? "..." : statusCounts.approved})
-                          </SelectItem>
-                        )}
-                        <SelectItem value="checked_in">
-                          Checked In ({isLoading ? "..." : statusCounts.checked_in})
-                        </SelectItem>
-                        <SelectItem value="not_checked_in">
-                          Not Checked In (Drop) ({isLoading ? "..." : statusCounts.not_checked_in})
-                        </SelectItem>
-                        {isCurationMode && (
-                          <SelectItem value="waitlisted">
-                            Waitlisted ({isLoading ? "..." : statusCounts.waitlisted})
-                          </SelectItem>
-                        )}
-                        {isCurationMode && (
-                          <SelectItem value="rejected">
-                            Rejected ({isLoading ? "..." : statusCounts.rejected})
-                          </SelectItem>
-                        )}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
+                  <FilterSelect
+                    value={statusFilter}
+                    onValueChange={handleStatusFilterChange}
+                    prefix="Status:"
+                    options={[
+                      { value: "all", label: `All Statuses (${isLoading ? "..." : statusCounts.all})` },
+                      ...(isCurationMode
+                        ? [{ value: "pending", label: `Pending Review (${isLoading ? "..." : statusCounts.pending})` }]
+                        : []),
+                      {
+                        value: "waiting_for_payment",
+                        label: `Waiting for Payment (${isLoading ? "..." : statusCounts.waiting_for_payment})`,
+                      },
+                      {
+                        value: "paid_and_registered",
+                        label: `Paid & Registered (${isLoading ? "..." : statusCounts.paid_and_registered})`,
+                      },
+                      {
+                        value: "paid_waitlisted",
+                        label: `Paid Waitlist (${isLoading ? "..." : statusCounts.paid_waitlisted})`,
+                      },
+                      { value: "expired", label: `Expired (${isLoading ? "..." : statusCounts.expired})` },
+                      { value: "failed", label: `Failed (${isLoading ? "..." : statusCounts.failed})` },
+                      { value: "canceled", label: `Canceled (${isLoading ? "..." : statusCounts.canceled})` },
+                      ...(isCurationMode
+                        ? [{ value: "approved", label: `Approved (${isLoading ? "..." : statusCounts.approved})` }]
+                        : []),
+                      { value: "checked_in", label: `Checked In (${isLoading ? "..." : statusCounts.checked_in})` },
+                      {
+                        value: "not_checked_in",
+                        label: `Not Checked In (Drop) (${isLoading ? "..." : statusCounts.not_checked_in})`,
+                      },
+                      ...(isCurationMode
+                        ? [
+                            {
+                              value: "waitlisted",
+                              label: `Waitlisted (${isLoading ? "..." : statusCounts.waitlisted})`,
+                            },
+                            { value: "rejected", label: `Rejected (${isLoading ? "..." : statusCounts.rejected})` },
+                          ]
+                        : []),
+                    ]}
+                  />
                   <Button
                     variant="outline"
                     size="icon"
@@ -3715,211 +3820,143 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 </div>
 
                 {hasSessions && (
-                  <Select value={sessionFilter} onValueChange={handleSessionFilterChange}>
-                    <SelectTrigger size="sm" className="h-8 text-xs">
-                      <span className="text-muted-foreground">Session:</span>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent position="popper">
-                      <SelectGroup>
-                        <SelectItem value="all">All Sessions ({registrationsList.length})</SelectItem>
-                        {sessions.map((s) => (
-                          <SelectItem key={s.id} value={s.id}>
-                            {s.title}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
+                  <FilterSelect
+                    value={sessionFilter}
+                    onValueChange={handleSessionFilterChange}
+                    prefix="Session:"
+                    options={[
+                      { value: "all", label: `All Sessions (${registrationsList.length})` },
+                      ...sessions.map((s) => ({ value: s.id, label: s.title })),
+                    ]}
+                  />
                 )}
 
                 {hasTickets && (
-                  <Select value={ticketFilter} onValueChange={handleTicketFilterChange}>
-                    <SelectTrigger size="sm" className="h-8 text-xs">
-                      <Ticket className="mr-1 size-3 shrink-0 text-muted-foreground" />
-                      <span className="text-muted-foreground">Ticket:</span>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent position="popper">
-                      <SelectGroup>
-                        <SelectItem value="all">All Ticket Passes</SelectItem>
-                        {availableTickets.map((t) => (
-                          <SelectItem key={t.id} value={t.name}>
-                            {t.name}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
+                  <FilterSelect
+                    value={ticketFilter}
+                    onValueChange={handleTicketFilterChange}
+                    icon={<Ticket className="size-3 shrink-0 text-muted-foreground" />}
+                    prefix="Ticket:"
+                    options={[
+                      { value: "all", label: "All Ticket Passes" },
+                      ...availableTickets.map((t) => ({ value: t.name, label: t.name })),
+                    ]}
+                  />
                 )}
 
                 {hasPromoOrReferral && (
-                  <Select value={promoReferralFilter} onValueChange={handlePromoReferralFilterChange}>
-                    <SelectTrigger size="sm" className="h-8 text-xs">
-                      <Tag className="mr-1 size-3 shrink-0 text-muted-foreground" />
-                      <span className="text-muted-foreground">Promo / Referral:</span>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent position="popper">
-                      <SelectGroup>
-                        <SelectItem value="all">All Promo / Referral ({promoReferralFilterMeta.total})</SelectItem>
-                        <SelectItem value="has_any">
-                          Has Voucher or Referral ({promoReferralFilterMeta.hasAnyCount})
-                        </SelectItem>
-                        <SelectItem value="has_voucher">
-                          Has Voucher ({promoReferralFilterMeta.hasVoucherCount})
-                        </SelectItem>
-                        <SelectItem value="has_referral">
-                          Has Referral ({promoReferralFilterMeta.hasReferralCount})
-                        </SelectItem>
-                        <SelectItem value="none">
-                          No Voucher / Referral ({promoReferralFilterMeta.noneCount})
-                        </SelectItem>
-                        {promoReferralFilterMeta.vouchers.length > 0 && (
-                          <>
-                            <SelectItem
-                              disabled
-                              value="__voucher_header__"
-                              className="font-semibold text-[10px] text-muted-foreground uppercase"
-                            >
-                              By Voucher Code
-                            </SelectItem>
-                            {promoReferralFilterMeta.vouchers.map((v) => (
-                              <SelectItem key={`voucher:${v.code}`} value={`voucher:${v.code}`}>
-                                {v.code} ({v.count})
-                              </SelectItem>
-                            ))}
-                          </>
-                        )}
-                        {promoReferralFilterMeta.referrals.length > 0 && (
-                          <>
-                            <SelectItem
-                              disabled
-                              value="__referral_header__"
-                              className="font-semibold text-[10px] text-muted-foreground uppercase"
-                            >
-                              By Referral Code
-                            </SelectItem>
-                            {promoReferralFilterMeta.referrals.map((r) => (
-                              <SelectItem key={`referral:${r.code}`} value={`referral:${r.code}`}>
-                                {r.referrerName ? `${r.code} · ${r.referrerName}` : r.code} ({r.count})
-                              </SelectItem>
-                            ))}
-                          </>
-                        )}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
+                  <FilterSelect
+                    value={promoReferralFilter}
+                    onValueChange={handlePromoReferralFilterChange}
+                    icon={<Tag className="size-3 shrink-0 text-muted-foreground" />}
+                    prefix="Promo / Referral:"
+                    options={[
+                      { value: "all", label: `All Promo / Referral (${promoReferralFilterMeta.total})` },
+                      {
+                        value: "has_any",
+                        label: `Has Voucher or Referral (${promoReferralFilterMeta.hasAnyCount})`,
+                      },
+                      { value: "has_voucher", label: `Has Voucher (${promoReferralFilterMeta.hasVoucherCount})` },
+                      { value: "has_referral", label: `Has Referral (${promoReferralFilterMeta.hasReferralCount})` },
+                      { value: "none", label: `No Voucher / Referral (${promoReferralFilterMeta.noneCount})` },
+                      ...(promoReferralFilterMeta.vouchers.length > 0
+                        ? [
+                            { value: "__voucher_header__", label: "By Voucher Code", isHeader: true },
+                            ...promoReferralFilterMeta.vouchers.map((v) => ({
+                              value: `voucher:${v.code}`,
+                              label: `${v.code} (${v.count})`,
+                            })),
+                          ]
+                        : []),
+                      ...(promoReferralFilterMeta.referrals.length > 0
+                        ? [
+                            { value: "__referral_header__", label: "By Referral Code", isHeader: true },
+                            ...promoReferralFilterMeta.referrals.map((r) => ({
+                              value: `referral:${r.code}`,
+                              label: `${r.referrerName ? `${r.code} · ${r.referrerName}` : r.code} (${r.count})`,
+                            })),
+                          ]
+                        : []),
+                    ]}
+                  />
                 )}
 
                 {hasMerchandise && (
                   <>
-                    <Select value={merchandiseFilter} onValueChange={handleMerchandiseFilterChange}>
-                      <SelectTrigger size="sm" className="h-8 text-xs">
-                        <Package className="mr-1 size-3 shrink-0 text-muted-foreground" />
-                        <span className="text-muted-foreground">Merchandise:</span>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent position="popper">
-                        <SelectGroup>
-                          <SelectItem value="all">
-                            All Merchandise (
-                            {merchandiseFilterOptions.totalWithMerch + merchandiseFilterOptions.totalWithoutMerch})
-                          </SelectItem>
-                          <SelectItem value="has_merchandise">
-                            Has Merchandise ({merchandiseFilterOptions.totalWithMerch})
-                          </SelectItem>
-                          <SelectItem value="no_merchandise">
-                            No Merchandise ({merchandiseFilterOptions.totalWithoutMerch})
-                          </SelectItem>
-                          {merchandiseFilterOptions.items.length > 0 && (
-                            <>
-                              <SelectItem
-                                disabled
-                                value="__items_header__"
-                                className="font-semibold text-[10px] text-muted-foreground uppercase"
-                              >
-                                By Product Item
-                              </SelectItem>
-                              {merchandiseFilterOptions.items.map((item) => (
-                                <SelectItem key={item.id} value={item.name}>
-                                  {item.name} ({item.count})
-                                </SelectItem>
-                              ))}
-                            </>
-                          )}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
+                    <FilterSelect
+                      value={merchandiseFilter}
+                      onValueChange={handleMerchandiseFilterChange}
+                      icon={<Package className="size-3 shrink-0 text-muted-foreground" />}
+                      prefix="Merchandise:"
+                      options={[
+                        {
+                          value: "all",
+                          label: `All Merchandise (${merchandiseFilterOptions.totalWithMerch + merchandiseFilterOptions.totalWithoutMerch})`,
+                        },
+                        {
+                          value: "has_merchandise",
+                          label: `Has Merchandise (${merchandiseFilterOptions.totalWithMerch})`,
+                        },
+                        {
+                          value: "no_merchandise",
+                          label: `No Merchandise (${merchandiseFilterOptions.totalWithoutMerch})`,
+                        },
+                        ...(merchandiseFilterOptions.items.length > 0
+                          ? [
+                              { value: "__items_header__", label: "By Product Item", isHeader: true },
+                              ...merchandiseFilterOptions.items.map((item) => ({
+                                value: item.name,
+                                label: `${item.name} (${item.count})`,
+                              })),
+                            ]
+                          : []),
+                      ]}
+                    />
 
                     {(merchandiseFilterOptions.sizes.length > 0 || merchandiseFilterOptions.variants.length > 0) && (
-                      <Select value={merchandiseVariantFilter} onValueChange={handleMerchandiseVariantFilterChange}>
-                        <SelectTrigger size="sm" className="h-8 text-xs">
-                          <Layers className="mr-1 size-3 shrink-0 text-muted-foreground" />
-                          <span className="text-muted-foreground">Variant / Size:</span>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent position="popper">
-                          <SelectGroup>
-                            <SelectItem value="all">All Variants & Sizes</SelectItem>
-                            {merchandiseFilterOptions.sizes.length > 0 && (
-                              <>
-                                <SelectItem
-                                  disabled
-                                  value="__size_header__"
-                                  className="font-semibold text-[10px] text-muted-foreground uppercase"
-                                >
-                                  Sizes
-                                </SelectItem>
-                                {merchandiseFilterOptions.sizes.map((s) => (
-                                  <SelectItem key={s.value} value={s.value}>
-                                    {s.label} ({s.count})
-                                  </SelectItem>
-                                ))}
-                              </>
-                            )}
-                            {merchandiseFilterOptions.variants.length > 0 && (
-                              <>
-                                <SelectItem
-                                  disabled
-                                  value="__variant_header__"
-                                  className="font-semibold text-[10px] text-muted-foreground uppercase"
-                                >
-                                  Other Variations
-                                </SelectItem>
-                                {merchandiseFilterOptions.variants.map((v) => (
-                                  <SelectItem key={v.value} value={v.value}>
-                                    {v.label} ({v.count})
-                                  </SelectItem>
-                                ))}
-                              </>
-                            )}
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
+                      <FilterSelect
+                        value={merchandiseVariantFilter}
+                        onValueChange={handleMerchandiseVariantFilterChange}
+                        icon={<Layers className="size-3 shrink-0 text-muted-foreground" />}
+                        prefix="Variant / Size:"
+                        options={[
+                          { value: "all", label: "All Variants & Sizes" },
+                          ...(merchandiseFilterOptions.sizes.length > 0
+                            ? [
+                                { value: "__size_header__", label: "Sizes", isHeader: true },
+                                ...merchandiseFilterOptions.sizes.map((s) => ({
+                                  value: s.value,
+                                  label: `${s.label} (${s.count})`,
+                                })),
+                              ]
+                            : []),
+                          ...(merchandiseFilterOptions.variants.length > 0
+                            ? [
+                                { value: "__variant_header__", label: "Other Variations", isHeader: true },
+                                ...merchandiseFilterOptions.variants.map((v) => ({
+                                  value: v.value,
+                                  label: `${v.label} (${v.count})`,
+                                })),
+                              ]
+                            : []),
+                        ]}
+                      />
                     )}
                   </>
                 )}
 
                 {isCurationMode && availableReviewers.length > 0 && (
-                  <Select value={reviewerFilter} onValueChange={handleReviewerFilterChange}>
-                    <SelectTrigger size="sm" className="h-8 text-xs">
-                      <UserCheck className="mr-1 size-3 shrink-0 text-muted-foreground" />
-                      <span className="text-muted-foreground">Reviewer:</span>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent position="popper">
-                      <SelectGroup>
-                        <SelectItem value="all">All Reviewers ({availableReviewers.length})</SelectItem>
-                        <SelectItem value="unreviewed">Not Reviewed Yet</SelectItem>
-                        {availableReviewers.map((name) => (
-                          <SelectItem key={name} value={name}>
-                            {name}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
+                  <FilterSelect
+                    value={reviewerFilter}
+                    onValueChange={handleReviewerFilterChange}
+                    icon={<UserCheck className="size-3 shrink-0 text-muted-foreground" />}
+                    prefix="Reviewer:"
+                    options={[
+                      { value: "all", label: `All Reviewers (${availableReviewers.length})` },
+                      { value: "unreviewed", label: "Not Reviewed Yet" },
+                      ...availableReviewers.map((name) => ({ value: name, label: name })),
+                    ]}
+                  />
                 )}
 
                 {/* Dynamic Question Field Filters */}
@@ -3931,27 +3968,15 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                   const currentVal = questionFilters[qKey] || "all";
 
                   return (
-                    <Select
+                    <FilterSelect
                       key={qKey}
                       value={currentVal}
                       onValueChange={(val) => handleQuestionFilterChange(qKey, val)}
-                    >
-                      <SelectTrigger size="sm" className="h-8 max-w-[220px] text-xs">
-                        <Filter className="mr-1 size-3 shrink-0 text-muted-foreground" />
-                        <span className="truncate text-muted-foreground">{qLabel}:</span>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent position="popper">
-                        <SelectGroup>
-                          <SelectItem value="all">All {qLabel}</SelectItem>
-                          {options.map((opt) => (
-                            <SelectItem key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </SelectItem>
-                          ))}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
+                      icon={<Filter className="size-3 shrink-0 text-muted-foreground" />}
+                      prefix={`${qLabel}:`}
+                      className="max-w-[220px]"
+                      options={[{ value: "all", label: `All ${qLabel}` }, ...options]}
+                    />
                   );
                 })}
               </div>
@@ -4445,7 +4470,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                 )}
 
                 {!isLoading &&
-                  filtered.map((reg) => {
+                  paginatedFiltered.map((reg) => {
                     const effectiveStatus = getEffectiveRegistrationStatus(reg, currentEvent);
                     const rawStatus = ((effectiveStatus as string) || "").toLowerCase().trim();
                     const statusMeta =
@@ -5028,7 +5053,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
                               </Button>
 
                               {/* 5. More Actions Dropdown */}
-                              <DropdownMenu>
+                              <DropdownMenu modal={false}>
                                 <DropdownMenuTrigger asChild>
                                   <Button size="icon-xs" variant="ghost" className="size-7 text-muted-foreground">
                                     <MoreHorizontal className="size-3.5" />
@@ -5166,6 +5191,125 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
               </TableBody>
             </Table>
           </div>
+
+          {!isLoading && filtered.length > 0 && (
+            <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-wrap items-center gap-3 text-muted-foreground text-xs">
+                <span>
+                  Showing{" "}
+                  <strong className="font-medium text-foreground">
+                    {(safeCurrentPage - 1) * pageSize + 1}–{Math.min(safeCurrentPage * pageSize, filtered.length)}
+                  </strong>{" "}
+                  of <strong className="font-medium text-foreground">{filtered.length}</strong> registrants
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <span>Rows per page:</span>
+                  <FilterSelect
+                    value={String(pageSize)}
+                    onValueChange={(val) => {
+                      setPageSize(Number(val));
+                      setCurrentPage(1);
+                    }}
+                    options={[25, 50, 100, 250].map((size) => ({
+                      value: String(size),
+                      label: String(size),
+                    }))}
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <span className="text-muted-foreground text-xs">
+                  Page <strong className="font-medium text-foreground">{safeCurrentPage}</strong> of{" "}
+                  <strong className="font-medium text-foreground">{pageCount}</strong>
+                </span>
+                <Pagination className="mx-0 w-auto">
+                  <PaginationContent>
+                    <PaginationItem>
+                      <PaginationPrevious
+                        href="#"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          if (safeCurrentPage > 1) setCurrentPage(safeCurrentPage - 1);
+                        }}
+                        aria-disabled={safeCurrentPage <= 1}
+                        className={safeCurrentPage <= 1 ? "pointer-events-none opacity-50" : undefined}
+                      />
+                    </PaginationItem>
+
+                    {pageNumbers[0] > 1 && (
+                      <>
+                        <PaginationItem>
+                          <PaginationLink
+                            href="#"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              setCurrentPage(1);
+                            }}
+                          >
+                            1
+                          </PaginationLink>
+                        </PaginationItem>
+                        {pageNumbers[0] > 2 && (
+                          <PaginationItem>
+                            <PaginationEllipsis />
+                          </PaginationItem>
+                        )}
+                      </>
+                    )}
+
+                    {pageNumbers.map((page) => (
+                      <PaginationItem key={page}>
+                        <PaginationLink
+                          href="#"
+                          isActive={page === safeCurrentPage}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            setCurrentPage(page);
+                          }}
+                        >
+                          {page}
+                        </PaginationLink>
+                      </PaginationItem>
+                    ))}
+
+                    {pageNumbers[pageNumbers.length - 1] < pageCount && (
+                      <>
+                        {pageNumbers[pageNumbers.length - 1] < pageCount - 1 && (
+                          <PaginationItem>
+                            <PaginationEllipsis />
+                          </PaginationItem>
+                        )}
+                        <PaginationItem>
+                          <PaginationLink
+                            href="#"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              setCurrentPage(pageCount);
+                            }}
+                          >
+                            {pageCount}
+                          </PaginationLink>
+                        </PaginationItem>
+                      </>
+                    )}
+
+                    <PaginationItem>
+                      <PaginationNext
+                        href="#"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          if (safeCurrentPage < pageCount) setCurrentPage(safeCurrentPage + 1);
+                        }}
+                        aria-disabled={safeCurrentPage >= pageCount}
+                        className={safeCurrentPage >= pageCount ? "pointer-events-none opacity-50" : undefined}
+                      />
+                    </PaginationItem>
+                  </PaginationContent>
+                </Pagination>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

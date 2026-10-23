@@ -134,7 +134,7 @@ export function ColumnCustomizer({
   const totalCustomSelected = selectedQuestionKeys.length;
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={setOpen} modal={false}>
       <PopoverTrigger asChild>
         <Button
           size="sm"

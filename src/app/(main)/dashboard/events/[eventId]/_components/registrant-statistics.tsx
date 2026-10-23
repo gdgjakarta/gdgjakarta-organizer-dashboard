@@ -8,7 +8,9 @@ import {
   BarChart3,
   BookOpen,
   CalendarX,
+  Check,
   CheckCircle2,
+  ChevronDown,
   Clock,
   CreditCard,
   Hourglass,
@@ -32,7 +34,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { getEffectiveRegistrationStatus, isEventCurationMode, isPaidRegistration } from "@/lib/events/payment-deadline";
 import { DEFAULT_COMBINED_QUESTIONS } from "@/lib/events/registration-defaults";
 import type { CustomQuestion, EventSession, FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
@@ -1419,30 +1420,43 @@ export function RegistrantStatistics({
 
               {/* Field dropdown selector */}
               <div className="w-[220px]">
-                <Select
-                  value={selectedField || undefined}
-                  onValueChange={(val) => {
-                    setSelectedField(val);
-                    if (!pinnedFields.includes(val)) {
-                      setPinnedFields((prev) => [...prev, val]);
-                    }
-                  }}
-                >
-                  <SelectTrigger className="h-8 text-xs">
-                    <SelectValue placeholder="Choose form field..." />
-                  </SelectTrigger>
-                  <SelectContent align="end">
+                <DropdownMenu modal={false}>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex h-8 w-full items-center justify-between gap-1.5 rounded-[min(var(--radius-md),10px)] border border-input bg-transparent py-2 pr-2 pl-2.5 text-xs whitespace-nowrap transition-colors outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30 dark:hover:bg-input/50"
+                    >
+                      <span className="truncate">
+                        {availableFields.find((f) => f.id === selectedField)?.label || "Choose form field..."}
+                      </span>
+                      <ChevronDown className="pointer-events-none size-4 shrink-0 text-muted-foreground" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="end"
+                    className="max-h-80 w-auto min-w-(--radix-dropdown-menu-trigger-width)"
+                  >
                     {availableFields.map((field) => (
-                      <SelectItem key={field.id} value={field.id} className="text-xs">
-                        {field.label}
-                      </SelectItem>
+                      <DropdownMenuItem
+                        key={field.id}
+                        onSelect={() => {
+                          setSelectedField(field.id);
+                          if (!pinnedFields.includes(field.id)) {
+                            setPinnedFields((prev) => [...prev, field.id]);
+                          }
+                        }}
+                        className="justify-between gap-3 text-xs"
+                      >
+                        <span className="truncate">{field.label}</span>
+                        {selectedField === field.id && <Check className="size-3.5 shrink-0" />}
+                      </DropdownMenuItem>
                     ))}
-                  </SelectContent>
-                </Select>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
 
               {/* Pin/Toggle Fields Dropdown */}
-              <DropdownMenu>
+              <DropdownMenu modal={false}>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
                     <Layers className="size-3.5" />
