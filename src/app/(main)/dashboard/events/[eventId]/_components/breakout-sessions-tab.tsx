@@ -18,7 +18,6 @@ import {
   Plus,
   QrCode,
   RefreshCw,
-  Save,
   Search,
   Sparkles,
   Ticket,
@@ -31,6 +30,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { FloatingSaveBar } from "@/app/(main)/dashboard/_components/floating-save-bar";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -58,13 +58,99 @@ import {
   updateBreakoutSessionCheckInAction,
   updateEventBreakoutSessionsAction,
 } from "@/lib/firestore/actions";
-import type { CustomQuestion, EventSession, FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
-import { getInitials } from "@/lib/utils";
+import type {
+  CustomQuestion,
+  EventSession,
+  FirestoreEvent,
+  FirestoreRegistration,
+  RegistrationStatus,
+} from "@/lib/firestore/types";
+import { cn, getInitials } from "@/lib/utils";
 import { checkInBevyAttendeeAction } from "@/server/bevy-actions";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
 import { HtmlEditText } from "./html-edit-text";
 import { QrCheckInScannerDialog } from "./qr-checkin-scanner-dialog";
+
+const STATUS_VARIANTS: Record<RegistrationStatus, { label: string; badgeClass: string; dotClass: string }> = {
+  pending: {
+    label: "Pending Review",
+    badgeClass: "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400",
+    dotClass: "bg-amber-500",
+  },
+  waiting_for_payment: {
+    label: "Waiting for Payment",
+    badgeClass: "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400",
+    dotClass: "bg-amber-500",
+  },
+  paid_and_registered: {
+    label: "Paid & Registered",
+    badgeClass: "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+    dotClass: "bg-emerald-500",
+  },
+  expired: {
+    label: "Expired",
+    badgeClass: "border-zinc-500/20 bg-zinc-500/10 text-zinc-600 dark:text-zinc-400",
+    dotClass: "bg-zinc-500",
+  },
+  failed: {
+    label: "Failed",
+    badgeClass: "border-rose-500/20 bg-rose-500/10 text-rose-600 dark:text-rose-400",
+    dotClass: "bg-rose-500",
+  },
+  canceled: {
+    label: "Canceled",
+    badgeClass: "border-slate-500/20 bg-slate-500/10 text-slate-600 dark:text-slate-400",
+    dotClass: "bg-slate-500",
+  },
+  cancelled: {
+    label: "Canceled",
+    badgeClass: "border-slate-500/20 bg-slate-500/10 text-slate-600 dark:text-slate-400",
+    dotClass: "bg-slate-500",
+  },
+  approved: {
+    label: "Approved",
+    badgeClass: "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+    dotClass: "bg-emerald-500",
+  },
+  registered: {
+    label: "Registered",
+    badgeClass: "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+    dotClass: "bg-emerald-500",
+  },
+  rejected: {
+    label: "Rejected",
+    badgeClass: "border-destructive/20 bg-destructive/10 text-destructive",
+    dotClass: "bg-destructive",
+  },
+  waitlisted: {
+    label: "Waitlisted",
+    badgeClass: "border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400",
+    dotClass: "bg-blue-500",
+  },
+  paid_waitlisted: {
+    label: "Paid Waitlist",
+    badgeClass: "border-indigo-500/20 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400",
+    dotClass: "bg-indigo-500",
+  },
+  attended: {
+    label: "Attended",
+    badgeClass: "border-purple-500/20 bg-purple-500/10 text-purple-600 dark:text-purple-400",
+    dotClass: "bg-purple-500",
+  },
+};
+
+function getStatusMeta(status?: string) {
+  if (status && status in STATUS_VARIANTS) {
+    return STATUS_VARIANTS[status as RegistrationStatus];
+  }
+  const fallbackLabel = (status || "pending").replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+  return {
+    label: fallbackLabel,
+    badgeClass: "border-slate-500/20 bg-slate-500/10 text-slate-600 dark:text-slate-400",
+    dotClass: "bg-slate-500",
+  };
+}
 
 interface BreakoutSessionsTabProps {
   eventId: string;
@@ -84,6 +170,44 @@ function getAnswerDisplay(reg: FirestoreRegistration, keys: string[]): string {
   return "";
 }
 
+interface BreakoutConfigSnapshot {
+  sessions: EventSession[];
+  defaultSessionName: string;
+  defaultSessionTime: string;
+  defaultSessionCheckinDeadline: string;
+  defaultSessionLocation: string;
+  defaultSessionLocationUrl: string;
+}
+
+function serializeBreakoutConfig(cfg: BreakoutConfigSnapshot): string {
+  return JSON.stringify({
+    defaultSessionName: cfg.defaultSessionName.trim() || "Full Session",
+    defaultSessionTime: cfg.defaultSessionTime ?? "",
+    defaultSessionCheckinDeadline: cfg.defaultSessionCheckinDeadline ?? "",
+    defaultSessionLocation: cfg.defaultSessionLocation ?? "",
+    defaultSessionLocationUrl: cfg.defaultSessionLocationUrl ?? "",
+    sessions: cfg.sessions.map((s) => ({
+      id: s.id,
+      agenda_activity_id: s.agenda_activity_id ?? "",
+      title: s.title ?? "",
+      description: s.description ?? "",
+      speaker_name: s.speaker_name ?? "",
+      time_slot: s.time_slot ?? "",
+      checkin_deadline: s.checkin_deadline ?? "",
+      location: s.location ?? "",
+      location_url: s.location_url ?? "",
+      capacity: Number(s.capacity) || 50,
+      related_links: (s.related_links ?? []).map((l) => ({
+        title: l.title ?? "",
+        url: l.url ?? "",
+      })),
+      include_in_registration: s.include_in_registration !== false,
+      separate_check_in: s.separate_check_in !== false,
+      sync_check_in_to_bevy: Boolean(s.sync_check_in_to_bevy),
+    })),
+  });
+}
+
 export function BreakoutSessionsTab({
   eventId,
   event,
@@ -92,14 +216,17 @@ export function BreakoutSessionsTab({
   isSuperAdmin = true,
 }: BreakoutSessionsTabProps) {
   const user = useAuthStore((s) => s.user);
+  const isAuthLoading = useAuthStore((s) => s.isLoading || s.isLoggingOut);
 
   const [localRegistrations, setLocalRegistrations] = React.useState<FirestoreRegistration[]>(initialRegistrations);
 
   React.useEffect(() => {
-    setLocalRegistrations(initialRegistrations);
+    if (initialRegistrations.length > 0) {
+      setLocalRegistrations(initialRegistrations);
+    }
   }, [initialRegistrations]);
 
-  const [sessions, setSessions] = React.useState<EventSession[]>(() => {
+  const initialNormalizedSessions = React.useMemo<EventSession[]>(() => {
     if (Array.isArray(event.sessions) && event.sessions.length > 0) {
       return event.sessions.map((s) => ({
         ...s,
@@ -110,7 +237,9 @@ export function BreakoutSessionsTab({
       }));
     }
     return [];
-  });
+  }, [event.sessions]);
+
+  const [sessions, setSessions] = React.useState<EventSession[]>(initialNormalizedSessions);
 
   const [defaultSessionName, setDefaultSessionName] = React.useState<string>(
     event.default_session_name?.trim() || "Full Session",
@@ -126,6 +255,45 @@ export function BreakoutSessionsTab({
     event.default_session_location_url ?? "",
   );
 
+  const [savedConfig, setSavedConfig] = React.useState<BreakoutConfigSnapshot>(() => ({
+    sessions: initialNormalizedSessions,
+    defaultSessionName: event.default_session_name?.trim() || "Full Session",
+    defaultSessionTime: event.default_session_time ?? "",
+    defaultSessionCheckinDeadline: event.default_session_checkin_deadline ?? "",
+    defaultSessionLocation: event.default_session_location ?? "",
+    defaultSessionLocationUrl: event.default_session_location_url ?? "",
+  }));
+
+  const isDirty = React.useMemo(() => {
+    const currentSnapshot: BreakoutConfigSnapshot = {
+      sessions,
+      defaultSessionName,
+      defaultSessionTime,
+      defaultSessionCheckinDeadline,
+      defaultSessionLocation,
+      defaultSessionLocationUrl,
+    };
+    return serializeBreakoutConfig(currentSnapshot) !== serializeBreakoutConfig(savedConfig);
+  }, [
+    sessions,
+    defaultSessionName,
+    defaultSessionTime,
+    defaultSessionCheckinDeadline,
+    defaultSessionLocation,
+    defaultSessionLocationUrl,
+    savedConfig,
+  ]);
+
+  const handleDiscardChanges = React.useCallback(() => {
+    setSessions(savedConfig.sessions);
+    setDefaultSessionName(savedConfig.defaultSessionName);
+    setDefaultSessionTime(savedConfig.defaultSessionTime);
+    setDefaultSessionCheckinDeadline(savedConfig.defaultSessionCheckinDeadline);
+    setDefaultSessionLocation(savedConfig.defaultSessionLocation);
+    setDefaultSessionLocationUrl(savedConfig.defaultSessionLocationUrl);
+    toast.info("Unsaved breakout session changes discarded.");
+  }, [savedConfig]);
+
   const [selectedAgendaKey, setSelectedAgendaKey] = React.useState<string>("");
   const [isSaving, setIsSaving] = React.useState(false);
 
@@ -135,6 +303,13 @@ export function BreakoutSessionsTab({
   const [rosterFilter, setRosterFilter] = React.useState<"all" | "checked_in" | "not_checked_in">("all");
   const [checkingInRegId, setCheckingInRegId] = React.useState<string | null>(null);
   const [removingRegId, setRemovingRegId] = React.useState<string | null>(null);
+
+  // Keep activeRosterSessionId synced to the first available session if not set or removed
+  React.useEffect(() => {
+    if (sessions.length > 0 && (!activeRosterSessionId || !sessions.some((s) => s.id === activeRosterSessionId))) {
+      setActiveRosterSessionId(sessions[0].id);
+    }
+  }, [sessions, activeRosterSessionId]);
 
   // Add from Registrants modal state
   const [addRegistrantsOpen, setAddRegistrantsOpen] = React.useState(false);
@@ -152,17 +327,26 @@ export function BreakoutSessionsTab({
 
   const questions: CustomQuestion[] = React.useMemo(() => event.custom_questions ?? [], [event.custom_questions]);
 
-  // Load latest event doc & live counts from client Firestore on mount (mirrors CustomFormTab)
+  // Load latest event doc & live counts from client Firestore on mount (mirrors CustomFormTab & RegistrantsTab)
   const eventRef = React.useRef(event);
   eventRef.current = event;
 
   React.useEffect(() => {
+    if (isAuthLoading) return;
+
     let active = true;
+    let unsubscribeRegs: () => void = () => {
+      // No-op cleanup
+    };
+
     async function loadLatestConfig() {
       try {
-        const { getFirestoreEventById, getEventSessionRegistrationCounts, getEventRegistrations } = await import(
-          "@/lib/firestore/client"
-        );
+        const {
+          getFirestoreEventById,
+          getEventSessionRegistrationCounts,
+          getEventRegistrations,
+          subscribeEventRegistrations,
+        } = await import("@/lib/firestore/client");
         const [docData, liveCounts, liveRegs] = await Promise.all([
           getFirestoreEventById(eventId),
           getEventSessionRegistrationCounts(eventId),
@@ -174,19 +358,52 @@ export function BreakoutSessionsTab({
           setLocalRegistrations(liveRegs);
         }
 
+        unsubscribeRegs = subscribeEventRegistrations(
+          eventId,
+          (liveList) => {
+            if (active) {
+              setLocalRegistrations(liveList);
+            }
+          },
+          () => {
+            // Ignore live subscription warning
+          },
+        );
+
         const loadedSessions = Array.isArray(docData?.sessions) ? docData.sessions : (eventRef.current.sessions ?? []);
-        if (loadedSessions.length > 0) {
-          setSessions(
-            loadedSessions.map((sess) => ({
-              ...sess,
-              capacity: Number(sess.capacity) || 50,
-              total_registered: liveCounts[sess.id] ?? sess.total_registered ?? 0,
-              include_in_registration: sess.include_in_registration !== false,
-              separate_check_in: sess.separate_check_in !== false,
-              sync_check_in_to_bevy: sess.sync_check_in_to_bevy ?? false,
-            })),
-          );
+        const normalizedLoadedSessions =
+          loadedSessions.length > 0
+            ? loadedSessions.map((sess) => ({
+                ...sess,
+                capacity: Number(sess.capacity) || 50,
+                total_registered: liveCounts[sess.id] ?? sess.total_registered ?? 0,
+                include_in_registration: sess.include_in_registration !== false,
+                separate_check_in: sess.separate_check_in !== false,
+                sync_check_in_to_bevy: sess.sync_check_in_to_bevy ?? false,
+              }))
+            : null;
+        if (normalizedLoadedSessions) {
+          setSessions(normalizedLoadedSessions);
         }
+
+        const nextDefaultName =
+          docData?.default_session_name || eventRef.current.default_session_name || "Full Session";
+        const nextDefaultTime =
+          docData?.default_session_time !== undefined
+            ? (docData.default_session_time ?? "")
+            : (eventRef.current.default_session_time ?? "");
+        const nextDefaultDeadline =
+          docData?.default_session_checkin_deadline !== undefined
+            ? (docData.default_session_checkin_deadline ?? "")
+            : (eventRef.current.default_session_checkin_deadline ?? "");
+        const nextDefaultLocation =
+          docData?.default_session_location !== undefined
+            ? (docData.default_session_location ?? "")
+            : (eventRef.current.default_session_location ?? "");
+        const nextDefaultLocationUrl =
+          docData?.default_session_location_url !== undefined
+            ? (docData.default_session_location_url ?? "")
+            : (eventRef.current.default_session_location_url ?? "");
 
         if (docData?.default_session_name) {
           setDefaultSessionName(docData.default_session_name);
@@ -203,6 +420,15 @@ export function BreakoutSessionsTab({
         if (docData?.default_session_location_url !== undefined) {
           setDefaultSessionLocationUrl(docData.default_session_location_url ?? "");
         }
+
+        setSavedConfig((prev) => ({
+          sessions: normalizedLoadedSessions ?? prev.sessions,
+          defaultSessionName: nextDefaultName,
+          defaultSessionTime: nextDefaultTime,
+          defaultSessionCheckinDeadline: nextDefaultDeadline,
+          defaultSessionLocation: nextDefaultLocation,
+          defaultSessionLocationUrl: nextDefaultLocationUrl,
+        }));
       } catch (err) {
         console.warn("[BreakoutSessionsTab] Failed to refresh client data:", err);
       }
@@ -210,8 +436,29 @@ export function BreakoutSessionsTab({
     void loadLatestConfig();
     return () => {
       active = false;
+      unsubscribeRegs();
     };
-  }, [eventId]);
+  }, [eventId, isAuthLoading]);
+
+  // Ensure registrants are freshly loaded when opening the "Add from Registrants" modal or QR Scanner
+  React.useEffect(() => {
+    if (!addRegistrantsOpen && !qrScannerOpen) return;
+    let active = true;
+    void (async () => {
+      try {
+        const { getEventRegistrations } = await import("@/lib/firestore/client");
+        const regs = await getEventRegistrations(eventId);
+        if (active && regs.length > 0) {
+          setLocalRegistrations(regs);
+        }
+      } catch {
+        // Ignore
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [addRegistrantsOpen, qrScannerOpen, eventId]);
 
   // Flatten agenda activities from `event.agenda` for binding/importing
   const agendaActivities = React.useMemo(() => {
@@ -434,6 +681,14 @@ export function BreakoutSessionsTab({
       );
 
       if (res.success) {
+        setSavedConfig({
+          sessions: structuredClone(sessions),
+          defaultSessionName: defaultSessionName.trim() || "Full Session",
+          defaultSessionTime,
+          defaultSessionCheckinDeadline,
+          defaultSessionLocation,
+          defaultSessionLocationUrl,
+        });
         toast.success("Breakout sessions saved successfully.");
       } else {
         toast.error(res.error || "Failed to save breakout sessions.");
@@ -715,16 +970,6 @@ export function BreakoutSessionsTab({
               >
                 <QrCode className="size-3.5 text-primary" />
                 Open Bevy QR Scanner
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                onClick={handleSaveSessions}
-                disabled={isSaving}
-                className="gap-1.5 text-xs"
-              >
-                {isSaving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
-                Save Breakout Sessions
               </Button>
             </div>
           </div>
@@ -1542,18 +1787,21 @@ export function BreakoutSessionsTab({
 
                           <TableCell className="text-xs">
                             <div className="flex flex-col items-start gap-1">
-                              <Badge
-                                variant={
-                                  reg.status === "approved"
-                                    ? "default"
-                                    : reg.status === "rejected"
-                                      ? "destructive"
-                                      : "secondary"
-                                }
-                                className="text-[10px] capitalize"
-                              >
-                                {reg.status}
-                              </Badge>
+                              {(() => {
+                                const statusMeta = getStatusMeta(reg.status);
+                                return (
+                                  <Badge
+                                    variant="outline"
+                                    className={cn(
+                                      "gap-1.5 border px-2 py-0.5 font-medium text-[11px]",
+                                      statusMeta.badgeClass,
+                                    )}
+                                  >
+                                    <span className={cn("size-1.5 rounded-full", statusMeta.dotClass)} />
+                                    {statusMeta.label}
+                                  </Badge>
+                                );
+                              })()}
                               <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
                                 <Ticket className="size-3" />
                                 {reg.ticket_name || reg.bundle_name || reg.ticket_tier || "General"}
@@ -1760,12 +2008,21 @@ export function BreakoutSessionsTab({
                           </p>
                         </div>
                       </div>
-                      <Badge
-                        variant={reg.status === "approved" ? "default" : "secondary"}
-                        className="text-[10px] capitalize"
-                      >
-                        {reg.status}
-                      </Badge>
+                      {(() => {
+                        const statusMeta = getStatusMeta(reg.status);
+                        return (
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "shrink-0 gap-1.5 border px-2 py-0.5 font-medium text-[11px]",
+                              statusMeta.badgeClass,
+                            )}
+                          >
+                            <span className={cn("size-1.5 rounded-full", statusMeta.dotClass)} />
+                            {statusMeta.label}
+                          </Badge>
+                        );
+                      })()}
                     </label>
                   );
                 })
@@ -1812,7 +2069,20 @@ export function BreakoutSessionsTab({
                 </div>
                 <div>
                   <span className="text-muted-foreground">Status:</span>
-                  <p className="font-medium capitalize">{inspectReg.status}</p>
+                  <div className="mt-0.5">
+                    {(() => {
+                      const statusMeta = getStatusMeta(inspectReg.status);
+                      return (
+                        <Badge
+                          variant="outline"
+                          className={cn("gap-1.5 border px-2 py-0.5 font-medium text-[11px]", statusMeta.badgeClass)}
+                        >
+                          <span className={cn("size-1.5 rounded-full", statusMeta.dotClass)} />
+                          {statusMeta.label}
+                        </Badge>
+                      );
+                    })()}
+                  </div>
                 </div>
                 <div>
                   <span className="text-muted-foreground">Ticket:</span>
@@ -1866,6 +2136,17 @@ export function BreakoutSessionsTab({
         onRegistrationUpdated={(updated) => {
           setLocalRegistrations((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
         }}
+      />
+
+      <FloatingSaveBar
+        isDirty={isDirty}
+        isSaving={isSaving}
+        onSave={handleSaveSessions}
+        onDiscard={handleDiscardChanges}
+        saveLabel="Save Breakout Sessions"
+        savingLabel="Saving Sessions..."
+        statusInfo={`${sessions.length} session${sessions.length === 1 ? "" : "s"} configured`}
+        helperText="Session capacities & check-in rules will immediately apply."
       />
     </div>
   );

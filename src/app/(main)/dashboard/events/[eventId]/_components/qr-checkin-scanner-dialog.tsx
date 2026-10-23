@@ -40,8 +40,8 @@ import {
   updateRegistrationCheckInAction,
   updateRegistrationMerchandiseCollectionAction,
 } from "@/lib/firestore/actions";
-import type { CustomQuestion, EventSession, FirestoreRegistration } from "@/lib/firestore/types";
-import { getInitials } from "@/lib/utils";
+import type { CustomQuestion, EventSession, FirestoreRegistration, RegistrationStatus } from "@/lib/firestore/types";
+import { cn, getInitials } from "@/lib/utils";
 import {
   type BevyAttendeeItem,
   checkInBevyAttendeeAction,
@@ -50,6 +50,86 @@ import {
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
 export type QrScannerMode = "event_checkin" | "session_checkin" | "merchandise_collection";
+
+const STATUS_VARIANTS: Record<RegistrationStatus, { label: string; badgeClass: string; dotClass: string }> = {
+  pending: {
+    label: "Pending Review",
+    badgeClass: "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400",
+    dotClass: "bg-amber-500",
+  },
+  waiting_for_payment: {
+    label: "Waiting for Payment",
+    badgeClass: "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400",
+    dotClass: "bg-amber-500",
+  },
+  paid_and_registered: {
+    label: "Paid & Registered",
+    badgeClass: "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+    dotClass: "bg-emerald-500",
+  },
+  expired: {
+    label: "Expired",
+    badgeClass: "border-zinc-500/20 bg-zinc-500/10 text-zinc-600 dark:text-zinc-400",
+    dotClass: "bg-zinc-500",
+  },
+  failed: {
+    label: "Failed",
+    badgeClass: "border-rose-500/20 bg-rose-500/10 text-rose-600 dark:text-rose-400",
+    dotClass: "bg-rose-500",
+  },
+  canceled: {
+    label: "Canceled",
+    badgeClass: "border-slate-500/20 bg-slate-500/10 text-slate-600 dark:text-slate-400",
+    dotClass: "bg-slate-500",
+  },
+  cancelled: {
+    label: "Canceled",
+    badgeClass: "border-slate-500/20 bg-slate-500/10 text-slate-600 dark:text-slate-400",
+    dotClass: "bg-slate-500",
+  },
+  approved: {
+    label: "Approved",
+    badgeClass: "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+    dotClass: "bg-emerald-500",
+  },
+  registered: {
+    label: "Registered",
+    badgeClass: "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+    dotClass: "bg-emerald-500",
+  },
+  rejected: {
+    label: "Rejected",
+    badgeClass: "border-destructive/20 bg-destructive/10 text-destructive",
+    dotClass: "bg-destructive",
+  },
+  waitlisted: {
+    label: "Waitlisted",
+    badgeClass: "border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400",
+    dotClass: "bg-blue-500",
+  },
+  paid_waitlisted: {
+    label: "Paid Waitlist",
+    badgeClass: "border-indigo-500/20 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400",
+    dotClass: "bg-indigo-500",
+  },
+  attended: {
+    label: "Attended",
+    badgeClass: "border-purple-500/20 bg-purple-500/10 text-purple-600 dark:text-purple-400",
+    dotClass: "bg-purple-500",
+  },
+};
+
+function getStatusMeta(status?: string) {
+  if (status && status in STATUS_VARIANTS) {
+    return STATUS_VARIANTS[status as RegistrationStatus];
+  }
+  const fallbackLabel = (status || "pending").replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+  return {
+    label: fallbackLabel,
+    badgeClass: "border-slate-500/20 bg-slate-500/10 text-slate-600 dark:text-slate-400",
+    dotClass: "bg-slate-500",
+  };
+}
 
 interface QrCheckInScannerDialogProps {
   open: boolean;
@@ -1118,18 +1198,21 @@ export function QrCheckInScannerDialog({
                       <div>
                         <div className="flex flex-wrap items-center gap-1.5">
                           <h4 className="font-semibold text-sm">{activeReg.member_name || "Unnamed Registrant"}</h4>
-                          <Badge
-                            variant={
-                              activeReg.status === "approved"
-                                ? "default"
-                                : activeReg.status === "rejected"
-                                  ? "destructive"
-                                  : "secondary"
-                            }
-                            className="text-[10px] capitalize"
-                          >
-                            {activeReg.status}
-                          </Badge>
+                          {(() => {
+                            const statusMeta = getStatusMeta(activeReg.status);
+                            return (
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  "gap-1.5 border px-2 py-0.5 font-medium text-[11px]",
+                                  statusMeta.badgeClass,
+                                )}
+                              >
+                                <span className={cn("size-1.5 rounded-full", statusMeta.dotClass)} />
+                                {statusMeta.label}
+                              </Badge>
+                            );
+                          })()}
                         </div>
                         <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground text-xs">
                           <span className="inline-flex items-center gap-1">

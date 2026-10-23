@@ -1339,6 +1339,11 @@ export async function getReferralOwner(
 
 export async function getEventRegistrations(eventId: string): Promise<FirestoreRegistration[]> {
   if (typeof window === "undefined") return [];
+  try {
+    await auth.authStateReady();
+  } catch {
+    // Ignore authStateReady errors
+  }
   if (!auth.currentUser) return [];
   try {
     const regRef = collection(db, "event_registrations");

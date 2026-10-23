@@ -43,6 +43,10 @@ export function FloatingSaveBar({
   className,
   children,
 }: FloatingSaveBarProps) {
+  if (!isDirty && !isSaving) {
+    return null;
+  }
+
   return (
     <div
       className={cn(
