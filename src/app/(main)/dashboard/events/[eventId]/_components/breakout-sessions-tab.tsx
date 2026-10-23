@@ -6,6 +6,9 @@ import {
   Building2,
   Calendar,
   CheckCircle2,
+  ChevronDown,
+  ChevronsDownUp,
+  ChevronsUpDown,
   ClipboardList,
   Clock,
   ExternalLink,
@@ -436,6 +439,35 @@ export function BreakoutSessionsTab({
   const [selectedAgendaKey, setSelectedAgendaKey] = React.useState<string>("");
   const [isSaving, setIsSaving] = React.useState(false);
 
+  // Collapsible / Expanded session cards state
+  const [expandedSessionIds, setExpandedSessionIds] = React.useState<Set<string>>(
+    () => new Set(["default", ...initialNormalizedSessions.map((s) => s.id)]),
+  );
+  const hasInitializedExpandedRef = React.useRef(initialNormalizedSessions.length > 0);
+
+  const handleToggleExpandSession = React.useCallback((id: string) => {
+    setExpandedSessionIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const allCollapsibleIds = React.useMemo(() => ["default", ...sessions.map((s) => s.id)], [sessions]);
+  const areAllSessionsCollapsed = expandedSessionIds.size === 0;
+
+  const handleToggleExpandAllSessions = React.useCallback(() => {
+    if (areAllSessionsCollapsed) {
+      setExpandedSessionIds(new Set(allCollapsibleIds));
+    } else {
+      setExpandedSessionIds(new Set());
+    }
+  }, [areAllSessionsCollapsed, allCollapsibleIds]);
+
   // Roster & Check-in Management state
   const [activeRosterSessionId, setActiveRosterSessionId] = React.useState<string>(() => sessions[0]?.id || "");
   const [rosterSearch, setRosterSearch] = React.useState("");
@@ -523,6 +555,10 @@ export function BreakoutSessionsTab({
             : null;
         if (normalizedLoadedSessions) {
           setSessions(normalizedLoadedSessions);
+          if (!hasInitializedExpandedRef.current) {
+            setExpandedSessionIds(new Set(["default", ...normalizedLoadedSessions.map((s) => s.id)]));
+            hasInitializedExpandedRef.current = true;
+          }
         }
 
         const nextDefaultName =
@@ -695,6 +731,7 @@ export function BreakoutSessionsTab({
         sync_check_in_to_bevy: false,
       },
     ]);
+    setExpandedSessionIds((prev) => new Set([...prev, newId]));
     setActiveRosterSessionId(newId);
   };
 
@@ -720,6 +757,7 @@ export function BreakoutSessionsTab({
         sync_check_in_to_bevy: false,
       },
     ]);
+    setExpandedSessionIds((prev) => new Set([...prev, newId]));
     setSelectedAgendaKey("");
     setActiveRosterSessionId(newId);
     toast.success(`Added session from Bevy Agenda: "${item.title}"`);
@@ -754,6 +792,7 @@ export function BreakoutSessionsTab({
     }));
 
     setSessions((prev) => [...prev, ...newSessions]);
+    setExpandedSessionIds((prev) => new Set([...prev, ...newSessions.map((s) => s.id)]));
     toast.success(`Imported ${newSessions.length} session(s) from Bevy Agenda.`);
   };
 
@@ -1129,6 +1168,26 @@ export function BreakoutSessionsTab({
                 type="button"
                 variant="outline"
                 size="sm"
+                onClick={handleToggleExpandAllSessions}
+                className="gap-1.5 text-xs"
+                title={areAllSessionsCollapsed ? "Expand all sessions" : "Collapse all sessions"}
+              >
+                {areAllSessionsCollapsed ? (
+                  <>
+                    <ChevronsUpDown className="size-3.5" />
+                    <span>Expand All</span>
+                  </>
+                ) : (
+                  <>
+                    <ChevronsDownUp className="size-3.5" />
+                    <span>Collapse All</span>
+                  </>
+                )}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
                 className="gap-1.5 text-xs"
                 onClick={() => {
                   setQrScannerInitialSessionId(activeRosterSessionId);
@@ -1185,14 +1244,14 @@ export function BreakoutSessionsTab({
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  setSessions(
-                    DEFAULT_GDG_SESSIONS.map((s) => ({
-                      ...s,
-                      include_in_registration: true,
-                      separate_check_in: true,
-                      sync_check_in_to_bevy: false,
-                    })),
-                  );
+                  const defaultLoaded = DEFAULT_GDG_SESSIONS.map((s) => ({
+                    ...s,
+                    include_in_registration: true,
+                    separate_check_in: true,
+                    sync_check_in_to_bevy: false,
+                  }));
+                  setSessions(defaultLoaded);
+                  setExpandedSessionIds(new Set(["default", ...defaultLoaded.map((s) => s.id)]));
                   toast.success("Loaded default sessions (Morning, Afternoon).");
                 }}
                 className="h-8 text-xs"
@@ -1216,67 +1275,109 @@ export function BreakoutSessionsTab({
 
           {/* Default Main Session (Fallback) */}
           <div className="rounded-lg border bg-muted/20 p-4">
-            <div className="mb-3">
-              <div className="flex flex-wrap items-center gap-2">
+            <div
+              className={cn(
+                "flex items-center justify-between gap-2 transition-colors",
+                expandedSessionIds.has("default") && "mb-3 border-b border-border/60 pb-3",
+              )}
+            >
+              <button
+                type="button"
+                onClick={() => handleToggleExpandSession("default")}
+                className="flex min-w-0 flex-1 cursor-pointer select-none flex-wrap items-center gap-2 rounded p-0.5 text-left hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
                 <h4 className="font-semibold text-sm">Default Main Session (Fallback)</h4>
-                <Badge variant="secondary" className="text-[10px]">
-                  Registered: {liveSessionStats.default?.registered ?? sessionCounts.default ?? 0}
+                <Badge variant="outline" className="text-[11px]">
+                  {defaultSessionName.trim() || "Full Session"}
                 </Badge>
-              </div>
-              <p className="text-muted-foreground text-xs">
-                Registrants who do not select a specific pre-event breakout session are automatically grouped here
-                (attendee list & check-in are managed in the main Registrants tab).
-              </p>
+                {defaultSessionTime && (
+                  <span className="hidden text-[11px] text-muted-foreground sm:inline">({defaultSessionTime})</span>
+                )}
+                <Badge variant="secondary" className="text-[10px]">
+                  Registered: {liveSessionStats.default.registered}
+                </Badge>
+              </button>
+
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                className={cn(
+                  "size-7 shrink-0 transition-colors",
+                  expandedSessionIds.has("default")
+                    ? "text-primary hover:bg-primary/10"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+                onClick={() => handleToggleExpandSession("default")}
+                title={expandedSessionIds.has("default") ? "Collapse default session" : "Expand default session"}
+                aria-label={expandedSessionIds.has("default") ? "Collapse default session" : "Expand default session"}
+              >
+                <ChevronDown
+                  className={cn(
+                    "size-4 transition-transform duration-200",
+                    expandedSessionIds.has("default") && "rotate-180",
+                  )}
+                />
+              </Button>
             </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs">Default Session Title *</Label>
-                <Input
-                  value={defaultSessionName}
-                  onChange={(e) => setDefaultSessionName(e.target.value)}
-                  placeholder="Full Session"
-                  className="h-8 text-xs"
-                />
+
+            {expandedSessionIds.has("default") && (
+              <div className="space-y-3">
+                <p className="text-muted-foreground text-xs">
+                  Registrants who do not select a specific pre-event breakout session are automatically grouped here
+                  (attendee list & check-in are managed in the main Registrants tab).
+                </p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Default Session Title *</Label>
+                    <Input
+                      value={defaultSessionName}
+                      onChange={(e) => setDefaultSessionName(e.target.value)}
+                      placeholder="Full Session"
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Default Time Slot (Optional)</Label>
+                    <Input
+                      value={defaultSessionTime}
+                      onChange={(e) => setDefaultSessionTime(e.target.value)}
+                      placeholder="e.g. 12:15 WIB - 17:00 WIB"
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Check-in Deadline (Optional)</Label>
+                    <Input
+                      value={defaultSessionCheckinDeadline}
+                      onChange={(e) => setDefaultSessionCheckinDeadline(e.target.value)}
+                      placeholder="e.g. 13:15 WIB"
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label className="text-xs">Room / Location (Optional)</Label>
+                    <Input
+                      value={defaultSessionLocation}
+                      onChange={(e) => setDefaultSessionLocation(e.target.value)}
+                      placeholder={
+                        event.venue?.name ? `e.g. ${event.venue.name} (Main Stage)` : "e.g. Main Auditorium / Venue"
+                      }
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Location URL / Maps Link (Optional)</Label>
+                    <Input
+                      value={defaultSessionLocationUrl}
+                      onChange={(e) => setDefaultSessionLocationUrl(e.target.value)}
+                      placeholder="https://maps.app.goo.gl/..."
+                      className="h-8 text-xs"
+                    />
+                  </div>
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Default Time Slot (Optional)</Label>
-                <Input
-                  value={defaultSessionTime}
-                  onChange={(e) => setDefaultSessionTime(e.target.value)}
-                  placeholder="e.g. 12:15 WIB - 17:00 WIB"
-                  className="h-8 text-xs"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Check-in Deadline (Optional)</Label>
-                <Input
-                  value={defaultSessionCheckinDeadline}
-                  onChange={(e) => setDefaultSessionCheckinDeadline(e.target.value)}
-                  placeholder="e.g. 13:15 WIB"
-                  className="h-8 text-xs"
-                />
-              </div>
-              <div className="space-y-1.5 sm:col-span-2">
-                <Label className="text-xs">Room / Location (Optional)</Label>
-                <Input
-                  value={defaultSessionLocation}
-                  onChange={(e) => setDefaultSessionLocation(e.target.value)}
-                  placeholder={
-                    event.venue?.name ? `e.g. ${event.venue.name} (Main Stage)` : "e.g. Main Auditorium / Venue"
-                  }
-                  className="h-8 text-xs"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Location URL / Maps Link (Optional)</Label>
-                <Input
-                  value={defaultSessionLocationUrl}
-                  onChange={(e) => setDefaultSessionLocationUrl(e.target.value)}
-                  placeholder="https://maps.app.goo.gl/..."
-                  className="h-8 text-xs"
-                />
-              </div>
-            </div>
+            )}
           </div>
 
           {/* Breakout Sessions List */}
@@ -1299,6 +1400,7 @@ export function BreakoutSessionsTab({
                   0;
                 const currentCheckedIn = liveSessionStats[session.id]?.checkedIn ?? session.total_checked_in ?? 0;
                 const boundAgendaItem = agendaActivities.find((a) => a.id === session.agenda_activity_id);
+                const isSessionExpanded = expandedSessionIds.has(session.id);
 
                 return (
                   <div
@@ -1308,11 +1410,34 @@ export function BreakoutSessionsTab({
                     }`}
                   >
                     {/* Header Row: Badges & Quick Roster / QR Actions */}
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
-                      <div className="flex flex-wrap items-center gap-2">
+                    <div
+                      className={cn(
+                        "flex flex-wrap items-center justify-between gap-2 transition-colors",
+                        isSessionExpanded && "border-b pb-3",
+                      )}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => handleToggleExpandSession(session.id)}
+                        className="flex min-w-0 flex-1 cursor-pointer select-none flex-wrap items-center gap-2 rounded p-0.5 text-left hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      >
                         <Badge variant="outline" className="text-xs">
                           Session #{idx + 1}
                         </Badge>
+                        <span
+                          className={cn(
+                            "max-w-[180px] truncate text-xs sm:max-w-[280px] md:max-w-[360px]",
+                            session.title.trim() ? "font-semibold text-foreground" : "italic text-muted-foreground",
+                          )}
+                          title={session.title || "Untitled Session"}
+                        >
+                          {session.title.trim() || "Untitled Session"}
+                        </span>
+                        {!isSessionExpanded && session.time_slot && (
+                          <span className="hidden text-[11px] text-muted-foreground lg:inline">
+                            ({session.time_slot})
+                          </span>
+                        )}
                         {session.agenda_activity_id ? (
                           <Badge
                             variant="secondary"
@@ -1348,7 +1473,7 @@ export function BreakoutSessionsTab({
                             Checked In: {currentCheckedIn}
                           </Badge>
                         )}
-                      </div>
+                      </button>
 
                       <div className="flex items-center gap-1.5">
                         <Button
@@ -1381,366 +1506,399 @@ export function BreakoutSessionsTab({
                           size="icon"
                           className="size-7 text-destructive hover:text-destructive"
                           onClick={() => handleRemoveSession(idx)}
+                          title="Delete session"
                         >
                           <Trash2 className="size-4" />
+                        </Button>
+
+                        <div className="mx-0.5 h-4 w-px bg-border/60" />
+
+                        <Button
+                          type="button"
+                          size="icon-sm"
+                          variant="ghost"
+                          className={cn(
+                            "size-7 transition-colors",
+                            isSessionExpanded
+                              ? "text-primary hover:bg-primary/10"
+                              : "text-muted-foreground hover:text-foreground",
+                          )}
+                          onClick={() => handleToggleExpandSession(session.id)}
+                          title={isSessionExpanded ? "Collapse session" : "Expand session"}
+                          aria-label={isSessionExpanded ? "Collapse session" : "Expand session"}
+                        >
+                          <ChevronDown
+                            className={cn(
+                              "size-4 transition-transform duration-200",
+                              isSessionExpanded && "rotate-180",
+                            )}
+                          />
                         </Button>
                       </div>
                     </div>
 
-                    {/* Bevy Agenda Binding Row */}
-                    {agendaActivities.length > 0 && (
-                      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/20 px-3 py-2">
-                        <div className="flex items-center gap-2 text-xs">
-                          {session.agenda_activity_id ? (
-                            <Link2 className="size-3.5 text-primary" />
-                          ) : (
-                            <Link2Off className="size-3.5 text-muted-foreground" />
-                          )}
-                          <span className="font-medium">Bevy Agenda Binding:</span>
+                    {isSessionExpanded && (
+                      <div className="space-y-4">
+                        {/* Bevy Agenda Binding Row */}
+                        {agendaActivities.length > 0 && (
+                          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/20 px-3 py-2">
+                            <div className="flex items-center gap-2 text-xs">
+                              {session.agenda_activity_id ? (
+                                <Link2 className="size-3.5 text-primary" />
+                              ) : (
+                                <Link2Off className="size-3.5 text-muted-foreground" />
+                              )}
+                              <span className="font-medium">Bevy Agenda Binding:</span>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Select
+                                value={session.agenda_activity_id || "__none__"}
+                                onValueChange={(val) => handleBindSessionToAgenda(idx, val)}
+                              >
+                                <SelectTrigger className="h-8 w-[260px] bg-background text-xs">
+                                  <SelectValue placeholder="None (Manual / Custom Session)" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="__none__" className="text-xs">
+                                    None — Manual / Custom Session
+                                  </SelectItem>
+                                  {agendaActivities.map((item) => (
+                                    <SelectItem key={item.id} value={item.id} className="text-xs">
+                                      {item.timeSlot ? `[${item.timeSlot}] ` : ""}
+                                      {item.title}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              {boundAgendaItem && (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 gap-1 text-xs"
+                                  onClick={() => handleBindSessionToAgenda(idx, boundAgendaItem.id)}
+                                >
+                                  <RefreshCw className="size-3" />
+                                  Sync Fields from Agenda
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Core Session Fields */}
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">Session Title *</Label>
+                            <Input
+                              value={session.title}
+                              onChange={(e) =>
+                                handleUpdateSession(idx, {
+                                  ...session,
+                                  title: e.target.value,
+                                })
+                              }
+                              placeholder="e.g., Hands-on Workshop: Gemini API"
+                              className="h-8 text-xs"
+                            />
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">Time Slot</Label>
+                            <Input
+                              value={session.time_slot ?? ""}
+                              onChange={(e) =>
+                                handleUpdateSession(idx, {
+                                  ...session,
+                                  time_slot: e.target.value,
+                                })
+                              }
+                              placeholder="e.g., 08:15 WIB - 12:00 WIB"
+                              className="h-8 text-xs"
+                            />
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">Check-in Deadline</Label>
+                            <Input
+                              value={session.checkin_deadline ?? ""}
+                              onChange={(e) =>
+                                handleUpdateSession(idx, {
+                                  ...session,
+                                  checkin_deadline: e.target.value,
+                                })
+                              }
+                              placeholder="e.g., 09:05 WIB"
+                              className="h-8 text-xs"
+                            />
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">Capacity Limit *</Label>
+                            <Input
+                              type="number"
+                              min={1}
+                              value={session.capacity}
+                              onChange={(e) =>
+                                handleUpdateSession(idx, {
+                                  ...session,
+                                  capacity: Math.max(1, Number(e.target.value) || 1),
+                                })
+                              }
+                              className="h-8 text-xs"
+                            />
+                          </div>
+
+                          <div className="space-y-1.5 sm:col-span-2">
+                            <Label className="text-xs">Room / Location</Label>
+                            <Input
+                              value={session.location ?? ""}
+                              onChange={(e) =>
+                                handleUpdateSession(idx, {
+                                  ...session,
+                                  location: e.target.value,
+                                })
+                              }
+                              placeholder="e.g., Auditorium / Main Venue"
+                              className="h-8 text-xs"
+                            />
+                          </div>
+
+                          <div className="space-y-1.5 sm:col-span-3">
+                            <div className="flex items-center justify-between">
+                              <Label className="text-xs">Location URL / Google Maps Link (Optional)</Label>
+                              {session.location_url && (
+                                <a
+                                  href={session.location_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
+                                >
+                                  Open map <ExternalLink className="size-2.5" />
+                                </a>
+                              )}
+                            </div>
+                            <Input
+                              value={session.location_url ?? ""}
+                              onChange={(e) =>
+                                handleUpdateSession(idx, {
+                                  ...session,
+                                  location_url: e.target.value,
+                                })
+                              }
+                              placeholder="https://maps.app.goo.gl/... or https://maps.google.com/..."
+                              className="h-8 text-xs"
+                            />
+                          </div>
+
+                          <div className="space-y-1.5 sm:col-span-3">
+                            <Label className="text-xs">Description / Prerequisites (HTML Format)</Label>
+                            <HtmlEditText
+                              value={session.description ?? ""}
+                              placeholder="Session prerequisites or topics in HTML..."
+                              onChange={(val) =>
+                                handleUpdateSession(idx, {
+                                  ...session,
+                                  description: val,
+                                })
+                              }
+                            />
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">Speaker Name (Optional)</Label>
+                            <Input
+                              value={session.speaker_name ?? ""}
+                              onChange={(e) =>
+                                handleUpdateSession(idx, {
+                                  ...session,
+                                  speaker_name: e.target.value,
+                                })
+                              }
+                              placeholder="e.g., Jane Doe (GDE AI)"
+                              className="h-8 text-xs"
+                            />
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">Presentation Slides URL (Optional)</Label>
+                            <Input
+                              value={session.slides_url ?? ""}
+                              onChange={(e) =>
+                                handleUpdateSession(idx, {
+                                  ...session,
+                                  slides_url: e.target.value,
+                                })
+                              }
+                              placeholder="https://docs.google.com/presentation/..."
+                              className="h-8 text-xs"
+                            />
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">Slides Button Title (Optional)</Label>
+                            <Input
+                              value={session.slides_title ?? ""}
+                              onChange={(e) =>
+                                handleUpdateSession(idx, {
+                                  ...session,
+                                  slides_title: e.target.value,
+                                })
+                              }
+                              placeholder="e.g., Keynote Deck"
+                              className="h-8 text-xs"
+                            />
+                          </div>
+
+                          <div className="space-y-2 rounded-lg border border-border/50 bg-muted/20 p-3 sm:col-span-3">
+                            <div className="flex items-center justify-between">
+                              <span className="font-medium text-foreground text-xs">
+                                Related Resources & Code Links
+                              </span>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-6 gap-1 px-2 text-[11px]"
+                                onClick={() => {
+                                  const current = session.related_links ?? [];
+                                  handleUpdateSession(idx, {
+                                    ...session,
+                                    related_links: [...current, { title: "", url: "" }],
+                                  });
+                                }}
+                              >
+                                <Plus className="size-3" />
+                                Add Link
+                              </Button>
+                            </div>
+
+                            {session.related_links && session.related_links.length > 0 ? (
+                              <div className="space-y-2 pt-1">
+                                {session.related_links.map((link, lIdx) => (
+                                  <div key={`${link.url}-${lIdx}`} className="flex items-center gap-2">
+                                    <Input
+                                      placeholder="Title (e.g. GitHub Repo / Colab)"
+                                      value={link.title}
+                                      className="h-8 text-xs"
+                                      onChange={(e) => {
+                                        const updated = [...(session.related_links ?? [])];
+                                        updated[lIdx] = {
+                                          ...updated[lIdx],
+                                          title: e.target.value,
+                                        };
+                                        handleUpdateSession(idx, {
+                                          ...session,
+                                          related_links: updated,
+                                        });
+                                      }}
+                                    />
+                                    <Input
+                                      placeholder="URL (https://github.com/...)"
+                                      value={link.url}
+                                      className="h-8 text-xs"
+                                      onChange={(e) => {
+                                        const updated = [...(session.related_links ?? [])];
+                                        updated[lIdx] = {
+                                          ...updated[lIdx],
+                                          url: e.target.value,
+                                        };
+                                        handleUpdateSession(idx, {
+                                          ...session,
+                                          related_links: updated,
+                                        });
+                                      }}
+                                    />
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="size-8 shrink-0 text-muted-foreground hover:text-destructive"
+                                      onClick={() => {
+                                        const updated = (session.related_links ?? []).filter(
+                                          (_, idx2) => idx2 !== lIdx,
+                                        );
+                                        handleUpdateSession(idx, {
+                                          ...session,
+                                          related_links: updated,
+                                        });
+                                      }}
+                                    >
+                                      <Trash2 className="size-3.5" />
+                                    </Button>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-[11px] text-muted-foreground">
+                                No related links added. Click &ldquo;Add Link&rdquo; to link repositories or docs.
+                              </p>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Select
-                            value={session.agenda_activity_id || "__none__"}
-                            onValueChange={(val) => handleBindSessionToAgenda(idx, val)}
-                          >
-                            <SelectTrigger className="h-8 w-[260px] bg-background text-xs">
-                              <SelectValue placeholder="None (Manual / Custom Session)" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="__none__" className="text-xs">
-                                None — Manual / Custom Session
-                              </SelectItem>
-                              {agendaActivities.map((item) => (
-                                <SelectItem key={item.id} value={item.id} className="text-xs">
-                                  {item.timeSlot ? `[${item.timeSlot}] ` : ""}
-                                  {item.title}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          {boundAgendaItem && (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="h-8 gap-1 text-xs"
-                              onClick={() => handleBindSessionToAgenda(idx, boundAgendaItem.id)}
-                            >
-                              <RefreshCw className="size-3" />
-                              Sync Fields from Agenda
-                            </Button>
-                          )}
+
+                        {/* Per-Session Configuration Toggles */}
+                        <div className="grid grid-cols-1 gap-3 border-t pt-3 md:grid-cols-3">
+                          <div className="flex items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3">
+                            <div className="space-y-0.5">
+                              <Label className="font-medium text-xs">Include in Pre-Event Registration Form</Label>
+                              <p className="text-[11px] text-muted-foreground">
+                                {session.include_in_registration !== false
+                                  ? "Selectable by attendees during registration"
+                                  : "Hidden from form; assign manually or via QR"}
+                              </p>
+                            </div>
+                            <Switch
+                              checked={session.include_in_registration !== false}
+                              onCheckedChange={(checked) =>
+                                handleUpdateSession(idx, {
+                                  ...session,
+                                  include_in_registration: checked,
+                                })
+                              }
+                            />
+                          </div>
+
+                          <div className="flex items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3">
+                            <div className="space-y-0.5">
+                              <Label className="font-medium text-xs">Separate Session Check-in</Label>
+                              <p className="text-[11px] text-muted-foreground">
+                                Track session check-ins independently in Firestore
+                              </p>
+                            </div>
+                            <Switch
+                              checked={session.separate_check_in !== false}
+                              onCheckedChange={(checked) =>
+                                handleUpdateSession(idx, {
+                                  ...session,
+                                  separate_check_in: checked,
+                                })
+                              }
+                            />
+                          </div>
+
+                          <div className="flex items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3">
+                            <div className="space-y-0.5">
+                              <Label className="font-medium text-xs">Sync Check-in to Bevy API</Label>
+                              <p className="text-[11px] text-muted-foreground">
+                                {session.sync_check_in_to_bevy
+                                  ? "Also marks attendee checked-in on Bevy"
+                                  : "Logs session check-in to Firestore only"}
+                              </p>
+                            </div>
+                            <Switch
+                              checked={Boolean(session.sync_check_in_to_bevy)}
+                              onCheckedChange={(checked) =>
+                                handleUpdateSession(idx, {
+                                  ...session,
+                                  sync_check_in_to_bevy: checked,
+                                })
+                              }
+                            />
+                          </div>
                         </div>
                       </div>
                     )}
-
-                    {/* Core Session Fields */}
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                      <div className="space-y-1.5">
-                        <Label className="text-xs">Session Title *</Label>
-                        <Input
-                          value={session.title}
-                          onChange={(e) =>
-                            handleUpdateSession(idx, {
-                              ...session,
-                              title: e.target.value,
-                            })
-                          }
-                          placeholder="e.g., Hands-on Workshop: Gemini API"
-                          className="h-8 text-xs"
-                        />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <Label className="text-xs">Time Slot</Label>
-                        <Input
-                          value={session.time_slot ?? ""}
-                          onChange={(e) =>
-                            handleUpdateSession(idx, {
-                              ...session,
-                              time_slot: e.target.value,
-                            })
-                          }
-                          placeholder="e.g., 08:15 WIB - 12:00 WIB"
-                          className="h-8 text-xs"
-                        />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <Label className="text-xs">Check-in Deadline</Label>
-                        <Input
-                          value={session.checkin_deadline ?? ""}
-                          onChange={(e) =>
-                            handleUpdateSession(idx, {
-                              ...session,
-                              checkin_deadline: e.target.value,
-                            })
-                          }
-                          placeholder="e.g., 09:05 WIB"
-                          className="h-8 text-xs"
-                        />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <Label className="text-xs">Capacity Limit *</Label>
-                        <Input
-                          type="number"
-                          min={1}
-                          value={session.capacity}
-                          onChange={(e) =>
-                            handleUpdateSession(idx, {
-                              ...session,
-                              capacity: Math.max(1, Number(e.target.value) || 1),
-                            })
-                          }
-                          className="h-8 text-xs"
-                        />
-                      </div>
-
-                      <div className="space-y-1.5 sm:col-span-2">
-                        <Label className="text-xs">Room / Location</Label>
-                        <Input
-                          value={session.location ?? ""}
-                          onChange={(e) =>
-                            handleUpdateSession(idx, {
-                              ...session,
-                              location: e.target.value,
-                            })
-                          }
-                          placeholder="e.g., Auditorium / Main Venue"
-                          className="h-8 text-xs"
-                        />
-                      </div>
-
-                      <div className="space-y-1.5 sm:col-span-3">
-                        <div className="flex items-center justify-between">
-                          <Label className="text-xs">Location URL / Google Maps Link (Optional)</Label>
-                          {session.location_url && (
-                            <a
-                              href={session.location_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
-                            >
-                              Open map <ExternalLink className="size-2.5" />
-                            </a>
-                          )}
-                        </div>
-                        <Input
-                          value={session.location_url ?? ""}
-                          onChange={(e) =>
-                            handleUpdateSession(idx, {
-                              ...session,
-                              location_url: e.target.value,
-                            })
-                          }
-                          placeholder="https://maps.app.goo.gl/... or https://maps.google.com/..."
-                          className="h-8 text-xs"
-                        />
-                      </div>
-
-                      <div className="space-y-1.5 sm:col-span-3">
-                        <Label className="text-xs">Description / Prerequisites (HTML Format)</Label>
-                        <HtmlEditText
-                          value={session.description ?? ""}
-                          placeholder="Session prerequisites or topics in HTML..."
-                          onChange={(val) =>
-                            handleUpdateSession(idx, {
-                              ...session,
-                              description: val,
-                            })
-                          }
-                        />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <Label className="text-xs">Speaker Name (Optional)</Label>
-                        <Input
-                          value={session.speaker_name ?? ""}
-                          onChange={(e) =>
-                            handleUpdateSession(idx, {
-                              ...session,
-                              speaker_name: e.target.value,
-                            })
-                          }
-                          placeholder="e.g., Jane Doe (GDE AI)"
-                          className="h-8 text-xs"
-                        />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <Label className="text-xs">Presentation Slides URL (Optional)</Label>
-                        <Input
-                          value={session.slides_url ?? ""}
-                          onChange={(e) =>
-                            handleUpdateSession(idx, {
-                              ...session,
-                              slides_url: e.target.value,
-                            })
-                          }
-                          placeholder="https://docs.google.com/presentation/..."
-                          className="h-8 text-xs"
-                        />
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <Label className="text-xs">Slides Button Title (Optional)</Label>
-                        <Input
-                          value={session.slides_title ?? ""}
-                          onChange={(e) =>
-                            handleUpdateSession(idx, {
-                              ...session,
-                              slides_title: e.target.value,
-                            })
-                          }
-                          placeholder="e.g., Keynote Deck"
-                          className="h-8 text-xs"
-                        />
-                      </div>
-
-                      <div className="space-y-2 rounded-lg border border-border/50 bg-muted/20 p-3 sm:col-span-3">
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium text-foreground text-xs">Related Resources & Code Links</span>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="h-6 gap-1 px-2 text-[11px]"
-                            onClick={() => {
-                              const current = session.related_links ?? [];
-                              handleUpdateSession(idx, {
-                                ...session,
-                                related_links: [...current, { title: "", url: "" }],
-                              });
-                            }}
-                          >
-                            <Plus className="size-3" />
-                            Add Link
-                          </Button>
-                        </div>
-
-                        {session.related_links && session.related_links.length > 0 ? (
-                          <div className="space-y-2 pt-1">
-                            {session.related_links.map((link, lIdx) => (
-                              <div key={`${link.url}-${lIdx}`} className="flex items-center gap-2">
-                                <Input
-                                  placeholder="Title (e.g. GitHub Repo / Colab)"
-                                  value={link.title}
-                                  className="h-8 text-xs"
-                                  onChange={(e) => {
-                                    const updated = [...(session.related_links ?? [])];
-                                    updated[lIdx] = {
-                                      ...updated[lIdx],
-                                      title: e.target.value,
-                                    };
-                                    handleUpdateSession(idx, {
-                                      ...session,
-                                      related_links: updated,
-                                    });
-                                  }}
-                                />
-                                <Input
-                                  placeholder="URL (https://github.com/...)"
-                                  value={link.url}
-                                  className="h-8 text-xs"
-                                  onChange={(e) => {
-                                    const updated = [...(session.related_links ?? [])];
-                                    updated[lIdx] = {
-                                      ...updated[lIdx],
-                                      url: e.target.value,
-                                    };
-                                    handleUpdateSession(idx, {
-                                      ...session,
-                                      related_links: updated,
-                                    });
-                                  }}
-                                />
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  className="size-8 shrink-0 text-muted-foreground hover:text-destructive"
-                                  onClick={() => {
-                                    const updated = (session.related_links ?? []).filter((_, idx2) => idx2 !== lIdx);
-                                    handleUpdateSession(idx, {
-                                      ...session,
-                                      related_links: updated,
-                                    });
-                                  }}
-                                >
-                                  <Trash2 className="size-3.5" />
-                                </Button>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-[11px] text-muted-foreground">
-                            No related links added. Click &ldquo;Add Link&rdquo; to link repositories or docs.
-                          </p>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Per-Session Configuration Toggles */}
-                    <div className="grid grid-cols-1 gap-3 border-t pt-3 md:grid-cols-3">
-                      <div className="flex items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3">
-                        <div className="space-y-0.5">
-                          <Label className="font-medium text-xs">Include in Pre-Event Registration Form</Label>
-                          <p className="text-[11px] text-muted-foreground">
-                            {session.include_in_registration !== false
-                              ? "Selectable by attendees during registration"
-                              : "Hidden from form; assign manually or via QR"}
-                          </p>
-                        </div>
-                        <Switch
-                          checked={session.include_in_registration !== false}
-                          onCheckedChange={(checked) =>
-                            handleUpdateSession(idx, {
-                              ...session,
-                              include_in_registration: checked,
-                            })
-                          }
-                        />
-                      </div>
-
-                      <div className="flex items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3">
-                        <div className="space-y-0.5">
-                          <Label className="font-medium text-xs">Separate Session Check-in</Label>
-                          <p className="text-[11px] text-muted-foreground">
-                            Track session check-ins independently in Firestore
-                          </p>
-                        </div>
-                        <Switch
-                          checked={session.separate_check_in !== false}
-                          onCheckedChange={(checked) =>
-                            handleUpdateSession(idx, {
-                              ...session,
-                              separate_check_in: checked,
-                            })
-                          }
-                        />
-                      </div>
-
-                      <div className="flex items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3">
-                        <div className="space-y-0.5">
-                          <Label className="font-medium text-xs">Sync Check-in to Bevy API</Label>
-                          <p className="text-[11px] text-muted-foreground">
-                            {session.sync_check_in_to_bevy
-                              ? "Also marks attendee checked-in on Bevy"
-                              : "Logs session check-in to Firestore only"}
-                          </p>
-                        </div>
-                        <Switch
-                          checked={Boolean(session.sync_check_in_to_bevy)}
-                          onCheckedChange={(checked) =>
-                            handleUpdateSession(idx, {
-                              ...session,
-                              sync_check_in_to_bevy: checked,
-                            })
-                          }
-                        />
-                      </div>
-                    </div>
                   </div>
                 );
               })}
