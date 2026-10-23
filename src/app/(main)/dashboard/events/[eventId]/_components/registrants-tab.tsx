@@ -19,6 +19,7 @@ import {
   MoreHorizontal,
   Package,
   PackageCheck,
+  QrCode,
   RefreshCw,
   RotateCcw,
   Search,
@@ -117,6 +118,7 @@ import {
   formatMerchandiseSummary,
   parseMerchandiseVariations,
 } from "./merchandise-helpers";
+import { QrCheckInScannerDialog } from "./qr-checkin-scanner-dialog";
 import { QuestionColumnValueCell } from "./question-column-value-cell";
 import { QuestionResponsesCell } from "./question-responses-cell";
 import { RegistrantStatistics } from "./registrant-statistics";
@@ -536,6 +538,7 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
   const [resendPaymentRegistration, setResendPaymentRegistration] = useState<FirestoreRegistration | null>(null);
   const [checkingPaymentRegistration, setCheckingPaymentRegistration] = useState<FirestoreRegistration | null>(null);
   const [isCheckPaymentDialogOpen, setIsCheckPaymentDialogOpen] = useState(false);
+  const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
   const [isBatchCheckingPayment, setIsBatchCheckingPayment] = useState(false);
   const [isBatchResendPaymentOpen, setIsBatchResendPaymentOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -4006,6 +4009,17 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
 
                 <Button
                   size="sm"
+                  variant="default"
+                  onClick={() => setIsQrScannerOpen(true)}
+                  className="h-8 gap-1.5 text-xs"
+                  title="Open Multi-Mode Bevy QR Scanner for Event Check-in, Breakout Session Check-in, or Merchandise Collection"
+                >
+                  <QrCode className="size-3.5" />
+                  <span>QR Scanner</span>
+                </Button>
+
+                <Button
+                  size="sm"
                   variant="outline"
                   onClick={() => {
                     setCheckingPaymentRegistration(null);
@@ -5574,6 +5588,21 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
 
       {/* Attendee Status & Metric Reference Guide Dialog */}
       <AttendeeStatusGuideDialog open={isStatusGuideOpen} onOpenChange={setIsStatusGuideOpen} />
+
+      {/* Multi-Mode Bevy QR Scanner Dialog (Event Check-in, Breakout Session Check-in, Merchandise Collection) */}
+      <QrCheckInScannerDialog
+        open={isQrScannerOpen}
+        onOpenChange={setIsQrScannerOpen}
+        eventId={eventId}
+        eventTitle={currentEvent?.title}
+        registrations={registrationsList}
+        sessions={sessions}
+        questions={customQuestions}
+        initialMode="event_checkin"
+        onRegistrationUpdated={(updatedReg) => {
+          setRegistrationsList((prev) => prev.map((r) => (r.id === updatedReg.id ? updatedReg : r)));
+        }}
+      />
     </div>
   );
 }

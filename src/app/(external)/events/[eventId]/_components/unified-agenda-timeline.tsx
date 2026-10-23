@@ -156,11 +156,7 @@ export function UnifiedAgendaTimeline({ bevyAgenda, speakers, firestoreSessions 
     return unified.sessionGroups.filter((g) => g.id === selectedSessionId);
   }, [unified.sessionGroups, selectedSessionId]);
 
-  const hasAnyContent =
-    unified.totalItemsCount > 0 ||
-    unified.sessionGroups.some(
-      (g) => Boolean(g.slidesUrl) || Boolean(g.description) || Boolean(g.location) || g.items.length > 0,
-    );
+  const hasAnyContent = unified.sessionGroups.length > 0;
 
   if (!hasAnyContent) {
     return (

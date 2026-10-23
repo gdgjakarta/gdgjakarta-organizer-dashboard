@@ -174,9 +174,13 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
   const [newSessionLinkUrl, setNewSessionLinkUrl] = useState("");
   const [showAddSession, setShowAddSession] = useState(false);
 
-  // 4. Derived Capacity & Multi-Session Calculation
-  const hasMultipleSessions = sessions.length > 0;
-  const totalSessionCapacity = sessions.reduce((acc, sess) => acc + (Number(sess.capacity) || 0), 0);
+  // 4. Derived Capacity & Multi-Session Calculation (only pre-event registration sessions count toward form capacity split)
+  const preEventRegistrationSessions = sessions.filter((sess) => sess.include_in_registration !== false);
+  const hasMultipleSessions = preEventRegistrationSessions.length > 0;
+  const totalSessionCapacity = preEventRegistrationSessions.reduce(
+    (acc, sess) => acc + (Number(sess.capacity) || 0),
+    0,
+  );
 
   // 5. Registration Questions
   const [questions, setQuestions] = useState<CustomQuestion[]>(
@@ -1625,597 +1629,90 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
         </CardContent>
       </Card>
 
-      {/* ── 3. EVENT SESSIONS & CAPACITY SPLIT ───────────────────────── */}
+      {/* ── 3. BREAKOUT SESSIONS SUMMARY & LINK TO BREAKOUT SESSION TAB ── */}
       <Card>
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="flex items-center gap-2">
               <Layers className="size-4 text-primary" />
-              <CardTitle className="text-lg">Event Sessions & Limited Capacities</CardTitle>
+              <CardTitle className="text-lg">Breakout Sessions & Pre-Event Track Selection</CardTitle>
             </div>
             <CardDescription className="pt-1">
-              Split this event into sessions with independent attendee limits.
+              Breakout sessions, Bevy agenda bindings, pre-event form toggles, and independent session check-in rosters
+              are managed in the dedicated <strong>Breakout Session</strong> tab.
             </CardDescription>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleLoadStandardSessions}
-              className="gap-1.5 self-start text-xs"
-            >
-              <Layers className="size-3.5" />
-              Load Default Sessions
-            </Button>
-            {showAddSession ? (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setShowAddSession(false)}
-                className="gap-1.5 self-start text-xs"
-              >
-                <Plus className="size-3.5" />
-                Cancel
-              </Button>
-            ) : agendaActivities.length > 0 ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button size="sm" variant="outline" className="gap-1.5 self-start text-xs">
-                    <Plus className="size-3.5 text-primary" />
-                    <span>Add Session</span>
-                    <ChevronDown className="size-3 opacity-60" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="max-h-80 w-80 overflow-y-auto">
-                  <DropdownMenuLabel className="text-xs">Select from Existing Agenda</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  {agendaActivities.map((act) => {
-                    const added = isActivityAdded(act);
-                    return (
-                      <DropdownMenuItem
-                        key={act.id}
-                        disabled={added}
-                        onClick={() => handleAddFromAgenda(act)}
-                        className="flex cursor-pointer flex-col items-start gap-0.5 py-2"
-                      >
-                        <div className="flex w-full items-center justify-between gap-2">
-                          <span className="truncate font-semibold text-foreground text-xs">{act.activity}</span>
-                          {added ? (
-                            <Badge variant="secondary" className="h-4 shrink-0 px-1.5 text-[10px]">
-                              Added
-                            </Badge>
-                          ) : (
-                            <span className="shrink-0 text-[10px] text-muted-foreground">{act.time}</span>
-                          )}
-                        </div>
-                        {act.speakerName && (
-                          <span className="truncate text-[11px] text-muted-foreground">Speaker: {act.speakerName}</span>
-                        )}
-                      </DropdownMenuItem>
-                    );
-                  })}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={handleAddAllFromAgenda}
-                    disabled={agendaActivities.every((act) => isActivityAdded(act))}
-                    className="cursor-pointer gap-2 font-medium text-primary text-xs"
-                  >
-                    <Sparkles className="size-3.5" />
-                    <span>
-                      Add All from Agenda ({agendaActivities.filter((a) => !isActivityAdded(a)).length} remaining)
-                    </span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => setShowAddSession(true)}
-                    className="cursor-pointer gap-2 text-muted-foreground text-xs"
-                  >
-                    <Plus className="size-3.5" />
-                    <span>Custom / Manual Session (Not in Agenda)</span>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setShowAddSession(true)}
-                className="gap-1.5 self-start text-xs"
-              >
-                <Plus className="size-3.5" />
-                Add Session
-              </Button>
-            )}
-          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="gap-1.5 self-start text-xs"
+            onClick={() => {
+              const breakoutTabTrigger = document.querySelector<HTMLButtonElement>(
+                '[data-slot="tabs-trigger"][value="breakout-sessions"], button[value="breakout-sessions"]',
+              );
+              breakoutTabTrigger?.click();
+            }}
+          >
+            <Layers className="size-3.5 text-primary" />
+            <span>Open Breakout Session Tab</span>
+          </Button>
         </CardHeader>
 
-        <CardContent className="space-y-4">
-          {/* Add Session Form Drawer/Box */}
-          {showAddSession && (
-            <div className="space-y-3 rounded-lg border border-primary/20 bg-primary/5 p-4">
-              <h4 className="font-semibold text-foreground text-sm">Create New Session</h4>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <Field className="sm:col-span-2">
-                  <FieldLabel>Session Title *</FieldLabel>
-                  <Input
-                    placeholder="e.g. Morning Session / Afternoon Session"
-                    value={newSession.title}
-                    onChange={(e) => setNewSession({ ...newSession, title: e.target.value })}
-                  />
-                </Field>
-
-                <Field>
-                  <FieldLabel>Time Slot</FieldLabel>
-                  <Input
-                    placeholder="e.g. 08:15 WIB - 12:00 WIB (Morning Session)"
-                    value={newSession.time_slot ?? ""}
-                    onChange={(e) => setNewSession({ ...newSession, time_slot: e.target.value })}
-                  />
-                </Field>
-
-                <Field>
-                  <FieldLabel>Check-in Deadline</FieldLabel>
-                  <Input
-                    placeholder="e.g. 09:05 WIB"
-                    value={newSession.checkin_deadline ?? ""}
-                    onChange={(e) => setNewSession({ ...newSession, checkin_deadline: e.target.value })}
-                  />
-                </Field>
-
-                <Field>
-                  <FieldLabel>Location / Room</FieldLabel>
-                  <Input
-                    placeholder="e.g. Auditorium / Main Venue"
-                    value={newSession.location ?? ""}
-                    onChange={(e) => setNewSession({ ...newSession, location: e.target.value })}
-                  />
-                </Field>
-
-                <Field>
-                  <FieldLabel>Max Capacity Limit *</FieldLabel>
-                  <Input
-                    type="number"
-                    min="1"
-                    placeholder="105"
-                    value={newSession.capacity}
-                    onChange={(e) => setNewSession({ ...newSession, capacity: Number(e.target.value) || 0 })}
-                  />
-                </Field>
-
-                <Field className="sm:col-span-2">
-                  <FieldLabel>Location URL / Google Maps Link (Optional)</FieldLabel>
-                  <Input
-                    placeholder="https://maps.app.goo.gl/... or https://maps.google.com/..."
-                    value={newSession.location_url ?? ""}
-                    onChange={(e) => setNewSession({ ...newSession, location_url: e.target.value })}
-                  />
-                  <p className="pt-0.5 text-[10px] text-muted-foreground">
-                    Direct Google Maps or venue directions link for attendees joining this specific session.
-                  </p>
-                </Field>
-
-                <Field className="sm:col-span-2">
-                  <FieldLabel>Description / Prerequisites (HTML Format)</FieldLabel>
-                  <HtmlEditText
-                    value={newSession.description ?? ""}
-                    onChange={(val) => setNewSession({ ...newSession, description: val })}
-                    placeholder="e.g. <b>Keynote:</b> Overview and announcements.<br/><ul><li>Bring laptop</li></ul>"
-                  />
-                </Field>
-
-                <Field>
-                  <FieldLabel>Speaker Name (Optional)</FieldLabel>
-                  <Input
-                    placeholder="e.g. Jane Doe"
-                    value={newSession.speaker_name ?? ""}
-                    onChange={(e) => setNewSession({ ...newSession, speaker_name: e.target.value })}
-                  />
-                </Field>
-
-                <Field>
-                  <FieldLabel>Presentation Slides URL (Optional)</FieldLabel>
-                  <Input
-                    placeholder="https://docs.google.com/presentation/... or https://speakerdeck.com/..."
-                    value={newSession.slides_url ?? ""}
-                    onChange={(e) => setNewSession({ ...newSession, slides_url: e.target.value })}
-                  />
-                </Field>
-
-                <Field className="sm:col-span-2">
-                  <FieldLabel>Slides Button Title (Optional)</FieldLabel>
-                  <Input
-                    placeholder="e.g. Presentation Deck / Slide Notes"
-                    value={newSession.slides_title ?? ""}
-                    onChange={(e) => setNewSession({ ...newSession, slides_title: e.target.value })}
-                  />
-                </Field>
-
-                <div className="space-y-2 rounded-lg border border-border/50 bg-background/50 p-3 sm:col-span-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium text-foreground text-xs">Related Resources & Code Links</span>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-6 gap-1 px-2 text-[11px]"
-                      onClick={() => {
-                        if (!newSessionLinkUrl.trim()) {
-                          toast.error("Please enter a link URL first.");
-                          return;
-                        }
-                        const current = newSession.related_links ?? [];
-                        setNewSession({
-                          ...newSession,
-                          related_links: [
-                            ...current,
-                            {
-                              title: newSessionLinkTitle.trim() || newSessionLinkUrl.trim(),
-                              url: newSessionLinkUrl.trim(),
-                            },
-                          ],
-                        });
-                        setNewSessionLinkTitle("");
-                        setNewSessionLinkUrl("");
-                      }}
-                    >
-                      <Plus className="size-3" />
-                      Add Link
-                    </Button>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <Input
-                      placeholder="Title (e.g. GitHub Repository)"
-                      value={newSessionLinkTitle}
-                      className="h-8 text-xs"
-                      onChange={(e) => setNewSessionLinkTitle(e.target.value)}
-                    />
-                    <Input
-                      placeholder="URL (https://github.com/...)"
-                      value={newSessionLinkUrl}
-                      className="h-8 text-xs"
-                      onChange={(e) => setNewSessionLinkUrl(e.target.value)}
-                    />
-                  </div>
-
-                  {newSession.related_links && newSession.related_links.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 pt-1">
-                      {newSession.related_links.map((link, lIdx) => (
-                        <Badge
-                          key={`${link.url}-${lIdx}`}
-                          variant="secondary"
-                          className="gap-1.5 py-1 font-normal text-xs"
-                        >
-                          <Link2 className="size-3 text-primary" />
-                          <span>{link.title}</span>
-                          <button
-                            type="button"
-                            className="ml-1 hover:text-destructive"
-                            onClick={() => {
-                              const updated = (newSession.related_links ?? []).filter((_, idx2) => idx2 !== lIdx);
-                              setNewSession({ ...newSession, related_links: updated });
-                            }}
-                          >
-                            ×
-                          </button>
-                        </Badge>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <Button size="sm" variant="ghost" onClick={() => setShowAddSession(false)}>
-                  Cancel
-                </Button>
-                <Button size="sm" onClick={handleAddSession} className="gap-1.5">
-                  <Plus className="size-3.5" />
-                  Save Session
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {/* Configured Sessions List */}
+        <CardContent>
           {sessions.length === 0 ? (
-            <div className="space-y-4 rounded-xl border border-primary/20 bg-primary/5 p-4 sm:p-5">
-              <div className="flex flex-col gap-1 border-b border-primary/10 pb-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="border-primary/30 bg-primary/10 text-[10px] text-primary">
-                      Single Session
-                    </Badge>
-                    <span className="font-semibold text-foreground text-sm">Default Main Session Configuration</span>
-                  </div>
-                  <p className="text-[11px] text-muted-foreground">
-                    No breakout sessions configured. Registrants will sign up for this default main session. Configure
-                    the session title and details below.
-                  </p>
+            <div className="flex flex-col gap-2 rounded-lg border border-primary/20 bg-primary/5 p-3.5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="border-primary/30 bg-primary/10 text-[10px] text-primary">
+                    Single Session
+                  </Badge>
+                  <span className="font-semibold text-foreground text-xs">
+                    Default Session: {defaultSessionName || "Full Session"}
+                  </span>
                 </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                <Field className="sm:col-span-2 lg:col-span-1">
-                  <FieldLabel className="text-xs">Default Session Title *</FieldLabel>
-                  <Input
-                    placeholder="Full Session"
-                    value={defaultSessionName}
-                    onChange={(e) => setDefaultSessionName(e.target.value)}
-                    className="h-9 text-xs"
-                  />
-                  <p className="pt-1 text-[10px] text-muted-foreground">
-                    Assigned session name for attendees and n8n webhook automation (defaults to{" "}
-                    <strong>Full Session</strong>).
-                  </p>
-                </Field>
-
-                <Field>
-                  <FieldLabel className="text-xs">Default Time Slot (Optional)</FieldLabel>
-                  <Input
-                    placeholder="e.g. 12:15 WIB - 17:00 WIB"
-                    value={defaultSessionTime}
-                    onChange={(e) => setDefaultSessionTime(e.target.value)}
-                    className="h-9 text-xs"
-                  />
-                  <p className="pt-1 text-[10px] text-muted-foreground">
-                    Included in email confirmation and calendar reminders for the default session.
-                  </p>
-                </Field>
-
-                <Field>
-                  <FieldLabel className="text-xs">Check-in Deadline (Optional)</FieldLabel>
-                  <Input
-                    placeholder="e.g. 13:15 WIB"
-                    value={defaultSessionCheckinDeadline}
-                    onChange={(e) => setDefaultSessionCheckinDeadline(e.target.value)}
-                    className="h-9 text-xs"
-                  />
-                  <p className="pt-1 text-[10px] text-muted-foreground">
-                    Cutoff time for physical check-in at the venue.
-                  </p>
-                </Field>
-
-                <Field className="sm:col-span-2 lg:col-span-2">
-                  <FieldLabel className="text-xs">Room / Location (Optional)</FieldLabel>
-                  <Input
-                    placeholder={
-                      event.venue?.name ? `e.g. ${event.venue.name} (Main Stage)` : "e.g. Main Auditorium / Venue"
-                    }
-                    value={defaultSessionLocation}
-                    onChange={(e) => setDefaultSessionLocation(e.target.value)}
-                    className="h-9 text-xs"
-                  />
-                  <p className="pt-1 text-[10px] text-muted-foreground">
-                    Specific hall or room. Falls back to venue name if left blank.
-                  </p>
-                </Field>
-
-                <Field className="sm:col-span-1 lg:col-span-1">
-                  <FieldLabel className="text-xs">Location URL / Maps Link (Optional)</FieldLabel>
-                  <Input
-                    placeholder="https://maps.app.goo.gl/..."
-                    value={defaultSessionLocationUrl}
-                    onChange={(e) => setDefaultSessionLocationUrl(e.target.value)}
-                    className="h-9 text-xs"
-                  />
-                  <p className="pt-1 text-[10px] text-muted-foreground">
-                    Google Maps link for directions to the venue.
-                  </p>
-                </Field>
+                <p className="text-[11px] text-muted-foreground">
+                  No breakout sessions configured. Registrants sign up for the main session. Switch to the{" "}
+                  <strong>Breakout Session</strong> tab to add manual or Bevy agenda sessions.
+                </p>
               </div>
             </div>
           ) : (
-            <div className="space-y-3">
-              {sessions.map((sess, idx) => (
-                <div key={sess.id} className="flex flex-col gap-3 rounded-lg border bg-card p-4 shadow-2xs">
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs">
-                        Session #{idx + 1}
-                      </Badge>
-                      <span className="font-semibold text-foreground text-sm">{sess.title}</span>
+            <div className="space-y-2.5">
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <Badge variant="secondary" className="text-xs">
+                  {sessions.length} Total {sessions.length === 1 ? "Session" : "Sessions"}
+                </Badge>
+                <Badge variant="outline" className="border-primary/30 bg-primary/5 text-primary text-xs">
+                  {preEventRegistrationSessions.length} Shown on Pre-Event Registration Form
+                </Badge>
+                {sessions.length - preEventRegistrationSessions.length > 0 && (
+                  <Badge variant="outline" className="text-muted-foreground text-xs">
+                    {sessions.length - preEventRegistrationSessions.length} On-Site / Manual Only
+                  </Badge>
+                )}
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {sessions.map((sess) => (
+                  <div
+                    key={sess.id}
+                    className="flex items-center justify-between gap-2 rounded-md border bg-muted/20 px-3 py-2 text-xs"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-foreground">{sess.title}</p>
+                      <p className="truncate text-[11px] text-muted-foreground">
+                        {sess.time_slot || "No time slot"} · Cap: {sess.capacity}
+                      </p>
                     </div>
-
-                    <div className="flex items-center gap-2">
-                      <Badge variant="secondary" className="text-xs">
-                        {sess.total_registered || 0} / {sess.capacity} booked
-                      </Badge>
-                      <Button
-                        size="icon-sm"
-                        variant="ghost"
-                        className="size-7 text-muted-foreground hover:text-destructive"
-                        onClick={() => handleRemoveSession(sess.id)}
-                      >
-                        <Trash2 className="size-3.5" />
-                      </Button>
-                    </div>
+                    <Badge
+                      variant={sess.include_in_registration !== false ? "default" : "outline"}
+                      className="shrink-0 text-[10px]"
+                    >
+                      {sess.include_in_registration !== false ? "In Reg Form" : "On-Site / Manual"}
+                    </Badge>
                   </div>
-
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    <Field>
-                      <FieldLabel className="text-xs">Session Title</FieldLabel>
-                      <Input
-                        value={sess.title}
-                        onChange={(e) => handleUpdateSession(sess.id, { title: e.target.value })}
-                      />
-                    </Field>
-
-                    <Field>
-                      <FieldLabel className="text-xs">Time Slot</FieldLabel>
-                      <Input
-                        value={sess.time_slot ?? ""}
-                        placeholder="e.g. 08:15 WIB - 12:00 WIB"
-                        onChange={(e) => handleUpdateSession(sess.id, { time_slot: e.target.value })}
-                      />
-                    </Field>
-
-                    <Field>
-                      <FieldLabel className="text-xs">Check-in Deadline</FieldLabel>
-                      <Input
-                        value={sess.checkin_deadline ?? ""}
-                        placeholder="e.g. 09:05 WIB"
-                        onChange={(e) => handleUpdateSession(sess.id, { checkin_deadline: e.target.value })}
-                      />
-                    </Field>
-
-                    <Field>
-                      <FieldLabel className="text-xs">Capacity Limit</FieldLabel>
-                      <Input
-                        type="number"
-                        min="1"
-                        value={sess.capacity}
-                        onChange={(e) => handleUpdateSession(sess.id, { capacity: Number(e.target.value) || 0 })}
-                      />
-                    </Field>
-
-                    <Field className="sm:col-span-2">
-                      <FieldLabel className="text-xs">Room / Location</FieldLabel>
-                      <Input
-                        value={sess.location ?? ""}
-                        placeholder="e.g. Auditorium / Main Venue"
-                        onChange={(e) => handleUpdateSession(sess.id, { location: e.target.value })}
-                      />
-                    </Field>
-
-                    <Field className="sm:col-span-3">
-                      <div className="flex items-center justify-between">
-                        <FieldLabel className="text-xs">Location URL / Google Maps Link (Optional)</FieldLabel>
-                        {sess.location_url && (
-                          <a
-                            href={sess.location_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
-                            title="Open Google Maps link"
-                          >
-                            Open map <ExternalLink className="size-2.5" />
-                          </a>
-                        )}
-                      </div>
-                      <Input
-                        value={sess.location_url ?? ""}
-                        placeholder="https://maps.app.goo.gl/... or https://maps.google.com/..."
-                        onChange={(e) => handleUpdateSession(sess.id, { location_url: e.target.value })}
-                      />
-                    </Field>
-
-                    <Field className="sm:col-span-3">
-                      <FieldLabel className="text-xs">Description / Prerequisites (HTML Format)</FieldLabel>
-                      <HtmlEditText
-                        value={sess.description ?? ""}
-                        placeholder="Session prerequisites or topics in HTML..."
-                        onChange={(val) => handleUpdateSession(sess.id, { description: val })}
-                      />
-                    </Field>
-
-                    <Field className="sm:col-span-1">
-                      <FieldLabel className="text-xs">Speaker Name (Optional)</FieldLabel>
-                      <Input
-                        value={sess.speaker_name ?? ""}
-                        placeholder="e.g. Jane Doe"
-                        onChange={(e) => handleUpdateSession(sess.id, { speaker_name: e.target.value })}
-                      />
-                    </Field>
-
-                    <Field className="sm:col-span-1">
-                      <FieldLabel className="text-xs">Presentation Slides URL (Optional)</FieldLabel>
-                      <Input
-                        value={sess.slides_url ?? ""}
-                        placeholder="https://docs.google.com/presentation/... or https://speakerdeck.com/..."
-                        onChange={(e) => handleUpdateSession(sess.id, { slides_url: e.target.value })}
-                      />
-                    </Field>
-
-                    <Field className="sm:col-span-1">
-                      <FieldLabel className="text-xs">Slides Button Title (Optional)</FieldLabel>
-                      <Input
-                        value={sess.slides_title ?? ""}
-                        placeholder="e.g. Keynote Deck"
-                        onChange={(e) => handleUpdateSession(sess.id, { slides_title: e.target.value })}
-                      />
-                    </Field>
-
-                    <div className="space-y-2 rounded-lg border border-border/50 bg-muted/20 p-3 sm:col-span-3">
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium text-foreground text-xs">Related Resources & Code Links</span>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-6 gap-1 px-2 text-[11px]"
-                          onClick={() => {
-                            const current = sess.related_links ?? [];
-                            handleUpdateSession(sess.id, {
-                              related_links: [...current, { title: "", url: "" }],
-                            });
-                          }}
-                        >
-                          <Plus className="size-3" />
-                          Add Link
-                        </Button>
-                      </div>
-
-                      {sess.related_links && sess.related_links.length > 0 ? (
-                        <div className="space-y-2 pt-1">
-                          {sess.related_links.map((link, lIdx) => (
-                            <div key={lIdx} className="flex items-center gap-2">
-                              <Input
-                                placeholder="Title (e.g. GitHub Repo / Colab)"
-                                value={link.title}
-                                className="h-8 text-xs"
-                                onChange={(e) => {
-                                  const updated = [...(sess.related_links ?? [])];
-                                  updated[lIdx] = { ...updated[lIdx], title: e.target.value };
-                                  handleUpdateSession(sess.id, { related_links: updated });
-                                }}
-                              />
-                              <Input
-                                placeholder="URL (https://github.com/...)"
-                                value={link.url}
-                                className="h-8 text-xs"
-                                onChange={(e) => {
-                                  const updated = [...(sess.related_links ?? [])];
-                                  updated[lIdx] = { ...updated[lIdx], url: e.target.value };
-                                  handleUpdateSession(sess.id, { related_links: updated });
-                                }}
-                              />
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon-sm"
-                                className="size-8 shrink-0 text-muted-foreground hover:text-destructive"
-                                onClick={() => {
-                                  const updated = (sess.related_links ?? []).filter((_, idx2) => idx2 !== lIdx);
-                                  handleUpdateSession(sess.id, { related_links: updated });
-                                }}
-                              >
-                                <Trash2 className="size-3.5" />
-                              </Button>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-[11px] text-muted-foreground">
-                          No related links added. Click &quot;Add Link&quot; to link repositories or docs.
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-                <div className="flex items-center gap-1.5">
-                  <Layers className="size-3.5 text-primary" />
-                  <span>
-                    Fallback Default Session:{" "}
-                    <strong className="text-foreground">{defaultSessionName || "Full Session"}</strong>
-                  </span>
-                </div>
-                <span className="text-[10px]">
-                  Applied when an attendee or automation lacks a specific breakout track.
-                </span>
+                ))}
               </div>
             </div>
           )}

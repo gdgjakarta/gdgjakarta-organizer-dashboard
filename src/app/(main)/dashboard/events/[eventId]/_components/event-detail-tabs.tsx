@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   CreditCard,
   FileSpreadsheet,
+  Layers,
   Mail,
   Package,
   PackageCheck,
@@ -30,6 +31,7 @@ import type {
 } from "@/lib/firestore/types";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
+import { BreakoutSessionsTab } from "./breakout-sessions-tab";
 import { BundlesTab } from "./bundles-tab";
 import { CustomFormTab } from "./custom-form-tab";
 import { EmailTemplatesTab } from "./email-templates-tab";
@@ -187,10 +189,21 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
       <div className="scrollbar-none -mx-1 w-full overflow-x-auto px-1 pb-1 sm:mx-0 sm:px-0">
         <TabsList className="inline-flex h-9 w-max items-center justify-start gap-1 rounded-lg bg-muted p-1 text-muted-foreground group-data-horizontal/tabs:h-9">
           {hasTeamAccess && (
-            <TabsTrigger value="registrants" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
-              <Users className="size-4" />
-              Registrants
-            </TabsTrigger>
+            <>
+              <TabsTrigger value="registrants" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
+                <Users className="size-4" />
+                Registrants
+              </TabsTrigger>
+              <TabsTrigger value="breakout-sessions" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
+                <Layers className="size-4" />
+                Breakout Session
+                {(activeEvent.sessions?.length ?? 0) > 0 && (
+                  <Badge variant="secondary" className="ml-0.5 h-4 px-1.5 text-[10px]">
+                    {activeEvent.sessions?.length}
+                  </Badge>
+                )}
+              </TabsTrigger>
+            </>
           )}
 
           {isOrganizer && (
@@ -259,9 +272,15 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
       </div>
 
       {hasTeamAccess && (
-        <TabsContent value="registrants" className="space-y-4">
-          <RegistrantsTab eventId={eventId} registrations={registrations} event={activeEvent} />
-        </TabsContent>
+        <>
+          <TabsContent value="registrants" className="space-y-4">
+            <RegistrantsTab eventId={eventId} registrations={registrations} event={activeEvent} />
+          </TabsContent>
+
+          <TabsContent value="breakout-sessions" className="space-y-4">
+            <BreakoutSessionsTab eventId={eventId} event={activeEvent} registrations={registrations} />
+          </TabsContent>
+        </>
       )}
 
       {isOrganizer && (

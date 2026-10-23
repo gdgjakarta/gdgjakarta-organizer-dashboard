@@ -238,7 +238,8 @@ export function EditRegistrationModal({
       ? eventData.custom_questions
       : DEFAULT_COMBINED_QUESTIONS;
 
-  const sessions: EventSession[] = eventData?.sessions ?? [];
+  const allSessions: EventSession[] = eventData?.sessions ?? [];
+  const sessions: EventSession[] = allSessions.filter((s) => s.include_in_registration !== false);
   const hasSessions = sessions.length > 0;
 
   // Group questions by section
@@ -723,7 +724,7 @@ export function EditRegistrationModal({
               /* ── READ-ONLY DOSSIER VIEW ───────────────────────────────── */
               <div className="space-y-6">
                 {/* Assigned Track */}
-                {hasSessions && selectedSessionId && (
+                {allSessions.length > 0 && selectedSessionId && (
                   <div className="flex items-start justify-between rounded-xl border border-primary/20 bg-primary/5 p-4 shadow-2xs">
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
@@ -734,17 +735,17 @@ export function EditRegistrationModal({
                         </Badge>
                       </div>
                       <p className="pt-0.5 font-semibold text-primary text-sm">
-                        {sessions.find((s) => s.id === selectedSessionId)?.title ?? selectedSessionId}
+                        {allSessions.find((s) => s.id === selectedSessionId)?.title ?? selectedSessionId}
                       </p>
-                      {sessions.find((s) => s.id === selectedSessionId)?.description && (
+                      {allSessions.find((s) => s.id === selectedSessionId)?.description && (
                         <p className="text-muted-foreground text-xs leading-relaxed">
-                          {sessions.find((s) => s.id === selectedSessionId)?.description}
+                          {allSessions.find((s) => s.id === selectedSessionId)?.description}
                         </p>
                       )}
-                      {sessions.find((s) => s.id === selectedSessionId)?.location && (
+                      {allSessions.find((s) => s.id === selectedSessionId)?.location && (
                         <div className="flex items-center gap-1 pt-1 text-muted-foreground text-xs">
                           <MapPin className="size-3 text-emerald-500" />
-                          <span>{sessions.find((s) => s.id === selectedSessionId)?.location}</span>
+                          <span>{allSessions.find((s) => s.id === selectedSessionId)?.location}</span>
                         </div>
                       )}
                     </div>

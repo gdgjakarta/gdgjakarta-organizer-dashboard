@@ -262,6 +262,10 @@ export function buildUnifiedAgenda(
         };
       });
 
+      if (unifiedItems.length === 0 && !matchedDaySess) {
+        return;
+      }
+
       const effectiveTitle =
         matchedDaySess?.title || dayTitle || (days.length > 1 ? `Session ${dIdx + 1}` : "Agenda Schedule");
 

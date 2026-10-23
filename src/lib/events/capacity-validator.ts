@@ -1,5 +1,13 @@
 import { GDG_SESSION_CAPACITY_MAP } from "@/lib/events/registration-defaults";
-import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
+import type { EventSession, FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
+
+/**
+ * Returns sessions that are configured to appear on the pre-event registration form.
+ * Sessions default to include_in_registration !== false for backward compatibility.
+ */
+export function getPreEventRegistrationSessions(sessions?: EventSession[] | null): EventSession[] {
+  return (sessions ?? []).filter((s) => s.include_in_registration !== false);
+}
 
 export interface CapacityCheckDetails {
   capacity: number | null; // null means unlimited
@@ -51,8 +59,9 @@ export function getEventVenueCapacity(event?: FirestoreEvent | null): number | n
     return event.max_attendees;
   }
 
-  if (Array.isArray(event.sessions) && event.sessions.length > 0) {
-    const totalSessionCapacity = event.sessions.reduce((acc, s) => acc + (Number(s.capacity) || 0), 0);
+  const preEventSessions = getPreEventRegistrationSessions(event.sessions);
+  if (preEventSessions.length > 0) {
+    const totalSessionCapacity = preEventSessions.reduce((acc, s) => acc + (Number(s.capacity) || 0), 0);
     if (totalSessionCapacity > 0) {
       return totalSessionCapacity;
     }
@@ -119,9 +128,10 @@ export function checkEventCapacityStatus(event?: FirestoreEvent | null): EventCa
     }
   }
 
-  // Also check if all sessions or tickets are full (if multiple sessions or tickets defined)
-  if (!isFull && Array.isArray(event.sessions) && event.sessions.length > 0) {
-    const sessionsWithCap = event.sessions.filter((s) => typeof s.capacity === "number" && s.capacity > 0);
+  // Also check if all pre-event sessions or tickets are full (if multiple sessions or tickets defined)
+  const preEventSessions = getPreEventRegistrationSessions(event.sessions);
+  if (!isFull && preEventSessions.length > 0) {
+    const sessionsWithCap = preEventSessions.filter((s) => typeof s.capacity === "number" && s.capacity > 0);
     if (sessionsWithCap.length > 0) {
       const allSessionsFull = sessionsWithCap.every((s) => (s.total_registered ?? 0) >= s.capacity);
       if (allSessionsFull) {
@@ -216,16 +226,49 @@ export function resolveRegistrationSession(
 
 /**
  * Checks if a registration belongs to a given session name or ID.
+ * Supports both `{ sessionId?: string; sessionTitle?: string }` and `(reg, sessionId, sessions)` call signatures.
  */
 export function isRegistrationInSession(
   reg: FirestoreRegistration,
-  sessionInfo: { sessionId?: string; sessionTitle: string },
+  sessionOrId: { sessionId?: string; sessionTitle?: string } | string,
+  sessions?: EventSession[],
 ): boolean {
-  if (sessionInfo.sessionId && reg.session_id && reg.session_id === sessionInfo.sessionId) {
-    return true;
+  let sessionId: string | undefined;
+  let sessionTitle = "";
+
+  if (typeof sessionOrId === "string") {
+    sessionId = sessionOrId;
+    const matched = sessions?.find((s) => s.id === sessionOrId);
+    sessionTitle = matched?.title ?? "";
+  } else if (sessionOrId && typeof sessionOrId === "object") {
+    sessionId = sessionOrId.sessionId;
+    sessionTitle = sessionOrId.sessionTitle ?? "";
   }
-  if (sessionInfo.sessionId && reg.answers?.session_id && reg.answers.session_id === sessionInfo.sessionId) {
-    return true;
+
+  if (sessionId) {
+    if (reg.session_id && reg.session_id === sessionId) {
+      return true;
+    }
+    if (reg.answers?.session_id && reg.answers.session_id === sessionId) {
+      return true;
+    }
+    if (Array.isArray(reg.breakout_session_ids) && reg.breakout_session_ids.includes(sessionId)) {
+      return true;
+    }
+    if (reg.session_check_ins?.[sessionId]?.is_checked_in) {
+      return true;
+    }
+    // For the default main session, include registrations that aren't tied to a specific breakout session
+    if (sessionId === "default") {
+      const hasSpecificBreakout =
+        (reg.session_id && reg.session_id !== "default") ||
+        (typeof reg.answers?.session_id === "string" &&
+          reg.answers.session_id.trim() !== "" &&
+          reg.answers.session_id !== "default");
+      if (!hasSpecificBreakout && (!sessions || sessions.length === 0)) {
+        return true;
+      }
+    }
   }
 
   const regSession =
@@ -237,10 +280,13 @@ export function isRegistrationInSession(
     (reg.answers?.session_title as string | undefined) ??
     "";
 
-  if (!regSession) return false;
+  if (typeof regSession !== "string" || !regSession.trim() || !sessionTitle.trim()) {
+    return false;
+  }
 
   const regClean = regSession.toLowerCase().split(",")[0].trim();
-  const targetClean = sessionInfo.sessionTitle.toLowerCase().trim();
+  const targetClean = sessionTitle.toLowerCase().trim();
+  if (!regClean || !targetClean) return false;
 
   return regClean === targetClean || regClean.includes(targetClean) || targetClean.includes(regClean);
 }

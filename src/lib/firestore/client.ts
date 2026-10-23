@@ -114,6 +114,7 @@ import type {
   RefundStatus,
   RegistrationStatus,
   RegistrationStatusLog,
+  SessionCheckInRecord,
 } from "./types";
 
 // ── Events ──────────────────────────────────────────────────────────────────
@@ -1618,7 +1619,10 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
     if (typeof eventData.max_attendees === "number" && eventData.max_attendees > 0) {
       venueCapacity = eventData.max_attendees;
     } else if (Array.isArray(eventData.sessions) && eventData.sessions.length > 0) {
-      venueCapacity = eventData.sessions.reduce((acc, s) => acc + (Number(s.capacity) || 0), 0);
+      const preEventSessions = eventData.sessions.filter((s) => s.include_in_registration !== false);
+      if (preEventSessions.length > 0) {
+        venueCapacity = preEventSessions.reduce((acc, s) => acc + (Number(s.capacity) || 0), 0);
+      }
     }
 
     if (venueCapacity !== null && venueCapacity > 0) {
@@ -1772,10 +1776,11 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
   const regId = `${eventIdStr}_${effectiveMemberId}`;
   const docRef = doc(db, "event_registrations", regId);
 
+  const preEventSessionsForDefault = (eventData?.sessions ?? []).filter((s) => s.include_in_registration !== false);
   const resolvedSessionTitle =
     registration.session_title ??
-    (eventData?.sessions && eventData.sessions.length > 0
-      ? eventData.sessions[0].title
+    (preEventSessionsForDefault.length > 0
+      ? preEventSessionsForDefault[0].title
       : eventData?.default_session_name?.trim() || "Full Session");
 
   // Include session_id, session_title and payment metadata inside answers for backward compatibility
@@ -2227,9 +2232,22 @@ export async function recalculateEventCapacityCounters(
           isRegistrationInSession(reg, { sessionId: sess.id, sessionTitle: sess.title }),
         ).length;
 
+        const checkedInCount = registrations.filter((reg) => {
+          const sessionCheckIn = reg.session_check_ins?.[sess.id];
+          if (sessionCheckIn?.is_checked_in) return true;
+          if (sess.separate_check_in === false) {
+            return (
+              Boolean(reg.is_checked_in) &&
+              isRegistrationInSession(reg, { sessionId: sess.id, sessionTitle: sess.title })
+            );
+          }
+          return false;
+        }).length;
+
         return {
           ...sess,
           total_registered: count,
+          total_checked_in: checkedInCount,
         };
       });
       updatePayload.sessions = updatedSessions;
@@ -2333,7 +2351,6 @@ export async function getEventSessionRegistrationCounts(
       for (const sess of sessions) {
         if (isRegistrationInSession(reg, { sessionId: sess.id, sessionTitle: sess.title })) {
           counts[sess.id] = (counts[sess.id] ?? 0) + 1;
-          break;
         }
       }
     }
@@ -2793,6 +2810,11 @@ const ALLOWED_EVENT_DOC_KEYS = new Set<string>([
   "agenda",
   "speakers",
   "sessions",
+  "default_session_name",
+  "default_session_time",
+  "default_session_checkin_deadline",
+  "default_session_location",
+  "default_session_location_url",
   "webhook_url",
   "payment_webhook_url",
   "payment_environment",
@@ -3130,6 +3152,268 @@ export async function updateEventEmailTemplates(
 
   const sanitized = sanitizeFirestoreData(updatePayload);
   await setDoc(eventRef, sanitized, { merge: true });
+}
+
+// ── Breakout Sessions & Session Check-in ───────────────────────────────────
+
+export async function updateEventBreakoutSessions(
+  eventId: string,
+  sessions: EventSession[],
+  defaultSessionName?: string,
+  baseEvent?: Partial<FirestoreEvent>,
+  defaultSessionDetails?: {
+    default_session_time?: string;
+    default_session_checkin_deadline?: string;
+    default_session_location?: string;
+    default_session_location_url?: string;
+  },
+): Promise<void> {
+  if (typeof window === "undefined") return;
+  const eventRef = doc(db, "events", String(eventId));
+  const now = new Date().toISOString();
+  const updatePayload: Record<string, unknown> = {
+    sessions: sessions.length > 0 ? sessions : deleteField(),
+    ...(defaultSessionName !== undefined
+      ? {
+          default_session_name: defaultSessionName.trim() ? defaultSessionName.trim() : "Full Session",
+        }
+      : {}),
+    ...(defaultSessionDetails?.default_session_time !== undefined
+      ? {
+          default_session_time: defaultSessionDetails.default_session_time.trim()
+            ? defaultSessionDetails.default_session_time.trim()
+            : deleteField(),
+        }
+      : {}),
+    ...(defaultSessionDetails?.default_session_checkin_deadline !== undefined
+      ? {
+          default_session_checkin_deadline: defaultSessionDetails.default_session_checkin_deadline.trim()
+            ? defaultSessionDetails.default_session_checkin_deadline.trim()
+            : deleteField(),
+        }
+      : {}),
+    ...(defaultSessionDetails?.default_session_location !== undefined
+      ? {
+          default_session_location: defaultSessionDetails.default_session_location.trim()
+            ? defaultSessionDetails.default_session_location.trim()
+            : deleteField(),
+        }
+      : {}),
+    ...(defaultSessionDetails?.default_session_location_url !== undefined
+      ? {
+          default_session_location_url: defaultSessionDetails.default_session_location_url.trim()
+            ? defaultSessionDetails.default_session_location_url.trim()
+            : deleteField(),
+        }
+      : {}),
+    updated_at: now,
+  };
+
+  const exists = await ensureEventDocInitialized(eventId, baseEvent, updatePayload);
+  if (!exists) return;
+
+  const sanitized = sanitizeFirestoreData(updatePayload);
+  await setDoc(eventRef, sanitized, { merge: true });
+
+  try {
+    await recalculateEventCapacityCounters(eventId);
+  } catch (err) {
+    console.warn("[Firestore] Failed to recalculate session counters after updateEventBreakoutSessions:", err);
+  }
+}
+
+export async function assignRegistrantsToBreakoutSession(
+  eventId: string,
+  sessionId: string,
+  sessionTitle: string,
+  registrationIds: string[],
+  markCheckedIn = false,
+  reviewer?: { id: string; name: string; email?: string },
+): Promise<{ updatedCount: number }> {
+  if (typeof window === "undefined" || registrationIds.length === 0) return { updatedCount: 0 };
+
+  const now = new Date().toISOString();
+  const batch = writeBatch(db);
+  let updatedCount = 0;
+
+  for (const regId of registrationIds) {
+    const regRef = doc(db, "event_registrations", regId);
+    const snap = await getDoc(regRef);
+    if (!snap.exists()) continue;
+
+    const data = snap.data() as FirestoreRegistration;
+    const currentBreakoutIds = Array.isArray(data.breakout_session_ids) ? [...data.breakout_session_ids] : [];
+    if (!currentBreakoutIds.includes(sessionId)) {
+      currentBreakoutIds.push(sessionId);
+    }
+
+    const updateFields: Record<string, unknown> = {
+      breakout_session_ids: currentBreakoutIds,
+      updated_at: now,
+    };
+
+    if (markCheckedIn) {
+      const existingCheckIns = data.session_check_ins ? { ...data.session_check_ins } : {};
+      existingCheckIns[sessionId] = sanitizeFirestoreData<SessionCheckInRecord>({
+        session_id: sessionId,
+        session_title: sessionTitle,
+        is_checked_in: true,
+        checked_in_at: now,
+        checked_in_by_id: reviewer?.id ?? "organizer",
+        checked_in_by_name: reviewer?.name ?? "Organizer",
+        checked_in_by_email: reviewer?.email,
+        check_in_method: "manual",
+      });
+      updateFields.session_check_ins = existingCheckIns;
+    }
+
+    batch.update(regRef, sanitizeFirestoreData(updateFields));
+    updatedCount += 1;
+  }
+
+  if (updatedCount > 0) {
+    await batch.commit();
+    try {
+      await recalculateEventCapacityCounters(eventId);
+    } catch (err) {
+      console.warn("[Firestore] Failed to recalculate session counters after manual assignment:", err);
+    }
+  }
+
+  return { updatedCount };
+}
+
+export async function removeRegistrantFromBreakoutSession(
+  eventId: string,
+  sessionId: string,
+  registrationId: string,
+): Promise<void> {
+  if (typeof window === "undefined" || !registrationId) return;
+  const regRef = doc(db, "event_registrations", registrationId);
+  const snap = await getDoc(regRef);
+  if (!snap.exists()) return;
+
+  const data = snap.data() as FirestoreRegistration;
+  const now = new Date().toISOString();
+  const updatedBreakoutIds = (data.breakout_session_ids ?? []).filter((id) => id !== sessionId);
+  const updatedCheckIns = { ...(data.session_check_ins ?? {}) };
+  delete updatedCheckIns[sessionId];
+
+  const updateFields: Record<string, unknown> = {
+    breakout_session_ids: updatedBreakoutIds,
+    session_check_ins: updatedCheckIns,
+    updated_at: now,
+  };
+
+  if (data.session_id === sessionId) {
+    updateFields.session_id = deleteField();
+    updateFields.session_title = deleteField();
+  }
+
+  await updateDoc(regRef, updateFields);
+
+  try {
+    await recalculateEventCapacityCounters(eventId);
+  } catch (err) {
+    console.warn("[Firestore] Failed to recalculate session counters after removing registrant:", err);
+  }
+}
+
+export async function updateBreakoutSessionCheckIn(
+  registrationId: string,
+  eventId: string,
+  sessionId: string,
+  sessionTitle: string,
+  isCheckedIn: boolean,
+  reviewer?: {
+    id: string;
+    name: string;
+    email?: string;
+    method?: "qr_scan" | "manual";
+    rawQr?: string;
+    bevyAttendeeId?: number | null;
+    syncedToBevy?: boolean;
+  },
+): Promise<SessionCheckInRecord> {
+  if (typeof window === "undefined") {
+    throw new Error("Client Firestore call not supported on server.");
+  }
+
+  const regRef = doc(db, "event_registrations", registrationId);
+  const snap = await getDoc(regRef);
+  if (!snap.exists()) {
+    throw new Error(`Registration ${registrationId} not found.`);
+  }
+
+  const data = snap.data() as FirestoreRegistration;
+  const now = new Date().toISOString();
+
+  const currentBreakoutIds = Array.isArray(data.breakout_session_ids) ? [...data.breakout_session_ids] : [];
+  if (isCheckedIn && data.session_id !== sessionId && !currentBreakoutIds.includes(sessionId)) {
+    currentBreakoutIds.push(sessionId);
+  }
+
+  const record: SessionCheckInRecord = sanitizeFirestoreData<SessionCheckInRecord>({
+    session_id: sessionId,
+    session_title: sessionTitle,
+    is_checked_in: isCheckedIn,
+    checked_in_at: isCheckedIn ? now : undefined,
+    checked_in_by_id: isCheckedIn ? (reviewer?.id ?? "organizer") : undefined,
+    checked_in_by_name: isCheckedIn ? (reviewer?.name ?? "Organizer") : undefined,
+    checked_in_by_email: isCheckedIn ? reviewer?.email : undefined,
+    check_in_method: isCheckedIn ? (reviewer?.method ?? "manual") : undefined,
+    raw_qr_text: isCheckedIn ? reviewer?.rawQr : undefined,
+    bevy_attendee_id: isCheckedIn ? (reviewer?.bevyAttendeeId ?? data.bevy_attendee_id) : undefined,
+    synced_to_bevy: isCheckedIn ? (reviewer?.syncedToBevy ?? false) : undefined,
+  });
+
+  const existingCheckIns = data.session_check_ins ? { ...data.session_check_ins } : {};
+  existingCheckIns[sessionId] = record;
+
+  await updateDoc(
+    regRef,
+    sanitizeFirestoreData({
+      breakout_session_ids: currentBreakoutIds,
+      session_check_ins: existingCheckIns,
+      ...(reviewer?.bevyAttendeeId && !data.bevy_attendee_id ? { bevy_attendee_id: reviewer.bevyAttendeeId } : {}),
+      updated_at: now,
+    }),
+  );
+
+  try {
+    const auditEntry: AuditLogEntry = sanitizeFirestoreData({
+      action: "registration_status_change",
+      entity_type: "registration",
+      entity_id: registrationId,
+      event_id: eventId,
+      event_title: data.event_title ? data.event_title.slice(0, 300) : undefined,
+      member_id: data.member_id,
+      member_name: data.member_name,
+      member_email: data.member_email && data.member_email.includes("@") ? data.member_email : undefined,
+      actor_id: reviewer?.id ?? "organizer",
+      actor_name: reviewer?.name ?? "Organizer",
+      actor_email: reviewer?.email && reviewer.email.includes("@") ? reviewer.email : undefined,
+      previous_value: data.session_check_ins?.[sessionId]?.is_checked_in
+        ? "session_checked_in"
+        : "session_not_checked_in",
+      new_value: isCheckedIn ? "session_checked_in" : "session_not_checked_in",
+      notes: isCheckedIn
+        ? `Checked in to session "${sessionTitle}" (${reviewer?.method === "qr_scan" ? "QR Scan" : "Manual"}).`
+        : `Session check-in reverted for "${sessionTitle}".`,
+      timestamp: now,
+    });
+    await addDoc(collection(db, "audit_logs"), auditEntry);
+  } catch (err) {
+    console.warn("[Firestore] Failed to write session check-in audit log:", err);
+  }
+
+  try {
+    await recalculateEventCapacityCounters(eventId);
+  } catch (err) {
+    console.warn("[Firestore] Failed to recalculate session counters after session check-in:", err);
+  }
+
+  return record;
 }
 
 // ── Sync Metadata ───────────────────────────────────────────────────────────

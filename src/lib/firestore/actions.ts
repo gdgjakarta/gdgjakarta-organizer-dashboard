@@ -337,6 +337,121 @@ export async function updateRegistrationCheckInAction(
 }
 
 /**
+ * Update event breakout sessions and default session config
+ */
+export async function updateEventBreakoutSessionsAction(
+  eventId: string,
+  sessions: import("./types").EventSession[],
+  defaultSessionName?: string,
+  baseEvent?: Partial<FirestoreEvent>,
+  defaultSessionDetails?: {
+    default_session_time?: string;
+    default_session_checkin_deadline?: string;
+    default_session_location?: string;
+    default_session_location_url?: string;
+  },
+) {
+  try {
+    const { updateEventBreakoutSessions } = await import("./client");
+    await updateEventBreakoutSessions(eventId, sessions, defaultSessionName, baseEvent, defaultSessionDetails);
+    await revalidateDashboardPath(`/dashboard/events/${eventId}`);
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to save breakout sessions.";
+    console.error("[updateEventBreakoutSessionsAction] error:", message);
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * Manually assign existing registrants to a breakout session in Firestore
+ */
+export async function assignRegistrantsToBreakoutSessionAction(
+  eventId: string,
+  sessionId: string,
+  sessionTitle: string,
+  registrationIds: string[],
+  markCheckedIn = false,
+  reviewer?: { id: string; name: string; email?: string },
+) {
+  try {
+    const { assignRegistrantsToBreakoutSession } = await import("./client");
+    const res = await assignRegistrantsToBreakoutSession(
+      eventId,
+      sessionId,
+      sessionTitle,
+      registrationIds,
+      markCheckedIn,
+      reviewer,
+    );
+    await revalidateDashboardPath(`/dashboard/events/${eventId}`);
+    return { success: true, updatedCount: res.updatedCount };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to assign registrants to session.";
+    console.error("[assignRegistrantsToBreakoutSessionAction] error:", message);
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * Remove a registrant from a breakout session in Firestore
+ */
+export async function removeRegistrantFromBreakoutSessionAction(
+  eventId: string,
+  sessionId: string,
+  registrationId: string,
+) {
+  try {
+    const { removeRegistrantFromBreakoutSession } = await import("./client");
+    await removeRegistrantFromBreakoutSession(eventId, sessionId, registrationId);
+    await revalidateDashboardPath(`/dashboard/events/${eventId}`);
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to remove registrant from session.";
+    console.error("[removeRegistrantFromBreakoutSessionAction] error:", message);
+    return { success: false, error: message };
+  }
+}
+
+/**
+ * Record or undo breakout session check-in in Firestore
+ */
+export async function updateBreakoutSessionCheckInAction(
+  registrationId: string,
+  eventId: string,
+  sessionId: string,
+  sessionTitle: string,
+  isCheckedIn: boolean,
+  reviewer?: {
+    id: string;
+    name: string;
+    email?: string;
+    method?: "qr_scan" | "manual";
+    rawQr?: string;
+    bevyAttendeeId?: number | null;
+    syncedToBevy?: boolean;
+  },
+) {
+  try {
+    const { updateBreakoutSessionCheckIn } = await import("./client");
+    const record = await updateBreakoutSessionCheckIn(
+      registrationId,
+      eventId,
+      sessionId,
+      sessionTitle,
+      isCheckedIn,
+      reviewer,
+    );
+    await revalidateDashboardPath(`/dashboard/events/${eventId}`);
+    return { success: true, record };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to update session check-in.";
+    console.error("[updateBreakoutSessionCheckInAction] error:", message);
+    return { success: false, error: message };
+  }
+}
+
+/**
  * Update attendee merchandise collection status in Firestore and record audit log
  */
 export async function updateRegistrationMerchandiseCollectionAction(
