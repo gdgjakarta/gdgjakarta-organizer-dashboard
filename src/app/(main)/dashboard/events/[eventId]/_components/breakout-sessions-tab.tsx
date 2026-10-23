@@ -439,11 +439,8 @@ export function BreakoutSessionsTab({
   const [selectedAgendaKey, setSelectedAgendaKey] = React.useState<string>("");
   const [isSaving, setIsSaving] = React.useState(false);
 
-  // Collapsible / Expanded session cards state
-  const [expandedSessionIds, setExpandedSessionIds] = React.useState<Set<string>>(
-    () => new Set(["default", ...initialNormalizedSessions.map((s) => s.id)]),
-  );
-  const hasInitializedExpandedRef = React.useRef(initialNormalizedSessions.length > 0);
+  // Collapsible / Expanded session cards state (default: collapsed)
+  const [expandedSessionIds, setExpandedSessionIds] = React.useState<Set<string>>(() => new Set());
 
   const handleToggleExpandSession = React.useCallback((id: string) => {
     setExpandedSessionIds((prev) => {
@@ -555,10 +552,6 @@ export function BreakoutSessionsTab({
             : null;
         if (normalizedLoadedSessions) {
           setSessions(normalizedLoadedSessions);
-          if (!hasInitializedExpandedRef.current) {
-            setExpandedSessionIds(new Set(["default", ...normalizedLoadedSessions.map((s) => s.id)]));
-            hasInitializedExpandedRef.current = true;
-          }
         }
 
         const nextDefaultName =
