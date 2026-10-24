@@ -203,8 +203,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
               title: event.title || docData.title,
               start_date: event.start_date || docData.start_date,
               end_date: event.end_date || docData.end_date,
-              venue_name: event.venue_name || docData.venue_name,
-              venue_address: event.venue_address || docData.venue_address,
+              venue: event.venue ?? docData.venue,
             };
             const allData = getAllDefaultTemplatesData(mergedEvent);
             setTemplatesData(allData);
@@ -216,7 +215,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
       }
     }
     void loadLatestEventData();
-  }, [event.id, event.title, event.start_date, event.end_date, event.venue_name, event.venue_address]);
+  }, [event.id, event.title, event.start_date, event.end_date, event.venue]);
 
   // Dirty state calculation for both HTML templates and per-template data configuration
   const isDirty = useMemo(() => {
