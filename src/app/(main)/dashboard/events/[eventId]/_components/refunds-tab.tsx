@@ -53,6 +53,7 @@ import {
   expandRefundRecords,
   formatRupiah,
   getEventRefundCutoff,
+  getRegistrationRefundAmount,
 } from "@/lib/events/refund-utils";
 import { fetchEventRefundRequestsAction, updateEventRefundConfigAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent, FirestoreRegistration, RefundStatus } from "@/lib/firestore/types";
@@ -97,6 +98,7 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
   // Refund policy settings state
   const initialCustomNotes = event.refund_policy_notes?.trim();
   const [refundEnabled, setRefundEnabled] = useState<boolean>(event.refund_enabled !== false);
+  const [refundIncludeFee, setRefundIncludeFee] = useState<boolean>(Boolean(event.refund_include_fee));
   const [refundCutoffDays, setRefundCutoffDays] = useState<number>(
     typeof event.refund_cutoff_days_before === "number" ? event.refund_cutoff_days_before : 1,
   );
@@ -123,6 +125,7 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
   // Sync event props
   useEffect(() => {
     setRefundEnabled(event.refund_enabled !== false);
+    setRefundIncludeFee(Boolean(event.refund_include_fee));
     if (typeof event.refund_cutoff_days_before === "number") {
       setRefundCutoffDays(event.refund_cutoff_days_before);
     }
@@ -177,6 +180,7 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
         eventId,
         {
           refund_enabled: refundEnabled,
+          refund_include_fee: refundIncludeFee,
           refund_cutoff_days_before: Number(refundCutoffDays),
           refund_cutoff_date: refundCutoffDate.trim() || null,
           refund_policy_notes: refundPolicyNotes.trim() || null,
@@ -196,6 +200,19 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
       setIsSavingSettings(false);
     }
   };
+
+  const effectivePolicyNotes = refundPolicyNotes.trim() ? refundPolicyNotes.trim() : DEFAULT_REFUND_POLICY_NOTES;
+
+  const effectiveEvent: FirestoreEvent = useMemo(() => {
+    return {
+      ...event,
+      refund_enabled: refundEnabled,
+      refund_include_fee: refundIncludeFee,
+      refund_cutoff_days_before: refundCutoffDays,
+      refund_cutoff_date: refundCutoffDate.trim() ? refundCutoffDate.trim() : undefined,
+      refund_policy_notes: effectivePolicyNotes,
+    };
+  }, [event, refundEnabled, refundIncludeFee, refundCutoffDays, refundCutoffDate, effectivePolicyNotes]);
 
   const handleExportCsv = () => {
     if (registrations.length === 0) {
@@ -219,11 +236,12 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
 
     const rows = registrations.map((r) => {
       const req = r.refund_request;
+      const refundAmt = getRegistrationRefundAmount(r, effectiveEvent);
       return [
         `"${r.member_name.replace(/"/g, '""')}"`,
         `"${r.member_email.replace(/"/g, '""')}"`,
         `"${req?.status ?? ""}"`,
-        req?.refund_amount ?? 0,
+        refundAmt,
         `"${req?.bank_name ?? ""}"`,
         `'${req?.bank_account_number ?? ""}`,
         `"${req?.bank_account_name ?? ""}"`,
@@ -253,11 +271,11 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
     const pending = registrations.filter((r) => r.refund_request?.status === "waiting_for_approval").length;
     const completed = registrations.filter((r) => r.refund_request?.status === "refund_completed");
     const completedCount = completed.length;
-    const completedAmount = completed.reduce((acc, curr) => acc + (curr.refund_request?.refund_amount ?? 0), 0);
+    const completedAmount = completed.reduce((acc, curr) => acc + getRegistrationRefundAmount(curr, effectiveEvent), 0);
     const rejected = registrations.filter((r) => r.refund_request?.status === "rejected").length;
 
     return { total, pending, completedCount, completedAmount, rejected };
-  }, [registrations]);
+  }, [registrations, effectiveEvent]);
 
   // Filtered List
   const filteredRegistrations = useMemo(() => {
@@ -289,21 +307,9 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
 
   const cutoffInfo = getEventRefundCutoff(event);
 
-  const effectivePolicyNotes = refundPolicyNotes.trim() ? refundPolicyNotes.trim() : DEFAULT_REFUND_POLICY_NOTES;
-
-  const previewEvent: FirestoreEvent = useMemo(() => {
-    return {
-      ...event,
-      refund_enabled: refundEnabled,
-      refund_cutoff_days_before: refundCutoffDays,
-      refund_cutoff_date: refundCutoffDate.trim() ? refundCutoffDate.trim() : undefined,
-      refund_policy_notes: effectivePolicyNotes,
-    };
-  }, [event, refundEnabled, refundCutoffDays, refundCutoffDate, effectivePolicyNotes]);
-
   const previewCutoffInfo = useMemo(() => {
-    return getEventRefundCutoff(previewEvent);
-  }, [previewEvent]);
+    return getEventRefundCutoff(effectiveEvent);
+  }, [effectiveEvent]);
 
   return (
     <div className="space-y-6">
@@ -394,6 +400,17 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
             >
               {refundEnabled ? "Refunds Enabled" : "Refunds Disabled"}
             </Badge>
+            <Badge
+              variant="outline"
+              className={cn(
+                "font-medium text-xs",
+                refundIncludeFee
+                  ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                  : "border-border text-muted-foreground",
+              )}
+            >
+              {refundIncludeFee ? "Fee Included in Refund" : "Ticket Deposit Only (No Fee)"}
+            </Badge>
             <Button
               variant="outline"
               size="sm"
@@ -407,15 +424,27 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
 
         {showSettingsCard ? (
           <CardContent className="space-y-4 border-border/50 border-t pt-4">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="flex items-center justify-between rounded-lg border border-border p-3">
-                <div className="space-y-0.5">
+                <div className="space-y-0.5 pr-2">
                   <Label htmlFor="toggleRefund" className="font-semibold text-xs">
                     Accept Refund Requests
                   </Label>
                   <p className="text-[11px] text-muted-foreground">Allow paid waitlisted attendees to submit claims</p>
                 </div>
                 <Switch id="toggleRefund" checked={refundEnabled} onCheckedChange={setRefundEnabled} />
+              </div>
+
+              <div className="flex items-center justify-between rounded-lg border border-border p-3">
+                <div className="space-y-0.5 pr-2">
+                  <Label htmlFor="toggleRefundIncludeFee" className="font-semibold text-xs">
+                    Include Fee in Deposit Refund
+                  </Label>
+                  <p className="text-[11px] text-muted-foreground">
+                    When disabled (default), only refund ticket deposit without payment gateway fee
+                  </p>
+                </div>
+                <Switch id="toggleRefundIncludeFee" checked={refundIncludeFee} onCheckedChange={setRefundIncludeFee} />
               </div>
 
               <div className="space-y-1.5 rounded-lg border border-border p-3">
@@ -439,7 +468,7 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
                 </p>
               </div>
 
-              <div className="space-y-1.5 rounded-lg border border-border p-3 sm:col-span-2 lg:col-span-1">
+              <div className="space-y-1.5 rounded-lg border border-border p-3">
                 <Label htmlFor="cutoffDate" className="font-semibold text-xs">
                   Fixed Cutoff Date & Time (Optional)
                 </Label>
@@ -523,6 +552,12 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
                 {event.refund_cutoff_date
                   ? `Specific deadline (${cutoffInfo.formattedCutoff})`
                   : `${refundCutoffDays} day(s) before event start date`}
+              </span>
+              <span>
+                <strong>Deposit Refund Nominal: </strong>
+                <span className="font-medium text-foreground">
+                  {event.refund_include_fee ? "Includes Payment Gateway Fee" : "Ticket Deposit Only (No Fee)"}
+                </span>
               </span>
             </div>
           </CardContent>
@@ -699,7 +734,7 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
                       <TableCell className="py-3.5 align-top font-medium">
                         <div className="space-y-1">
                           <p className="font-bold text-foreground text-xs tabular-nums">
-                            {formatRupiah(req.refund_amount)}
+                            {formatRupiah(getRegistrationRefundAmount(reg, effectiveEvent))}
                           </p>
                           <Badge
                             variant="secondary"
@@ -890,6 +925,7 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
           isOpen={Boolean(approvalModalReg)}
           onOpenChange={(open) => !open && setApprovalModalReg(null)}
           registration={approvalModalReg}
+          event={effectiveEvent}
           eventId={eventId}
           eventTitle={event.title}
           onSuccess={(updated) => {
@@ -906,6 +942,7 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
           isOpen={Boolean(rejectModalReg)}
           onOpenChange={(open) => !open && setRejectModalReg(null)}
           registration={rejectModalReg}
+          event={effectiveEvent}
           eventId={eventId}
           onSuccess={(updated) => {
             setRegistrations((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
@@ -923,7 +960,7 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
               <DialogTitle className="text-base sm:text-lg">Completed Refund Transfer Proof</DialogTitle>
               <DialogDescription className="text-xs">
                 Disbursement to {viewProofModalReg.member_name} (
-                {formatRupiah(viewProofModalReg.refund_request.refund_amount)})
+                {formatRupiah(getRegistrationRefundAmount(viewProofModalReg, effectiveEvent))})
               </DialogDescription>
             </DialogHeader>
 
@@ -1147,6 +1184,12 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
                     </p>
                     <div className="flex flex-wrap items-center justify-between gap-2 border-border/50 border-t pt-1.5 text-[10px] text-muted-foreground">
                       <span>Cutoff Deadline: {previewCutoffInfo.formattedCutoff}</span>
+                      <span>
+                        Refund Nominal:{" "}
+                        <strong className="text-foreground">
+                          {refundIncludeFee ? "With gateway fee" : "Deposit only (no fee)"}
+                        </strong>
+                      </span>
                       <span>Policy Status: {refundEnabled ? "Active" : "Disabled"}</span>
                     </div>
                   </div>
@@ -1181,7 +1224,7 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
       {inspectRegistration && (
         <ApplicantDetailDialog
           registration={inspectRegistration}
-          event={event}
+          event={effectiveEvent}
           isCurationMode={event.curation_mode}
           customQuestions={event.custom_questions}
           onClose={() => setInspectRegistration(null)}

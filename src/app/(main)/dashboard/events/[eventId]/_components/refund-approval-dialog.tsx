@@ -17,15 +17,16 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { formatRupiah } from "@/lib/events/refund-utils";
+import { formatRupiah, getRegistrationRefundAmount } from "@/lib/events/refund-utils";
 import { approveAndCompleteRefundAction } from "@/lib/firestore/actions";
-import type { FirestoreRegistration } from "@/lib/firestore/types";
+import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
 interface RefundApprovalDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   registration: FirestoreRegistration;
+  event?: FirestoreEvent;
   eventId: string;
   eventTitle?: string;
   onSuccess: (updated: FirestoreRegistration) => void;
@@ -35,12 +36,14 @@ export function RefundApprovalDialog({
   isOpen,
   onOpenChange,
   registration,
+  event,
   eventId,
   eventTitle,
   onSuccess,
 }: RefundApprovalDialogProps) {
   const user = useAuthStore((s) => s.user);
   const refundReq = registration.refund_request;
+  const refundAmount = getRegistrationRefundAmount(registration, event);
 
   const [completionProofUrl, setCompletionProofUrl] = useState<string>("");
   const [completionProofName, setCompletionProofName] = useState<string>("");
@@ -120,6 +123,7 @@ export function RefundApprovalDialog({
           registration.id,
           "refund_completed",
           {
+            refund_amount: refundAmount,
             completion_proof_url: completionProofUrl.trim(),
             completion_notes: completionNotes.trim() || undefined,
             completed_at: new Date().toISOString(),
@@ -136,6 +140,7 @@ export function RefundApprovalDialog({
       const res = await approveAndCompleteRefundAction({
         registrationId: registration.id,
         eventId,
+        refundAmount,
         completionProofUrl: completionProofUrl.trim(),
         completionNotes: completionNotes.trim() || undefined,
         reviewer,
@@ -146,6 +151,7 @@ export function RefundApprovalDialog({
         const now = new Date().toISOString();
         const updatedReq = {
           ...refundReq,
+          refund_amount: refundAmount,
           status: "refund_completed" as const,
           completion_proof_url: completionProofUrl.trim(),
           completion_notes: completionNotes.trim() || undefined,
@@ -191,7 +197,7 @@ export function RefundApprovalDialog({
           <div className="flex items-center justify-between">
             <span className="font-semibold text-foreground">Beneficiary Details</span>
             <Badge variant="outline" className="border-primary/30 font-bold text-primary">
-              {formatRupiah(refundReq.refund_amount)}
+              {formatRupiah(refundAmount)}
             </Badge>
           </div>
 

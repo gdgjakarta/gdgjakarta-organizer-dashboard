@@ -58,7 +58,7 @@ import {
   getRegistrationPaymentDeadline,
   isEventCurationMode,
 } from "@/lib/events/payment-deadline";
-import { formatRupiah } from "@/lib/events/refund-utils";
+import { formatRupiah, getRegistrationRefundAmount } from "@/lib/events/refund-utils";
 import { DEFAULT_COMBINED_QUESTIONS } from "@/lib/events/registration-defaults";
 import type {
   CustomQuestion,
@@ -586,7 +586,7 @@ export function ApplicantDetailDialog({
       const refReq = registration.refund_request;
       lines.push("\nRefund Request Application:");
       lines.push(`• Status: ${refReq.status}`);
-      lines.push(`• Refund Amount: ${formatRupiah(refReq.refund_amount)}`);
+      lines.push(`• Refund Amount: ${formatRupiah(getRegistrationRefundAmount(registration, event))}`);
       lines.push(`• Bank: ${refReq.bank_name}`);
       lines.push(`• Account: ${refReq.bank_account_number} (a/n ${refReq.bank_account_name})`);
       lines.push(`• Reason: ${refReq.cancellation_reason}`);
@@ -941,7 +941,7 @@ export function ApplicantDetailDialog({
                     <RotateCcw className="size-3.5 shrink-0 text-rose-600 dark:text-rose-400" />
                     <span className="shrink-0 text-[11px] text-muted-foreground">Refund Claim:</span>
                     <span className="truncate font-semibold text-rose-600 dark:text-rose-400">
-                      {formatRupiah(registration.refund_request?.refund_amount ?? 0)}
+                      {formatRupiah(getRegistrationRefundAmount(registration, event))}
                     </span>
                   </div>
                   <Badge
@@ -1599,7 +1599,7 @@ export function ApplicantDetailDialog({
                       <span className="font-medium text-[11px] text-muted-foreground">Deposit / Refund Amount</span>
                       <div className="mt-1 flex items-baseline justify-between">
                         <span className="font-bold text-foreground text-lg sm:text-xl">
-                          {formatRupiah(registration.refund_request.refund_amount)}
+                          {formatRupiah(getRegistrationRefundAmount(registration, event))}
                         </span>
                         <Badge variant="secondary" className="text-[10px]">
                           {registration.ticket_name ?? registration.ticket_tier ?? "Commitment Fee"}

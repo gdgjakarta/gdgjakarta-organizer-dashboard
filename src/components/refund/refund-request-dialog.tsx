@@ -69,7 +69,17 @@ export function RefundRequestDialog({
 
   const [isSubmitting, startTransition] = useTransition();
 
-  const refundAmount = existingRefund?.refund_amount ?? getRegistrationRefundAmount(registration, event);
+  const refundAmount = getRegistrationRefundAmount(registration, event);
+
+  let statusExplanation =
+    "Please provide valid Indonesian bank account details to receive your refund transfer. Requesting this refund will forfeit your attendance spot.";
+  if (registration.status === "rejected") {
+    statusExplanation =
+      "Because your paid waitlist registration could not be accommodated due to venue capacity, your payment is eligible for a full refund (even after the standard refund cutoff date). Please provide valid bank account details below.";
+  } else if (registration.status === "paid_waitlisted") {
+    statusExplanation =
+      "Because this session was over capacity, your waitlist fee is refundable. Please provide valid bank account information to receive your transfer.";
+  }
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -249,11 +259,10 @@ export function RefundRequestDialog({
             <span className="font-bold text-primary">{formatRupiah(refundAmount)}</span>
           </div>
           <p className="mt-1 text-[11px] text-muted-foreground leading-relaxed">
-            {registration.status === "rejected"
-              ? "Because your paid waitlist registration could not be accommodated due to venue capacity, your payment is eligible for a full refund (even after the standard refund cutoff date). Please provide valid bank account details below."
-              : registration.status === "paid_waitlisted"
-                ? "Because this session was over capacity, your waitlist fee is refundable. Please provide valid bank account information to receive your transfer."
-                : "Please provide valid Indonesian bank account details to receive your refund transfer. Requesting this refund will forfeit your attendance spot."}
+            {statusExplanation}{" "}
+            {event?.refund_include_fee
+              ? "Refund includes your ticket deposit and payment gateway fee."
+              : "Refund covers your ticket deposit nominal (payment gateway fee is non-refundable)."}
           </p>
         </div>
 

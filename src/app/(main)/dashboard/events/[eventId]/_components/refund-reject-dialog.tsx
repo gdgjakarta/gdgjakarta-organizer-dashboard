@@ -16,15 +16,16 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { formatRupiah } from "@/lib/events/refund-utils";
+import { formatRupiah, getRegistrationRefundAmount } from "@/lib/events/refund-utils";
 import { rejectRefundAction } from "@/lib/firestore/actions";
-import type { FirestoreRegistration } from "@/lib/firestore/types";
+import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
 interface RefundRejectDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   registration: FirestoreRegistration;
+  event?: FirestoreEvent;
   eventId: string;
   onSuccess: (updated: FirestoreRegistration) => void;
 }
@@ -33,6 +34,7 @@ export function RefundRejectDialog({
   isOpen,
   onOpenChange,
   registration,
+  event,
   eventId,
   onSuccess,
 }: RefundRejectDialogProps) {
@@ -139,7 +141,9 @@ export function RefundRejectDialog({
           </div>
           <div className="flex items-center justify-between">
             <span className="text-muted-foreground">Amount:</span>
-            <span className="font-semibold text-foreground">{formatRupiah(refundReq.refund_amount)}</span>
+            <span className="font-semibold text-foreground">
+              {formatRupiah(getRegistrationRefundAmount(registration, event))}
+            </span>
           </div>
         </div>
 

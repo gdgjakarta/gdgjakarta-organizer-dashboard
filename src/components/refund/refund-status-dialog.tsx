@@ -16,7 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { formatFirestoreDate } from "@/lib/date-utils";
-import { formatRupiah } from "@/lib/events/refund-utils";
+import { formatRupiah, getRegistrationRefundAmount } from "@/lib/events/refund-utils";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
@@ -101,7 +101,7 @@ export function RefundStatusDialog({
                 {isRejected && "Rejected ✕"}
               </Badge>
             </div>
-            <span className="font-bold text-xs">{formatRupiah(refundReq.refund_amount)}</span>
+            <span className="font-bold text-xs">{formatRupiah(getRegistrationRefundAmount(registration, event))}</span>
           </div>
 
           {/* Rejection Alert Box */}
