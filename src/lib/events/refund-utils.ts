@@ -2,6 +2,7 @@ import { format, parseISO } from "date-fns";
 
 import { toTimezoneDate } from "@/lib/date-utils";
 import { calculatePaymentGatewayFee } from "@/lib/events/payment-fee";
+import { calculateVoucherDiscount } from "@/lib/events/voucher-utils";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
 
 export interface BankOption {
@@ -250,6 +251,122 @@ export function expandRefundRecords(registrations: FirestoreRegistration[]): Fir
   return rows;
 }
 
+export interface RegistrationDiscountBreakdown {
+  voucherDiscount: number;
+  referralDiscount: number;
+  totalDiscount: number;
+  hasDiscount: boolean;
+  voucherCode?: string;
+  referralCode?: string;
+  referrerName?: string;
+  baseTicketPrice: number;
+  netTicketPrice: number;
+}
+
+/**
+ * Calculates the discount breakdown for a registration based on applied voucher and promo referral.
+ */
+export function getRegistrationDiscountBreakdown(
+  registration: FirestoreRegistration,
+  event?: FirestoreEvent | null,
+): RegistrationDiscountBreakdown {
+  let baseTicketPrice = registration.bundle_id ? (registration.bundle_price ?? 0) : (registration.ticket_price ?? 0);
+
+  if (baseTicketPrice === 0 && registration.ticket_id && event?.tickets) {
+    const matchTicket = event.tickets.find((t) => t.id === registration.ticket_id);
+    if (matchTicket && typeof matchTicket.price === "number") {
+      baseTicketPrice = matchTicket.price;
+    }
+  }
+
+  if (baseTicketPrice === 0 && registration.bundle_id && event?.bundles) {
+    const matchBundle = event.bundles.find((b) => b.id === registration.bundle_id);
+    if (matchBundle && typeof matchBundle.price === "number") {
+      baseTicketPrice = matchBundle.price;
+    }
+  }
+
+  // 1. Voucher discount
+  let voucherDiscount = 0;
+  if (typeof registration.voucher_discount_amount === "number" && registration.voucher_discount_amount > 0) {
+    voucherDiscount = registration.voucher_discount_amount;
+  } else if (registration.voucher_code || registration.voucher_id) {
+    if (typeof registration.voucher_discount_value === "number" && registration.voucher_discount_value > 0) {
+      if (registration.voucher_discount_type === "percentage") {
+        voucherDiscount = Math.round((baseTicketPrice * registration.voucher_discount_value) / 100);
+      } else {
+        voucherDiscount = registration.voucher_discount_value;
+      }
+    } else if (event?.vouchers) {
+      const matchVoucher = event.vouchers.find(
+        (v) =>
+          (registration.voucher_code && v.code.toUpperCase() === registration.voucher_code.toUpperCase()) ||
+          (registration.voucher_id && v.id === registration.voucher_id),
+      );
+      if (matchVoucher) {
+        const calc = calculateVoucherDiscount(matchVoucher, {
+          ticketPrice: baseTicketPrice,
+          merchandiseTotal: 0,
+        });
+        voucherDiscount = calc.ticketDiscount || calc.totalDiscount;
+      }
+    }
+  }
+
+  if (baseTicketPrice > 0) {
+    voucherDiscount = Math.min(baseTicketPrice, voucherDiscount);
+  }
+
+  // 2. Referral discount
+  let referralDiscount = 0;
+  if (typeof registration.referral_discount_amount === "number" && registration.referral_discount_amount > 0) {
+    referralDiscount = registration.referral_discount_amount;
+  } else if (registration.referral_code) {
+    const remainingForReferral = Math.max(0, baseTicketPrice - voucherDiscount);
+    if (typeof registration.referral_discount_percent === "number" && registration.referral_discount_percent > 0) {
+      referralDiscount = Math.round((baseTicketPrice * registration.referral_discount_percent) / 100);
+    } else if (
+      registration.referral_discount_type === "fixed" &&
+      typeof event?.referral_discount_amount === "number" &&
+      event.referral_discount_amount > 0
+    ) {
+      referralDiscount = event.referral_discount_amount;
+    } else if (typeof event?.referral_discount_percentage === "number" && event.referral_discount_percentage > 0) {
+      referralDiscount = Math.round((baseTicketPrice * event.referral_discount_percentage) / 100);
+    } else if (baseTicketPrice > 0) {
+      // Default standard referral 10%
+      referralDiscount = Math.round((baseTicketPrice * 10) / 100);
+    }
+    referralDiscount = Math.min(remainingForReferral, referralDiscount);
+  }
+
+  const totalDiscount = voucherDiscount + referralDiscount;
+
+  if (baseTicketPrice === 0) {
+    let rawPaidBase = 0;
+    if (typeof registration.payment_subtotal_amount === "number" && registration.payment_subtotal_amount > 0) {
+      rawPaidBase = registration.payment_subtotal_amount;
+    } else if (typeof registration.payment_amount === "number" && registration.payment_amount > 0) {
+      rawPaidBase = registration.payment_amount - (registration.payment_fee_amount ?? 0);
+    }
+    baseTicketPrice = Math.max(0, rawPaidBase + totalDiscount);
+  }
+
+  const netTicketPrice = Math.max(0, baseTicketPrice - totalDiscount);
+
+  return {
+    voucherDiscount,
+    referralDiscount,
+    totalDiscount,
+    hasDiscount: totalDiscount > 0,
+    voucherCode: registration.voucher_code,
+    referralCode: registration.referral_code,
+    referrerName: registration.referrer_name,
+    baseTicketPrice,
+    netTicketPrice,
+  };
+}
+
 /**
  * Calculates the refundable deposit amount for a registration.
  *
@@ -257,6 +374,8 @@ export function expandRefundRecords(registrations: FirestoreRegistration[]): Fir
  * By default (event.refund_include_fee = false or undefined), the organizer only refunds
  * the deposit ticket amount without payment gateway fees.
  * When event.refund_include_fee = true, the fee is added into the refundable amount.
+ * If the attendee used a discount voucher or promo referral, it is deducted so only what
+ * the attendee actually paid for the ticket deposit is refunded.
  */
 export function getRegistrationRefundAmount(
   registration: FirestoreRegistration,
@@ -272,29 +391,38 @@ export function getRegistrationRefundAmount(
   }
 
   const includeFee = Boolean(event?.refund_include_fee);
+  const discounts = getRegistrationDiscountBreakdown(registration, event);
 
-  // 1. Determine base ticket deposit amount / subtotal without fee
+  // 1. Determine base ticket deposit amount / subtotal without fee, cutting off voucher/referral discounts
   let depositWithoutFee: number | null = null;
 
-  if (typeof registration.payment_subtotal_amount === "number" && registration.payment_subtotal_amount > 0) {
-    depositWithoutFee = registration.payment_subtotal_amount;
+  if (discounts.baseTicketPrice > 0) {
+    depositWithoutFee = discounts.netTicketPrice;
+  } else if (typeof registration.payment_subtotal_amount === "number" && registration.payment_subtotal_amount > 0) {
+    depositWithoutFee = Math.max(0, registration.payment_subtotal_amount - discounts.totalDiscount);
   } else if (
     typeof registration.payment_amount === "number" &&
     typeof registration.payment_fee_amount === "number" &&
     registration.payment_fee_amount > 0
   ) {
-    depositWithoutFee = Math.max(0, registration.payment_amount - registration.payment_fee_amount);
-  } else if (typeof registration.ticket_price === "number" && registration.ticket_price > 0) {
-    depositWithoutFee = registration.ticket_price;
-  } else if (typeof registration.bundle_price === "number" && registration.bundle_price > 0) {
-    depositWithoutFee = registration.bundle_price;
+    const rawSubtotal = Math.max(0, registration.payment_amount - registration.payment_fee_amount);
+    depositWithoutFee = Math.max(0, rawSubtotal - discounts.totalDiscount);
+  } else if (typeof registration.payment_amount === "number" && registration.payment_amount > 0) {
+    depositWithoutFee = Math.max(0, registration.payment_amount - discounts.totalDiscount);
+  }
+
+  // Cap refundable deposit at actual payment amount so organizer never refunds more than attendee paid
+  if (
+    depositWithoutFee !== null &&
+    typeof registration.payment_amount === "number" &&
+    registration.payment_amount > 0
+  ) {
+    depositWithoutFee = Math.min(depositWithoutFee, registration.payment_amount);
   }
 
   // 2. Determine amount with fee
   let amountWithFee: number | null = null;
-  if (typeof registration.payment_amount === "number" && registration.payment_amount > 0) {
-    amountWithFee = registration.payment_amount;
-  } else if (depositWithoutFee !== null) {
+  if (depositWithoutFee !== null) {
     if (typeof registration.payment_fee_amount === "number" && registration.payment_fee_amount > 0) {
       amountWithFee = depositWithoutFee + registration.payment_fee_amount;
     } else {
@@ -306,14 +434,8 @@ export function getRegistrationRefundAmount(
   // 3. Fallback if depositWithoutFee could not be resolved from structured fields
   if (depositWithoutFee === null) {
     const rawFallback = registration.refund_request?.refund_amount ?? registration.payment_amount ?? 0;
-
-    if (typeof registration.ticket_price === "number" && registration.ticket_price > 0) {
-      depositWithoutFee = registration.ticket_price;
-      amountWithFee = rawFallback > depositWithoutFee ? rawFallback : (amountWithFee ?? rawFallback);
-    } else {
-      depositWithoutFee = rawFallback;
-      amountWithFee = rawFallback;
-    }
+    depositWithoutFee = Math.max(0, rawFallback - discounts.totalDiscount);
+    amountWithFee = depositWithoutFee;
   }
 
   if (includeFee) {

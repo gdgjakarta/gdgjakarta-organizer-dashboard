@@ -24,6 +24,7 @@ import {
   formatRupiah,
   getEventRefundCutoff,
   getEventRefundPolicyNotes,
+  getRegistrationDiscountBreakdown,
   getRegistrationRefundAmount,
   POPULAR_INDONESIAN_BANKS,
 } from "@/lib/events/refund-utils";
@@ -70,6 +71,7 @@ export function RefundRequestDialog({
   const [isSubmitting, startTransition] = useTransition();
 
   const refundAmount = getRegistrationRefundAmount(registration, event);
+  const discountBreakdown = getRegistrationDiscountBreakdown(registration, event);
 
   let statusExplanation =
     "Please provide valid Indonesian bank account details to receive your refund transfer. Requesting this refund will forfeit your attendance spot.";
@@ -258,7 +260,43 @@ export function RefundRequestDialog({
             </span>
             <span className="font-bold text-primary">{formatRupiah(refundAmount)}</span>
           </div>
-          <p className="mt-1 text-[11px] text-muted-foreground leading-relaxed">
+
+          {discountBreakdown.hasDiscount && (
+            <div className="mt-2 space-y-1 rounded border border-border/50 bg-background/70 p-2 text-[11px]">
+              <div className="flex justify-between text-muted-foreground">
+                <span>Original Ticket Nominal:</span>
+                <span>{formatRupiah(discountBreakdown.baseTicketPrice)}</span>
+              </div>
+              {discountBreakdown.voucherDiscount > 0 && (
+                <div className="flex justify-between font-mono text-emerald-600 dark:text-emerald-400">
+                  <span>
+                    Voucher Discount {discountBreakdown.voucherCode ? `(${discountBreakdown.voucherCode})` : ""}:
+                  </span>
+                  <span>-{formatRupiah(discountBreakdown.voucherDiscount)}</span>
+                </div>
+              )}
+              {discountBreakdown.referralDiscount > 0 && (
+                <div className="flex justify-between font-mono text-emerald-600 dark:text-emerald-400">
+                  <span>
+                    Referral Discount {discountBreakdown.referralCode ? `(${discountBreakdown.referralCode})` : ""}:
+                  </span>
+                  <span>-{formatRupiah(discountBreakdown.referralDiscount)}</span>
+                </div>
+              )}
+              <div className="flex justify-between border-border/40 border-t pt-1 font-semibold text-foreground">
+                <span>Net Refundable Ticket Deposit:</span>
+                <span className="text-primary">{formatRupiah(discountBreakdown.netTicketPrice)}</span>
+              </div>
+            </div>
+          )}
+
+          <p className="mt-1.5 text-[11px] text-muted-foreground leading-relaxed">
+            {discountBreakdown.hasDiscount && (
+              <span className="mb-1 block font-medium text-emerald-700 dark:text-emerald-300">
+                • Voucher/referral promo discount has been deducted so your refund reflects what you actually paid for
+                the ticket deposit.
+              </span>
+            )}
             {statusExplanation}{" "}
             {event?.refund_include_fee
               ? "Refund includes your ticket deposit and payment gateway fee."

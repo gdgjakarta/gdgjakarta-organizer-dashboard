@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { formatRupiah, getRegistrationRefundAmount } from "@/lib/events/refund-utils";
+import { formatRupiah, getRegistrationDiscountBreakdown, getRegistrationRefundAmount } from "@/lib/events/refund-utils";
 import { approveAndCompleteRefundAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
 import { useAuthStore } from "@/stores/auth/auth-provider";
@@ -44,6 +44,7 @@ export function RefundApprovalDialog({
   const user = useAuthStore((s) => s.user);
   const refundReq = registration.refund_request;
   const refundAmount = getRegistrationRefundAmount(registration, event);
+  const discountBreakdown = getRegistrationDiscountBreakdown(registration, event);
 
   const [completionProofUrl, setCompletionProofUrl] = useState<string>("");
   const [completionProofName, setCompletionProofName] = useState<string>("");
@@ -196,10 +197,42 @@ export function RefundApprovalDialog({
         <div className="space-y-3 rounded-lg border border-border/80 bg-muted/30 p-3.5 text-xs">
           <div className="flex items-center justify-between">
             <span className="font-semibold text-foreground">Beneficiary Details</span>
-            <Badge variant="outline" className="border-primary/30 font-bold text-primary">
-              {formatRupiah(refundAmount)}
-            </Badge>
+            <div className="text-right">
+              <Badge variant="outline" className="border-primary/30 font-bold text-primary">
+                {formatRupiah(refundAmount)}
+              </Badge>
+              {discountBreakdown.hasDiscount && (
+                <p className="mt-0.5 font-medium font-mono text-[10px] text-emerald-600 dark:text-emerald-400">
+                  Cut off -{formatRupiah(discountBreakdown.totalDiscount)} promo
+                </p>
+              )}
+            </div>
           </div>
+
+          {discountBreakdown.hasDiscount && (
+            <div className="space-y-1 rounded border border-border/50 bg-background/80 p-2 text-[11px]">
+              <div className="flex justify-between text-muted-foreground">
+                <span>Original Ticket Nominal:</span>
+                <span>{formatRupiah(discountBreakdown.baseTicketPrice)}</span>
+              </div>
+              {discountBreakdown.voucherDiscount > 0 && (
+                <div className="flex justify-between font-mono text-emerald-600 dark:text-emerald-400">
+                  <span>Voucher ({discountBreakdown.voucherCode || "Promo"}):</span>
+                  <span>-{formatRupiah(discountBreakdown.voucherDiscount)}</span>
+                </div>
+              )}
+              {discountBreakdown.referralDiscount > 0 && (
+                <div className="flex justify-between font-mono text-emerald-600 dark:text-emerald-400">
+                  <span>Referral ({discountBreakdown.referralCode || "Promo"}):</span>
+                  <span>-{formatRupiah(discountBreakdown.referralDiscount)}</span>
+                </div>
+              )}
+              <div className="flex justify-between border-border/40 border-t pt-1 font-semibold text-foreground">
+                <span>Net Transfer Amount:</span>
+                <span className="text-primary">{formatRupiah(refundAmount)}</span>
+              </div>
+            </div>
+          )}
 
           <div className="space-y-2">
             <div className="flex items-center justify-between rounded border border-border/50 bg-background p-2">

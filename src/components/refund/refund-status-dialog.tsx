@@ -16,7 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { formatFirestoreDate } from "@/lib/date-utils";
-import { formatRupiah, getRegistrationRefundAmount } from "@/lib/events/refund-utils";
+import { formatRupiah, getRegistrationDiscountBreakdown, getRegistrationRefundAmount } from "@/lib/events/refund-utils";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
@@ -42,6 +42,9 @@ export function RefundStatusDialog({
   const isPending = status === "waiting_for_approval";
   const isApproved = status === "refund_completed";
   const isRejected = status === "rejected";
+
+  const refundAmount = getRegistrationRefundAmount(registration, event);
+  const discountBreakdown = getRegistrationDiscountBreakdown(registration, event);
 
   const formattedDate = formatFirestoreDate(refundReq.requested_at, "dd MMM yyyy, HH:mm", "—");
   const completedDate = refundReq.completed_at
@@ -101,7 +104,14 @@ export function RefundStatusDialog({
                 {isRejected && "Rejected ✕"}
               </Badge>
             </div>
-            <span className="font-bold text-xs">{formatRupiah(getRegistrationRefundAmount(registration, event))}</span>
+            <div className="text-right">
+              <span className="font-bold text-xs">{formatRupiah(refundAmount)}</span>
+              {discountBreakdown.hasDiscount && (
+                <p className="font-medium font-mono text-[10px] text-emerald-600 dark:text-emerald-400">
+                  Cut off -{formatRupiah(discountBreakdown.totalDiscount)} promo
+                </p>
+              )}
+            </div>
           </div>
 
           {/* Rejection Alert Box */}

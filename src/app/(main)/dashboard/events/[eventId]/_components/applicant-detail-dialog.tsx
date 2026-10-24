@@ -58,7 +58,7 @@ import {
   getRegistrationPaymentDeadline,
   isEventCurationMode,
 } from "@/lib/events/payment-deadline";
-import { formatRupiah, getRegistrationRefundAmount } from "@/lib/events/refund-utils";
+import { formatRupiah, getRegistrationDiscountBreakdown, getRegistrationRefundAmount } from "@/lib/events/refund-utils";
 import { DEFAULT_COMBINED_QUESTIONS } from "@/lib/events/registration-defaults";
 import type {
   CustomQuestion,
@@ -1605,6 +1605,22 @@ export function ApplicantDetailDialog({
                           {registration.ticket_name ?? registration.ticket_tier ?? "Commitment Fee"}
                         </Badge>
                       </div>
+                      {(() => {
+                        const discounts = getRegistrationDiscountBreakdown(registration, event);
+                        if (!discounts.hasDiscount) return null;
+                        return (
+                          <div className="mt-1.5 space-y-0.5 rounded bg-muted/40 p-1.5 text-[10px]">
+                            <div className="flex justify-between text-muted-foreground">
+                              <span>Ticket Nominal:</span>
+                              <span>{formatRupiah(discounts.baseTicketPrice)}</span>
+                            </div>
+                            <div className="flex justify-between font-mono text-emerald-600 dark:text-emerald-400">
+                              <span>Cut off Promo:</span>
+                              <span>-{formatRupiah(discounts.totalDiscount)}</span>
+                            </div>
+                          </div>
+                        );
+                      })()}
                       <p className="mt-1 text-[10px] text-muted-foreground">
                         Requested on{" "}
                         {formatFirestoreDate(registration.refund_request.requested_at, "dd MMMM yyyy, HH:mm", "—")}

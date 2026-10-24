@@ -53,6 +53,7 @@ import {
   expandRefundRecords,
   formatRupiah,
   getEventRefundCutoff,
+  getRegistrationDiscountBreakdown,
   getRegistrationRefundAmount,
 } from "@/lib/events/refund-utils";
 import { fetchEventRefundRequestsAction, updateEventRefundConfigAction } from "@/lib/firestore/actions";
@@ -732,17 +733,42 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
 
                       {/* Deposit Amount */}
                       <TableCell className="py-3.5 align-top font-medium">
-                        <div className="space-y-1">
-                          <p className="font-bold text-foreground text-xs tabular-nums">
-                            {formatRupiah(getRegistrationRefundAmount(reg, effectiveEvent))}
-                          </p>
-                          <Badge
-                            variant="secondary"
-                            className="px-1.5 py-0 font-normal text-[10px] text-muted-foreground"
-                          >
-                            {reg.ticket_name || reg.ticket_tier || "Commitment Fee"}
-                          </Badge>
-                        </div>
+                        {(() => {
+                          const discountBreakdown = getRegistrationDiscountBreakdown(reg, effectiveEvent);
+                          return (
+                            <div className="space-y-1">
+                              <p className="font-bold text-foreground text-xs tabular-nums">
+                                {formatRupiah(getRegistrationRefundAmount(reg, effectiveEvent))}
+                              </p>
+                              <div className="flex flex-wrap items-center gap-1">
+                                <Badge
+                                  variant="secondary"
+                                  className="px-1.5 py-0 font-normal text-[10px] text-muted-foreground"
+                                >
+                                  {reg.ticket_name || reg.ticket_tier || "Commitment Fee"}
+                                </Badge>
+                                {discountBreakdown.hasDiscount && (
+                                  <Badge
+                                    variant="outline"
+                                    className="border-emerald-500/40 bg-emerald-500/10 px-1 py-0 font-mono text-[9px] text-emerald-600 dark:text-emerald-400"
+                                    title={`Cut off discount: -${formatRupiah(discountBreakdown.totalDiscount)} (${[
+                                      discountBreakdown.voucherCode
+                                        ? `Voucher: ${discountBreakdown.voucherCode}`
+                                        : null,
+                                      discountBreakdown.referralCode
+                                        ? `Referral: ${discountBreakdown.referralCode}`
+                                        : null,
+                                    ]
+                                      .filter(Boolean)
+                                      .join(", ")})`}
+                                  >
+                                    -{formatRupiah(discountBreakdown.totalDiscount)} promo
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </TableCell>
 
                       {/* Bank Details */}
