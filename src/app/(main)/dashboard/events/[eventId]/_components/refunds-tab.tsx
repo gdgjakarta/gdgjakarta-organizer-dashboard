@@ -98,15 +98,25 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
 
   // Refund policy settings state
   const initialCustomNotes = event.refund_policy_notes?.trim();
-  const [refundEnabled, setRefundEnabled] = useState<boolean>(event.refund_enabled !== false);
-  const [refundIncludeFee, setRefundIncludeFee] = useState<boolean>(Boolean(event.refund_include_fee));
-  const [refundCutoffDays, setRefundCutoffDays] = useState<number>(
-    typeof event.refund_cutoff_days_before === "number" ? event.refund_cutoff_days_before : 1,
-  );
-  const [refundCutoffDate, setRefundCutoffDate] = useState<string>(event.refund_cutoff_date ?? "");
-  const [refundPolicyNotes, setRefundPolicyNotes] = useState<string>(
-    initialCustomNotes && initialCustomNotes.length > 0 ? initialCustomNotes : DEFAULT_REFUND_POLICY_NOTES,
-  );
+  const initialNotes =
+    initialCustomNotes && initialCustomNotes.length > 0 ? initialCustomNotes : DEFAULT_REFUND_POLICY_NOTES;
+  const initialRefundEnabled = event.refund_enabled !== false;
+  const initialRefundIncludeFee = Boolean(event.refund_include_fee);
+  const initialCutoffDays = typeof event.refund_cutoff_days_before === "number" ? event.refund_cutoff_days_before : 1;
+  const initialCutoffDate = event.refund_cutoff_date ?? "";
+
+  const [refundEnabled, setRefundEnabled] = useState<boolean>(initialRefundEnabled);
+  const [refundIncludeFee, setRefundIncludeFee] = useState<boolean>(initialRefundIncludeFee);
+  const [refundCutoffDays, setRefundCutoffDays] = useState<number>(initialCutoffDays);
+  const [refundCutoffDate, setRefundCutoffDate] = useState<string>(initialCutoffDate);
+  const [refundPolicyNotes, setRefundPolicyNotes] = useState<string>(initialNotes);
+  const [savedSettings, setSavedSettings] = useState({
+    refund_enabled: initialRefundEnabled,
+    refund_include_fee: initialRefundIncludeFee,
+    refund_cutoff_days_before: initialCutoffDays,
+    refund_cutoff_date: initialCutoffDate,
+    refund_policy_notes: initialNotes,
+  });
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [showSettingsCard, setShowSettingsCard] = useState(false);
   const [isPreviewMemberViewOpen, setIsPreviewMemberViewOpen] = useState(false);
@@ -125,20 +135,25 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
 
   // Sync event props
   useEffect(() => {
-    setRefundEnabled(event.refund_enabled !== false);
-    setRefundIncludeFee(Boolean(event.refund_include_fee));
-    if (typeof event.refund_cutoff_days_before === "number") {
-      setRefundCutoffDays(event.refund_cutoff_days_before);
-    }
-    if (event.refund_cutoff_date) {
-      setRefundCutoffDate(event.refund_cutoff_date);
-    }
+    const isEnabled = event.refund_enabled !== false;
+    const includeFee = Boolean(event.refund_include_fee);
+    const cutoffDays = typeof event.refund_cutoff_days_before === "number" ? event.refund_cutoff_days_before : 1;
+    const cutoffDate = event.refund_cutoff_date ?? "";
     const custom = event.refund_policy_notes?.trim();
-    if (custom && custom.length > 0) {
-      setRefundPolicyNotes(custom);
-    } else {
-      setRefundPolicyNotes(DEFAULT_REFUND_POLICY_NOTES);
-    }
+    const notes = custom && custom.length > 0 ? custom : DEFAULT_REFUND_POLICY_NOTES;
+
+    setRefundEnabled(isEnabled);
+    setRefundIncludeFee(includeFee);
+    setRefundCutoffDays(cutoffDays);
+    setRefundCutoffDate(cutoffDate);
+    setRefundPolicyNotes(notes);
+    setSavedSettings({
+      refund_enabled: isEnabled,
+      refund_include_fee: includeFee,
+      refund_cutoff_days_before: cutoffDays,
+      refund_cutoff_date: cutoffDate,
+      refund_policy_notes: notes,
+    });
   }, [event]);
 
   // Load refund requests
@@ -191,6 +206,13 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
 
       if (res.success) {
         toast.success("Refund policy configuration saved successfully.");
+        setSavedSettings({
+          refund_enabled: refundEnabled,
+          refund_include_fee: refundIncludeFee,
+          refund_cutoff_days_before: Number(refundCutoffDays),
+          refund_cutoff_date: refundCutoffDate.trim(),
+          refund_policy_notes: refundPolicyNotes.trim() || DEFAULT_REFUND_POLICY_NOTES,
+        });
       } else {
         toast.error(res.error || "Failed to update refund configuration.");
       }
@@ -201,6 +223,20 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
       setIsSavingSettings(false);
     }
   };
+
+  const hasSettingsChanged = useMemo(() => {
+    const currCutoffDays = Number(refundCutoffDays);
+    const currCutoffDate = refundCutoffDate.trim();
+    const currNotes = refundPolicyNotes.trim() || DEFAULT_REFUND_POLICY_NOTES;
+
+    return (
+      savedSettings.refund_enabled !== refundEnabled ||
+      savedSettings.refund_include_fee !== refundIncludeFee ||
+      savedSettings.refund_cutoff_days_before !== currCutoffDays ||
+      savedSettings.refund_cutoff_date.trim() !== currCutoffDate ||
+      savedSettings.refund_policy_notes.trim() !== currNotes
+    );
+  }, [savedSettings, refundEnabled, refundIncludeFee, refundCutoffDays, refundCutoffDate, refundPolicyNotes]);
 
   const effectivePolicyNotes = refundPolicyNotes.trim() ? refundPolicyNotes.trim() : DEFAULT_REFUND_POLICY_NOTES;
 
@@ -525,7 +561,7 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
               <Button
                 size="sm"
                 onClick={handleSavePolicySettings}
-                disabled={isSavingSettings}
+                disabled={isSavingSettings || !hasSettingsChanged}
                 className="gap-1.5 text-xs"
               >
                 {isSavingSettings && <Loader2 className="size-3.5 animate-spin" />}
