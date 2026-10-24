@@ -4,6 +4,8 @@ import { RestrictToVerticalAxis } from "@dnd-kit/abstract/modifiers";
 import { useSortable } from "@dnd-kit/react/sortable";
 import {
   Calendar,
+  Check,
+  CheckCircle2,
   ChevronDown,
   ChevronUp,
   Clock,
@@ -14,8 +16,11 @@ import {
   Presentation,
   Trash2,
   User,
+  UserCheck,
+  X,
 } from "lucide-react";
 
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -30,7 +35,13 @@ import {
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import type { BevySpeaker } from "@/lib/bevy/types";
-import { normalizeStr } from "@/lib/events/agenda-unification";
+import {
+  findSpeakerByNameOrRole,
+  getSpeakerAvatar,
+  getSpeakerFullName,
+  getSpeakerRole,
+  normalizeStr,
+} from "@/lib/events/agenda-unification";
 import type { EventPresentationSlide } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
@@ -39,6 +50,8 @@ export interface AgendaActivityOption {
   time: string;
   activity: string;
   speakerName: string;
+  speakerRole?: string;
+  speakerAvatar?: string;
   description?: string;
 }
 
@@ -88,6 +101,16 @@ export function SortableSlideDeckCard({
     }
     return normalizeStr(slide.title) === normalizeStr(act.activity);
   });
+
+  // Resolve Bevy Speaker metadata if bound
+  const matchedSpeaker = findSpeakerByNameOrRole(slide.speaker_name ?? "", speakers);
+  const speakerFullName = matchedSpeaker ? getSpeakerFullName(matchedSpeaker) : slide.speaker_name?.trim();
+  const speakerAvatar = matchedSpeaker ? getSpeakerAvatar(matchedSpeaker) : undefined;
+  const speakerRole = matchedSpeaker ? getSpeakerRole(matchedSpeaker) : undefined;
+  const isSpeakerBoundToBevy = Boolean(matchedSpeaker);
+
+  // Both agenda activity and speaker are bound
+  const isFullySynchronized = Boolean(matchedActivity && slide.speaker_name?.trim());
 
   return (
     <Card
@@ -149,31 +172,50 @@ export function SortableSlideDeckCard({
                       <ChevronDown className="size-2.5 opacity-60" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="w-72 max-h-60 overflow-y-auto">
+                  <DropdownMenuContent align="start" className="w-80 max-h-64 overflow-y-auto">
                     <DropdownMenuLabel className="text-xs">Bind to Bevy Agenda Activity</DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    {agendaActivities.map((act) => (
-                      <DropdownMenuItem
-                        key={act.id}
-                        onClick={() => {
-                          onUpdate(slide.id, {
-                            title: act.activity,
-                            time_slot: act.time,
-                            speaker_name: act.speakerName || slide.speaker_name,
-                            agenda_activity_id: act.id,
-                          });
-                        }}
-                        className="flex flex-col items-start gap-0.5 py-1.5 cursor-pointer"
-                      >
-                        <div className="flex items-center justify-between w-full">
-                          <span className="font-medium text-xs truncate">{act.activity}</span>
-                          <span className="text-[10px] text-muted-foreground shrink-0">{act.time}</span>
-                        </div>
-                        {act.speakerName && (
-                          <span className="text-[10px] text-muted-foreground">Speaker: {act.speakerName}</span>
-                        )}
-                      </DropdownMenuItem>
-                    ))}
+                    {agendaActivities.map((act) => {
+                      const isSelected =
+                        act.id === slide.agenda_activity_id || normalizeStr(act.activity) === normalizeStr(slide.title);
+                      return (
+                        <DropdownMenuItem
+                          key={act.id}
+                          onClick={() => {
+                            onUpdate(slide.id, {
+                              title: act.activity,
+                              time_slot: act.time,
+                              speaker_name: act.speakerName || slide.speaker_name,
+                              agenda_activity_id: act.id,
+                            });
+                          }}
+                          className={cn(
+                            "flex flex-col items-start gap-0.5 py-1.5 cursor-pointer",
+                            isSelected && "bg-muted/80 font-medium",
+                          )}
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <span className="font-medium text-xs truncate">{act.activity}</span>
+                            <span className="text-[10px] text-muted-foreground shrink-0">{act.time}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 w-full">
+                            {act.speakerName ? (
+                              <span className="text-[10px] text-primary truncate">Speaker: {act.speakerName}</span>
+                            ) : (
+                              <span className="text-[10px] text-muted-foreground">No speaker assigned in agenda</span>
+                            )}
+                            {isSelected && (
+                              <Badge
+                                variant="secondary"
+                                className="ml-auto text-[9px] h-3.5 px-1 bg-emerald-500/15 text-emerald-600"
+                              >
+                                Current
+                              </Badge>
+                            )}
+                          </div>
+                        </DropdownMenuItem>
+                      );
+                    })}
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}
@@ -228,6 +270,63 @@ export function SortableSlideDeckCard({
           </div>
         </div>
 
+        {/* Binding Connection Status Indicator */}
+        <div className="rounded-lg border border-border/50 bg-muted/20 p-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              {/* Agenda Binding Status */}
+              {matchedActivity ? (
+                <div className="inline-flex items-center gap-1.5 rounded-md bg-blue-500/10 px-2 py-0.5 font-medium text-blue-700 text-[11px] dark:text-blue-300">
+                  <Calendar className="size-3 text-blue-600 dark:text-blue-400" />
+                  <span className="truncate max-w-[200px] sm:max-w-[260px]">Agenda: {matchedActivity.activity}</span>
+                </div>
+              ) : (
+                <div className="inline-flex items-center gap-1 rounded-md bg-amber-500/10 px-2 py-0.5 text-amber-700 text-[11px] dark:text-amber-300">
+                  <span>No agenda item bound</span>
+                </div>
+              )}
+
+              <span className="text-muted-foreground text-[10px]">⟷</span>
+
+              {/* Speaker Binding Status */}
+              {speakerFullName ? (
+                <div className="inline-flex items-center gap-1.5 rounded-md bg-emerald-500/10 px-2 py-0.5 font-medium text-emerald-700 text-[11px] dark:text-emerald-300">
+                  {speakerAvatar ? (
+                    <Avatar className="size-3.5 rounded-full">
+                      <AvatarImage src={speakerAvatar} alt={speakerFullName} />
+                      <AvatarFallback className="text-[8px]">
+                        {speakerFullName.slice(0, 2).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                  ) : (
+                    <User className="size-3 text-emerald-600 dark:text-emerald-400" />
+                  )}
+                  <span className="truncate max-w-[180px]">Speaker: {speakerFullName}</span>
+                </div>
+              ) : (
+                <div className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-muted-foreground text-[11px]">
+                  <span>No speaker attached</span>
+                </div>
+              )}
+            </div>
+
+            {/* Synchronized Badge */}
+            {isFullySynchronized ? (
+              <Badge
+                variant="outline"
+                className="gap-1 border-emerald-500/40 bg-emerald-500/15 text-[10px] text-emerald-600 dark:text-emerald-400 shrink-0"
+              >
+                <CheckCircle2 className="size-3" />
+                <span>Bound & Synchronized</span>
+              </Badge>
+            ) : (
+              <span className="text-[10px] text-muted-foreground">
+                {!matchedActivity ? "Link to an agenda activity above" : "Bind a speaker below"}
+              </span>
+            )}
+          </div>
+        </div>
+
         {/* Speaker & Slides Form Inputs */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field>
@@ -238,28 +337,84 @@ export function SortableSlideDeckCard({
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
-                      className="text-[11px] font-medium text-primary hover:underline cursor-pointer"
+                      className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline cursor-pointer"
                     >
-                      Select Bevy Speaker
+                      <UserCheck className="size-3" />
+                      <span>{isSpeakerBoundToBevy ? "Change Bevy Speaker" : "Select Bevy Speaker"}</span>
+                      <ChevronDown className="size-2.5 opacity-60" />
                     </button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-64 max-h-56 overflow-y-auto">
-                    <DropdownMenuLabel className="text-xs">Bind Bevy Speaker</DropdownMenuLabel>
+                  <DropdownMenuContent align="end" className="w-80 max-h-72 overflow-y-auto">
+                    <DropdownMenuLabel className="text-xs">Bind Bevy Speaker ({speakers.length})</DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    {speakers.map((spk) => (
-                      <DropdownMenuItem
-                        key={spk.id ?? spk.full_name}
-                        onClick={() => onUpdate(slide.id, { speaker_name: spk.full_name })}
-                        className="cursor-pointer text-xs flex flex-col items-start gap-0.5"
-                      >
-                        <span className="font-medium">{spk.full_name}</span>
-                        {spk.title && <span className="text-[10px] text-muted-foreground truncate">{spk.title}</span>}
-                      </DropdownMenuItem>
-                    ))}
+                    {speakers.map((spk) => {
+                      const fullName = getSpeakerFullName(spk);
+                      const roleInfo = getSpeakerRole(spk);
+                      const avatarUrl = getSpeakerAvatar(spk);
+                      const isSelected = Boolean(
+                        slide.speaker_name && normalizeStr(slide.speaker_name) === normalizeStr(fullName),
+                      );
+                      const isAgendaMatch = Boolean(
+                        matchedActivity?.speakerName &&
+                          normalizeStr(matchedActivity.speakerName) === normalizeStr(fullName),
+                      );
+
+                      return (
+                        <DropdownMenuItem
+                          key={spk.id ?? fullName}
+                          onClick={() => onUpdate(slide.id, { speaker_name: fullName })}
+                          className={cn(
+                            "cursor-pointer text-xs flex items-center gap-2.5 py-2",
+                            isSelected && "bg-muted font-medium",
+                          )}
+                        >
+                          <Avatar className="size-8 rounded-lg shrink-0 border border-border/60">
+                            {avatarUrl && <AvatarImage src={avatarUrl} alt={fullName} />}
+                            <AvatarFallback className="rounded-lg bg-primary/10 font-bold text-primary text-[10px]">
+                              {(fullName || "SP").slice(0, 2).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0 flex-1 space-y-0.5">
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="font-semibold text-xs text-foreground truncate">{fullName}</span>
+                              {isSelected ? (
+                                <Badge
+                                  variant="secondary"
+                                  className="text-[9px] h-4 px-1.5 bg-emerald-500/15 text-emerald-600 shrink-0"
+                                >
+                                  ✓ Selected
+                                </Badge>
+                              ) : isAgendaMatch ? (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[9px] h-4 px-1.5 border-blue-500/30 text-blue-600 shrink-0"
+                                >
+                                  Agenda Match
+                                </Badge>
+                              ) : null}
+                            </div>
+                            {roleInfo && <p className="text-[10px] text-muted-foreground truncate">{roleInfo}</p>}
+                          </div>
+                        </DropdownMenuItem>
+                      );
+                    })}
+                    {slide.speaker_name && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onClick={() => onUpdate(slide.id, { speaker_name: "" })}
+                          className="cursor-pointer text-xs text-destructive flex items-center gap-1.5 py-1.5"
+                        >
+                          <X className="size-3" />
+                          <span>Clear / Unbind Speaker</span>
+                        </DropdownMenuItem>
+                      </>
+                    )}
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}
             </div>
+
             <div className="relative">
               <User className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -269,6 +424,42 @@ export function SortableSlideDeckCard({
                 className="h-8 pl-8 text-xs"
               />
             </div>
+
+            {/* Rich Bound Speaker Card */}
+            {isSpeakerBoundToBevy && matchedSpeaker && (
+              <div className="mt-2 flex items-center justify-between rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-2">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Avatar className="size-7 rounded-lg shrink-0 border border-border/50">
+                    {speakerAvatar && <AvatarImage src={speakerAvatar} alt={speakerFullName} />}
+                    <AvatarFallback className="rounded-lg bg-emerald-500/15 text-[10px] font-bold text-emerald-600">
+                      {(speakerFullName || "SP").slice(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 space-y-0.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-semibold text-xs text-foreground truncate">{speakerFullName}</span>
+                      <Badge
+                        variant="outline"
+                        className="h-4 border-emerald-500/40 bg-emerald-500/15 px-1 text-[9px] text-emerald-600 dark:text-emerald-400"
+                      >
+                        ✓ Bevy Speaker
+                      </Badge>
+                    </div>
+                    {speakerRole && <p className="text-[10px] text-muted-foreground truncate">{speakerRole}</p>}
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  className="size-6 text-muted-foreground hover:text-destructive"
+                  onClick={() => onUpdate(slide.id, { speaker_name: "" })}
+                  title="Unbind speaker"
+                >
+                  <X className="size-3" />
+                </Button>
+              </div>
+            )}
           </Field>
 
           <Field>

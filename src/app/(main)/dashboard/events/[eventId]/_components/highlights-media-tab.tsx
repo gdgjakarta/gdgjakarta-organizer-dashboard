@@ -290,6 +290,8 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
       time: string;
       activity: string;
       speakerName: string;
+      speakerRole?: string;
+      speakerAvatar?: string;
       description?: string;
     }> = [];
 
@@ -306,6 +308,8 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
           time: item.time,
           activity: item.activity.trim(),
           speakerName: speakerMatch?.speakerName ?? "",
+          speakerRole: speakerMatch?.speakerRole ?? "",
+          speakerAvatar: speakerMatch?.speakerAvatar ?? "",
           description: item.description,
         });
       });
@@ -665,26 +669,42 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
                   <DropdownMenuSeparator />
                   {agendaActivities.map((act) => {
                     const added = isActivityAdded(act.activity);
+                    const matchingSlide = slides.find(
+                      (s) => s.agenda_activity_id === act.id || normalizeStr(s.title) === normalizeStr(act.activity),
+                    );
+                    const boundSpeaker = matchingSlide?.speaker_name || act.speakerName;
                     return (
                       <DropdownMenuItem
                         key={act.id}
                         disabled={added}
                         onClick={() => handleAddFromAgenda(act)}
-                        className="flex flex-col items-start gap-0.5 py-2 cursor-pointer"
+                        className="flex flex-col items-start gap-1 py-2 cursor-pointer"
                       >
                         <div className="flex items-center justify-between w-full gap-2">
                           <span className="font-semibold text-xs text-foreground truncate">{act.activity}</span>
                           {added ? (
-                            <Badge variant="secondary" className="text-[10px] shrink-0 h-4 px-1.5">
+                            <Badge
+                              variant="secondary"
+                              className="text-[10px] shrink-0 h-4 px-1.5 bg-emerald-500/15 text-emerald-600"
+                            >
                               Attached
                             </Badge>
                           ) : (
                             <span className="text-[10px] text-muted-foreground shrink-0">{act.time}</span>
                           )}
                         </div>
-                        {act.speakerName && (
-                          <span className="text-[11px] text-muted-foreground truncate">Speaker: {act.speakerName}</span>
-                        )}
+                        <div className="flex items-center justify-between w-full text-[11px]">
+                          {boundSpeaker ? (
+                            <span className="text-muted-foreground truncate">
+                              Speaker: <strong className="text-foreground font-medium">{boundSpeaker}</strong>
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground italic text-[10px]">No speaker in agenda</span>
+                          )}
+                          {added && matchingSlide?.speaker_name && (
+                            <span className="text-[10px] text-emerald-600 dark:text-emerald-400">✓ Bound</span>
+                          )}
+                        </div>
                       </DropdownMenuItem>
                     );
                   })}
@@ -746,28 +766,42 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
                     <DropdownMenuSeparator />
                     {agendaActivities.map((act) => {
                       const added = isActivityAdded(act.activity);
+                      const matchingSlide = slides.find(
+                        (s) => s.agenda_activity_id === act.id || normalizeStr(s.title) === normalizeStr(act.activity),
+                      );
+                      const boundSpeaker = matchingSlide?.speaker_name || act.speakerName;
                       return (
                         <DropdownMenuItem
                           key={act.id}
                           disabled={added}
                           onClick={() => handleAddFromAgenda(act)}
-                          className="flex flex-col items-start gap-0.5 py-2 cursor-pointer"
+                          className="flex flex-col items-start gap-1 py-2 cursor-pointer"
                         >
                           <div className="flex items-center justify-between w-full gap-2">
                             <span className="font-semibold text-xs text-foreground truncate">{act.activity}</span>
                             {added ? (
-                              <Badge variant="secondary" className="text-[10px] shrink-0 h-4 px-1.5">
+                              <Badge
+                                variant="secondary"
+                                className="text-[10px] shrink-0 h-4 px-1.5 bg-emerald-500/15 text-emerald-600"
+                              >
                                 Attached
                               </Badge>
                             ) : (
                               <span className="text-[10px] text-muted-foreground shrink-0">{act.time}</span>
                             )}
                           </div>
-                          {act.speakerName && (
-                            <span className="text-[11px] text-muted-foreground truncate">
-                              Speaker: {act.speakerName}
-                            </span>
-                          )}
+                          <div className="flex items-center justify-between w-full text-[11px]">
+                            {boundSpeaker ? (
+                              <span className="text-muted-foreground truncate">
+                                Speaker: <strong className="text-foreground font-medium">{boundSpeaker}</strong>
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground italic text-[10px]">No speaker in agenda</span>
+                            )}
+                            {added && matchingSlide?.speaker_name && (
+                              <span className="text-[10px] text-emerald-600 dark:text-emerald-400">✓ Bound</span>
+                            )}
+                          </div>
                         </DropdownMenuItem>
                       );
                     })}

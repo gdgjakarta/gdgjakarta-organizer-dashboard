@@ -68,6 +68,83 @@ export function normalizeStr(str?: string | null): string {
     .trim();
 }
 
+/**
+ * Resolves the full display name for a Bevy speaker across different API structures
+ * (handles full_name, first_name + last_name, or legacy name fields).
+ */
+export function getSpeakerFullName(speaker?: BevySpeaker | null): string {
+  if (!speaker) return "";
+  if (speaker.full_name && speaker.full_name.trim().length > 0) {
+    return speaker.full_name.trim();
+  }
+  const rawName = `${speaker.first_name ?? ""} ${speaker.last_name ?? ""}`.trim();
+  if (rawName.length > 0) return rawName;
+  const legacyName = (speaker as unknown as { name?: string }).name?.trim();
+  if (legacyName) return legacyName;
+  return "";
+}
+
+/**
+ * Resolves the role and company attribution string for a Bevy speaker.
+ */
+export function getSpeakerRole(speaker?: BevySpeaker | null): string {
+  if (!speaker) return "";
+  return [speaker.title?.trim(), speaker.company?.trim()].filter(Boolean).join(" @ ");
+}
+
+/**
+ * Resolves the best available avatar URL for a Bevy speaker.
+ */
+export function getSpeakerAvatar(speaker?: BevySpeaker | null): string | undefined {
+  if (!speaker) return undefined;
+  return (
+    speaker.picture?.url ||
+    speaker.picture?.thumbnail_url ||
+    speaker.picture_url ||
+    (speaker as unknown as { picture_url?: string }).picture_url ||
+    undefined
+  );
+}
+
+/**
+ * Matches a query string (name or text) against a list of Bevy speakers.
+ */
+export function findSpeakerByNameOrRole(
+  nameOrQuery?: string | null,
+  speakers?: BevySpeaker[] | null,
+): BevySpeaker | null {
+  if (!speakers || speakers.length === 0 || !nameOrQuery?.trim()) return null;
+  const normQuery = normalizeStr(nameOrQuery);
+  if (!normQuery) return null;
+
+  // 1. Exact match by full name
+  for (const sp of speakers) {
+    const fullName = getSpeakerFullName(sp);
+    if (fullName && normalizeStr(fullName) === normQuery) {
+      return sp;
+    }
+  }
+
+  // 2. Substring / contains match by full name (minimum 3 chars)
+  for (const sp of speakers) {
+    const fullName = getSpeakerFullName(sp);
+    const normName = normalizeStr(fullName);
+    if (
+      normName &&
+      normName.length >= 3 &&
+      (normQuery.includes(normName) || normName.includes(normQ(normQuery, normName)))
+    ) {
+      return sp;
+    }
+  }
+
+  return null;
+}
+
+function normQ(query: string, name: string): string {
+  return query.length >= 3 && query.includes(name) ? name : "";
+}
+
 export function findMatchingSpeaker(
   text: string,
   speakers?: BevySpeaker[] | null,
@@ -75,19 +152,14 @@ export function findMatchingSpeaker(
   if (!speakers || speakers.length === 0 || !text) return null;
 
   for (const sp of speakers) {
-    const fullName = `${sp.first_name || ""} ${sp.last_name || ""}`.trim();
+    const fullName = getSpeakerFullName(sp);
     if (!fullName) continue;
 
     // Check if full name is in text (case-insensitive)
     const idx = text.toLowerCase().indexOf(fullName.toLowerCase());
     if (idx !== -1) {
-      const avatar =
-        sp.picture?.url ||
-        sp.picture?.thumbnail_url ||
-        (sp as unknown as { picture_url?: string }).picture_url ||
-        undefined;
-
-      const role = [sp.title, sp.company].filter(Boolean).join(" @ ");
+      const avatar = getSpeakerAvatar(sp);
+      const role = getSpeakerRole(sp);
 
       return {
         speakerName: fullName,
@@ -103,9 +175,11 @@ export function findMatchingSpeaker(
     const extractedName = fromMatch[1].trim();
     const extractedRole = fromMatch[2]?.trim();
     if (extractedName && extractedName.length < 50) {
+      const matched = findSpeakerByNameOrRole(extractedName, speakers);
       return {
         speakerName: extractedName,
-        speakerRole: extractedRole || undefined,
+        speakerRole: extractedRole || (matched ? getSpeakerRole(matched) : undefined) || undefined,
+        speakerAvatar: matched ? getSpeakerAvatar(matched) : undefined,
       };
     }
   }
@@ -264,12 +338,24 @@ export function buildUnifiedAgenda(
         });
 
         // 2. Fallback to matched breakout session if any (legacy compatibility)
-        const speakerMatch =
+        let speakerMatch =
           findMatchingSpeaker(rawItem.description || "", speakers) ??
           findMatchingSpeaker(rawItem.activity, speakers) ??
           (matchedSlide?.speaker_name ? { speakerName: matchedSlide.speaker_name } : null) ??
           (matchedItemSess?.speaker_name ? { speakerName: matchedItemSess.speaker_name } : null) ??
           (matchedDaySess?.speaker_name ? { speakerName: matchedDaySess.speaker_name } : null);
+
+        // If speaker matched from slide/session without role or avatar, enrich from Bevy speaker list
+        if (speakerMatch?.speakerName && (!speakerMatch.speakerRole || !speakerMatch.speakerAvatar)) {
+          const detailSpeaker = findSpeakerByNameOrRole(speakerMatch.speakerName, speakers);
+          if (detailSpeaker) {
+            speakerMatch = {
+              ...speakerMatch,
+              speakerRole: speakerMatch.speakerRole || getSpeakerRole(detailSpeaker) || undefined,
+              speakerAvatar: speakerMatch.speakerAvatar || getSpeakerAvatar(detailSpeaker),
+            };
+          }
+        }
 
         const slidesUrl = matchedSlide?.slides_url || matchedItemSess?.slides_url || rawItem.slides_url;
         const slidesTitle =
