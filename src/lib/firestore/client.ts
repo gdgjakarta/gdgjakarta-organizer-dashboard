@@ -3095,6 +3095,33 @@ export async function updateEventBundles(
   await setDoc(eventRef, sanitized, { merge: true });
 }
 
+function cleanPresentationSlides(slides?: EventPresentationSlide[]): EventPresentationSlide[] {
+  if (!slides || !Array.isArray(slides)) return [];
+  return slides.map((s) => {
+    const cleaned: EventPresentationSlide = {
+      id: s.id || `slide-${Date.now()}`,
+      title: s.title || "Untitled Presentation",
+    };
+    if (s.agenda_activity_id?.trim()) cleaned.agenda_activity_id = s.agenda_activity_id.trim();
+    if (s.time_slot?.trim()) cleaned.time_slot = s.time_slot.trim();
+    if (s.speaker_name?.trim()) cleaned.speaker_name = s.speaker_name.trim();
+    if (s.slides_url?.trim()) cleaned.slides_url = s.slides_url.trim();
+    if (s.slides_title?.trim()) cleaned.slides_title = s.slides_title.trim();
+    if (Array.isArray(s.related_links)) {
+      const validLinks = s.related_links
+        .filter((l) => Boolean(l && typeof l.url === "string" && l.url.trim().length > 0))
+        .map((l) => ({
+          title: (l.title || "").trim(),
+          url: l.url.trim(),
+        }));
+      if (validLinks.length > 0) {
+        cleaned.related_links = validLinks;
+      }
+    }
+    return cleaned;
+  });
+}
+
 export async function updateEventHighlightsMedia(
   eventId: string,
   data: {
@@ -3134,7 +3161,8 @@ export async function updateEventHighlightsMedia(
     updatePayload.recap_description = data.recap_description.trim() ? data.recap_description.trim() : deleteField();
   }
   if (data.presentation_slides !== undefined) {
-    updatePayload.presentation_slides = data.presentation_slides.length > 0 ? data.presentation_slides : deleteField();
+    const cleanedSlides = cleanPresentationSlides(data.presentation_slides);
+    updatePayload.presentation_slides = cleanedSlides.length > 0 ? cleanedSlides : deleteField();
   } else if (data.sessions !== undefined) {
     // Legacy fallback only if presentation_slides is omitted
     updatePayload.sessions = data.sessions.length > 0 ? data.sessions : deleteField();
@@ -3157,7 +3185,8 @@ export async function updateEventHighlightsMedia(
   const exists = await ensureEventDocInitialized(eventId, baseEvent, updatePayload);
   if (!exists) return;
 
-  await setDoc(eventRef, updatePayload, { merge: true });
+  const sanitized = sanitizeFirestoreData(updatePayload);
+  await setDoc(eventRef, sanitized, { merge: true });
 }
 
 export async function updateEventEmailTemplates(

@@ -170,6 +170,19 @@ export async function getFirestoreDoc(
       signal: typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(6_000) : undefined,
     });
     if (res.status === 404) return null;
+    if (res.status === 401 && authToken) {
+      // The passed/cookie auth token may be expired or invalid. Retry without Authorization header for public collections.
+      const retryRes = await fetch(url, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+        signal: typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(6_000) : undefined,
+      });
+      if (retryRes.ok) {
+        const data = (await retryRes.json()) as { fields?: Record<string, unknown> };
+        return decodeFirestoreDoc(data);
+      }
+    }
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
       console.warn(`[Firestore REST] GET ${collectionName}/${docId} returned ${res.status}: ${errText}`);
