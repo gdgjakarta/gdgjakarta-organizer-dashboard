@@ -534,7 +534,7 @@ export function ConfigureTemplateDataDialog({
                             sessionTime: e.target.value,
                           }))
                         }
-                        placeholder="13:00 - 17:00 WIB"
+                        placeholder="09:00 - 17:00 WIB"
                         className="h-8 text-xs"
                       />
                     </div>
@@ -552,7 +552,7 @@ export function ConfigureTemplateDataDialog({
                             checkinDeadline: e.target.value,
                           }))
                         }
-                        placeholder="13:30 WIB"
+                        placeholder="10:30 WIB"
                         className="h-8 text-xs"
                       />
                     </div>

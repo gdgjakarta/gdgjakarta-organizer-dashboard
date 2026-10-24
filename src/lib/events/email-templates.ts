@@ -1,4 +1,7 @@
+import { format } from "date-fns";
+
 import { resolveEventAudience } from "@/lib/bevy/audience";
+import { toTimezoneDate } from "@/lib/date-utils";
 import type { EmailTemplateKey, FirestoreEvent } from "@/lib/firestore/types";
 import { assertSafeWebhookUrl } from "@/lib/security/webhook-validator";
 
@@ -116,13 +119,13 @@ export const EMAIL_TEMPLATE_VARIABLES: Record<EmailTemplateKey, TemplateVariable
       tag: "{{ $('session-config').item.json.bevySessionTime }}",
       label: "Session Time",
       description: "Selected session time window",
-      sampleValue: "13:00 - 17:00 WIB",
+      sampleValue: "09:00 - 17:00 WIB",
     },
     {
       tag: "{{ $('session-config').item.json.bevyCheckinDeadline }}",
       label: "Check-in Deadline",
       description: "Latest arrival time before seat forfeiture",
-      sampleValue: "13:30 WIB",
+      sampleValue: "10:30 WIB",
     },
     {
       tag: "{{ $('bevy-config').item.json.bevyEventLocation }}",
@@ -552,8 +555,7 @@ export const EMAIL_TEMPLATES_CONFIG: EmailTemplateMeta[] = [
     name: "Rejected Waitlisted",
     badge: "Free Event • Waitlist Closed",
     subjectDefault: "Waitlist Update: {{ $('event-params').item.json.eventName }}",
-    description:
-      "Sent when an organizer rejects a waitlisted attendee on a free event because capacity remained full.",
+    description: "Sent when an organizer rejects a waitlisted attendee on a free event because capacity remained full.",
     n8nNode: "loop-send-email",
     triggerDescription: "Triggered when organizer marks a Waitlisted attendee as Rejected (Free Event)",
     defaultHtml: DEFAULT_REJECTED_WAITLISTED_EMAIL_HTML,
@@ -977,6 +979,40 @@ export function ensureCheckinDeadlineInAcceptedHtml(html: string): string {
   return ensureVenueButtonAndFooterInHtml(result);
 }
 
+export function formatBevySessionTime(startDate?: string, endDate?: string): string | undefined {
+  if (!startDate) return undefined;
+  try {
+    const start = new Date(startDate);
+    if (Number.isNaN(start.getTime())) return undefined;
+    const startTz = toTimezoneDate(start, "Asia/Jakarta");
+    const startStr = format(startTz, "HH:mm");
+
+    if (endDate) {
+      const end = new Date(endDate);
+      if (!Number.isNaN(end.getTime())) {
+        const endTz = toTimezoneDate(end, "Asia/Jakarta");
+        return `${startStr} - ${format(endTz, "HH:mm")} WIB`;
+      }
+    }
+    return `${startStr} WIB`;
+  } catch {
+    return undefined;
+  }
+}
+
+export function formatBevyCheckinDeadline(startDate?: string, offsetMinutes = 30): string | undefined {
+  if (!startDate) return undefined;
+  try {
+    const start = new Date(startDate);
+    if (Number.isNaN(start.getTime())) return undefined;
+    const deadline = new Date(start.getTime() + offsetMinutes * 60_000);
+    const deadlineTz = toTimezoneDate(deadline, "Asia/Jakarta");
+    return `${format(deadlineTz, "HH:mm")} WIB`;
+  } catch {
+    return undefined;
+  }
+}
+
 export function getCleanDefaultTemplateDataForType(
   key: EmailTemplateKey,
   event: FirestoreEvent,
@@ -1030,6 +1066,9 @@ export function getCleanDefaultTemplateDataForType(
       ? customData.event.eventChecklistItems
       : (DEFAULT_CHECKLIST_ITEMS_BY_TYPE[key] ?? DEFAULT_ACCEPTED_CHECKLIST_ITEMS);
 
+  const bevySessionTime = formatBevySessionTime(event.start_date, event.end_date);
+  const bevyCheckinDeadline = formatBevyCheckinDeadline(event.start_date, 30);
+
   return {
     attendee: {
       name: customData?.attendee?.name ?? "Alex Pratama",
@@ -1041,11 +1080,19 @@ export function getCleanDefaultTemplateDataForType(
       eventCtaUrl: defaultCta,
       eventChecklistItems: [...defaultItems],
     },
-    sessionTime: customData?.sessionTime ?? "13:00 - 17:00 WIB",
-    checkinDeadline: customData?.checkinDeadline ?? "13:30 WIB",
+    sessionTime:
+      bevySessionTime ??
+      (event.default_session_time?.trim() || undefined) ??
+      customData?.sessionTime ??
+      "09:00 - 17:00 WIB",
+    checkinDeadline:
+      bevyCheckinDeadline ??
+      (event.default_session_checkin_deadline?.trim() || undefined) ??
+      customData?.checkinDeadline ??
+      "10:30 WIB",
     venueLocation,
     venueLocationUrl,
-    eventDate: customData?.eventDate ?? eventDate,
+    eventDate: event.start_date ? eventDate : (customData?.eventDate ?? eventDate),
     qrCode: customData?.qrCode ?? SAMPLE_QR_CODE_BASE64,
     attendeeCode: customData?.attendeeCode ?? "GDG-JKT-89241",
   };
@@ -1093,6 +1140,35 @@ export function getDefaultTemplateDataForType(key: EmailTemplateKey, event: Fire
     return cleanDefaults;
   }
 
+  const bevySessionTime = formatBevySessionTime(event.start_date, event.end_date);
+  const bevyCheckinDeadline = formatBevyCheckinDeadline(event.start_date, 30);
+  const hasBevyVenue = Boolean(event.venue?.name || event.venue?.address || event.venue?.city);
+
+  const resolvedSessionTime =
+    bevySessionTime ??
+    (event.default_session_time?.trim() || undefined) ??
+    savedData.sessionTime ??
+    cleanDefaults.sessionTime;
+
+  const resolvedCheckinDeadline =
+    bevyCheckinDeadline ??
+    (event.default_session_checkin_deadline?.trim() || undefined) ??
+    savedData.checkinDeadline ??
+    cleanDefaults.checkinDeadline;
+
+  const resolvedEventDate = event.start_date
+    ? cleanDefaults.eventDate
+    : (savedData.eventDate ?? cleanDefaults.eventDate);
+
+  const resolvedVenueLocation = hasBevyVenue
+    ? cleanDefaults.venueLocation
+    : (savedData.venueLocation ?? cleanDefaults.venueLocation);
+
+  const resolvedVenueLocationUrl =
+    event.google_maps_url || event.venue?.google_maps_url || event.venue?.url || hasBevyVenue
+      ? cleanDefaults.venueLocationUrl
+      : (savedData.venueLocationUrl ?? cleanDefaults.venueLocationUrl);
+
   return {
     attendee: {
       name: savedData.attendeeName ?? cleanDefaults.attendee.name,
@@ -1100,18 +1176,18 @@ export function getDefaultTemplateDataForType(key: EmailTemplateKey, event: Fire
     },
     event: {
       headerEmailUrl: savedData.headerEmailUrl ?? cleanDefaults.event.headerEmailUrl,
-      eventName: savedData.eventName ?? cleanDefaults.event.eventName,
+      eventName: event.title || savedData.eventName || cleanDefaults.event.eventName,
       eventCtaUrl: savedData.eventCtaUrl ?? cleanDefaults.event.eventCtaUrl,
       eventChecklistItems:
         savedData.eventChecklistItems && savedData.eventChecklistItems.length > 0
           ? savedData.eventChecklistItems
           : cleanDefaults.event.eventChecklistItems,
     },
-    sessionTime: savedData.sessionTime ?? cleanDefaults.sessionTime,
-    checkinDeadline: savedData.checkinDeadline ?? cleanDefaults.checkinDeadline,
-    venueLocation: savedData.venueLocation ?? cleanDefaults.venueLocation,
-    venueLocationUrl: savedData.venueLocationUrl ?? cleanDefaults.venueLocationUrl,
-    eventDate: savedData.eventDate ?? cleanDefaults.eventDate,
+    sessionTime: resolvedSessionTime,
+    checkinDeadline: resolvedCheckinDeadline,
+    venueLocation: resolvedVenueLocation,
+    venueLocationUrl: resolvedVenueLocationUrl,
+    eventDate: resolvedEventDate,
     qrCode: savedData.qrCode ?? cleanDefaults.qrCode,
     attendeeCode: savedData.attendeeCode ?? cleanDefaults.attendeeCode,
   };
@@ -1255,11 +1331,11 @@ export function interpolateTemplateHtml(
     rendered = ensureCheckinDeadlineInAcceptedHtml(rendered);
   }
 
-  const sessionTime = data.sessionTime ?? "13:00 - 17:00 WIB";
+  const sessionTime = data.sessionTime ?? "09:00 - 17:00 WIB";
   rendered = rendered.replaceAll("{{ $('session-config').item.json.bevySessionTime }}", sessionTime);
   rendered = rendered.replaceAll("{ $('session-config').item.json.bevySessionTime }", sessionTime);
 
-  const checkinDeadline = data.checkinDeadline ?? "13:30 WIB";
+  const checkinDeadline = data.checkinDeadline ?? "10:30 WIB";
   rendered = rendered.replaceAll("{{ $('session-config').item.json.bevyCheckinDeadline }}", checkinDeadline);
   rendered = rendered.replaceAll("{ $('session-config').item.json.bevyCheckinDeadline }", checkinDeadline);
   rendered = rendered.replaceAll("{{ checkinDeadline }}", checkinDeadline);

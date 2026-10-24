@@ -116,6 +116,9 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
             setActiveEvent((prev) => ({
               ...prev,
               ...docData,
+              title: prev.title || docData.title,
+              start_date: prev.start_date || docData.start_date,
+              end_date: prev.end_date || docData.end_date,
               venue: prev.venue ?? docData.venue,
               google_maps_url: docData.google_maps_url ?? prev.google_maps_url,
               tickets: ensureEventTickets(docData.tickets ?? prev.tickets),
