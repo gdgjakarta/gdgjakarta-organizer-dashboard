@@ -12,7 +12,6 @@ import {
   Mail,
   QrCode,
   Sparkles,
-  SquareArrowUpRight,
   Trophy,
   Users,
   Wrench,
@@ -110,18 +109,6 @@ export const organizerSidebarItems: NavGroup[] = [
     label: "Content Management",
     items: [
       {
-        id: "links",
-        title: "Short Links",
-        url: "/dashboard/links",
-        icon: Link2,
-      },
-      {
-        id: "media-bucket",
-        title: "Bucket Storage",
-        url: "/dashboard/media",
-        icon: HardDrive,
-      },
-      {
         id: "featured-event",
         title: "Featured Event",
         url: "/dashboard/featured-event",
@@ -139,24 +126,34 @@ export const organizerSidebarItems: NavGroup[] = [
         url: "/dashboard/faq",
         icon: HelpCircle,
       },
+    ],
+  },
+  {
+    id: 4,
+    label: "System & Tools",
+    items: [
+      {
+        id: "links",
+        title: "Short Links",
+        url: "/dashboard/links",
+        icon: Link2,
+      },
+      {
+        id: "media-bucket",
+        title: "Bucket Storage",
+        url: "/dashboard/media",
+        icon: HardDrive,
+      },
       {
         id: "maintenance",
         title: "Maintenance Mode",
         url: "/dashboard/maintenance",
         icon: Wrench,
       },
-      {
-        id: "others",
-        title: "Others",
-        url: "/dashboard/coming-soon",
-        icon: SquareArrowUpRight,
-        badge: "soon",
-        disabled: true,
-      },
     ],
   },
   {
-    id: 4,
+    id: 5,
     label: "Payment (DOKU)",
     items: [
       {
