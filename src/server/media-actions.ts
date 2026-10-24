@@ -17,9 +17,6 @@ import { buildStorageKey, normalizePrefix, sanitizeStorageName, splitStorageKey 
 import { isAuthorizedExecutiveOrganizerSession as isAuthorizedOrganizerSession } from "./auth-guard";
 
 /**
-
-
-/**
  * Fetches the directory content for a given prefix.
  */
 export async function fetchMediaDirectoryAction(

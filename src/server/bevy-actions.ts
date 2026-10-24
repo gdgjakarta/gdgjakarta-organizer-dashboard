@@ -32,7 +32,9 @@ export async function fetchAllBevyChapterEventsAction(includeHidden = true, stat
   return await getAllBevyChapterEvents(undefined, includeHidden, status);
 }
 
-export const getAllEventsAction = fetchAllBevyChapterEventsAction;
+export async function getAllEventsAction(includeHidden = true, status = "All") {
+  return await fetchAllBevyChapterEventsAction(includeHidden, status);
+}
 
 import { isAuthorizedOrganizerSession } from "./auth-guard";
 
