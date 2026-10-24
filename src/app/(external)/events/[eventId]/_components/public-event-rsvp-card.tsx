@@ -157,7 +157,7 @@ export function PublicEventRsvpCard({
     max_merchandise_per_person: firestoreEvent?.max_merchandise_per_person,
     vouchers: firestoreEvent?.vouchers,
     bundles: firestoreEvent?.bundles,
-    registration_status: firestoreEvent?.registration_status,
+    registration_status: firestoreEvent?.registration_status ?? "Closed",
     registration_start_date: firestoreEvent?.registration_start_date,
     registration_end_date: firestoreEvent?.registration_end_date,
     is_hidden: event.is_hidden,

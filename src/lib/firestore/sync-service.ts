@@ -1,6 +1,6 @@
 "use client";
 
-import { doc, writeBatch } from "firebase/firestore";
+import { collection, doc, getDocs, writeBatch } from "firebase/firestore";
 
 import { resolveEventAudience } from "@/lib/bevy/audience";
 import { splitFullName } from "@/lib/utils";
@@ -38,6 +38,10 @@ export async function syncBevyEventsToFirestore(): Promise<{
 
     const batch = writeBatch(db);
     const now = new Date().toISOString();
+
+    // Query existing event IDs to distinguish newly detected events
+    const existingEventsSnap = await getDocs(collection(db, "events"));
+    const existingIds = new Set(existingEventsSnap.docs.map((d) => d.id));
 
     for (const event of bevyEvents) {
       const eventId = String(event.id);
@@ -100,6 +104,11 @@ export async function syncBevyEventsToFirestore(): Promise<{
         synced_from_bevy_at: now,
         updated_at: now,
       };
+
+      if (!existingIds.has(eventId)) {
+        rawEventPayload.registration_status = "Closed";
+        rawEventPayload.custom_questions = [];
+      }
 
       batch.set(docRef, cleanPayload(rawEventPayload), { merge: true });
     }

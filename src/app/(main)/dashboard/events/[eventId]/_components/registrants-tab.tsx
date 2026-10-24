@@ -138,6 +138,7 @@ interface RegistrantsTabProps {
   eventId: string;
   registrations: FirestoreRegistration[];
   event?: FirestoreEvent;
+  onSwitchTab?: (tab: string) => void;
 }
 
 const STATUS_VARIANTS: Record<RegistrationStatus, { label: string; badgeClass: string; dotClass: string }> = {
@@ -542,7 +543,7 @@ function getPageNumbers(currentPage: number, pageCount: number) {
   return [currentPage - 1, currentPage, currentPage + 1];
 }
 
-export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTabProps) {
+export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: RegistrantsTabProps) {
   const user = useAuthStore((s) => s.user);
   const isAuthLoading = useAuthStore((s) => s.isLoading || s.isLoggingOut);
   const [registrationsList, setRegistrationsList] = useState<FirestoreRegistration[]>(() =>
@@ -5649,10 +5650,15 @@ export function RegistrantsTab({ eventId, registrations, event }: RegistrantsTab
           venueName={currentEvent?.venue?.name}
           batchOverreachedItems={capacityAlert.batchOverreachedItems}
           onGoToSettings={() => {
-            const formTabTrigger = document.querySelector<HTMLButtonElement>(
-              '[data-slot="tabs-trigger"][value="form"], button[value="form"]',
-            );
-            formTabTrigger?.click();
+            if (onSwitchTab) {
+              onSwitchTab("form");
+            } else {
+              window.dispatchEvent(new CustomEvent("gdg:switch-tab", { detail: "form" }));
+              const formTabTrigger = document.querySelector<HTMLButtonElement>(
+                '#tab-trigger-form, [data-value="form"], [data-slot="tabs-trigger"][value="form"], button[value="form"]',
+              );
+              formTabTrigger?.click();
+            }
           }}
         />
       )}

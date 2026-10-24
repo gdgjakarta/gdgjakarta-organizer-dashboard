@@ -77,7 +77,6 @@ import {
   validateQuestionAnswer,
 } from "@/lib/events/question-validator";
 import {
-  DEFAULT_COMBINED_QUESTIONS,
   getRegistrationWindowStatus,
   getSessionRemainingSeats,
   isSessionAvailable,
@@ -619,10 +618,7 @@ export function EventRegistrationModal({
   }, [selectedTicket, selectedBundle, selectedMerch]);
 
   const questions: CustomQuestion[] = useMemo(() => {
-    let base =
-      eventConfig.custom_questions && eventConfig.custom_questions.length > 0
-        ? [...eventConfig.custom_questions]
-        : [...DEFAULT_COMBINED_QUESTIONS];
+    let base = Array.isArray(eventConfig.custom_questions) ? [...eventConfig.custom_questions] : [];
 
     // For Paid Pass, Paid Event, Commitment Fee Ticket, or Free Event with Merchandise:
     // Add default questions with section "Payment Details" that cannot be changed or removed by organizers.

@@ -100,8 +100,8 @@ export function SortableQuestionCard({
 
   const isLocked = Boolean(q.locked) || Boolean(q.is_payment_required_field) || q.section === "Payment Details";
 
-  // Card expansion state (supports controlled via prop or internal fallback)
-  const [internalExpanded, setInternalExpanded] = useState(true);
+  // Card expansion state (supports controlled via prop or internal fallback; collapsed by default)
+  const [internalExpanded, setInternalExpanded] = useState(false);
   const isExpanded = isExpandedProp ?? internalExpanded;
 
   const handleToggleExpand = () => {

@@ -55,7 +55,6 @@ import {
   parseOtherAnswer,
   validateQuestionAnswer,
 } from "@/lib/events/question-validator";
-import { DEFAULT_COMBINED_QUESTIONS } from "@/lib/events/registration-defaults";
 import { updateRegistrationAnswersAction } from "@/lib/firestore/actions";
 import type {
   CustomQuestion,
@@ -233,10 +232,9 @@ export function EditRegistrationModal({
     void fetchFullEvent();
   }, [open, registration]);
 
-  const activeQuestions: CustomQuestion[] =
-    eventData?.custom_questions && eventData.custom_questions.length > 0
-      ? eventData.custom_questions
-      : DEFAULT_COMBINED_QUESTIONS;
+  const activeQuestions: CustomQuestion[] = Array.isArray(eventData?.custom_questions)
+    ? eventData.custom_questions
+    : [];
 
   const allSessions: EventSession[] = eventData?.sessions ?? [];
   const sessions: EventSession[] = allSessions.filter((s) => s.include_in_registration !== false);

@@ -187,17 +187,42 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
     return eventHasMerch || eventHasBundleMerch || regHasMerch;
   }, [activeEvent, registrations]);
 
+  const defaultTab = hasTeamAccess ? "registrants" : "highlights";
+  const [activeTab, setActiveTab] = useState<string>(defaultTab);
+
+  useEffect(() => {
+    const handleSwitchTab = (e: Event) => {
+      const customEvent = e as CustomEvent<string | { tab: string }>;
+      const tab = typeof customEvent.detail === "string" ? customEvent.detail : customEvent.detail?.tab;
+      if (tab) {
+        setActiveTab(tab);
+      }
+    };
+    window.addEventListener("gdg:switch-tab", handleSwitchTab);
+    return () => window.removeEventListener("gdg:switch-tab", handleSwitchTab);
+  }, []);
+
   return (
-    <Tabs defaultValue={hasTeamAccess ? "registrants" : "highlights"} className="space-y-6">
+    <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
       <div className="scrollbar-none -mx-1 w-full overflow-x-auto px-1 pb-1 sm:mx-0 sm:px-0">
         <TabsList className="inline-flex h-9 w-max items-center justify-start gap-1 rounded-lg bg-muted p-1 text-muted-foreground group-data-horizontal/tabs:h-9">
           {hasTeamAccess && (
             <>
-              <TabsTrigger value="registrants" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
+              <TabsTrigger
+                id="tab-trigger-registrants"
+                data-value="registrants"
+                value="registrants"
+                className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm"
+              >
                 <Users className="size-4" />
                 Registrants
               </TabsTrigger>
-              <TabsTrigger value="breakout-sessions" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
+              <TabsTrigger
+                id="tab-trigger-breakout-sessions"
+                data-value="breakout-sessions"
+                value="breakout-sessions"
+                className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm"
+              >
                 <Layers className="size-4" />
                 Breakout Session
                 {(activeEvent.sessions?.length ?? 0) > 0 && (
@@ -211,31 +236,61 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
 
           {isOrganizer && (
             <>
-              <TabsTrigger value="form" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
+              <TabsTrigger
+                id="tab-trigger-form"
+                data-value="form"
+                value="form"
+                className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm"
+              >
                 <FileSpreadsheet className="size-4" />
                 Registration Form
               </TabsTrigger>
-              <TabsTrigger value="tickets" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
+              <TabsTrigger
+                id="tab-trigger-tickets"
+                data-value="tickets"
+                value="tickets"
+                className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm"
+              >
                 <Ticket className="size-4" />
                 Tickets
               </TabsTrigger>
-              <TabsTrigger value="merch" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
+              <TabsTrigger
+                id="tab-trigger-merch"
+                data-value="merch"
+                value="merch"
+                className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm"
+              >
                 <Package className="size-4" />
                 Merchandise
               </TabsTrigger>
-              <TabsTrigger value="bundles" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
+              <TabsTrigger
+                id="tab-trigger-bundles"
+                data-value="bundles"
+                value="bundles"
+                className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm"
+              >
                 <PackageCheck className="size-4" />
                 Bundles
               </TabsTrigger>
               {hasMerchandise && (
-                <TabsTrigger value="delivery" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
+                <TabsTrigger
+                  id="tab-trigger-delivery"
+                  data-value="delivery"
+                  value="delivery"
+                  className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm"
+                >
                   <Truck className="size-4" />
                   Merchandise Delivery
                 </TabsTrigger>
               )}
               {hasPaidFeatures && (
                 <>
-                  <TabsTrigger value="refunds" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
+                  <TabsTrigger
+                    id="tab-trigger-refunds"
+                    data-value="refunds"
+                    value="refunds"
+                    className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm"
+                  >
                     <RotateCcw className="size-4" />
                     Refunds
                     {pendingRefundsCount > 0 && (
@@ -247,11 +302,21 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
                       </Badge>
                     )}
                   </TabsTrigger>
-                  <TabsTrigger value="vouchers" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
+                  <TabsTrigger
+                    id="tab-trigger-vouchers"
+                    data-value="vouchers"
+                    value="vouchers"
+                    className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm"
+                  >
                     <TicketPercent className="size-4" />
                     Vouchers
                   </TabsTrigger>
-                  <TabsTrigger value="payment" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
+                  <TabsTrigger
+                    id="tab-trigger-payment"
+                    data-value="payment"
+                    value="payment"
+                    className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm"
+                  >
                     <CreditCard className="size-4" />
                     Payment Gateway
                   </TabsTrigger>
@@ -260,13 +325,23 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
             </>
           )}
 
-          <TabsTrigger value="highlights" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
+          <TabsTrigger
+            id="tab-trigger-highlights"
+            data-value="highlights"
+            value="highlights"
+            className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm"
+          >
             <Sparkles className="size-4" />
             Highlights & Media
           </TabsTrigger>
 
           {isOrganizer && (
-            <TabsTrigger value="emails" className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm">
+            <TabsTrigger
+              id="tab-trigger-emails"
+              data-value="emails"
+              value="emails"
+              className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm"
+            >
               <Mail className="size-4" />
               Email Templates
             </TabsTrigger>
@@ -277,7 +352,12 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
       {hasTeamAccess && (
         <>
           <TabsContent value="registrants" className="space-y-4">
-            <RegistrantsTab eventId={eventId} registrations={registrations} event={activeEvent} />
+            <RegistrantsTab
+              eventId={eventId}
+              registrations={registrations}
+              event={activeEvent}
+              onSwitchTab={setActiveTab}
+            />
           </TabsContent>
 
           <TabsContent value="breakout-sessions" className="space-y-4">
@@ -289,7 +369,7 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
       {isOrganizer && (
         <>
           <TabsContent value="form" className="space-y-4">
-            <CustomFormTab event={activeEvent} />
+            <CustomFormTab event={activeEvent} onSwitchTab={setActiveTab} />
           </TabsContent>
 
           <TabsContent value="tickets" className="space-y-4">

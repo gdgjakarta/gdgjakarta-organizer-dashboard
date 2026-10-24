@@ -122,9 +122,10 @@ function fromDateTimeLocal(localString?: string | null): string | null {
 
 interface CustomFormTabProps {
   event: FirestoreEvent;
+  onSwitchTab?: (tab: string) => void;
 }
 
-export function CustomFormTab({ event }: CustomFormTabProps) {
+export function CustomFormTab({ event, onSwitchTab }: CustomFormTabProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -134,7 +135,7 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
 
   // 2. Registration Schedule & Publishing Status
   const [registrationStatus, setRegistrationStatus] = useState<"Draft" | "Published" | "Closed">(
-    event.registration_status ?? (event.status === "Draft" ? "Draft" : "Published"),
+    event.registration_status ?? "Closed",
   );
   const [registrationStartDate, setRegistrationStartDate] = useState<string>(
     toDateTimeLocal(event.registration_start_date),
@@ -183,21 +184,11 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
   );
 
   // 5. Registration Questions
-  const [questions, setQuestions] = useState<CustomQuestion[]>(
-    event.custom_questions && event.custom_questions.length > 0 ? event.custom_questions : DEFAULT_COMBINED_QUESTIONS,
-  );
+  const [questions, setQuestions] = useState<CustomQuestion[]>(event.custom_questions ?? []);
   const [templateCategoryFilter, setTemplateCategoryFilter] = useState<"all" | "curated" | "standard">("all");
 
-  // Question expansion states (can be toggled individually or collapsed/expanded all)
+  // Question expansion states (can be toggled individually or collapsed/expanded all; collapsed by default)
   const [expandedQuestionIds, setExpandedQuestionIds] = useState<Set<string>>(() => new Set());
-  const [hasInitializedExpanded, setHasInitializedExpanded] = useState(false);
-
-  useEffect(() => {
-    if (!hasInitializedExpanded && questions.length > 0) {
-      setExpandedQuestionIds(new Set(questions.map((q) => q.id)));
-      setHasInitializedExpanded(true);
-    }
-  }, [questions, hasInitializedExpanded]);
 
   const handleToggleExpandQuestion = (id: string) => {
     setExpandedQuestionIds((prev) => {
@@ -384,15 +375,16 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
           }));
         }
         const loadedTickets = Array.isArray(docData?.tickets) ? docData.tickets : (currentEvent.tickets ?? []);
-        let loadedQuestions = DEFAULT_COMBINED_QUESTIONS;
-        if (docData?.custom_questions && docData.custom_questions.length > 0) {
+        let loadedQuestions: CustomQuestion[] = [];
+        if (docData?.custom_questions && Array.isArray(docData.custom_questions)) {
           loadedQuestions = docData.custom_questions;
-        } else if (currentEvent.custom_questions && currentEvent.custom_questions.length > 0) {
+        } else if (currentEvent.custom_questions && Array.isArray(currentEvent.custom_questions)) {
           loadedQuestions = currentEvent.custom_questions;
         }
-        const loadedStatus = (docData?.registration_status ||
-          currentEvent.registration_status ||
-          (currentEvent.status === "Draft" ? "Draft" : "Published")) as "Draft" | "Published" | "Closed";
+        const loadedStatus = (docData?.registration_status || currentEvent.registration_status || "Closed") as
+          | "Draft"
+          | "Published"
+          | "Closed";
         const loadedStartDate = toDateTimeLocal(
           docData?.registration_start_date ?? currentEvent.registration_start_date,
         );
@@ -460,12 +452,8 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
           defaultSessionLocation: currentEvent.default_session_location ?? "",
           defaultSessionLocationUrl: currentEvent.default_session_location_url ?? "",
           tickets: currentEvent.tickets ?? [],
-          questions:
-            currentEvent.custom_questions && currentEvent.custom_questions.length > 0
-              ? currentEvent.custom_questions
-              : DEFAULT_COMBINED_QUESTIONS,
-          registrationStatus: (currentEvent.registration_status ??
-            (currentEvent.status === "Draft" ? "Draft" : "Published")) as "Draft" | "Published" | "Closed",
+          questions: currentEvent.custom_questions ?? [],
+          registrationStatus: (currentEvent.registration_status ?? "Closed") as "Draft" | "Published" | "Closed",
           registrationStartDate: toDateTimeLocal(currentEvent.registration_start_date),
           registrationEndDate: toDateTimeLocal(currentEvent.registration_end_date),
           googleMapsUrlOverride: (currentEvent.google_maps_url ?? currentEvent.venue?.google_maps_url ?? "").trim(),
@@ -1270,18 +1258,32 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
               </div>
             )}
             {registrationStatus !== "Draft" && registrationStatus !== "Published" && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  setRegistrationStatus("Published");
-                  toast.info("Registration status set to Published.");
-                }}
-                className="gap-1.5 text-xs text-emerald-600"
-              >
-                <Globe className="size-3.5" />
-                Re-open Registration
-              </Button>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setRegistrationStatus("Draft");
+                    toast.info("Registration status set to Draft (registration not opened yet).");
+                  }}
+                  className="gap-1.5 text-xs"
+                >
+                  <FileEdit className="size-3.5" />
+                  Set as Draft
+                </Button>
+                <Button
+                  size="sm"
+                  variant="default"
+                  onClick={() => {
+                    setRegistrationStatus("Published");
+                    toast.info("Registration status set to Published.");
+                  }}
+                  className="gap-1.5 text-xs shadow-xs"
+                >
+                  <Globe className="size-3.5" />
+                  Open Registration
+                </Button>
+              </div>
             )}
           </div>
         </CardHeader>
@@ -1649,10 +1651,15 @@ export function CustomFormTab({ event }: CustomFormTabProps) {
             variant="outline"
             className="gap-1.5 self-start text-xs"
             onClick={() => {
-              const breakoutTabTrigger = document.querySelector<HTMLButtonElement>(
-                '[data-slot="tabs-trigger"][value="breakout-sessions"], button[value="breakout-sessions"]',
-              );
-              breakoutTabTrigger?.click();
+              if (onSwitchTab) {
+                onSwitchTab("breakout-sessions");
+              } else {
+                window.dispatchEvent(new CustomEvent("gdg:switch-tab", { detail: "breakout-sessions" }));
+                const breakoutTabTrigger = document.querySelector<HTMLButtonElement>(
+                  '#tab-trigger-breakout-sessions, [data-value="breakout-sessions"], [data-slot="tabs-trigger"][value="breakout-sessions"], button[value="breakout-sessions"]',
+                );
+                breakoutTabTrigger?.click();
+              }
             }}
           >
             <Layers className="size-3.5 text-primary" />

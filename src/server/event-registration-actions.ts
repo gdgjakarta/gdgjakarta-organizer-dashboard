@@ -58,7 +58,14 @@ export async function validateRegistrationEligibilityAction(params: {
     return { ...fallbackResult, error: "Event was not found or is no longer available." };
   }
 
-  // 1. Overall event status
+  // 1. Overall event status & registration status
+  if (event.registration_status === "Closed") {
+    return { ...fallbackResult, error: "Registration for this event is closed." };
+  }
+  if (event.registration_status === "Draft") {
+    return { ...fallbackResult, error: "This event registration is in draft mode and not open yet." };
+  }
+
   const eventStatus = event.status.toLowerCase();
   if (eventStatus === "draft") {
     return { ...fallbackResult, error: "This event is in draft mode and not open for registration." };
