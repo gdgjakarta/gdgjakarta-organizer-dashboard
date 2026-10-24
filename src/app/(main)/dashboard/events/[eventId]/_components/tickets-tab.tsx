@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 
 import {
   AlertCircle,
@@ -9,13 +9,18 @@ import {
   BookmarkPlus,
   CheckCircle2,
   Clock,
+  Coins,
   Copy,
   Edit2,
   Eye,
   EyeOff,
+  Layers,
   Plus,
+  Receipt,
+  Share2,
   ShieldCheck,
   Sparkles,
+  Tag,
   Ticket,
   Trash2,
   Users,
@@ -36,6 +41,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { calculateTicketRevenueMetrics } from "@/lib/events/revenue-utils";
 import {
   deleteCustomTicketTemplate,
   ensureEventTickets,
@@ -45,7 +51,7 @@ import {
   type TicketTemplate,
 } from "@/lib/events/ticket-templates";
 import { updateEventTicketsAction } from "@/lib/firestore/actions";
-import type { EventTicketTier, FirestoreEvent, TicketType } from "@/lib/firestore/types";
+import type { EventTicketTier, FirestoreEvent, FirestoreRegistration, TicketType } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
 import { TicketTierDialog } from "./ticket-tier-dialog";
@@ -94,11 +100,113 @@ export function TicketsTab({ event }: TicketsTabProps) {
   const [isSaving, startTransition] = useTransition();
   const [isDirty, setIsDirty] = useState(false);
   const [templatesData, setTemplatesData] = useState(() => getAllTicketTemplates());
+  const [registrations, setRegistrations] = useState<FirestoreRegistration[]>([]);
 
   // Refresh templates from localStorage
   const refreshTemplates = () => {
     setTemplatesData(getAllTicketTemplates());
   };
+
+  // Real-time live subscription to registrations for live revenue and redemptions telemetry
+  useEffect(() => {
+    if (!event.id) return;
+    let isMounted = true;
+    let unsubscribe: (() => void) | undefined;
+
+    async function loadAndSubscribeRegistrations() {
+      try {
+        const { getEventRegistrations, subscribeEventRegistrations } = await import("@/lib/firestore/client");
+        const list = await getEventRegistrations(String(event.id));
+        if (isMounted) {
+          setRegistrations(list);
+        }
+
+        unsubscribe = subscribeEventRegistrations(String(event.id), (updatedList) => {
+          if (isMounted) {
+            setRegistrations(updatedList);
+          }
+        });
+      } catch (err) {
+        console.warn("[TicketsTab] Failed to fetch or subscribe to registrations:", err);
+      }
+    }
+
+    void loadAndSubscribeRegistrations();
+
+    return () => {
+      isMounted = false;
+      if (unsubscribe) unsubscribe();
+    };
+  }, [event.id]);
+
+  // Compute live revenue, voucher discounts, and referral redemptions metrics
+  const revenueMetrics = useMemo(() => {
+    return calculateTicketRevenueMetrics(registrations, tickets);
+  }, [registrations, tickets]);
+
+  // Derived ticket tier list with calculated sales, revenue, and redemptions
+  const ticketTiersList = useMemo(() => {
+    const list: Array<{
+      id: string;
+      name: string;
+      price: number;
+      type: TicketType;
+      stats: {
+        ticketsSold: number;
+        netRevenue: number;
+        grossRevenue: number;
+        voucherDiscount: number;
+        vouchersRedeemed: number;
+        referralDiscount: number;
+        referralsRedeemed: number;
+      };
+    }> = [];
+
+    const seenIds = new Set<string>();
+
+    for (const t of tickets) {
+      seenIds.add(t.id);
+      const st = revenueMetrics.byTier.get(t.id);
+      list.push({
+        id: t.id,
+        name: t.name,
+        price: t.price,
+        type: t.type,
+        stats: {
+          ticketsSold: st?.ticketsSold ?? 0,
+          netRevenue: st?.netRevenue ?? 0,
+          grossRevenue: st?.grossRevenue ?? 0,
+          voucherDiscount: st?.voucherDiscount ?? 0,
+          vouchersRedeemed: st?.vouchersRedeemed ?? 0,
+          referralDiscount: st?.referralDiscount ?? 0,
+          referralsRedeemed: st?.referralsRedeemed ?? 0,
+        },
+      });
+    }
+
+    // Also include any orphan/legacy ticket tier registrations that have sales
+    for (const [key, st] of revenueMetrics.byTier.entries()) {
+      if (!seenIds.has(key) && st.ticketsSold > 0) {
+        list.push({
+          id: key,
+          name: st.ticketName,
+          price: st.ticketsSold > 0 ? Math.round(st.grossRevenue / st.ticketsSold) : 0,
+          type: st.ticketType,
+          stats: {
+            ticketsSold: st.ticketsSold,
+            netRevenue: st.netRevenue,
+            grossRevenue: st.grossRevenue,
+            voucherDiscount: st.voucherDiscount,
+            vouchersRedeemed: st.vouchersRedeemed,
+            referralDiscount: st.referralDiscount,
+            referralsRedeemed: st.referralsRedeemed,
+          },
+        });
+      }
+    }
+
+    return list;
+  }, [tickets, revenueMetrics.byTier]);
 
   const [currentPaymentEnv, setCurrentPaymentEnv] = useState<"production" | "sandbox">(
     event.payment_environment ?? (event.is_test ? "sandbox" : "production"),
@@ -279,6 +387,176 @@ export function TicketsTab({ event }: TicketsTabProps) {
 
   return (
     <div className="space-y-6 pb-24">
+      {/* ── KPI REVENUE & DISCOUNT TELEMETRY CARDS ─────────────────────── */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {/* Total Clean Revenue */}
+        <Card className="shadow-xs border-border/70">
+          <CardHeader className="p-4 pb-2">
+            <CardDescription className="flex items-center gap-1.5 text-xs">
+              <Coins className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+              Total Clean Revenue
+            </CardDescription>
+            <CardTitle className="font-bold text-2xl text-emerald-600 dark:text-emerald-400">
+              Rp {revenueMetrics.totalNetRevenue.toLocaleString("id-ID")}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pt-0 pb-4">
+            <p className="text-[11px] text-muted-foreground">After vouchers & referrals cut</p>
+          </CardContent>
+        </Card>
+
+        {/* Total Actual Gross Revenue */}
+        <Card className="shadow-xs border-border/70">
+          <CardHeader className="p-4 pb-2">
+            <CardDescription className="flex items-center gap-1.5 text-xs">
+              <Receipt className="size-3.5 text-blue-600 dark:text-blue-400" />
+              Actual Gross Revenue
+            </CardDescription>
+            <CardTitle className="font-bold text-2xl text-foreground">
+              Rp {revenueMetrics.totalGrossRevenue.toLocaleString("id-ID")}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pt-0 pb-4">
+            <p className="text-[11px] text-muted-foreground">
+              Face value without discounts ({revenueMetrics.totalTicketsSold} sold)
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* Vouchers Redeemed */}
+        <Card className="shadow-xs border-border/70">
+          <CardHeader className="p-4 pb-2">
+            <CardDescription className="flex items-center gap-1.5 text-xs">
+              <Tag className="size-3.5 text-amber-500" />
+              Vouchers Redeemed
+            </CardDescription>
+            <CardTitle className="font-bold text-2xl text-amber-600 dark:text-amber-400">
+              {revenueMetrics.totalVouchersRedeemed}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pt-0 pb-4">
+            <p className="text-[11px] text-muted-foreground">
+              -Rp {revenueMetrics.totalVoucherDiscount.toLocaleString("id-ID")} price cut
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* Referrals Redeemed */}
+        <Card className="shadow-xs border-border/70">
+          <CardHeader className="p-4 pb-2">
+            <CardDescription className="flex items-center gap-1.5 text-xs">
+              <Share2 className="size-3.5 text-purple-500" />
+              Referrals Redeemed
+            </CardDescription>
+            <CardTitle className="font-bold text-2xl text-purple-600 dark:text-purple-400">
+              {revenueMetrics.totalReferralsRedeemed}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pt-0 pb-4">
+            <p className="text-[11px] text-muted-foreground">
+              -Rp {revenueMetrics.totalReferralDiscount.toLocaleString("id-ID")} referral cut
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── REVENUE BY TICKET TIER BREAKDOWN ────────────────────────────── */}
+      <Card className="border-border/60 bg-gradient-to-r from-card to-muted/20 shadow-xs">
+        <CardHeader className="p-4 pb-2">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2">
+              <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Banknote className="size-4" />
+              </div>
+              <div>
+                <CardTitle className="font-semibold text-sm">Revenue Breakdown by Ticket Tier</CardTitle>
+                <CardDescription className="text-xs">
+                  Clean net revenue, gross receipts, and voucher & referral redemptions categorized by each event ticket
+                  tier.
+                </CardDescription>
+              </div>
+            </div>
+            <Badge variant="outline" className="font-mono text-xs w-fit">
+              {revenueMetrics.totalTicketsSold} tickets sold across {ticketTiersList.length} tier
+              {ticketTiersList.length === 1 ? "" : "s"}
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="p-4 pt-2">
+          {ticketTiersList.length === 0 ? (
+            <div className="py-6 text-center text-xs text-muted-foreground">
+              No ticket tiers configured for this event.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {ticketTiersList.map((tier) => {
+                const meta = TICKET_TYPE_META[tier.type] ?? TICKET_TYPE_META.paid;
+                const stats = tier.stats;
+                return (
+                  <div
+                    key={tier.id}
+                    className="rounded-xl border border-border/70 bg-card/60 p-3.5 space-y-2 hover:border-primary/40 transition-colors"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <Badge
+                          variant="outline"
+                          className={cn("font-semibold text-xs truncate max-w-[170px]", meta.color)}
+                        >
+                          {tier.name}
+                        </Badge>
+                        <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                          {formatPriceDisplay(tier.type, tier.price)}
+                        </span>
+                      </div>
+                      <span className="text-xs font-semibold text-foreground font-mono whitespace-nowrap">
+                        {stats.ticketsSold} sold
+                      </span>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center gap-1">
+                        <p className="text-[11px] text-muted-foreground">Clean Net Revenue</p>
+                        {tier.type === "commitment_fee" && (
+                          <span className="text-[9px] text-amber-600 dark:text-amber-400 font-medium">
+                            (Refundable)
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-lg font-bold text-foreground">Rp {stats.netRevenue.toLocaleString("id-ID")}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        Gross: Rp {stats.grossRevenue.toLocaleString("id-ID")}
+                      </p>
+                    </div>
+
+                    <div className="border-t border-border/50 pt-2 flex flex-col gap-1 text-[11px] text-muted-foreground">
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-1">
+                          <Tag className="size-3 text-amber-500" />
+                          Vouchers:
+                        </span>
+                        <span className="font-medium text-foreground">
+                          {stats.vouchersRedeemed} (-Rp {stats.voucherDiscount.toLocaleString("id-ID")})
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-1">
+                          <Share2 className="size-3 text-purple-500" />
+                          Referrals:
+                        </span>
+                        <span className="font-medium text-foreground">
+                          {stats.referralsRedeemed} (-Rp {stats.referralDiscount.toLocaleString("id-ID")})
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* ── Global Purchase Limits Card ──────────────────────────────── */}
       <Card>
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -513,6 +791,7 @@ export function TicketsTab({ event }: TicketsTabProps) {
               {tickets.map((t) => {
                 const meta = TICKET_TYPE_META[t.type];
                 const salesStatus = getTicketSalesStatus(t);
+                const tierStats = revenueMetrics.byTier.get(t.id);
                 return (
                   <div
                     key={t.id}
@@ -644,6 +923,61 @@ export function TicketsTab({ event }: TicketsTabProps) {
                             </span>
                           </div>
                         )}
+                      </div>
+
+                      {/* Ticket Revenue & Redemptions Telemetry */}
+                      <div className="mt-3 rounded-lg border border-border/70 bg-muted/30 p-2.5 text-xs space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] text-muted-foreground font-medium flex items-center gap-1">
+                            <Coins className="size-3 text-emerald-600 dark:text-emerald-400" />
+                            Clean Net Revenue
+                          </span>
+                          <span className="font-bold text-xs text-emerald-600 dark:text-emerald-400">
+                            Rp {(tierStats?.netRevenue ?? 0).toLocaleString("id-ID")}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                          <span>Actual Gross (No discount):</span>
+                          <span className="font-mono text-foreground font-medium">
+                            Rp {(tierStats?.grossRevenue ?? 0).toLocaleString("id-ID")}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between border-t border-border/40 pt-1 text-[10px] text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Tag className="size-2.5 text-amber-500" />
+                            Vouchers:
+                          </span>
+                          <span className="font-medium text-foreground">
+                            {tierStats?.vouchersRedeemed ?? 0} redeemed{" "}
+                            {tierStats && tierStats.voucherDiscount > 0
+                              ? `(-Rp ${tierStats.voucherDiscount.toLocaleString("id-ID")})`
+                              : ""}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Share2 className="size-2.5 text-purple-500" />
+                            Referrals:
+                          </span>
+                          <span className="font-medium text-foreground">
+                            {tierStats?.referralsRedeemed ?? 0} redeemed{" "}
+                            {tierStats && tierStats.referralDiscount > 0
+                              ? `(-Rp ${tierStats.referralDiscount.toLocaleString("id-ID")})`
+                              : ""}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between border-t border-border/40 pt-1 text-[10px] text-muted-foreground">
+                          <span>Tickets Sold:</span>
+                          <span className="font-semibold text-foreground">
+                            {tierStats?.ticketsSold ?? 0} sold
+                            {t.capacity
+                              ? ` / ${t.capacity} (${Math.min(
+                                  100,
+                                  Math.round(((tierStats?.ticketsSold ?? 0) / t.capacity) * 100),
+                                )}%)`
+                              : ""}
+                          </span>
+                        </div>
                       </div>
                     </div>
 

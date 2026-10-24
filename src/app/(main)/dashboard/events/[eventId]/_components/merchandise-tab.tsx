@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 
 import {
+  Banknote,
   Clock,
+  Coins,
   Copy,
   CreditCard,
   Edit2,
@@ -12,7 +14,9 @@ import {
   Package,
   PackageOpen,
   Plus,
+  Receipt,
   Ruler,
+  ShoppingBag,
   Sparkles,
   Tag,
   Trash2,
@@ -34,8 +38,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getMerchandiseSalesStatus } from "@/lib/events/merchandise-templates";
+import { calculateMerchandiseRevenueMetrics } from "@/lib/events/revenue-utils";
 import { updateEventMerchandiseAction } from "@/lib/firestore/actions";
-import type { EventMerchandiseItem, FirestoreEvent } from "@/lib/firestore/types";
+import type { EventMerchandiseItem, FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
 import { GenerateMerchandisePaymentDialog } from "./generate-merchandise-payment-dialog";
@@ -80,6 +85,108 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
   const [isSaving, startTransition] = useTransition();
   const [isDirty, setIsDirty] = useState(false);
+  const [registrations, setRegistrations] = useState<FirestoreRegistration[]>([]);
+
+  // Real-time live subscription to registrations for merchandise sales and telemetry
+  useEffect(() => {
+    if (!event.id) return;
+    let isMounted = true;
+    let unsubscribe: (() => void) | undefined;
+
+    async function loadAndSubscribeRegistrations() {
+      try {
+        const { getEventRegistrations, subscribeEventRegistrations } = await import("@/lib/firestore/client");
+        const list = await getEventRegistrations(String(event.id));
+        if (isMounted) {
+          setRegistrations(list);
+        }
+
+        unsubscribe = subscribeEventRegistrations(String(event.id), (updatedList) => {
+          if (isMounted) {
+            setRegistrations(updatedList);
+          }
+        });
+      } catch (err) {
+        console.warn("[MerchandiseTab] Failed to fetch or subscribe to registrations:", err);
+      }
+    }
+
+    void loadAndSubscribeRegistrations();
+
+    return () => {
+      isMounted = false;
+      if (unsubscribe) unsubscribe();
+    };
+  }, [event.id]);
+
+  // Derived merchandise revenue, discounts, and units telemetry
+  const merchRevenueMetrics = useMemo(
+    () => calculateMerchandiseRevenueMetrics(registrations, items),
+    [registrations, items],
+  );
+
+  // Derived merchandise items list with calculated sales, revenue, and redemptions
+  const merchandiseItemList = useMemo(() => {
+    const list: Array<{
+      id: string;
+      name: string;
+      price: number;
+      isFree: boolean;
+      tag?: string;
+      stats: {
+        unitsSold: number;
+        netRevenue: number;
+        grossRevenue: number;
+        voucherDiscount: number;
+        vouchersRedeemed: number;
+        ordersCount: number;
+      };
+    }> = [];
+
+    const seenIds = new Set<string>();
+
+    for (const m of items) {
+      seenIds.add(m.id);
+      const st = merchRevenueMetrics.byItem.get(m.id);
+      list.push({
+        id: m.id,
+        name: m.name,
+        price: m.price || 0,
+        isFree: Boolean(m.is_free),
+        tag: m.tag,
+        stats: {
+          unitsSold: st?.unitsSold ?? 0,
+          netRevenue: st?.netRevenue ?? 0,
+          grossRevenue: st?.grossRevenue ?? 0,
+          voucherDiscount: st?.voucherDiscount ?? 0,
+          vouchersRedeemed: st?.vouchersRedeemed ?? 0,
+          ordersCount: st?.ordersCount ?? 0,
+        },
+      });
+    }
+
+    // Include any extra merchandise from registrations that had sales
+    for (const [key, st] of merchRevenueMetrics.byItem.entries()) {
+      if (!seenIds.has(key) && st.unitsSold > 0) {
+        list.push({
+          id: key,
+          name: st.name,
+          price: st.unitsSold > 0 ? Math.round(st.grossRevenue / st.unitsSold) : 0,
+          isFree: st.isFree,
+          stats: {
+            unitsSold: st.unitsSold,
+            netRevenue: st.netRevenue,
+            grossRevenue: st.grossRevenue,
+            voucherDiscount: st.voucherDiscount,
+            vouchersRedeemed: st.vouchersRedeemed,
+            ordersCount: st.ordersCount,
+          },
+        });
+      }
+    }
+
+    return list;
+  }, [items, merchRevenueMetrics.byItem]);
 
   // Load latest merchandise from Firestore document if available
   useEffect(() => {
@@ -205,6 +312,170 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
 
   return (
     <div className="space-y-6 pb-24">
+      {/* ── KPI REVENUE & DISCOUNT TELEMETRY CARDS ─────────────────────── */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {/* Total Clean Merch Revenue */}
+        <Card className="shadow-xs border-border/70">
+          <CardHeader className="p-4 pb-2">
+            <CardDescription className="flex items-center gap-1.5 text-xs">
+              <Coins className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+              Clean Merch Revenue
+            </CardDescription>
+            <CardTitle className="font-bold text-2xl text-emerald-600 dark:text-emerald-400">
+              Rp {merchRevenueMetrics.totalNetRevenue.toLocaleString("id-ID")}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pt-0 pb-4">
+            <p className="text-[11px] text-muted-foreground">After voucher discounts applied</p>
+          </CardContent>
+        </Card>
+
+        {/* Actual Gross Merch Revenue */}
+        <Card className="shadow-xs border-border/70">
+          <CardHeader className="p-4 pb-2">
+            <CardDescription className="flex items-center gap-1.5 text-xs">
+              <Receipt className="size-3.5 text-blue-600 dark:text-blue-400" />
+              Actual Gross Revenue
+            </CardDescription>
+            <CardTitle className="font-bold text-2xl text-foreground">
+              Rp {merchRevenueMetrics.totalGrossRevenue.toLocaleString("id-ID")}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pt-0 pb-4">
+            <p className="text-[11px] text-muted-foreground">Catalog price without discounts</p>
+          </CardContent>
+        </Card>
+
+        {/* Merch Vouchers Redeemed */}
+        <Card className="shadow-xs border-border/70">
+          <CardHeader className="p-4 pb-2">
+            <CardDescription className="flex items-center gap-1.5 text-xs">
+              <Tag className="size-3.5 text-amber-500" />
+              Merch Vouchers Redeemed
+            </CardDescription>
+            <CardTitle className="font-bold text-2xl text-amber-600 dark:text-amber-400">
+              {merchRevenueMetrics.totalVouchersRedeemed}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pt-0 pb-4">
+            <p className="text-[11px] text-muted-foreground">
+              -Rp {merchRevenueMetrics.totalVoucherDiscount.toLocaleString("id-ID")} voucher cut
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* Total Units Sold */}
+        <Card className="shadow-xs border-border/70">
+          <CardHeader className="p-4 pb-2">
+            <CardDescription className="flex items-center gap-1.5 text-xs">
+              <ShoppingBag className="size-3.5 text-purple-500" />
+              Units Sold & Orders
+            </CardDescription>
+            <CardTitle className="font-bold text-2xl text-purple-600 dark:text-purple-400">
+              {merchRevenueMetrics.totalUnitsSold}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pt-0 pb-4">
+            <p className="text-[11px] text-muted-foreground">
+              Across {merchRevenueMetrics.totalOrdersCount} attendee order
+              {merchRevenueMetrics.totalOrdersCount === 1 ? "" : "s"}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── REVENUE BY MERCHANDISE ITEM BREAKDOWN ────────────────────────── */}
+      <Card className="border-border/60 bg-gradient-to-r from-card to-muted/20 shadow-xs">
+        <CardHeader className="p-4 pb-2">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2">
+              <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Banknote className="size-4" />
+              </div>
+              <div>
+                <CardTitle className="font-semibold text-sm">Revenue Breakdown by Merchandise Item</CardTitle>
+                <CardDescription className="text-xs">
+                  Clean net revenue, gross receipts, and voucher redemptions categorized by each event merchandise item.
+                </CardDescription>
+              </div>
+            </div>
+            <Badge variant="outline" className="font-mono text-xs w-fit">
+              {merchRevenueMetrics.totalUnitsSold} units fulfilled across {merchandiseItemList.length} item
+              {merchandiseItemList.length === 1 ? "" : "s"}
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="p-4 pt-2">
+          {merchandiseItemList.length === 0 ? (
+            <div className="py-6 text-center text-xs text-muted-foreground">
+              No merchandise configured for this event.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {merchandiseItemList.map((item) => (
+                <div
+                  key={item.id}
+                  className="rounded-xl border border-border/70 bg-card/60 p-3.5 space-y-2 hover:border-primary/40 transition-colors"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          "font-semibold text-xs truncate max-w-[170px]",
+                          item.isFree
+                            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                            : "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-400",
+                        )}
+                      >
+                        {item.name}
+                      </Badge>
+                      <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                        {item.isFree ? "Free Perk" : `Rp ${item.price.toLocaleString("id-ID")}`}
+                      </span>
+                    </div>
+                    <span className="text-xs font-semibold text-foreground font-mono whitespace-nowrap">
+                      {item.stats.unitsSold} {item.isFree ? "claimed" : "sold"}
+                    </span>
+                  </div>
+
+                  <div>
+                    <p className="text-[11px] text-muted-foreground">Clean Net Revenue</p>
+                    <p className="text-lg font-bold text-foreground">
+                      Rp {item.stats.netRevenue.toLocaleString("id-ID")}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">
+                      Gross: Rp {item.stats.grossRevenue.toLocaleString("id-ID")}
+                    </p>
+                  </div>
+
+                  <div className="border-t border-border/50 pt-2 flex flex-col gap-1 text-[11px] text-muted-foreground">
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        <Tag className="size-3 text-amber-500" />
+                        Vouchers:
+                      </span>
+                      <span className="font-medium text-foreground">
+                        {item.stats.vouchersRedeemed} (-Rp {item.stats.voucherDiscount.toLocaleString("id-ID")})
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        <ShoppingBag className="size-3 text-purple-500" />
+                        Orders Count:
+                      </span>
+                      <span className="font-medium text-foreground">
+                        {item.stats.ordersCount} order{item.stats.ordersCount === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -308,6 +579,7 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
             <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
               {items.map((item) => {
                 const salesStatus = getMerchandiseSalesStatus(item);
+                const itemStats = merchRevenueMetrics.byItem.get(item.id);
 
                 return (
                   <div
@@ -463,6 +735,53 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
                           <span className="truncate">{getSalesWindowSummary(salesStatus)}</span>
                         </div>
                       )}
+
+                      {/* Merchandise Revenue & Redemptions Telemetry */}
+                      <div className="mt-3 rounded-lg border border-border/70 bg-muted/30 p-2.5 text-xs space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] text-muted-foreground font-medium flex items-center gap-1">
+                            <Coins className="size-3 text-emerald-600 dark:text-emerald-400" />
+                            Clean Net Revenue
+                          </span>
+                          <span className="font-bold text-xs text-emerald-600 dark:text-emerald-400">
+                            Rp {(itemStats?.netRevenue ?? 0).toLocaleString("id-ID")}
+                          </span>
+                        </div>
+                        {!item.is_free && (
+                          <>
+                            <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                              <span>Actual Gross (No discount):</span>
+                              <span className="font-mono text-foreground font-medium">
+                                Rp {(itemStats?.grossRevenue ?? 0).toLocaleString("id-ID")}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between border-t border-border/40 pt-1 text-[10px] text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                <Tag className="size-2.5 text-amber-500" />
+                                Vouchers:
+                              </span>
+                              <span className="font-medium text-foreground">
+                                {itemStats?.vouchersRedeemed ?? 0} redeemed{" "}
+                                {itemStats && itemStats.voucherDiscount > 0
+                                  ? `(-Rp ${itemStats.voucherDiscount.toLocaleString("id-ID")})`
+                                  : ""}
+                              </span>
+                            </div>
+                          </>
+                        )}
+                        <div className="flex items-center justify-between border-t border-border/40 pt-1 text-[10px] text-muted-foreground">
+                          <span>Units Sold / Claimed:</span>
+                          <span className="font-semibold text-foreground">
+                            {itemStats?.unitsSold ?? 0} units
+                            {item.stock
+                              ? ` / ${item.stock} (${Math.min(
+                                  100,
+                                  Math.round(((itemStats?.unitsSold ?? 0) / item.stock) * 100),
+                                )}%)`
+                              : ""}
+                          </span>
+                        </div>
+                      </div>
 
                       {/* Footer stock & quick actions */}
                       <div className="mt-4 flex items-center justify-between border-border/60 border-t pt-3">
