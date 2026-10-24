@@ -98,12 +98,23 @@ export interface EventSession {
   /** Whether checking in to this session should also call the Bevy Check-in API (defaults to false for breakout sessions) */
   sync_check_in_to_bevy?: boolean;
 
-  // Speaker slides & resources
+  // Speaker slides & resources (legacy fallback on breakout sessions)
   slides_url?: string;
   slides_title?: string;
   speaker_name?: string;
   related_links?: SessionRelatedLink[];
   agenda_activity_id?: string;
+}
+
+export interface EventPresentationSlide {
+  id: string;
+  agenda_activity_id?: string;
+  title: string;
+  time_slot?: string;
+  speaker_name?: string;
+  slides_url?: string;
+  slides_title?: string;
+  related_links?: SessionRelatedLink[];
 }
 
 export interface SessionCheckInRecord {
@@ -419,6 +430,7 @@ export interface FirestoreEvent {
 
   // Refund Management Settings
   refund_enabled?: boolean;
+  refund_include_fee?: boolean; // When true, deposit refund includes payment gateway fee. Default is false (only deposit ticket nominal).
   refund_cutoff_days_before?: number; // e.g. 1 (cutoff 1 day before event)
   refund_cutoff_date?: string | null;
   refund_policy_notes?: string | null;
@@ -429,6 +441,7 @@ export interface FirestoreEvent {
   photo_album_url?: string;
   photo_album_title?: string;
   recap_description?: string;
+  presentation_slides?: EventPresentationSlide[];
 
   // Email Automation Templates (n8n workflows)
   email_templates?: EventEmailTemplates;

@@ -1114,7 +1114,7 @@ export function QrCheckInScannerDialog({
               <div className="space-y-1.5 sm:col-span-2">
                 <Label className="text-xs font-medium">Target Breakout Session</Label>
                 <Select value={selectedSessionId} onValueChange={handleSessionChange}>
-                  <SelectTrigger className="h-9 bg-background text-xs">
+                  <SelectTrigger className="h-9 w-full min-w-0 bg-background text-xs [&>span]:block [&>span]:min-w-0 [&>span]:truncate [&>span]:text-left *:data-[slot=select-value]:block *:data-[slot=select-value]:min-w-0 *:data-[slot=select-value]:truncate *:data-[slot=select-value]:text-left">
                     <SelectValue placeholder="Choose a breakout session..." />
                   </SelectTrigger>
                   <SelectContent>

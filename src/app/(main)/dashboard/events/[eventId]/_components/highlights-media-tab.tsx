@@ -7,7 +7,18 @@ import { useRouter } from "next/navigation";
 
 import { DragDropProvider, type DragEndEvent } from "@dnd-kit/react";
 import { isSortable } from "@dnd-kit/react/sortable";
-import { Camera, ChevronDown, ExternalLink, Play, Plus, Presentation, Sparkles, Video } from "lucide-react";
+import {
+  Calendar,
+  Camera,
+  ChevronDown,
+  ExternalLink,
+  Info,
+  Play,
+  Plus,
+  Presentation,
+  Sparkles,
+  Video,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { FloatingSaveBar } from "@/app/(main)/dashboard/_components/floating-save-bar";
@@ -27,18 +38,43 @@ import { Input } from "@/components/ui/input";
 import { findMatchingSpeaker, normalizeStr } from "@/lib/events/agenda-unification";
 import { parsePhotoAlbum, parseVideoUrl } from "@/lib/events/media-utils";
 import { updateEventHighlightsMediaAction } from "@/lib/firestore/actions";
-import type { EventSession, FirestoreEvent } from "@/lib/firestore/types";
+import type { EventPresentationSlide, FirestoreEvent } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
 import { HtmlEditText } from "./html-edit-text";
 import { SortableSlideDeckCard } from "./sortable-slide-deck-card";
 
-function normalizeSessions(rawSessions?: EventSession[]): EventSession[] {
-  if (!rawSessions || !Array.isArray(rawSessions)) return [];
-  return rawSessions.map((s, idx) => ({
-    ...s,
-    id: s.id?.trim() ? s.id : `session-${idx}-${Date.now()}`,
-  }));
+function normalizeSlides(
+  rawSlides?: EventPresentationSlide[],
+  legacySessions?: FirestoreEvent["sessions"],
+): EventPresentationSlide[] {
+  if (rawSlides && Array.isArray(rawSlides) && rawSlides.length > 0) {
+    return rawSlides.map((s, idx) => ({
+      ...s,
+      id: s.id?.trim() ? s.id : `slide-${idx}-${Date.now()}`,
+    }));
+  }
+
+  // Migration fallback: if presentation_slides is empty, check legacy sessions with slides
+  if (legacySessions && Array.isArray(legacySessions)) {
+    const slideSessions = legacySessions.filter(
+      (s) => Boolean(s.slides_url) || Boolean(s.related_links && s.related_links.length > 0),
+    );
+    if (slideSessions.length > 0) {
+      return slideSessions.map((s, idx) => ({
+        id: s.id?.trim() ? s.id : `slide-${idx}-${Date.now()}`,
+        agenda_activity_id: s.agenda_activity_id,
+        title: s.title,
+        time_slot: s.time_slot,
+        speaker_name: s.speaker_name,
+        slides_url: s.slides_url,
+        slides_title: s.slides_title,
+        related_links: s.related_links,
+      }));
+    }
+  }
+
+  return [];
 }
 
 interface HighlightsMediaTabProps {
@@ -54,7 +90,9 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
   const [photoAlbumUrl, setPhotoAlbumUrl] = useState(event.photo_album_url ?? "");
   const [photoAlbumTitle, setPhotoAlbumTitle] = useState(event.photo_album_title ?? "");
   const [recapDescription, setRecapDescription] = useState(event.recap_description ?? "");
-  const [sessions, setSessions] = useState<EventSession[]>(() => normalizeSessions(event.sessions));
+  const [slides, setSlides] = useState<EventPresentationSlide[]>(() =>
+    normalizeSlides(event.presentation_slides, event.sessions),
+  );
 
   const [isSaving, setIsSaving] = useState(false);
   const initialSnapshotRef = useRef<string | null>(null);
@@ -75,14 +113,17 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
           const albumUrl = docData.photo_album_url ?? event.photo_album_url ?? "";
           const albumTitle = docData.photo_album_title ?? event.photo_album_title ?? "";
           const recap = docData.recap_description ?? event.recap_description ?? "";
-          const sessList = normalizeSessions(docData.sessions ?? event.sessions ?? []);
+          const slideList = normalizeSlides(
+            docData.presentation_slides ?? event.presentation_slides,
+            docData.sessions ?? event.sessions,
+          );
 
           setHighlightVideoUrl(videoUrl);
           setHighlightVideoTitle(videoTitle);
           setPhotoAlbumUrl(albumUrl);
           setPhotoAlbumTitle(albumTitle);
           setRecapDescription(recap);
-          setSessions(sessList);
+          setSlides(slideList);
 
           initialSnapshotRef.current = JSON.stringify({
             highlightVideoUrl: videoUrl,
@@ -90,7 +131,7 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
             photoAlbumUrl: albumUrl,
             photoAlbumTitle: albumTitle,
             recapDescription: recap,
-            sessions: sessList,
+            slides: slideList,
           });
         }
       } catch (err) {
@@ -104,7 +145,7 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
       photoAlbumUrl: event.photo_album_url ?? "",
       photoAlbumTitle: event.photo_album_title ?? "",
       recapDescription: event.recap_description ?? "",
-      sessions: normalizeSessions(event.sessions),
+      slides: normalizeSlides(event.presentation_slides, event.sessions),
     });
 
     void loadLatestData();
@@ -115,6 +156,7 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
     event.photo_album_url,
     event.photo_album_title,
     event.recap_description,
+    event.presentation_slides,
     event.sessions,
   ]);
 
@@ -125,7 +167,7 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
     photoAlbumUrl,
     photoAlbumTitle,
     recapDescription,
-    sessions,
+    slides,
   });
   const isDirty = initialSnapshotRef.current !== null && initialSnapshotRef.current !== currentSnapshot;
 
@@ -141,14 +183,14 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
           photoAlbumUrl: string;
           photoAlbumTitle: string;
           recapDescription: string;
-          sessions: EventSession[];
+          slides: EventPresentationSlide[];
         };
         setHighlightVideoUrl(snap.highlightVideoUrl);
         setHighlightVideoTitle(snap.highlightVideoTitle);
         setPhotoAlbumUrl(snap.photoAlbumUrl);
         setPhotoAlbumTitle(snap.photoAlbumTitle);
         setRecapDescription(snap.recapDescription);
-        setSessions(snap.sessions);
+        setSlides(snap.slides);
         toast.info("Discarded unsaved changes.");
       } catch {
         // ignore
@@ -168,7 +210,7 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
             photo_album_url: photoAlbumUrl,
             photo_album_title: photoAlbumTitle,
             recap_description: recapDescription,
-            sessions,
+            presentation_slides: slides,
           },
           event,
         );
@@ -189,16 +231,16 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
     });
   };
 
-  // Helper to update a session's slide fields
-  const handleUpdateSessionSlide = (sessionId: string, updates: Partial<EventSession>) => {
-    setSessions((prev) => prev.map((s) => (s.id === sessionId ? { ...s, ...updates } : s)));
+  // Helper to update a slide's fields
+  const handleUpdateSlide = (slideId: string, updates: Partial<EventPresentationSlide>) => {
+    setSlides((prev) => prev.map((s) => (s.id === slideId ? { ...s, ...updates } : s)));
   };
 
-  // Helper to add a related link to a session
-  const handleAddSessionRelatedLink = (sessionId: string) => {
-    setSessions((prev) =>
+  // Helper to add a related link to a slide
+  const handleAddSlideRelatedLink = (slideId: string) => {
+    setSlides((prev) =>
       prev.map((s) => {
-        if (s.id !== sessionId) return s;
+        if (s.id !== slideId) return s;
         const currentLinks = s.related_links ?? [];
         return {
           ...s,
@@ -208,16 +250,11 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
     );
   };
 
-  // Helper to update a related link in a session
-  const handleUpdateSessionRelatedLink = (
-    sessionId: string,
-    linkIndex: number,
-    field: "title" | "url",
-    val: string,
-  ) => {
-    setSessions((prev) =>
+  // Helper to update a related link in a slide
+  const handleUpdateSlideRelatedLink = (slideId: string, linkIndex: number, field: "title" | "url", val: string) => {
+    setSlides((prev) =>
       prev.map((s) => {
-        if (s.id !== sessionId) return s;
+        if (s.id !== slideId) return s;
         const currentLinks = [...(s.related_links ?? [])];
         if (!currentLinks[linkIndex]) return s;
         currentLinks[linkIndex] = {
@@ -232,11 +269,11 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
     );
   };
 
-  // Helper to remove a related link from a session
-  const handleRemoveSessionRelatedLink = (sessionId: string, linkIndex: number) => {
-    setSessions((prev) =>
+  // Helper to remove a related link from a slide
+  const handleRemoveSlideRelatedLink = (slideId: string, linkIndex: number) => {
+    setSlides((prev) =>
       prev.map((s) => {
-        if (s.id !== sessionId) return s;
+        if (s.id !== slideId) return s;
         const currentLinks = (s.related_links ?? []).filter((_, idx) => idx !== linkIndex);
         return {
           ...s,
@@ -279,7 +316,7 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
 
   const isActivityAdded = (activityTitle: string) => {
     const norm = normalizeStr(activityTitle);
-    return sessions.some((s) => normalizeStr(s.title) === norm);
+    return slides.some((s) => normalizeStr(s.title) === norm);
   };
 
   const handleAddFromAgenda = (act: {
@@ -289,76 +326,57 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
     speakerName: string;
     description?: string;
   }) => {
-    const alreadyExists = sessions.find((s) => normalizeStr(s.title) === normalizeStr(act.activity));
+    const alreadyExists = slides.find((s) => normalizeStr(s.title) === normalizeStr(act.activity));
     if (alreadyExists) {
       toast.info(`"${act.activity}" is already in your slide deck list.`);
       return;
     }
 
-    const newSession: EventSession = {
-      id: `session-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    const newSlide: EventPresentationSlide = {
+      id: `slide-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      agenda_activity_id: act.id,
       title: act.activity,
       time_slot: act.time,
       speaker_name: act.speakerName,
-      description: act.description ?? "",
       slides_url: "",
       slides_title: "Download Slides",
-      capacity: 0,
       related_links: [],
-      agenda_activity_id: act.id,
     };
-    setSessions((prev) => [...prev, newSession]);
-    toast.success(`Added slide deck for "${act.activity}".`);
+    setSlides((prev) => [...prev, newSlide]);
+    toast.success(`Attached presentation slides for "${act.activity}".`);
   };
 
   const handleAddAllFromAgenda = () => {
     const unadded = agendaActivities.filter((act) => !isActivityAdded(act.activity));
     if (unadded.length === 0) {
-      toast.info("All agenda activities are already added.");
+      toast.info("All agenda activities already have slide attachments.");
       return;
     }
 
-    const newSessions: EventSession[] = unadded.map((act, idx) => ({
-      id: `session-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
+    const newSlides: EventPresentationSlide[] = unadded.map((act, idx) => ({
+      id: `slide-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
+      agenda_activity_id: act.id,
       title: act.activity,
       time_slot: act.time,
       speaker_name: act.speakerName,
-      description: act.description ?? "",
       slides_url: "",
       slides_title: "Download Slides",
-      capacity: 0,
       related_links: [],
-      agenda_activity_id: act.id,
     }));
 
-    setSessions((prev) => [...prev, ...newSessions]);
-    toast.success(`Added ${newSessions.length} session${newSessions.length > 1 ? "s" : ""} from agenda.`);
+    setSlides((prev) => [...prev, ...newSlides]);
+    toast.success(`Attached ${newSlides.length} agenda activity slide deck${newSlides.length > 1 ? "s" : ""}.`);
   };
 
-  // Helper to add a new generic session for slides if none exist or custom
-  const handleAddNewSession = () => {
-    const newSession: EventSession = {
-      id: `session-${Date.now()}`,
-      title: "Keynote / Main Presentation",
-      speaker_name: "",
-      slides_url: "",
-      slides_title: "Download Slides",
-      capacity: 0,
-      related_links: [],
-    };
-    setSessions((prev) => [...prev, newSession]);
-    toast.success("Added presentation session deck.");
+  const handleRemoveSlide = (slideId: string) => {
+    const targetSlide = slides.find((s) => s.id === slideId);
+    setSlides((prev) => prev.filter((item) => item.id !== slideId));
+    toast.info(`Removed slides for "${targetSlide?.title || "Presentation"}".`);
   };
 
-  const handleRemoveSession = (sessionId: string) => {
-    const targetSession = sessions.find((s) => s.id === sessionId);
-    setSessions((prev) => prev.filter((item) => item.id !== sessionId));
-    toast.info(`Removed session "${targetSession?.title || "Slide Deck"}".`);
-  };
-
-  const handleMoveSessionUp = (index: number) => {
+  const handleMoveSlideUp = (index: number) => {
     if (index <= 0) return;
-    setSessions((prev) => {
+    setSlides((prev) => {
       const next = [...prev];
       const item = next[index];
       const prevItem = next[index - 1];
@@ -369,9 +387,9 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
     });
   };
 
-  const handleMoveSessionDown = (index: number) => {
-    if (index >= sessions.length - 1) return;
-    setSessions((prev) => {
+  const handleMoveSlideDown = (index: number) => {
+    if (index >= slides.length - 1) return;
+    setSlides((prev) => {
       const next = [...prev];
       const item = next[index];
       const nextItem = next[index + 1];
@@ -387,7 +405,7 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
     if (event.canceled || !isSortable(source) || source.initialIndex === source.index) {
       return;
     }
-    setSessions((prev) => {
+    setSlides((prev) => {
       const next = [...prev];
       const [movedItem] = next.splice(source.initialIndex, 1);
       if (movedItem) {
@@ -424,8 +442,8 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
                 </Badge>
               </div>
               <p className="mt-1 text-muted-foreground text-xs sm:text-sm">
-                Embed official highlight videos, link Google Photos / Drive albums, and publish speaker presentation
-                slides for attendees and the public community.
+                Embed official highlight videos, link Google Photos albums, and bind presentation slides and resources
+                directly to Bevy agenda items and speakers.
               </p>
             </div>
           </div>
@@ -500,30 +518,25 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
             </div>
 
             {parsedVideo?.embedUrl ? (
-              <div className="overflow-hidden rounded-xl border border-border/80 bg-black shadow-xs">
+              <div className="overflow-hidden rounded-2xl border border-border/80 bg-black/90 shadow-inner">
                 <div className="relative aspect-video w-full">
-                  {parsedVideo.type === "youtube" || parsedVideo.type === "vimeo" ? (
-                    <iframe
-                      src={parsedVideo.embedUrl}
-                      title={highlightVideoTitle || "Video Preview"}
-                      className="size-full border-0"
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                      allowFullScreen
-                    />
-                  ) : (
-                    <video controls playsInline className="size-full object-contain" src={parsedVideo.embedUrl}>
-                      <track kind="captions" />
-                    </video>
-                  )}
+                  <iframe
+                    src={parsedVideo.embedUrl}
+                    title={highlightVideoTitle || "Event Highlight Video"}
+                    className="absolute inset-0 size-full"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                  />
                 </div>
               </div>
             ) : (
-              <div className="flex aspect-video w-full flex-col items-center justify-center rounded-xl border border-border/60 border-dashed bg-muted/20 p-6 text-center">
-                <div className="flex size-12 items-center justify-center rounded-2xl bg-muted/60 text-muted-foreground">
-                  <Play className="size-6 opacity-60" />
+              <div className="flex flex-col items-center justify-center rounded-2xl border border-border/70 border-dashed bg-muted/20 p-8 text-center">
+                <div className="flex size-10 items-center justify-center rounded-xl bg-muted text-muted-foreground">
+                  <Play className="size-5" />
                 </div>
-                <p className="mt-3 font-medium text-muted-foreground text-xs">
-                  No video URL entered yet. Paste a link above to preview the player here.
+                <p className="mt-2 font-medium text-muted-foreground text-xs">No video URL entered yet</p>
+                <p className="mt-0.5 text-[11px] text-muted-foreground/80">
+                  Add a YouTube or Vimeo link above to preview the embedded player.
                 </p>
               </div>
             )}
@@ -536,18 +549,18 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
         <CardHeader>
           <div className="flex items-center gap-2">
             <Camera className="size-4 text-primary" />
-            <CardTitle className="text-base sm:text-lg">Event Photo Album (Google Photos / Google Drive)</CardTitle>
+            <CardTitle className="text-base sm:text-lg">Official Event Photo Album</CardTitle>
           </div>
           <CardDescription>
-            Share an official photo album link with attendees. On the public page, attendees will see a highlighted
-            showcase card with 1-click access to view and download photos.
+            Provide a public Google Photos, Google Drive folder, or Flickr album link. Attendees can browse photos from
+            the public highlights tab.
           </CardDescription>
         </CardHeader>
 
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field className="sm:col-span-2">
-              <FieldLabel htmlFor="photo-album-url">Photo Album Link (Google Photos / Google Drive)</FieldLabel>
+              <FieldLabel htmlFor="photo-album-url">Photo Album URL (Google Photos, Drive, Flickr)</FieldLabel>
               <Input
                 id="photo-album-url"
                 placeholder="https://photos.app.goo.gl/... or https://drive.google.com/drive/folders/..."
@@ -556,14 +569,14 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
               />
               <div className="flex flex-wrap items-center justify-between gap-1 pt-1.5">
                 <p className="text-[11px] text-muted-foreground">
-                  Paste a public Google Photos shared album or Google Drive folder URL.
+                  Make sure the shared album has public read permissions enabled.
                 </p>
                 {photoAlbumUrl && parsedAlbum && (
                   <Badge
                     variant="outline"
                     className="border-blue-500/30 bg-blue-500/10 text-[10px] text-blue-600 dark:text-blue-400"
                   >
-                    ✓ Detected {parsedAlbum.label} Link
+                    ✓ {parsedAlbum.label} link detected
                   </Badge>
                 )}
               </div>
@@ -632,23 +645,23 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
               <CardTitle className="text-base sm:text-lg">Speaker Presentation Slides & Resources</CardTitle>
             </div>
             <CardDescription className="mt-1">
-              Add presentation slide decks (Google Slides, SpeakerDeck, Canva, PDF) and related links for each session.
-              Attendees can view or download them directly from the Agenda and Highlights tabs.
+              Bind presentation slide decks and resource links to Bevy agenda items and speakers. These are displayed in
+              the Agenda and Highlights tabs without creating separate registration tracks.
             </CardDescription>
           </div>
 
           <div className="flex items-center gap-2 self-start sm:self-auto">
-            {agendaActivities.length > 0 ? (
+            {agendaActivities.length > 0 && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button size="sm" variant="outline" className="gap-1.5 text-xs">
                     <Plus className="size-3.5 text-primary" />
-                    <span>Add Slide Deck Session</span>
+                    <span>Attach Presentation Slides</span>
                     <ChevronDown className="size-3 opacity-60" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-80 max-h-80 overflow-y-auto">
-                  <DropdownMenuLabel className="text-xs">Select from Existing Agenda</DropdownMenuLabel>
+                  <DropdownMenuLabel className="text-xs">Select from Bevy Agenda</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   {agendaActivities.map((act) => {
                     const added = isActivityAdded(act.activity);
@@ -663,7 +676,7 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
                           <span className="font-semibold text-xs text-foreground truncate">{act.activity}</span>
                           {added ? (
                             <Badge variant="secondary" className="text-[10px] shrink-0 h-4 px-1.5">
-                              Added
+                              Attached
                             </Badge>
                           ) : (
                             <span className="text-[10px] text-muted-foreground shrink-0">{act.time}</span>
@@ -683,113 +696,103 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
                   >
                     <Sparkles className="size-3.5" />
                     <span>
-                      Add All from Agenda ({agendaActivities.filter((a) => !isActivityAdded(a.activity)).length}{" "}
+                      Attach All from Agenda ({agendaActivities.filter((a) => !isActivityAdded(a.activity)).length}{" "}
                       remaining)
                     </span>
                   </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={handleAddNewSession}
-                    className="gap-2 cursor-pointer text-muted-foreground text-xs"
-                  >
-                    <Plus className="size-3.5" />
-                    <span>Custom / Manual Session (Not in Agenda)</span>
-                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-            ) : (
-              <Button size="sm" variant="outline" onClick={handleAddNewSession} className="gap-1.5 text-xs">
-                <Plus className="size-3.5 text-primary" />
-                Add Slide Deck Session
-              </Button>
             )}
           </div>
         </CardHeader>
 
         <CardContent className="space-y-4">
-          {sessions.length === 0 ? (
+          {agendaActivities.length === 0 ? (
+            <div className="flex flex-col items-center justify-center rounded-xl border border-border/60 border-dashed bg-muted/20 p-8 text-center">
+              <div className="flex size-12 items-center justify-center rounded-2xl bg-muted/60 text-muted-foreground">
+                <Info className="size-6 opacity-60 text-primary" />
+              </div>
+              <p className="mt-3 font-semibold text-foreground text-sm">No Bevy Agenda Items Found</p>
+              <p className="mt-1 max-w-sm text-muted-foreground text-xs">
+                To attach presentation slides, ensure the agenda and speakers are configured in the Bevy Chapter event
+                schedule. Slides bind directly to Bevy agenda activities.
+              </p>
+            </div>
+          ) : slides.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-xl border border-border/60 border-dashed bg-muted/20 p-8 text-center">
               <div className="flex size-12 items-center justify-center rounded-2xl bg-muted/60 text-muted-foreground">
                 <Presentation className="size-6 opacity-60" />
               </div>
-              <p className="mt-3 font-semibold text-foreground text-sm">No session presentation decks yet</p>
+              <p className="mt-3 font-semibold text-foreground text-sm">No presentation slides attached yet</p>
               <p className="mt-1 max-w-sm text-muted-foreground text-xs">
-                {agendaActivities.length > 0
-                  ? `Select from your ${agendaActivities.length} agenda sessions to attach speaker presentation slides or codelab resources.`
-                  : "Click “Add Slide Deck Session” above to attach speaker presentation slides or codelab resources."}
+                Select from your {agendaActivities.length} Bevy agenda activities to attach speaker presentation slides
+                or codelab resource links.
               </p>
               <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-                {agendaActivities.length > 0 && (
-                  <Button size="sm" onClick={handleAddAllFromAgenda} className="gap-1.5 text-xs">
-                    <Sparkles className="size-3.5" />
-                    Add All from Agenda ({agendaActivities.length})
-                  </Button>
-                )}
-                {agendaActivities.length > 0 ? (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button size="sm" variant="outline" className="gap-1.5 text-xs">
-                        <Plus className="size-3.5" />
-                        Select from Agenda
-                        <ChevronDown className="size-3 opacity-60" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="center" className="w-80 max-h-80 overflow-y-auto">
-                      <DropdownMenuLabel className="text-xs">Choose Agenda Activity</DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      {agendaActivities.map((act) => {
-                        const added = isActivityAdded(act.activity);
-                        return (
-                          <DropdownMenuItem
-                            key={act.id}
-                            disabled={added}
-                            onClick={() => handleAddFromAgenda(act)}
-                            className="flex flex-col items-start gap-0.5 py-2 cursor-pointer"
-                          >
-                            <div className="flex items-center justify-between w-full gap-2">
-                              <span className="font-semibold text-xs text-foreground truncate">{act.activity}</span>
-                              {added ? (
-                                <Badge variant="secondary" className="text-[10px] shrink-0 h-4 px-1.5">
-                                  Added
-                                </Badge>
-                              ) : (
-                                <span className="text-[10px] text-muted-foreground shrink-0">{act.time}</span>
-                              )}
-                            </div>
-                            {act.speakerName && (
-                              <span className="text-[11px] text-muted-foreground truncate">
-                                Speaker: {act.speakerName}
-                              </span>
+                <Button size="sm" onClick={handleAddAllFromAgenda} className="gap-1.5 text-xs">
+                  <Sparkles className="size-3.5" />
+                  Attach All from Agenda ({agendaActivities.length})
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button size="sm" variant="outline" className="gap-1.5 text-xs">
+                      <Plus className="size-3.5" />
+                      Select from Agenda
+                      <ChevronDown className="size-3 opacity-60" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="center" className="w-80 max-h-80 overflow-y-auto">
+                    <DropdownMenuLabel className="text-xs">Choose Bevy Agenda Activity</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {agendaActivities.map((act) => {
+                      const added = isActivityAdded(act.activity);
+                      return (
+                        <DropdownMenuItem
+                          key={act.id}
+                          disabled={added}
+                          onClick={() => handleAddFromAgenda(act)}
+                          className="flex flex-col items-start gap-0.5 py-2 cursor-pointer"
+                        >
+                          <div className="flex items-center justify-between w-full gap-2">
+                            <span className="font-semibold text-xs text-foreground truncate">{act.activity}</span>
+                            {added ? (
+                              <Badge variant="secondary" className="text-[10px] shrink-0 h-4 px-1.5">
+                                Attached
+                              </Badge>
+                            ) : (
+                              <span className="text-[10px] text-muted-foreground shrink-0">{act.time}</span>
                             )}
-                          </DropdownMenuItem>
-                        );
-                      })}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                ) : (
-                  <Button size="sm" onClick={handleAddNewSession} className="gap-1.5 text-xs">
-                    <Plus className="size-3.5" />
-                    Add Presentation Slide Deck
-                  </Button>
-                )}
+                          </div>
+                          {act.speakerName && (
+                            <span className="text-[11px] text-muted-foreground truncate">
+                              Speaker: {act.speakerName}
+                            </span>
+                          )}
+                        </DropdownMenuItem>
+                      );
+                    })}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
           ) : (
             <DragDropProvider onDragEnd={handleDragEnd}>
               <div className="space-y-4">
-                {sessions.map((sess, sIdx) => (
+                {slides.map((slide, sIdx) => (
                   <SortableSlideDeckCard
-                    key={sess.id}
-                    session={sess}
+                    key={slide.id}
+                    slide={slide}
                     index={sIdx}
-                    totalSessions={sessions.length}
+                    totalSlides={slides.length}
                     agendaActivities={agendaActivities}
-                    onUpdate={handleUpdateSessionSlide}
-                    onRemove={handleRemoveSession}
-                    onMoveUp={handleMoveSessionUp}
-                    onMoveDown={handleMoveSessionDown}
-                    onAddRelatedLink={handleAddSessionRelatedLink}
-                    onUpdateRelatedLink={handleUpdateSessionRelatedLink}
-                    onRemoveRelatedLink={handleRemoveSessionRelatedLink}
+                    speakers={event.speakers}
+                    onUpdate={handleUpdateSlide}
+                    onRemove={handleRemoveSlide}
+                    onMoveUp={handleMoveSlideUp}
+                    onMoveDown={handleMoveSlideDown}
+                    onAddRelatedLink={handleAddSlideRelatedLink}
+                    onUpdateRelatedLink={handleUpdateSlideRelatedLink}
+                    onRemoveRelatedLink={handleRemoveSlideRelatedLink}
                   />
                 ))}
               </div>

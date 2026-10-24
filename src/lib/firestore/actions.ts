@@ -489,6 +489,7 @@ export async function updateEventHighlightsMediaAction(
     photo_album_url?: string;
     photo_album_title?: string;
     recap_description?: string;
+    presentation_slides?: import("./types").EventPresentationSlide[];
     sessions?: import("./types").EventSession[];
   },
   baseEvent?: Partial<FirestoreEvent>,
@@ -999,6 +1000,8 @@ export interface SubmitRefundRequestInput {
   proofMediaName?: string;
   refundAmount: number;
   isResubmission?: boolean;
+  refundRequestId?: string;
+  requestedAt?: string;
 }
 
 /**
@@ -1010,7 +1013,7 @@ export async function submitRefundRequestAction(input: SubmitRefundRequestInput)
     const now = new Date().toISOString();
 
     const refundRequest: import("./types").RefundRequest = {
-      id: `ref_${input.registrationId}_${Date.now()}`,
+      id: input.refundRequestId || `ref_${input.registrationId}_${Date.now()}`,
       status: "waiting_for_approval",
       bank_name: input.bankName.trim(),
       bank_account_name: input.bankAccountName.trim(),
@@ -1019,7 +1022,7 @@ export async function submitRefundRequestAction(input: SubmitRefundRequestInput)
       proof_media_url: input.proofMediaUrl?.trim() || undefined,
       proof_media_name: input.proofMediaName?.trim() || undefined,
       refund_amount: input.refundAmount,
-      requested_at: now,
+      requested_at: input.requestedAt || now,
       ...(input.isResubmission ? { resubmitted_at: now } : {}),
       updated_at: now,
     };
@@ -1043,6 +1046,7 @@ export interface ApproveRefundInput {
   eventId: string;
   completionProofUrl: string;
   completionNotes?: string;
+  refundAmount?: number;
   reviewer: { id: string; name: string; email?: string };
 }
 
@@ -1058,6 +1062,7 @@ export async function approveAndCompleteRefundAction(input: ApproveRefundInput) 
       input.registrationId,
       "refund_completed",
       {
+        ...(typeof input.refundAmount === "number" ? { refund_amount: input.refundAmount } : {}),
         completion_proof_url: input.completionProofUrl.trim(),
         completion_notes: input.completionNotes?.trim() || undefined,
         completed_at: now,
@@ -1148,6 +1153,7 @@ export async function updateEventRefundConfigAction(
   eventId: string,
   config: {
     refund_enabled?: boolean;
+    refund_include_fee?: boolean;
     refund_cutoff_days_before?: number;
     refund_cutoff_date?: string | null;
     refund_policy_notes?: string | null;

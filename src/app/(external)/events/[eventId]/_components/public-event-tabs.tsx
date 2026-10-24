@@ -71,8 +71,8 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
   const hasPartners = partners.length > 0;
   const tierGroups = groupPartnersByTier(partners);
   const unifiedAgenda = useMemo(
-    () => buildUnifiedAgenda(event.agenda, event.speakers, firestoreSessions),
-    [event.agenda, event.speakers, firestoreSessions],
+    () => buildUnifiedAgenda(event.agenda, event.speakers, firestoreSessions, firestoreEvent?.presentation_slides),
+    [event.agenda, event.speakers, firestoreSessions, firestoreEvent?.presentation_slides],
   );
   const hasAgenda = unifiedAgenda.sessionGroups.length > 0;
   const agendaBadgeCount =
@@ -91,11 +91,15 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
   const parsedVideo = parseVideoUrl(highlightVideoUrl);
   const parsedAlbum = parsePhotoAlbum(photoAlbumUrl);
 
-  const allSessionsWithSlides = [
-    ...(firestoreSessions?.filter(
-      (s) => Boolean(s.slides_url) || Boolean(s.related_links && s.related_links.length > 0),
-    ) ?? []),
-  ];
+  const presentationSlides = firestoreEvent?.presentation_slides ?? [];
+  const allSessionsWithSlides =
+    presentationSlides.length > 0
+      ? presentationSlides.filter(
+          (s) => Boolean(s.slides_url) || Boolean(s.related_links && s.related_links.length > 0),
+        )
+      : (firestoreSessions?.filter(
+          (s) => Boolean(s.slides_url) || Boolean(s.related_links && s.related_links.length > 0),
+        ) ?? []);
   const allBevyItemsWithSlides =
     event.agenda?.days?.flatMap((d) => {
       const items = d.items ?? d.agenda;
@@ -231,6 +235,7 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
             bevyAgenda={event.agenda}
             speakers={event.speakers}
             firestoreSessions={firestoreSessions}
+            presentationSlides={firestoreEvent?.presentation_slides}
           />
         </TabsContent>
 

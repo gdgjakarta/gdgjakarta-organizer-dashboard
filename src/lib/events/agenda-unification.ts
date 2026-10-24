@@ -1,5 +1,5 @@
 import type { BevyAgenda, BevySpeaker } from "@/lib/bevy/types";
-import type { EventSession, SessionRelatedLink } from "@/lib/firestore/types";
+import type { EventPresentationSlide, EventSession, SessionRelatedLink } from "@/lib/firestore/types";
 
 // Maintain UnifiedSessionTrack as an alias/type for backwards compatibility if imported
 export interface UnifiedSessionTrack {
@@ -132,6 +132,7 @@ export function buildUnifiedAgenda(
   bevyAgenda?: BevyAgenda | null,
   speakers?: BevySpeaker[] | null,
   firestoreSessions?: EventSession[] | null,
+  presentationSlides?: EventPresentationSlide[] | null,
 ): UnifiedAgendaResult {
   const sessions = Array.isArray(firestoreSessions) ? [...firestoreSessions] : [];
   const days = Array.isArray(bevyAgenda?.days) ? bevyAgenda.days : [];
@@ -234,18 +235,51 @@ export function buildUnifiedAgenda(
           matchedSessionIds.add(matchedItemSess.id);
         }
 
+        // 1. Check for slides specifically bound to this Bevy agenda activity
+        const matchedSlide = presentationSlides?.find((slide) => {
+          if (
+            slide.agenda_activity_id &&
+            (slide.agenda_activity_id === rawItem.activity || slide.agenda_activity_id === `item-${dIdx}-${iIdx}`)
+          ) {
+            return true;
+          }
+          const normSlideTitle = normalizeStr(slide.title);
+          if (!normActivity || !normSlideTitle) return false;
+          if (normActivity === normSlideTitle) return true;
+          if (
+            normSlideTitle.length >= 6 &&
+            (normActivity.includes(normSlideTitle) || normSlideTitle.includes(normActivity))
+          ) {
+            return true;
+          }
+          if (rawItem.time && slide.time_slot) {
+            const rawTimeNorm = normalizeStr(rawItem.time);
+            const slideTimeNorm = normalizeStr(slide.time_slot);
+            if (rawTimeNorm === slideTimeNorm) {
+              const actWords = normActivity.split(" ").filter((w) => w.length > 3);
+              return actWords.some((w) => normSlideTitle.includes(w));
+            }
+          }
+          return false;
+        });
+
+        // 2. Fallback to matched breakout session if any (legacy compatibility)
         const speakerMatch =
           findMatchingSpeaker(rawItem.description || "", speakers) ??
           findMatchingSpeaker(rawItem.activity, speakers) ??
+          (matchedSlide?.speaker_name ? { speakerName: matchedSlide.speaker_name } : null) ??
           (matchedItemSess?.speaker_name ? { speakerName: matchedItemSess.speaker_name } : null) ??
           (matchedDaySess?.speaker_name ? { speakerName: matchedDaySess.speaker_name } : null);
 
-        const slidesUrl = matchedItemSess?.slides_url || rawItem.slides_url;
-        const slidesTitle = matchedItemSess?.slides_title || rawItem.slides_title || "Open Slides";
+        const slidesUrl = matchedSlide?.slides_url || matchedItemSess?.slides_url || rawItem.slides_url;
+        const slidesTitle =
+          matchedSlide?.slides_title || matchedItemSess?.slides_title || rawItem.slides_title || "Open Slides";
         const relatedLinks =
-          matchedItemSess?.related_links && matchedItemSess.related_links.length > 0
-            ? matchedItemSess.related_links
-            : rawItem.related_links;
+          matchedSlide?.related_links && matchedSlide.related_links.length > 0
+            ? matchedSlide.related_links
+            : matchedItemSess?.related_links && matchedItemSess.related_links.length > 0
+              ? matchedItemSess.related_links
+              : rawItem.related_links;
 
         return {
           id: `item-${dIdx}-${iIdx}-${rawItem.time}`,

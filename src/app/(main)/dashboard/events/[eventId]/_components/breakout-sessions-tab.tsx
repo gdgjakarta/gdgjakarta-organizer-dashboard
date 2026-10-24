@@ -1951,10 +1951,10 @@ export function BreakoutSessionsTab({
           <CardContent className="space-y-4 pt-4">
             {/* Session Selector & Filter Controls */}
             <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
-              <div className="md:col-span-4">
+              <div className="min-w-0 md:col-span-5">
                 <Label className="mb-1 block text-muted-foreground text-xs">Selected Breakout Session</Label>
                 <Select value={activeRosterSessionId} onValueChange={setActiveRosterSessionId}>
-                  <SelectTrigger className="h-9 text-xs">
+                  <SelectTrigger className="h-9 w-full min-w-0 bg-background text-xs [&>span]:block [&>span]:min-w-0 [&>span]:truncate [&>span]:text-left *:data-[slot=select-value]:block *:data-[slot=select-value]:min-w-0 *:data-[slot=select-value]:truncate *:data-[slot=select-value]:text-left">
                     <SelectValue placeholder="Select breakout session..." />
                   </SelectTrigger>
                   <SelectContent>
@@ -1968,7 +1968,7 @@ export function BreakoutSessionsTab({
                 </Select>
               </div>
 
-              <div className="md:col-span-5">
+              <div className="min-w-0 md:col-span-4">
                 <Label className="mb-1 block text-muted-foreground text-xs">Search Session Roster</Label>
                 <div className="relative">
                   <Search className="pointer-events-none absolute top-2.5 left-2.5 size-4 text-muted-foreground" />
@@ -1981,13 +1981,13 @@ export function BreakoutSessionsTab({
                 </div>
               </div>
 
-              <div className="md:col-span-3">
+              <div className="min-w-0 md:col-span-3">
                 <Label className="mb-1 block text-muted-foreground text-xs">Check-in Filter</Label>
                 <Select
                   value={rosterFilter}
                   onValueChange={(v) => setRosterFilter(v as "all" | "checked_in" | "not_checked_in")}
                 >
-                  <SelectTrigger className="h-9 text-xs">
+                  <SelectTrigger className="h-9 w-full min-w-0 bg-background text-xs [&>span]:block [&>span]:min-w-0 [&>span]:truncate [&>span]:text-left *:data-[slot=select-value]:block *:data-[slot=select-value]:min-w-0 *:data-[slot=select-value]:truncate *:data-[slot=select-value]:text-left">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

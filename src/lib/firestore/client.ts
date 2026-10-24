@@ -96,6 +96,7 @@ import type {
   EventBundlePackage,
   EventEmailTemplates,
   EventMerchandiseItem,
+  EventPresentationSlide,
   EventSession,
   EventTicketTier,
   EventVoucher,
@@ -2850,6 +2851,7 @@ const ALLOWED_EVENT_DOC_KEYS = new Set<string>([
   "photo_album_url",
   "photo_album_title",
   "recap_description",
+  "presentation_slides",
   "email_templates",
   "synced_from_bevy_at",
   "created_at",
@@ -3101,6 +3103,7 @@ export async function updateEventHighlightsMedia(
     photo_album_url?: string;
     photo_album_title?: string;
     recap_description?: string;
+    presentation_slides?: EventPresentationSlide[];
     sessions?: EventSession[];
   },
   baseEvent?: Partial<FirestoreEvent>,
@@ -3130,8 +3133,25 @@ export async function updateEventHighlightsMedia(
   if (data.recap_description !== undefined) {
     updatePayload.recap_description = data.recap_description.trim() ? data.recap_description.trim() : deleteField();
   }
-  if (data.sessions !== undefined) {
+  if (data.presentation_slides !== undefined) {
+    updatePayload.presentation_slides = data.presentation_slides.length > 0 ? data.presentation_slides : deleteField();
+  } else if (data.sessions !== undefined) {
+    // Legacy fallback only if presentation_slides is omitted
     updatePayload.sessions = data.sessions.length > 0 ? data.sessions : deleteField();
+  }
+
+  // If presentation_slides are being saved, automatically clean up any fake breakout sessions that were
+  // created by the old Highlights & Media tab (capacity === 0 or missing, and have agenda_activity_id,
+  // without being a real registration breakout session).
+  if (data.presentation_slides !== undefined && Array.isArray(baseEvent?.sessions)) {
+    const cleanedSessions = baseEvent.sessions.filter(
+      (s) =>
+        !s.agenda_activity_id &&
+        (Number(s.capacity) > 0 || s.include_in_registration === true || s.separate_check_in === true),
+    );
+    if (cleanedSessions.length !== baseEvent.sessions.length) {
+      updatePayload.sessions = cleanedSessions.length > 0 ? cleanedSessions : deleteField();
+    }
   }
 
   const exists = await ensureEventDocInitialized(eventId, baseEvent, updatePayload);
@@ -3736,12 +3756,34 @@ export async function updateEventMerchandiseDeliveryConfig(
 export async function saveRefundRequest(registrationId: string, refundRequest: RefundRequest): Promise<void> {
   if (typeof window === "undefined") return;
   const docRef = doc(db, "event_registrations", registrationId);
+  const snap = await getDoc(docRef);
+  const existing = snap.exists() ? (snap.data() as FirestoreRegistration) : null;
+  const existingRequest = existing?.refund_request;
   const now = new Date().toISOString();
+
+  const finalRequest: RefundRequest = {
+    ...refundRequest,
+    // Preserve immutable id and original requested_at to adhere to Firestore rules on update
+    id: existingRequest?.id || refundRequest.id,
+    requested_at: existingRequest?.requested_at || refundRequest.requested_at || now,
+    updated_at: now,
+  };
+
+  // Strip organizer-only fields to avoid rule violations on attendee update
+  delete finalRequest.rejection_reason;
+  delete finalRequest.rejected_at;
+  delete finalRequest.rejected_by_id;
+  delete finalRequest.rejected_by_name;
+  delete finalRequest.rejected_by_email;
+  delete finalRequest.completion_proof_url;
+  delete finalRequest.completion_notes;
+  delete finalRequest.completed_at;
+  delete finalRequest.completed_by_id;
+  delete finalRequest.completed_by_name;
+  delete finalRequest.completed_by_email;
+
   const sanitized = sanitizeFirestoreData({
-    refund_request: {
-      ...refundRequest,
-      updated_at: now,
-    },
+    refund_request: finalRequest,
     updated_at: now,
   });
   await updateDoc(docRef, sanitized);
@@ -3826,6 +3868,7 @@ export async function updateEventRefundConfig(
   eventId: string,
   config: {
     refund_enabled?: boolean;
+    refund_include_fee?: boolean;
     refund_cutoff_days_before?: number;
     refund_cutoff_date?: string | null;
     refund_policy_notes?: string | null;
@@ -3836,6 +3879,7 @@ export async function updateEventRefundConfig(
   const eventRef = doc(db, "events", String(eventId));
   const updatePayload: Record<string, unknown> = {
     ...(config.refund_enabled !== undefined ? { refund_enabled: config.refund_enabled } : {}),
+    ...(config.refund_include_fee !== undefined ? { refund_include_fee: config.refund_include_fee } : {}),
     ...(config.refund_cutoff_days_before !== undefined
       ? { refund_cutoff_days_before: config.refund_cutoff_days_before }
       : {}),

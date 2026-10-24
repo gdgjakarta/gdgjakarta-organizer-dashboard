@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { BevyAgenda, BevySpeaker } from "@/lib/bevy/types";
 import { buildUnifiedAgenda, type UnifiedAgendaItem } from "@/lib/events/agenda-unification";
-import type { EventSession } from "@/lib/firestore/types";
+import type { EventPresentationSlide, EventSession } from "@/lib/firestore/types";
 import { cn, sanitizeHtml } from "@/lib/utils";
 
 function formatAudienceType(audienceType?: string): string {
@@ -139,12 +139,18 @@ interface UnifiedAgendaTimelineProps {
   bevyAgenda?: BevyAgenda | null;
   speakers?: BevySpeaker[] | null;
   firestoreSessions?: EventSession[] | null;
+  presentationSlides?: EventPresentationSlide[] | null;
 }
 
-export function UnifiedAgendaTimeline({ bevyAgenda, speakers, firestoreSessions }: UnifiedAgendaTimelineProps) {
+export function UnifiedAgendaTimeline({
+  bevyAgenda,
+  speakers,
+  firestoreSessions,
+  presentationSlides,
+}: UnifiedAgendaTimelineProps) {
   const unified = useMemo(
-    () => buildUnifiedAgenda(bevyAgenda, speakers, firestoreSessions),
-    [bevyAgenda, speakers, firestoreSessions],
+    () => buildUnifiedAgenda(bevyAgenda, speakers, firestoreSessions, presentationSlides),
+    [bevyAgenda, speakers, firestoreSessions, presentationSlides],
   );
 
   const [selectedSessionId, setSelectedSessionId] = useState<string>("all");

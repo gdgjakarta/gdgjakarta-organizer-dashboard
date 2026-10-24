@@ -1,6 +1,7 @@
 import { format, parseISO } from "date-fns";
 
 import { toTimezoneDate } from "@/lib/date-utils";
+import { calculatePaymentGatewayFee } from "@/lib/events/payment-fee";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
 
 export interface BankOption {
@@ -157,7 +158,9 @@ export function isRegistrationEligibleForRefund(
     registration.payment_status === "paid" ||
     Boolean(registration.paid_at) ||
     Boolean(registration.payment_invoice_number && (registration.payment_amount ?? 0) > 0) ||
-    Boolean(registration.status_logs?.some((l) => l.status === "paid_waitlisted" || l.status === "paid_and_registered"));
+    Boolean(
+      registration.status_logs?.some((l) => l.status === "paid_waitlisted" || l.status === "paid_and_registered"),
+    );
 
   if (isRejectedStatus && !hasConfirmedPaymentForRejected && !hasActiveRequest) {
     return {
@@ -245,4 +248,77 @@ export function expandRefundRecords(registrations: FirestoreRegistration[]): Fir
     }
   }
   return rows;
+}
+
+/**
+ * Calculates the refundable deposit amount for a registration.
+ *
+ * Organizer rule:
+ * By default (event.refund_include_fee = false or undefined), the organizer only refunds
+ * the deposit ticket amount without payment gateway fees.
+ * When event.refund_include_fee = true, the fee is added into the refundable amount.
+ */
+export function getRegistrationRefundAmount(
+  registration: FirestoreRegistration,
+  event?: FirestoreEvent | null,
+): number {
+  // If the refund is already completed, respect the actual finalized disbursed amount
+  if (
+    registration.refund_request?.status === "refund_completed" &&
+    typeof registration.refund_request.refund_amount === "number" &&
+    registration.refund_request.refund_amount > 0
+  ) {
+    return registration.refund_request.refund_amount;
+  }
+
+  const includeFee = Boolean(event?.refund_include_fee);
+
+  // 1. Determine base ticket deposit amount / subtotal without fee
+  let depositWithoutFee: number | null = null;
+
+  if (typeof registration.payment_subtotal_amount === "number" && registration.payment_subtotal_amount > 0) {
+    depositWithoutFee = registration.payment_subtotal_amount;
+  } else if (
+    typeof registration.payment_amount === "number" &&
+    typeof registration.payment_fee_amount === "number" &&
+    registration.payment_fee_amount > 0
+  ) {
+    depositWithoutFee = Math.max(0, registration.payment_amount - registration.payment_fee_amount);
+  } else if (typeof registration.ticket_price === "number" && registration.ticket_price > 0) {
+    depositWithoutFee = registration.ticket_price;
+  } else if (typeof registration.bundle_price === "number" && registration.bundle_price > 0) {
+    depositWithoutFee = registration.bundle_price;
+  }
+
+  // 2. Determine amount with fee
+  let amountWithFee: number | null = null;
+  if (typeof registration.payment_amount === "number" && registration.payment_amount > 0) {
+    amountWithFee = registration.payment_amount;
+  } else if (depositWithoutFee !== null) {
+    if (typeof registration.payment_fee_amount === "number" && registration.payment_fee_amount > 0) {
+      amountWithFee = depositWithoutFee + registration.payment_fee_amount;
+    } else {
+      const feeCalc = calculatePaymentGatewayFee(depositWithoutFee, event);
+      amountWithFee = depositWithoutFee + feeCalc.feeAmount;
+    }
+  }
+
+  // 3. Fallback if depositWithoutFee could not be resolved from structured fields
+  if (depositWithoutFee === null) {
+    const rawFallback = registration.refund_request?.refund_amount ?? registration.payment_amount ?? 0;
+
+    if (typeof registration.ticket_price === "number" && registration.ticket_price > 0) {
+      depositWithoutFee = registration.ticket_price;
+      amountWithFee = rawFallback > depositWithoutFee ? rawFallback : (amountWithFee ?? rawFallback);
+    } else {
+      depositWithoutFee = rawFallback;
+      amountWithFee = rawFallback;
+    }
+  }
+
+  if (includeFee) {
+    return amountWithFee ?? depositWithoutFee;
+  }
+
+  return depositWithoutFee;
 }

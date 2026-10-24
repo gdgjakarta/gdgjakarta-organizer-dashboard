@@ -29,8 +29,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import type { BevySpeaker } from "@/lib/bevy/types";
 import { normalizeStr } from "@/lib/events/agenda-unification";
-import type { EventSession } from "@/lib/firestore/types";
+import type { EventPresentationSlide } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
 export interface AgendaActivityOption {
@@ -42,24 +43,26 @@ export interface AgendaActivityOption {
 }
 
 interface SortableSlideDeckCardProps {
-  session: EventSession;
+  slide: EventPresentationSlide;
   index: number;
-  totalSessions: number;
+  totalSlides: number;
   agendaActivities?: AgendaActivityOption[];
-  onUpdate: (id: string, updates: Partial<EventSession>) => void;
+  speakers?: BevySpeaker[];
+  onUpdate: (id: string, updates: Partial<EventPresentationSlide>) => void;
   onRemove: (id: string) => void;
   onMoveUp: (index: number) => void;
   onMoveDown: (index: number) => void;
-  onAddRelatedLink: (sessionId: string) => void;
-  onUpdateRelatedLink: (sessionId: string, linkIndex: number, field: "title" | "url", val: string) => void;
-  onRemoveRelatedLink: (sessionId: string, linkIndex: number) => void;
+  onAddRelatedLink: (slideId: string) => void;
+  onUpdateRelatedLink: (slideId: string, linkIndex: number, field: "title" | "url", val: string) => void;
+  onRemoveRelatedLink: (slideId: string, linkIndex: number) => void;
 }
 
 export function SortableSlideDeckCard({
-  session: sess,
+  slide,
   index,
-  totalSessions,
+  totalSlides,
   agendaActivities,
+  speakers,
   onUpdate,
   onRemove,
   onMoveUp,
@@ -69,21 +72,21 @@ export function SortableSlideDeckCard({
   onRemoveRelatedLink,
 }: SortableSlideDeckCardProps) {
   const { handleRef, isDragging, ref } = useSortable({
-    id: sess.id,
+    id: slide.id,
     index,
-    type: "session-slide",
-    accept: "session-slide",
-    group: "session-slides",
+    type: "presentation-slide",
+    accept: "presentation-slide",
+    group: "presentation-slides",
     modifiers: [RestrictToVerticalAxis],
   });
 
-  const links = sess.related_links ?? [];
+  const links = slide.related_links ?? [];
 
   const matchedActivity = agendaActivities?.find((act) => {
-    if (sess.agenda_activity_id) {
-      return sess.agenda_activity_id === act.id;
+    if (slide.agenda_activity_id) {
+      return slide.agenda_activity_id === act.id;
     }
-    return normalizeStr(sess.title) === normalizeStr(act.activity);
+    return normalizeStr(slide.title) === normalizeStr(act.activity);
   });
 
   return (
@@ -96,7 +99,7 @@ export function SortableSlideDeckCard({
       )}
     >
       <div className="space-y-4">
-        {/* Session Header: Drag Handle, Numbering, Title, Move Controls, Status Badge & Delete */}
+        {/* Header: Drag Handle, Numbering, Title, Agenda Linking, Controls & Remove */}
         <div className="flex flex-col gap-2 border-border/50 border-b pb-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-center gap-2">
             {/* Draggable Handle */}
@@ -106,8 +109,8 @@ export function SortableSlideDeckCard({
               variant="ghost"
               size="icon-sm"
               className="size-7 cursor-grab text-muted-foreground hover:bg-muted hover:text-foreground active:cursor-grabbing"
-              title="Drag to reorder slide deck session"
-              aria-label={`Drag to reorder session ${index + 1}`}
+              title="Drag to reorder presentation slides"
+              aria-label={`Drag to reorder slide ${index + 1}`}
             >
               <GripVertical className="size-4" />
             </Button>
@@ -117,19 +120,19 @@ export function SortableSlideDeckCard({
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5">
-              <Input
-                value={sess.title}
-                onChange={(e) => onUpdate(sess.id, { title: e.target.value })}
-                placeholder="Session Title (e.g. Building Agents with Gemini)"
-                className="h-8 max-w-[280px] sm:max-w-[320px] font-semibold text-sm"
-              />
-              {Boolean(matchedActivity ?? sess.time_slot) && (
+              <span
+                className="font-semibold text-foreground text-sm max-w-[280px] sm:max-w-[340px] truncate"
+                title={slide.title}
+              >
+                {slide.title}
+              </span>
+              {Boolean(matchedActivity ?? slide.time_slot) && (
                 <Badge
                   variant="outline"
                   className="gap-1 border-blue-500/30 bg-blue-500/10 text-[10px] text-blue-600 dark:text-blue-400 shrink-0"
                 >
                   <Clock className="size-3" />
-                  <span>{sess.time_slot ?? matchedActivity?.time} • Agenda</span>
+                  <span>{slide.time_slot ?? matchedActivity?.time} • Agenda</span>
                 </Badge>
               )}
               {agendaActivities && agendaActivities.length > 0 && (
@@ -142,22 +145,21 @@ export function SortableSlideDeckCard({
                       className="h-7 px-2 text-[11px] text-muted-foreground hover:text-foreground shrink-0 gap-1"
                     >
                       <Calendar className="size-3 text-primary" />
-                      <span>{matchedActivity ? "Re-link" : "Link to Agenda"}</span>
+                      <span>{matchedActivity ? "Rebind Agenda" : "Bind to Agenda"}</span>
                       <ChevronDown className="size-2.5 opacity-60" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" className="w-72 max-h-60 overflow-y-auto">
-                    <DropdownMenuLabel className="text-xs">Link to Agenda Activity</DropdownMenuLabel>
+                    <DropdownMenuLabel className="text-xs">Bind to Bevy Agenda Activity</DropdownMenuLabel>
                     <DropdownMenuSeparator />
                     {agendaActivities.map((act) => (
                       <DropdownMenuItem
                         key={act.id}
                         onClick={() => {
-                          onUpdate(sess.id, {
+                          onUpdate(slide.id, {
                             title: act.activity,
                             time_slot: act.time,
-                            speaker_name: act.speakerName || sess.speaker_name,
-                            description: act.description || sess.description,
+                            speaker_name: act.speakerName || slide.speaker_name,
                             agenda_activity_id: act.id,
                           });
                         }}
@@ -187,8 +189,8 @@ export function SortableSlideDeckCard({
               className="size-7 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-25"
               onClick={() => onMoveUp(index)}
               disabled={index === 0}
-              title="Move session up"
-              aria-label="Move session up"
+              title="Move slide up"
+              aria-label="Move slide up"
             >
               <ChevronUp className="size-3.5" />
             </Button>
@@ -199,14 +201,14 @@ export function SortableSlideDeckCard({
               variant="ghost"
               className="size-7 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-25"
               onClick={() => onMoveDown(index)}
-              disabled={index === totalSessions - 1}
-              title="Move session down"
-              aria-label="Move session down"
+              disabled={index === totalSlides - 1}
+              title="Move slide down"
+              aria-label="Move slide down"
             >
               <ChevronDown className="size-3.5" />
             </Button>
 
-            {sess.slides_url && (
+            {slide.slides_url && (
               <Badge variant="outline" className="gap-1 border-primary/30 text-[10px] text-primary">
                 <Presentation className="size-3" />
                 Slides Attached
@@ -217,9 +219,9 @@ export function SortableSlideDeckCard({
               size="sm"
               variant="ghost"
               className="size-7 p-0 text-muted-foreground hover:text-destructive"
-              onClick={() => onRemove(sess.id)}
-              title="Remove session"
-              aria-label="Remove session"
+              onClick={() => onRemove(slide.id)}
+              title="Remove slide deck"
+              aria-label="Remove slide deck"
             >
               <Trash2 className="size-3.5" />
             </Button>
@@ -229,13 +231,41 @@ export function SortableSlideDeckCard({
         {/* Speaker & Slides Form Inputs */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field>
-            <FieldLabel className="text-xs">Speaker Name</FieldLabel>
+            <div className="flex items-center justify-between">
+              <FieldLabel className="text-xs">Speaker Name</FieldLabel>
+              {speakers && speakers.length > 0 && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="text-[11px] font-medium text-primary hover:underline cursor-pointer"
+                    >
+                      Select Bevy Speaker
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-64 max-h-56 overflow-y-auto">
+                    <DropdownMenuLabel className="text-xs">Bind Bevy Speaker</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {speakers.map((spk) => (
+                      <DropdownMenuItem
+                        key={spk.id ?? spk.full_name}
+                        onClick={() => onUpdate(slide.id, { speaker_name: spk.full_name })}
+                        className="cursor-pointer text-xs flex flex-col items-start gap-0.5"
+                      >
+                        <span className="font-medium">{spk.full_name}</span>
+                        {spk.title && <span className="text-[10px] text-muted-foreground truncate">{spk.title}</span>}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
             <div className="relative">
               <User className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input
-                value={sess.speaker_name ?? ""}
-                onChange={(e) => onUpdate(sess.id, { speaker_name: e.target.value })}
-                placeholder="e.g. John Doe, Senior DevRel"
+                value={slide.speaker_name ?? ""}
+                onChange={(e) => onUpdate(slide.id, { speaker_name: e.target.value })}
+                placeholder="e.g. John Doe"
                 className="h-8 pl-8 text-xs"
               />
             </div>
@@ -244,8 +274,8 @@ export function SortableSlideDeckCard({
           <Field>
             <FieldLabel className="text-xs">Slides Display Title</FieldLabel>
             <Input
-              value={sess.slides_title ?? ""}
-              onChange={(e) => onUpdate(sess.id, { slides_title: e.target.value })}
+              value={slide.slides_title ?? ""}
+              onChange={(e) => onUpdate(slide.id, { slides_title: e.target.value })}
               placeholder="e.g. Download Slide Deck (Google Slides)"
               className="h-8 text-xs"
             />
@@ -257,15 +287,15 @@ export function SortableSlideDeckCard({
               <div className="relative flex-1">
                 <Presentation className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  value={sess.slides_url ?? ""}
-                  onChange={(e) => onUpdate(sess.id, { slides_url: e.target.value })}
+                  value={slide.slides_url ?? ""}
+                  onChange={(e) => onUpdate(slide.id, { slides_url: e.target.value })}
                   placeholder="https://docs.google.com/presentation/d/... or https://speakerdeck.com/..."
                   className="h-8 pl-8 font-mono text-xs"
                 />
               </div>
-              {sess.slides_url && (
+              {slide.slides_url && (
                 <Button asChild size="sm" variant="outline" className="h-8 shrink-0 gap-1 text-xs">
-                  <a href={sess.slides_url} target="_blank" rel="noopener noreferrer">
+                  <a href={slide.slides_url} target="_blank" rel="noopener noreferrer">
                     <span>Test Link</span>
                     <ExternalLink className="size-3" />
                   </a>
@@ -287,7 +317,7 @@ export function SortableSlideDeckCard({
               size="sm"
               variant="ghost"
               className="h-6 gap-1 text-[11px] text-primary hover:bg-primary/5"
-              onClick={() => onAddRelatedLink(sess.id)}
+              onClick={() => onAddRelatedLink(slide.id)}
             >
               <Plus className="size-3" />
               Add Link
@@ -303,13 +333,13 @@ export function SortableSlideDeckCard({
                 <div key={`${link.url}-${lIdx}`} className="flex items-center gap-2">
                   <Input
                     value={link.title}
-                    onChange={(e) => onUpdateRelatedLink(sess.id, lIdx, "title", e.target.value)}
+                    onChange={(e) => onUpdateRelatedLink(slide.id, lIdx, "title", e.target.value)}
                     placeholder="Link Title (e.g. GitHub Repository)"
                     className="h-7 w-1/3 text-xs"
                   />
                   <Input
                     value={link.url}
-                    onChange={(e) => onUpdateRelatedLink(sess.id, lIdx, "url", e.target.value)}
+                    onChange={(e) => onUpdateRelatedLink(slide.id, lIdx, "url", e.target.value)}
                     placeholder="https://github.com/..."
                     className="h-7 flex-1 font-mono text-xs"
                   />
@@ -318,7 +348,7 @@ export function SortableSlideDeckCard({
                     variant="ghost"
                     size="sm"
                     className="size-7 shrink-0 p-0 text-muted-foreground hover:text-destructive"
-                    onClick={() => onRemoveRelatedLink(sess.id, lIdx)}
+                    onClick={() => onRemoveRelatedLink(slide.id, lIdx)}
                     title="Remove link"
                     aria-label="Remove link"
                   >

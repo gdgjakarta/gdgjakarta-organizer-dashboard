@@ -1113,6 +1113,7 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
                   bevyAgenda={currentEvent.agenda}
                   speakers={currentEvent.speakers}
                   firestoreSessions={currentEvent.sessions}
+                  presentationSlides={currentEvent.presentation_slides}
                 />
               </CardContent>
             </Card>

@@ -24,6 +24,7 @@ import {
   formatRupiah,
   getEventRefundCutoff,
   getEventRefundPolicyNotes,
+  getRegistrationRefundAmount,
   POPULAR_INDONESIAN_BANKS,
 } from "@/lib/events/refund-utils";
 import { submitRefundRequestAction } from "@/lib/firestore/actions";
@@ -68,12 +69,7 @@ export function RefundRequestDialog({
 
   const [isSubmitting, startTransition] = useTransition();
 
-  const refundAmount =
-    existingRefund?.refund_amount ??
-    registration.payment_amount ??
-    registration.ticket_price ??
-    registration.bundle_price ??
-    0;
+  const refundAmount = existingRefund?.refund_amount ?? getRegistrationRefundAmount(registration, event);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -158,6 +154,8 @@ export function RefundRequestDialog({
         proofMediaName: proofMediaName ?? undefined,
         refundAmount,
         isResubmission: isRejected,
+        refundRequestId: existingRefund?.id,
+        requestedAt: existingRefund?.requested_at,
       });
 
       if (res.success) {

@@ -171,6 +171,7 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
               max_attendees: firestoreDoc.max_attendees ?? event.max_attendees,
               custom_questions: firestoreDoc.custom_questions ?? event.custom_questions,
               sessions: firestoreDoc.sessions ?? event.sessions,
+              presentation_slides: firestoreDoc.presentation_slides ?? event.presentation_slides,
               tickets: firestoreDoc.tickets ?? event.tickets,
               merchandise: firestoreDoc.merchandise ?? event.merchandise,
               vouchers: firestoreDoc.vouchers ?? event.vouchers,
