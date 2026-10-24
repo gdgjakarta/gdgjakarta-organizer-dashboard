@@ -28,6 +28,23 @@ import {
  * Resolves Cloudflare R2 bucket from worker context, with an optional S3 SDK fallback if running outside Cloudflare.
  */
 export async function getMediaBucket(): Promise<R2Bucket> {
+  const accountId = process.env.R2_ACCOUNT_ID ?? process.env.CF_ACCOUNT_ID;
+  const accessKeyId = process.env.R2_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
+  const bucketName = process.env.R2_BUCKET_NAME ?? "gdgjakarta-assets";
+
+  // In local development, if explicit S3 credentials are provided in .env.local,
+  // prioritize direct S3 connection to ensure it points to the exact same remote bucket
+  // without depending on Wrangler OAuth tunnel or Miniflare local simulation.
+  if (process.env.NODE_ENV === "development" && accountId && accessKeyId && secretAccessKey) {
+    return createS3R2Adapter({
+      accountId,
+      accessKeyId,
+      secretAccessKey,
+      bucketName,
+    });
+  }
+
   try {
     const ctx = await getCloudflareContext({ async: true });
     if (ctx.env.MEDIA_BUCKET) {
@@ -37,14 +54,8 @@ export async function getMediaBucket(): Promise<R2Bucket> {
     // getCloudflareContext throws if executed outside worker context without platform proxy
   }
 
-  // Check if S3 credentials are provided for fallback
-  const accountId = process.env.R2_ACCOUNT_ID ?? process.env.CF_ACCOUNT_ID;
-  const accessKeyId = process.env.R2_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
-  const bucketName = process.env.R2_BUCKET_NAME ?? "gdgjakarta-assets";
-
+  // Fallback if running outside Cloudflare or if context wasn't available
   if (accountId && accessKeyId && secretAccessKey) {
-    // Dynamically wrap AWS S3 client to emulate R2Bucket interface
     return createS3R2Adapter({
       accountId,
       accessKeyId,
@@ -505,8 +516,10 @@ function createS3R2Adapter(config: {
           }
         }
         body = Buffer.concat(chunks);
-      } else if (value instanceof Uint8Array) {
+      } else if (value instanceof ArrayBuffer) {
         body = Buffer.from(value);
+      } else if (ArrayBuffer.isView(value)) {
+        body = Buffer.from(value.buffer, value.byteOffset, value.byteLength);
       } else if (typeof value === "string") {
         body = value;
       }
@@ -564,10 +577,51 @@ function createS3R2Adapter(config: {
           },
           body: res.Body as unknown as ReadableStream,
           bodyUsed: false,
-          arrayBuffer: async () => new ArrayBuffer(0),
-          text: async () => "",
-          json: async () => ({}),
-          blob: async () => new Blob([]),
+          arrayBuffer: async () => {
+            if (
+              res.Body &&
+              typeof (res.Body as { transformToByteArray?: () => Promise<Uint8Array> }).transformToByteArray ===
+                "function"
+            ) {
+              const bytes = await (
+                res.Body as { transformToByteArray: () => Promise<Uint8Array> }
+              ).transformToByteArray();
+              return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+            }
+            return new ArrayBuffer(0);
+          },
+          text: async () => {
+            if (
+              res.Body &&
+              typeof (res.Body as { transformToString?: () => Promise<string> }).transformToString === "function"
+            ) {
+              return await (res.Body as { transformToString: () => Promise<string> }).transformToString();
+            }
+            return "";
+          },
+          json: async () => {
+            if (
+              res.Body &&
+              typeof (res.Body as { transformToString?: () => Promise<string> }).transformToString === "function"
+            ) {
+              const str = await (res.Body as { transformToString: () => Promise<string> }).transformToString();
+              return JSON.parse(str);
+            }
+            return {};
+          },
+          blob: async () => {
+            if (
+              res.Body &&
+              typeof (res.Body as { transformToByteArray?: () => Promise<Uint8Array> }).transformToByteArray ===
+                "function"
+            ) {
+              const bytes = await (
+                res.Body as { transformToByteArray: () => Promise<Uint8Array> }
+              ).transformToByteArray();
+              return new Blob([bytes as unknown as BlobPart]);
+            }
+            return new Blob([]);
+          },
         } as unknown as R2ObjectBody;
       } catch {
         return null;
