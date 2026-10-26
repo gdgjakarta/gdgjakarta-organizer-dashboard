@@ -369,16 +369,35 @@ async function setAuthSessionCookie(token: string, role: string, remember = true
   }
 }
 
+export interface SessionRestoreResult {
+  success: boolean;
+  role: string;
+  chapterRole: string;
+  chapterRoleType?: ChapterRole;
+  roleId?: number | null;
+  roleTitle?: string;
+  bevyUserId?: string | null;
+  isValidOrganizer?: boolean;
+}
+
 /**
  * Restores HTTP-only auth cookies with server-side Bevy role re-validation
  * to prevent client-side privilege escalation.
  */
-export async function restoreSessionCookieAction(
-  token: string,
-  cachedRole?: string,
-): Promise<{ success: boolean; role: string }> {
+export async function restoreSessionCookieAction(token: string, cachedRole?: string): Promise<SessionRestoreResult> {
   try {
-    if (!token) return { success: false, role: "member" };
+    if (!token) {
+      return {
+        success: false,
+        role: "member",
+        chapterRole: "Member",
+        chapterRoleType: ChapterRole.MEMBER,
+        roleId: null,
+        roleTitle: "Member",
+        bevyUserId: null,
+        isValidOrganizer: false,
+      };
+    }
 
     const cookieStore = await cookies();
     const existingToken = cookieStore.get(AUTH_COOKIE)?.value;
@@ -387,62 +406,107 @@ export async function restoreSessionCookieAction(
     const { verifyRoleCookie } = await import("@/lib/security/session-cookie");
     const verifiedExistingRole = await verifyRoleCookie(existingRoleCookie);
 
-    // Fast-path: If the existing cookies are already set and cryptographically valid,
-    // and match the current token/role, skip redundant Bevy validation and cookie mutations.
-    if (existingToken === token && verifiedExistingRole) {
-      if (!cachedRole || cachedRole.toLowerCase() === verifiedExistingRole.toLowerCase()) {
-        return { success: true, role: verifiedExistingRole };
-      }
+    // Fast-path ONLY when existing signed role is ALREADY an organizer or core_team
+    // and matches the cachedRole. Never fast-path a "member" role because members
+    // can be assigned as organizers in Bevy at any time!
+    if (
+      existingToken === token &&
+      verifiedExistingRole &&
+      (verifiedExistingRole === "organizer" || verifiedExistingRole === "core_team") &&
+      cachedRole?.toLowerCase() === verifiedExistingRole.toLowerCase()
+    ) {
+      const isExecutive = verifiedExistingRole === "organizer";
+      return {
+        success: true,
+        role: verifiedExistingRole,
+        chapterRole: isExecutive ? "Organizer" : "Core Team",
+        chapterRoleType: isExecutive ? ChapterRole.ORGANIZER : ChapterRole.CORE_TEAM,
+        roleId: isExecutive ? 1 : 2,
+        roleTitle: isExecutive ? "Organizer" : "Core Team",
+        bevyUserId: null,
+        isValidOrganizer: true,
+      };
     }
 
     const tokenVerification = await verifyFirebaseIdToken(token);
     if (!tokenVerification.valid || !tokenVerification.email) {
       console.warn("[Auth Restore] Invalid or unverified token supplied to restoreSessionCookieAction");
-      return { success: false, role: "member" };
+      return {
+        success: false,
+        role: "member",
+        chapterRole: "Member",
+        chapterRoleType: ChapterRole.MEMBER,
+        roleId: null,
+        roleTitle: "Member",
+        bevyUserId: null,
+        isValidOrganizer: false,
+      };
     }
 
     const verifiedEmail = tokenVerification.email.toLowerCase().trim();
 
-    // If existing signed role was already valid or cached role is standard member,
-    // reuse verified role without hammering Bevy API on every fresh visit / idle wake
-    let role = verifiedExistingRole || cachedRole?.toLowerCase() || "member";
+    // Query Bevy API authoritatively for the user's role
+    let validation: OrganizerValidationResult = {
+      isValidOrganizer: false,
+      role: "member",
+      bevyUserId: null,
+      chapterRole: "Member",
+    };
+    try {
+      validation = await validateBevyOrganizer(verifiedEmail);
+    } catch (valErr) {
+      console.error("[Auth Restore] Validation error:", valErr);
+    }
 
-    // Only run expensive Bevy organizer validation if user claims to be an organizer/staff
-    // or if no trusted role cookie exists yet
-    if (!verifiedExistingRole || role === "organizer" || role === "core_team") {
-      let validation: OrganizerValidationResult = {
-        isValidOrganizer: false,
-        role: "member",
-        bevyUserId: null,
-        chapterRole: "Member",
-      };
-      try {
-        validation = await validateBevyOrganizer(verifiedEmail);
-      } catch (valErr) {
-        console.error("[Auth Restore] Validation error:", valErr);
-      }
+    const isExecutive = isExecutiveOrganizer({
+      role: validation.role,
+      chapterRole: validation.chapterRole,
+      chapterRoleType: validation.chapterRoleType,
+      roleId: validation.roleId,
+    });
+    const isCoreStaff = isCoreTeamOrStaff({
+      role: validation.role,
+      chapterRole: validation.chapterRole,
+      chapterRoleType: validation.chapterRoleType,
+      roleId: validation.roleId,
+    });
 
-      const isExecutive = isExecutiveOrganizer({
-        role: validation.role,
-        chapterRole: validation.chapterRole,
-        chapterRoleType: validation.chapterRoleType,
-        roleId: validation.roleId,
-      });
-      const isCoreStaff = isCoreTeamOrStaff({
-        role: validation.role,
-        chapterRole: validation.chapterRole,
-        chapterRoleType: validation.chapterRoleType,
-        roleId: validation.roleId,
-      });
+    const isAuthorizedTeam = validation.isValidOrganizer || isExecutive || isCoreStaff;
+    const role = isExecutive ? "organizer" : isCoreStaff ? "core_team" : "member";
+    const chapterRole = isAuthorizedTeam
+      ? (validation.chapterRole ?? (isExecutive ? "Organizer" : "Core Team"))
+      : "Member";
 
-      role = isExecutive ? "organizer" : isCoreStaff ? "core_team" : "member";
+    let resolvedRoleType: ChapterRole = ChapterRole.MEMBER;
+    if (isExecutive) {
+      resolvedRoleType = ChapterRole.ORGANIZER;
+    } else if (isCoreStaff) {
+      resolvedRoleType = ChapterRole.CORE_TEAM;
     }
 
     await setAuthSessionCookie(token, role, true);
-    return { success: true, role };
+    return {
+      success: true,
+      role,
+      chapterRole,
+      chapterRoleType: validation.chapterRoleType ?? resolvedRoleType,
+      roleId: validation.roleId ?? (isExecutive ? 1 : isCoreStaff ? 2 : null),
+      roleTitle: validation.roleTitle ?? chapterRole,
+      bevyUserId: validation.bevyUserId ? String(validation.bevyUserId) : null,
+      isValidOrganizer: isAuthorizedTeam,
+    };
   } catch (err) {
     console.error("[Auth Restore] Failed to restore session cookie:", err);
-    return { success: false, role: "member" };
+    return {
+      success: false,
+      role: "member",
+      chapterRole: "Member",
+      chapterRoleType: ChapterRole.MEMBER,
+      roleId: null,
+      roleTitle: "Member",
+      bevyUserId: null,
+      isValidOrganizer: false,
+    };
   }
 }
 

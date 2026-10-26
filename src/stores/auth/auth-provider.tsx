@@ -6,7 +6,7 @@ import { getAdditionalUserInfo, onAuthStateChanged, signInWithPopup, signOut, ty
 import { type StoreApi, useStore } from "zustand";
 
 import { auth, googleProvider } from "@/config/firebase";
-import type { OrganizerValidationResult } from "@/lib/bevy/types";
+import { ChapterRole, type OrganizerValidationResult } from "@/lib/bevy/types";
 import type { FirestoreMember } from "@/lib/firestore/types";
 import { splitFullName } from "@/lib/utils";
 import { clearAuthSessionCookie, handleUserPostLoginAction, restoreSessionCookieAction } from "@/server/auth-actions";
@@ -152,98 +152,94 @@ export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
           const email = firebaseUser.email ?? "";
           const token = await firebaseUser.getIdToken();
 
-          // 1. Check local Firestore member profile first - DO NOT query Bevy API every time!
+          // 1. Fetch local Firestore member profile
           const { getFirestoreMemberById } = await import("@/lib/firestore/client");
           const memberDoc = await getFirestoreMemberById(firebaseUser.uid);
 
-          if (memberDoc?.role) {
-            console.log(
-              `[Auth Provider] Restoring session from Firestore profile for ${email} (Role: ${memberDoc.role}, ChapterRole: ${memberDoc.chapter_role || "N/A"})`,
-            );
+          const isDocOrg =
+            memberDoc?.role === "organizer" ||
+            memberDoc?.role === "Organizer" ||
+            (typeof memberDoc?.chapter_role === "string" &&
+              (memberDoc.chapter_role.toLowerCase().includes("organizer") ||
+                memberDoc.chapter_role.toLowerCase().includes("googler")));
+          const isDocStaff =
+            !isDocOrg &&
+            (memberDoc?.team === "Core Team" ||
+              memberDoc?.role === "core_team" ||
+              memberDoc?.role === "Core Team" ||
+              memberDoc?.role === "Check-in Staff" ||
+              memberDoc?.role === "check_in_staff" ||
+              (typeof memberDoc?.chapter_role === "string" &&
+                (memberDoc.chapter_role.toLowerCase().includes("core team") ||
+                  memberDoc.chapter_role.toLowerCase().includes("staff"))));
 
-            const isOrg =
-              memberDoc.role === "organizer" ||
-              memberDoc.role === "Organizer" ||
-              (typeof memberDoc.chapter_role === "string" &&
-                (memberDoc.chapter_role.toLowerCase().includes("organizer") ||
-                  memberDoc.chapter_role.toLowerCase().includes("googler")));
-            const isStaff =
-              !isOrg &&
-              (memberDoc.team === "Core Team" ||
-                memberDoc.role === "core_team" ||
-                memberDoc.role === "Core Team" ||
-                memberDoc.role === "Check-in Staff" ||
-                memberDoc.role === "check_in_staff" ||
-                (typeof memberDoc.chapter_role === "string" &&
-                  (memberDoc.chapter_role.toLowerCase().includes("core team") ||
-                    memberDoc.chapter_role.toLowerCase().includes("staff"))));
-            let role = "member";
-            if (isOrg) {
-              role = "organizer";
-            } else if (isStaff) {
-              role = "core_team";
-            }
-
-            let defaultChapterRole = "Member";
-            if (isOrg) {
-              defaultChapterRole = "Organizer";
-            } else if (isStaff) {
-              defaultChapterRole = "Core Team";
-            }
-            const chapterRole = memberDoc.chapter_role ?? defaultChapterRole;
-
-            const organizer: AuthOrganizer = {
+          // If member profile in Firestore already confirms organizer or staff, set fast interactive state
+          if (isDocOrg || isDocStaff) {
+            const initialRole = isDocOrg ? "organizer" : "core_team";
+            const initialChapterRole = memberDoc?.chapter_role ?? (isDocOrg ? "Organizer" : "Core Team");
+            const initialOrganizer: AuthOrganizer = {
               id: firebaseUser.uid,
-              name: memberDoc.name || firebaseUser.displayName || "User",
+              name: memberDoc?.name || firebaseUser.displayName || "User",
               email,
-              avatar: memberDoc.avatar_url || firebaseUser.photoURL || "",
-              role,
-              bevyUserId: memberDoc.bevy_user_id ? String(memberDoc.bevy_user_id) : undefined,
-              chapterRole,
-              roleId: isOrg ? 1 : typeof memberDoc.bevy_member_id === "number" ? memberDoc.bevy_member_id : undefined,
+              avatar: memberDoc?.avatar_url || firebaseUser.photoURL || "",
+              role: initialRole,
+              bevyUserId: memberDoc?.bevy_user_id ? String(memberDoc.bevy_user_id) : undefined,
+              chapterRole: initialChapterRole,
+              chapterRoleType: isDocOrg ? ChapterRole.ORGANIZER : ChapterRole.CORE_TEAM,
+              roleId: isDocOrg ? 1 : typeof memberDoc?.bevy_member_id === "number" ? memberDoc.bevy_member_id : 2,
             };
-
-            // Set state in client store immediately so UI is interactive without blocking
-            store.getState().setUser(organizer, firebaseUser);
-
-            const restoreRes = await restoreSessionCookieAction(token, role);
-            if (restoreRes.role && restoreRes.role !== role) {
-              organizer.role = restoreRes.role;
-              store.getState().setUser(organizer, firebaseUser);
-            }
-
-            if (!memberDoc.bevy_user_id) {
-              await syncBevyUserToFirestore(firebaseUser.uid, email);
-            }
-            return;
+            store.getState().setUser(initialOrganizer, firebaseUser);
           }
 
-          // 2. If no Firestore member doc exists yet (first-time fallback), evaluate Bevy once and save
-          console.log(`[Auth Provider] No Firestore profile found for ${email}. Evaluating Bevy API once...`);
-          const { firstName, lastName } = splitFullName(firebaseUser.displayName);
+          // Authoritatively restore session and evaluate Bevy chapter permissions on server
+          const restoreRes = await restoreSessionCookieAction(token, memberDoc?.role);
 
-          const validation = await handleUserPostLoginAction({
-            uid: firebaseUser.uid,
+          const isOrg =
+            restoreRes.role === "organizer" ||
+            (Boolean(restoreRes.isValidOrganizer) && restoreRes.roleId === 1) ||
+            isDocOrg;
+          const isStaff =
+            !isOrg && (restoreRes.role === "core_team" || isDocStaff || Boolean(restoreRes.isValidOrganizer));
+
+          const finalRole = isOrg ? "organizer" : isStaff ? "core_team" : "member";
+          const finalChapterRole =
+            restoreRes.chapterRole ||
+            memberDoc?.chapter_role ||
+            (isOrg ? "Organizer" : isStaff ? "Core Team" : "Member");
+          const finalChapterRoleType =
+            restoreRes.chapterRoleType ??
+            (isOrg ? ChapterRole.ORGANIZER : isStaff ? ChapterRole.CORE_TEAM : ChapterRole.MEMBER);
+          const finalRoleId = restoreRes.roleId ?? (isOrg ? 1 : isStaff ? 2 : undefined);
+          const finalBevyUserId =
+            restoreRes.bevyUserId || (memberDoc?.bevy_user_id ? String(memberDoc.bevy_user_id) : undefined);
+
+          // Always set a fresh AuthOrganizer object reference so Zustand and React subscribers (AppSidebar) re-render immediately
+          const authoritativeUser: AuthOrganizer = {
+            id: firebaseUser.uid,
+            name: memberDoc?.name || firebaseUser.displayName || email.split("@")[0] || "User",
             email,
-            name: firebaseUser.displayName ?? undefined,
-            avatar: firebaseUser.photoURL ?? undefined,
-            token,
-            firstName: firstName.trim() ? firstName : undefined,
-            lastName: lastName.trim() ? lastName : undefined,
-          });
+            avatar: memberDoc?.avatar_url || firebaseUser.photoURL || "",
+            role: finalRole,
+            chapterRole: finalChapterRole,
+            chapterRoleType: finalChapterRoleType,
+            roleId: finalRoleId,
+            bevyUserId: finalBevyUserId ?? null,
+          };
 
-          const organizer = mapFirebaseUserToOrganizer(firebaseUser, validation);
-          console.log("[Auth Provider] Bevy evaluation completed. Saving locally to Firestore:", {
-            email: organizer.email,
-            role: organizer.role,
-            chapterRole: organizer.chapterRole,
-          });
+          store.getState().setUser(authoritativeUser, firebaseUser);
 
-          await syncMemberToFirestore(firebaseUser, validation);
-          store.getState().setUser(organizer, firebaseUser);
-
-          if (validation.wasImported || !validation.bevyUserId) {
+          // Sync freshly resolved permissions or Bevy ID to Firestore if needed
+          if (!memberDoc?.bevy_user_id && finalBevyUserId) {
             await syncBevyUserToFirestore(firebaseUser.uid, email);
+          }
+          if (finalRole !== memberDoc?.role || finalChapterRole !== memberDoc?.chapter_role) {
+            await syncMemberToFirestore(firebaseUser, {
+              isValidOrganizer: isOrg || isStaff,
+              role: finalRole,
+              chapterRole: finalChapterRole,
+              bevyUserId: finalBevyUserId ?? null,
+              roleId: finalRoleId,
+            });
           }
         } catch (err) {
           console.error("[Auth Provider] Error during session restoration:", err);
@@ -419,6 +415,8 @@ export async function refreshCurrentUserRole(): Promise<{
       });
 
       // 2. Update local Zustand state
+      const isOrg = result.role === "organizer";
+      const isStaff = !isOrg && (result.role === "core_team" || result.isValidOrganizer);
       const organizer: AuthOrganizer = {
         id: firebaseUser.uid,
         email: firebaseUser.email,
@@ -426,6 +424,8 @@ export async function refreshCurrentUserRole(): Promise<{
         avatar: firebaseUser.photoURL ?? "",
         role: result.role,
         chapterRole: result.chapterRole,
+        chapterRoleType: isOrg ? ChapterRole.ORGANIZER : isStaff ? ChapterRole.CORE_TEAM : ChapterRole.MEMBER,
+        roleId: isOrg ? 1 : isStaff ? 2 : undefined,
         bevyUserId: result.bevyUserId,
       };
 

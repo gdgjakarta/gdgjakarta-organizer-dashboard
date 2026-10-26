@@ -35,6 +35,9 @@ export function isCoreTeamOrStaff(userOrRole?: UserRoleLike | string | null, cha
   }
 
   const { role, chapterRole: cr, chapterRoleType, roleId } = userOrRole;
+  if (chapterRoleType === ChapterRole.ORGANIZER || roleId === 1 || roleId === 4) {
+    return false;
+  }
   if (chapterRoleType === ChapterRole.CORE_TEAM || roleId === 2 || roleId === 3) {
     return true;
   }

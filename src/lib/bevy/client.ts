@@ -469,15 +469,19 @@ export interface UserChapterRoleResult {
  *  - else -> MEMBER
  */
 export async function getUserChapterRole(
-  bevyUserId: number | string,
+  bevyUserId?: number | string | null,
   chapterId: string | number = BEVY_CONFIG.chapterId,
+  email?: string | null,
 ): Promise<UserChapterRoleResult> {
   const chapterTeams = await getChapterTeam(chapterId);
-  const normalizedId = String(bevyUserId);
+  const normalizedId = bevyUserId !== undefined && bevyUserId !== null ? String(bevyUserId) : null;
+  const normalizedEmail = email?.toLowerCase().trim() || null;
 
   const matchedMember = chapterTeams.find((m) => {
     const id = m.user?.id ?? m.user_id;
-    return id !== undefined && id !== null && String(id) === normalizedId;
+    const matchesId = id !== undefined && id !== null && normalizedId !== null && String(id) === normalizedId;
+    const matchesEmail = normalizedEmail !== null && m.user?.email?.toLowerCase().trim() === normalizedEmail;
+    return matchesId || matchesEmail;
   });
 
   if (!matchedMember) {
@@ -620,36 +624,37 @@ export async function validateBevyOrganizer(
       }
     }
 
-    // Step 2: Query chapter team role using Bevy User ID from /chapter/{chapterId}/team/
-    if (bevyUserId) {
-      const chapterRoleResult = await getUserChapterRole(bevyUserId);
+    // Step 2: Query chapter team role using Bevy User ID or verified email from /chapter/{chapterId}/team/
+    const chapterRoleResult = await getUserChapterRole(bevyUserId, BEVY_CONFIG.chapterId, normalizedEmail);
+    if (chapterRoleResult.isValidOrganizer) {
+      if (!bevyUserId && chapterRoleResult.teamMember?.user?.id) {
+        bevyUserId = String(chapterRoleResult.teamMember.user.id);
+      }
       console.log(
-        `[Bevy Auth Flow] Chapter role resolution for Bevy ID ${bevyUserId}: ${chapterRoleResult.chapterRole} (RoleId: ${chapterRoleResult.roleId}, Title: "${chapterRoleResult.roleTitle}")`,
+        `[Bevy Auth Flow] Chapter role resolution for ${normalizedEmail} (Bevy ID ${bevyUserId ?? "N/A"}): ${chapterRoleResult.chapterRole} (RoleId: ${chapterRoleResult.roleId}, Title: "${chapterRoleResult.roleTitle}")`,
       );
 
-      if (chapterRoleResult.isValidOrganizer) {
-        let role = "core_team";
-        if (chapterRoleResult.roleId === 1 || chapterRoleResult.chapterRole === ChapterRole.ORGANIZER) {
-          role = "organizer";
-        } else if (chapterRoleResult.roleId === 3) {
-          role = "check_in_staff";
-        } else if (chapterRoleResult.chapterRole === ChapterRole.GOOGLER) {
-          role = "googler";
-        }
-
-        return {
-          isValidOrganizer: true,
-          role,
-          chapterRole: chapterRoleResult.roleTitle,
-          chapterRoleType: chapterRoleResult.chapterRole,
-          roleId: chapterRoleResult.roleId,
-          roleTitle: chapterRoleResult.roleTitle,
-          bevyUserId,
-          chapterTeamMember: chapterRoleResult.teamMember,
-          bevyUser,
-          wasImported,
-        };
+      let role = "core_team";
+      if (chapterRoleResult.roleId === 1 || chapterRoleResult.chapterRole === ChapterRole.ORGANIZER) {
+        role = "organizer";
+      } else if (chapterRoleResult.roleId === 3) {
+        role = "check_in_staff";
+      } else if (chapterRoleResult.chapterRole === ChapterRole.GOOGLER) {
+        role = "googler";
       }
+
+      return {
+        isValidOrganizer: true,
+        role,
+        chapterRole: chapterRoleResult.roleTitle,
+        chapterRoleType: chapterRoleResult.chapterRole,
+        roleId: chapterRoleResult.roleId,
+        roleTitle: chapterRoleResult.roleTitle,
+        bevyUserId,
+        chapterTeamMember: chapterRoleResult.teamMember,
+        bevyUser,
+        wasImported,
+      };
     }
 
     // Step 3: Regular Community Member (No hardcoded whitelist fallback!)
