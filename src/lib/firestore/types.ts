@@ -292,6 +292,8 @@ export interface EventEmailTemplateData {
   eventDate?: string;
   sessionTime?: string;
   checkinDeadline?: string;
+  overrideSessionTime?: string;
+  overrideCheckinDeadline?: string;
   venueLocation?: string;
   venueLocationUrl?: string;
   attendeeCode?: string;

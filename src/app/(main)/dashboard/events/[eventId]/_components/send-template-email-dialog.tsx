@@ -176,8 +176,10 @@ export function SendTemplateEmailDialog({
           bevyChapterId: chapterId,
           sessionName,
           sessionCapacity,
-          sessionTime: targetData.sessionTime,
-          checkinDeadline: targetData.checkinDeadline,
+          sessionTime: targetData.overrideSessionTime?.trim() || targetData.sessionTime,
+          checkinDeadline: targetData.overrideCheckinDeadline?.trim() || targetData.checkinDeadline,
+          overrideSessionTime: targetData.overrideSessionTime,
+          overrideCheckinDeadline: targetData.overrideCheckinDeadline,
         });
 
         if (res.success) {

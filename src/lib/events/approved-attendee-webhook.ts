@@ -221,12 +221,20 @@ export function buildApprovedAttendeePayload(
       return sTitle === target || target.includes(sTitle) || sTitle.includes(target);
     });
 
-    if (matchedSession?.time_slot) {
+    const overrideSessionTime = simulatedData.overrideSessionTime?.trim();
+    const overrideCheckinDeadline = simulatedData.overrideCheckinDeadline?.trim();
+
+    if (overrideSessionTime) {
+      simulatedData.sessionTime = overrideSessionTime;
+    } else if (matchedSession?.time_slot) {
       simulatedData.sessionTime = matchedSession.time_slot;
     } else if (event?.default_session_time) {
       simulatedData.sessionTime = event.default_session_time;
     }
-    if (matchedSession?.checkin_deadline) {
+
+    if (overrideCheckinDeadline) {
+      simulatedData.checkinDeadline = overrideCheckinDeadline;
+    } else if (matchedSession?.checkin_deadline) {
       simulatedData.checkinDeadline = matchedSession.checkin_deadline;
     } else if (event?.default_session_checkin_deadline) {
       simulatedData.checkinDeadline = event.default_session_checkin_deadline;

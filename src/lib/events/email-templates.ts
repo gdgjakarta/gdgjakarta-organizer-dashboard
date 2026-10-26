@@ -749,6 +749,8 @@ export interface TemplateSimulatedData {
   event: TemplateEventData;
   sessionTime?: string;
   checkinDeadline?: string;
+  overrideSessionTime?: string;
+  overrideCheckinDeadline?: string;
   venueLocation?: string;
   venueLocationUrl?: string;
   eventDate?: string;
@@ -1068,6 +1070,8 @@ export function getCleanDefaultTemplateDataForType(
 
   const bevySessionTime = formatBevySessionTime(event.start_date, event.end_date);
   const bevyCheckinDeadline = formatBevyCheckinDeadline(event.start_date, 30);
+  const overrideSessionTime = customData?.overrideSessionTime?.trim();
+  const overrideCheckinDeadline = customData?.overrideCheckinDeadline?.trim();
 
   return {
     attendee: {
@@ -1081,15 +1085,21 @@ export function getCleanDefaultTemplateDataForType(
       eventChecklistItems: [...defaultItems],
     },
     sessionTime:
-      bevySessionTime ??
-      (event.default_session_time?.trim() || undefined) ??
-      customData?.sessionTime ??
+      overrideSessionTime ||
+      bevySessionTime ||
+      event.default_session_time?.trim() ||
+      undefined ||
+      customData?.sessionTime ||
       "09:00 - 17:00 WIB",
     checkinDeadline:
-      bevyCheckinDeadline ??
-      (event.default_session_checkin_deadline?.trim() || undefined) ??
-      customData?.checkinDeadline ??
+      overrideCheckinDeadline ||
+      bevyCheckinDeadline ||
+      event.default_session_checkin_deadline?.trim() ||
+      undefined ||
+      customData?.checkinDeadline ||
       "10:30 WIB",
+    overrideSessionTime: customData?.overrideSessionTime ?? "",
+    overrideCheckinDeadline: customData?.overrideCheckinDeadline ?? "",
     venueLocation,
     venueLocationUrl,
     eventDate: event.start_date ? eventDate : (customData?.eventDate ?? eventDate),
@@ -1144,16 +1154,23 @@ export function getDefaultTemplateDataForType(key: EmailTemplateKey, event: Fire
   const bevyCheckinDeadline = formatBevyCheckinDeadline(event.start_date, 30);
   const hasBevyVenue = Boolean(event.venue?.name || event.venue?.address || event.venue?.city);
 
+  const overrideSessionTime = savedData.overrideSessionTime?.trim();
+  const overrideCheckinDeadline = savedData.overrideCheckinDeadline?.trim();
+
   const resolvedSessionTime =
-    bevySessionTime ??
-    (event.default_session_time?.trim() || undefined) ??
-    savedData.sessionTime ??
+    overrideSessionTime ||
+    bevySessionTime ||
+    event.default_session_time?.trim() ||
+    undefined ||
+    savedData.sessionTime ||
     cleanDefaults.sessionTime;
 
   const resolvedCheckinDeadline =
-    bevyCheckinDeadline ??
-    (event.default_session_checkin_deadline?.trim() || undefined) ??
-    savedData.checkinDeadline ??
+    overrideCheckinDeadline ||
+    bevyCheckinDeadline ||
+    event.default_session_checkin_deadline?.trim() ||
+    undefined ||
+    savedData.checkinDeadline ||
     cleanDefaults.checkinDeadline;
 
   const resolvedEventDate = event.start_date
@@ -1185,6 +1202,8 @@ export function getDefaultTemplateDataForType(key: EmailTemplateKey, event: Fire
     },
     sessionTime: resolvedSessionTime,
     checkinDeadline: resolvedCheckinDeadline,
+    overrideSessionTime: savedData.overrideSessionTime ?? "",
+    overrideCheckinDeadline: savedData.overrideCheckinDeadline ?? "",
     venueLocation: resolvedVenueLocation,
     venueLocationUrl: resolvedVenueLocationUrl,
     eventDate: resolvedEventDate,
@@ -1331,11 +1350,17 @@ export function interpolateTemplateHtml(
     rendered = ensureCheckinDeadlineInAcceptedHtml(rendered);
   }
 
-  const sessionTime = data.sessionTime ?? "09:00 - 17:00 WIB";
+  const sessionTime =
+    data.overrideSessionTime && data.overrideSessionTime.trim() !== ""
+      ? data.overrideSessionTime.trim()
+      : (data.sessionTime ?? "09:00 - 17:00 WIB");
   rendered = rendered.replaceAll("{{ $('session-config').item.json.bevySessionTime }}", sessionTime);
   rendered = rendered.replaceAll("{ $('session-config').item.json.bevySessionTime }", sessionTime);
 
-  const checkinDeadline = data.checkinDeadline ?? "10:30 WIB";
+  const checkinDeadline =
+    data.overrideCheckinDeadline && data.overrideCheckinDeadline.trim() !== ""
+      ? data.overrideCheckinDeadline.trim()
+      : (data.checkinDeadline ?? "10:30 WIB");
   rendered = rendered.replaceAll("{{ $('session-config').item.json.bevyCheckinDeadline }}", checkinDeadline);
   rendered = rendered.replaceAll("{ $('session-config').item.json.bevyCheckinDeadline }", checkinDeadline);
   rendered = rendered.replaceAll("{{ checkinDeadline }}", checkinDeadline);

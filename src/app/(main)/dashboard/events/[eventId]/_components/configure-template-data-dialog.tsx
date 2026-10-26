@@ -42,6 +42,8 @@ import {
   DEFAULT_CHECKLIST_ITEMS_BY_TYPE,
   EMAIL_TEMPLATES_CONFIG,
   type EmailTemplateKey,
+  formatBevyCheckinDeadline,
+  formatBevySessionTime,
   getAllCleanDefaultTemplatesData,
   getCleanDefaultTemplateDataForType,
   getDefaultTemplateDataForType,
@@ -90,7 +92,9 @@ export function ConfigureTemplateDataDialog({
   const ctaUrlId = useId();
   const eventDateId = useId();
   const sessionTimeId = useId();
+  const overrideSessionTimeId = useId();
   const checkinDeadlineId = useId();
+  const overrideCheckinDeadlineId = useId();
   const venueLocationId = useId();
   const venueUrlId = useId();
   const attendeeCodeId = useId();
@@ -100,6 +104,9 @@ export function ConfigureTemplateDataDialog({
   const currentKey = selectedKey ?? activeTemplateKey;
   const currentData = templatesData[currentKey] ?? getDefaultTemplateDataForType(currentKey, event);
   const currentMeta = EMAIL_TEMPLATES_CONFIG.find((c) => c.key === currentKey) ?? EMAIL_TEMPLATES_CONFIG[0];
+
+  const bevySessionTime = formatBevySessionTime(event.start_date, event.end_date);
+  const bevyCheckinDeadline = formatBevyCheckinDeadline(event.start_date, 30);
 
   const handleUpdate = (updater: (prev: TemplateSimulatedData) => TemplateSimulatedData) => {
     const next = updater(currentData);
@@ -521,43 +528,6 @@ export function ConfigureTemplateDataDialog({
                     </div>
 
                     <div className="space-y-1.5">
-                      <Label htmlFor={sessionTimeId} className="text-xs font-medium flex items-center gap-1">
-                        <ClockIcon className="h-3 w-3 text-muted-foreground" />
-                        <span>Session Time</span>
-                      </Label>
-                      <Input
-                        id={sessionTimeId}
-                        value={currentData.sessionTime ?? ""}
-                        onChange={(e) =>
-                          handleUpdate((prev) => ({
-                            ...prev,
-                            sessionTime: e.target.value,
-                          }))
-                        }
-                        placeholder="09:00 - 17:00 WIB"
-                        className="h-8 text-xs"
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <Label htmlFor={checkinDeadlineId} className="text-xs font-medium">
-                        Check-in Deadline
-                      </Label>
-                      <Input
-                        id={checkinDeadlineId}
-                        value={currentData.checkinDeadline ?? ""}
-                        onChange={(e) =>
-                          handleUpdate((prev) => ({
-                            ...prev,
-                            checkinDeadline: e.target.value,
-                          }))
-                        }
-                        placeholder="10:30 WIB"
-                        className="h-8 text-xs"
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
                       <Label htmlFor={attendeeCodeId} className="text-xs font-medium">
                         Attendee Ref Code
                       </Label>
@@ -571,6 +541,107 @@ export function ConfigureTemplateDataDialog({
                           }))
                         }
                         placeholder="GDG-JKT-89241"
+                        className="h-8 text-xs"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label htmlFor={sessionTimeId} className="text-xs font-medium flex items-center justify-between">
+                        <span className="flex items-center gap-1">
+                          <ClockIcon className="h-3 w-3 text-muted-foreground" />
+                          <span>Session Time</span>
+                        </span>
+                        <span className="text-[10px] text-muted-foreground font-normal">(Bevy API)</span>
+                      </Label>
+                      <Input
+                        id={sessionTimeId}
+                        value={bevySessionTime ?? currentData.sessionTime ?? "09:00 - 17:00 WIB"}
+                        disabled
+                        className="h-8 text-xs bg-muted/50 cursor-not-allowed text-muted-foreground"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label
+                        htmlFor={overrideSessionTimeId}
+                        className="text-xs font-medium flex items-center justify-between"
+                      >
+                        <span className="flex items-center gap-1">
+                          <SparklesIcon className="h-3 w-3 text-primary" />
+                          <span>Override Session Time</span>
+                        </span>
+                        {Boolean(currentData.overrideSessionTime?.trim()) && (
+                          <Badge variant="outline" className="text-[10px] h-4 px-1 text-primary border-primary/30">
+                            Active
+                          </Badge>
+                        )}
+                      </Label>
+                      <Input
+                        id={overrideSessionTimeId}
+                        value={currentData.overrideSessionTime ?? ""}
+                        onChange={(e) => {
+                          const overrideVal = e.target.value;
+                          const effectiveVal =
+                            overrideVal.trim() !== "" ? overrideVal : (bevySessionTime ?? "09:00 - 17:00 WIB");
+                          handleUpdate((prev) => ({
+                            ...prev,
+                            overrideSessionTime: overrideVal,
+                            sessionTime: effectiveVal,
+                          }));
+                        }}
+                        placeholder="e.g. 07:45 - 17:00 WIB"
+                        className="h-8 text-xs"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label
+                        htmlFor={checkinDeadlineId}
+                        className="text-xs font-medium flex items-center justify-between"
+                      >
+                        <span className="flex items-center gap-1">
+                          <ClockIcon className="h-3 w-3 text-muted-foreground" />
+                          <span>Check-in Deadline</span>
+                        </span>
+                        <span className="text-[10px] text-muted-foreground font-normal">(Bevy Start + 30m)</span>
+                      </Label>
+                      <Input
+                        id={checkinDeadlineId}
+                        value={bevyCheckinDeadline ?? currentData.checkinDeadline ?? "10:30 WIB"}
+                        disabled
+                        className="h-8 text-xs bg-muted/50 cursor-not-allowed text-muted-foreground"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label
+                        htmlFor={overrideCheckinDeadlineId}
+                        className="text-xs font-medium flex items-center justify-between"
+                      >
+                        <span className="flex items-center gap-1">
+                          <SparklesIcon className="h-3 w-3 text-primary" />
+                          <span>Override Check-in Deadline</span>
+                        </span>
+                        {Boolean(currentData.overrideCheckinDeadline?.trim()) && (
+                          <Badge variant="outline" className="text-[10px] h-4 px-1 text-primary border-primary/30">
+                            Active
+                          </Badge>
+                        )}
+                      </Label>
+                      <Input
+                        id={overrideCheckinDeadlineId}
+                        value={currentData.overrideCheckinDeadline ?? ""}
+                        onChange={(e) => {
+                          const overrideVal = e.target.value;
+                          const effectiveVal =
+                            overrideVal.trim() !== "" ? overrideVal : (bevyCheckinDeadline ?? "10:30 WIB");
+                          handleUpdate((prev) => ({
+                            ...prev,
+                            overrideCheckinDeadline: overrideVal,
+                            checkinDeadline: effectiveVal,
+                          }));
+                        }}
+                        placeholder="e.g. 08:15 WIB"
                         className="h-8 text-xs"
                       />
                     </div>

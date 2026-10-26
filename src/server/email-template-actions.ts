@@ -206,6 +206,8 @@ const sendTemplateEmailRequestSchema = z.object({
   sessionCapacity: z.number().optional(),
   sessionTime: z.string().optional(),
   checkinDeadline: z.string().optional(),
+  overrideSessionTime: z.string().optional(),
+  overrideCheckinDeadline: z.string().optional(),
 });
 
 export type SendTemplateEmailRequestInput = z.infer<typeof sendTemplateEmailRequestSchema>;
@@ -282,6 +284,16 @@ export async function sendTemplateEmailRequestAction(
         ? adjustBodyEmailForApprovedWebhook(parsed.data.bodyEmail)
         : parsed.data.bodyEmail;
 
+    const sessionTimeToSend =
+      parsed.data.overrideSessionTime && parsed.data.overrideSessionTime.trim() !== ""
+        ? parsed.data.overrideSessionTime.trim()
+        : parsed.data.sessionTime;
+
+    const checkinDeadlineToSend =
+      parsed.data.overrideCheckinDeadline && parsed.data.overrideCheckinDeadline.trim() !== ""
+        ? parsed.data.overrideCheckinDeadline.trim()
+        : parsed.data.checkinDeadline;
+
     const payload = {
       email: parsed.data.recipientEmail,
       fullName: parsed.data.recipientName,
@@ -290,10 +302,12 @@ export async function sendTemplateEmailRequestAction(
       bevyChapterId: parsed.data.bevyChapterId || process.env.BEVY_CHAPTER_ID || "642",
       sessionName,
       sessionCapacity,
-      sessionTime: parsed.data.sessionTime,
-      bevySessionTime: parsed.data.sessionTime,
-      checkinDeadline: parsed.data.checkinDeadline,
-      bevyCheckinDeadline: parsed.data.checkinDeadline,
+      sessionTime: sessionTimeToSend,
+      bevySessionTime: sessionTimeToSend,
+      checkinDeadline: checkinDeadlineToSend,
+      bevyCheckinDeadline: checkinDeadlineToSend,
+      overrideSessionTime: parsed.data.overrideSessionTime,
+      overrideCheckinDeadline: parsed.data.overrideCheckinDeadline,
       subjectEmail: parsed.data.subjectEmail,
       bodyEmail: bodyEmailToSend,
       // Optional backwards-compatible fields
