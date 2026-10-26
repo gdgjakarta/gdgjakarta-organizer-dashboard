@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import {
+  Calendar,
   CreditCard,
   FileSpreadsheet,
   Layers,
@@ -32,6 +33,7 @@ import type {
 } from "@/lib/firestore/types";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
+import { AgendaTab } from "./agenda-tab";
 import { BreakoutSessionsTab } from "./breakout-sessions-tab";
 import { BundlesTab } from "./bundles-tab";
 import { CustomFormTab } from "./custom-form-tab";
@@ -190,7 +192,22 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
     return eventHasMerch || eventHasBundleMerch || regHasMerch;
   }, [activeEvent, registrations]);
 
-  const defaultTab = hasTeamAccess ? "registrants" : "highlights";
+  const agendaActivitiesCount = useMemo(() => {
+    if (activeEvent.presentation_slides && activeEvent.presentation_slides.length > 0) {
+      return activeEvent.presentation_slides.length;
+    }
+    if (!activeEvent.agenda) return 0;
+    const days = (activeEvent.agenda as { days?: Array<{ items?: unknown[]; agenda?: unknown[] }> }).days;
+    if (Array.isArray(days)) {
+      return days.reduce((sum, d) => sum + (d.items?.length ?? d.agenda?.length ?? 0), 0);
+    }
+    if (Array.isArray(activeEvent.agenda)) {
+      return activeEvent.agenda.length;
+    }
+    return 0;
+  }, [activeEvent.agenda, activeEvent.presentation_slides]);
+
+  const defaultTab = hasTeamAccess ? "registrants" : "agenda";
   const [activeTab, setActiveTab] = useState<string>(defaultTab);
 
   useEffect(() => {
@@ -210,31 +227,47 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
       <div className="scrollbar-none -mx-1 w-full overflow-x-auto px-1 pb-1 sm:mx-0 sm:px-0">
         <TabsList className="inline-flex h-9 w-max items-center justify-start gap-1 rounded-lg bg-muted p-1 text-muted-foreground group-data-horizontal/tabs:h-9">
           {hasTeamAccess && (
-            <>
-              <TabsTrigger
-                id="tab-trigger-registrants"
-                data-value="registrants"
-                value="registrants"
-                className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm"
-              >
-                <Users className="size-4" />
-                Registrants
-              </TabsTrigger>
-              <TabsTrigger
-                id="tab-trigger-breakout-sessions"
-                data-value="breakout-sessions"
-                value="breakout-sessions"
-                className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm"
-              >
-                <Layers className="size-4" />
-                Breakout Session
-                {(activeEvent.sessions?.length ?? 0) > 0 && (
-                  <Badge variant="secondary" className="ml-0.5 h-4 px-1.5 text-[10px]">
-                    {activeEvent.sessions?.length}
-                  </Badge>
-                )}
-              </TabsTrigger>
-            </>
+            <TabsTrigger
+              id="tab-trigger-registrants"
+              data-value="registrants"
+              value="registrants"
+              className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm"
+            >
+              <Users className="size-4" />
+              Registrants
+            </TabsTrigger>
+          )}
+
+          <TabsTrigger
+            id="tab-trigger-agenda"
+            data-value="agenda"
+            value="agenda"
+            className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm"
+          >
+            <Calendar className="size-4" />
+            Agenda
+            {agendaActivitiesCount > 0 && (
+              <Badge variant="secondary" className="ml-0.5 h-4 px-1.5 text-[10px]">
+                {agendaActivitiesCount}
+              </Badge>
+            )}
+          </TabsTrigger>
+
+          {hasTeamAccess && (
+            <TabsTrigger
+              id="tab-trigger-breakout-sessions"
+              data-value="breakout-sessions"
+              value="breakout-sessions"
+              className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm"
+            >
+              <Layers className="size-4" />
+              Breakout Session
+              {(activeEvent.sessions?.length ?? 0) > 0 && (
+                <Badge variant="secondary" className="ml-0.5 h-4 px-1.5 text-[10px]">
+                  {activeEvent.sessions?.length}
+                </Badge>
+              )}
+            </TabsTrigger>
           )}
 
           {isOrganizer && (
@@ -410,6 +443,10 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
           )}
         </>
       )}
+
+      <TabsContent value="agenda" className="space-y-4">
+        <AgendaTab event={activeEvent} />
+      </TabsContent>
 
       <TabsContent value="highlights" className="space-y-4">
         <HighlightsMediaTab event={activeEvent} />

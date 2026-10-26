@@ -22,6 +22,13 @@ export interface UnifiedSessionTrack {
   relatedLinks?: Array<{ title: string; url: string }>;
 }
 
+export interface UnifiedAgendaSpeaker {
+  name: string;
+  role?: string;
+  avatar?: string;
+  type?: string;
+}
+
 export interface UnifiedAgendaItem {
   id: string;
   time: string;
@@ -32,6 +39,7 @@ export interface UnifiedAgendaItem {
   speakerName?: string;
   speakerRole?: string;
   speakerAvatar?: string;
+  speakers?: UnifiedAgendaSpeaker[];
   slidesUrl?: string;
   slidesTitle?: string;
   relatedLinks?: Array<{ title: string; url: string }>;
@@ -226,6 +234,38 @@ export function findMatchingSpeaker(
   return null;
 }
 
+/**
+ * Matches ALL speakers, panelists, and facilitators mentioned in a given text (description or activity).
+ * Returns a deduplicated array of all identified presenters with their profile info and roles.
+ */
+export function findMatchingSpeakers(text: string, speakers?: BevySpeaker[] | null): UnifiedAgendaSpeaker[] {
+  if (!speakers || speakers.length === 0 || !text) return [];
+
+  const matched: UnifiedAgendaSpeaker[] = [];
+  const seenNames = new Set<string>();
+  const lowerText = text.toLowerCase();
+
+  for (const sp of speakers) {
+    const fullName = getSpeakerFullName(sp);
+    if (!fullName || fullName.length < 2) continue;
+
+    const normName = fullName.toLowerCase();
+    if (lowerText.includes(normName)) {
+      if (!seenNames.has(normName)) {
+        seenNames.add(normName);
+        matched.push({
+          name: fullName,
+          role: getSpeakerRole(sp) || undefined,
+          avatar: getSpeakerAvatar(sp),
+          type: sp.speaker_type,
+        });
+      }
+    }
+  }
+
+  return matched;
+}
+
 function formatTimeRange(items: Array<{ time: string }>): string | undefined {
   if (items.length === 0) return undefined;
   const first = items[0]?.time;
@@ -396,6 +436,31 @@ export function buildUnifiedAgenda(
           }
         }
 
+        // Presenters extraction (supporting multiple speakers, panelists, facilitators)
+        let attachedSpeakers: UnifiedAgendaSpeaker[] = [];
+        if (matchedSlide?.speakers && matchedSlide.speakers.length > 0) {
+          attachedSpeakers = matchedSlide.speakers.map((sp) => ({
+            name: sp.name,
+            role: sp.role,
+            avatar: sp.avatar_url,
+            type: sp.type,
+          }));
+        } else {
+          // Auto-match all speakers mentioned in description or activity title
+          const autoMatched = [
+            ...findMatchingSpeakers(rawItem.description || "", speakers),
+            ...findMatchingSpeakers(rawItem.activity, speakers),
+          ];
+          const seen = new Set<string>();
+          for (const sp of autoMatched) {
+            const k = sp.name.toLowerCase();
+            if (!seen.has(k)) {
+              seen.add(k);
+              attachedSpeakers.push(sp);
+            }
+          }
+        }
+
         const slidesUrl = matchedSlide?.slides_url || matchedItemSess?.slides_url || rawItem.slides_url;
         const slidesTitle =
           matchedSlide?.slides_title || matchedItemSess?.slides_title || rawItem.slides_title || "Open Slides";
@@ -415,6 +480,7 @@ export function buildUnifiedAgenda(
           speakerName: speakerMatch?.speakerName,
           speakerRole: speakerMatch?.speakerRole,
           speakerAvatar: speakerMatch?.speakerAvatar,
+          speakers: attachedSpeakers.length > 0 ? attachedSpeakers : undefined,
           slidesUrl,
           slidesTitle,
           relatedLinks,

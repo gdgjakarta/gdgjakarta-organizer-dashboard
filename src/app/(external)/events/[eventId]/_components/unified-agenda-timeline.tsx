@@ -66,8 +66,36 @@ function AgendaItemCard({ item }: AgendaItemCardProps) {
           {/* Activity / Session Title */}
           <h5 className="font-semibold text-foreground text-sm leading-snug sm:text-base">{item.activity}</h5>
 
-          {/* Speaker Card / Attribution */}
-          {item.speakerName && (
+          {/* Speaker / Presenters List */}
+          {item.speakers && item.speakers.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2">
+              {item.speakers.map((sp) => {
+                const cleanType = sp.type?.replace(/s$/, "");
+                return (
+                  <div
+                    key={sp.name}
+                    className="inline-flex items-center gap-2 rounded-xl border border-border/50 bg-muted/40 px-2.5 py-1 text-xs"
+                  >
+                    <Avatar className="size-5 shrink-0">
+                      {sp.avatar && <AvatarImage src={sp.avatar} alt={sp.name} />}
+                      <AvatarFallback className="text-[10px]">
+                        <User className="size-3" />
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <span className="font-medium text-foreground">{sp.name}</span>
+                      {sp.role && <span className="text-[11px] text-muted-foreground"> • {sp.role}</span>}
+                    </div>
+                    {cleanType && (
+                      <Badge variant="secondary" className="h-4 px-1 text-[9px] font-medium">
+                        {cleanType}
+                      </Badge>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : item.speakerName ? (
             <div className="inline-flex items-center gap-2 rounded-xl bg-muted/40 px-2.5 py-1 text-xs">
               <Avatar className="size-5 shrink-0">
                 {item.speakerAvatar && <AvatarImage src={item.speakerAvatar} alt={item.speakerName} />}
@@ -80,7 +108,7 @@ function AgendaItemCard({ item }: AgendaItemCardProps) {
                 {item.speakerRole && <span className="text-[11px] text-muted-foreground"> • {item.speakerRole}</span>}
               </div>
             </div>
-          )}
+          ) : null}
 
           {/* Activity Description */}
           {item.description &&

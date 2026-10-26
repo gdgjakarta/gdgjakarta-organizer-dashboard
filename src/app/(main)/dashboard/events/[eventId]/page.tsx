@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { getAllBevyChapterEvents, getBevyEventById, resolveEventAudience } from "@/lib/bevy/client";
+import { getAllEventSpeakers } from "@/lib/bevy/speakers";
 import { hasActualAgendaActivities } from "@/lib/events/agenda-unification";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
 import { getVerifiedSessionRole } from "@/server/auth-guard";
@@ -79,7 +80,7 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
         total_checked_in: direct.checkin_count ?? 0,
         is_hidden: Boolean(direct.is_hidden ?? (direct as { hidden?: boolean }).hidden),
         is_test: Boolean(direct.is_test),
-        speakers: direct.speakers,
+        speakers: getAllEventSpeakers(direct),
         agenda: direct.agenda,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -142,7 +143,7 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
           total_checked_in: matched.checkin_count ?? 0,
           is_hidden: Boolean(matched.is_hidden || (matched as { hidden?: boolean }).hidden),
           is_test: Boolean(matched.is_test),
-          speakers: matched.speakers,
+          speakers: getAllEventSpeakers(matched),
           agenda: matched.agenda,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),

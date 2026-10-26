@@ -3104,7 +3104,27 @@ function cleanPresentationSlides(slides?: EventPresentationSlide[]): EventPresen
     };
     if (s.agenda_activity_id?.trim()) cleaned.agenda_activity_id = s.agenda_activity_id.trim();
     if (s.time_slot?.trim()) cleaned.time_slot = s.time_slot.trim();
-    if (s.speaker_name?.trim()) cleaned.speaker_name = s.speaker_name.trim();
+
+    if (Array.isArray(s.speakers) && s.speakers.length > 0) {
+      const validSpeakers = s.speakers
+        .filter((sp) => Boolean(sp && sp.name?.trim()))
+        .map((sp) => ({
+          name: sp.name.trim(),
+          ...(sp.role?.trim() ? { role: sp.role.trim() } : {}),
+          ...(sp.avatar_url?.trim() ? { avatar_url: sp.avatar_url.trim() } : {}),
+          ...(sp.type?.trim() ? { type: sp.type.trim() } : {}),
+        }));
+      if (validSpeakers.length > 0) {
+        cleaned.speakers = validSpeakers;
+        if (!s.speaker_name?.trim()) {
+          cleaned.speaker_name = validSpeakers.map((sp) => sp.name).join(", ");
+        }
+      }
+    }
+
+    if (s.speaker_name?.trim() && !cleaned.speaker_name) {
+      cleaned.speaker_name = s.speaker_name.trim();
+    }
     if (s.slides_url?.trim()) cleaned.slides_url = s.slides_url.trim();
     if (s.slides_title?.trim()) cleaned.slides_title = s.slides_title.trim();
     if (Array.isArray(s.related_links)) {

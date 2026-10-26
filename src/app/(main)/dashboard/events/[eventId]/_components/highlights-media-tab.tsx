@@ -1,82 +1,25 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { DragDropProvider, type DragEndEvent } from "@dnd-kit/react";
-import { isSortable } from "@dnd-kit/react/sortable";
-import {
-  Calendar,
-  Camera,
-  ChevronDown,
-  ExternalLink,
-  Info,
-  Play,
-  Plus,
-  Presentation,
-  Sparkles,
-  Video,
-} from "lucide-react";
+import { Camera, ExternalLink, Play, Sparkles, Video } from "lucide-react";
 import { toast } from "sonner";
 
 import { FloatingSaveBar } from "@/app/(main)/dashboard/_components/floating-save-bar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
-import { findMatchingSpeaker, hasActualAgendaActivities, normalizeStr } from "@/lib/events/agenda-unification";
 import { parsePhotoAlbum, parseVideoUrl } from "@/lib/events/media-utils";
 import { updateEventHighlightsMediaAction } from "@/lib/firestore/actions";
-import type { EventPresentationSlide, FirestoreEvent } from "@/lib/firestore/types";
+import type { FirestoreEvent } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
 import { HtmlEditText } from "./html-edit-text";
-import { SortableSlideDeckCard } from "./sortable-slide-deck-card";
-
-function normalizeSlides(
-  rawSlides?: EventPresentationSlide[],
-  legacySessions?: FirestoreEvent["sessions"],
-): EventPresentationSlide[] {
-  if (rawSlides && Array.isArray(rawSlides) && rawSlides.length > 0) {
-    return rawSlides.map((s, idx) => ({
-      ...s,
-      id: s.id?.trim() ? s.id : `slide-${idx}-${Date.now()}`,
-    }));
-  }
-
-  // Migration fallback: if presentation_slides is empty, check legacy sessions with slides
-  if (legacySessions && Array.isArray(legacySessions)) {
-    const slideSessions = legacySessions.filter(
-      (s) => Boolean(s.slides_url) || Boolean(s.related_links && s.related_links.length > 0),
-    );
-    if (slideSessions.length > 0) {
-      return slideSessions.map((s, idx) => ({
-        id: s.id?.trim() ? s.id : `slide-${idx}-${Date.now()}`,
-        agenda_activity_id: s.agenda_activity_id,
-        title: s.title,
-        time_slot: s.time_slot,
-        speaker_name: s.speaker_name,
-        slides_url: s.slides_url,
-        slides_title: s.slides_title,
-        related_links: s.related_links,
-      }));
-    }
-  }
-
-  return [];
-}
 
 interface HighlightsMediaTabProps {
   event: FirestoreEvent;
@@ -91,26 +34,6 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
   const [photoAlbumUrl, setPhotoAlbumUrl] = useState(event.photo_album_url ?? "");
   const [photoAlbumTitle, setPhotoAlbumTitle] = useState(event.photo_album_title ?? "");
   const [recapDescription, setRecapDescription] = useState(event.recap_description ?? "");
-  const [slides, setSlides] = useState<EventPresentationSlide[]>(() =>
-    normalizeSlides(event.presentation_slides, event.sessions),
-  );
-  const [internalAgenda, setInternalAgenda] = useState(event.agenda);
-  const [internalSpeakers, setInternalSpeakers] = useState(event.speakers);
-  const [isAgendaLoading, setIsAgendaLoading] = useState(() => !hasActualAgendaActivities(event.agenda));
-
-  useEffect(() => {
-    if (hasActualAgendaActivities(event.agenda)) {
-      setInternalAgenda(event.agenda);
-      setIsAgendaLoading(false);
-    }
-  }, [event.agenda]);
-
-  useEffect(() => {
-    if (event.speakers && event.speakers.length > 0) {
-      setInternalSpeakers(event.speakers);
-    }
-  }, [event.speakers]);
-
   const [isSaving, setIsSaving] = useState(false);
   const initialSnapshotRef = useRef<string | null>(null);
 
@@ -131,26 +54,12 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
           const albumUrl = docData.photo_album_url ?? event.photo_album_url ?? "";
           const albumTitle = docData.photo_album_title ?? event.photo_album_title ?? "";
           const recap = docData.recap_description ?? event.recap_description ?? "";
-          const slideList = normalizeSlides(
-            docData.presentation_slides ?? event.presentation_slides,
-            docData.sessions ?? event.sessions,
-          );
 
           setHighlightVideoUrl(videoUrl);
           setHighlightVideoTitle(videoTitle);
           setPhotoAlbumUrl(albumUrl);
           setPhotoAlbumTitle(albumTitle);
           setRecapDescription(recap);
-          setSlides(slideList);
-
-          // Only adopt Firestore agenda if it contains real activities
-          if (hasActualAgendaActivities(docData.agenda)) {
-            setInternalAgenda(docData.agenda);
-            setIsAgendaLoading(false);
-          }
-          if (docData.speakers && docData.speakers.length > 0) {
-            setInternalSpeakers(docData.speakers);
-          }
 
           initialSnapshotRef.current = JSON.stringify({
             highlightVideoUrl: videoUrl,
@@ -158,35 +67,10 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
             photoAlbumUrl: albumUrl,
             photoAlbumTitle: albumTitle,
             recapDescription: recap,
-            slides: slideList,
           });
         }
       } catch (err) {
         console.warn("[HighlightsMediaTab] Failed to fetch latest event data:", err);
-      }
-
-      // If agenda is still missing or has 0 actual activities, attempt fallback fetch directly from Bevy
-      const currentEffAgenda = event.agenda;
-      if (!hasActualAgendaActivities(currentEffAgenda)) {
-        try {
-          setIsAgendaLoading(true);
-          const { fetchBevyEventDetailAction } = await import("@/server/bevy-actions");
-          const fresh = await fetchBevyEventDetailAction(String(event.id));
-          if (isMounted && fresh) {
-            if (hasActualAgendaActivities(fresh.agenda)) {
-              setInternalAgenda(fresh.agenda);
-            }
-            if (fresh.speakers && fresh.speakers.length > 0) {
-              setInternalSpeakers(fresh.speakers);
-            }
-          }
-        } catch (bevyErr) {
-          console.warn("[HighlightsMediaTab] Fallback fetch for Bevy agenda failed:", bevyErr);
-        } finally {
-          if (isMounted) setIsAgendaLoading(false);
-        }
-      } else {
-        if (isMounted) setIsAgendaLoading(false);
       }
     }
 
@@ -196,7 +80,6 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
       photoAlbumUrl: event.photo_album_url ?? "",
       photoAlbumTitle: event.photo_album_title ?? "",
       recapDescription: event.recap_description ?? "",
-      slides: normalizeSlides(event.presentation_slides, event.sessions),
     });
 
     void loadLatestData();
@@ -211,9 +94,6 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
     event.photo_album_url,
     event.photo_album_title,
     event.recap_description,
-    event.presentation_slides,
-    event.sessions,
-    event.agenda,
   ]);
 
   // Dirty state calculation
@@ -223,7 +103,6 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
     photoAlbumUrl,
     photoAlbumTitle,
     recapDescription,
-    slides,
   });
   const isDirty = initialSnapshotRef.current !== null && initialSnapshotRef.current !== currentSnapshot;
 
@@ -239,14 +118,12 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
           photoAlbumUrl: string;
           photoAlbumTitle: string;
           recapDescription: string;
-          slides: EventPresentationSlide[];
         };
         setHighlightVideoUrl(snap.highlightVideoUrl);
         setHighlightVideoTitle(snap.highlightVideoTitle);
         setPhotoAlbumUrl(snap.photoAlbumUrl);
         setPhotoAlbumTitle(snap.photoAlbumTitle);
         setRecapDescription(snap.recapDescription);
-        setSlides(snap.slides);
         toast.info("Discarded unsaved changes.");
       } catch {
         // ignore
@@ -266,14 +143,13 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
             photo_album_url: photoAlbumUrl,
             photo_album_title: photoAlbumTitle,
             recap_description: recapDescription,
-            presentation_slides: slides,
           },
           event,
         );
 
         if (res.success) {
           initialSnapshotRef.current = currentSnapshot;
-          toast.success("Event highlights, photo album, and presentation slides saved successfully!");
+          toast.success("Event highlights, photo album, and recap saved successfully!");
           router.refresh();
         } else {
           toast.error(res.error ?? "Failed to save highlights and media.");
@@ -284,222 +160,6 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
       } finally {
         setIsSaving(false);
       }
-    });
-  };
-
-  // Helper to update a slide's fields
-  const handleUpdateSlide = (slideId: string, updates: Partial<EventPresentationSlide>) => {
-    setSlides((prev) => prev.map((s) => (s.id === slideId ? { ...s, ...updates } : s)));
-  };
-
-  // Helper to add a related link to a slide
-  const handleAddSlideRelatedLink = (slideId: string) => {
-    setSlides((prev) =>
-      prev.map((s) => {
-        if (s.id !== slideId) return s;
-        const currentLinks = s.related_links ?? [];
-        return {
-          ...s,
-          related_links: [...currentLinks, { title: "", url: "" }],
-        };
-      }),
-    );
-  };
-
-  // Helper to update a related link in a slide
-  const handleUpdateSlideRelatedLink = (slideId: string, linkIndex: number, field: "title" | "url", val: string) => {
-    setSlides((prev) =>
-      prev.map((s) => {
-        if (s.id !== slideId) return s;
-        const currentLinks = [...(s.related_links ?? [])];
-        if (!currentLinks[linkIndex]) return s;
-        currentLinks[linkIndex] = {
-          ...currentLinks[linkIndex],
-          [field]: val,
-        };
-        return {
-          ...s,
-          related_links: currentLinks,
-        };
-      }),
-    );
-  };
-
-  // Helper to remove a related link from a slide
-  const handleRemoveSlideRelatedLink = (slideId: string, linkIndex: number) => {
-    setSlides((prev) =>
-      prev.map((s) => {
-        if (s.id !== slideId) return s;
-        const currentLinks = (s.related_links ?? []).filter((_, idx) => idx !== linkIndex);
-        return {
-          ...s,
-          related_links: currentLinks,
-        };
-      }),
-    );
-  };
-
-  // Extract all activity items from existing Bevy agenda
-  const agendaActivities = useMemo(() => {
-    const list: Array<{
-      id: string;
-      time: string;
-      activity: string;
-      speakerName: string;
-      speakerRole?: string;
-      speakerAvatar?: string;
-      description?: string;
-    }> = [];
-
-    let effectiveAgenda = event.agenda;
-    if (hasActualAgendaActivities(internalAgenda)) {
-      effectiveAgenda = internalAgenda;
-    } else if (hasActualAgendaActivities(event.agenda)) {
-      effectiveAgenda = event.agenda;
-    } else if (internalAgenda) {
-      effectiveAgenda = internalAgenda;
-    }
-    const effectiveSpeakers = internalSpeakers && internalSpeakers.length > 0 ? internalSpeakers : event.speakers;
-
-    let days: Array<{
-      title?: string;
-      items?: Array<{ activity?: string; time?: string; description?: string }>;
-      agenda?: Array<{ activity?: string; time?: string; description?: string }>;
-    }> = [];
-
-    if (effectiveAgenda && typeof effectiveAgenda === "object") {
-      if ("days" in effectiveAgenda && Array.isArray((effectiveAgenda as { days: unknown[] }).days)) {
-        days = (effectiveAgenda as { days: typeof days }).days;
-      } else if (Array.isArray(effectiveAgenda)) {
-        const first = effectiveAgenda[0];
-        if (first && typeof first === "object" && ("items" in first || "agenda" in first)) {
-          days = effectiveAgenda as typeof days;
-        } else {
-          days = [{ items: effectiveAgenda as Array<{ activity?: string; time?: string; description?: string }> }];
-        }
-      }
-    }
-
-    days.forEach((day, dIdx) => {
-      const items = day.items ?? day.agenda ?? [];
-      items.forEach((item, iIdx) => {
-        if (!item.activity?.trim()) return;
-        const speakerMatch =
-          findMatchingSpeaker(item.description || "", effectiveSpeakers) ??
-          findMatchingSpeaker(item.activity, effectiveSpeakers);
-        list.push({
-          id: `item-${dIdx}-${iIdx}`,
-          time: item.time || "",
-          activity: item.activity.trim(),
-          speakerName: speakerMatch?.speakerName ?? "",
-          speakerRole: speakerMatch?.speakerRole ?? "",
-          speakerAvatar: speakerMatch?.speakerAvatar ?? "",
-          description: item.description,
-        });
-      });
-    });
-
-    return list;
-  }, [internalAgenda, internalSpeakers, event.agenda, event.speakers]);
-
-  const isActivityAdded = (activityTitle: string) => {
-    const norm = normalizeStr(activityTitle);
-    return slides.some((s) => normalizeStr(s.title) === norm);
-  };
-
-  const handleAddFromAgenda = (act: {
-    id: string;
-    time: string;
-    activity: string;
-    speakerName: string;
-    description?: string;
-  }) => {
-    const alreadyExists = slides.find((s) => normalizeStr(s.title) === normalizeStr(act.activity));
-    if (alreadyExists) {
-      toast.info(`"${act.activity}" is already in your slide deck list.`);
-      return;
-    }
-
-    const newSlide: EventPresentationSlide = {
-      id: `slide-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      agenda_activity_id: act.id,
-      title: act.activity,
-      time_slot: act.time,
-      speaker_name: act.speakerName,
-      slides_url: "",
-      slides_title: "Download Slides",
-      related_links: [],
-    };
-    setSlides((prev) => [...prev, newSlide]);
-    toast.success(`Attached presentation slides for "${act.activity}".`);
-  };
-
-  const handleAddAllFromAgenda = () => {
-    const unadded = agendaActivities.filter((act) => !isActivityAdded(act.activity));
-    if (unadded.length === 0) {
-      toast.info("All agenda activities already have slide attachments.");
-      return;
-    }
-
-    const newSlides: EventPresentationSlide[] = unadded.map((act, idx) => ({
-      id: `slide-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
-      agenda_activity_id: act.id,
-      title: act.activity,
-      time_slot: act.time,
-      speaker_name: act.speakerName,
-      slides_url: "",
-      slides_title: "Download Slides",
-      related_links: [],
-    }));
-
-    setSlides((prev) => [...prev, ...newSlides]);
-    toast.success(`Attached ${newSlides.length} agenda activity slide deck${newSlides.length > 1 ? "s" : ""}.`);
-  };
-
-  const handleRemoveSlide = (slideId: string) => {
-    const targetSlide = slides.find((s) => s.id === slideId);
-    setSlides((prev) => prev.filter((item) => item.id !== slideId));
-    toast.info(`Removed slides for "${targetSlide?.title || "Presentation"}".`);
-  };
-
-  const handleMoveSlideUp = (index: number) => {
-    if (index <= 0) return;
-    setSlides((prev) => {
-      const next = [...prev];
-      const item = next[index];
-      const prevItem = next[index - 1];
-      if (!item || !prevItem) return prev;
-      next[index - 1] = item;
-      next[index] = prevItem;
-      return next;
-    });
-  };
-
-  const handleMoveSlideDown = (index: number) => {
-    if (index >= slides.length - 1) return;
-    setSlides((prev) => {
-      const next = [...prev];
-      const item = next[index];
-      const nextItem = next[index + 1];
-      if (!item || !nextItem) return prev;
-      next[index] = nextItem;
-      next[index + 1] = item;
-      return next;
-    });
-  };
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { source } = event.operation;
-    if (event.canceled || !isSortable(source) || source.initialIndex === source.index) {
-      return;
-    }
-    setSlides((prev) => {
-      const next = [...prev];
-      const [movedItem] = next.splice(source.initialIndex, 1);
-      if (movedItem) {
-        next.splice(source.index, 0, movedItem);
-      }
-      return next;
     });
   };
 
@@ -530,8 +190,8 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
                 </Badge>
               </div>
               <p className="mt-1 text-muted-foreground text-xs sm:text-sm">
-                Embed official highlight videos, link Google Photos albums, and bind presentation slides and resources
-                directly to Bevy agenda items and speakers.
+                Embed official highlight videos, link Google Photos albums, and publish community recap notes for
+                attendees.
               </p>
             </div>
           </div>
@@ -598,33 +258,31 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
           <div className="space-y-2">
             <div className="flex items-center justify-between text-muted-foreground text-xs">
               <span className="font-medium text-foreground">Interactive Player Preview</span>
-              {parsedVideo?.embedUrl && (
-                <span className="text-[11px] text-emerald-600 dark:text-emerald-400">
-                  Ready to display on public event page
-                </span>
+              {parsedVideo?.embedUrl ? (
+                <span className="text-emerald-600 dark:text-emerald-400">Ready to play</span>
+              ) : (
+                <span className="italic">Paste a valid URL above to preview</span>
               )}
             </div>
 
             {parsedVideo?.embedUrl ? (
-              <div className="overflow-hidden rounded-2xl border border-border/80 bg-black/90 shadow-inner">
-                <div className="relative aspect-video w-full">
-                  <iframe
-                    src={parsedVideo.embedUrl}
-                    title={highlightVideoTitle || "Event Highlight Video"}
-                    className="absolute inset-0 size-full"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                    allowFullScreen
-                  />
-                </div>
+              <div className="relative aspect-video w-full overflow-hidden rounded-2xl border border-border/80 bg-black shadow-inner">
+                <iframe
+                  src={parsedVideo.embedUrl}
+                  title={highlightVideoTitle || "Event Highlight Video"}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  className="size-full border-0"
+                />
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center rounded-2xl border border-border/70 border-dashed bg-muted/20 p-8 text-center">
-                <div className="flex size-10 items-center justify-center rounded-xl bg-muted text-muted-foreground">
-                  <Play className="size-5" />
+              <div className="flex aspect-video w-full flex-col items-center justify-center rounded-2xl border border-border/60 border-dashed bg-muted/20 p-6 text-center">
+                <div className="flex size-12 items-center justify-center rounded-2xl bg-muted/60 text-muted-foreground">
+                  <Play className="size-6 opacity-40" />
                 </div>
-                <p className="mt-2 font-medium text-muted-foreground text-xs">No video URL entered yet</p>
+                <p className="mt-3 font-medium text-muted-foreground text-xs">No video URL entered yet</p>
                 <p className="mt-0.5 text-[11px] text-muted-foreground/80">
-                  Add a YouTube or Vimeo link above to preview the embedded player.
+                  YouTube and Vimeo embed previews will display here interactively once entered.
                 </p>
               </div>
             )}
@@ -640,8 +298,8 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
             <CardTitle className="text-base sm:text-lg">Official Event Photo Album</CardTitle>
           </div>
           <CardDescription>
-            Provide a public Google Photos, Google Drive folder, or Flickr album link. Attendees can browse photos from
-            the public highlights tab.
+            Provide a shared album link (Google Photos, Google Drive Folder, Flickr, or OneDrive). Attendees will be
+            able to browse photos directly from the public event page.
           </CardDescription>
         </CardHeader>
 
@@ -721,215 +379,6 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
               minHeight="min-h-[140px]"
             />
           </Field>
-        </CardContent>
-      </Card>
-
-      {/* ── 4. Speaker Presentation Slides & Resources ───────────────── */}
-      <Card>
-        <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <Presentation className="size-4 text-primary" />
-              <CardTitle className="text-base sm:text-lg">Speaker Presentation Slides & Resources</CardTitle>
-            </div>
-            <CardDescription className="mt-1">
-              Bind presentation slide decks and resource links to Bevy agenda items and speakers. These are displayed in
-              the Agenda and Highlights tabs without creating separate registration tracks.
-            </CardDescription>
-          </div>
-
-          <div className="flex items-center gap-2 self-start sm:self-auto">
-            {isAgendaLoading ? (
-              <Skeleton className="h-8 w-44 rounded-md" />
-            ) : (
-              agendaActivities.length > 0 && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button size="sm" variant="outline" className="gap-1.5 text-xs">
-                      <Plus className="size-3.5 text-primary" />
-                      <span>Attach Presentation Slides</span>
-                      <ChevronDown className="size-3 opacity-60" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-80 max-h-80 overflow-y-auto">
-                    <DropdownMenuLabel className="text-xs">Select from Bevy Agenda</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    {agendaActivities.map((act) => {
-                      const added = isActivityAdded(act.activity);
-                      const matchingSlide = slides.find(
-                        (s) => s.agenda_activity_id === act.id || normalizeStr(s.title) === normalizeStr(act.activity),
-                      );
-                      const boundSpeaker = matchingSlide?.speaker_name || act.speakerName;
-                      return (
-                        <DropdownMenuItem
-                          key={act.id}
-                          disabled={added}
-                          onClick={() => handleAddFromAgenda(act)}
-                          className="flex flex-col items-start gap-1 py-2 cursor-pointer"
-                        >
-                          <div className="flex items-center justify-between w-full gap-2">
-                            <span className="font-semibold text-xs text-foreground truncate">{act.activity}</span>
-                            {added ? (
-                              <Badge
-                                variant="secondary"
-                                className="text-[10px] shrink-0 h-4 px-1.5 bg-emerald-500/15 text-emerald-600"
-                              >
-                                Attached
-                              </Badge>
-                            ) : (
-                              <span className="text-[10px] text-muted-foreground shrink-0">{act.time}</span>
-                            )}
-                          </div>
-                          <div className="flex items-center justify-between w-full text-[11px]">
-                            {boundSpeaker ? (
-                              <span className="text-muted-foreground truncate">
-                                Speaker: <strong className="text-foreground font-medium">{boundSpeaker}</strong>
-                              </span>
-                            ) : (
-                              <span className="text-muted-foreground italic text-[10px]">No speaker in agenda</span>
-                            )}
-                            {added && matchingSlide?.speaker_name && (
-                              <span className="text-[10px] text-emerald-600 dark:text-emerald-400">✓ Bound</span>
-                            )}
-                          </div>
-                        </DropdownMenuItem>
-                      );
-                    })}
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onClick={handleAddAllFromAgenda}
-                      disabled={agendaActivities.every((act) => isActivityAdded(act.activity))}
-                      className="gap-2 cursor-pointer font-medium text-primary text-xs"
-                    >
-                      <Sparkles className="size-3.5" />
-                      <span>
-                        Attach All from Agenda ({agendaActivities.filter((a) => !isActivityAdded(a.activity)).length}{" "}
-                        remaining)
-                      </span>
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )
-            )}
-          </div>
-        </CardHeader>
-
-        <CardContent className="space-y-4">
-          {isAgendaLoading ? (
-            <div className="flex flex-col items-center justify-center rounded-xl border border-border/60 border-dashed bg-muted/15 p-8 text-center">
-              <Skeleton className="size-12 rounded-2xl mb-3" />
-              <Skeleton className="h-4 w-52 mb-2" />
-              <Skeleton className="h-3 w-80 max-w-full mb-4" />
-              <div className="flex flex-wrap items-center justify-center gap-2">
-                <Skeleton className="h-8 w-40 rounded-md" />
-                <Skeleton className="h-8 w-36 rounded-md" />
-              </div>
-            </div>
-          ) : agendaActivities.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-xl border border-border/60 border-dashed bg-muted/20 p-8 text-center">
-              <div className="flex size-12 items-center justify-center rounded-2xl bg-muted/60 text-muted-foreground">
-                <Info className="size-6 opacity-60 text-primary" />
-              </div>
-              <p className="mt-3 font-semibold text-foreground text-sm">No Bevy Agenda Items Found</p>
-              <p className="mt-1 max-w-sm text-muted-foreground text-xs">
-                To attach presentation slides, ensure the agenda and speakers are configured in the Bevy Chapter event
-                schedule. Slides bind directly to Bevy agenda activities.
-              </p>
-            </div>
-          ) : slides.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-xl border border-border/60 border-dashed bg-muted/20 p-8 text-center">
-              <div className="flex size-12 items-center justify-center rounded-2xl bg-muted/60 text-muted-foreground">
-                <Presentation className="size-6 opacity-60" />
-              </div>
-              <p className="mt-3 font-semibold text-foreground text-sm">No presentation slides attached yet</p>
-              <p className="mt-1 max-w-sm text-muted-foreground text-xs">
-                Select from your {agendaActivities.length} Bevy agenda activities to attach speaker presentation slides
-                or codelab resource links.
-              </p>
-              <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-                <Button size="sm" onClick={handleAddAllFromAgenda} className="gap-1.5 text-xs">
-                  <Sparkles className="size-3.5" />
-                  Attach All from Agenda ({agendaActivities.length})
-                </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button size="sm" variant="outline" className="gap-1.5 text-xs">
-                      <Plus className="size-3.5" />
-                      Select from Agenda
-                      <ChevronDown className="size-3 opacity-60" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="center" className="w-80 max-h-80 overflow-y-auto">
-                    <DropdownMenuLabel className="text-xs">Choose Bevy Agenda Activity</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    {agendaActivities.map((act) => {
-                      const added = isActivityAdded(act.activity);
-                      const matchingSlide = slides.find(
-                        (s) => s.agenda_activity_id === act.id || normalizeStr(s.title) === normalizeStr(act.activity),
-                      );
-                      const boundSpeaker = matchingSlide?.speaker_name || act.speakerName;
-                      return (
-                        <DropdownMenuItem
-                          key={act.id}
-                          disabled={added}
-                          onClick={() => handleAddFromAgenda(act)}
-                          className="flex flex-col items-start gap-1 py-2 cursor-pointer"
-                        >
-                          <div className="flex items-center justify-between w-full gap-2">
-                            <span className="font-semibold text-xs text-foreground truncate">{act.activity}</span>
-                            {added ? (
-                              <Badge
-                                variant="secondary"
-                                className="text-[10px] shrink-0 h-4 px-1.5 bg-emerald-500/15 text-emerald-600"
-                              >
-                                Attached
-                              </Badge>
-                            ) : (
-                              <span className="text-[10px] text-muted-foreground shrink-0">{act.time}</span>
-                            )}
-                          </div>
-                          <div className="flex items-center justify-between w-full text-[11px]">
-                            {boundSpeaker ? (
-                              <span className="text-muted-foreground truncate">
-                                Speaker: <strong className="text-foreground font-medium">{boundSpeaker}</strong>
-                              </span>
-                            ) : (
-                              <span className="text-muted-foreground italic text-[10px]">No speaker in agenda</span>
-                            )}
-                            {added && matchingSlide?.speaker_name && (
-                              <span className="text-[10px] text-emerald-600 dark:text-emerald-400">✓ Bound</span>
-                            )}
-                          </div>
-                        </DropdownMenuItem>
-                      );
-                    })}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            </div>
-          ) : (
-            <DragDropProvider onDragEnd={handleDragEnd}>
-              <div className="space-y-4">
-                {slides.map((slide, sIdx) => (
-                  <SortableSlideDeckCard
-                    key={slide.id}
-                    slide={slide}
-                    index={sIdx}
-                    totalSlides={slides.length}
-                    agendaActivities={agendaActivities}
-                    speakers={internalSpeakers ?? event.speakers}
-                    onUpdate={handleUpdateSlide}
-                    onRemove={handleRemoveSlide}
-                    onMoveUp={handleMoveSlideUp}
-                    onMoveDown={handleMoveSlideDown}
-                    onAddRelatedLink={handleAddSlideRelatedLink}
-                    onUpdateRelatedLink={handleUpdateSlideRelatedLink}
-                    onRemoveRelatedLink={handleRemoveSlideRelatedLink}
-                  />
-                ))}
-              </div>
-            </DragDropProvider>
-          )}
         </CardContent>
       </Card>
 

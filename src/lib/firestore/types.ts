@@ -106,12 +106,20 @@ export interface EventSession {
   agenda_activity_id?: string;
 }
 
+export interface EventPresentationSlideSpeaker {
+  name: string;
+  role?: string;
+  avatar_url?: string;
+  type?: "Speaker" | "Panelist" | "Facilitator" | "Moderator" | string;
+}
+
 export interface EventPresentationSlide {
   id: string;
   agenda_activity_id?: string;
   title: string;
   time_slot?: string;
   speaker_name?: string;
+  speakers?: EventPresentationSlideSpeaker[];
   slides_url?: string;
   slides_title?: string;
   related_links?: SessionRelatedLink[];
