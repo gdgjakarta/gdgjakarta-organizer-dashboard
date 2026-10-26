@@ -36,7 +36,7 @@ import {
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { findMatchingSpeaker, normalizeStr } from "@/lib/events/agenda-unification";
+import { findMatchingSpeaker, hasActualAgendaActivities, normalizeStr } from "@/lib/events/agenda-unification";
 import { parsePhotoAlbum, parseVideoUrl } from "@/lib/events/media-utils";
 import { updateEventHighlightsMediaAction } from "@/lib/firestore/actions";
 import type { EventPresentationSlide, FirestoreEvent } from "@/lib/firestore/types";
@@ -96,19 +96,10 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
   );
   const [internalAgenda, setInternalAgenda] = useState(event.agenda);
   const [internalSpeakers, setInternalSpeakers] = useState(event.speakers);
-  const [isAgendaLoading, setIsAgendaLoading] = useState(() => {
-    const raw = event.agenda as unknown;
-    if (!raw) return true;
-    if (typeof raw === "object" && "days" in (raw as Record<string, unknown>)) {
-      const days = (raw as { days: unknown[] }).days;
-      return !Array.isArray(days) || days.length === 0;
-    }
-    if (Array.isArray(raw)) return raw.length === 0;
-    return true;
-  });
+  const [isAgendaLoading, setIsAgendaLoading] = useState(() => !hasActualAgendaActivities(event.agenda));
 
   useEffect(() => {
-    if (event.agenda) {
+    if (hasActualAgendaActivities(event.agenda)) {
       setInternalAgenda(event.agenda);
       setIsAgendaLoading(false);
     }
@@ -152,7 +143,8 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
           setRecapDescription(recap);
           setSlides(slideList);
 
-          if (docData.agenda) {
+          // Only adopt Firestore agenda if it contains real activities
+          if (hasActualAgendaActivities(docData.agenda)) {
             setInternalAgenda(docData.agenda);
             setIsAgendaLoading(false);
           }
@@ -173,21 +165,15 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
         console.warn("[HighlightsMediaTab] Failed to fetch latest event data:", err);
       }
 
-      // If agenda is still missing or has 0 items, attempt fallback fetch directly from Bevy
-      const currentEffAgenda = internalAgenda ?? event.agenda;
-      const rawDays =
-        currentEffAgenda && typeof currentEffAgenda === "object" && "days" in currentEffAgenda
-          ? (currentEffAgenda as { days: unknown[] }).days
-          : Array.isArray(currentEffAgenda)
-            ? currentEffAgenda
-            : [];
-      if (!rawDays || (Array.isArray(rawDays) && rawDays.length === 0)) {
+      // If agenda is still missing or has 0 actual activities, attempt fallback fetch directly from Bevy
+      const currentEffAgenda = event.agenda;
+      if (!hasActualAgendaActivities(currentEffAgenda)) {
         try {
           setIsAgendaLoading(true);
           const { fetchBevyEventDetailAction } = await import("@/server/bevy-actions");
           const fresh = await fetchBevyEventDetailAction(String(event.id));
           if (isMounted && fresh) {
-            if (fresh.agenda) {
+            if (hasActualAgendaActivities(fresh.agenda)) {
               setInternalAgenda(fresh.agenda);
             }
             if (fresh.speakers && fresh.speakers.length > 0) {
@@ -228,7 +214,6 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
     event.presentation_slides,
     event.sessions,
     event.agenda,
-    internalAgenda,
   ]);
 
   // Dirty state calculation
@@ -366,8 +351,15 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
       description?: string;
     }> = [];
 
-    const effectiveAgenda = internalAgenda ?? event.agenda;
-    const effectiveSpeakers = internalSpeakers ?? event.speakers;
+    let effectiveAgenda = event.agenda;
+    if (hasActualAgendaActivities(internalAgenda)) {
+      effectiveAgenda = internalAgenda;
+    } else if (hasActualAgendaActivities(event.agenda)) {
+      effectiveAgenda = event.agenda;
+    } else if (internalAgenda) {
+      effectiveAgenda = internalAgenda;
+    }
+    const effectiveSpeakers = internalSpeakers && internalSpeakers.length > 0 ? internalSpeakers : event.speakers;
 
     let days: Array<{
       title?: string;

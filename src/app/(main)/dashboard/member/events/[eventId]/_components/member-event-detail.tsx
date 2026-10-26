@@ -45,6 +45,7 @@ import { Separator } from "@/components/ui/separator";
 import { getDashboardHomeUrl } from "@/lib/auth-roles";
 import { resolveEventAudience } from "@/lib/bevy/audience";
 import { toTimezoneDate } from "@/lib/date-utils";
+import { hasActualAgendaActivities } from "@/lib/events/agenda-unification";
 import { extractEventImageUrl } from "@/lib/events/media-utils";
 import { getEffectiveRegistrationStatus, getRegistrationPaymentDeadline } from "@/lib/events/payment-deadline";
 import { getEventRefundPolicyNotes, isRegistrationEligibleForRefund } from "@/lib/events/refund-utils";
@@ -237,13 +238,7 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
             banner: docData.banner || prev.banner,
             cropped_picture_url: docData.cropped_picture_url || prev.cropped_picture_url,
             cropped_banner_url: docData.cropped_banner_url || prev.cropped_banner_url,
-            agenda:
-              docData.agenda &&
-              (Array.isArray(docData.agenda)
-                ? docData.agenda.length > 0
-                : Boolean(docData.agenda.days && docData.agenda.days.length > 0))
-                ? docData.agenda
-                : prev.agenda,
+            agenda: hasActualAgendaActivities(docData.agenda) ? docData.agenda : prev.agenda,
             speakers: docData.speakers && docData.speakers.length > 0 ? docData.speakers : prev.speakers,
           }));
         }

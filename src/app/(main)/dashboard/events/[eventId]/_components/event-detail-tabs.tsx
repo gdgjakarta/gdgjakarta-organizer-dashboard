@@ -20,6 +20,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { hasTeamOperationalAccess, isExecutiveOrganizer } from "@/lib/auth-roles";
+import { hasActualAgendaActivities } from "@/lib/events/agenda-unification";
 import { hasPaidTicketOrMerchandise } from "@/lib/events/registration-defaults";
 import { ensureEventTickets } from "@/lib/events/ticket-templates";
 import type {
@@ -123,13 +124,7 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
               google_maps_url: docData.google_maps_url ?? prev.google_maps_url,
               tickets: ensureEventTickets(docData.tickets ?? prev.tickets),
               merchandise: docData.merchandise ?? prev.merchandise,
-              agenda:
-                docData.agenda &&
-                (Array.isArray(docData.agenda)
-                  ? docData.agenda.length > 0
-                  : Boolean(docData.agenda.days && docData.agenda.days.length > 0))
-                  ? docData.agenda
-                  : prev.agenda,
+              agenda: hasActualAgendaActivities(docData.agenda) ? docData.agenda : prev.agenda,
               speakers: docData.speakers && docData.speakers.length > 0 ? docData.speakers : prev.speakers,
             }));
           }

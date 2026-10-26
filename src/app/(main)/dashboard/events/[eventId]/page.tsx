@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { getAllBevyChapterEvents, getBevyEventById, resolveEventAudience } from "@/lib/bevy/client";
+import { hasActualAgendaActivities } from "@/lib/events/agenda-unification";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
 import { getVerifiedSessionRole } from "@/server/auth-guard";
 
@@ -154,6 +155,20 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
       const { getFirestoreEventByIdServer } = await import("@/server/firestore-admin");
       const firestoreDoc = await getFirestoreEventByIdServer(eventId);
       if (firestoreDoc) {
+        let resolvedAgenda = event?.agenda;
+        if (!hasActualAgendaActivities(resolvedAgenda) && hasActualAgendaActivities(firestoreDoc.agenda)) {
+          resolvedAgenda = firestoreDoc.agenda;
+        }
+
+        let resolvedSpeakers = event?.speakers;
+        if (
+          (!resolvedSpeakers || resolvedSpeakers.length === 0) &&
+          firestoreDoc.speakers &&
+          firestoreDoc.speakers.length > 0
+        ) {
+          resolvedSpeakers = firestoreDoc.speakers;
+        }
+
         event = event
           ? {
               ...firestoreDoc,
@@ -166,8 +181,8 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
               end_date: event.end_date || firestoreDoc.end_date,
               picture_url: event.picture_url || firestoreDoc.picture_url || firestoreDoc.banner_url,
               banner_url: event.banner_url || firestoreDoc.banner_url || firestoreDoc.picture_url,
-              agenda: event.agenda ?? firestoreDoc.agenda,
-              speakers: event.speakers ?? firestoreDoc.speakers,
+              agenda: resolvedAgenda,
+              speakers: resolvedSpeakers,
               // Keep Firestore dashboard extensions that do not exist in Bevy
               requires_approval: firestoreDoc.requires_approval ?? event.requires_approval,
               registration_status: firestoreDoc.registration_status ?? event.registration_status ?? "Closed",

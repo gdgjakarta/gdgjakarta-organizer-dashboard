@@ -69,6 +69,45 @@ export function normalizeStr(str?: string | null): string {
 }
 
 /**
+ * Determines whether an agenda payload contains at least one actual activity.
+ * Guards against empty Bevy agenda shells (e.g. empty: true, or days with 0 items)
+ * from overwriting populated upstream agendas.
+ */
+export function hasActualAgendaActivities(agenda: unknown): boolean {
+  if (!agenda || typeof agenda !== "object") return false;
+
+  const rec = agenda as Record<string, unknown>;
+  if (rec.empty === true) return false;
+
+  if (Array.isArray(agenda)) {
+    return agenda.some((item) => {
+      if (!item || typeof item !== "object") return false;
+      const it = item as { activity?: string; items?: unknown[]; agenda?: unknown[] };
+      if (it.activity?.trim()) return true;
+      const subItems = it.items ?? it.agenda;
+      return (
+        Array.isArray(subItems) &&
+        subItems.some((s) => s && typeof s === "object" && Boolean((s as { activity?: string }).activity?.trim()))
+      );
+    });
+  }
+
+  if ("days" in rec && Array.isArray(rec.days)) {
+    return rec.days.some((day: unknown) => {
+      if (!day || typeof day !== "object") return false;
+      const d = day as { items?: unknown[]; agenda?: unknown[] };
+      const items = d.items ?? d.agenda;
+      return (
+        Array.isArray(items) &&
+        items.some((it) => it && typeof it === "object" && Boolean((it as { activity?: string }).activity?.trim()))
+      );
+    });
+  }
+
+  return false;
+}
+
+/**
  * Resolves the full display name for a Bevy speaker across different API structures
  * (handles full_name, first_name + last_name, or legacy name fields).
  */
