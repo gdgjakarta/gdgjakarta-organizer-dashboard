@@ -69,7 +69,7 @@ export function getSpeakerFullName(speaker?: BevySpeaker | null): string {
 export function normalizeSpeaker(speaker: BevySpeaker, defaultRoleTitle?: string): BevySpeaker {
   const fullName = getSpeakerFullName(speaker);
   const resolvedLinkedIn = speaker.linkedin_url || resolveLinkedInUrl(speaker.personal_linkedin_page) || undefined;
-  const resolvedTwitter = speaker.personal_twitter ? resolveTwitterUrl(speaker.personal_twitter) : undefined;
+  const resolvedTwitter = resolveTwitterUrl(speaker.personal_twitter) || undefined;
   const avatarUrl = speaker.picture_url || speaker.picture?.url || speaker.picture?.thumbnail_url;
 
   return {
