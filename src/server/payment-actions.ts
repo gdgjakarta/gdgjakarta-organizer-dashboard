@@ -169,7 +169,10 @@ export async function generatePaymentLinkAction(input: DokuPaymentRequestInput):
     }
 
     if (!response.ok) {
-      const errorMsg = responseData?.message ?? `n8n webhook error: HTTP ${response.status} ${response.statusText}`;
+      const errorMsg = extractApiMessage(
+        responseData ?? responseText,
+        `n8n webhook error: HTTP ${response.status} ${response.statusText}`,
+      );
       console.error(`[DOKU Payment Action] Failed (HTTP ${response.status}):`, responseText);
       return {
         success: false,
@@ -181,7 +184,7 @@ export async function generatePaymentLinkAction(input: DokuPaymentRequestInput):
     if (responseData && responseData.status === false) {
       return {
         success: false,
-        error: responseData.message ? responseData.message : "Failed to generate payment link via DOKU.",
+        error: extractApiMessage(responseData, "Failed to generate payment link via DOKU."),
         details: responseData,
       };
     }
@@ -310,7 +313,10 @@ export async function cancelPaymentLinkAction(input: DokuCancelOrderRequestInput
     }
 
     if (!response.ok) {
-      const errorMsg = responseData?.message ?? `n8n webhook error: HTTP ${response.status} ${response.statusText}`;
+      const errorMsg = extractApiMessage(
+        responseData ?? responseText,
+        `n8n webhook error: HTTP ${response.status} ${response.statusText}`,
+      );
       console.error(`[DOKU Cancel Payment Action] Failed (HTTP ${response.status}):`, responseText);
       return {
         success: false,
@@ -322,7 +328,7 @@ export async function cancelPaymentLinkAction(input: DokuCancelOrderRequestInput
     if (responseData && responseData.status === false) {
       return {
         success: false,
-        error: responseData.message ? responseData.message : "Failed to cancel order via DOKU.",
+        error: extractApiMessage(responseData, "Failed to cancel order via DOKU."),
         details: responseData,
       };
     }
