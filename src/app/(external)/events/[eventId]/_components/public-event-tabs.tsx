@@ -492,7 +492,7 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
                           >
                             <a href={sess.slides_url} target="_blank" rel="noopener noreferrer">
                               <Presentation className="size-3.5" />
-                              <span>{sess.slides_title ?? "Download / View Slides"}</span>
+                              <span>{sess.slides_title ?? "Open Slides"}</span>
                               <ExternalLink className="ml-auto size-3" />
                             </a>
                           </Button>
@@ -544,7 +544,7 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
                           >
                             <a href={item.slides_url} target="_blank" rel="noopener noreferrer">
                               <Presentation className="size-3.5" />
-                              <span>{item.slides_title ?? "Download / View Slides"}</span>
+                              <span>{item.slides_title ?? "Open Slides"}</span>
                               <ExternalLink className="ml-auto size-3" />
                             </a>
                           </Button>

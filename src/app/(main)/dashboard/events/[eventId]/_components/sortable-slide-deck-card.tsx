@@ -567,7 +567,7 @@ export function SortableSlideDeckCard({
             <Input
               value={slide.slides_title ?? ""}
               onChange={(e) => onUpdate(slide.id, { slides_title: e.target.value })}
-              placeholder="e.g. Download Slide Deck (Google Slides)"
+              placeholder="e.g. Open Slides"
               className="h-8 text-xs"
             />
           </Field>

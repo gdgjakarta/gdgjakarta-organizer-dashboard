@@ -39,6 +39,7 @@ function normalizeSlides(
     return rawSlides.map((s, idx) => ({
       ...s,
       id: s.id?.trim() ? s.id : `slide-${idx}-${Date.now()}`,
+      slides_title: !s.slides_title || s.slides_title === "Download Slides" ? "Open Slides" : s.slides_title,
     }));
   }
 
@@ -55,7 +56,7 @@ function normalizeSlides(
         time_slot: s.time_slot,
         speaker_name: s.speaker_name,
         slides_url: s.slides_url,
-        slides_title: s.slides_title,
+        slides_title: !s.slides_title || s.slides_title === "Download Slides" ? "Open Slides" : s.slides_title,
         related_links: s.related_links,
       }));
     }
@@ -354,7 +355,7 @@ export function AgendaTab({ event }: AgendaTabProps) {
       speaker_name: boundSpeakers.length > 0 ? boundSpeakers.map((s) => s.name).join(", ") : act.speakerName,
       speakers: boundSpeakers.length > 0 ? boundSpeakers : undefined,
       slides_url: "",
-      slides_title: "Download Slides",
+      slides_title: "Open Slides",
       related_links: [],
     };
     setSlides((prev) => [...prev, newSlide]);
@@ -398,7 +399,7 @@ export function AgendaTab({ event }: AgendaTabProps) {
         speaker_name: boundSpeakers.length > 0 ? boundSpeakers.map((s) => s.name).join(", ") : act.speakerName,
         speakers: boundSpeakers.length > 0 ? boundSpeakers : undefined,
         slides_url: "",
-        slides_title: "Download Slides",
+        slides_title: "Open Slides",
         related_links: [],
       };
     });
@@ -411,7 +412,7 @@ export function AgendaTab({ event }: AgendaTabProps) {
     const newSlide: EventPresentationSlide = {
       id: `slide-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       title: "New Presentation / Session",
-      slides_title: "Download Slides",
+      slides_title: "Open Slides",
       slides_url: "",
       related_links: [],
     };
