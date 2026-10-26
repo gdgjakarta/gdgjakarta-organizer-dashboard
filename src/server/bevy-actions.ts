@@ -215,3 +215,11 @@ export async function removeAttendeeFromBevyAction(params: {
     return { success: false, error: errorMsg };
   }
 }
+
+/**
+ * Server action to fetch full Bevy event details (including agenda and speakers).
+ */
+export async function fetchBevyEventDetailAction(eventId: string | number) {
+  const { getBevyEventById } = await import("@/lib/bevy/client");
+  return await getBevyEventById(eventId);
+}

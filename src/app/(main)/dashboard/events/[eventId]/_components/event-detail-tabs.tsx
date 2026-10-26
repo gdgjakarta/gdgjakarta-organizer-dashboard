@@ -123,6 +123,14 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
               google_maps_url: docData.google_maps_url ?? prev.google_maps_url,
               tickets: ensureEventTickets(docData.tickets ?? prev.tickets),
               merchandise: docData.merchandise ?? prev.merchandise,
+              agenda:
+                docData.agenda &&
+                (Array.isArray(docData.agenda)
+                  ? docData.agenda.length > 0
+                  : Boolean(docData.agenda.days && docData.agenda.days.length > 0))
+                  ? docData.agenda
+                  : prev.agenda,
+              speakers: docData.speakers && docData.speakers.length > 0 ? docData.speakers : prev.speakers,
             }));
           }
         });

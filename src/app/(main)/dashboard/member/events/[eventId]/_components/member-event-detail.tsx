@@ -237,6 +237,14 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
             banner: docData.banner || prev.banner,
             cropped_picture_url: docData.cropped_picture_url || prev.cropped_picture_url,
             cropped_banner_url: docData.cropped_banner_url || prev.cropped_banner_url,
+            agenda:
+              docData.agenda &&
+              (Array.isArray(docData.agenda)
+                ? docData.agenda.length > 0
+                : Boolean(docData.agenda.days && docData.agenda.days.length > 0))
+                ? docData.agenda
+                : prev.agenda,
+            speakers: docData.speakers && docData.speakers.length > 0 ? docData.speakers : prev.speakers,
           }));
         }
       } catch (err) {

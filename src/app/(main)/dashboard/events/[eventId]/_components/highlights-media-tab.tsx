@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { findMatchingSpeaker, normalizeStr } from "@/lib/events/agenda-unification";
 import { parsePhotoAlbum, parseVideoUrl } from "@/lib/events/media-utils";
 import { updateEventHighlightsMediaAction } from "@/lib/firestore/actions";
@@ -93,6 +94,31 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
   const [slides, setSlides] = useState<EventPresentationSlide[]>(() =>
     normalizeSlides(event.presentation_slides, event.sessions),
   );
+  const [internalAgenda, setInternalAgenda] = useState(event.agenda);
+  const [internalSpeakers, setInternalSpeakers] = useState(event.speakers);
+  const [isAgendaLoading, setIsAgendaLoading] = useState(() => {
+    const raw = event.agenda as unknown;
+    if (!raw) return true;
+    if (typeof raw === "object" && "days" in (raw as Record<string, unknown>)) {
+      const days = (raw as { days: unknown[] }).days;
+      return !Array.isArray(days) || days.length === 0;
+    }
+    if (Array.isArray(raw)) return raw.length === 0;
+    return true;
+  });
+
+  useEffect(() => {
+    if (event.agenda) {
+      setInternalAgenda(event.agenda);
+      setIsAgendaLoading(false);
+    }
+  }, [event.agenda]);
+
+  useEffect(() => {
+    if (event.speakers && event.speakers.length > 0) {
+      setInternalSpeakers(event.speakers);
+    }
+  }, [event.speakers]);
 
   const [isSaving, setIsSaving] = useState(false);
   const initialSnapshotRef = useRef<string | null>(null);
@@ -103,11 +129,12 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
 
   // Load latest Firestore data on mount
   useEffect(() => {
+    let isMounted = true;
     async function loadLatestData() {
       try {
         const { getFirestoreEventById } = await import("@/lib/firestore/client");
         const docData = await getFirestoreEventById(String(event.id));
-        if (docData) {
+        if (isMounted && docData) {
           const videoUrl = docData.highlight_video_url ?? event.highlight_video_url ?? "";
           const videoTitle = docData.highlight_video_title ?? event.highlight_video_title ?? "";
           const albumUrl = docData.photo_album_url ?? event.photo_album_url ?? "";
@@ -125,6 +152,14 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
           setRecapDescription(recap);
           setSlides(slideList);
 
+          if (docData.agenda) {
+            setInternalAgenda(docData.agenda);
+            setIsAgendaLoading(false);
+          }
+          if (docData.speakers && docData.speakers.length > 0) {
+            setInternalSpeakers(docData.speakers);
+          }
+
           initialSnapshotRef.current = JSON.stringify({
             highlightVideoUrl: videoUrl,
             highlightVideoTitle: videoTitle,
@@ -136,6 +171,36 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
         }
       } catch (err) {
         console.warn("[HighlightsMediaTab] Failed to fetch latest event data:", err);
+      }
+
+      // If agenda is still missing or has 0 items, attempt fallback fetch directly from Bevy
+      const currentEffAgenda = internalAgenda ?? event.agenda;
+      const rawDays =
+        currentEffAgenda && typeof currentEffAgenda === "object" && "days" in currentEffAgenda
+          ? (currentEffAgenda as { days: unknown[] }).days
+          : Array.isArray(currentEffAgenda)
+            ? currentEffAgenda
+            : [];
+      if (!rawDays || (Array.isArray(rawDays) && rawDays.length === 0)) {
+        try {
+          setIsAgendaLoading(true);
+          const { fetchBevyEventDetailAction } = await import("@/server/bevy-actions");
+          const fresh = await fetchBevyEventDetailAction(String(event.id));
+          if (isMounted && fresh) {
+            if (fresh.agenda) {
+              setInternalAgenda(fresh.agenda);
+            }
+            if (fresh.speakers && fresh.speakers.length > 0) {
+              setInternalSpeakers(fresh.speakers);
+            }
+          }
+        } catch (bevyErr) {
+          console.warn("[HighlightsMediaTab] Fallback fetch for Bevy agenda failed:", bevyErr);
+        } finally {
+          if (isMounted) setIsAgendaLoading(false);
+        }
+      } else {
+        if (isMounted) setIsAgendaLoading(false);
       }
     }
 
@@ -149,6 +214,10 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
     });
 
     void loadLatestData();
+
+    return () => {
+      isMounted = false;
+    };
   }, [
     event.id,
     event.highlight_video_url,
@@ -158,6 +227,8 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
     event.recap_description,
     event.presentation_slides,
     event.sessions,
+    event.agenda,
+    internalAgenda,
   ]);
 
   // Dirty state calculation
@@ -295,17 +366,38 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
       description?: string;
     }> = [];
 
-    const days = event.agenda?.days ?? [];
+    const effectiveAgenda = internalAgenda ?? event.agenda;
+    const effectiveSpeakers = internalSpeakers ?? event.speakers;
+
+    let days: Array<{
+      title?: string;
+      items?: Array<{ activity?: string; time?: string; description?: string }>;
+      agenda?: Array<{ activity?: string; time?: string; description?: string }>;
+    }> = [];
+
+    if (effectiveAgenda && typeof effectiveAgenda === "object") {
+      if ("days" in effectiveAgenda && Array.isArray((effectiveAgenda as { days: unknown[] }).days)) {
+        days = (effectiveAgenda as { days: typeof days }).days;
+      } else if (Array.isArray(effectiveAgenda)) {
+        const first = effectiveAgenda[0];
+        if (first && typeof first === "object" && ("items" in first || "agenda" in first)) {
+          days = effectiveAgenda as typeof days;
+        } else {
+          days = [{ items: effectiveAgenda as Array<{ activity?: string; time?: string; description?: string }> }];
+        }
+      }
+    }
+
     days.forEach((day, dIdx) => {
       const items = day.items ?? day.agenda ?? [];
       items.forEach((item, iIdx) => {
         if (!item.activity?.trim()) return;
         const speakerMatch =
-          findMatchingSpeaker(item.description || "", event.speakers) ??
-          findMatchingSpeaker(item.activity, event.speakers);
+          findMatchingSpeaker(item.description || "", effectiveSpeakers) ??
+          findMatchingSpeaker(item.activity, effectiveSpeakers);
         list.push({
           id: `item-${dIdx}-${iIdx}`,
-          time: item.time,
+          time: item.time || "",
           activity: item.activity.trim(),
           speakerName: speakerMatch?.speakerName ?? "",
           speakerRole: speakerMatch?.speakerRole ?? "",
@@ -316,7 +408,7 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
     });
 
     return list;
-  }, [event.agenda, event.speakers]);
+  }, [internalAgenda, internalSpeakers, event.agenda, event.speakers]);
 
   const isActivityAdded = (activityTitle: string) => {
     const norm = normalizeStr(activityTitle);
@@ -655,79 +747,93 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
           </div>
 
           <div className="flex items-center gap-2 self-start sm:self-auto">
-            {agendaActivities.length > 0 && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button size="sm" variant="outline" className="gap-1.5 text-xs">
-                    <Plus className="size-3.5 text-primary" />
-                    <span>Attach Presentation Slides</span>
-                    <ChevronDown className="size-3 opacity-60" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-80 max-h-80 overflow-y-auto">
-                  <DropdownMenuLabel className="text-xs">Select from Bevy Agenda</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  {agendaActivities.map((act) => {
-                    const added = isActivityAdded(act.activity);
-                    const matchingSlide = slides.find(
-                      (s) => s.agenda_activity_id === act.id || normalizeStr(s.title) === normalizeStr(act.activity),
-                    );
-                    const boundSpeaker = matchingSlide?.speaker_name || act.speakerName;
-                    return (
-                      <DropdownMenuItem
-                        key={act.id}
-                        disabled={added}
-                        onClick={() => handleAddFromAgenda(act)}
-                        className="flex flex-col items-start gap-1 py-2 cursor-pointer"
-                      >
-                        <div className="flex items-center justify-between w-full gap-2">
-                          <span className="font-semibold text-xs text-foreground truncate">{act.activity}</span>
-                          {added ? (
-                            <Badge
-                              variant="secondary"
-                              className="text-[10px] shrink-0 h-4 px-1.5 bg-emerald-500/15 text-emerald-600"
-                            >
-                              Attached
-                            </Badge>
-                          ) : (
-                            <span className="text-[10px] text-muted-foreground shrink-0">{act.time}</span>
-                          )}
-                        </div>
-                        <div className="flex items-center justify-between w-full text-[11px]">
-                          {boundSpeaker ? (
-                            <span className="text-muted-foreground truncate">
-                              Speaker: <strong className="text-foreground font-medium">{boundSpeaker}</strong>
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground italic text-[10px]">No speaker in agenda</span>
-                          )}
-                          {added && matchingSlide?.speaker_name && (
-                            <span className="text-[10px] text-emerald-600 dark:text-emerald-400">✓ Bound</span>
-                          )}
-                        </div>
-                      </DropdownMenuItem>
-                    );
-                  })}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={handleAddAllFromAgenda}
-                    disabled={agendaActivities.every((act) => isActivityAdded(act.activity))}
-                    className="gap-2 cursor-pointer font-medium text-primary text-xs"
-                  >
-                    <Sparkles className="size-3.5" />
-                    <span>
-                      Attach All from Agenda ({agendaActivities.filter((a) => !isActivityAdded(a.activity)).length}{" "}
-                      remaining)
-                    </span>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+            {isAgendaLoading ? (
+              <Skeleton className="h-8 w-44 rounded-md" />
+            ) : (
+              agendaActivities.length > 0 && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button size="sm" variant="outline" className="gap-1.5 text-xs">
+                      <Plus className="size-3.5 text-primary" />
+                      <span>Attach Presentation Slides</span>
+                      <ChevronDown className="size-3 opacity-60" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-80 max-h-80 overflow-y-auto">
+                    <DropdownMenuLabel className="text-xs">Select from Bevy Agenda</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {agendaActivities.map((act) => {
+                      const added = isActivityAdded(act.activity);
+                      const matchingSlide = slides.find(
+                        (s) => s.agenda_activity_id === act.id || normalizeStr(s.title) === normalizeStr(act.activity),
+                      );
+                      const boundSpeaker = matchingSlide?.speaker_name || act.speakerName;
+                      return (
+                        <DropdownMenuItem
+                          key={act.id}
+                          disabled={added}
+                          onClick={() => handleAddFromAgenda(act)}
+                          className="flex flex-col items-start gap-1 py-2 cursor-pointer"
+                        >
+                          <div className="flex items-center justify-between w-full gap-2">
+                            <span className="font-semibold text-xs text-foreground truncate">{act.activity}</span>
+                            {added ? (
+                              <Badge
+                                variant="secondary"
+                                className="text-[10px] shrink-0 h-4 px-1.5 bg-emerald-500/15 text-emerald-600"
+                              >
+                                Attached
+                              </Badge>
+                            ) : (
+                              <span className="text-[10px] text-muted-foreground shrink-0">{act.time}</span>
+                            )}
+                          </div>
+                          <div className="flex items-center justify-between w-full text-[11px]">
+                            {boundSpeaker ? (
+                              <span className="text-muted-foreground truncate">
+                                Speaker: <strong className="text-foreground font-medium">{boundSpeaker}</strong>
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground italic text-[10px]">No speaker in agenda</span>
+                            )}
+                            {added && matchingSlide?.speaker_name && (
+                              <span className="text-[10px] text-emerald-600 dark:text-emerald-400">✓ Bound</span>
+                            )}
+                          </div>
+                        </DropdownMenuItem>
+                      );
+                    })}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={handleAddAllFromAgenda}
+                      disabled={agendaActivities.every((act) => isActivityAdded(act.activity))}
+                      className="gap-2 cursor-pointer font-medium text-primary text-xs"
+                    >
+                      <Sparkles className="size-3.5" />
+                      <span>
+                        Attach All from Agenda ({agendaActivities.filter((a) => !isActivityAdded(a.activity)).length}{" "}
+                        remaining)
+                      </span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )
             )}
           </div>
         </CardHeader>
 
         <CardContent className="space-y-4">
-          {agendaActivities.length === 0 ? (
+          {isAgendaLoading ? (
+            <div className="flex flex-col items-center justify-center rounded-xl border border-border/60 border-dashed bg-muted/15 p-8 text-center">
+              <Skeleton className="size-12 rounded-2xl mb-3" />
+              <Skeleton className="h-4 w-52 mb-2" />
+              <Skeleton className="h-3 w-80 max-w-full mb-4" />
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <Skeleton className="h-8 w-40 rounded-md" />
+                <Skeleton className="h-8 w-36 rounded-md" />
+              </div>
+            </div>
+          ) : agendaActivities.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-xl border border-border/60 border-dashed bg-muted/20 p-8 text-center">
               <div className="flex size-12 items-center justify-center rounded-2xl bg-muted/60 text-muted-foreground">
                 <Info className="size-6 opacity-60 text-primary" />
@@ -819,7 +925,7 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
                     index={sIdx}
                     totalSlides={slides.length}
                     agendaActivities={agendaActivities}
-                    speakers={event.speakers}
+                    speakers={internalSpeakers ?? event.speakers}
                     onUpdate={handleUpdateSlide}
                     onRemove={handleRemoveSlide}
                     onMoveUp={handleMoveSlideUp}

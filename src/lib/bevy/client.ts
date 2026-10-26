@@ -18,6 +18,8 @@ export {
 
 import { extractEventPartners } from "./partners";
 import {
+  type BevyAgendaDay,
+  type BevyAgendaItem,
   type BevyAttendee,
   type BevyAttendeeCheckInRequest,
   type BevyAttendeeCheckInResponse,
@@ -854,13 +856,31 @@ export async function getBevyEventById(
   if (result) {
     result.partners = extractEventPartners(result);
 
-    // Normalize Bevy agenda structure: Bevy API delivers day items under day.agenda
-    if (result.agenda?.days && Array.isArray(result.agenda.days)) {
-      for (const day of result.agenda.days) {
-        if (!day.items && Array.isArray(day.agenda)) {
-          day.items = day.agenda;
-        } else if (!day.agenda && Array.isArray(day.items)) {
-          day.agenda = day.items;
+    // Normalize Bevy agenda structure: Bevy API delivers day items under day.agenda, or as an array
+    if (result.agenda) {
+      if (Array.isArray(result.agenda)) {
+        const first = result.agenda[0];
+        if (first && typeof first === "object" && ("items" in first || "agenda" in first)) {
+          result.agenda = { days: result.agenda as BevyAgendaDay[] };
+        } else {
+          result.agenda = {
+            days: [
+              {
+                title: "Day 1",
+                items: result.agenda as BevyAgendaItem[],
+                agenda: result.agenda as BevyAgendaItem[],
+              },
+            ],
+          };
+        }
+      }
+      if (result.agenda.days && Array.isArray(result.agenda.days)) {
+        for (const day of result.agenda.days) {
+          if (!day.items && Array.isArray(day.agenda)) {
+            day.items = day.agenda;
+          } else if (!day.agenda && Array.isArray(day.items)) {
+            day.agenda = day.items;
+          }
         }
       }
     }
