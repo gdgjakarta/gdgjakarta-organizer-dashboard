@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import Image from "next/image";
 
@@ -21,8 +21,23 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { extractEventPartners, groupPartnersByTier } from "@/lib/bevy/partners";
+import {
+  extractEventSpeakerGroups,
+  getAllEventSpeakers,
+  getTotalSpeakersCount,
+  resolveLinkedInUrl,
+  resolveTwitterUrl,
+} from "@/lib/bevy/speakers";
 import type { BevyEvent, BevyPartner, BevySpeaker } from "@/lib/bevy/types";
 import { buildUnifiedAgenda } from "@/lib/events/agenda-unification";
 import { parsePhotoAlbum, parseVideoUrl } from "@/lib/events/media-utils";
@@ -65,14 +80,18 @@ interface PublicEventTabsProps {
 }
 
 export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: PublicEventTabsProps) {
-  const hasSpeakers = Array.isArray(event.speakers) && event.speakers.length > 0;
+  const speakerGroups = useMemo(() => extractEventSpeakerGroups(event), [event]);
+  const totalSpeakersCount = useMemo(() => getTotalSpeakersCount(event), [event]);
+  const allSpeakers = useMemo(() => getAllEventSpeakers(event), [event]);
+  const hasSpeakers = totalSpeakersCount > 0;
+
   const partners =
     Array.isArray(event.partners) && event.partners.length > 0 ? event.partners : extractEventPartners(event);
   const hasPartners = partners.length > 0;
   const tierGroups = groupPartnersByTier(partners);
   const unifiedAgenda = useMemo(
-    () => buildUnifiedAgenda(event.agenda, event.speakers, firestoreSessions, firestoreEvent?.presentation_slides),
-    [event.agenda, event.speakers, firestoreSessions, firestoreEvent?.presentation_slides],
+    () => buildUnifiedAgenda(event.agenda, allSpeakers, firestoreSessions, firestoreEvent?.presentation_slides),
+    [event.agenda, allSpeakers, firestoreSessions, firestoreEvent?.presentation_slides],
   );
   const hasAgenda = unifiedAgenda.sessionGroups.length > 0;
   const agendaBadgeCount =
@@ -146,7 +165,7 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
               <span className="relative z-10">Speakers</span>
               {hasSpeakers && (
                 <span className="rounded-full bg-muted px-2 py-0.5 font-medium text-[11px] text-muted-foreground transition-colors group-hover:bg-muted/80 group-data-[state=active]:bg-primary/10 group-data-[state=active]:font-semibold group-data-[state=active]:text-primary">
-                  {event.speakers?.length}
+                  {totalSpeakersCount}
                 </span>
               )}
               <span className="pointer-events-none absolute inset-x-2 -bottom-[1px] h-[2.5px] rounded-full bg-primary opacity-0 transition-all duration-200 group-data-[state=active]:opacity-100" />
@@ -233,18 +252,30 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
         <TabsContent value="agenda" className="space-y-6 pt-4">
           <UnifiedAgendaTimeline
             bevyAgenda={event.agenda}
-            speakers={event.speakers}
+            speakers={allSpeakers}
             firestoreSessions={firestoreSessions}
             presentationSlides={firestoreEvent?.presentation_slides}
           />
         </TabsContent>
 
         {/* ── TAB 3: SPEAKERS ─────────────────────────────────────── */}
-        <TabsContent value="speakers" className="space-y-4 pt-4">
+        <TabsContent value="speakers" className="space-y-8 pt-4">
           {hasSpeakers ? (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {event.speakers?.map((speaker) => (
-                <SpeakerCard key={speaker.id ?? speaker.full_name} speaker={speaker} />
+            <div className="space-y-8">
+              {speakerGroups.map((group) => (
+                <div key={group.type} className="space-y-4">
+                  <div className="flex items-center gap-2.5 border-border/60 border-b pb-2.5">
+                    <h3 className="font-bold text-foreground text-lg tracking-tight">{group.title}</h3>
+                    <Badge variant="secondary" className="px-2 py-0 text-xs">
+                      {group.speakers.length}
+                    </Badge>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+                    {group.speakers.map((speaker) => (
+                      <SpeakerCard key={speaker.id ?? speaker.full_name} speaker={speaker} />
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           ) : (
@@ -557,7 +588,7 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
                 </div>
                 <div className="rounded-xl border border-border/60 bg-card p-4 text-center">
                   <span className="text-muted-foreground text-xs">Speakers</span>
-                  <p className="font-bold text-foreground text-lg sm:text-xl">{event.speakers?.length ?? "-"}</p>
+                  <p className="font-bold text-foreground text-lg sm:text-xl">{totalSpeakersCount || "-"}</p>
                 </div>
                 <div className="rounded-xl border border-border/60 bg-card p-4 text-center">
                   <span className="text-muted-foreground text-xs">Status</span>
@@ -573,67 +604,137 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
 }
 
 function SpeakerCard({ speaker }: { speaker: BevySpeaker }) {
-  const avatarUrl = speaker.picture_url ?? speaker.picture?.url;
-  const rawName = `${speaker.first_name ?? ""} ${speaker.last_name ?? ""}`.trim();
-  const fullName = speaker.full_name ?? (rawName.length > 0 ? rawName : "Speaker");
-  const roleInfo = [speaker.title, speaker.company].filter(Boolean).join(" @ ");
-  const hasSocials = Boolean(speaker.linkedin_url ?? speaker.personal_twitter ?? speaker.company_twitter);
+  const [bioOpen, setBioOpen] = useState(false);
+  const avatarUrl = speaker.picture_url ?? speaker.picture?.url ?? speaker.picture?.thumbnail_url;
+  const fullName =
+    speaker.full_name ?? (speaker.first_name ? `${speaker.first_name} ${speaker.last_name ?? ""}`.trim() : "Speaker");
+  const linkedInUrl = speaker.linkedin_url ?? resolveLinkedInUrl(speaker.personal_linkedin_page);
+  const twitterUrl = speaker.personal_twitter ? resolveTwitterUrl(speaker.personal_twitter) : null;
+  const hasSocials = Boolean(linkedInUrl || twitterUrl);
+  const cleanBioText = speaker.bio?.replace(/<[^>]*>/g, "").trim();
+  const hasBio = Boolean(cleanBioText && cleanBioText.length > 0);
 
   return (
-    <Card className="flex flex-col justify-between border-border/60 bg-card p-4 shadow-2xs transition-all hover:bg-muted/10">
-      <div className="space-y-3">
-        <div className="flex items-start gap-3.5">
-          <Avatar className="size-14 rounded-2xl border border-border/60 shadow-2xs">
-            {avatarUrl && <AvatarImage src={avatarUrl} alt={fullName} />}
-            <AvatarFallback className="rounded-2xl bg-primary/10 font-bold text-primary text-sm">
-              {fullName.slice(0, 2).toUpperCase()}
-            </AvatarFallback>
-          </Avatar>
-          <div className="min-w-0 flex-1 space-y-0.5">
-            <h4 className="font-bold text-base text-foreground tracking-tight">{fullName}</h4>
-            {roleInfo && <p className="text-muted-foreground text-xs leading-snug">{roleInfo}</p>}
-          </div>
-        </div>
+    <Card className="flex flex-col items-center justify-between rounded-2xl border-border/60 bg-card p-5 text-center shadow-2xs transition-all hover:bg-muted/10">
+      <div className="flex w-full flex-col items-center">
+        <Avatar className="size-24 rounded-full border border-border/60 shadow-xs">
+          {avatarUrl && <AvatarImage src={avatarUrl} alt={fullName} className="object-cover" />}
+          <AvatarFallback className="rounded-full bg-primary/10 font-bold text-primary text-base">
+            {fullName.slice(0, 2).toUpperCase()}
+          </AvatarFallback>
+        </Avatar>
 
-        {speaker.bio && (
-          <div
-            className="line-clamp-3 text-muted-foreground text-xs leading-relaxed break-words prose prose-sm dark:prose-invert max-w-none [&_h1]:my-0.5 [&_h1]:text-xs [&_h1]:font-semibold [&_h1]:text-foreground [&_h2]:my-0.5 [&_h2]:text-xs [&_h2]:font-semibold [&_h2]:text-foreground [&_h3]:my-0.5 [&_h3]:text-xs [&_h3]:font-semibold [&_h3]:text-foreground [&_h4]:my-0.5 [&_h4]:text-xs [&_h4]:font-semibold [&_h4]:text-foreground [&_p]:my-0.5 [&_strong]:font-semibold [&_strong]:text-foreground [&_a]:text-primary hover:[&_a]:underline"
-            // biome-ignore lint/security/noDangerouslySetInnerHtml: Bevy verified speaker bio HTML
-            dangerouslySetInnerHTML={{ __html: sanitizeHtml(speaker.bio) }}
-          />
+        {hasSocials && (
+          <div className="mt-2.5 flex items-center justify-center gap-1.5">
+            {twitterUrl && (
+              <a
+                href={twitterUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex size-7 items-center justify-center rounded-lg border border-border/60 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                title="X Profile"
+              >
+                <XIcon className="size-3" />
+              </a>
+            )}
+            {linkedInUrl && (
+              <a
+                href={linkedInUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex size-7 items-center justify-center rounded-lg border border-border/60 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                title="LinkedIn Profile"
+              >
+                <span className="font-bold text-[11px]">in</span>
+              </a>
+            )}
+          </div>
         )}
+
+        <div className="mt-3 w-full space-y-1">
+          <h4 className="font-bold text-base text-foreground tracking-tight line-clamp-1">{fullName}</h4>
+          {speaker.company && (
+            <p className="text-muted-foreground text-xs leading-snug line-clamp-2">{speaker.company}</p>
+          )}
+          {speaker.title && (
+            <p className="font-medium text-foreground/85 text-[11px] leading-snug line-clamp-2">{speaker.title}</p>
+          )}
+        </div>
       </div>
 
-      {hasSocials && (
-        <div className="mt-3 flex items-center gap-2 border-border/40 border-t pt-2.5">
-          {speaker.linkedin_url && (
-            <a
-              href={speaker.linkedin_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex size-7 items-center justify-center rounded-lg border border-border/60 text-muted-foreground hover:bg-muted hover:text-foreground"
-              title="LinkedIn Profile"
-            >
-              <span className="font-bold text-[11px]">in</span>
-            </a>
-          )}
-          {speaker.personal_twitter && (
-            <a
-              href={
-                speaker.personal_twitter.startsWith("http")
-                  ? speaker.personal_twitter
-                  : `https://x.com/${speaker.personal_twitter.replace("@", "")}`
-              }
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex size-7 items-center justify-center rounded-lg border border-border/60 text-muted-foreground hover:bg-muted hover:text-foreground"
-              title="X Profile"
-            >
-              <XIcon className="size-3" />
-            </a>
-          )}
-        </div>
-      )}
+      <div className="mt-4 pt-1">
+        {hasBio ? (
+          <Dialog open={bioOpen} onOpenChange={setBioOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm" className="h-8 rounded-lg px-3.5 text-xs font-medium">
+                See bio
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-lg sm:max-w-xl">
+              <DialogHeader className="items-center text-center sm:items-start sm:text-left">
+                <div className="flex flex-col items-center gap-3.5 sm:flex-row sm:items-start">
+                  <Avatar className="size-20 shrink-0 rounded-full border border-border/60 shadow-xs">
+                    {avatarUrl && <AvatarImage src={avatarUrl} alt={fullName} className="object-cover" />}
+                    <AvatarFallback className="bg-primary/10 font-bold text-primary text-base">
+                      {fullName.slice(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <DialogTitle className="font-bold text-lg sm:text-xl text-foreground tracking-tight">
+                      {fullName}
+                    </DialogTitle>
+                    {speaker.company && (
+                      <p className="text-muted-foreground text-xs sm:text-sm leading-snug">{speaker.company}</p>
+                    )}
+                    {speaker.title && (
+                      <p className="font-medium text-foreground/80 text-xs sm:text-sm leading-snug">{speaker.title}</p>
+                    )}
+                    {hasSocials && (
+                      <div className="flex items-center gap-2 pt-1.5 justify-center sm:justify-start">
+                        {twitterUrl && (
+                          <a
+                            href={twitterUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex size-7 items-center justify-center rounded-lg border border-border/60 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                            title="X Profile"
+                          >
+                            <XIcon className="size-3" />
+                          </a>
+                        )}
+                        {linkedInUrl && (
+                          <a
+                            href={linkedInUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex size-7 items-center justify-center rounded-lg border border-border/60 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                            title="LinkedIn Profile"
+                          >
+                            <span className="font-bold text-[11px]">in</span>
+                          </a>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <DialogDescription className="sr-only">Speaker biography and details for {fullName}</DialogDescription>
+              </DialogHeader>
+
+              <div className="mt-2 max-h-[60vh] overflow-y-auto pr-1">
+                <div
+                  className="text-muted-foreground text-xs sm:text-sm leading-relaxed break-words prose prose-sm dark:prose-invert max-w-none [&_h1]:my-1 [&_h1]:text-sm [&_h1]:font-semibold [&_h1]:text-foreground [&_h2]:my-1 [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:text-foreground [&_h3]:my-1 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:text-foreground [&_h4]:my-1 [&_h4]:text-sm [&_h4]:font-semibold [&_h4]:text-foreground [&_p]:my-1.5 [&_strong]:font-semibold [&_strong]:text-foreground [&_a]:text-primary hover:[&_a]:underline"
+                  // biome-ignore lint/security/noDangerouslySetInnerHtml: Bevy verified speaker bio HTML
+                  dangerouslySetInnerHTML={{ __html: sanitizeHtml(speaker.bio) }}
+                />
+              </div>
+            </DialogContent>
+          </Dialog>
+        ) : (
+          <Button variant="outline" size="sm" disabled className="h-8 rounded-lg px-3.5 text-xs font-medium opacity-50">
+            See bio
+          </Button>
+        )}
+      </div>
     </Card>
   );
 }

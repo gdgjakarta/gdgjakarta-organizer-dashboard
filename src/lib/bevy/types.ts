@@ -111,11 +111,24 @@ export interface BevySpeaker {
   picture?: {
     url?: string;
     thumbnail_url?: string;
+    path?: string;
+    thumbnail_width?: number;
+    thumbnail_height?: number;
+    thumbnail_format?: string;
   };
   picture_url?: string;
   personal_twitter?: string;
   company_twitter?: string;
+  personal_linkedin_page?: string;
   linkedin_url?: string;
+  event_person_id?: number | string;
+  speaker_type?: string;
+}
+
+export interface BevySpeakerGroup {
+  type: string;
+  title: string;
+  speakers: BevySpeaker[];
 }
 
 export interface BevyPartnerLogo {
@@ -242,6 +255,12 @@ export interface BevyEvent {
   venue_latitude?: number;
   venue_longitude?: number;
   speakers?: BevySpeaker[];
+  panelists?: BevySpeaker[];
+  facilitators?: BevySpeaker[];
+  hosts?: BevySpeaker[];
+  judges?: BevySpeaker[];
+  mentors?: BevySpeaker[];
+  moderators?: BevySpeaker[];
   partners?: BevyPartner[];
   sponsors?: unknown[];
   partners_list?: unknown[];
