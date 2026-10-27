@@ -5,9 +5,16 @@
  */
 
 export async function getAuthorizedOrganizerEmails(): Promise<string[]> {
-  return [];
+  const envEmails = process.env.ORGANIZER_EMAILS || "";
+  return envEmails
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
 }
 
 export async function isAuthorizedOrganizerEmail(email?: string | null): Promise<boolean> {
-  return false;
+  if (!email) return false;
+  const normalized = email.toLowerCase().trim();
+  const allowed = await getAuthorizedOrganizerEmails();
+  return allowed.includes(normalized);
 }

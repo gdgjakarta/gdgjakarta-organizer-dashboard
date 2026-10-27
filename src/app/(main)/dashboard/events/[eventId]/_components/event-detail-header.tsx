@@ -214,17 +214,18 @@ export function EventDetailHeader({
             (r) => r.refund_request?.status === "waiting_for_approval",
           ).length;
 
-          setLiveTotals({
-            totalRegistrations: directList.length,
-            totalApproved: approvedCount,
-            totalExpected: expectedCount,
+          setLiveTotals((prev) => ({
+            ...prev,
+            totalRegistrations: directList.length > 0 ? directList.length : prev.totalRegistrations,
+            totalApproved: directList.length > 0 ? approvedCount : prev.totalApproved,
+            totalExpected: directList.length > 0 ? expectedCount : prev.totalExpected,
             totalRejected: rejectedCount,
             totalPending: pendingCount,
             totalWaitlisted: waitlistedCount,
-            totalCheckedIn: checkedInCount,
+            totalCheckedIn: directList.length > 0 ? checkedInCount : prev.totalCheckedIn,
             totalRefunds: refundsCount,
             totalRefundsPending: refundsPendingCount,
-          });
+          }));
         }
         setIsLoadingTotals(false);
 
@@ -258,17 +259,18 @@ export function EventDetailHeader({
             const refundsCount = expandRefundRecords(list).length;
             const refundsPendingCount = list.filter((r) => r.refund_request?.status === "waiting_for_approval").length;
 
-            setLiveTotals({
-              totalRegistrations: list.length,
-              totalApproved: approvedCount,
-              totalExpected: expectedCount,
+            setLiveTotals((prev) => ({
+              ...prev,
+              totalRegistrations: list.length > 0 ? list.length : prev.totalRegistrations,
+              totalApproved: list.length > 0 ? approvedCount : prev.totalApproved,
+              totalExpected: list.length > 0 ? expectedCount : prev.totalExpected,
               totalRejected: rejectedCount,
               totalPending: pendingCount,
               totalWaitlisted: waitlistedCount,
-              totalCheckedIn: checkedInCount,
+              totalCheckedIn: list.length > 0 ? checkedInCount : prev.totalCheckedIn,
               totalRefunds: refundsCount,
               totalRefundsPending: refundsPendingCount,
-            });
+            }));
             setIsLoadingTotals(false);
           }
         });

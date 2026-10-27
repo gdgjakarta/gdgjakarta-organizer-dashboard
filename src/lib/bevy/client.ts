@@ -463,6 +463,33 @@ export interface UserChapterRoleResult {
 }
 
 /**
+ * Safely compares candidate email (which may be masked with asterisks e.g. "i***@gdgjakarta.org")
+ * against a target email address.
+ */
+export function isEmailMatch(candidateEmail?: string | null, targetEmail?: string | null): boolean {
+  if (!candidateEmail || !targetEmail) return false;
+  const c = candidateEmail.toLowerCase().trim();
+  const t = targetEmail.toLowerCase().trim();
+  if (c === t) return true;
+
+  if (c.includes("*")) {
+    const [cLocal, cDomain] = c.split("@");
+    const [tLocal, tDomain] = t.split("@");
+    if (!cLocal || !cDomain || !tLocal || !tDomain) return false;
+    if (cDomain !== tDomain) return false;
+    if (cLocal.length !== tLocal.length) return false;
+    for (let i = 0; i < cLocal.length; i++) {
+      if (cLocal[i] !== "*" && cLocal[i] !== tLocal[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Determine a user's chapter role based on their numerical Bevy User ID.
  * Matches KawalEvent AuthRepositoryImpl.getUserChapterRole:
  *  - Role ID 1 -> ORGANIZER
@@ -482,7 +509,7 @@ export async function getUserChapterRole(
   const matchedMember = chapterTeams.find((m) => {
     const id = m.user?.id ?? m.user_id;
     const matchesId = id !== undefined && id !== null && normalizedId !== null && String(id) === normalizedId;
-    const matchesEmail = normalizedEmail !== null && m.user?.email?.toLowerCase().trim() === normalizedEmail;
+    const matchesEmail = normalizedEmail !== null && isEmailMatch(m.user?.email, normalizedEmail);
     return matchesId || matchesEmail;
   });
 
@@ -654,6 +681,23 @@ export async function validateBevyOrganizer(
         roleTitle: chapterRoleResult.roleTitle,
         bevyUserId,
         chapterTeamMember: chapterRoleResult.teamMember,
+        bevyUser,
+        wasImported,
+      };
+    }
+
+    // Step 2.5: Environment fallback for master organizer accounts if Bevy lookup was rate limited / failed
+    const { isAuthorizedOrganizerEmail } = await import("@/config/auth-config");
+    if (await isAuthorizedOrganizerEmail(normalizedEmail)) {
+      console.log(`[Bevy Auth Flow] Authorized organizer email from config: ${normalizedEmail}`);
+      return {
+        isValidOrganizer: true,
+        role: "organizer",
+        chapterRole: "Organizer",
+        chapterRoleType: ChapterRole.ORGANIZER,
+        roleId: 1,
+        roleTitle: "GDG Organizer",
+        bevyUserId: bevyUserId ?? "1005761",
         bevyUser,
         wasImported,
       };

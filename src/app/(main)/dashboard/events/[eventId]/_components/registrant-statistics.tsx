@@ -117,30 +117,39 @@ export function RegistrantStatistics({
   const isCurationMode = isEventCurationMode(event);
 
   // Calculate totals
-  const totalRegistrations = registrations.length;
+  const totalRegistrations = registrations.length > 0 ? registrations.length : event?.total_registrations || 0;
   const totalApproved = useMemo(() => {
+    if (registrations.length === 0 && (event?.total_approved || 0) > 0) {
+      return event?.total_approved || 0;
+    }
     return registrations.filter((r) => {
       const s = (r.status || "").toLowerCase().trim();
       return s === "approved" || s === "attended" || s === "confirmed" || s === "registered";
     }).length;
-  }, [registrations]);
+  }, [registrations, event?.total_approved]);
 
   // All confirmed/ticketed attendees expected to attend (curated approved + paid & registered)
   const totalConfirmedAttendees = useMemo(() => {
+    if (registrations.length === 0 && (event?.total_approved || 0) > 0) {
+      return event?.total_approved || 0;
+    }
     return registrations.filter((r) => {
       const s = (r.status || "").toLowerCase().trim();
       return (
         s === "approved" || s === "paid_and_registered" || s === "attended" || s === "confirmed" || s === "registered"
       );
     }).length;
-  }, [registrations]);
+  }, [registrations, event?.total_approved]);
 
   const totalCheckedIn = useMemo(() => {
+    if (registrations.length === 0 && (event?.total_checked_in || 0) > 0) {
+      return event?.total_checked_in || 0;
+    }
     return registrations.filter((r) => {
       const s = (r.status || "").toLowerCase().trim();
       return Boolean(r.is_checked_in) || s === "attended";
     }).length;
-  }, [registrations]);
+  }, [registrations, event?.total_checked_in]);
 
   const totalDropped = useMemo(() => {
     return Math.max(0, totalConfirmedAttendees - totalCheckedIn);
