@@ -55,8 +55,8 @@ service cloud.firestore {
     // Permissions:
     //   - get: Profile self-reads (by UID, Bevy ID doc match with uid/id, non-existent doc, or referral_code) evaluated before team access (Organizers & Staff).
     //   - list: Team access or authenticated users with limit <= 5 (for referral lookup).
-    //   - create: Profile owner initializing account with 0 referral points/count, or team access creating for another member.
-    //   - update: Team access (inspecting resource.data directly without circular lookups on self, allows organizers to update members), profile owner (validating identity via isMemberDocOwner, preserving referral points/count, preserving role/team with case/format insensitivity), or authenticated users awarding referral points (restricted to referral_points, referrals_count, updated_at).
+    //   - create: Profile owner initializing account with 0 referral points/count (or linked Bevy team doc), or team access creating for another member.
+    //   - update: Team access (inspecting resource.data directly without circular lookups on self, allows organizers to update members), profile owner (validating identity via isMemberDocOwner, preserving referral points/count, allowing role/team update when caller has verified linked Bevy team doc or custom claims), or authenticated users awarding referral points (restricted to referral_points, referrals_count, updated_at).
     //   - delete: Organizers only (using non-circular role inspection on self).
     //
     // Collection: event_registrations
@@ -510,20 +510,105 @@ service cloud.firestore {
       return isOrganizerData(data) || isStaffData(data);
     }
 
+    // Safe string conversion for document IDs (supports string, int, float)
+    function toDocId(idVal) {
+      return idVal is string ? idVal :
+        (idVal is int ? string(idVal) :
+        (idVal is float ? string(int(idVal)) : ''));
+    }
+
+    // Case-insensitive verified email comparison
+    function isMatchingEmail(memberData, tokenEmail) {
+      return memberData != null &&
+        'email' in memberData &&
+        memberData.email is string &&
+        tokenEmail is string &&
+        tokenEmail.size() > 0 &&
+        memberData.email.lower() == tokenEmail.lower();
+    }
+
+    // Verify if a given Bevy user ID points to an existing team doc in members matching caller email
+    function isVerifiedBevyTeam(bevyUserId) {
+      let docId = toDocId(bevyUserId);
+      return docId.size() > 0 &&
+        docId.size() <= 128 &&
+        !docId.matches('.*/.*') &&
+        request.auth.token.email != null &&
+        (!('email_verified' in request.auth.token) || request.auth.token.email_verified == true) &&
+        exists(/databases/$(database)/documents/members/$(docId)) &&
+        isMatchingEmail(get(/databases/$(database)/documents/members/$(docId)).data, request.auth.token.email) &&
+        isTeamData(get(/databases/$(database)/documents/members/$(docId)).data);
+    }
+
+    // Verify if a given Bevy user ID points to an existing organizer doc in members matching caller email
+    function isVerifiedBevyOrganizer(bevyUserId) {
+      let docId = toDocId(bevyUserId);
+      return docId.size() > 0 &&
+        docId.size() <= 128 &&
+        !docId.matches('.*/.*') &&
+        request.auth.token.email != null &&
+        (!('email_verified' in request.auth.token) || request.auth.token.email_verified == true) &&
+        exists(/databases/$(database)/documents/members/$(docId)) &&
+        isMatchingEmail(get(/databases/$(database)/documents/members/$(docId)).data, request.auth.token.email) &&
+        isOrganizerData(get(/databases/$(database)/documents/members/$(docId)).data);
+    }
+
+    // Verify if a given Bevy user ID points to an existing staff doc in members matching caller email
+    function isVerifiedBevyStaff(bevyUserId) {
+      let docId = toDocId(bevyUserId);
+      return docId.size() > 0 &&
+        docId.size() <= 128 &&
+        !docId.matches('.*/.*') &&
+        request.auth.token.email != null &&
+        (!('email_verified' in request.auth.token) || request.auth.token.email_verified == true) &&
+        exists(/databases/$(database)/documents/members/$(docId)) &&
+        isMatchingEmail(get(/databases/$(database)/documents/members/$(docId)).data, request.auth.token.email) &&
+        isStaffData(get(/databases/$(database)/documents/members/$(docId)).data);
+    }
+
+    // Inspects whether a data payload contains a bevy_user_id pointing to a verified team document in members
+    function hasCallerVerifiedBevyTeamDoc(data) {
+      return data != null &&
+        ('bevy_user_id' in data) &&
+        data.bevy_user_id != null &&
+        isVerifiedBevyTeam(data.bevy_user_id);
+    }
+
+    // Inspects whether a data payload contains a bevy_user_id pointing to a verified organizer document in members
+    function hasCallerVerifiedBevyOrganizerDoc(data) {
+      return data != null &&
+        ('bevy_user_id' in data) &&
+        data.bevy_user_id != null &&
+        isVerifiedBevyOrganizer(data.bevy_user_id);
+    }
+
+    // Inspects whether a data payload contains a bevy_user_id pointing to a verified staff document in members
+    function hasCallerVerifiedBevyStaffDoc(data) {
+      return data != null &&
+        ('bevy_user_id' in data) &&
+        data.bevy_user_id != null &&
+        isVerifiedBevyStaff(data.bevy_user_id);
+    }
+
     // Dynamic Organizer Verification:
-    // Evaluates custom auth claims or organizer role / chapter role / Core Team membership in the members collection.
+    // Evaluates custom auth claims, organizer role / chapter role / Core Team membership in the members collection,
+    // or linked Bevy organizer document with verified matching email.
     function isOrganizer() {
       return isAuthenticated() && (
         ('role' in request.auth.token && (request.auth.token.role in ['organizer', 'core_team', 'googler'])) ||
         (
           exists(/databases/$(database)/documents/members/$(request.auth.uid)) &&
-          isOrganizerData(get(/databases/$(database)/documents/members/$(request.auth.uid)).data)
+          (
+            isOrganizerData(get(/databases/$(database)/documents/members/$(request.auth.uid)).data) ||
+            hasCallerVerifiedBevyOrganizerDoc(get(/databases/$(database)/documents/members/$(request.auth.uid)).data)
+          )
         )
       );
     }
 
     // Staff Member Verification:
-    // Evaluates custom auth claims or member document role / chapter_role / team for operational staff roles.
+    // Evaluates custom auth claims, member document role / chapter_role / team for operational staff roles,
+    // or linked Bevy staff document with verified matching email.
     function isStaffMember() {
       return isAuthenticated() && (
         ('role' in request.auth.token && (
@@ -535,7 +620,10 @@ service cloud.firestore {
         )) ||
         (
           exists(/databases/$(database)/documents/members/$(request.auth.uid)) &&
-          isStaffData(get(/databases/$(database)/documents/members/$(request.auth.uid)).data)
+          (
+            isStaffData(get(/databases/$(database)/documents/members/$(request.auth.uid)).data) ||
+            hasCallerVerifiedBevyStaffDoc(get(/databases/$(database)/documents/members/$(request.auth.uid)).data)
+          )
         )
       );
     }
@@ -557,7 +645,7 @@ service cloud.firestore {
         ])) ||
         (
           isMemberDocOwner(targetMemberId, existingResource) ?
-            (existingResource != null && isTeamData(existingResource.data)) :
+            (existingResource != null && (isTeamData(existingResource.data) || hasCallerVerifiedBevyTeamDoc(existingResource.data))) :
             hasTeamAccess()
         )
       );
@@ -569,7 +657,7 @@ service cloud.firestore {
         ('role' in request.auth.token && (request.auth.token.role in ['organizer', 'core_team', 'googler'])) ||
         (
           isMemberDocOwner(targetMemberId, existingResource) ?
-            (existingResource != null && isOrganizerData(existingResource.data)) :
+            (existingResource != null && (isOrganizerData(existingResource.data) || hasCallerVerifiedBevyOrganizerDoc(existingResource.data))) :
             isOrganizer()
         )
       );
@@ -608,6 +696,11 @@ service cloud.firestore {
     // Validates profile updates performed by the member document owner.
     // Uses MapDiff to safely verify only changed keys without accessing undefined properties.
     function isValidMemberOwnerUpdate(existingData, newData, authUid, memberId) {
+      let isVerifiedTeam = isTeamData(existingData) ||
+        ('role' in request.auth.token && (request.auth.token.role in ['organizer', 'core_team', 'googler', 'check_in_staff', 'team_member'])) ||
+        hasCallerVerifiedBevyTeamDoc(existingData) ||
+        hasCallerVerifiedBevyTeamDoc(newData);
+
       return (
         // Identity check
         (!('id' in newData) || newData.id == memberId || (('id' in existingData) && newData.id == existingData.id)) &&
@@ -627,21 +720,18 @@ service cloud.firestore {
 
         // Role check: if untouched, allowed; if touched, cannot escalate
         (!newData.diff(existingData).affectedKeys().hasAny(['role']) ||
-          isTeamData(existingData) ||
-          ('role' in request.auth.token && (request.auth.token.role in ['organizer', 'core_team', 'googler', 'check_in_staff', 'team_member'])) ||
+          isVerifiedTeam ||
           (newData.role is string && newData.role.lower() in ['member'])
         ) &&
         // Team check: if untouched, allowed; if touched, cannot escalate
         (!newData.diff(existingData).affectedKeys().hasAny(['team']) ||
-          isTeamData(existingData) ||
-          ('role' in request.auth.token && (request.auth.token.role in ['organizer', 'core_team', 'googler', 'check_in_staff', 'team_member'])) ||
+          isVerifiedTeam ||
           (newData.team is string && newData.team.lower() in ['community'])
         ) &&
 
         // Chapter role check: if untouched, allowed; if touched, cannot escalate
         (!newData.diff(existingData).affectedKeys().hasAny(['chapter_role']) ||
-          isTeamData(existingData) ||
-          ('role' in request.auth.token && (request.auth.token.role in ['organizer', 'core_team', 'googler', 'check_in_staff', 'team_member'])) ||
+          isVerifiedTeam ||
           (newData.chapter_role is string && newData.chapter_role.lower() in ['member'])
         )
       );
@@ -1033,9 +1123,9 @@ service cloud.firestore {
           (!('uid' in request.resource.data) || request.resource.data.uid == null || request.resource.data.uid == request.auth.uid) &&
           (!('referral_points' in request.resource.data) || request.resource.data.referral_points == 0) &&
           (!('referrals_count' in request.resource.data) || request.resource.data.referrals_count == 0) &&
-          (!('role' in request.resource.data) || request.resource.data.role.lower() == 'member') &&
-          (!('team' in request.resource.data) || request.resource.data.team.lower() in ['community']) &&
-          (!('chapter_role' in request.resource.data) || request.resource.data.chapter_role == null || request.resource.data.chapter_role.lower() == 'member')
+          (!('role' in request.resource.data) || request.resource.data.role.lower() == 'member' || hasCallerVerifiedBevyTeamDoc(request.resource.data)) &&
+          (!('team' in request.resource.data) || request.resource.data.team.lower() in ['community'] || hasCallerVerifiedBevyTeamDoc(request.resource.data)) &&
+          (!('chapter_role' in request.resource.data) || request.resource.data.chapter_role == null || request.resource.data.chapter_role.lower() == 'member' || hasCallerVerifiedBevyTeamDoc(request.resource.data))
         ) ||
         hasTeamAccess()
       );

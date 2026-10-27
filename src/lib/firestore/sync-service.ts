@@ -181,10 +181,12 @@ export async function syncBevyMembersToFirestore(): Promise<{
     const batch = writeBatch(db);
     const now = new Date().toISOString();
     let count = 0;
+    const processedUserIds = new Set<string>();
 
     for (const m of fetchedMembers) {
       const email = m.user.email || `user_${m.user.id}@community.dev`;
       const userId = String(m.user.id);
+      processedUserIds.add(userId);
       const teamInfo = teamMap.get(email.toLowerCase()) || teamMap.get(`id:${userId}`) || null;
       const organizerRole = teamInfo?.roleTitle || null;
       const displayName = m.user.full_name?.trim() || email.split("@")[0] || "Community Member";
@@ -210,6 +212,46 @@ export async function syncBevyMembersToFirestore(): Promise<{
         is_email_verified: Boolean(m.user.is_email_verified),
         company: teamInfo?.company || null,
         events_registered_count: m.events_registered_count ?? 0,
+        synced_from_bevy_at: now,
+        updated_at: now,
+      };
+
+      batch.set(memberDocRef, cleanPayload(rawMemberPayload), { merge: true });
+      count++;
+    }
+
+    // Explicitly guarantee all Chapter Team Members are synced into Firestore members collection
+    for (const tm of teamMembers) {
+      const userId = tm.user?.id ? String(tm.user.id) : String(tm.user_id || "");
+      if (!userId || processedUserIds.has(userId)) continue;
+      processedUserIds.add(userId);
+
+      const email = tm.user?.email || "";
+      const teamInfo = teamMap.get(email.toLowerCase()) || teamMap.get(`id:${userId}`) || null;
+      const organizerRole = teamInfo?.roleTitle || "Organizer";
+      const displayName =
+        tm.user?.full_name?.trim() ||
+        [tm.user?.first_name, tm.user?.last_name].filter(Boolean).join(" ").trim() ||
+        email.split("@")[0] ||
+        "Community Organizer";
+      const { firstName, lastName } = splitFullName(displayName);
+
+      const memberDocRef = doc(db, "members", userId);
+      const rawMemberPayload: Record<string, unknown> = {
+        id: userId,
+        bevy_user_id: tm.user?.id ?? tm.user_id ?? userId,
+        name: displayName,
+        first_name: firstName || null,
+        last_name: lastName || null,
+        email,
+        role: organizerRole,
+        chapter_role: organizerRole,
+        team: "Core Team",
+        status: "Active",
+        joined_date: now,
+        raw_created_date: now,
+        avatar_url: teamInfo?.avatarUrl || tm.user?.avatar?.url || null,
+        company: teamInfo?.company || tm.user?.company || null,
         synced_from_bevy_at: now,
         updated_at: now,
       };
