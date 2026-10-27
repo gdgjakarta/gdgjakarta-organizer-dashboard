@@ -2208,7 +2208,9 @@ export function EventRegistrationModal({
     isChecking ??
     (!activeRegistration && (isInternalChecking || (isAuthLoading && existingRegistration === undefined)));
 
-  if (isCheckingRegistration) {
+  const hasTrigger = children !== null && children !== undefined;
+
+  if (isCheckingRegistration && hasTrigger) {
     let isFullWidth = Boolean(className?.includes("w-full"));
     let buttonSize: "default" | "sm" | "lg" | "icon" = "sm";
 
@@ -2252,7 +2254,7 @@ export function EventRegistrationModal({
         activeRegistration.refund_request?.status === "refund_completed"),
   );
 
-  if (activeRegistration && !isRegCanceled && !allowReRegister) {
+  if (activeRegistration && !isRegCanceled && !allowReRegister && hasTrigger) {
     let isFullWidth = Boolean(className?.includes("w-full"));
     let buttonSize: "default" | "sm" | "lg" | "icon" = "sm";
 
@@ -2375,7 +2377,7 @@ export function EventRegistrationModal({
 
   const windowStatus = getRegistrationWindowStatus(eventConfig);
 
-  if (isPast || !windowStatus.isOpen) {
+  if ((isPast || !windowStatus.isOpen) && hasTrigger) {
     let buttonSize: "default" | "sm" | "lg" | "icon" = "sm";
     if (React.isValidElement(children)) {
       const childProps = children.props as { size?: "default" | "sm" | "lg" | "icon" };

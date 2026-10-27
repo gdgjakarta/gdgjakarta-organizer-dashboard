@@ -11,6 +11,7 @@ import {
   ChevronDown,
   Clock,
   Copy,
+  CreditCard,
   ExternalLink,
   Link2,
   Share2,
@@ -39,6 +40,7 @@ import { parsePhotoAlbum } from "@/lib/events/media-utils";
 import { getRegistrationWindowStatus } from "@/lib/events/registration-defaults";
 import { ensureEventTickets } from "@/lib/events/ticket-templates";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
+import { cn } from "@/lib/utils";
 import { getPublicEventShortLinksAction } from "@/server/shortio-actions";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
@@ -281,6 +283,37 @@ export function PublicEventRsvpCard({
       "This event is in curation mode. Submissions are marked as Pending Review until approved by organizers.";
   }
 
+  const isRegCanceled = Boolean(
+    currentRegistration &&
+      (currentRegistration.status?.toLowerCase() === "canceled" ||
+        currentRegistration.status?.toLowerCase() === "cancelled" ||
+        currentRegistration.refund_request?.status === "refund_completed"),
+  );
+  const isRegisteredUser = Boolean(currentRegistration && !isRegCanceled);
+
+  const regStatusLower = currentRegistration?.status?.toLowerCase() ?? "";
+  const isPaid = regStatusLower === "paid_and_registered";
+  const isApproved =
+    regStatusLower === "approved" || regStatusLower === "registered" || regStatusLower === "attended" || isPaid;
+  const isPendingReview = regStatusLower === "pending";
+  const isWaitingPayment =
+    regStatusLower === "waiting_for_payment" ||
+    (currentRegistration?.payment_status === "unpaid" && Boolean(currentRegistration?.payment_url));
+  const isWaitlisted = regStatusLower === "waitlisted";
+
+  let registrationStatusLabel = "Registered";
+  if (isPaid) {
+    registrationStatusLabel = "Paid & Registered";
+  } else if (isApproved) {
+    registrationStatusLabel = registrationEvent.requires_approval ? "Registered (Approved)" : "Registered";
+  } else if (isWaitlisted) {
+    registrationStatusLabel = "Waitlisted";
+  } else if (isWaitingPayment) {
+    registrationStatusLabel = "Waiting for Payment";
+  } else if (isPendingReview) {
+    registrationStatusLabel = "Pending Review";
+  }
+
   return (
     <>
       {/* ── DESKTOP STICKY SIDEBAR CARD ───────────────────────────── */}
@@ -345,6 +378,57 @@ export function PublicEventRsvpCard({
                 </Button>
               )}
             </div>
+          ) : isCheckingRegistration ? (
+            <Button
+              disabled
+              variant="outline"
+              className="relative w-full cursor-default gap-2 overflow-hidden border-border/60 bg-muted/50 font-medium text-muted-foreground opacity-90 shadow-xs"
+              size="lg"
+            >
+              <Sparkles className="relative z-10 size-4 shrink-0 animate-pulse text-muted-foreground/60" />
+              <span className="relative z-10">Checking registration...</span>
+              <div className="shimmer-wave" aria-hidden="true" />
+            </Button>
+          ) : isRegisteredUser ? (
+            isWaitingPayment && currentRegistration?.payment_url ? (
+              <a
+                href={currentRegistration.payment_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block w-full"
+              >
+                <Button
+                  size="lg"
+                  className="w-full gap-2 bg-amber-600 font-semibold text-white shadow-xs hover:bg-amber-700"
+                >
+                  <CreditCard className="size-4" />
+                  Complete Payment
+                </Button>
+              </a>
+            ) : (
+              <Button
+                type="button"
+                variant={isApproved ? "outline" : "secondary"}
+                size="lg"
+                aria-disabled="true"
+                className={cn(
+                  "relative w-full cursor-default gap-2 overflow-hidden font-medium",
+                  isApproved &&
+                    "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-300",
+                  isWaitlisted &&
+                    "border-blue-500/40 bg-blue-500/10 text-blue-700 dark:border-blue-500/30 dark:bg-blue-950/40 dark:text-blue-300",
+                  (isPendingReview || isWaitingPayment) &&
+                    "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-300",
+                )}
+              >
+                {isApproved && <Check className="size-4 text-emerald-600 dark:text-emerald-400" />}
+                {isWaitlisted && <Clock className="size-4 text-blue-600 dark:text-blue-400" />}
+                {(isPendingReview || isWaitingPayment) && (
+                  <Clock className="size-4 text-amber-600 dark:text-amber-400" />
+                )}
+                <span>{registrationStatusLabel}</span>
+              </Button>
+            )
           ) : (
             <>
               {!user && windowStatus.isOpen && !currentRegistration && (
@@ -563,66 +647,124 @@ export function PublicEventRsvpCard({
             )}
 
             {(() => {
-              if (!isPast) {
+              if (isPast) {
+                if (photoAlbumUrl) {
+                  return (
+                    <Button size="sm" variant="outline" asChild className="gap-1.5 text-xs">
+                      <a href={photoAlbumUrl} target="_blank" rel="noopener noreferrer">
+                        <Camera className="size-3.5" />
+                        Photos
+                      </a>
+                    </Button>
+                  );
+                }
+                if (highlightVideoUrl) {
+                  return (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5 border-primary/30 text-primary text-xs"
+                      onClick={() => {
+                        const el = document.querySelector(
+                          '[data-state][value="highlights"]',
+                        ) as HTMLButtonElement | null;
+                        el?.click();
+                        el?.scrollIntoView({ behavior: "smooth", block: "center" });
+                      }}
+                    >
+                      <Video className="size-3.5" />
+                      Recap
+                    </Button>
+                  );
+                }
                 return (
-                  <Button size="sm" className="gap-1.5 shadow-xs" onClick={() => setIsRegistrationModalOpen(true)}>
-                    {!user && (
-                      <>
-                        <Image
-                          src={googleFavicon}
-                          alt="Google"
-                          width={16}
-                          height={16}
-                          className="size-3.5 object-contain"
-                        />
-                        {windowStatus.isWaitlist ? "Join & Waitlist" : "Join & RSVP"}
-                      </>
-                    )}
-                    {user && windowStatus.isWaitlist && (
-                      <>
-                        <Clock className="size-3.5" />
-                        Join Waitlist
-                      </>
-                    )}
-                    {user && !windowStatus.isWaitlist && (
-                      <>
-                        <Sparkles className="size-3.5" />
-                        RSVP
-                      </>
-                    )}
+                  <Button disabled size="sm">
+                    Closed
                   </Button>
                 );
               }
-              if (photoAlbumUrl) {
-                return (
-                  <Button size="sm" variant="outline" asChild className="gap-1.5 text-xs">
-                    <a href={photoAlbumUrl} target="_blank" rel="noopener noreferrer">
-                      <Camera className="size-3.5" />
-                      Photos
-                    </a>
-                  </Button>
-                );
-              }
-              if (highlightVideoUrl) {
+
+              if (isCheckingRegistration) {
                 return (
                   <Button
-                    size="sm"
+                    disabled
                     variant="outline"
-                    className="gap-1.5 border-primary/30 text-primary text-xs"
-                    onClick={() => {
-                      const el = document.querySelector('[data-state][value="highlights"]') as HTMLButtonElement | null;
-                      el?.click();
-                      el?.scrollIntoView({ behavior: "smooth", block: "center" });
-                    }}
+                    size="sm"
+                    className="relative cursor-default gap-1.5 overflow-hidden border-border/60 bg-muted/50 font-medium text-muted-foreground opacity-90 shadow-xs"
                   >
-                    <Video className="size-3.5" />
-                    Recap
+                    <Sparkles className="relative z-10 size-3.5 shrink-0 animate-pulse text-muted-foreground/60" />
+                    <span className="relative z-10 text-xs">Checking...</span>
+                    <div className="shimmer-wave" aria-hidden="true" />
                   </Button>
                 );
               }
+
+              if (isRegisteredUser) {
+                if (isWaitingPayment && currentRegistration?.payment_url) {
+                  return (
+                    <a href={currentRegistration.payment_url} target="_blank" rel="noopener noreferrer">
+                      <Button
+                        size="sm"
+                        className="gap-1.5 bg-amber-600 font-semibold text-white shadow-xs hover:bg-amber-700"
+                      >
+                        <CreditCard className="size-3.5" />
+                        Pay
+                      </Button>
+                    </a>
+                  );
+                }
+                return (
+                  <Button
+                    type="button"
+                    variant={isApproved ? "outline" : "secondary"}
+                    size="sm"
+                    aria-disabled="true"
+                    className={cn(
+                      "relative cursor-default gap-1.5 overflow-hidden font-medium text-xs",
+                      isApproved &&
+                        "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-300",
+                      isWaitlisted &&
+                        "border-blue-500/40 bg-blue-500/10 text-blue-700 dark:border-blue-500/30 dark:bg-blue-950/40 dark:text-blue-300",
+                      (isPendingReview || isWaitingPayment) &&
+                        "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-300",
+                    )}
+                  >
+                    {isApproved && <Check className="size-3.5 text-emerald-600 dark:text-emerald-400" />}
+                    {isWaitlisted && <Clock className="size-3.5 text-blue-600 dark:text-blue-400" />}
+                    {(isPendingReview || isWaitingPayment) && (
+                      <Clock className="size-3.5 text-amber-600 dark:text-amber-400" />
+                    )}
+                    <span>{registrationStatusLabel}</span>
+                  </Button>
+                );
+              }
+
               return (
-                <Button disabled size="sm">
-                  Closed
+                <Button size="sm" className="gap-1.5 shadow-xs" onClick={() => setIsRegistrationModalOpen(true)}>
+                  {!user && (
+                    <>
+                      <Image
+                        src={googleFavicon}
+                        alt="Google"
+                        width={16}
+                        height={16}
+                        className="size-3.5 object-contain"
+                      />
+                      {windowStatus.isWaitlist ? "Join & Waitlist" : "Join & RSVP"}
+                    </>
+                  )}
+                  {user && windowStatus.isWaitlist && (
+                    <>
+                      <Clock className="size-3.5" />
+                      Join Waitlist
+                    </>
+                  )}
+                  {user && !windowStatus.isWaitlist && (
+                    <>
+                      <Sparkles className="size-3.5" />
+                      RSVP
+                    </>
+                  )}
                 </Button>
               );
             })()}
