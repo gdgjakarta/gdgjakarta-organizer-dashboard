@@ -261,6 +261,11 @@ export function ResendPaymentLinkDialog({
         const invoiceNum = res.invoiceNumber ?? `INV-${Date.now()}`;
         const newExpiredDatetime =
           res.expiredDatetime ?? new Date(Date.now() + activeMinutes * 60 * 1000).toISOString();
+        const isCovered =
+          reg.payment_fee_voluntary_covered !== undefined
+            ? reg.payment_fee_voluntary_covered
+            : reg.payment_fee_bearer !== "organizer" && event.payment_fee_bearer !== "organizer";
+        const feeAmt = isCovered ? (gatewayFeeCalc?.feeAmount ?? 0) : 0;
         const paymentFields: Partial<FirestoreRegistration> = {
           payment_status: "unpaid",
           payment_url: res.paymentUrl,
@@ -268,8 +273,10 @@ export function ResendPaymentLinkDialog({
           payment_request_id: res.requestId,
           payment_amount: res.amount ?? amount,
           payment_subtotal_amount: netSubtotal,
-          payment_fee_amount: gatewayFeeCalc?.feeAmount ?? 0,
-          payment_fee_bearer: gatewayFeeCalc?.feeBearer ?? "attendee",
+          payment_fee_amount: feeAmt,
+          payment_fee_bearer: isCovered ? "attendee" : "organizer",
+          payment_fee_voluntary_covered: reg.payment_fee_voluntary_covered ?? isCovered,
+          payment_environment: event.payment_environment ?? (event.is_test ? "sandbox" : "production"),
           payment_expired_datetime: newExpiredDatetime,
         };
 
@@ -346,6 +353,11 @@ export function ResendPaymentLinkDialog({
       const newExpiredDatetime = res.expiredDatetime ?? newExpirationDate.toISOString();
       const now = new Date().toISOString();
 
+      const isCoveredSingle =
+        registration.payment_fee_voluntary_covered !== undefined
+          ? registration.payment_fee_voluntary_covered
+          : registration.payment_fee_bearer !== "organizer" && event.payment_fee_bearer !== "organizer";
+      const feeAmtSingle = isCoveredSingle ? (gatewayFeeCalc?.feeAmount ?? 0) : 0;
       const paymentFields: Partial<FirestoreRegistration> = {
         payment_status: "unpaid",
         payment_url: res.paymentUrl,
@@ -353,8 +365,10 @@ export function ResendPaymentLinkDialog({
         payment_request_id: res.requestId,
         payment_amount: res.amount ?? payableAmount,
         payment_subtotal_amount: netSubtotal,
-        payment_fee_amount: gatewayFeeCalc?.feeAmount ?? 0,
-        payment_fee_bearer: gatewayFeeCalc?.feeBearer ?? "attendee",
+        payment_fee_amount: feeAmtSingle,
+        payment_fee_bearer: isCoveredSingle ? "attendee" : "organizer",
+        payment_fee_voluntary_covered: registration.payment_fee_voluntary_covered ?? isCoveredSingle,
+        payment_environment: event.payment_environment ?? (event.is_test ? "sandbox" : "production"),
         payment_expired_datetime: newExpiredDatetime,
       };
 

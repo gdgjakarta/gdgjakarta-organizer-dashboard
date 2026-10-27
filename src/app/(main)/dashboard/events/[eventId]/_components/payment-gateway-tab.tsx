@@ -1144,7 +1144,13 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
               </Badge>
               {paymentFeeEnabled ? (
                 <Badge className="border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
-                  Fee Active ({paymentFeeBearer === "attendee" ? "Passed to Attendee" : "Absorbed by Organizer"})
+                  Fee Active (
+                  {paymentFeeBearer === "voluntary"
+                    ? "Voluntary Support"
+                    : paymentFeeBearer === "attendee"
+                      ? "Passed to Attendee"
+                      : "Absorbed by Organizer"}
+                  )
                 </Badge>
               ) : (
                 <Badge variant="outline" className="border-muted-foreground/30 text-muted-foreground">
@@ -1195,32 +1201,32 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
                 <RadioGroup
                   value={paymentFeeBearer}
                   onValueChange={(val) => setPaymentFeeBearer(val as PaymentFeeBearer)}
-                  className="grid grid-cols-1 gap-3 sm:grid-cols-2"
+                  className="grid grid-cols-1 gap-3 sm:grid-cols-3"
                 >
                   <Label
-                    htmlFor="bearer-attendee"
+                    htmlFor="bearer-voluntary"
                     className={cn(
                       "relative flex cursor-pointer flex-col gap-2 rounded-lg border p-3.5 transition-colors",
-                      paymentFeeBearer === "attendee"
+                      paymentFeeBearer === "voluntary"
                         ? "border-primary bg-primary/5 ring-1 ring-primary"
                         : "border-border hover:bg-muted/50",
                     )}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <RadioGroupItem value="attendee" id="bearer-attendee" />
-                        <span className="font-semibold text-xs">Pass Fee to Attendee (Recommended)</span>
+                        <RadioGroupItem value="voluntary" id="bearer-voluntary" />
+                        <span className="font-semibold text-xs">Voluntary Support (Recommended)</span>
                       </div>
                       <Badge
                         variant="outline"
-                        className="border-blue-500/30 text-[10px] text-blue-600 dark:text-blue-400"
+                        className="border-emerald-500/30 text-[10px] text-emerald-600 dark:text-emerald-400"
                       >
-                        Cost Recovery
+                        Non-Profit Safe
                       </Badge>
                     </div>
                     <p className="font-normal text-muted-foreground text-xs leading-relaxed">
-                      The gateway fee is added as an itemized line item to the attendee invoice at checkout. Organizers
-                      receive 100% of nominal ticket and merchandise revenue.
+                      Attendees are invited to voluntarily cover the payment fee to support GDG Jakarta as a non-profit.
+                      If unchecked by the attendee, GDG Jakarta absorbs the fee.
                     </p>
                   </Label>
 
@@ -1236,18 +1242,45 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <RadioGroupItem value="organizer" id="bearer-organizer" />
-                        <span className="font-semibold text-xs">Absorb Fee by Organizer</span>
+                        <span className="font-semibold text-xs">Absorb by Organizer</span>
                       </div>
                       <Badge
                         variant="outline"
-                        className="border-emerald-500/30 text-[10px] text-emerald-600 dark:text-emerald-400"
+                        className="border-blue-500/30 text-[10px] text-blue-600 dark:text-blue-400"
                       >
                         Zero Added Fee
                       </Badge>
                     </div>
                     <p className="font-normal text-muted-foreground text-xs leading-relaxed">
-                      Attendees pay only the nominal price. The transaction fee is absorbed by GDG Jakarta and deducted
-                      from organizer settlement payouts.
+                      Attendees pay only nominal prices. The transaction fee is absorbed by GDG Jakarta with zero
+                      attendee prompts or fees.
+                    </p>
+                  </Label>
+
+                  <Label
+                    htmlFor="bearer-attendee"
+                    className={cn(
+                      "relative flex cursor-pointer flex-col gap-2 rounded-lg border p-3.5 transition-colors",
+                      paymentFeeBearer === "attendee"
+                        ? "border-primary bg-primary/5 ring-1 ring-primary"
+                        : "border-border hover:bg-muted/50",
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <RadioGroupItem value="attendee" id="bearer-attendee" />
+                        <span className="font-semibold text-xs">Direct Fee Pass (Mandatory)</span>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className="border-amber-500/30 text-[10px] text-amber-600 dark:text-amber-400"
+                      >
+                        Cost Recovery
+                      </Badge>
+                    </div>
+                    <p className="font-normal text-muted-foreground text-xs leading-relaxed">
+                      The gateway fee is automatically added to the attendee invoice. Notice: Bank Indonesia rules (PBI
+                      No. 23/6/PBI/2021) prohibit mandatory surcharges on consumers.
                     </p>
                   </Label>
                 </RadioGroup>
@@ -1686,7 +1719,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
                     <span className="block text-[10px] text-muted-foreground">Organizer Net Settlement</span>
                     <span className="font-bold font-mono text-emerald-600 text-sm dark:text-emerald-400">
                       Rp{" "}
-                      {paymentFeeBearer === "attendee"
+                      {paymentFeeBearer === "attendee" || paymentFeeBearer === "voluntary"
                         ? previewTestAmount.toLocaleString("id-ID")
                         : (previewTestAmount - simulatedCalculation.feeAmount).toLocaleString("id-ID")}
                     </span>

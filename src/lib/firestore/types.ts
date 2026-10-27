@@ -697,6 +697,7 @@ export interface FirestoreRegistration {
   payment_expired_datetime?: string;
   payment_fee_amount?: number;
   payment_fee_bearer?: PaymentFeeBearer;
+  payment_fee_voluntary_covered?: boolean;
   payment_subtotal_amount?: number;
   payment_environment?: "production" | "sandbox";
 

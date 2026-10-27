@@ -2029,6 +2029,11 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
           const discount = (registration.voucher_discount_amount ?? 0) + (registration.referral_discount_amount ?? 0);
           const subtotal = Math.max(0, ticketPrice + merchTotal + bundlePrice - discount);
           const feeResult = calculatePaymentGatewayFee(subtotal, currentEvent);
+          const isAttendeeCovering =
+            registration.payment_fee_voluntary_covered !== undefined
+              ? registration.payment_fee_voluntary_covered
+              : registration.payment_fee_bearer !== "organizer" && currentEvent.payment_fee_bearer !== "organizer";
+          const effectiveFeeAmount = isAttendeeCovering ? feeResult.feeAmount : 0;
 
           const paymentPayload = buildRegistrationPaymentPayload(registration, currentEvent, { sendEmail: true });
           const payRes = await generatePaymentLinkAction(paymentPayload);
@@ -2040,8 +2045,11 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
               payment_request_id: payRes.requestId,
               payment_amount: payRes.amount,
               payment_subtotal_amount: subtotal,
-              payment_fee_amount: feeResult.feeAmount,
-              payment_fee_bearer: feeResult.feeBearer,
+              payment_fee_amount: effectiveFeeAmount,
+              payment_fee_bearer: isAttendeeCovering ? "attendee" : "organizer",
+              payment_fee_voluntary_covered: registration.payment_fee_voluntary_covered ?? isAttendeeCovering,
+              payment_environment:
+                currentEvent.payment_environment ?? (currentEvent.is_test ? "sandbox" : "production"),
               payment_expired_datetime: payRes.expiredDatetime,
             };
             toast.info(`Payment link generated and emailed to ${registration.member_name}`);
@@ -2740,6 +2748,11 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
             const discount = (reg.voucher_discount_amount ?? 0) + (reg.referral_discount_amount ?? 0);
             const subtotal = Math.max(0, ticketPrice + merchTotal + bundlePrice - discount);
             const feeResult = calculatePaymentGatewayFee(subtotal, currentEvent);
+            const isAttendeeCovering =
+              reg.payment_fee_voluntary_covered !== undefined
+                ? reg.payment_fee_voluntary_covered
+                : reg.payment_fee_bearer !== "organizer" && currentEvent.payment_fee_bearer !== "organizer";
+            const effectiveFeeAmount = isAttendeeCovering ? feeResult.feeAmount : 0;
 
             const paymentPayload = buildRegistrationPaymentPayload(reg, currentEvent, { sendEmail: true });
             const payRes = await generatePaymentLinkAction(paymentPayload);
@@ -2751,8 +2764,11 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                 payment_request_id: payRes.requestId,
                 payment_amount: payRes.amount,
                 payment_subtotal_amount: subtotal,
-                payment_fee_amount: feeResult.feeAmount,
-                payment_fee_bearer: feeResult.feeBearer,
+                payment_fee_amount: effectiveFeeAmount,
+                payment_fee_bearer: isAttendeeCovering ? "attendee" : "organizer",
+                payment_fee_voluntary_covered: reg.payment_fee_voluntary_covered ?? isAttendeeCovering,
+                payment_environment:
+                  currentEvent.payment_environment ?? (currentEvent.is_test ? "sandbox" : "production"),
                 payment_expired_datetime: payRes.expiredDatetime,
               };
               await updateRegistrationStatusAction(

@@ -53,6 +53,7 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -758,6 +759,7 @@ export function EventRegistrationModal({
   const [referralError, setReferralError] = useState<string | null>(null);
   const [isValidatingReferral, setIsValidatingReferral] = useState(false);
   const [referralSettings, setReferralSettings] = useState<ReferralProgramSettings | null>(null);
+  const [voluntaryCoverMdr, setVoluntaryCoverMdr] = useState<boolean>(true);
 
   useEffect(() => {
     let isMounted = true;
@@ -880,7 +882,14 @@ export function EventRegistrationModal({
   const gatewayFeeCalc = useMemo(() => {
     return calculatePaymentGatewayFee(netSubtotal, eventConfig);
   }, [netSubtotal, eventConfig]);
-  const grandTotal = Math.max(0, netSubtotal + (gatewayFeeCalc.isPassedToAttendee ? gatewayFeeCalc.feeAmount : 0));
+
+  const isFeeCoveredByAttendee =
+    gatewayFeeCalc.isEnabled &&
+    gatewayFeeCalc.feeAmount > 0 &&
+    eventConfig.payment_fee_bearer !== "organizer" &&
+    voluntaryCoverMdr;
+  const effectiveFeeAmount = isFeeCoveredByAttendee ? gatewayFeeCalc.feeAmount : 0;
+  const grandTotal = Math.max(0, netSubtotal + effectiveFeeAmount);
 
   const handleApplyVoucher = async () => {
     const cleanCode = voucherInput.trim().toUpperCase();
@@ -1732,8 +1741,10 @@ export function EventRegistrationModal({
           selected_merchandise: selectedMerchOrders.length > 0 ? selectedMerchOrders : undefined,
           payment_amount: grandTotal,
           payment_subtotal_amount: netSubtotal,
-          payment_fee_amount: gatewayFeeCalc.feeAmount,
-          payment_fee_bearer: gatewayFeeCalc.feeBearer,
+          payment_fee_amount: effectiveFeeAmount,
+          payment_fee_bearer: isFeeCoveredByAttendee ? "attendee" : "organizer",
+          payment_fee_voluntary_covered: voluntaryCoverMdr,
+          payment_environment: eventConfig.payment_environment ?? (eventConfig.is_test ? "sandbox" : "production"),
           voucher_id: appliedVoucher?.id,
           voucher_code: appliedVoucher?.code,
           voucher_discount_amount: voucherDiscount.totalDiscount > 0 ? voucherDiscount.totalDiscount : undefined,
@@ -1955,8 +1966,20 @@ export function EventRegistrationModal({
           payment_request_id: isWaitlistMode ? undefined : generatedRequestId,
           payment_amount: isWaitlistMode ? undefined : (generatedPaymentAmount ?? (requiresPayment ? grandTotal : 0)),
           payment_expired_datetime: isWaitlistMode ? undefined : generatedExpiredDatetime,
-          payment_fee_amount: isWaitlistMode ? undefined : requiresPayment ? gatewayFeeCalc.feeAmount : undefined,
-          payment_fee_bearer: isWaitlistMode ? undefined : requiresPayment ? gatewayFeeCalc.feeBearer : undefined,
+          payment_fee_amount: isWaitlistMode ? undefined : requiresPayment ? effectiveFeeAmount : undefined,
+          payment_fee_bearer: isWaitlistMode
+            ? undefined
+            : requiresPayment
+              ? isFeeCoveredByAttendee
+                ? "attendee"
+                : "organizer"
+              : undefined,
+          payment_fee_voluntary_covered: isWaitlistMode ? undefined : requiresPayment ? voluntaryCoverMdr : undefined,
+          payment_environment: isWaitlistMode
+            ? undefined
+            : requiresPayment
+              ? (eventConfig.payment_environment ?? (eventConfig.is_test ? "sandbox" : "production"))
+              : undefined,
           payment_subtotal_amount: isWaitlistMode ? undefined : requiresPayment ? netSubtotal : undefined,
           refund_history: preservedRefundHistory.length > 0 ? preservedRefundHistory : undefined,
         };
@@ -2134,8 +2157,12 @@ export function EventRegistrationModal({
           payment_request_id: generatedRequestId,
           payment_amount: generatedPaymentAmount ?? (requiresPayment ? grandTotal : 0),
           payment_expired_datetime: generatedExpiredDatetime,
-          payment_fee_amount: requiresPayment ? gatewayFeeCalc.feeAmount : undefined,
-          payment_fee_bearer: requiresPayment ? gatewayFeeCalc.feeBearer : undefined,
+          payment_fee_amount: requiresPayment ? effectiveFeeAmount : undefined,
+          payment_fee_bearer: requiresPayment ? (isFeeCoveredByAttendee ? "attendee" : "organizer") : undefined,
+          payment_fee_voluntary_covered: requiresPayment ? voluntaryCoverMdr : undefined,
+          payment_environment: requiresPayment
+            ? (eventConfig.payment_environment ?? (eventConfig.is_test ? "sandbox" : "production"))
+            : undefined,
           payment_subtotal_amount: requiresPayment ? netSubtotal : undefined,
           refund_history: preservedRefundHistory.length > 0 ? preservedRefundHistory : undefined,
         };
@@ -3871,29 +3898,74 @@ export function EventRegistrationModal({
                         )}
 
                         {gatewayFeeCalc.isEnabled && netSubtotal > 0 && gatewayFeeCalc.feeAmount > 0 && (
-                          <div className="flex items-center justify-between text-muted-foreground text-xs">
-                            <span className="flex items-center gap-1.5">
-                              <CreditCard className="size-3 text-muted-foreground" />
-                              <span>{gatewayFeeCalc.feeLabel}</span>
-                              {gatewayFeeCalc.isAbsorbedByOrganizer ? (
-                                <Badge
-                                  variant="outline"
-                                  className="h-4 border-emerald-500/30 bg-emerald-500/10 px-1 font-normal text-[9px] text-emerald-600 dark:text-emerald-400"
-                                >
-                                  Absorbed
-                                </Badge>
-                              ) : (
-                                <span className="text-[10px] text-muted-foreground">
-                                  ({gatewayFeeCalc.rateDescription})
-                                </span>
-                              )}
-                            </span>
-                            <span className="font-mono">
-                              {gatewayFeeCalc.isPassedToAttendee
-                                ? `+Rp ${gatewayFeeCalc.feeAmount.toLocaleString("id-ID")}`
-                                : "Free for Attendee"}
-                            </span>
-                          </div>
+                          <>
+                            {eventConfig.payment_fee_bearer !== "organizer" && (
+                              <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 space-y-1.5 transition-colors">
+                                <div className="flex items-start gap-2.5">
+                                  <Checkbox
+                                    id="voluntary-mdr-agreement"
+                                    checked={voluntaryCoverMdr}
+                                    onCheckedChange={(checked) => setVoluntaryCoverMdr(Boolean(checked))}
+                                    className="mt-0.5"
+                                  />
+                                  <div className="space-y-1">
+                                    <Label
+                                      htmlFor="voluntary-mdr-agreement"
+                                      className="text-xs font-semibold cursor-pointer text-foreground flex items-center gap-1.5 leading-tight"
+                                    >
+                                      Support GDG Jakarta as a non-profit community (+Rp{" "}
+                                      {gatewayFeeCalc.feeAmount.toLocaleString("id-ID")})
+                                      <Badge
+                                        variant="outline"
+                                        className="text-[9px] border-amber-500/30 text-amber-600 dark:text-amber-400 font-normal px-1 py-0 h-4"
+                                      >
+                                        Non-Profit
+                                      </Badge>
+                                    </Label>
+                                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                                      As a non-profit community, GDG Jakarta is organized entirely by volunteers. You
+                                      can choose to help us cover the payment gateway fee (MDR). If unchecked, GDG
+                                      Jakarta will absorb this fee completely.
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            <div className="flex items-center justify-between text-muted-foreground text-xs">
+                              <span className="flex items-center gap-1.5">
+                                <CreditCard className="size-3 text-muted-foreground" />
+                                <span>{gatewayFeeCalc.feeLabel}</span>
+                                {eventConfig.payment_fee_bearer === "organizer" ? (
+                                  <Badge
+                                    variant="outline"
+                                    className="h-4 border-emerald-500/30 bg-emerald-500/10 px-1 font-normal text-[9px] text-emerald-600 dark:text-emerald-400"
+                                  >
+                                    Covered by GDG Jakarta
+                                  </Badge>
+                                ) : isFeeCoveredByAttendee ? (
+                                  <Badge
+                                    variant="outline"
+                                    className="h-4 border-primary/30 bg-primary/10 px-1 font-normal text-[9px] text-primary"
+                                  >
+                                    Voluntary Support
+                                  </Badge>
+                                ) : (
+                                  <Badge
+                                    variant="outline"
+                                    className="h-4 border-emerald-500/30 bg-emerald-500/10 px-1 font-normal text-[9px] text-emerald-600 dark:text-emerald-400"
+                                  >
+                                    Covered by GDG Jakarta
+                                  </Badge>
+                                )}
+                              </span>
+                              <span className="font-mono">
+                                {isFeeCoveredByAttendee
+                                  ? `+Rp ${gatewayFeeCalc.feeAmount.toLocaleString("id-ID")}`
+                                  : "Covered by GDG Jakarta (Rp 0)"}
+                              </span>
+                            </div>
+                          </>
                         )}
 
                         <div className="flex items-center justify-between border-t pt-2 font-bold text-foreground text-sm">
@@ -3983,7 +4055,7 @@ export function EventRegistrationModal({
                           {gatewayFeeCalc.isEnabled &&
                             netSubtotal > 0 &&
                             gatewayFeeCalc.feeAmount > 0 &&
-                            gatewayFeeCalc.isPassedToAttendee && (
+                            isFeeCoveredByAttendee && (
                               <span className="flex items-center gap-1 font-mono text-muted-foreground">
                                 <CreditCard className="size-3 text-primary" />
                                 <span>Fee: +Rp {gatewayFeeCalc.feeAmount.toLocaleString("id-ID")}</span>

@@ -281,6 +281,30 @@ export function resolvePaymentLinkWebhookUrl(customBaseUrl?: string, isProductio
 }
 
 /**
+ * Resolves the payment gateway execution environment (production vs sandbox).
+ * Strictly honors the event's or registration's configured payment gateway environment,
+ * never defaulting to process.env.NODE_ENV.
+ */
+export function resolvePaymentEnvironment(
+  event?: Partial<FirestoreEvent> | null,
+  registration?: Partial<FirestoreRegistration> | null,
+  explicitIsProduction?: boolean,
+): boolean {
+  if (explicitIsProduction !== undefined) {
+    return explicitIsProduction;
+  }
+  const configuredEnv = event?.payment_environment ?? registration?.payment_environment;
+  if (configuredEnv === "production") return true;
+  if (configuredEnv === "sandbox") return false;
+
+  if (event?.is_test !== undefined) {
+    return !event.is_test;
+  }
+  // Default to production for payment operations if not explicitly sandbox
+  return true;
+}
+
+/**
  * Resolves the webhook URL for the DOKU cancel order API in n8n.
  */
 export function resolveCancelPaymentLinkWebhookUrl(customBaseUrl?: string, isProduction?: boolean): string {
@@ -562,7 +586,16 @@ export function buildRegistrationPaymentPayload(
   const orderSubtotal = items.reduce((acc, it) => acc + it.price * it.quantity, 0);
   const feeCalc = calculatePaymentGatewayFee(orderSubtotal, event);
 
-  if (feeCalc.feeAmount > 0 && feeCalc.isPassedToAttendee) {
+  // Check if attendee voluntarily agreed to cover fee or if fee is passed
+  const attendeeAgreedToCover =
+    registration.payment_fee_voluntary_covered !== undefined
+      ? registration.payment_fee_voluntary_covered
+      : registration.payment_fee_bearer !== "organizer";
+
+  const isFeeCoveredByAttendee =
+    feeCalc.isPassedToAttendee && attendeeAgreedToCover && registration.payment_fee_bearer !== "organizer";
+
+  if (feeCalc.feeAmount > 0 && isFeeCoveredByAttendee) {
     fees.push({
       label: feeCalc.feeLabel,
       type: "fixed",
@@ -571,12 +604,7 @@ export function buildRegistrationPaymentPayload(
     });
   }
 
-  let isProduction: boolean | undefined;
-  if (event.payment_environment === "production") {
-    isProduction = true;
-  } else if (event.payment_environment === "sandbox") {
-    isProduction = false;
-  }
+  const isProduction = resolvePaymentEnvironment(event, registration);
 
   const emailTemplate =
     options?.emailTemplate ??
@@ -641,12 +669,7 @@ export function buildCancelPaymentPayload(
     (typeof answers.invoice_number === "string" ? answers.invoice_number : undefined) ??
     "";
 
-  let isProduction: boolean | undefined;
-  if (event?.payment_environment === "production") {
-    isProduction = true;
-  } else if (event?.payment_environment === "sandbox") {
-    isProduction = false;
-  }
+  const isProduction = resolvePaymentEnvironment(event, registration);
 
   const rawRequestId =
     (registration.payment_request_id && registration.payment_request_id.trim().length > 0

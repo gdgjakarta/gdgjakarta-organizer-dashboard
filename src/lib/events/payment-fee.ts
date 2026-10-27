@@ -4,7 +4,7 @@
  * and combined fixed + percentage fee structures.
  */
 
-export type PaymentFeeBearer = "attendee" | "organizer";
+export type PaymentFeeBearer = "attendee" | "organizer" | "voluntary";
 export type PaymentFeeType = "tiered" | "fixed" | "percent" | "combined" | "none";
 
 export interface PaymentFeeConfig {
@@ -30,6 +30,7 @@ export interface PaymentFeeCalculation {
   feeBearer: PaymentFeeBearer;
   isPassedToAttendee: boolean;
   isAbsorbedByOrganizer: boolean;
+  isVoluntary: boolean;
   feeDescription: string;
   rateDescription: string;
   totalWithFee: number;
@@ -78,6 +79,7 @@ export function calculatePaymentGatewayFee(
     feeBearer: bearer,
     isPassedToAttendee: false,
     isAbsorbedByOrganizer: bearer === "organizer",
+    isVoluntary: bearer === "voluntary",
     feeDescription: "No payment gateway fee applied",
     rateDescription: "No payment gateway fee applied",
     totalWithFee: subtotal,
@@ -158,8 +160,9 @@ export function calculatePaymentGatewayFee(
       break;
   }
 
-  const isPassedToAttendee = bearer === "attendee";
+  const isPassedToAttendee = bearer === "attendee" || bearer === "voluntary";
   const isAbsorbedByOrganizer = bearer === "organizer";
+  const isVoluntary = bearer === "voluntary";
   const totalWithFee = subtotal + (isPassedToAttendee ? feeAmount : 0);
   const effectiveRate = subtotal > 0 ? (feeAmount / subtotal) * 100 : 0;
 
@@ -174,9 +177,27 @@ export function calculatePaymentGatewayFee(
     feeBearer: bearer,
     isPassedToAttendee,
     isAbsorbedByOrganizer,
+    isVoluntary,
     feeDescription,
     rateDescription: feeDescription,
     totalWithFee,
     effectiveRatePercent: Number(effectiveRate.toFixed(2)),
   };
+}
+
+/**
+ * Resolves the effective fee bearer ('attendee' vs 'organizer')
+ * based on event bearer configuration and attendee's voluntary opt-in agreement.
+ */
+export function resolveEffectiveFeeBearer(
+  configuredBearer: PaymentFeeBearer = "voluntary",
+  attendeeAgreesToCover = true,
+): "attendee" | "organizer" {
+  if (configuredBearer === "organizer") {
+    return "organizer";
+  }
+  if (configuredBearer === "voluntary") {
+    return attendeeAgreesToCover ? "attendee" : "organizer";
+  }
+  return attendeeAgreesToCover ? "attendee" : "organizer";
 }

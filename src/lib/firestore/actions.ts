@@ -567,7 +567,11 @@ export async function deleteEventRegistrationAction(
           const { cancelPaymentLinkAction } = await import("@/server/payment-actions");
           const { buildCancelPaymentPayload } = await import("@/lib/events/doku-payment");
           const cancelRes = await cancelPaymentLinkAction(
-            buildCancelPaymentPayload(registrationData, undefined, "Attendee removed from event roster"),
+            buildCancelPaymentPayload(
+              registrationData,
+              { id: eventId } as Partial<import("./types").FirestoreEvent>,
+              "Attendee removed from event roster",
+            ),
           );
           if (!cancelRes.success) {
             console.warn("[deleteEventRegistrationAction] DOKU order cancellation warning:", cancelRes.error);
@@ -631,7 +635,11 @@ export async function deleteBatchEventRegistrationsAction(
           const regData = await getRegistrationById(regId);
           if (regData && shouldCancelPaymentOrder(regData)) {
             await cancelPaymentLinkAction(
-              buildCancelPaymentPayload(regData, undefined, "Attendee removed from event roster (Batch)"),
+              buildCancelPaymentPayload(
+                regData,
+                { id: eventId } as Partial<import("./types").FirestoreEvent>,
+                "Attendee removed from event roster (Batch)",
+              ),
             );
           }
         } catch (itemErr) {

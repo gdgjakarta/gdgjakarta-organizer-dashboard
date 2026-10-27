@@ -94,8 +94,36 @@ export async function generatePaymentLinkAction(input: DokuPaymentRequestInput):
     return { success: false, error: errorMsg };
   }
 
-  const isProduction =
-    parsed.data.isProduction !== undefined ? parsed.data.isProduction : process.env.NODE_ENV === "production";
+  let isProduction = parsed.data.isProduction;
+  if (isProduction === undefined && parsed.data.event?.id) {
+    try {
+      const eventDoc = await getFirestoreDoc("events", String(parsed.data.event.id));
+      if (eventDoc?.payment_environment === "production") {
+        isProduction = true;
+      } else if (eventDoc?.payment_environment === "sandbox") {
+        isProduction = false;
+      } else if (eventDoc?.is_test !== undefined) {
+        isProduction = !eventDoc.is_test;
+      }
+    } catch {
+      // Ignore lookup failure
+    }
+  }
+  if (isProduction === undefined && parsed.data.referenceId) {
+    try {
+      const reg = await getFirestoreDoc("event_registrations", parsed.data.referenceId);
+      if (reg?.payment_environment === "production") {
+        isProduction = true;
+      } else if (reg?.payment_environment === "sandbox") {
+        isProduction = false;
+      }
+    } catch {
+      // Ignore lookup failure
+    }
+  }
+  if (isProduction === undefined) {
+    isProduction = true;
+  }
 
   const itemsTotal = parsed.data.items.reduce((acc, it) => acc + it.price * it.quantity, 0);
   const feesTotal = (parsed.data.fees ?? []).reduce((acc, f) => {
@@ -253,8 +281,36 @@ export async function cancelPaymentLinkAction(input: DokuCancelOrderRequestInput
     return { success: false, error: errorMsg };
   }
 
-  const isProduction =
-    parsed.data.isProduction !== undefined ? parsed.data.isProduction : process.env.NODE_ENV === "production";
+  let isProduction = parsed.data.isProduction;
+  if (isProduction === undefined && parsed.data.event?.id) {
+    try {
+      const eventDoc = await getFirestoreDoc("events", String(parsed.data.event.id));
+      if (eventDoc?.payment_environment === "production") {
+        isProduction = true;
+      } else if (eventDoc?.payment_environment === "sandbox") {
+        isProduction = false;
+      } else if (eventDoc?.is_test !== undefined) {
+        isProduction = !eventDoc.is_test;
+      }
+    } catch {
+      // Ignore lookup failure
+    }
+  }
+  if (isProduction === undefined && parsed.data.referenceId) {
+    try {
+      const reg = await getFirestoreDoc("event_registrations", parsed.data.referenceId);
+      if (reg?.payment_environment === "production") {
+        isProduction = true;
+      } else if (reg?.payment_environment === "sandbox") {
+        isProduction = false;
+      }
+    } catch {
+      // Ignore lookup failure
+    }
+  }
+  if (isProduction === undefined) {
+    isProduction = true;
+  }
 
   const webhookUrl = assertSafeWebhookUrl(
     resolveCancelPaymentLinkWebhookUrl(undefined, isProduction),
@@ -453,8 +509,25 @@ export async function checkDokuPaymentStatusInternal(
     } else if (existingRegistration?.payment_environment === "sandbox") {
       isProduction = false;
     } else {
-      isProduction = process.env.NODE_ENV === "production";
+      const targetEventId = eventId || existingRegistration?.event_id;
+      if (targetEventId) {
+        try {
+          const ev = await getFirestoreDoc("events", String(targetEventId));
+          if (ev?.payment_environment === "production") {
+            isProduction = true;
+          } else if (ev?.payment_environment === "sandbox") {
+            isProduction = false;
+          } else if (ev?.is_test !== undefined) {
+            isProduction = !ev.is_test;
+          }
+        } catch {
+          // Ignore event lookup error
+        }
+      }
     }
+  }
+  if (isProduction === undefined) {
+    isProduction = true;
   }
 
   const { url, headers, requestId } = buildDokuCheckStatusHeaders(invoiceNumber, { isProduction });
