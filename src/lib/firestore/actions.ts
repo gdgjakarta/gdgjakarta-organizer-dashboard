@@ -498,6 +498,8 @@ export async function updateEventHighlightsMediaAction(
     const { updateEventHighlightsMedia } = await import("./client");
     await updateEventHighlightsMedia(eventId, data, baseEvent);
     await revalidateDashboardPath(`/dashboard/events/${eventId}`);
+    await revalidateDashboardPath(`/events/${eventId}`);
+    await revalidateDashboardPath(`/dashboard/member/events/${eventId}`);
     return { success: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to save highlights and media.";

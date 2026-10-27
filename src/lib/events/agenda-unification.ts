@@ -384,77 +384,75 @@ export function buildUnifiedAgenda(
       const unifiedItems: UnifiedAgendaItem[] = rawItems.map((rawItem, iIdx) => {
         const normActivity = normalizeStr(rawItem.activity);
 
-        // Find matching session for this specific activity
-        const matchedItemSess = sessions.find((sess) => {
-          if (matchedSessionIds.has(sess.id)) return false;
-          if (matchedDaySess && sess.id === matchedDaySess.id) return false;
+        // Find matching session for this specific activity with strict tiered precedence:
+        // Tier 1: Explicit ID link
+        // Tier 2: Exact activity title match
+        // Tier 3: Time slot match + word overlap
+        // Tier 4: Substring match (min 6 characters)
+        const findSessionByTier = (predicate: (sess: EventSession) => boolean) =>
+          sessions.find((sess) => {
+            if (matchedSessionIds.has(sess.id)) return false;
+            if (matchedDaySess && sess.id === matchedDaySess.id) return false;
+            return predicate(sess);
+          });
 
-          // 1. Explicit ID link if set
-          if (
-            sess.agenda_activity_id &&
-            (sess.agenda_activity_id === rawItem.activity || sess.agenda_activity_id === `item-${dIdx}-${iIdx}`)
-          ) {
-            return true;
-          }
-
-          const normSessTitle = normalizeStr(sess.title);
-          if (!normActivity || !normSessTitle) return false;
-
-          // 2. Exact activity title match
-          if (normActivity === normSessTitle) return true;
-
-          // 3. Substring match (min 6 characters)
-          if (
-            normSessTitle.length >= 6 &&
-            (normActivity.includes(normSessTitle) || normSessTitle.includes(normActivity))
-          ) {
-            return true;
-          }
-
-          // 4. Time slot match + word overlap
-          if (rawItem.time && sess.time_slot) {
-            const rawTimeNorm = normalizeStr(rawItem.time);
-            const sessTimeNorm = normalizeStr(sess.time_slot);
-            if (rawTimeNorm === sessTimeNorm) {
-              const actWords = normActivity.split(" ").filter((w) => w.length > 3);
-              return actWords.some((w) => normSessTitle.includes(w));
-            }
-          }
-
-          return false;
-        });
+        const matchedItemSess =
+          findSessionByTier((sess) =>
+            Boolean(
+              sess.agenda_activity_id &&
+                (sess.agenda_activity_id === rawItem.activity || sess.agenda_activity_id === `item-${dIdx}-${iIdx}`),
+            ),
+          ) ??
+          findSessionByTier((sess) => {
+            const normSessTitle = normalizeStr(sess.title);
+            return Boolean(normActivity && normSessTitle && normActivity === normSessTitle);
+          }) ??
+          findSessionByTier((sess) => {
+            if (!rawItem.time || !sess.time_slot) return false;
+            if (normalizeStr(rawItem.time) !== normalizeStr(sess.time_slot)) return false;
+            const normSessTitle = normalizeStr(sess.title);
+            if (!normSessTitle) return false;
+            const actWords = normActivity.split(" ").filter((w) => w.length > 3);
+            return actWords.some((w) => normSessTitle.includes(w));
+          }) ??
+          findSessionByTier((sess) => {
+            const normSessTitle = normalizeStr(sess.title);
+            if (!normActivity || !normSessTitle || normSessTitle.length < 6) return false;
+            return normActivity.includes(normSessTitle) || normSessTitle.includes(normActivity);
+          });
 
         if (matchedItemSess) {
           matchedSessionIds.add(matchedItemSess.id);
         }
 
-        // 1. Check for slides specifically bound to this Bevy agenda activity
-        const matchedSlide = presentationSlides?.find((slide) => {
-          if (
-            slide.agenda_activity_id &&
-            (slide.agenda_activity_id === rawItem.activity || slide.agenda_activity_id === `item-${dIdx}-${iIdx}`)
-          ) {
-            return true;
-          }
-          const normSlideTitle = normalizeStr(slide.title);
-          if (!normActivity || !normSlideTitle) return false;
-          if (normActivity === normSlideTitle) return true;
-          if (
-            normSlideTitle.length >= 6 &&
-            (normActivity.includes(normSlideTitle) || normSlideTitle.includes(normActivity))
-          ) {
-            return true;
-          }
-          if (rawItem.time && slide.time_slot) {
-            const rawTimeNorm = normalizeStr(rawItem.time);
-            const slideTimeNorm = normalizeStr(slide.time_slot);
-            if (rawTimeNorm === slideTimeNorm) {
-              const actWords = normActivity.split(" ").filter((w) => w.length > 3);
-              return actWords.some((w) => normSlideTitle.includes(w));
-            }
-          }
-          return false;
-        });
+        // 1. Check for slides specifically bound to this Bevy agenda activity with strict tiered precedence:
+        // Tier 1: Explicit ID link
+        // Tier 2: Exact activity title match
+        // Tier 3: Time slot match + word overlap
+        // Tier 4: Substring match (min 6 characters)
+        const matchedSlide =
+          presentationSlides?.find(
+            (slide) =>
+              slide.agenda_activity_id &&
+              (slide.agenda_activity_id === rawItem.activity || slide.agenda_activity_id === `item-${dIdx}-${iIdx}`),
+          ) ??
+          presentationSlides?.find((slide) => {
+            const normSlideTitle = normalizeStr(slide.title);
+            return Boolean(normActivity && normSlideTitle && normActivity === normSlideTitle);
+          }) ??
+          presentationSlides?.find((slide) => {
+            if (!rawItem.time || !slide.time_slot) return false;
+            if (normalizeStr(rawItem.time) !== normalizeStr(slide.time_slot)) return false;
+            const normSlideTitle = normalizeStr(slide.title);
+            if (!normSlideTitle) return false;
+            const actWords = normActivity.split(" ").filter((w) => w.length > 3);
+            return actWords.some((w) => normSlideTitle.includes(w));
+          }) ??
+          presentationSlides?.find((slide) => {
+            const normSlideTitle = normalizeStr(slide.title);
+            if (!normActivity || !normSlideTitle || normSlideTitle.length < 6) return false;
+            return normActivity.includes(normSlideTitle) || normSlideTitle.includes(normActivity);
+          });
 
         // 2. Fallback to matched breakout session if any (legacy compatibility)
         let speakerMatch =
@@ -479,12 +477,39 @@ export function buildUnifiedAgenda(
         // Presenters extraction (supporting multiple speakers, panelists, facilitators)
         let attachedSpeakers: UnifiedAgendaSpeaker[] = [];
         if (matchedSlide?.speakers && matchedSlide.speakers.length > 0) {
-          attachedSpeakers = matchedSlide.speakers.map((sp) => ({
-            name: sp.name,
-            role: sp.role,
-            avatar: sp.avatar_url,
-            type: sp.type,
-          }));
+          attachedSpeakers = matchedSlide.speakers.map((sp) => {
+            let role = sp.role;
+            let avatar = sp.avatar_url;
+            let type = sp.type;
+            if (!role || !avatar) {
+              const detail = findSpeakerByNameOrRole(sp.name, speakers);
+              if (detail) {
+                role = role || getSpeakerRole(detail) || undefined;
+                avatar = avatar || getSpeakerAvatar(detail);
+                type = type || detail.speaker_type;
+              }
+            }
+            return {
+              name: sp.name,
+              role,
+              avatar,
+              type,
+            };
+          });
+        } else if (matchedSlide?.speaker_name?.trim()) {
+          const names = matchedSlide.speaker_name
+            .split(",")
+            .map((n) => n.trim())
+            .filter(Boolean);
+          attachedSpeakers = names.map((name) => {
+            const detail = findSpeakerByNameOrRole(name, speakers);
+            return {
+              name,
+              role: detail ? getSpeakerRole(detail) || undefined : undefined,
+              avatar: detail ? getSpeakerAvatar(detail) : undefined,
+              type: detail?.speaker_type || "Speaker",
+            };
+          });
         } else {
           // Auto-match all speakers mentioned in description or activity title
           const autoMatched = [

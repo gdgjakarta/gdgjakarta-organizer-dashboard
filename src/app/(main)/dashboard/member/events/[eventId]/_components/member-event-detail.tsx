@@ -44,6 +44,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Separator } from "@/components/ui/separator";
 import { getDashboardHomeUrl } from "@/lib/auth-roles";
 import { resolveEventAudience } from "@/lib/bevy/audience";
+import { getAllEventSpeakers } from "@/lib/bevy/speakers";
 import { toTimezoneDate } from "@/lib/date-utils";
 import { hasActualAgendaActivities } from "@/lib/events/agenda-unification";
 import { extractEventImageUrl } from "@/lib/events/media-utils";
@@ -1114,7 +1115,11 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
               <CardContent>
                 <UnifiedAgendaTimeline
                   bevyAgenda={currentEvent.agenda}
-                  speakers={currentEvent.speakers}
+                  speakers={
+                    currentEvent.speakers && currentEvent.speakers.length > 0
+                      ? currentEvent.speakers
+                      : getAllEventSpeakers(event as unknown as import("@/lib/bevy/types").BevyEvent)
+                  }
                   firestoreSessions={currentEvent.sessions}
                   presentationSlides={currentEvent.presentation_slides}
                 />
