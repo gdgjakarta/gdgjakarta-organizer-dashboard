@@ -52,7 +52,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { findMatchingSpeaker, normalizeStr } from "@/lib/events/agenda-unification";
+import { findMatchingSpeaker, normalizeRelatedLink, normalizeStr } from "@/lib/events/agenda-unification";
 import { isRegistrationInSession } from "@/lib/events/capacity-validator";
 import { DEFAULT_COMBINED_QUESTIONS, DEFAULT_GDG_SESSIONS } from "@/lib/events/registration-defaults";
 import {
@@ -339,10 +339,7 @@ function serializeBreakoutConfig(cfg: BreakoutConfigSnapshot): string {
       location: s.location ?? "",
       location_url: s.location_url ?? "",
       capacity: Number(s.capacity) || 50,
-      related_links: (s.related_links ?? []).map((l) => ({
-        title: l.title ?? "",
-        url: l.url ?? "",
-      })),
+      related_links: (s.related_links ?? []).map((l) => normalizeRelatedLink(l)),
       include_in_registration: s.include_in_registration !== false,
       separate_check_in: s.separate_check_in !== false,
       sync_check_in_to_bevy: Boolean(s.sync_check_in_to_bevy),
@@ -1769,27 +1766,14 @@ export function BreakoutSessionsTab({
                             {session.related_links && session.related_links.length > 0 ? (
                               <div className="space-y-2 pt-1">
                                 {session.related_links.map((link, lIdx) => (
-                                  <div key={`${link.url}-${lIdx}`} className="flex items-center gap-2">
+                                  <div
+                                    key={`${link.url || link.title || "link"}-${lIdx}`}
+                                    className="flex items-center gap-2"
+                                  >
                                     <Input
-                                      placeholder="Title (e.g. GitHub Repo / Colab)"
-                                      value={link.title}
-                                      className="h-8 text-xs"
-                                      onChange={(e) => {
-                                        const updated = [...(session.related_links ?? [])];
-                                        updated[lIdx] = {
-                                          ...updated[lIdx],
-                                          title: e.target.value,
-                                        };
-                                        handleUpdateSession(idx, {
-                                          ...session,
-                                          related_links: updated,
-                                        });
-                                      }}
-                                    />
-                                    <Input
-                                      placeholder="URL (https://github.com/...)"
+                                      placeholder="https://... (Resource URL)"
                                       value={link.url}
-                                      className="h-8 text-xs"
+                                      className="h-8 flex-1 font-mono text-xs"
                                       onChange={(e) => {
                                         const updated = [...(session.related_links ?? [])];
                                         updated[lIdx] = {
@@ -1802,6 +1786,39 @@ export function BreakoutSessionsTab({
                                         });
                                       }}
                                     />
+                                    <Input
+                                      placeholder="Display Name (e.g. GitHub Repo / Colab)"
+                                      value={link.title}
+                                      className="h-8 w-1/3 min-w-[140px] text-xs"
+                                      onChange={(e) => {
+                                        const updated = [...(session.related_links ?? [])];
+                                        updated[lIdx] = {
+                                          ...updated[lIdx],
+                                          title: e.target.value,
+                                        };
+                                        handleUpdateSession(idx, {
+                                          ...session,
+                                          related_links: updated,
+                                        });
+                                      }}
+                                    />
+                                    {link.url && (
+                                      <Button
+                                        asChild
+                                        variant="ghost"
+                                        size="icon"
+                                        className="size-8 shrink-0 text-muted-foreground hover:text-primary"
+                                      >
+                                        <a
+                                          href={link.url.startsWith("http") ? link.url : `https://${link.url}`}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          title="Test link"
+                                        >
+                                          <ExternalLink className="size-3.5" />
+                                        </a>
+                                      </Button>
+                                    )}
                                     <Button
                                       type="button"
                                       variant="ghost"

@@ -77,6 +77,46 @@ export function normalizeStr(str?: string | null): string {
 }
 
 /**
+ * Checks whether a string resembles a valid web URL or web address.
+ */
+export function looksLikeUrl(str?: string | null): boolean {
+  if (!str) return false;
+  const trimmed = str.trim();
+  if (/^https?:\/\//i.test(trimmed)) return true;
+  if (/^[a-z0-9-]+(\.[a-z0-9-]+)+([/?#].*)?$/i.test(trimmed)) return true;
+  return false;
+}
+
+/**
+ * Normalizes related resource links.
+ * Fixes inverted entries where a user entered the URL in the title field and display name in the URL field.
+ */
+export function normalizeRelatedLink(link: { title?: string; url?: string }): SessionRelatedLink {
+  let title = (link.title ?? "").trim();
+  let url = (link.url ?? "").trim();
+
+  const isTitleUrl = looksLikeUrl(title);
+  const isUrlValid = looksLikeUrl(url);
+
+  // If title looks like a URL and url does not, the user entered them swapped
+  if (isTitleUrl && !isUrlValid) {
+    const temp = title;
+    title = url;
+    url = temp;
+  }
+
+  // Ensure protocol if missing from valid URL
+  if (url && !/^https?:\/\//i.test(url) && looksLikeUrl(url)) {
+    url = `https://${url}`;
+  }
+
+  return {
+    title: title || url,
+    url,
+  };
+}
+
+/**
  * Determines whether an agenda payload contains at least one actual activity.
  * Guards against empty Bevy agenda shells (e.g. empty: true, or days with 0 items)
  * from overwriting populated upstream agendas.
@@ -464,12 +504,13 @@ export function buildUnifiedAgenda(
         const slidesUrl = matchedSlide?.slides_url || matchedItemSess?.slides_url || rawItem.slides_url;
         const slidesTitle =
           matchedSlide?.slides_title || matchedItemSess?.slides_title || rawItem.slides_title || "Open Slides";
-        const relatedLinks =
+        const rawRelatedLinks =
           matchedSlide?.related_links && matchedSlide.related_links.length > 0
             ? matchedSlide.related_links
             : matchedItemSess?.related_links && matchedItemSess.related_links.length > 0
               ? matchedItemSess.related_links
               : rawItem.related_links;
+        const relatedLinks = rawRelatedLinks?.map((l) => normalizeRelatedLink(l)).filter((l) => Boolean(l.url));
 
         return {
           id: `item-${dIdx}-${iIdx}-${rawItem.time}`,
@@ -508,7 +549,7 @@ export function buildUnifiedAgenda(
         description: matchedDaySess?.description,
         slidesUrl: matchedDaySess?.slides_url,
         slidesTitle: matchedDaySess?.slides_title,
-        relatedLinks: matchedDaySess?.related_links,
+        relatedLinks: matchedDaySess?.related_links?.map((l) => normalizeRelatedLink(l)).filter((l) => Boolean(l.url)),
         items: unifiedItems,
       });
     });
@@ -530,7 +571,7 @@ export function buildUnifiedAgenda(
         description: sess.description,
         slidesUrl: sess.slides_url,
         slidesTitle: sess.slides_title,
-        relatedLinks: sess.related_links,
+        relatedLinks: sess.related_links?.map((l) => normalizeRelatedLink(l)).filter((l) => Boolean(l.url)),
         items: [],
       });
     });

@@ -24,6 +24,9 @@ export { deleteField };
 
 import { app, auth } from "@/config/firebase";
 import type { FaqContent, FeaturedEventContent, PartnershipContent } from "@/lib/content/types";
+import { normalizeRelatedLink } from "@/lib/events/agenda-unification";
+
+import type { SessionRelatedLink } from "./types";
 
 export const db: Firestore = typeof window !== "undefined" ? getFirestore(app) : (null as unknown as Firestore);
 
@@ -3247,7 +3250,8 @@ function cleanPresentationSlides(slides?: EventPresentationSlide[]): EventPresen
     if (s.slides_title?.trim()) cleaned.slides_title = s.slides_title.trim();
     if (Array.isArray(s.related_links)) {
       const validLinks = s.related_links
-        .filter((l) => Boolean(l && typeof l.url === "string" && l.url.trim().length > 0))
+        .map((l) => (l ? normalizeRelatedLink(l) : null))
+        .filter((l): l is SessionRelatedLink => Boolean(l && l.url.trim().length > 0))
         .map((l) => ({
           title: (l.title || "").trim(),
           url: l.url.trim(),
@@ -3363,8 +3367,23 @@ export async function updateEventBreakoutSessions(
   if (typeof window === "undefined") return;
   const eventRef = doc(db, "events", String(eventId));
   const now = new Date().toISOString();
+  const cleanedSessions = sessions.map((sess) => ({
+    ...sess,
+    ...(Array.isArray(sess.related_links)
+      ? {
+          related_links: sess.related_links
+            .map((l) => (l ? normalizeRelatedLink(l) : null))
+            .filter((l): l is SessionRelatedLink => Boolean(l && l.url.trim().length > 0))
+            .map((l) => ({
+              title: (l.title || "").trim(),
+              url: l.url.trim(),
+            })),
+        }
+      : {}),
+  }));
+
   const updatePayload: Record<string, unknown> = {
-    sessions: sessions.length > 0 ? sessions : deleteField(),
+    sessions: cleanedSessions.length > 0 ? cleanedSessions : deleteField(),
     ...(defaultSessionName !== undefined
       ? {
           default_session_name: defaultSessionName.trim() ? defaultSessionName.trim() : "Full Session",

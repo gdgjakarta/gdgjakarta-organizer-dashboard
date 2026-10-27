@@ -8,7 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { BevyAgenda, BevySpeaker } from "@/lib/bevy/types";
-import { buildUnifiedAgenda, type UnifiedAgendaItem } from "@/lib/events/agenda-unification";
+import { buildUnifiedAgenda, normalizeRelatedLink, type UnifiedAgendaItem } from "@/lib/events/agenda-unification";
 import type { EventPresentationSlide, EventSession } from "@/lib/firestore/types";
 import { cn, sanitizeHtml } from "@/lib/utils";
 
@@ -142,19 +142,23 @@ function AgendaItemCard({ item }: AgendaItemCardProps) {
                 </Button>
               )}
 
-              {item.relatedLinks?.map((link) => (
-                <a
-                  key={link.url}
-                  href={link.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:border-primary/40 hover:bg-muted/70 hover:text-foreground"
-                >
-                  <Link2 className="size-2.5 text-primary" />
-                  <span className="max-w-[180px] truncate">{link.title || link.url}</span>
-                  <ExternalLink className="size-2" />
-                </a>
-              ))}
+              {item.relatedLinks?.map((rawLink) => {
+                const link = normalizeRelatedLink(rawLink);
+                if (!link.url) return null;
+                return (
+                  <a
+                    key={`${link.url}-${link.title}`}
+                    href={link.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:border-primary/40 hover:bg-muted/70 hover:text-foreground"
+                  >
+                    <Link2 className="size-2.5 text-primary" />
+                    <span className="max-w-[180px] truncate">{link.title || link.url}</span>
+                    <ExternalLink className="size-2" />
+                  </a>
+                );
+              })}
             </div>
           )}
         </div>
@@ -369,19 +373,23 @@ export function UnifiedAgendaTimeline({
                         </Button>
                       )}
 
-                      {group.relatedLinks?.map((link) => (
-                        <a
-                          key={link.url}
-                          href={link.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:border-primary/40 hover:bg-muted/70 hover:text-foreground"
-                        >
-                          <Link2 className="size-2.5 text-primary" />
-                          <span className="max-w-[180px] truncate">{link.title || link.url}</span>
-                          <ExternalLink className="size-2" />
-                        </a>
-                      ))}
+                      {group.relatedLinks?.map((rawLink) => {
+                        const link = normalizeRelatedLink(rawLink);
+                        if (!link.url) return null;
+                        return (
+                          <a
+                            key={`${link.url}-${link.title}`}
+                            href={link.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:border-primary/40 hover:bg-muted/70 hover:text-foreground"
+                          >
+                            <Link2 className="size-2.5 text-primary" />
+                            <span className="max-w-[180px] truncate">{link.title || link.url}</span>
+                            <ExternalLink className="size-2" />
+                          </a>
+                        );
+                      })}
                     </div>
                   )}
                 </div>

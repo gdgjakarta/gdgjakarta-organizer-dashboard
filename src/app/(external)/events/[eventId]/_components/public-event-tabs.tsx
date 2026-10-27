@@ -39,7 +39,7 @@ import {
   resolveTwitterUrl,
 } from "@/lib/bevy/speakers";
 import type { BevyEvent, BevyPartner, BevySpeaker } from "@/lib/bevy/types";
-import { buildUnifiedAgenda } from "@/lib/events/agenda-unification";
+import { buildUnifiedAgenda, normalizeRelatedLink } from "@/lib/events/agenda-unification";
 import { parsePhotoAlbum, parseVideoUrl } from "@/lib/events/media-utils";
 import type { EventSession, FirestoreEvent } from "@/lib/firestore/types";
 import { sanitizeHtml } from "@/lib/utils";
@@ -499,19 +499,23 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
                         )}
                         {sess.related_links && sess.related_links.length > 0 && (
                           <div className="flex flex-wrap gap-1.5 pt-1">
-                            {sess.related_links.map((link) => (
-                              <a
-                                key={link.url}
-                                href={link.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-card px-2 py-0.5 text-[11px] text-muted-foreground hover:border-primary/40 hover:text-foreground"
-                              >
-                                <Link2 className="size-2.5 text-primary" />
-                                <span className="max-w-[140px] truncate">{link.title ? link.title : link.url}</span>
-                                <ExternalLink className="size-2" />
-                              </a>
-                            ))}
+                            {sess.related_links.map((rawLink) => {
+                              const link = normalizeRelatedLink(rawLink);
+                              if (!link.url) return null;
+                              return (
+                                <a
+                                  key={`${link.url}-${link.title}`}
+                                  href={link.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-card px-2 py-0.5 text-[11px] text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                                >
+                                  <Link2 className="size-2.5 text-primary" />
+                                  <span className="max-w-[140px] truncate">{link.title || link.url}</span>
+                                  <ExternalLink className="size-2" />
+                                </a>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
@@ -551,19 +555,23 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
                         )}
                         {item.related_links && item.related_links.length > 0 && (
                           <div className="flex flex-wrap gap-1.5 pt-1">
-                            {item.related_links.map((link) => (
-                              <a
-                                key={link.url}
-                                href={link.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-card px-2 py-0.5 text-[11px] text-muted-foreground hover:border-primary/40 hover:text-foreground"
-                              >
-                                <Link2 className="size-2.5 text-primary" />
-                                <span className="max-w-[140px] truncate">{link.title ? link.title : link.url}</span>
-                                <ExternalLink className="size-2" />
-                              </a>
-                            ))}
+                            {item.related_links.map((rawLink) => {
+                              const link = normalizeRelatedLink(rawLink);
+                              if (!link.url) return null;
+                              return (
+                                <a
+                                  key={`${link.url}-${link.title}`}
+                                  href={link.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-card px-2 py-0.5 text-[11px] text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                                >
+                                  <Link2 className="size-2.5 text-primary" />
+                                  <span className="max-w-[140px] truncate">{link.title || link.url}</span>
+                                  <ExternalLink className="size-2" />
+                                </a>
+                              );
+                            })}
                           </div>
                         )}
                       </div>

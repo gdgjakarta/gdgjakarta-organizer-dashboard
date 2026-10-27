@@ -24,7 +24,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getAllEventSpeakers } from "@/lib/bevy/speakers";
-import { findMatchingSpeakers, hasActualAgendaActivities, normalizeStr } from "@/lib/events/agenda-unification";
+import {
+  findMatchingSpeakers,
+  hasActualAgendaActivities,
+  normalizeRelatedLink,
+  normalizeStr,
+} from "@/lib/events/agenda-unification";
 import { updateEventHighlightsMediaAction } from "@/lib/firestore/actions";
 import type { EventPresentationSlide, EventPresentationSlideSpeaker, FirestoreEvent } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
@@ -40,6 +45,7 @@ function normalizeSlides(
       ...s,
       id: s.id?.trim() ? s.id : `slide-${idx}-${Date.now()}`,
       slides_title: !s.slides_title || s.slides_title === "Download Slides" ? "Open Slides" : s.slides_title,
+      related_links: s.related_links?.map(normalizeRelatedLink),
     }));
   }
 
@@ -57,7 +63,7 @@ function normalizeSlides(
         speaker_name: s.speaker_name,
         slides_url: s.slides_url,
         slides_title: !s.slides_title || s.slides_title === "Download Slides" ? "Open Slides" : s.slides_title,
-        related_links: s.related_links,
+        related_links: s.related_links?.map(normalizeRelatedLink),
       }));
     }
   }

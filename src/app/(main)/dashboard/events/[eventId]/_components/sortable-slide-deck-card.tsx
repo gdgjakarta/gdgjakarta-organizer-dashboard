@@ -621,19 +621,36 @@ export function SortableSlideDeckCard({
             <div className="space-y-2">
               {links.map((link, lIdx) => (
                 // biome-ignore lint/suspicious/noArrayIndexKey: order of inputs corresponds to array indices
-                <div key={`${link.url}-${lIdx}`} className="flex items-center gap-2">
-                  <Input
-                    value={link.title}
-                    onChange={(e) => onUpdateRelatedLink(slide.id, lIdx, "title", e.target.value)}
-                    placeholder="Link Title (e.g. GitHub Repository)"
-                    className="h-7 w-1/3 text-xs"
-                  />
+                <div key={`${link.url || link.title || "link"}-${lIdx}`} className="flex items-center gap-2">
                   <Input
                     value={link.url}
                     onChange={(e) => onUpdateRelatedLink(slide.id, lIdx, "url", e.target.value)}
-                    placeholder="https://github.com/..."
+                    placeholder="https://... (Resource URL)"
                     className="h-7 flex-1 font-mono text-xs"
                   />
+                  <Input
+                    value={link.title}
+                    onChange={(e) => onUpdateRelatedLink(slide.id, lIdx, "title", e.target.value)}
+                    placeholder="Display Name (e.g. Open Codelabs)"
+                    className="h-7 w-1/3 min-w-[140px] text-xs"
+                  />
+                  {link.url && (
+                    <Button
+                      asChild
+                      variant="ghost"
+                      size="sm"
+                      className="size-7 shrink-0 p-0 text-muted-foreground hover:text-primary"
+                    >
+                      <a
+                        href={link.url.startsWith("http") ? link.url : `https://${link.url}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Test link"
+                      >
+                        <ExternalLink className="size-3" />
+                      </a>
+                    </Button>
+                  )}
                   <Button
                     type="button"
                     variant="ghost"
