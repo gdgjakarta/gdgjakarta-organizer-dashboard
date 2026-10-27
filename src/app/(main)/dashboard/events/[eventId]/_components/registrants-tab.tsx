@@ -554,6 +554,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [sessionFilter, setSessionFilter] = useState<string>("all");
   const [ticketFilter, setTicketFilter] = useState<string>("all");
+  const [bundleFilter, setBundleFilter] = useState<string>("all");
   const [promoReferralFilter, setPromoReferralFilter] = useState<string>("all");
   const [merchandiseFilter, setMerchandiseFilter] = useState<string>("all");
   const [merchandiseVariantFilter, setMerchandiseVariantFilter] = useState<string>("all");
@@ -970,6 +971,11 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
     setCurrentPage(1);
   };
 
+  const handleBundleFilterChange = (val: string) => {
+    setBundleFilter(val);
+    setCurrentPage(1);
+  };
+
   const handleSearchChange = (val: string) => {
     setSearch(val);
     setCurrentPage(1);
@@ -1128,6 +1134,56 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
   }, [event?.tickets, registrationsList]);
 
   const hasTickets = availableTickets.length > 0;
+
+  const bundleFilterMeta = useMemo(() => {
+    const bundleMap = new Map<string, { id: string; name: string; count: number }>();
+    let hasBundleCount = 0;
+    let noBundleCount = 0;
+
+    if (currentEvent?.bundles) {
+      for (const b of currentEvent.bundles) {
+        if (b.name) {
+          bundleMap.set(b.name, {
+            id: b.id || b.name,
+            name: b.name,
+            count: 0,
+          });
+        }
+      }
+    }
+
+    for (const r of registrationsList) {
+      if (r.bundle_name || r.bundle_id) {
+        hasBundleCount += 1;
+        const key = r.bundle_name || r.bundle_id || "";
+        const existing = bundleMap.get(key);
+        if (existing) {
+          existing.count += 1;
+        } else {
+          bundleMap.set(key, {
+            id: r.bundle_id || key,
+            name: r.bundle_name || key,
+            count: 1,
+          });
+        }
+      } else {
+        noBundleCount += 1;
+      }
+    }
+
+    const bundles = Array.from(bundleMap.values()).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+
+    return {
+      total: registrationsList.length,
+      hasBundleCount,
+      noBundleCount,
+      bundles,
+    };
+  }, [currentEvent?.bundles, registrationsList]);
+
+  const hasBundles = useMemo(() => {
+    return Boolean(currentEvent?.bundles && currentEvent.bundles.length > 0) || bundleFilterMeta.hasBundleCount > 0;
+  }, [currentEvent?.bundles, bundleFilterMeta.hasBundleCount]);
   const hasMerchandise = useMemo(() => {
     return (
       Boolean(event?.merchandise && event.merchandise.length > 0) ||
@@ -1404,7 +1460,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
       applicant: true,
       status: true,
       reviewed_by: true,
-      ticket: hasTickets,
+      ticket: hasTickets || hasBundles,
       merchandise: hasMerchandise,
       merchandise_collected: hasMerchandise,
       session: hasSessions,
@@ -1501,6 +1557,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
     setStatusFilter("all");
     setSessionFilter("all");
     setTicketFilter("all");
+    setBundleFilter("all");
     setPromoReferralFilter("all");
     setMerchandiseFilter("all");
     setMerchandiseVariantFilter("all");
@@ -1528,6 +1585,21 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
         reg.ticket_id === ticketFilter ||
         reg.ticket_name === ticketFilter ||
         reg.ticket_type === ticketFilter;
+
+      let matchesBundle = true;
+      if (bundleFilter !== "all") {
+        const hasBundle = Boolean(reg.bundle_id || reg.bundle_name);
+        if (bundleFilter === "has_bundle") {
+          matchesBundle = hasBundle;
+        } else if (bundleFilter === "no_bundle") {
+          matchesBundle = !hasBundle;
+        } else {
+          const targetLower = bundleFilter.toLowerCase().trim();
+          matchesBundle =
+            (reg.bundle_name || "").toLowerCase().trim() === targetLower ||
+            (reg.bundle_id || "").toLowerCase().trim() === targetLower;
+        }
+      }
 
       const matchesReviewer =
         reviewerFilter === "all" ||
@@ -1590,6 +1662,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
         !matchesSearch ||
         !matchesSession ||
         !matchesTicket ||
+        !matchesBundle ||
         !matchesReviewer ||
         !matchesPromoReferral ||
         !matchesMerchandise ||
@@ -1630,6 +1703,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
     searchTokens,
     sessionFilter,
     ticketFilter,
+    bundleFilter,
     promoReferralFilter,
     merchandiseFilter,
     merchandiseVariantFilter,
@@ -3316,7 +3390,9 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
       "Email",
       "Status",
       ...(isCurationMode ? ["Reviewed By", "Reviewed At"] : []),
-      ...(hasTickets ? ["Ticket Pass", "Ticket Type", "Ticket Price", "Bundle Package", "Bundle Price"] : []),
+      ...(hasTickets || hasBundles
+        ? ["Ticket Pass", "Ticket Type", "Ticket Price", "Bundle Package", "Bundle Price"]
+        : []),
       ...(hasMerchandise
         ? ["Merchandise Orders", "Merchandise Collected", "Merchandise Collected By", "Merchandise Collected At"]
         : []),
@@ -3363,7 +3439,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
               `"${formatFirestoreDate(r.reviewed_at, "yyyy-MM-dd HH:mm:ss", "").replace(/"/g, '""')}"`,
             ]
           : []),
-        ...(hasTickets
+        ...(hasTickets || hasBundles
           ? [
               `"${(r.ticket_name || "General RSVP").replace(/"/g, '""')}"`,
               `"${(r.ticket_type || "free").replace(/"/g, '""')}"`,
@@ -3411,7 +3487,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
     let count = 2; // Checkbox + Applicant
     if (visibleStandardColumns.status !== false) count += 1;
     if (isCurationMode && visibleStandardColumns.reviewed_by !== false) count += 1;
-    if (hasTickets && visibleStandardColumns.ticket !== false) count += 1;
+    if ((hasTickets || hasBundles) && visibleStandardColumns.ticket !== false) count += 1;
     if (hasMerchandise && visibleStandardColumns.merchandise !== false) count += 1;
     if (hasMerchandise && visibleStandardColumns.merchandise_collected !== false) count += 1;
     if (hasSessions && visibleStandardColumns.session !== false) count += 1;
@@ -3421,7 +3497,15 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
     if (visibleStandardColumns.registered_at !== false) count += 1;
     if (visibleStandardColumns.actions !== false) count += 1;
     return count;
-  }, [visibleStandardColumns, hasSessions, hasTickets, hasMerchandise, selectedQuestionColumns.length, isCurationMode]);
+  }, [
+    visibleStandardColumns,
+    hasSessions,
+    hasTickets,
+    hasBundles,
+    hasMerchandise,
+    selectedQuestionColumns.length,
+    isCurationMode,
+  ]);
 
   const activeQuestionFilterCount = useMemo(() => {
     return Object.values(questionFilters).filter((v) => Boolean(v) && v !== "all").length;
@@ -3432,6 +3516,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
       statusFilter !== "all" ||
       sessionFilter !== "all" ||
       ticketFilter !== "all" ||
+      bundleFilter !== "all" ||
       promoReferralFilter !== "all" ||
       merchandiseFilter !== "all" ||
       merchandiseVariantFilter !== "all" ||
@@ -3454,6 +3539,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
         onSelectSessionFilter={handleSessionFilterChange}
         onSelectMerchandiseFilter={handleMerchandiseStatsFilter}
         onSelectPromoReferralFilter={handlePromoReferralFilterChange}
+        onSelectBundleFilter={handleBundleFilterChange}
       />
 
       <Card>
@@ -3845,6 +3931,35 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                   />
                 )}
 
+                {hasBundles && (
+                  <FilterSelect
+                    value={bundleFilter}
+                    onValueChange={handleBundleFilterChange}
+                    icon={<PackageCheck className="size-3 shrink-0 text-muted-foreground" />}
+                    prefix="Bundle:"
+                    options={[
+                      { value: "all", label: `All Bundles (${bundleFilterMeta.total})` },
+                      {
+                        value: "has_bundle",
+                        label: `Has Bundle (${bundleFilterMeta.hasBundleCount})`,
+                      },
+                      {
+                        value: "no_bundle",
+                        label: `No Bundle (${bundleFilterMeta.noBundleCount})`,
+                      },
+                      ...(bundleFilterMeta.bundles.length > 0
+                        ? [
+                            { value: "__bundles_header__", label: "By Bundle Package", isHeader: true },
+                            ...bundleFilterMeta.bundles.map((b) => ({
+                              value: b.name,
+                              label: `${b.name} (${b.count})`,
+                            })),
+                          ]
+                        : []),
+                    ]}
+                  />
+                )}
+
                 {hasPromoOrReferral && (
                   <FilterSelect
                     value={promoReferralFilter}
@@ -3992,7 +4107,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                   visibleStandardColumns={visibleStandardColumns}
                   onToggleStandardColumn={handleToggleStandardColumn}
                   hasSessions={hasSessions}
-                  hasTickets={hasTickets}
+                  hasTickets={hasTickets || hasBundles}
                   hasMerchandise={hasMerchandise}
                   isCurationMode={isCurationMode}
                   onResetDefaults={handleResetColumnDefaults}
@@ -4257,6 +4372,27 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                   </button>
                 </Badge>
               )}
+              {bundleFilter !== "all" && (
+                <Badge variant="secondary" className="gap-1 font-normal text-xs">
+                  <PackageCheck className="size-3 text-primary" />
+                  <span>
+                    Bundle:{" "}
+                    {bundleFilter === "has_bundle"
+                      ? "Has Bundle"
+                      : bundleFilter === "no_bundle"
+                        ? "No Bundle"
+                        : bundleFilter}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleBundleFilterChange("all")}
+                    className="ml-0.5 rounded-full p-0.5 hover:bg-muted-foreground/20"
+                    aria-label="Clear bundle filter"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </Badge>
+              )}
               {promoReferralFilter !== "all" && (
                 <Badge variant="secondary" className="gap-1 font-normal text-xs">
                   <Tag className="size-3 text-primary" />
@@ -4382,7 +4518,9 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                   <TableHead>Applicant</TableHead>
                   {visibleStandardColumns.status !== false && <TableHead>Status</TableHead>}
                   {isCurationMode && visibleStandardColumns.reviewed_by !== false && <TableHead>Reviewed By</TableHead>}
-                  {hasTickets && visibleStandardColumns.ticket !== false && <TableHead>Ticket Pass</TableHead>}
+                  {(hasTickets || hasBundles) && visibleStandardColumns.ticket !== false && (
+                    <TableHead>Ticket Pass</TableHead>
+                  )}
                   {hasMerchandise && visibleStandardColumns.merchandise !== false && <TableHead>Merchandise</TableHead>}
                   {hasMerchandise && visibleStandardColumns.merchandise_collected !== false && (
                     <TableHead>Collected</TableHead>
@@ -4421,7 +4559,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                 {isLoading && (
                   <RegistrantsTableSkeleton
                     hasSessions={hasSessions}
-                    hasTickets={hasTickets}
+                    hasTickets={hasTickets || hasBundles}
                     hasMerchandise={hasMerchandise}
                     visibleStandardColumns={visibleStandardColumns}
                     questionColumnCount={selectedQuestionColumns.length}
@@ -4604,7 +4742,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                           </TableCell>
                         )}
 
-                        {hasTickets && visibleStandardColumns.ticket !== false && (
+                        {(hasTickets || hasBundles) && visibleStandardColumns.ticket !== false && (
                           <TableCell onClick={() => setInspectRegistration(reg)}>
                             {reg.ticket_name ? (
                               <div className="flex flex-col gap-0.5">
@@ -4665,6 +4803,14 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                                     className="w-fit border-border/80 bg-muted/60 px-1.5 py-0 font-mono font-semibold text-[9px] text-foreground"
                                   >
                                     Referral: {reg.referral_code}
+                                  </Badge>
+                                )}
+                                {reg.bundle_name && (
+                                  <Badge
+                                    variant="outline"
+                                    className="w-fit border-primary/40 bg-primary/10 px-1.5 py-0 font-semibold text-[9px] text-primary"
+                                  >
+                                    Bundle: {reg.bundle_name}
                                   </Badge>
                                 )}
                               </div>

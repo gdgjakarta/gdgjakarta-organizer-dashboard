@@ -80,7 +80,11 @@ export function ColumnCustomizer({
     }
 
     if (hasTickets) {
-      list.push({ id: "ticket", label: "Ticket Pass", description: "Selected ticket tier, price, or free status" });
+      list.push({
+        id: "ticket",
+        label: "Ticket Pass",
+        description: "Selected ticket tier, package bundle, price, or free status",
+      });
     }
 
     if (hasMerchandise) {

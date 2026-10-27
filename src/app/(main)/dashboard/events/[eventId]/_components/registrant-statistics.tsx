@@ -55,6 +55,7 @@ interface RegistrantStatisticsProps {
   onSelectSessionFilter?: (sessionId: string) => void;
   onSelectMerchandiseFilter?: (merchandise: string, variant?: string) => void;
   onSelectPromoReferralFilter?: (filterValue: string) => void;
+  onSelectBundleFilter?: (bundle: string) => void;
 }
 
 interface DistributionItem {
@@ -103,6 +104,7 @@ export function RegistrantStatistics({
   onSelectSessionFilter,
   onSelectMerchandiseFilter,
   onSelectPromoReferralFilter,
+  onSelectBundleFilter,
 }: RegistrantStatisticsProps) {
   // Primary selected field to analyze in detail
   const [selectedField, setSelectedField] = useState<string>("professional_background");
@@ -146,6 +148,24 @@ export function RegistrantStatistics({
 
   const dropRateNumber = totalConfirmedAttendees > 0 ? (totalDropped / totalConfirmedAttendees) * 100 : 0;
   const formattedDropRate = `${dropRateNumber % 1 === 0 ? dropRateNumber.toFixed(0) : dropRateNumber.toFixed(1)}%`;
+  const dropRateClasses = useMemo(() => {
+    if (dropRateNumber > 60) {
+      return {
+        icon: "text-rose-500",
+        text: "text-rose-600 dark:text-rose-400",
+      };
+    }
+    if (dropRateNumber > 35) {
+      return {
+        icon: "text-amber-500",
+        text: "text-amber-600 dark:text-amber-400",
+      };
+    }
+    return {
+      icon: "text-emerald-500",
+      text: "text-emerald-600 dark:text-emerald-400",
+    };
+  }, [dropRateNumber]);
 
   const totalRejected = useMemo(() => {
     return registrations.filter((r) => (r.status || "").toLowerCase().trim() === "rejected").length;
@@ -239,6 +259,18 @@ export function RegistrantStatistics({
       });
     }
 
+    // 0. Bundle Packages
+    if (
+      (event?.bundles && event.bundles.length > 0) ||
+      registrations.some((r) => Boolean(r.bundle_name || r.bundle_id))
+    ) {
+      fieldMap.set("bundle_packages", {
+        id: "bundle_packages",
+        label: "Bundle Packages",
+        count: registrations.filter((r) => Boolean(r.bundle_name || r.bundle_id)).length,
+      });
+    }
+
     // 0. Merchandise Orders
     if (registrations.some((r) => r.selected_merchandise && r.selected_merchandise.length > 0)) {
       fieldMap.set("merchandise_orders", {
@@ -324,7 +356,7 @@ export function RegistrantStatistics({
     });
 
     return list;
-  }, [sessions, customQuestions, registrations]);
+  }, [sessions, customQuestions, registrations, event?.bundles]);
 
   // Target pool based on analysis scope
   const targetPool = useMemo(() => {
@@ -382,6 +414,17 @@ export function RegistrantStatistics({
           const val = r.ticket_name ?? (r.ticket_type ? `Ticket: ${r.ticket_type}` : "General RSVP");
           counts.set(val, (counts.get(val) ?? 0) + 1);
           totalCounted += 1;
+        }
+      } else if (fieldId === "bundle_packages") {
+        for (const r of targetPool) {
+          if (r.bundle_name || r.bundle_id) {
+            const val = r.bundle_name || r.bundle_id || "Bundle Package";
+            counts.set(val, (counts.get(val) ?? 0) + 1);
+            totalCounted += 1;
+          } else {
+            counts.set("No Bundle", (counts.get("No Bundle") ?? 0) + 1);
+            totalCounted += 1;
+          }
         }
       } else if (fieldId === "merchandise_orders") {
         for (const r of targetPool) {
@@ -552,6 +595,14 @@ export function RegistrantStatistics({
         onSelectPromoReferralFilter(`referral:${code}`);
         return;
       }
+    }
+    if (selectedField === "bundle_packages" && onSelectBundleFilter) {
+      if (item.key === "No Bundle") {
+        onSelectBundleFilter("no_bundle");
+      } else {
+        onSelectBundleFilter(item.key);
+      }
+      return;
     }
     if (onSelectSearchFilter && item.key !== "Not Specified") {
       onSelectSearchFilter(item.key);
@@ -923,26 +974,8 @@ export function RegistrantStatistics({
                       className="flex items-center gap-0.5 text-xs"
                       title={`${totalDropped} of ${totalConfirmedAttendees} confirmed attendees not checked in`}
                     >
-                      <TrendingDown
-                        className={cn(
-                          "size-3.5",
-                          dropRateNumber > 60
-                            ? "text-rose-500"
-                            : dropRateNumber > 35
-                              ? "text-amber-500"
-                              : "text-emerald-500",
-                        )}
-                      />
-                      <span
-                        className={cn(
-                          "font-semibold tabular-nums",
-                          dropRateNumber > 60
-                            ? "text-rose-600 dark:text-rose-400"
-                            : dropRateNumber > 35
-                              ? "text-amber-600 dark:text-amber-400"
-                              : "text-emerald-600 dark:text-emerald-400",
-                        )}
-                      >
+                      <TrendingDown className={cn("size-3.5", dropRateClasses.icon)} />
+                      <span className={cn("font-semibold tabular-nums", dropRateClasses.text)}>
                         {formattedDropRate}
                       </span>
                       <span className="text-muted-foreground text-[10px]">drop</span>
