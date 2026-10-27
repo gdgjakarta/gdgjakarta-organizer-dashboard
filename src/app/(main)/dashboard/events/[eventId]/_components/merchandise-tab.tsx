@@ -24,6 +24,7 @@ import {
 import { toast } from "sonner";
 
 import { FloatingSaveBar } from "@/app/(main)/dashboard/_components/floating-save-bar";
+import { Shimmer } from "@/components/shimmer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -46,6 +47,9 @@ import { cn } from "@/lib/utils";
 import { GenerateMerchandisePaymentDialog } from "./generate-merchandise-payment-dialog";
 import { MerchandiseItemDialog } from "./merchandise-item-dialog";
 import { MerchandiseTemplateDialog } from "./merchandise-template-dialog";
+
+const MERCH_REVENUE_SKELETON_KEYS = ["merch-rev-skel-1", "merch-rev-skel-2", "merch-rev-skel-3"];
+const MERCH_ITEM_SKELETON_KEYS = ["merch-item-skel-1", "merch-item-skel-2", "merch-item-skel-3"];
 
 interface MerchandiseTabProps {
   event: FirestoreEvent;
@@ -74,6 +78,10 @@ function getMerchandiseStatusBadgeLabel(status?: "active" | "draft" | "hidden" |
 export function MerchandiseTab({ event }: MerchandiseTabProps) {
   // Start with empty array or existing event.merchandise — NO hardcoded default items!
   const [items, setItems] = useState<EventMerchandiseItem[]>(event.merchandise ?? []);
+  const [isLoadingItems, setIsLoadingItems] = useState<boolean>(
+    () => !event.merchandise || event.merchandise.length === 0,
+  );
+  const [isLoadingRegistrations, setIsLoadingRegistrations] = useState<boolean>(true);
   const [maxMerchandisePerPerson, setMaxMerchandisePerPerson] = useState<number | null>(
     event.max_merchandise_per_person ?? null,
   );
@@ -99,15 +107,21 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
         const list = await getEventRegistrations(String(event.id));
         if (isMounted) {
           setRegistrations(list);
+          setIsLoadingRegistrations(false);
         }
 
         unsubscribe = subscribeEventRegistrations(String(event.id), (updatedList) => {
           if (isMounted) {
             setRegistrations(updatedList);
+            setIsLoadingRegistrations(false);
           }
         });
       } catch (err) {
         console.warn("[MerchandiseTab] Failed to fetch or subscribe to registrations:", err);
+      } finally {
+        if (isMounted) {
+          setIsLoadingRegistrations(false);
+        }
       }
     }
 
@@ -204,6 +218,8 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
         }
       } catch (err) {
         console.warn("[MerchandiseTab] Failed to fetch latest event merchandise:", err);
+      } finally {
+        setIsLoadingItems(false);
       }
     }
 
@@ -321,12 +337,20 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
               <Coins className="size-3.5 text-emerald-600 dark:text-emerald-400" />
               Clean Merch Revenue
             </CardDescription>
-            <CardTitle className="font-bold text-2xl text-emerald-600 dark:text-emerald-400">
-              Rp {merchRevenueMetrics.totalNetRevenue.toLocaleString("id-ID")}
-            </CardTitle>
+            {isLoadingRegistrations ? (
+              <Shimmer className="my-1 h-8 w-28" />
+            ) : (
+              <CardTitle className="font-bold text-2xl text-emerald-600 dark:text-emerald-400">
+                Rp {merchRevenueMetrics.totalNetRevenue.toLocaleString("id-ID")}
+              </CardTitle>
+            )}
           </CardHeader>
           <CardContent className="px-4 pt-0 pb-4">
-            <p className="text-[11px] text-muted-foreground">After voucher discounts applied</p>
+            {isLoadingRegistrations ? (
+              <Shimmer className="h-3.5 w-32" />
+            ) : (
+              <p className="text-[11px] text-muted-foreground">After voucher discounts applied</p>
+            )}
           </CardContent>
         </Card>
 
@@ -337,12 +361,20 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
               <Receipt className="size-3.5 text-blue-600 dark:text-blue-400" />
               Actual Gross Revenue
             </CardDescription>
-            <CardTitle className="font-bold text-2xl text-foreground">
-              Rp {merchRevenueMetrics.totalGrossRevenue.toLocaleString("id-ID")}
-            </CardTitle>
+            {isLoadingRegistrations ? (
+              <Shimmer className="my-1 h-8 w-28" />
+            ) : (
+              <CardTitle className="font-bold text-2xl text-foreground">
+                Rp {merchRevenueMetrics.totalGrossRevenue.toLocaleString("id-ID")}
+              </CardTitle>
+            )}
           </CardHeader>
           <CardContent className="px-4 pt-0 pb-4">
-            <p className="text-[11px] text-muted-foreground">Catalog price without discounts</p>
+            {isLoadingRegistrations ? (
+              <Shimmer className="h-3.5 w-36" />
+            ) : (
+              <p className="text-[11px] text-muted-foreground">Catalog price without discounts</p>
+            )}
           </CardContent>
         </Card>
 
@@ -353,14 +385,22 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
               <Tag className="size-3.5 text-amber-500" />
               Merch Vouchers Redeemed
             </CardDescription>
-            <CardTitle className="font-bold text-2xl text-amber-600 dark:text-amber-400">
-              {merchRevenueMetrics.totalVouchersRedeemed}
-            </CardTitle>
+            {isLoadingRegistrations ? (
+              <Shimmer className="my-1 h-8 w-16" />
+            ) : (
+              <CardTitle className="font-bold text-2xl text-amber-600 dark:text-amber-400">
+                {merchRevenueMetrics.totalVouchersRedeemed}
+              </CardTitle>
+            )}
           </CardHeader>
           <CardContent className="px-4 pt-0 pb-4">
-            <p className="text-[11px] text-muted-foreground">
-              -Rp {merchRevenueMetrics.totalVoucherDiscount.toLocaleString("id-ID")} voucher cut
-            </p>
+            {isLoadingRegistrations ? (
+              <Shimmer className="h-3.5 w-28" />
+            ) : (
+              <p className="text-[11px] text-muted-foreground">
+                -Rp {merchRevenueMetrics.totalVoucherDiscount.toLocaleString("id-ID")} voucher cut
+              </p>
+            )}
           </CardContent>
         </Card>
 
@@ -371,15 +411,23 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
               <ShoppingBag className="size-3.5 text-purple-500" />
               Units Sold & Orders
             </CardDescription>
-            <CardTitle className="font-bold text-2xl text-purple-600 dark:text-purple-400">
-              {merchRevenueMetrics.totalUnitsSold}
-            </CardTitle>
+            {isLoadingRegistrations ? (
+              <Shimmer className="my-1 h-8 w-16" />
+            ) : (
+              <CardTitle className="font-bold text-2xl text-purple-600 dark:text-purple-400">
+                {merchRevenueMetrics.totalUnitsSold}
+              </CardTitle>
+            )}
           </CardHeader>
           <CardContent className="px-4 pt-0 pb-4">
-            <p className="text-[11px] text-muted-foreground">
-              Across {merchRevenueMetrics.totalOrdersCount} attendee order
-              {merchRevenueMetrics.totalOrdersCount === 1 ? "" : "s"}
-            </p>
+            {isLoadingRegistrations ? (
+              <Shimmer className="h-3.5 w-28" />
+            ) : (
+              <p className="text-[11px] text-muted-foreground">
+                Across {merchRevenueMetrics.totalOrdersCount} attendee order
+                {merchRevenueMetrics.totalOrdersCount === 1 ? "" : "s"}
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -399,14 +447,43 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
                 </CardDescription>
               </div>
             </div>
-            <Badge variant="outline" className="font-mono text-xs w-fit">
-              {merchRevenueMetrics.totalUnitsSold} units fulfilled across {merchandiseItemList.length} item
-              {merchandiseItemList.length === 1 ? "" : "s"}
-            </Badge>
+            {isLoadingRegistrations ? (
+              <Shimmer className="h-5 w-36 rounded-md" />
+            ) : (
+              <Badge variant="outline" className="font-mono text-xs w-fit">
+                {merchRevenueMetrics.totalUnitsSold} units fulfilled across {merchandiseItemList.length} item
+                {merchandiseItemList.length === 1 ? "" : "s"}
+              </Badge>
+            )}
           </div>
         </CardHeader>
         <CardContent className="p-4 pt-2">
-          {merchandiseItemList.length === 0 ? (
+          {isLoadingRegistrations ? (
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {MERCH_REVENUE_SKELETON_KEYS.map((key) => (
+                <div key={key} className="rounded-xl border border-border/70 bg-card/60 p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <Shimmer className="h-5 w-32 rounded-md" />
+                    <Shimmer className="h-4 w-14" />
+                  </div>
+                  <div className="space-y-1.5 pt-1">
+                    <div className="flex justify-between">
+                      <Shimmer className="h-3.5 w-20" />
+                      <Shimmer className="h-3.5 w-24" />
+                    </div>
+                    <div className="flex justify-between">
+                      <Shimmer className="h-3.5 w-20" />
+                      <Shimmer className="h-3.5 w-20" />
+                    </div>
+                    <div className="flex justify-between">
+                      <Shimmer className="h-3.5 w-24" />
+                      <Shimmer className="h-3.5 w-16" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : merchandiseItemList.length === 0 ? (
             <div className="py-6 text-center text-xs text-muted-foreground">
               No merchandise configured for this event.
             </div>
@@ -552,7 +629,36 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
             </div>
           </div>
 
-          {items.length === 0 ? (
+          {isLoadingItems && items.length === 0 ? (
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
+              {MERCH_ITEM_SKELETON_KEYS.map((key) => (
+                <div
+                  key={key}
+                  className="flex flex-col justify-between overflow-hidden rounded-xl border bg-card text-card-foreground shadow-xs"
+                >
+                  <Shimmer className="aspect-video w-full rounded-none" />
+                  <div className="space-y-3 p-4">
+                    <div className="space-y-1.5">
+                      <Shimmer className="h-5 w-32" />
+                      <Shimmer className="h-3.5 w-full" />
+                      <Shimmer className="h-3.5 w-3/4" />
+                    </div>
+                    <div className="rounded-lg border border-border/50 bg-muted/20 p-2.5 space-y-2">
+                      <div className="flex justify-between">
+                        <Shimmer className="h-3 w-16" />
+                        <Shimmer className="h-3 w-12" />
+                      </div>
+                      <Shimmer className="h-2 w-full rounded-full" />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between border-t border-border/40 p-3">
+                    <Shimmer className="h-6 w-20" />
+                    <Shimmer className="h-8 w-16 rounded-md" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : items.length === 0 ? (
             /* Empty State: No items pre-selected or forced */
             <div className="flex flex-col items-center justify-center rounded-2xl border border-border/80 border-dashed bg-muted/20 px-6 py-14 text-center">
               <div className="rounded-full bg-primary/10 p-4 text-primary">

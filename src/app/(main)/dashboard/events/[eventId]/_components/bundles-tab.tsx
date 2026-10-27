@@ -21,6 +21,7 @@ import {
 import { toast } from "sonner";
 
 import { FloatingSaveBar } from "@/app/(main)/dashboard/_components/floating-save-bar";
+import { Shimmer } from "@/components/shimmer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -47,6 +48,8 @@ import { cn } from "@/lib/utils";
 
 import { BundleDialog } from "./bundle-dialog";
 
+const BUNDLE_SKELETON_KEYS = ["bundle-skel-1", "bundle-skel-2", "bundle-skel-3"];
+
 interface BundlesTabProps {
   event: FirestoreEvent;
 }
@@ -62,7 +65,7 @@ export function BundlesTab({ event }: BundlesTabProps) {
   const [eventTickets, setEventTickets] = useState<EventTicketTier[]>(() => ensureEventTickets(event.tickets));
   const [eventMerchandise, setEventMerchandise] = useState<EventMerchandiseItem[]>(() => event.merchandise ?? []);
   const [isLoadingItems, setIsLoadingItems] = useState<boolean>(
-    () => !event.tickets?.length && !event.merchandise?.length,
+    () => !event.bundles?.length && !event.tickets?.length && !event.merchandise?.length,
   );
 
   // Sync state if parent event prop updates
@@ -329,7 +332,11 @@ export function BundlesTab({ event }: BundlesTabProps) {
             <PackageCheck className="size-4 text-primary" />
             <span className="font-medium text-muted-foreground text-xs">Total Packages</span>
           </div>
-          <p className="mt-2 font-bold text-2xl text-foreground tracking-tight">{bundles.length}</p>
+          {isLoadingItems && bundles.length === 0 ? (
+            <Shimmer className="mt-2 h-8 w-16" />
+          ) : (
+            <p className="mt-2 font-bold text-2xl text-foreground tracking-tight">{bundles.length}</p>
+          )}
         </Card>
 
         <Card className="p-4">
@@ -337,14 +344,18 @@ export function BundlesTab({ event }: BundlesTabProps) {
             <CheckCircle2 className="size-4 text-emerald-600 dark:text-emerald-400" />
             <span className="font-medium text-muted-foreground text-xs">Active Packages</span>
           </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="font-bold text-2xl text-foreground tracking-tight">{activeCount}</span>
-            {bundles.some((b) => b.status === "hidden") && (
-              <span className="text-muted-foreground text-xs">
-                ({bundles.filter((b) => b.status === "hidden").length} hidden)
-              </span>
-            )}
-          </div>
+          {isLoadingItems && bundles.length === 0 ? (
+            <Shimmer className="mt-2 h-8 w-16" />
+          ) : (
+            <div className="mt-2 flex items-baseline gap-2">
+              <span className="font-bold text-2xl text-foreground tracking-tight">{activeCount}</span>
+              {bundles.some((b) => b.status === "hidden") && (
+                <span className="text-muted-foreground text-xs">
+                  ({bundles.filter((b) => b.status === "hidden").length} hidden)
+                </span>
+              )}
+            </div>
+          )}
         </Card>
 
         <Card className="p-4">
@@ -352,7 +363,11 @@ export function BundlesTab({ event }: BundlesTabProps) {
             <Users className="size-4 text-blue-600 dark:text-blue-400" />
             <span className="font-medium text-muted-foreground text-xs">Packages Sold</span>
           </div>
-          <p className="mt-2 font-bold text-2xl text-foreground tracking-tight">{totalSold}</p>
+          {isLoadingItems && bundles.length === 0 ? (
+            <Shimmer className="mt-2 h-8 w-16" />
+          ) : (
+            <p className="mt-2 font-bold text-2xl text-foreground tracking-tight">{totalSold}</p>
+          )}
         </Card>
 
         <Card className="p-4">
@@ -360,9 +375,13 @@ export function BundlesTab({ event }: BundlesTabProps) {
             <Banknote className="size-4 text-amber-600 dark:text-amber-400" />
             <span className="font-medium text-muted-foreground text-xs">Bundle Revenue</span>
           </div>
-          <p className="mt-2 font-bold text-2xl text-foreground tracking-tight">
-            Rp {totalRevenue.toLocaleString("id-ID")}
-          </p>
+          {isLoadingItems && bundles.length === 0 ? (
+            <Shimmer className="mt-2 h-8 w-28" />
+          ) : (
+            <p className="mt-2 font-bold text-2xl text-foreground tracking-tight">
+              Rp {totalRevenue.toLocaleString("id-ID")}
+            </p>
+          )}
         </Card>
       </div>
 
@@ -447,7 +466,50 @@ export function BundlesTab({ event }: BundlesTabProps) {
         </CardHeader>
 
         <CardContent className="space-y-6">
-          {bundles.length === 0 ? (
+          {isLoadingItems && bundles.length === 0 ? (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {BUNDLE_SKELETON_KEYS.map((key) => (
+                <Card key={key} className="flex flex-col justify-between overflow-hidden shadow-xs">
+                  <CardHeader className="space-y-3 p-4 pb-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="space-y-1.5">
+                        <Shimmer className="h-5 w-36" />
+                        <div className="flex gap-1.5">
+                          <Shimmer className="h-5 w-16 rounded-full" />
+                          <Shimmer className="h-5 w-20 rounded-full" />
+                        </div>
+                      </div>
+                      <Shimmer className="size-8 rounded-md" />
+                    </div>
+                    <div className="space-y-1 pt-1">
+                      <Shimmer className="h-3.5 w-full" />
+                      <Shimmer className="h-3.5 w-4/5" />
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3 p-4 pt-0">
+                    <div className="rounded-lg border border-border/50 bg-muted/20 p-2.5 space-y-2">
+                      <Shimmer className="h-4 w-28" />
+                      <div className="flex flex-wrap gap-1.5">
+                        <Shimmer className="h-6 w-24 rounded-full" />
+                        <Shimmer className="h-6 w-28 rounded-full" />
+                      </div>
+                    </div>
+                    <div className="rounded-lg border border-border/50 bg-muted/30 p-2.5 flex items-baseline justify-between">
+                      <Shimmer className="h-6 w-24" />
+                      <Shimmer className="h-4 w-16" />
+                    </div>
+                    <div className="space-y-1.5 pt-1">
+                      <Shimmer className="h-2 w-full rounded-full" />
+                      <div className="flex justify-between">
+                        <Shimmer className="h-3 w-20" />
+                        <Shimmer className="h-3 w-16" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : bundles.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed px-4 py-12 text-center">
               <div className="flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
                 <PackageCheck className="size-7" />

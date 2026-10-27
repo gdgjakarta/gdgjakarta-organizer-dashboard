@@ -29,6 +29,7 @@ import {
 import { toast } from "sonner";
 
 import { FloatingSaveBar } from "@/app/(main)/dashboard/_components/floating-save-bar";
+import { Shimmer } from "@/components/shimmer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -63,6 +64,15 @@ import { cn } from "@/lib/utils";
 import { VoucherDialog } from "./voucher-dialog";
 import { VoucherRedemptionsDialog } from "./voucher-redemptions-dialog";
 
+const VOUCHER_SKELETON_KEYS = [
+  "voucher-skeleton-1",
+  "voucher-skeleton-2",
+  "voucher-skeleton-3",
+  "voucher-skeleton-4",
+  "voucher-skeleton-5",
+  "voucher-skeleton-6",
+];
+
 interface VouchersTabProps {
   event: FirestoreEvent;
   registrations?: FirestoreRegistration[];
@@ -70,6 +80,9 @@ interface VouchersTabProps {
 
 export function VouchersTab({ event, registrations: initialRegistrations }: VouchersTabProps) {
   const [vouchers, setVouchers] = useState<EventVoucher[]>(event.vouchers ?? []);
+  const [isLoadingVouchers, setIsLoadingVouchers] = useState<boolean>(
+    () => !event.vouchers || event.vouchers.length === 0,
+  );
   const [registrations, setRegistrations] = useState<FirestoreRegistration[]>(initialRegistrations ?? []);
   const [editingVoucher, setEditingVoucher] = useState<EventVoucher | null>(null);
   const [viewingRedemptionsVoucher, setViewingRedemptionsVoucher] = useState<EventVoucher | null>(null);
@@ -167,6 +180,8 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
         }
       } catch (err) {
         console.warn("[VouchersTab] Failed to fetch latest vouchers:", err);
+      } finally {
+        setIsLoadingVouchers(false);
       }
     }
 
@@ -612,12 +627,21 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
               <Tag className="size-3.5 text-primary" />
               Total Vouchers
             </CardDescription>
-            <CardTitle className="font-bold text-2xl">{metrics.total}</CardTitle>
+            {isLoadingVouchers ? (
+              <Shimmer className="my-1 h-8 w-16" />
+            ) : (
+              <CardTitle className="font-bold text-2xl">{metrics.total}</CardTitle>
+            )}
           </CardHeader>
           <CardContent className="px-4 pt-0 pb-4">
-            <p className="text-[11px] text-muted-foreground">
-              {metrics.active} active{metrics.bundleVouchersCount > 0 ? ` • ${metrics.bundleVouchersCount} bundle` : ""}
-            </p>
+            {isLoadingVouchers ? (
+              <Shimmer className="h-3.5 w-24" />
+            ) : (
+              <p className="text-[11px] text-muted-foreground">
+                {metrics.active} active
+                {metrics.bundleVouchersCount > 0 ? ` • ${metrics.bundleVouchersCount} bundle` : ""}
+              </p>
+            )}
           </CardContent>
         </Card>
 
@@ -627,12 +651,20 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
               <CheckCircle2 className="size-3.5 text-emerald-500" />
               Active Codes
             </CardDescription>
-            <CardTitle className="font-bold text-2xl text-emerald-600 dark:text-emerald-400">
-              {metrics.active}
-            </CardTitle>
+            {isLoadingVouchers ? (
+              <Shimmer className="my-1 h-8 w-16" />
+            ) : (
+              <CardTitle className="font-bold text-2xl text-emerald-600 dark:text-emerald-400">
+                {metrics.active}
+              </CardTitle>
+            )}
           </CardHeader>
           <CardContent className="px-4 pt-0 pb-4">
-            <p className="text-[11px] text-muted-foreground">Ready for redemption</p>
+            {isLoadingVouchers ? (
+              <Shimmer className="h-3.5 w-28" />
+            ) : (
+              <p className="text-[11px] text-muted-foreground">Ready for redemption</p>
+            )}
           </CardContent>
         </Card>
 
@@ -642,12 +674,20 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
               <Users className="size-3.5 text-blue-500" />
               Total Redemptions
             </CardDescription>
-            <CardTitle className="font-bold text-2xl text-blue-600 dark:text-blue-400">
-              {metrics.totalRedeemed}
-            </CardTitle>
+            {isLoadingVouchers ? (
+              <Shimmer className="my-1 h-8 w-16" />
+            ) : (
+              <CardTitle className="font-bold text-2xl text-blue-600 dark:text-blue-400">
+                {metrics.totalRedeemed}
+              </CardTitle>
+            )}
           </CardHeader>
           <CardContent className="px-4 pt-0 pb-4">
-            <p className="text-[11px] text-muted-foreground">Used across registrations</p>
+            {isLoadingVouchers ? (
+              <Shimmer className="h-3.5 w-32" />
+            ) : (
+              <p className="text-[11px] text-muted-foreground">Used across registrations</p>
+            )}
           </CardContent>
         </Card>
 
@@ -657,12 +697,20 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
               <Layers className="size-3.5 text-purple-500" />
               Coverage
             </CardDescription>
-            <CardTitle className="font-bold text-2xl text-foreground">
-              {metrics.ticketVouchers} / {metrics.merchVouchers}
-            </CardTitle>
+            {isLoadingVouchers ? (
+              <Shimmer className="my-1 h-8 w-20" />
+            ) : (
+              <CardTitle className="font-bold text-2xl text-foreground">
+                {metrics.ticketVouchers} / {metrics.merchVouchers}
+              </CardTitle>
+            )}
           </CardHeader>
           <CardContent className="px-4 pt-0 pb-4">
-            <p className="text-[11px] text-muted-foreground">Tickets / Merch eligible</p>
+            {isLoadingVouchers ? (
+              <Shimmer className="h-3.5 w-28" />
+            ) : (
+              <p className="text-[11px] text-muted-foreground">Tickets / Merch eligible</p>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -894,7 +942,46 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
       </div>
 
       {/* ── VOUCHERS LIST ────────────────────────────────────────────────── */}
-      {filteredVouchers.length === 0 ? (
+      {isLoadingVouchers && vouchers.length === 0 ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {VOUCHER_SKELETON_KEYS.map((key) => (
+            <Card key={key} className="flex flex-col justify-between overflow-hidden shadow-xs">
+              <CardHeader className="space-y-3 p-4 pb-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="space-y-1.5">
+                    <Shimmer className="h-5 w-28" />
+                    <div className="flex gap-1.5 pt-0.5">
+                      <Shimmer className="h-5 w-16 rounded-full" />
+                      <Shimmer className="h-5 w-20 rounded-full" />
+                    </div>
+                  </div>
+                  <Shimmer className="size-6 rounded-md" />
+                </div>
+                <div className="space-y-1 pt-1">
+                  <Shimmer className="h-3.5 w-full" />
+                  <Shimmer className="h-3.5 w-3/4" />
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3 p-4 pt-0">
+                <div className="space-y-1.5">
+                  <div className="flex justify-between">
+                    <Shimmer className="h-3 w-14" />
+                    <Shimmer className="h-3 w-10" />
+                  </div>
+                  <Shimmer className="h-1.5 w-full rounded-full" />
+                </div>
+                <div className="flex items-center justify-between border-t border-border/40 pt-3">
+                  <Shimmer className="h-3 w-28" />
+                  <div className="flex gap-1">
+                    <Shimmer className="size-7 rounded-md" />
+                    <Shimmer className="size-7 rounded-md" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : filteredVouchers.length === 0 ? (
         <Card className="border-dashed p-8 text-center shadow-xs">
           <div className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
             <TicketPercent className="size-6" />

@@ -19,6 +19,7 @@ import {
 import { toast } from "sonner";
 
 import { PackageTrackingDialog } from "@/components/delivery/package-tracking-dialog";
+import { Shimmer } from "@/components/shimmer";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,6 +37,8 @@ import { cn, getInitials } from "@/lib/utils";
 
 import { DeliveryApprovalDialog } from "./delivery-approval-dialog";
 import { DeliveryRejectDialog } from "./delivery-reject-dialog";
+
+const DELIVERY_SKELETON_KEYS = ["del-skel-1", "del-skel-2", "del-skel-3", "del-skel-4", "del-skel-5"];
 
 interface MerchandiseDeliveryTabProps {
   event: FirestoreEvent;
@@ -369,50 +372,74 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
         <Card className="p-3 shadow-2xs">
           <CardHeader className="p-0 pb-1">
             <CardDescription className="text-xs">Total Requests</CardDescription>
-            <CardTitle className="font-bold text-xl sm:text-2xl">{totalCount}</CardTitle>
+            {isLoading ? (
+              <Shimmer className="my-1 h-7 w-12" />
+            ) : (
+              <CardTitle className="font-bold text-xl sm:text-2xl">{totalCount}</CardTitle>
+            )}
           </CardHeader>
         </Card>
 
         <Card className="border-blue-500/20 bg-blue-500/5 p-3 shadow-2xs">
           <CardHeader className="p-0 pb-1">
             <CardDescription className="text-blue-700 text-xs dark:text-blue-300">Pending Review</CardDescription>
-            <CardTitle className="font-bold text-blue-700 text-xl sm:text-2xl dark:text-blue-300">
-              {pendingReviewCount}
-            </CardTitle>
+            {isLoading ? (
+              <Shimmer className="my-1 h-7 w-12" />
+            ) : (
+              <CardTitle className="font-bold text-blue-700 text-xl sm:text-2xl dark:text-blue-300">
+                {pendingReviewCount}
+              </CardTitle>
+            )}
           </CardHeader>
         </Card>
 
         <Card className="border-emerald-500/20 bg-emerald-500/5 p-3 shadow-2xs">
           <CardHeader className="p-0 pb-1">
             <CardDescription className="text-emerald-700 text-xs dark:text-emerald-300">In Transit</CardDescription>
-            <CardTitle className="font-bold text-emerald-700 text-xl sm:text-2xl dark:text-emerald-300">
-              {approvedCount}
-            </CardTitle>
+            {isLoading ? (
+              <Shimmer className="my-1 h-7 w-12" />
+            ) : (
+              <CardTitle className="font-bold text-emerald-700 text-xl sm:text-2xl dark:text-emerald-300">
+                {approvedCount}
+              </CardTitle>
+            )}
           </CardHeader>
         </Card>
 
         <Card className="border-purple-500/20 bg-purple-500/5 p-3 shadow-2xs">
           <CardHeader className="p-0 pb-1">
             <CardDescription className="text-purple-700 text-xs dark:text-purple-300">Delivered</CardDescription>
-            <CardTitle className="font-bold text-purple-700 text-xl sm:text-2xl dark:text-purple-300">
-              {deliveredCount}
-            </CardTitle>
+            {isLoading ? (
+              <Shimmer className="my-1 h-7 w-12" />
+            ) : (
+              <CardTitle className="font-bold text-purple-700 text-xl sm:text-2xl dark:text-purple-300">
+                {deliveredCount}
+              </CardTitle>
+            )}
           </CardHeader>
         </Card>
 
         <Card className="border-destructive/20 bg-destructive/5 p-3 shadow-2xs">
           <CardHeader className="p-0 pb-1">
             <CardDescription className="text-destructive text-xs">Rejected</CardDescription>
-            <CardTitle className="font-bold text-destructive text-xl sm:text-2xl">{rejectedCount}</CardTitle>
+            {isLoading ? (
+              <Shimmer className="my-1 h-7 w-12" />
+            ) : (
+              <CardTitle className="font-bold text-destructive text-xl sm:text-2xl">{rejectedCount}</CardTitle>
+            )}
           </CardHeader>
         </Card>
 
         <Card className="p-3 shadow-2xs">
           <CardHeader className="p-0 pb-1">
             <CardDescription className="text-xs">Fees Collected</CardDescription>
-            <CardTitle className="font-bold text-foreground text-sm sm:text-base">
-              Rp {totalFeesCollected.toLocaleString("id-ID")}
-            </CardTitle>
+            {isLoading ? (
+              <Shimmer className="my-1 h-6 w-20" />
+            ) : (
+              <CardTitle className="font-bold text-foreground text-sm sm:text-base">
+                Rp {totalFeesCollected.toLocaleString("id-ID")}
+              </CardTitle>
+            )}
           </CardHeader>
         </Card>
       </div>
@@ -500,16 +527,57 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
             </TableRow>
           </TableHeader>
           <TableBody>
-            {isLoading && (
-              <TableRow>
-                <TableCell colSpan={7} className="h-32 text-center text-muted-foreground text-xs">
-                  <div className="flex flex-col items-center justify-center gap-2">
-                    <Loader2 className="size-6 animate-spin text-primary" />
-                    <span>Loading delivery requests...</span>
-                  </div>
-                </TableCell>
-              </TableRow>
-            )}
+            {isLoading &&
+              DELIVERY_SKELETON_KEYS.map((key) => (
+                <TableRow key={key}>
+                  {/* Attendee & Recipient */}
+                  <TableCell>
+                    <div className="flex items-center gap-2.5">
+                      <Shimmer className="size-8 rounded-full shrink-0" />
+                      <div className="space-y-1.5 min-w-0">
+                        <Shimmer className="h-3.5 w-24" />
+                        <Shimmer className="h-3 w-32" />
+                      </div>
+                    </div>
+                  </TableCell>
+                  {/* Merchandise Items */}
+                  <TableCell>
+                    <div className="space-y-1.5">
+                      <Shimmer className="h-5 w-24 rounded-full" />
+                      <Shimmer className="h-3 w-16" />
+                    </div>
+                  </TableCell>
+                  {/* Shipping Destination */}
+                  <TableCell>
+                    <div className="space-y-1">
+                      <Shimmer className="h-3.5 w-28" />
+                      <Shimmer className="h-3 w-36" />
+                    </div>
+                  </TableCell>
+                  {/* Fee */}
+                  <TableCell>
+                    <Shimmer className="h-5 w-16 rounded-md" />
+                  </TableCell>
+                  {/* Status */}
+                  <TableCell>
+                    <Shimmer className="h-6 w-24 rounded-full" />
+                  </TableCell>
+                  {/* Courier & Tracking */}
+                  <TableCell>
+                    <div className="space-y-1">
+                      <Shimmer className="h-3.5 w-20" />
+                      <Shimmer className="h-3 w-28" />
+                    </div>
+                  </TableCell>
+                  {/* Actions */}
+                  <TableCell className="text-right">
+                    <div className="flex items-center justify-end gap-1.5">
+                      <Shimmer className="size-7 rounded-md" />
+                      <Shimmer className="size-7 rounded-md" />
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
             {!isLoading && filteredRegistrations.length === 0 && (
               <TableRow>
                 <TableCell colSpan={7} className="h-32 text-center text-muted-foreground text-xs">

@@ -28,6 +28,7 @@ import {
 import { toast } from "sonner";
 
 import { FloatingSaveBar } from "@/app/(main)/dashboard/_components/floating-save-bar";
+import { Shimmer } from "@/components/shimmer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -55,6 +56,9 @@ import type { EventTicketTier, FirestoreEvent, FirestoreRegistration, TicketType
 import { cn } from "@/lib/utils";
 
 import { TicketTierDialog } from "./ticket-tier-dialog";
+
+const TIER_REVENUE_SKELETON_KEYS = ["tier-rev-skel-1", "tier-rev-skel-2", "tier-rev-skel-3"];
+const TICKET_TIER_SKELETON_KEYS = ["ticket-tier-skel-1", "ticket-tier-skel-2", "ticket-tier-skel-3"];
 
 interface TicketsTabProps {
   event: FirestoreEvent;
@@ -94,6 +98,8 @@ function getStatusLabel(status?: "active" | "sold_out" | "hidden"): string {
 
 export function TicketsTab({ event }: TicketsTabProps) {
   const [tickets, setTickets] = useState<EventTicketTier[]>(() => ensureEventTickets(event.tickets));
+  const [isLoadingTickets, setIsLoadingTickets] = useState<boolean>(() => !event.tickets || event.tickets.length === 0);
+  const [isLoadingRegistrations, setIsLoadingRegistrations] = useState<boolean>(true);
   const [maxTicketsPerPerson, setMaxTicketsPerPerson] = useState<number>(event.max_tickets_per_person ?? 1);
   const [editingTicket, setEditingTicket] = useState<EventTicketTier | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -119,15 +125,21 @@ export function TicketsTab({ event }: TicketsTabProps) {
         const list = await getEventRegistrations(String(event.id));
         if (isMounted) {
           setRegistrations(list);
+          setIsLoadingRegistrations(false);
         }
 
         unsubscribe = subscribeEventRegistrations(String(event.id), (updatedList) => {
           if (isMounted) {
             setRegistrations(updatedList);
+            setIsLoadingRegistrations(false);
           }
         });
       } catch (err) {
         console.warn("[TicketsTab] Failed to fetch or subscribe to registrations:", err);
+      } finally {
+        if (isMounted) {
+          setIsLoadingRegistrations(false);
+        }
       }
     }
 
@@ -248,6 +260,8 @@ export function TicketsTab({ event }: TicketsTabProps) {
         }
       } catch (err) {
         console.warn("[TicketsTab] Failed to fetch latest event tickets:", err);
+      } finally {
+        setIsLoadingTickets(false);
       }
     }
 
@@ -396,12 +410,20 @@ export function TicketsTab({ event }: TicketsTabProps) {
               <Coins className="size-3.5 text-emerald-600 dark:text-emerald-400" />
               Total Clean Revenue
             </CardDescription>
-            <CardTitle className="font-bold text-2xl text-emerald-600 dark:text-emerald-400">
-              Rp {revenueMetrics.totalNetRevenue.toLocaleString("id-ID")}
-            </CardTitle>
+            {isLoadingRegistrations ? (
+              <Shimmer className="my-1 h-8 w-28" />
+            ) : (
+              <CardTitle className="font-bold text-2xl text-emerald-600 dark:text-emerald-400">
+                Rp {revenueMetrics.totalNetRevenue.toLocaleString("id-ID")}
+              </CardTitle>
+            )}
           </CardHeader>
           <CardContent className="px-4 pt-0 pb-4">
-            <p className="text-[11px] text-muted-foreground">After vouchers & referrals cut</p>
+            {isLoadingRegistrations ? (
+              <Shimmer className="h-3.5 w-32" />
+            ) : (
+              <p className="text-[11px] text-muted-foreground">After vouchers & referrals cut</p>
+            )}
           </CardContent>
         </Card>
 
@@ -412,14 +434,22 @@ export function TicketsTab({ event }: TicketsTabProps) {
               <Receipt className="size-3.5 text-blue-600 dark:text-blue-400" />
               Actual Gross Revenue
             </CardDescription>
-            <CardTitle className="font-bold text-2xl text-foreground">
-              Rp {revenueMetrics.totalGrossRevenue.toLocaleString("id-ID")}
-            </CardTitle>
+            {isLoadingRegistrations ? (
+              <Shimmer className="my-1 h-8 w-28" />
+            ) : (
+              <CardTitle className="font-bold text-2xl text-foreground">
+                Rp {revenueMetrics.totalGrossRevenue.toLocaleString("id-ID")}
+              </CardTitle>
+            )}
           </CardHeader>
           <CardContent className="px-4 pt-0 pb-4">
-            <p className="text-[11px] text-muted-foreground">
-              Face value without discounts ({revenueMetrics.totalTicketsSold} sold)
-            </p>
+            {isLoadingRegistrations ? (
+              <Shimmer className="h-3.5 w-36" />
+            ) : (
+              <p className="text-[11px] text-muted-foreground">
+                Face value without discounts ({revenueMetrics.totalTicketsSold} sold)
+              </p>
+            )}
           </CardContent>
         </Card>
 
@@ -430,14 +460,22 @@ export function TicketsTab({ event }: TicketsTabProps) {
               <Tag className="size-3.5 text-amber-500" />
               Vouchers Redeemed
             </CardDescription>
-            <CardTitle className="font-bold text-2xl text-amber-600 dark:text-amber-400">
-              {revenueMetrics.totalVouchersRedeemed}
-            </CardTitle>
+            {isLoadingRegistrations ? (
+              <Shimmer className="my-1 h-8 w-16" />
+            ) : (
+              <CardTitle className="font-bold text-2xl text-amber-600 dark:text-amber-400">
+                {revenueMetrics.totalVouchersRedeemed}
+              </CardTitle>
+            )}
           </CardHeader>
           <CardContent className="px-4 pt-0 pb-4">
-            <p className="text-[11px] text-muted-foreground">
-              -Rp {revenueMetrics.totalVoucherDiscount.toLocaleString("id-ID")} price cut
-            </p>
+            {isLoadingRegistrations ? (
+              <Shimmer className="h-3.5 w-28" />
+            ) : (
+              <p className="text-[11px] text-muted-foreground">
+                -Rp {revenueMetrics.totalVoucherDiscount.toLocaleString("id-ID")} price cut
+              </p>
+            )}
           </CardContent>
         </Card>
 
@@ -448,14 +486,22 @@ export function TicketsTab({ event }: TicketsTabProps) {
               <Share2 className="size-3.5 text-purple-500" />
               Referrals Redeemed
             </CardDescription>
-            <CardTitle className="font-bold text-2xl text-purple-600 dark:text-purple-400">
-              {revenueMetrics.totalReferralsRedeemed}
-            </CardTitle>
+            {isLoadingRegistrations ? (
+              <Shimmer className="my-1 h-8 w-16" />
+            ) : (
+              <CardTitle className="font-bold text-2xl text-purple-600 dark:text-purple-400">
+                {revenueMetrics.totalReferralsRedeemed}
+              </CardTitle>
+            )}
           </CardHeader>
           <CardContent className="px-4 pt-0 pb-4">
-            <p className="text-[11px] text-muted-foreground">
-              -Rp {revenueMetrics.totalReferralDiscount.toLocaleString("id-ID")} referral cut
-            </p>
+            {isLoadingRegistrations ? (
+              <Shimmer className="h-3.5 w-28" />
+            ) : (
+              <p className="text-[11px] text-muted-foreground">
+                -Rp {revenueMetrics.totalReferralDiscount.toLocaleString("id-ID")} referral cut
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -476,14 +522,43 @@ export function TicketsTab({ event }: TicketsTabProps) {
                 </CardDescription>
               </div>
             </div>
-            <Badge variant="outline" className="font-mono text-xs w-fit">
-              {revenueMetrics.totalTicketsSold} tickets sold across {ticketTiersList.length} tier
-              {ticketTiersList.length === 1 ? "" : "s"}
-            </Badge>
+            {isLoadingRegistrations ? (
+              <Shimmer className="h-5 w-36 rounded-md" />
+            ) : (
+              <Badge variant="outline" className="font-mono text-xs w-fit">
+                {revenueMetrics.totalTicketsSold} tickets sold across {ticketTiersList.length} tier
+                {ticketTiersList.length === 1 ? "" : "s"}
+              </Badge>
+            )}
           </div>
         </CardHeader>
         <CardContent className="p-4 pt-2">
-          {ticketTiersList.length === 0 ? (
+          {isLoadingRegistrations ? (
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {TIER_REVENUE_SKELETON_KEYS.map((key) => (
+                <div key={key} className="rounded-xl border border-border/70 bg-card/60 p-3.5 space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <Shimmer className="h-5 w-28 rounded-md" />
+                    <Shimmer className="h-4 w-14" />
+                  </div>
+                  <div className="space-y-1.5 pt-1">
+                    <div className="flex justify-between">
+                      <Shimmer className="h-3.5 w-20" />
+                      <Shimmer className="h-3.5 w-24" />
+                    </div>
+                    <div className="flex justify-between">
+                      <Shimmer className="h-3.5 w-20" />
+                      <Shimmer className="h-3.5 w-20" />
+                    </div>
+                    <div className="flex justify-between">
+                      <Shimmer className="h-3.5 w-24" />
+                      <Shimmer className="h-3.5 w-16" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : ticketTiersList.length === 0 ? (
             <div className="py-6 text-center text-xs text-muted-foreground">
               No ticket tiers configured for this event.
             </div>
@@ -748,7 +823,44 @@ export function TicketsTab({ event }: TicketsTabProps) {
           )}
 
           {/* Ticket Tier Cards Grid */}
-          {tickets.length === 0 ? (
+          {isLoadingTickets && tickets.length === 0 ? (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {TICKET_TIER_SKELETON_KEYS.map((key) => (
+                <div
+                  key={key}
+                  className="flex flex-col justify-between rounded-xl border bg-card p-4 text-card-foreground shadow-xs"
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <Shimmer className="size-4 rounded" />
+                          <Shimmer className="h-5 w-28" />
+                        </div>
+                        <Shimmer className="h-5 w-20 rounded-full" />
+                      </div>
+                      <Shimmer className="size-8 rounded-md" />
+                    </div>
+                    <div className="space-y-1">
+                      <Shimmer className="h-3.5 w-full" />
+                      <Shimmer className="h-3.5 w-3/4" />
+                    </div>
+                    <div className="rounded-lg border border-border/50 bg-muted/20 p-2.5 space-y-2">
+                      <div className="flex justify-between">
+                        <Shimmer className="h-3 w-16" />
+                        <Shimmer className="h-3 w-12" />
+                      </div>
+                      <Shimmer className="h-2 w-full rounded-full" />
+                    </div>
+                  </div>
+                  <div className="mt-4 flex items-center justify-between border-t border-border/40 pt-3">
+                    <Shimmer className="h-6 w-24" />
+                    <Shimmer className="h-8 w-20 rounded-md" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : tickets.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/80 bg-muted/20 px-6 py-14 text-center">
               <div className="rounded-full bg-primary/10 p-4 text-primary">
                 <Ticket className="size-8" />
