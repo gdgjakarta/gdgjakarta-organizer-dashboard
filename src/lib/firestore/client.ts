@@ -2985,6 +2985,58 @@ export async function getEventVouchers(eventId: string): Promise<EventVoucher[]>
   return [];
 }
 
+export async function syncMissingBundleVouchers(
+  eventId: string,
+  bundleVouchers: EventVoucher[],
+  registrationUpdates?: Array<{ registrationId: string; bundleVouchers: BundleIssuedVoucher[] }>,
+): Promise<void> {
+  if (typeof window === "undefined" || !eventId) return;
+  if (bundleVouchers.length === 0 && (!registrationUpdates || registrationUpdates.length === 0)) return;
+
+  const eventIdStr = String(eventId);
+  const now = new Date().toISOString();
+
+  try {
+    const batch = writeBatch(db);
+    for (const v of bundleVouchers) {
+      const cleanCode = v.code.trim().toUpperCase();
+      const docId = `${eventIdStr}_${cleanCode}`;
+      const docRef = doc(db, "event_vouchers", docId);
+      const voucherDocPayload = sanitizeFirestoreData({
+        ...v,
+        id: v.id || `bndl-vch-${Date.now()}-${cleanCode}`,
+        event_id: eventIdStr,
+        code: cleanCode,
+        discount_type: v.discount_type ?? "percentage",
+        discount_value: Number(v.discount_value) || 100,
+        applies_to: v.applies_to ?? "ticket",
+        status: v.status ?? "active",
+        times_used: Number(v.times_used) || 0,
+        updated_at: v.updated_at ?? now,
+        created_at: v.created_at ?? now,
+      });
+      batch.set(docRef, voucherDocPayload, { merge: true });
+    }
+
+    if (registrationUpdates && registrationUpdates.length > 0) {
+      for (const regUpd of registrationUpdates) {
+        const regRef = doc(db, "event_registrations", regUpd.registrationId);
+        batch.update(
+          regRef,
+          sanitizeFirestoreData({
+            bundle_vouchers: regUpd.bundleVouchers,
+            updated_at: now,
+          }),
+        );
+      }
+    }
+
+    await batch.commit();
+  } catch (err) {
+    console.warn(`[Firestore] Failed to sync missing bundle vouchers for ${eventIdStr}:`, err);
+  }
+}
+
 export async function updateEventVouchers(
   eventId: string,
   vouchers: EventVoucher[],

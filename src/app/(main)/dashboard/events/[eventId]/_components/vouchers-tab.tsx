@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import {
   Calendar,
@@ -9,6 +9,7 @@ import {
   Copy,
   Edit2,
   Eye,
+  Gift,
   Info,
   Layers,
   Loader2,
@@ -22,6 +23,7 @@ import {
   Ticket,
   TicketPercent,
   Trash2,
+  UserCheck,
   Users,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -41,6 +43,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { generateBundleFriendVouchers } from "@/lib/events/bundle-voucher-generator";
 import {
   createVoucherFromTemplate,
   PRESET_VOUCHER_TEMPLATES,
@@ -48,7 +51,13 @@ import {
 } from "@/lib/events/voucher-templates";
 import { formatVoucherDiscountDisplay } from "@/lib/events/voucher-utils";
 import { updateEventReferralConfigAction, updateEventVouchersAction } from "@/lib/firestore/actions";
-import type { EventVoucher, FirestoreEvent, FirestoreRegistration, VoucherStatus } from "@/lib/firestore/types";
+import type {
+  BundleIssuedVoucher,
+  EventVoucher,
+  FirestoreEvent,
+  FirestoreRegistration,
+  VoucherStatus,
+} from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
 import { VoucherDialog } from "./voucher-dialog";
@@ -203,11 +212,184 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
     };
   }, [event.id]);
 
-  // Dynamic redemptions count mapped per voucher, aligned with VoucherRedemptionsDialog
-  const redemptionsCountMap = useMemo(() => {
-    const map = new Map<string, number>();
+  const syncedCodesRef = useRef<Set<string>>(new Set());
 
+  // Merge stored event_vouchers with bundle_vouchers issued on registrations
+  const allVouchers = useMemo(() => {
+    const byCode = new Map<string, EventVoucher>();
     for (const v of vouchers) {
+      if (!v.code) continue;
+      byCode.set(v.code.trim().toUpperCase(), v);
+    }
+
+    const terminalStatuses = new Set(["canceled", "cancelled", "rejected", "refunded", "expired", "failed"]);
+
+    for (const reg of registrations) {
+      if (terminalStatuses.has((reg.status || "").toLowerCase())) continue;
+      if (!Array.isArray(reg.bundle_vouchers) || reg.bundle_vouchers.length === 0) continue;
+
+      const bundlePkg = event.bundles?.find((b) => b.id === reg.bundle_id || b.name === reg.bundle_name);
+      const bundleLabel = reg.bundle_name || bundlePkg?.name || "Ticket Bundle";
+
+      for (const bv of reg.bundle_vouchers) {
+        if (!bv.code) continue;
+        const cleanCode = bv.code.trim().toUpperCase();
+        const existing = byCode.get(cleanCode);
+
+        if (existing) {
+          byCode.set(cleanCode, {
+            ...existing,
+            source_bundle_id: existing.source_bundle_id ?? reg.bundle_id ?? bundlePkg?.id,
+            source_registration_id: existing.source_registration_id ?? reg.id,
+            purchaser_member_id: existing.purchaser_member_id ?? reg.member_id,
+            purchaser_name: existing.purchaser_name ?? reg.member_name,
+            purchaser_email: existing.purchaser_email ?? reg.member_email,
+            redeemed_by_member_id: existing.redeemed_by_member_id ?? bv.redeemed_by_member_id,
+            redeemed_by_name: existing.redeemed_by_name ?? bv.redeemed_by_name,
+            redeemed_by_email: existing.redeemed_by_email ?? bv.redeemed_by_email,
+            redeemed_at: existing.redeemed_at ?? bv.redeemed_at,
+            times_used: Math.max(existing.times_used ?? 0, bv.status === "redeemed" ? 1 : 0),
+          });
+        } else {
+          byCode.set(cleanCode, {
+            id: bv.voucher_id || `bndl-vch-${reg.id}-${cleanCode}`,
+            code: cleanCode,
+            description: `100% Ticket Pass sponsored by ${reg.member_name || "Bundle Purchaser"} (${bundleLabel})`,
+            discount_type: "percentage",
+            discount_value: 100,
+            applies_to: "ticket",
+            usage_limit: 1,
+            times_used: bv.status === "redeemed" ? 1 : 0,
+            min_spend: null,
+            max_discount: null,
+            start_date: reg.registered_at ?? null,
+            end_date: bundlePkg?.sales_end_date ?? event.start_date ?? null,
+            status: "active",
+            source_bundle_id: reg.bundle_id ?? bundlePkg?.id ?? "bundle",
+            source_registration_id: reg.id,
+            purchaser_member_id: reg.member_id,
+            purchaser_name: reg.member_name,
+            purchaser_email: reg.member_email,
+            redeemed_by_member_id: bv.redeemed_by_member_id,
+            redeemed_by_name: bv.redeemed_by_name,
+            redeemed_by_email: bv.redeemed_by_email,
+            redeemed_at: bv.redeemed_at,
+            created_at: reg.registered_at ?? new Date().toISOString(),
+            updated_at: bv.redeemed_at ?? reg.registered_at ?? new Date().toISOString(),
+          });
+        }
+      }
+    }
+
+    return Array.from(byCode.values());
+  }, [vouchers, registrations, event.bundles, event.start_date]);
+
+  // Auto-sync missing bundle vouchers from registrations (and backfill multi-ticket bundle registrations missing bundle_vouchers)
+  useEffect(() => {
+    if (!event.id || registrations.length === 0) return;
+
+    const existingStoredCodes = new Set(vouchers.map((v) => v.code.trim().toUpperCase()));
+    const existingRegIdsWithVouchers = new Set(
+      vouchers.map((v) => v.source_registration_id).filter((id): id is string => Boolean(id)),
+    );
+    const terminalStatuses = new Set(["canceled", "cancelled", "rejected", "refunded", "expired", "failed"]);
+
+    const toSyncVouchers: EventVoucher[] = [];
+    const toUpdateRegistrations: Array<{ registrationId: string; bundleVouchers: BundleIssuedVoucher[] }> = [];
+
+    for (const reg of registrations) {
+      if (terminalStatuses.has((reg.status || "").toLowerCase())) continue;
+
+      if (Array.isArray(reg.bundle_vouchers) && reg.bundle_vouchers.length > 0) {
+        const bundlePkg = event.bundles?.find((b) => b.id === reg.bundle_id || b.name === reg.bundle_name);
+        const bundleLabel = reg.bundle_name || bundlePkg?.name || "Ticket Bundle";
+
+        for (const bv of reg.bundle_vouchers) {
+          if (!bv.code) continue;
+          const cleanCode = bv.code.trim().toUpperCase();
+          if (!existingStoredCodes.has(cleanCode) && !syncedCodesRef.current.has(cleanCode)) {
+            syncedCodesRef.current.add(cleanCode);
+            toSyncVouchers.push({
+              id: bv.voucher_id || `bndl-vch-${reg.id}-${cleanCode}`,
+              code: cleanCode,
+              description: `100% Ticket Pass sponsored by ${reg.member_name || "Bundle Purchaser"} (${bundleLabel})`,
+              discount_type: "percentage",
+              discount_value: 100,
+              applies_to: "ticket",
+              usage_limit: 1,
+              times_used: bv.status === "redeemed" ? 1 : 0,
+              min_spend: null,
+              max_discount: null,
+              start_date: reg.registered_at ?? null,
+              end_date: bundlePkg?.sales_end_date ?? event.start_date ?? null,
+              status: "active",
+              source_bundle_id: reg.bundle_id ?? bundlePkg?.id ?? "bundle",
+              source_registration_id: reg.id,
+              purchaser_member_id: reg.member_id,
+              purchaser_name: reg.member_name,
+              purchaser_email: reg.member_email,
+              redeemed_by_member_id: bv.redeemed_by_member_id,
+              redeemed_by_name: bv.redeemed_by_name,
+              redeemed_by_email: bv.redeemed_by_email,
+              redeemed_at: bv.redeemed_at,
+              created_at: reg.registered_at ?? new Date().toISOString(),
+              updated_at: bv.redeemed_at ?? reg.registered_at ?? new Date().toISOString(),
+            });
+          }
+        }
+      } else if (
+        (reg.bundle_id || reg.bundle_name) &&
+        !existingRegIdsWithVouchers.has(reg.id) &&
+        !syncedCodesRef.current.has(`reg_${reg.id}`)
+      ) {
+        const matchingBundle = event.bundles?.find(
+          (b) =>
+            (reg.bundle_id && b.id === reg.bundle_id) ||
+            (reg.bundle_name && b.name.toLowerCase() === reg.bundle_name.toLowerCase()),
+        );
+        if (matchingBundle && (matchingBundle.ticket_quantity ?? 1) > 1 && matchingBundle.generate_vouchers !== false) {
+          syncedCodesRef.current.add(`reg_${reg.id}`);
+          const matchingTicketTier = event.tickets?.find((t) => t.id === matchingBundle.ticket_id);
+          const generated = generateBundleFriendVouchers({
+            bundle: matchingBundle,
+            buyerRegistrationId: reg.id,
+            buyerMemberId: reg.member_id,
+            buyerName: reg.member_name || "Bundle Purchaser",
+            buyerEmail: reg.member_email,
+            ticketTier: matchingTicketTier,
+            eventStartDate: event.start_date,
+          });
+          if (generated.newEventVouchers.length > 0) {
+            for (const fv of generated.newEventVouchers) {
+              syncedCodesRef.current.add(fv.code.trim().toUpperCase());
+              toSyncVouchers.push(fv);
+            }
+            toUpdateRegistrations.push({
+              registrationId: reg.id,
+              bundleVouchers: generated.registrationVouchers,
+            });
+          }
+        }
+      }
+    }
+
+    if (toSyncVouchers.length > 0 || toUpdateRegistrations.length > 0) {
+      void (async () => {
+        try {
+          const { syncMissingBundleVouchers } = await import("@/lib/firestore/client");
+          await syncMissingBundleVouchers(String(event.id), toSyncVouchers, toUpdateRegistrations);
+        } catch (err) {
+          console.warn("[VouchersTab] Background bundle voucher sync error:", err);
+        }
+      })();
+    }
+  }, [event.id, event.bundles, event.tickets, event.start_date, registrations, vouchers]);
+
+  // Matched registrations per voucher ID
+  const redeemedRegistrationsMap = useMemo(() => {
+    const map = new Map<string, FirestoreRegistration[]>();
+
+    for (const v of allVouchers) {
       const normCode = v.code.trim().toUpperCase();
       const matched = registrations.filter((reg) => {
         const regCode = reg.voucher_code ? reg.voucher_code.trim().toUpperCase() : "";
@@ -215,7 +397,18 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
         const matchesId = Boolean(reg.voucher_id && reg.voucher_id === v.id);
         return matchesCode || matchesId;
       });
+      map.set(v.id, matched);
+    }
 
+    return map;
+  }, [allVouchers, registrations]);
+
+  // Dynamic redemptions count mapped per voucher, aligned with VoucherRedemptionsDialog
+  const redemptionsCountMap = useMemo(() => {
+    const map = new Map<string, number>();
+
+    for (const v of allVouchers) {
+      const matched = redeemedRegistrationsMap.get(v.id) ?? [];
       let count = matched.length;
       // Fallback: If no registrations matched but the voucher document has direct redemption metadata
       if (count === 0 && (v.redeemed_by_name || v.redeemed_by_email)) {
@@ -227,40 +420,59 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
     }
 
     return map;
-  }, [vouchers, registrations]);
+  }, [allVouchers, redeemedRegistrationsMap]);
 
   // Summary Metrics
   const metrics = useMemo(() => {
-    const total = vouchers.length;
-    const active = vouchers.filter((v) => v.status === "active").length;
-    const totalRedeemed = vouchers.reduce((sum, v) => sum + (redemptionsCountMap.get(v.id) ?? v.times_used ?? 0), 0);
-    const ticketVouchers = vouchers.filter((v) => v.applies_to === "ticket" || v.applies_to === "all").length;
-    const merchVouchers = vouchers.filter((v) => v.applies_to === "merchandise" || v.applies_to === "all").length;
+    const total = allVouchers.length;
+    const active = allVouchers.filter((v) => v.status === "active").length;
+    const totalRedeemed = allVouchers.reduce((sum, v) => sum + (redemptionsCountMap.get(v.id) ?? v.times_used ?? 0), 0);
+    const ticketVouchers = allVouchers.filter((v) => v.applies_to === "ticket" || v.applies_to === "all").length;
+    const merchVouchers = allVouchers.filter((v) => v.applies_to === "merchandise" || v.applies_to === "all").length;
+    const bundleVouchersCount = allVouchers.filter((v) =>
+      Boolean(v.source_bundle_id || v.purchaser_name || v.code.toUpperCase().startsWith("BNDL-")),
+    ).length;
 
-    return { total, active, totalRedeemed, ticketVouchers, merchVouchers };
-  }, [vouchers, redemptionsCountMap]);
+    return { total, active, totalRedeemed, ticketVouchers, merchVouchers, bundleVouchersCount };
+  }, [allVouchers, redemptionsCountMap]);
 
   // Filtered List
   const filteredVouchers = useMemo(() => {
-    return vouchers.filter((v) => {
+    return allVouchers.filter((v) => {
+      const isBundleVoucher = Boolean(
+        v.source_bundle_id || v.purchaser_name || v.code.toUpperCase().startsWith("BNDL-"),
+      );
+
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const matchesCode = v.code.toLowerCase().includes(q);
         const matchesDesc = (v.description || "").toLowerCase().includes(q);
-        if (!matchesCode && !matchesDesc) return false;
+        const matchesPurchaser =
+          (v.purchaser_name || "").toLowerCase().includes(q) || (v.purchaser_email || "").toLowerCase().includes(q);
+        const matchesRedeemer =
+          (v.redeemed_by_name || "").toLowerCase().includes(q) ||
+          (v.redeemed_by_email || "").toLowerCase().includes(q) ||
+          (redeemedRegistrationsMap.get(v.id) ?? []).some(
+            (r) => (r.member_name || "").toLowerCase().includes(q) || (r.member_email || "").toLowerCase().includes(q),
+          );
+        if (!matchesCode && !matchesDesc && !matchesPurchaser && !matchesRedeemer) return false;
       }
 
       if (statusFilter !== "all" && v.status !== statusFilter) {
         return false;
       }
 
-      if (targetFilter !== "all" && v.applies_to !== targetFilter) {
+      if (targetFilter === "bundle") {
+        if (!isBundleVoucher) return false;
+      } else if (targetFilter === "promo") {
+        if (isBundleVoucher) return false;
+      } else if (targetFilter !== "all" && v.applies_to !== targetFilter) {
         return false;
       }
 
       return true;
     });
-  }, [vouchers, searchQuery, statusFilter, targetFilter]);
+  }, [allVouchers, redeemedRegistrationsMap, searchQuery, statusFilter, targetFilter]);
 
   const handleCreateNew = () => {
     setEditingVoucher(null);
@@ -296,16 +508,24 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
   };
 
   const handleDelete = (id: string, code: string) => {
-    setVouchers((prev) => prev.filter((v) => v.id !== id));
+    setVouchers((prev) => prev.filter((v) => v.id !== id && v.code.toUpperCase() !== code.toUpperCase()));
     setIsDirty(true);
     toast.success(`Removed voucher "${code}".`);
   };
 
   const handleToggleStatus = (id: string, currentStatus: VoucherStatus) => {
     const nextStatus: VoucherStatus = currentStatus === "active" ? "inactive" : "active";
-    setVouchers((prev) =>
-      prev.map((v) => (v.id === id ? { ...v, status: nextStatus, updated_at: new Date().toISOString() } : v)),
-    );
+    setVouchers((prev) => {
+      const exists = prev.some((v) => v.id === id);
+      if (exists) {
+        return prev.map((v) => (v.id === id ? { ...v, status: nextStatus, updated_at: new Date().toISOString() } : v));
+      }
+      const target = allVouchers.find((v) => v.id === id);
+      if (target) {
+        return [...prev, { ...target, status: nextStatus, updated_at: new Date().toISOString() }];
+      }
+      return prev;
+    });
     setIsDirty(true);
     toast.info(`Voucher status updated to ${nextStatus}. Remember to save changes.`);
   };
@@ -319,7 +539,9 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
 
   const handleSaveVoucher = (savedVoucher: EventVoucher) => {
     setVouchers((prev) => {
-      const idx = prev.findIndex((v) => v.id === savedVoucher.id);
+      const idx = prev.findIndex(
+        (v) => v.id === savedVoucher.id || v.code.toUpperCase() === savedVoucher.code.toUpperCase(),
+      );
       if (idx >= 0) {
         const next = [...prev];
         next[idx] = savedVoucher;
@@ -341,7 +563,7 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
   const handleSaveToFirestore = () => {
     startTransition(async () => {
       try {
-        const syncedVouchers = vouchers.map((v) => {
+        const syncedVouchers = allVouchers.map((v) => {
           const liveCount = redemptionsCountMap.get(v.id) ?? v.times_used ?? 0;
           return {
             ...v,
@@ -393,7 +615,9 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
             <CardTitle className="font-bold text-2xl">{metrics.total}</CardTitle>
           </CardHeader>
           <CardContent className="px-4 pt-0 pb-4">
-            <p className="text-[11px] text-muted-foreground">{metrics.active} active vouchers</p>
+            <p className="text-[11px] text-muted-foreground">
+              {metrics.active} active{metrics.bundleVouchersCount > 0 ? ` • ${metrics.bundleVouchersCount} bundle` : ""}
+            </p>
           </CardContent>
         </Card>
 
@@ -607,7 +831,7 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
             <Input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search code or description..."
+              placeholder="Search code, buyer, or redeemer..."
               className="h-9 pl-8 text-xs"
             />
           </div>
@@ -624,11 +848,13 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
           </Select>
 
           <Select value={targetFilter} onValueChange={setTargetFilter}>
-            <SelectTrigger className="h-9 w-[130px] text-xs">
+            <SelectTrigger className="h-9 w-[150px] text-xs">
               <SelectValue placeholder="Scope" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Targets</SelectItem>
+              <SelectItem value="bundle">Bundle Vouchers</SelectItem>
+              <SelectItem value="promo">Promo Vouchers</SelectItem>
               <SelectItem value="ticket">Tickets Only</SelectItem>
               <SelectItem value="merchandise">Merch Only</SelectItem>
             </SelectContent>
@@ -692,6 +918,14 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
             const isPercentage = v.discount_type === "percentage";
             const discountDisplay = formatVoucherDiscountDisplay(v);
             const actualRedeemed = redemptionsCountMap.get(v.id) ?? v.times_used ?? 0;
+            const matchedRedemptions = redeemedRegistrationsMap.get(v.id) ?? [];
+            const isBundleVoucher = Boolean(
+              v.source_bundle_id || v.purchaser_name || v.code.toUpperCase().startsWith("BNDL-"),
+            );
+            const primaryRedeemer = matchedRedemptions[0];
+            const redeemerName = primaryRedeemer?.member_name || v.redeemed_by_name;
+            const redeemerEmail = primaryRedeemer?.member_email || v.redeemed_by_email;
+            const redeemedAt = primaryRedeemer?.registered_at || v.redeemed_at;
             const usagePercent =
               v.usage_limit && v.usage_limit > 0
                 ? Math.min(100, Math.round((actualRedeemed / v.usage_limit) * 100))
@@ -703,6 +937,7 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
                 className={cn(
                   "relative flex flex-col justify-between overflow-hidden shadow-xs transition-all duration-200",
                   v.status === "inactive" && "border-dashed bg-muted/20 opacity-75",
+                  isBundleVoucher && "border-primary/25",
                 )}
               >
                 <CardHeader className="space-y-2.5 p-4 pb-3">
@@ -747,6 +982,15 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
                             </span>
                           )}
                         </Badge>
+
+                        {isBundleVoucher && (
+                          <Badge
+                            variant="outline"
+                            className="gap-1 border-purple-500/30 bg-purple-500/10 font-medium text-[10px] text-purple-700 dark:text-purple-300"
+                          >
+                            <Gift className="size-2.5" /> Bundle Pass
+                          </Badge>
+                        )}
                       </div>
                     </div>
 
@@ -789,6 +1033,48 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
 
                   {v.description && (
                     <p className="line-clamp-2 text-muted-foreground text-xs leading-relaxed">{v.description}</p>
+                  )}
+
+                  {/* Bundle Buyer & Redemption Attribution */}
+                  {isBundleVoucher && (
+                    <div className="space-y-1.5 rounded-lg border border-border/60 bg-muted/30 p-2.5 text-[11px]">
+                      {v.purchaser_name && (
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="shrink-0 text-muted-foreground">Bundle Buyer:</span>
+                          <span className="truncate text-right font-semibold text-foreground" title={v.purchaser_email}>
+                            {v.purchaser_name}
+                            {v.purchaser_email ? (
+                              <span className="block font-normal text-[10px] text-muted-foreground">
+                                {v.purchaser_email}
+                              </span>
+                            ) : null}
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex items-start justify-between gap-2 border-border/50 border-t pt-1.5">
+                        <span className="shrink-0 text-muted-foreground">Redemption:</span>
+                        {actualRedeemed > 0 && redeemerName ? (
+                          <button
+                            type="button"
+                            onClick={() => handleViewRedemptions(v)}
+                            className="truncate text-right font-semibold text-emerald-700 hover:underline dark:text-emerald-400"
+                          >
+                            <span className="inline-flex items-center gap-1">
+                              <UserCheck className="size-3 shrink-0" />
+                              {redeemerName}
+                            </span>
+                            {redeemerEmail && (
+                              <span className="block font-normal text-[10px] text-muted-foreground">
+                                {redeemerEmail}
+                                {redeemedAt ? ` • ${new Date(redeemedAt).toLocaleDateString("id-ID")}` : ""}
+                              </span>
+                            )}
+                          </button>
+                        ) : (
+                          <span className="font-medium text-amber-600 dark:text-amber-400">Available (Unclaimed)</span>
+                        )}
+                      </div>
+                    </div>
                   )}
                 </CardHeader>
 

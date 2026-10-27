@@ -1156,28 +1156,80 @@ export function ApplicantDetailDialog({
 
               {/* Bundling Package Details if registered via bundle */}
               {Boolean(registration.bundle_name) && (
-                <div className="flex items-center justify-between rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-xs">
-                  <div className="flex min-w-0 items-center gap-1.5">
-                    <PackageCheck className="size-3.5 shrink-0 text-primary" />
-                    <span className="shrink-0 font-medium text-[11px] text-muted-foreground">Package:</span>
-                    <span className="truncate font-semibold text-[11px] text-foreground">
-                      {registration.bundle_name}
-                    </span>
+                <div className="space-y-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <PackageCheck className="size-3.5 shrink-0 text-primary" />
+                      <span className="shrink-0 font-medium text-[11px] text-muted-foreground">Package:</span>
+                      <span className="truncate font-semibold text-[11px] text-foreground">
+                        {registration.bundle_name}
+                      </span>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className="shrink-0 border-primary/30 bg-primary/10 font-semibold text-[10px] text-primary"
+                    >
+                      {(() => {
+                        if (registration.bundle_price === undefined || registration.bundle_price === null) {
+                          return "Combo Package";
+                        }
+                        if (registration.bundle_price === 0) {
+                          return "Free Bundle";
+                        }
+                        return `Rp ${registration.bundle_price.toLocaleString("id-ID")}`;
+                      })()}
+                    </Badge>
                   </div>
-                  <Badge
-                    variant="outline"
-                    className="shrink-0 border-primary/30 bg-primary/10 font-semibold text-[10px] text-primary"
-                  >
-                    {(() => {
-                      if (registration.bundle_price === undefined || registration.bundle_price === null) {
-                        return "Combo Package";
-                      }
-                      if (registration.bundle_price === 0) {
-                        return "Free Bundle";
-                      }
-                      return `Rp ${registration.bundle_price.toLocaleString("id-ID")}`;
-                    })()}
-                  </Badge>
+
+                  {/* Generated Friend Vouchers from Bundle */}
+                  {Array.isArray(registration.bundle_vouchers) && registration.bundle_vouchers.length > 0 && (
+                    <div className="space-y-1.5 border-primary/20 border-t pt-2">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="font-medium text-muted-foreground">
+                          Generated Friend Vouchers ({registration.bundle_vouchers.length}):
+                        </span>
+                        <span className="font-semibold text-[10px] text-primary">
+                          {registration.bundle_vouchers.filter((v) => v.status === "redeemed").length} /{" "}
+                          {registration.bundle_vouchers.length} claimed
+                        </span>
+                      </div>
+                      <div className="space-y-1">
+                        {registration.bundle_vouchers.map((bv, idx) => {
+                          const isRedeemed = bv.status === "redeemed";
+                          return (
+                            <div
+                              key={bv.code || idx}
+                              className="flex flex-wrap items-center justify-between gap-2 rounded border border-border/50 bg-background/70 px-2 py-1 text-[11px]"
+                            >
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-bold font-mono text-foreground">{bv.code}</span>
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "px-1 py-0 text-[9px]",
+                                    isRedeemed
+                                      ? "border-purple-500/30 bg-purple-500/10 text-purple-700 dark:text-purple-300"
+                                      : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+                                  )}
+                                >
+                                  {isRedeemed ? "Claimed" : "Available"}
+                                </Badge>
+                              </div>
+                              <div className="text-[10px] text-muted-foreground">
+                                {isRedeemed ? (
+                                  <span className="font-medium text-foreground">
+                                    by {bv.redeemed_by_name || bv.redeemed_by_email || "Attendee"}
+                                  </span>
+                                ) : (
+                                  <span>Unclaimed</span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

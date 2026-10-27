@@ -84,6 +84,7 @@ service cloud.firestore {
     //   - bundle_id: string|int|float|null (optional, <= 128 chars if string)
     //   - bundle_name: string|null (optional, <= 200 chars)
     //   - bundle_price: int|float|null (optional, >= 0)
+    //   - bundle_vouchers: list|null (optional, <= 50 items) - Issued friend vouchers for multi-ticket bundle purchases
     //   - selected_merchandise: list|null (optional, <= 50 items) - Selected merchandise orders
     //   - session_id: string|int|float|null (optional, <= 128 chars if string) - Selected session identifier
     //   - session_title: string|null (optional, <= 200 chars) - Selected session title
@@ -278,7 +279,8 @@ service cloud.firestore {
     // Permissions:
     //   - get: Public / anyone (`if true;`) to allow single voucher validation by exact doc ID / code during checkout without exposing other codes.
     //   - list: Restricted strictly to team members (`hasTeamAccess()`) to prevent scraping secret promo & sponsor vouchers.
-    //   - create, delete: Team members only (`hasTeamAccess()`).
+    //   - create: Team members (`hasTeamAccess()`) or authenticated bundle purchasers issuing single-use 100% friend ticket vouchers (`purchaser_member_id == request.auth.uid`).
+    //   - delete: Team members only (`hasTeamAccess()`).
     //   - update: Team members (`hasTeamAccess()`) or authenticated users updating redemption fields (`times_used`, `redeemed_by_*`, `redeemed_at`, `updated_at`).
     //
     // Collection: sync_metadata
@@ -1323,6 +1325,13 @@ service cloud.firestore {
             (registrationId.size() >= request.auth.uid.size() && registrationId[registrationId.size() - request.auth.uid.size():] == request.auth.uid)
           ) &&
           isValidMemberReRegistration(resource.data, request.resource.data)
+        ) ||
+        (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['bundle_vouchers', 'updated_at']) &&
+          'bundle_vouchers' in resource.data &&
+          resource.data.bundle_vouchers is list &&
+          request.resource.data.bundle_vouchers is list &&
+          request.resource.data.bundle_vouchers.size() == resource.data.bundle_vouchers.size()
         )
       );
 
@@ -1387,8 +1396,27 @@ service cloud.firestore {
       // CRITICAL: Public and regular users MUST NOT be allowed to list or query all vouchers to prevent scraping secret promo codes.
       allow list: if hasTeamAccess();
 
-      // Create & Delete: Team members only (Organizers & Staff), validating schema on create.
-      allow create: if hasTeamAccess() && isValidEventVoucher(request.resource.data);
+      // Create: Team members (Organizers & Staff) or authenticated bundle purchasers issuing single-use 100% friend ticket vouchers.
+      allow create: if isValidEventVoucher(request.resource.data) && (
+        hasTeamAccess() ||
+        (
+          isAuthenticated() &&
+          'purchaser_member_id' in request.resource.data &&
+          request.resource.data.purchaser_member_id == request.auth.uid &&
+          'source_bundle_id' in request.resource.data &&
+          request.resource.data.source_bundle_id is string &&
+          request.resource.data.source_bundle_id.size() > 0 &&
+          'source_registration_id' in request.resource.data &&
+          request.resource.data.source_registration_id is string &&
+          request.resource.data.source_registration_id.size() > 0 &&
+          request.resource.data.discount_type == 'percentage' &&
+          request.resource.data.discount_value == 100 &&
+          request.resource.data.applies_to == 'ticket' &&
+          request.resource.data.usage_limit == 1 &&
+          request.resource.data.times_used == 0
+        )
+      );
+      // Delete: Team members only (Organizers & Staff).
       allow delete: if hasTeamAccess();
 
       // Update: Team members (full voucher editing) or authenticated users redeeming a voucher upon registration checkout.
