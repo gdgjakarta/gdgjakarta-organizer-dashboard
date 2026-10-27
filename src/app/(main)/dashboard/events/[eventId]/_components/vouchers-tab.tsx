@@ -237,10 +237,10 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
       byCode.set(v.code.trim().toUpperCase(), v);
     }
 
-    const terminalStatuses = new Set(["canceled", "cancelled", "rejected", "refunded", "expired", "failed"]);
+    const confirmedStatuses = new Set(["approved", "paid_and_registered", "registered"]);
 
     for (const reg of registrations) {
-      if (terminalStatuses.has((reg.status || "").toLowerCase())) continue;
+      if (!confirmedStatuses.has((reg.status || "").toLowerCase())) continue;
       if (!Array.isArray(reg.bundle_vouchers) || reg.bundle_vouchers.length === 0) continue;
 
       const bundlePkg = event.bundles?.find((b) => b.id === reg.bundle_id || b.name === reg.bundle_name);
@@ -307,13 +307,13 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
     const existingRegIdsWithVouchers = new Set(
       vouchers.map((v) => v.source_registration_id).filter((id): id is string => Boolean(id)),
     );
-    const terminalStatuses = new Set(["canceled", "cancelled", "rejected", "refunded", "expired", "failed"]);
+    const confirmedStatuses = new Set(["approved", "paid_and_registered", "registered"]);
 
     const toSyncVouchers: EventVoucher[] = [];
     const toUpdateRegistrations: Array<{ registrationId: string; bundleVouchers: BundleIssuedVoucher[] }> = [];
 
     for (const reg of registrations) {
-      if (terminalStatuses.has((reg.status || "").toLowerCase())) continue;
+      if (!confirmedStatuses.has((reg.status || "").toLowerCase())) continue;
 
       if (Array.isArray(reg.bundle_vouchers) && reg.bundle_vouchers.length > 0) {
         const bundlePkg = event.bundles?.find((b) => b.id === reg.bundle_id || b.name === reg.bundle_name);

@@ -1821,10 +1821,15 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
     registration.member_avatar && registration.member_avatar.length <= 500000 ? registration.member_avatar : undefined;
 
   // Generate friend vouchers if this registration includes a bundle with multiple tickets
+  // ONLY if the registration is immediately confirmed (e.g. free event/bundle where status is approved/registered).
+  // For paid bundles, vouchers are generated only when status becomes paid_and_registered upon confirmed payment.
   let issuedBundleVouchers: BundleIssuedVoucher[] | undefined;
   let newFriendVouchers: EventVoucher[] = [];
 
-  if (registration.bundle_id && eventData?.bundles) {
+  const isImmediatelyConfirmed =
+    resolvedStatus === "approved" || resolvedStatus === "paid_and_registered" || resolvedStatus === "registered";
+
+  if (isImmediatelyConfirmed && registration.bundle_id && eventData?.bundles) {
     const matchingBundle = eventData.bundles.find((b) => b.id === registration.bundle_id);
     if (matchingBundle && (matchingBundle.ticket_quantity ?? 1) > 1 && matchingBundle.generate_vouchers !== false) {
       const matchingTicketTier = eventData.tickets?.find((t) => t.id === matchingBundle.ticket_id);
@@ -1862,7 +1867,7 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
           referral_discount_amount: undefined,
         }
       : {}),
-    bundle_vouchers: issuedBundleVouchers ?? registration.bundle_vouchers,
+    bundle_vouchers: issuedBundleVouchers ?? (isImmediatelyConfirmed ? registration.bundle_vouchers : undefined),
     member_id: effectiveMemberId,
     event_picture_url: safePictureUrl,
     event_banner_url: safeBannerUrl,
@@ -2385,11 +2390,13 @@ export async function updateRegistrationStatus(
   let memberEmail = "";
   let eventTitle = "";
   let existingLogs: RegistrationStatusLog[] = [];
+  let regData: FirestoreRegistration | null = null;
 
   try {
     const snap = await getDoc(docRef);
     if (snap.exists()) {
       const data = snap.data() as FirestoreRegistration;
+      regData = data;
       previousStatus = data.status;
       memberName = data.member_name || "";
       memberEmail = data.member_email || "";
@@ -2435,6 +2442,46 @@ export async function updateRegistrationStatus(
 
   const updatedLogs = hasSameDuplicateLog ? dedupedLogs : [...dedupedLogs, logEntry];
 
+  const isNowConfirmed = status === "approved" || status === "paid_and_registered" || status === "registered";
+  const wasConfirmed =
+    previousStatus === "approved" || previousStatus === "paid_and_registered" || previousStatus === "registered";
+
+  let issuedBundleVouchers: BundleIssuedVoucher[] | undefined;
+  let newFriendVouchers: EventVoucher[] = [];
+
+  if (
+    isNowConfirmed &&
+    !wasConfirmed &&
+    regData?.bundle_id &&
+    (!Array.isArray(regData.bundle_vouchers) || regData.bundle_vouchers.length === 0)
+  ) {
+    try {
+      const eventSnap = await getDoc(doc(db, "events", eventId));
+      if (eventSnap.exists()) {
+        const evData = eventSnap.data() as FirestoreEvent;
+        const matchingBundle = evData.bundles?.find(
+          (b) => b.id === regData?.bundle_id || b.name === regData?.bundle_name,
+        );
+        if (matchingBundle && (matchingBundle.ticket_quantity ?? 1) > 1 && matchingBundle.generate_vouchers !== false) {
+          const matchingTicketTier = evData.tickets?.find((t) => t.id === matchingBundle.ticket_id);
+          const generated = generateBundleFriendVouchers({
+            bundle: matchingBundle,
+            buyerRegistrationId: registrationId,
+            buyerMemberId: regData.member_id,
+            buyerName: regData.member_name || "Bundle Purchaser",
+            buyerEmail: regData.member_email || "",
+            ticketTier: matchingTicketTier,
+            eventStartDate: evData.start_date,
+          });
+          issuedBundleVouchers = generated.registrationVouchers;
+          newFriendVouchers = generated.newEventVouchers;
+        }
+      }
+    } catch (bundleErr) {
+      console.warn("[updateRegistrationStatus] Failed to generate bundle vouchers on approval:", bundleErr);
+    }
+  }
+
   const isPending = status === "pending";
 
   const updatePayload = sanitizeFirestoreData<Record<string, unknown>>({
@@ -2456,6 +2503,7 @@ export async function updateRegistrationStatus(
               }
             : {}),
         }),
+    ...(issuedBundleVouchers ? { bundle_vouchers: issuedBundleVouchers } : {}),
     ...(notes !== undefined ? { notes } : {}),
     ...(extraFields ? extraFields : {}),
     ...(extraFields?.payment_invoice_number
@@ -2467,6 +2515,24 @@ export async function updateRegistrationStatus(
   });
 
   await updateDoc(docRef, updatePayload);
+
+  if (newFriendVouchers.length > 0) {
+    try {
+      const batch = writeBatch(db);
+      for (const fv of newFriendVouchers) {
+        const fvRef = doc(db, "event_vouchers", `${eventId}_${fv.code.trim().toUpperCase()}`);
+        batch.set(fvRef, {
+          ...fv,
+          event_id: eventId,
+          created_at: now,
+          updated_at: now,
+        });
+      }
+      await batch.commit();
+    } catch (fErr) {
+      console.warn("[updateRegistrationStatus] Failed saving bundle vouchers to event_vouchers:", fErr);
+    }
+  }
 
   // Dedicated audit_logs collection entry (skip if already in target status with duplicate log)
   if (!hasSameDuplicateLog) {

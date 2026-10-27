@@ -2,8 +2,10 @@ import { cache } from "react";
 
 import { DEFAULT_MAINTENANCE_CONFIG, type MaintenanceConfig } from "@/config/maintenance-config";
 import { buildApprovedAttendeePayload } from "@/lib/events/approved-attendee-webhook";
+import { generateBundleFriendVouchers } from "@/lib/events/bundle-voucher-generator";
 import { normalizeEventDoc, normalizeRegistrationDoc } from "@/lib/firestore/normalization";
 import type {
+  BundleIssuedVoucher,
   FirestoreEvent,
   FirestoreRegistration,
   RefundRequest,
@@ -564,8 +566,65 @@ export async function updateRegistrationFromPayment(input: UpdateRegistrationFro
       const evData = await getFirestoreEventByIdServer(eventIdStr);
       const currentApproved = typeof evData?.total_approved === "number" ? evData.total_approved : 0;
 
-      if (regData.bundle_id && Array.isArray(regData.bundle_vouchers) && regData.bundle_vouchers.length > 0) {
-        for (const bv of regData.bundle_vouchers) {
+      // Handle bundle friend voucher generation upon confirmed payment/approval
+      let vouchersToIssue: BundleIssuedVoucher[] = Array.isArray(regData.bundle_vouchers)
+        ? [...regData.bundle_vouchers]
+        : [];
+
+      if (regData.bundle_id && evData?.bundles) {
+        const matchingBundle = evData.bundles.find((b) => b.id === regData.bundle_id || b.name === regData.bundle_name);
+        if (matchingBundle && (matchingBundle.ticket_quantity ?? 1) > 1 && matchingBundle.generate_vouchers !== false) {
+          // If vouchers were not generated during initial registration (e.g. waiting_for_payment), generate now
+          if (vouchersToIssue.length === 0) {
+            const matchingTicketTier = evData.tickets?.find((t) => t.id === matchingBundle.ticket_id);
+            const generated = generateBundleFriendVouchers({
+              bundle: matchingBundle,
+              buyerRegistrationId: targetDoc.id,
+              buyerMemberId: regData.member_id,
+              buyerName: regData.member_name || "Bundle Purchaser",
+              buyerEmail: regData.member_email,
+              ticketTier: matchingTicketTier,
+              eventStartDate: evData.start_date,
+            });
+
+            vouchersToIssue = generated.registrationVouchers;
+
+            // Persist the generated bundle vouchers on the purchaser's registration doc
+            await patchFirestoreDoc(
+              "event_registrations",
+              targetDoc.id,
+              {
+                bundle_vouchers: generated.registrationVouchers,
+                updated_at: now,
+              },
+              true,
+              token,
+            );
+
+            // Persist new friend vouchers to event_vouchers collection
+            for (const fv of generated.newEventVouchers) {
+              const cleanCode = fv.code.trim().toUpperCase();
+              const voucherDocId = `${eventIdStr}_${cleanCode}`;
+              await patchFirestoreDoc(
+                "event_vouchers",
+                voucherDocId,
+                fv as unknown as Record<string, unknown>,
+                true,
+                token,
+              );
+            }
+          }
+        }
+      }
+
+      // If vouchers already existed on regData, ensure they are synced to event_vouchers
+      if (
+        regData.bundle_id &&
+        vouchersToIssue.length > 0 &&
+        Array.isArray(regData.bundle_vouchers) &&
+        regData.bundle_vouchers.length > 0
+      ) {
+        for (const bv of vouchersToIssue) {
           const cleanCode = bv.code.trim().toUpperCase();
           const voucherDocId = `${eventIdStr}_${cleanCode}`;
           const friendVoucherPayload = {

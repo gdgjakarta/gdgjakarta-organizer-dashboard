@@ -6,7 +6,7 @@ import {
   validateVoucherForCart,
 } from "@/lib/events/voucher-utils";
 import type { EventVoucher, VoucherStatus } from "@/lib/firestore/types";
-import { getFirestoreEventByIdServer } from "@/server/firestore-admin";
+import { getFirestoreDoc, getFirestoreEventByIdServer } from "@/server/firestore-admin";
 
 const FIREBASE_PROJECT_ID = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "gdgjakarta-app";
 function getFirebaseApiKey(): string {
@@ -157,7 +157,27 @@ export async function validateVoucherAction(params: ValidateVoucherActionParams)
     };
   }
 
-  // 3. Validate against cart rules (status, dates, limits, min_spend, applies_to)
+  // 3. If voucher was issued from a bundle purchase, verify that the purchaser's registration is confirmed/paid
+  if (matchedVoucher.source_registration_id) {
+    try {
+      const parentReg = await getFirestoreDoc("event_registrations", matchedVoucher.source_registration_id);
+      if (parentReg) {
+        const parentStatus = (parentReg.status as string | undefined)?.toLowerCase();
+        const isParentConfirmed =
+          parentStatus === "paid_and_registered" || parentStatus === "approved" || parentStatus === "registered";
+        if (!isParentConfirmed) {
+          return {
+            isValid: false,
+            error: "This voucher is inactive because the original bundle package payment has not been completed.",
+          };
+        }
+      }
+    } catch (parentErr) {
+      console.warn("[Voucher Action] Failed to check parent bundle registration status:", parentErr);
+    }
+  }
+
+  // 4. Validate against cart rules (status, dates, limits, min_spend, applies_to)
   const cartContext: VoucherCartContext = {
     ticketPrice,
     merchandiseTotal,

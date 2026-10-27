@@ -762,18 +762,20 @@ export function EventCardItem({
                 </Button>
               )}
 
-              {/* Friend Vouchers Button if registration contains bundle vouchers */}
-              {reg.bundle_vouchers && reg.bundle_vouchers.length > 0 && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-8 gap-1.5 border-primary/40 bg-primary/5 font-semibold text-primary text-xs hover:bg-primary/10"
-                  onClick={() => setIsBundleVouchersOpen(true)}
-                >
-                  <Gift className="size-3.5" />
-                  Friend Vouchers ({reg.bundle_vouchers.filter((v) => v.status === "available").length} left)
-                </Button>
-              )}
+              {/* Friend Vouchers Button if registration contains bundle vouchers and is confirmed/paid */}
+              {reg.bundle_vouchers &&
+                reg.bundle_vouchers.length > 0 &&
+                (reg.status === "paid_and_registered" || reg.status === "approved" || reg.status === "registered") && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 gap-1.5 border-primary/40 bg-primary/5 font-semibold text-primary text-xs hover:bg-primary/10"
+                    onClick={() => setIsBundleVouchersOpen(true)}
+                  >
+                    <Gift className="size-3.5" />
+                    Friend Vouchers ({reg.bundle_vouchers.filter((v) => v.status === "available").length} left)
+                  </Button>
+                )}
 
               {/* Edit Responses Modal or Finalized indicator */}
               {reg.refund_request?.status === "refund_completed" ? (
