@@ -116,6 +116,9 @@ interface EventRegistrationModalProps {
   className?: string;
   isChecking?: boolean;
   onSuccess?: (registration: FirestoreRegistration) => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  initialVoucherCode?: string;
 }
 
 function isEventPast(event: FirestoreEvent): boolean {
@@ -232,13 +235,28 @@ export function EventRegistrationModal({
   className,
   isChecking,
   onSuccess,
+  open: propOpen,
+  onOpenChange: propOnOpenChange,
+  initialVoucherCode,
 }: EventRegistrationModalProps) {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const isAuthLoading = useAuthStore((s) => s.isLoading);
   const formUid = useId();
 
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = propOpen !== undefined;
+  const open = isControlled ? propOpen : internalOpen;
+  const setOpen = React.useCallback(
+    (nextOpen: boolean) => {
+      if (isControlled) {
+        propOnOpenChange?.(nextOpen);
+      } else {
+        setInternalOpen(nextOpen);
+      }
+    },
+    [isControlled, propOnOpenChange],
+  );
   const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [touchedFields, setTouchedFields] = useState<Set<string>>(new Set());
@@ -889,8 +907,21 @@ export function EventRegistrationModal({
 
       setAppliedVoucher(res.voucher as EventVoucher);
       setVoucherError(null);
+
+      if (res.bundleTicketId) {
+        setSelectedTicketId(res.bundleTicketId);
+      } else if (res.voucher.source_bundle_id && eventConfig.bundles) {
+        const matchingBundle = eventConfig.bundles.find((b) => b.id === res.voucher?.source_bundle_id);
+        if (matchingBundle?.ticket_id && matchingBundle.ticket_id !== "none") {
+          setSelectedTicketId(matchingBundle.ticket_id);
+        }
+      }
+
+      const isFreePass = res.voucher.discount_type === "percentage" && res.voucher.discount_value === 100;
       toast.success(
-        `Voucher "${res.voucher.code}" applied! Saved Rp ${(res.totalDiscount ?? 0).toLocaleString("id-ID")}.`,
+        `Voucher "${res.voucher.code}" applied! ${
+          isFreePass ? "100% Free pass activated." : `Saved Rp ${(res.totalDiscount ?? 0).toLocaleString("id-ID")}.`
+        }`,
       );
     } catch (err) {
       console.error("[EventRegistrationModal] Error validating voucher:", err);
@@ -906,6 +937,105 @@ export function EventRegistrationModal({
     setVoucherError(null);
     toast.info("Voucher removed.");
   };
+
+  const autoVoucherCodeAppliedRef = useRef<string | null>(null);
+
+  // Auto-apply voucher from initial prop or URL parameter when user is signed in
+  useEffect(() => {
+    if (!open) return;
+
+    const targetCode = (
+      initialVoucherCode?.trim() ||
+      (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("voucher")?.trim() || "" : "")
+    ).toUpperCase();
+
+    if (!targetCode) return;
+
+    setVoucherInput(targetCode);
+
+    if (
+      !user ||
+      appliedVoucher?.code?.toUpperCase() === targetCode ||
+      autoVoucherCodeAppliedRef.current === targetCode
+    ) {
+      return;
+    }
+
+    let isCancelled = false;
+
+    async function autoApplyVoucherCode() {
+      setIsApplyingVoucher(true);
+      setVoucherError(null);
+      try {
+        const { validateVoucherAction } = await import("@/server/voucher-actions");
+        const res = await validateVoucherAction({
+          eventId: String(eventConfig.id),
+          voucherCode: targetCode,
+          ticketPrice: effectiveBasePrice,
+          merchandiseTotal: merchandiseTotalPrice,
+          userEmail: user?.email,
+        });
+
+        if (isCancelled) return;
+
+        if (!res.isValid || !res.voucher) {
+          setVoucherError(res.error ?? `Voucher "${targetCode}" is invalid or does not exist.`);
+          return;
+        }
+
+        autoVoucherCodeAppliedRef.current = targetCode;
+        setAppliedVoucher(res.voucher as EventVoucher);
+        setVoucherError(null);
+
+        if (res.bundleTicketId) {
+          setSelectedTicketId(res.bundleTicketId);
+        } else if (res.voucher.source_bundle_id && eventConfig.bundles) {
+          const matchingBundle = eventConfig.bundles.find((b) => b.id === res.voucher?.source_bundle_id);
+          if (matchingBundle?.ticket_id && matchingBundle.ticket_id !== "none") {
+            setSelectedTicketId(matchingBundle.ticket_id);
+          }
+        }
+
+        const isFreePass = res.voucher.discount_type === "percentage" && res.voucher.discount_value === 100;
+        toast.success(
+          `Voucher "${res.voucher.code}" applied! ${
+            isFreePass ? "100% Free pass activated." : `Saved Rp ${(res.totalDiscount ?? 0).toLocaleString("id-ID")}.`
+          }`,
+        );
+
+        // Auto-advance to form step so user only needs to fill registrants data
+        if (!hasSessions || preEventSessions.length <= 1 || selectedSessionId) {
+          setRegistrationStep("form");
+        }
+      } catch (err) {
+        if (!isCancelled) {
+          console.error("[EventRegistrationModal] Auto-apply voucher error:", err);
+          setVoucherError("Failed to apply voucher code.");
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsApplyingVoucher(false);
+        }
+      }
+    }
+
+    void autoApplyVoucherCode();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [
+    open,
+    user,
+    initialVoucherCode,
+    eventConfig,
+    effectiveBasePrice,
+    merchandiseTotalPrice,
+    hasSessions,
+    preEventSessions.length,
+    selectedSessionId,
+    appliedVoucher,
+  ]);
 
   const handleApplyReferral = async () => {
     const cleanCode = referralInput.trim().toUpperCase();
@@ -1346,7 +1476,10 @@ export function EventRegistrationModal({
         }
       } else {
         const ticketSales = getTicketSalesStatus(selectedTicket, effectiveNow);
-        if (!ticketSales.isOpen) {
+        const isBundleVoucherPass = Boolean(
+          appliedVoucher?.source_bundle_id || appliedVoucher?.code?.toUpperCase().startsWith("BNDL-"),
+        );
+        if (!ticketSales.isOpen && !isBundleVoucherPass) {
           toast.error(
             ticketSales.message ??
               `The ticket tier "${selectedTicket.name}" is currently not available for selection (${ticketSales.badgeLabel}).`,
@@ -1451,7 +1584,10 @@ export function EventRegistrationModal({
         }
       } else {
         const ticketSales = getTicketSalesStatus(selectedTicket, effectiveNow);
-        if (!ticketSales.isOpen) {
+        const isBundleVoucherPass = Boolean(
+          appliedVoucher?.source_bundle_id || appliedVoucher?.code?.toUpperCase().startsWith("BNDL-"),
+        );
+        if (!ticketSales.isOpen && !isBundleVoucherPass) {
           toast.error(
             ticketSales.message ??
               `The ticket tier "${selectedTicket.name}" is currently not available for selection (${ticketSales.badgeLabel}).`,
@@ -2303,30 +2439,38 @@ export function EventRegistrationModal({
   return (
     <>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogTrigger asChild>
-          {children || (
-            <Button size="sm" className="gap-1.5">
-              {!user && (
-                <>
-                  <Image src={googleFavicon} alt="Google" width={16} height={16} className="size-3.5 object-contain" />
-                  {windowStatus.isWaitlist ? "Join Community to Join Waitlist" : "Join Community to Register"}
-                </>
-              )}
-              {Boolean(user && windowStatus.isWaitlist) && (
-                <>
-                  <Clock className="size-3.5" />
-                  Join Waitlist
-                </>
-              )}
-              {Boolean(user && !windowStatus.isWaitlist) && (
-                <>
-                  <Sparkles className="size-3.5" />
-                  Register for Event
-                </>
-              )}
-            </Button>
-          )}
-        </DialogTrigger>
+        {children !== null && (
+          <DialogTrigger asChild>
+            {children || (
+              <Button size="sm" className="gap-1.5">
+                {!user && (
+                  <>
+                    <Image
+                      src={googleFavicon}
+                      alt="Google"
+                      width={16}
+                      height={16}
+                      className="size-3.5 object-contain"
+                    />
+                    {windowStatus.isWaitlist ? "Join Community to Join Waitlist" : "Join Community to Register"}
+                  </>
+                )}
+                {Boolean(user && windowStatus.isWaitlist) && (
+                  <>
+                    <Clock className="size-3.5" />
+                    Join Waitlist
+                  </>
+                )}
+                {Boolean(user && !windowStatus.isWaitlist) && (
+                  <>
+                    <Sparkles className="size-3.5" />
+                    Register for Event
+                  </>
+                )}
+              </Button>
+            )}
+          </DialogTrigger>
+        )}
 
         <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden p-0 sm:max-w-2xl">
           <div className="shrink-0 border-b bg-muted/20 px-4 pt-5 pb-4 sm:px-6 sm:pt-6">

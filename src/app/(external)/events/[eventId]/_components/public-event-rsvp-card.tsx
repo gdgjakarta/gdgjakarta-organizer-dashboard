@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import Image from "next/image";
+import { useSearchParams } from "next/navigation";
 
 import {
   Camera,
@@ -106,6 +107,17 @@ export function PublicEventRsvpCard({
   }, [existingRegistration]);
 
   const isPast = isEventPast(event);
+  const searchParams = useSearchParams();
+  const voucherCodeFromUrl = searchParams.get("voucher")?.trim() || "";
+  const [isRegistrationModalOpen, setIsRegistrationModalOpen] = useState(false);
+  const hasAutoOpenedRef = useRef(false);
+
+  useEffect(() => {
+    if (voucherCodeFromUrl && !hasAutoOpenedRef.current && !isCheckingRegistration && !currentRegistration && !isPast) {
+      hasAutoOpenedRef.current = true;
+      setIsRegistrationModalOpen(true);
+    }
+  }, [voucherCodeFromUrl, isCheckingRegistration, currentRegistration, isPast]);
   const liveBevyUrl = getBevyLiveEventUrl(event);
   const highlightVideoUrl = firestoreEvent?.highlight_video_url ?? event.highlight_video_url ?? event.video_url;
   const photoAlbumUrl = firestoreEvent?.photo_album_url ?? event.photo_album_url;
@@ -347,39 +359,30 @@ export function PublicEventRsvpCard({
                   </div>
                 </div>
               )}
-              <EventRegistrationModal
-                event={registrationEvent}
-                existingRegistration={currentRegistration}
-                isChecking={isCheckingRegistration}
-                onSuccess={(reg) => setCurrentRegistration(reg)}
+              <Button
+                className="w-full gap-2 font-medium shadow-xs"
+                size="lg"
+                onClick={() => setIsRegistrationModalOpen(true)}
               >
-                <Button className="w-full gap-2 font-medium shadow-xs" size="lg">
-                  {!user && (
-                    <>
-                      <Image
-                        src={googleFavicon}
-                        alt="Google"
-                        width={18}
-                        height={18}
-                        className="size-4 object-contain"
-                      />
-                      {windowStatus.isWaitlist ? "Join Community to Join Waitlist" : "Join Community to Register"}
-                    </>
-                  )}
-                  {user && windowStatus.isWaitlist && (
-                    <>
-                      <Clock className="size-4" />
-                      Join Waitlist
-                    </>
-                  )}
-                  {user && !windowStatus.isWaitlist && (
-                    <>
-                      <Sparkles className="size-4" />
-                      Register for Event
-                    </>
-                  )}
-                </Button>
-              </EventRegistrationModal>
+                {!user && (
+                  <>
+                    <Image src={googleFavicon} alt="Google" width={18} height={18} className="size-4 object-contain" />
+                    {windowStatus.isWaitlist ? "Join Community to Join Waitlist" : "Join Community to Register"}
+                  </>
+                )}
+                {user && windowStatus.isWaitlist && (
+                  <>
+                    <Clock className="size-4" />
+                    Join Waitlist
+                  </>
+                )}
+                {user && !windowStatus.isWaitlist && (
+                  <>
+                    <Sparkles className="size-4" />
+                    Register for Event
+                  </>
+                )}
+              </Button>
             </>
           )}
 
@@ -562,39 +565,32 @@ export function PublicEventRsvpCard({
             {(() => {
               if (!isPast) {
                 return (
-                  <EventRegistrationModal
-                    event={registrationEvent}
-                    existingRegistration={currentRegistration}
-                    isChecking={isCheckingRegistration}
-                    onSuccess={(reg) => setCurrentRegistration(reg)}
-                  >
-                    <Button size="sm" className="gap-1.5 shadow-xs">
-                      {!user && (
-                        <>
-                          <Image
-                            src={googleFavicon}
-                            alt="Google"
-                            width={16}
-                            height={16}
-                            className="size-3.5 object-contain"
-                          />
-                          {windowStatus.isWaitlist ? "Join & Waitlist" : "Join & RSVP"}
-                        </>
-                      )}
-                      {user && windowStatus.isWaitlist && (
-                        <>
-                          <Clock className="size-3.5" />
-                          Join Waitlist
-                        </>
-                      )}
-                      {user && !windowStatus.isWaitlist && (
-                        <>
-                          <Sparkles className="size-3.5" />
-                          RSVP
-                        </>
-                      )}
-                    </Button>
-                  </EventRegistrationModal>
+                  <Button size="sm" className="gap-1.5 shadow-xs" onClick={() => setIsRegistrationModalOpen(true)}>
+                    {!user && (
+                      <>
+                        <Image
+                          src={googleFavicon}
+                          alt="Google"
+                          width={16}
+                          height={16}
+                          className="size-3.5 object-contain"
+                        />
+                        {windowStatus.isWaitlist ? "Join & Waitlist" : "Join & RSVP"}
+                      </>
+                    )}
+                    {user && windowStatus.isWaitlist && (
+                      <>
+                        <Clock className="size-3.5" />
+                        Join Waitlist
+                      </>
+                    )}
+                    {user && !windowStatus.isWaitlist && (
+                      <>
+                        <Sparkles className="size-3.5" />
+                        RSVP
+                      </>
+                    )}
+                  </Button>
                 );
               }
               if (photoAlbumUrl) {
@@ -633,6 +629,18 @@ export function PublicEventRsvpCard({
           </div>
         </div>
       </div>
+
+      <EventRegistrationModal
+        open={isRegistrationModalOpen}
+        onOpenChange={setIsRegistrationModalOpen}
+        initialVoucherCode={voucherCodeFromUrl}
+        event={registrationEvent}
+        existingRegistration={currentRegistration}
+        isChecking={isCheckingRegistration}
+        onSuccess={(reg) => setCurrentRegistration(reg)}
+      >
+        {null}
+      </EventRegistrationModal>
     </>
   );
 }

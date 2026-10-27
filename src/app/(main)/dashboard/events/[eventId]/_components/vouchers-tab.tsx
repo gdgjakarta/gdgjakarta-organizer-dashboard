@@ -575,6 +575,36 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
     }
   };
 
+  const handleShareVoucher = (v: EventVoucher) => {
+    const origin = typeof window !== "undefined" ? window.location.origin : "https://gdgjakarta.org";
+    const claimUrl = `${origin}/events/${event.id}?voucher=${encodeURIComponent(v.code)}`;
+    let discountText: string;
+    if (v.discount_type === "percentage") {
+      discountText = v.discount_value === 100 ? "100% FREE pass" : `${v.discount_value}% discount`;
+    } else {
+      discountText = `Rp ${v.discount_value.toLocaleString("id-ID")} discount`;
+    }
+
+    const shareText = `Hey! Here is your exclusive ${discountText} voucher for "${event.title}" from GDG Jakarta Organizer.\n\nVoucher Code: ${v.code}\nClaim link: ${claimUrl}`;
+
+    if (typeof navigator !== "undefined" && navigator.share) {
+      navigator
+        .share({
+          title: `Voucher for ${event.title}`,
+          text: shareText,
+        })
+        .catch(() => {
+          if (typeof window !== "undefined") {
+            void navigator.clipboard.writeText(shareText);
+            toast.success("Voucher invitation copied to clipboard!");
+          }
+        });
+    } else if (typeof window !== "undefined") {
+      void navigator.clipboard.writeText(shareText);
+      toast.success("Voucher invitation copied to clipboard!");
+    }
+  };
+
   const handleSaveToFirestore = () => {
     startTransition(async () => {
       try {
@@ -1030,7 +1060,7 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
                 <CardHeader className="space-y-2.5 p-4 pb-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="space-y-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1">
                         <span className="font-bold font-mono text-foreground text-sm tracking-wider">{v.code}</span>
                         <Button
                           variant="ghost"
@@ -1040,6 +1070,15 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
                           title="Copy voucher code"
                         >
                           <Copy className="size-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleShareVoucher(v)}
+                          className="size-6 text-muted-foreground hover:text-foreground"
+                          title="Share voucher invitation"
+                        >
+                          <Share2 className="size-3" />
                         </Button>
                       </div>
 

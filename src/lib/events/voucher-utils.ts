@@ -162,7 +162,18 @@ export function validateVoucherForCart(voucher: EventVoucher, context: VoucherCa
   const ticketPrice = Math.max(0, context.ticketPrice || 0);
   const merchandiseTotal = Math.max(0, context.merchandiseTotal || 0);
 
+  const isFreePassVoucher =
+    Boolean(voucher.source_bundle_id) || (voucher.discount_type === "percentage" && voucher.discount_value === 100);
+
   if (voucher.applies_to === "ticket" && ticketPrice <= 0) {
+    if (isFreePassVoucher) {
+      return {
+        isValid: true,
+        ticketDiscount: 0,
+        merchandiseDiscount: 0,
+        totalDiscount: 0,
+      };
+    }
     return {
       ...zeroResult,
       error: "This voucher only applies to paid event tickets.",
@@ -179,6 +190,14 @@ export function validateVoucherForCart(voucher: EventVoucher, context: VoucherCa
   const applicableSpend = resolveApplicableSpend(voucher, ticketPrice, merchandiseTotal);
 
   if (applicableSpend <= 0) {
+    if (isFreePassVoucher) {
+      return {
+        isValid: true,
+        ticketDiscount: 0,
+        merchandiseDiscount: 0,
+        totalDiscount: 0,
+      };
+    }
     return {
       ...zeroResult,
       error: "Your cart does not have any eligible paid items for this voucher.",

@@ -51,6 +51,7 @@ export function PublicHeader() {
       <GoogleButton
         size="sm"
         variant="default"
+        callbackUrl={typeof window !== "undefined" ? window.location.pathname + window.location.search : undefined}
         className="h-10 w-auto rounded-full px-5 font-medium text-[14px] shadow-xs transition-all hover:scale-[1.02]"
         style={{
           backgroundColor: "var(--theme-primary)",

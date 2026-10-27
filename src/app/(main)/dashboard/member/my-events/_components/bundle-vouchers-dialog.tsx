@@ -51,7 +51,6 @@ export function BundleVouchersDialog({ open, onOpenChange, registration, event }
         .share({
           title: `Free Ticket Pass to ${registration.event_title}`,
           text: shareText,
-          url: regUrl,
         })
         .catch(() => {
           // Fallback to clipboard
