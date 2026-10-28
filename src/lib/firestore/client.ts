@@ -2457,8 +2457,7 @@ export async function updateRegistrationStatus(
 
   if (
     isNowConfirmed &&
-    !wasConfirmed &&
-    regData?.bundle_id &&
+    (regData?.bundle_id || regData?.bundle_name) &&
     (!Array.isArray(regData.bundle_vouchers) || regData.bundle_vouchers.length === 0)
   ) {
     try {
@@ -2466,7 +2465,9 @@ export async function updateRegistrationStatus(
       if (eventSnap.exists()) {
         const evData = eventSnap.data() as FirestoreEvent;
         const matchingBundle = evData.bundles?.find(
-          (b) => b.id === regData?.bundle_id || b.name === regData?.bundle_name,
+          (b) =>
+            (regData?.bundle_id && b.id === regData.bundle_id) ||
+            (regData?.bundle_name && b.name.toLowerCase() === regData.bundle_name.toLowerCase()),
         );
         if (matchingBundle && (matchingBundle.ticket_quantity ?? 1) > 1 && matchingBundle.generate_vouchers !== false) {
           const matchingTicketTier = evData.tickets?.find((t) => t.id === matchingBundle.ticket_id);

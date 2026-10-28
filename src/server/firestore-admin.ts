@@ -561,7 +561,10 @@ export async function updateRegistrationFromPayment(input: UpdateRegistrationFro
   const wasApproved =
     regData.status === "approved" || regData.status === "paid_and_registered" || regData.status === "registered";
 
-  if (isNowApproved && !wasApproved) {
+  if (
+    isNowApproved &&
+    (!wasApproved || !Array.isArray(regData.bundle_vouchers) || regData.bundle_vouchers.length === 0)
+  ) {
     try {
       const evData = await getFirestoreEventByIdServer(eventIdStr);
       const currentApproved = typeof evData?.total_approved === "number" ? evData.total_approved : 0;
@@ -571,8 +574,12 @@ export async function updateRegistrationFromPayment(input: UpdateRegistrationFro
         ? [...regData.bundle_vouchers]
         : [];
 
-      if (regData.bundle_id && evData?.bundles) {
-        const matchingBundle = evData.bundles.find((b) => b.id === regData.bundle_id || b.name === regData.bundle_name);
+      if ((regData.bundle_id || regData.bundle_name) && evData?.bundles) {
+        const matchingBundle = evData.bundles.find(
+          (b) =>
+            (regData.bundle_id && b.id === regData.bundle_id) ||
+            (regData.bundle_name && b.name.toLowerCase() === regData.bundle_name.toLowerCase()),
+        );
         if (matchingBundle && (matchingBundle.ticket_quantity ?? 1) > 1 && matchingBundle.generate_vouchers !== false) {
           // If vouchers were not generated during initial registration (e.g. waiting_for_payment), generate now
           if (vouchersToIssue.length === 0) {

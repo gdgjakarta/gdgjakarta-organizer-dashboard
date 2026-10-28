@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -48,6 +48,7 @@ import {
 } from "@/lib/events/payment-deadline";
 import { getEventRefundPolicyNotes, isRegistrationEligibleForRefund } from "@/lib/events/refund-utils";
 import type {
+  BundleIssuedVoucher,
   FirestoreEvent,
   FirestoreRegistration,
   RegistrationStatus,
@@ -272,6 +273,106 @@ export function EventCardItem({
   const statusMeta = effectiveStatus
     ? STATUS_VARIANTS[effectiveStatus] || STATUS_VARIANTS[reg?.status as RegistrationStatus] || STATUS_VARIANTS.pending
     : null;
+
+  const [localBundleVouchers, setLocalBundleVouchers] = useState<BundleIssuedVoucher[]>(reg?.bundle_vouchers ?? []);
+  const autoHealedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (reg?.bundle_vouchers && reg.bundle_vouchers.length > 0) {
+      setLocalBundleVouchers(reg.bundle_vouchers);
+    }
+  }, [reg?.bundle_vouchers]);
+
+  const effectiveBundleVouchers = useMemo(() => {
+    if (reg?.bundle_vouchers && reg.bundle_vouchers.length > 0) {
+      return reg.bundle_vouchers;
+    }
+    return localBundleVouchers;
+  }, [reg?.bundle_vouchers, localBundleVouchers]);
+
+  // Auto-heal missing friend vouchers for confirmed multi-ticket bundle registrations
+  useEffect(() => {
+    const activeReg = reg;
+    if (!activeReg || !activeReg.id || !effectiveEvent?.id) return;
+
+    const isConfirmed =
+      isPaidAndRegistered ||
+      isApproved ||
+      activeReg.status === "paid_and_registered" ||
+      activeReg.status === "approved" ||
+      activeReg.status === "registered";
+    const hasBundle = Boolean(activeReg.bundle_id || activeReg.bundle_name);
+    const hasVouchers =
+      (activeReg.bundle_vouchers && activeReg.bundle_vouchers.length > 0) || localBundleVouchers.length > 0;
+
+    if (!isConfirmed || !hasBundle || hasVouchers) return;
+
+    const healKey = `${activeReg.id}_${activeReg.bundle_id || activeReg.bundle_name}`;
+    if (autoHealedRef.current === healKey) return;
+    autoHealedRef.current = healKey;
+
+    let isCancelled = false;
+
+    async function autoHealBundleVouchers(regDoc: FirestoreRegistration) {
+      try {
+        const { getFirestoreEventById, syncMissingBundleVouchers } = await import("@/lib/firestore/client");
+        const { generateBundleFriendVouchers } = await import("@/lib/events/bundle-voucher-generator");
+
+        let evData = effectiveEvent;
+        if (!evData.bundles || evData.bundles.length === 0) {
+          const fetched = await getFirestoreEventById(String(effectiveEvent.id));
+          if (fetched) {
+            evData = fetched;
+          }
+        }
+
+        const matchingBundle = evData.bundles?.find(
+          (b) =>
+            (regDoc.bundle_id && b.id === regDoc.bundle_id) ||
+            (regDoc.bundle_name && b.name.toLowerCase() === regDoc.bundle_name.toLowerCase()),
+        );
+
+        if (
+          !matchingBundle ||
+          (matchingBundle.ticket_quantity ?? 1) <= 1 ||
+          matchingBundle.generate_vouchers === false
+        ) {
+          return;
+        }
+
+        const matchingTicketTier = evData.tickets?.find((t) => t.id === matchingBundle.ticket_id);
+        const generated = generateBundleFriendVouchers({
+          bundle: matchingBundle,
+          buyerRegistrationId: regDoc.id,
+          buyerMemberId: regDoc.member_id,
+          buyerName: regDoc.member_name || "Bundle Purchaser",
+          buyerEmail: regDoc.member_email || "",
+          ticketTier: matchingTicketTier,
+          eventStartDate: evData.start_date,
+        });
+
+        if (generated.registrationVouchers.length === 0 || isCancelled) return;
+
+        setLocalBundleVouchers(generated.registrationVouchers);
+        onRegistrationUpdated?.({
+          ...regDoc,
+          bundle_vouchers: generated.registrationVouchers,
+        });
+
+        await syncMissingBundleVouchers(String(effectiveEvent.id), generated.newEventVouchers, [
+          { registrationId: regDoc.id, bundleVouchers: generated.registrationVouchers },
+        ]);
+      } catch (err) {
+        console.warn("[EventCardItem] Auto-heal bundle vouchers warning:", err);
+      }
+    }
+
+    void autoHealBundleVouchers(activeReg);
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [reg, effectiveEvent, isPaidAndRegistered, isApproved, localBundleVouchers.length, onRegistrationUpdated]);
 
   const selectedTrack =
     reg?.session_title ??
@@ -763,9 +864,13 @@ export function EventCardItem({
               )}
 
               {/* Friend Vouchers Button if registration contains bundle vouchers and is confirmed/paid */}
-              {reg.bundle_vouchers &&
-                reg.bundle_vouchers.length > 0 &&
-                (reg.status === "paid_and_registered" || reg.status === "approved" || reg.status === "registered") && (
+              {effectiveBundleVouchers &&
+                effectiveBundleVouchers.length > 0 &&
+                (isPaidAndRegistered ||
+                  isApproved ||
+                  reg.status === "paid_and_registered" ||
+                  reg.status === "approved" ||
+                  reg.status === "registered") && (
                   <Button
                     size="sm"
                     variant="outline"
@@ -773,7 +878,7 @@ export function EventCardItem({
                     onClick={() => setIsBundleVouchersOpen(true)}
                   >
                     <Gift className="size-3.5" />
-                    Friend Vouchers ({reg.bundle_vouchers.filter((v) => v.status === "available").length} left)
+                    Friend Vouchers ({effectiveBundleVouchers.filter((v) => v.status === "available").length} left)
                   </Button>
                 )}
 
@@ -1010,7 +1115,10 @@ export function EventCardItem({
         <BundleVouchersDialog
           open={isBundleVouchersOpen}
           onOpenChange={setIsBundleVouchersOpen}
-          registration={reg}
+          registration={{
+            ...reg,
+            bundle_vouchers: effectiveBundleVouchers,
+          }}
           event={effectiveEvent}
         />
       )}
