@@ -417,3 +417,128 @@ export function getMerchandiseSalesStatus(
     formattedEnd,
   };
 }
+
+export interface MerchandiseStockStatus {
+  isUnlimited: boolean;
+  stockLimit: number | null;
+  soldCount: number;
+  remainingStock: number;
+  isSoldOut: boolean;
+}
+
+/**
+ * Calculates stock status for a merchandise item.
+ * An item is sold out if its status is "out_of_stock", or if stock is limited and total_sold >= stock.
+ */
+export function getMerchandiseItemStock(item: EventMerchandiseItem): MerchandiseStockStatus {
+  if (item.status === "out_of_stock") {
+    const sold = item.total_sold ?? 0;
+    const limit = item.stock ?? null;
+    return {
+      isUnlimited: limit === null,
+      stockLimit: limit,
+      soldCount: sold,
+      remainingStock: 0,
+      isSoldOut: true,
+    };
+  }
+
+  const isUnlimited = item.stock === null || item.stock === undefined;
+  const soldCount = item.total_sold ?? 0;
+
+  if (isUnlimited) {
+    return {
+      isUnlimited: true,
+      stockLimit: null,
+      soldCount,
+      remainingStock: Number.POSITIVE_INFINITY,
+      isSoldOut: false,
+    };
+  }
+
+  const stockLimit = Number(item.stock);
+  const remainingStock = Math.max(0, stockLimit - soldCount);
+  return {
+    isUnlimited: false,
+    stockLimit,
+    soldCount,
+    remainingStock,
+    isSoldOut: remainingStock <= 0,
+  };
+}
+
+/**
+ * Calculates stock status for a specific variation option (e.g. Size: M).
+ * If the variation option defines its own stock override, it uses that.
+ * Otherwise, it inherits the base item's stock constraint.
+ */
+export function getMerchandiseOptionStock(
+  item: EventMerchandiseItem,
+  variationName: string,
+  optionValue: string,
+): MerchandiseStockStatus {
+  const variation = item.variations.find((v) => v.name.toLowerCase() === variationName.toLowerCase());
+  const detail = variation?.option_details?.[optionValue];
+
+  // Specific override on option
+  if (detail?.stock !== null && detail?.stock !== undefined) {
+    const stockLimit = Number(detail.stock);
+    const soldCount = detail.total_sold ?? 0;
+    const remainingStock = Math.max(0, stockLimit - soldCount);
+    return {
+      isUnlimited: false,
+      stockLimit,
+      soldCount,
+      remainingStock,
+      isSoldOut: remainingStock <= 0 || item.status === "out_of_stock",
+    };
+  }
+
+  // Inherits base item stock
+  const baseStatus = getMerchandiseItemStock(item);
+  return baseStatus;
+}
+
+/**
+ * Helper to check if an entire merchandise item has any selectable variations in stock.
+ * If all variation options of any required variation are sold out, returns true.
+ */
+export function isMerchandiseItemCompletelySoldOut(item: EventMerchandiseItem): boolean {
+  if (item.status === "out_of_stock") return true;
+  const baseStatus = getMerchandiseItemStock(item);
+  if (!baseStatus.isUnlimited && baseStatus.isSoldOut) return true;
+
+  if (item.variations.length > 0) {
+    // If there is any variation where EVERY option is sold out, the item cannot be fulfilled
+    for (const v of item.variations) {
+      if (v.options && v.options.length > 0) {
+        const hasAnyOptionInStock = v.options.some((opt) => {
+          const optStatus = getMerchandiseOptionStock(item, v.name, opt);
+          return !optStatus.isSoldOut;
+        });
+        if (!hasAnyOptionInStock) {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Returns the first in-stock option for a variation, or the first option if none is available.
+ */
+export function getFirstAvailableVariationOption(item: EventMerchandiseItem, variationName: string): string {
+  const variation = item.variations.find((v) => v.name.toLowerCase() === variationName.toLowerCase());
+  if (!variation || variation.options.length === 0) return "";
+
+  for (const opt of variation.options) {
+    const optStatus = getMerchandiseOptionStock(item, variationName, opt);
+    if (!optStatus.isSoldOut) {
+      return opt;
+    }
+  }
+
+  return variation.options[0] ?? "";
+}

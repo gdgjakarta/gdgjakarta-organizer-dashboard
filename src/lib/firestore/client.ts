@@ -26,7 +26,7 @@ import { app, auth } from "@/config/firebase";
 import type { FaqContent, FeaturedEventContent, PartnershipContent } from "@/lib/content/types";
 import { normalizeRelatedLink } from "@/lib/events/agenda-unification";
 
-import type { SessionRelatedLink } from "./types";
+import type { SelectedMerchandiseOrder, SessionRelatedLink } from "./types";
 
 export const db: Firestore = typeof window !== "undefined" ? getFirestore(app) : (null as unknown as Firestore);
 
@@ -1773,6 +1773,39 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
               throw new Error(`Sales for merchandise "${matchingMerch.name}" have ended.`);
             }
           }
+
+          // Stock quota checks
+          const orderQty = order.quantity || 1;
+          if (matchingMerch.stock !== null && matchingMerch.stock !== undefined) {
+            const currentSold = matchingMerch.total_sold ?? 0;
+            if (currentSold + orderQty > matchingMerch.stock) {
+              const remaining = Math.max(0, matchingMerch.stock - currentSold);
+              throw new Error(
+                remaining > 0
+                  ? `Only ${remaining} item(s) left in stock for "${matchingMerch.name}".`
+                  : `The merchandise item "${matchingMerch.name}" is sold out.`,
+              );
+            }
+          }
+
+          // Variation-level stock quota checks
+          if (order.selected_variations && matchingMerch.variations) {
+            for (const [varName, chosenOpt] of Object.entries(order.selected_variations)) {
+              const matchingVar = matchingMerch.variations.find((v) => v.name.toLowerCase() === varName.toLowerCase());
+              const detail = matchingVar?.option_details?.[chosenOpt];
+              if (detail?.stock !== null && detail?.stock !== undefined) {
+                const optSold = detail.total_sold ?? 0;
+                if (optSold + orderQty > detail.stock) {
+                  const remaining = Math.max(0, detail.stock - optSold);
+                  throw new Error(
+                    remaining > 0
+                      ? `Only ${remaining} unit(s) left in stock for ${varName} "${chosenOpt}" (${matchingMerch.name}).`
+                      : `The option ${varName} "${chosenOpt}" for "${matchingMerch.name}" is sold out.`,
+                  );
+                }
+              }
+            }
+          }
         }
       }
     }
@@ -2062,6 +2095,54 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
         updateData.bundles = updatedBundles;
       }
 
+      if (
+        isSeatConsumingRegistration &&
+        Array.isArray(registration.selected_merchandise) &&
+        registration.selected_merchandise.length > 0 &&
+        Array.isArray(eventData.merchandise)
+      ) {
+        const orderMap = new Map<string, SelectedMerchandiseOrder>();
+        for (const order of registration.selected_merchandise) {
+          orderMap.set(order.id, order);
+        }
+
+        const updatedMerchandise = eventData.merchandise.map((item) => {
+          const matchingOrder = orderMap.get(item.id);
+          if (!matchingOrder) return item;
+
+          const addedQty = matchingOrder.quantity || 1;
+          const nextItemSold = (item.total_sold ?? 0) + addedQty;
+
+          let updatedVariations = item.variations;
+          if (matchingOrder.selected_variations && Array.isArray(item.variations)) {
+            updatedVariations = item.variations.map((v) => {
+              const selectedOpt = matchingOrder.selected_variations?.[v.name];
+              if (!selectedOpt) return v;
+
+              const details = { ...(v.option_details || {}) };
+              const currentDetail = details[selectedOpt] || {};
+              details[selectedOpt] = {
+                ...currentDetail,
+                total_sold: (currentDetail.total_sold ?? 0) + addedQty,
+              };
+
+              return {
+                ...v,
+                option_details: details,
+              };
+            });
+          }
+
+          return {
+            ...item,
+            total_sold: nextItemSold,
+            variations: updatedVariations,
+          };
+        });
+
+        updateData.merchandise = updatedMerchandise;
+      }
+
       await updateDoc(eventRef, sanitizeFirestoreData(updateData));
     }
   } catch (err) {
@@ -2196,7 +2277,12 @@ export function isRegistrationSeatOccupied(reg: FirestoreRegistration, isCurated
 export async function recalculateEventCapacityCounters(
   eventId: string,
   existingRegistrations?: FirestoreRegistration[],
-): Promise<{ sessions?: EventSession[]; tickets?: EventTicketTier[]; bundles?: EventBundlePackage[] } | null> {
+): Promise<{
+  sessions?: EventSession[];
+  tickets?: EventTicketTier[];
+  bundles?: EventBundlePackage[];
+  merchandise?: EventMerchandiseItem[];
+} | null> {
   if (typeof window === "undefined") return null;
 
   try {
@@ -2313,12 +2399,66 @@ export async function recalculateEventCapacityCounters(
       updatePayload.bundles = updatedBundles;
     }
 
+    let updatedMerchandise: EventMerchandiseItem[] | undefined;
+    if (Array.isArray(eventData.merchandise) && eventData.merchandise.length > 0) {
+      updatedMerchandise = eventData.merchandise.map((item) => {
+        let itemSold = 0;
+        const optionSoldMap: Record<string, Record<string, number>> = {};
+
+        for (const reg of occupiedRegs) {
+          const orders = reg.selected_merchandise || [];
+          for (const order of orders) {
+            if (
+              order.id === item.id ||
+              (order.name && order.name.toLowerCase().trim() === item.name.toLowerCase().trim())
+            ) {
+              const qty = order.quantity || 1;
+              itemSold += qty;
+
+              if (order.selected_variations) {
+                for (const [vName, optVal] of Object.entries(order.selected_variations)) {
+                  if (!optionSoldMap[vName]) optionSoldMap[vName] = {};
+                  optionSoldMap[vName][optVal] = (optionSoldMap[vName][optVal] || 0) + qty;
+                }
+              }
+            }
+          }
+        }
+
+        const updatedVariations = (item.variations || []).map((v) => {
+          const vMap = optionSoldMap[v.name] || {};
+          const details = { ...(v.option_details || {}) };
+
+          for (const opt of v.options) {
+            const currentDetail = details[opt] || {};
+            details[opt] = {
+              ...currentDetail,
+              total_sold: vMap[opt] || 0,
+            };
+          }
+
+          return {
+            ...v,
+            option_details: details,
+          };
+        });
+
+        return {
+          ...item,
+          total_sold: itemSold,
+          variations: updatedVariations,
+        };
+      });
+      updatePayload.merchandise = updatedMerchandise;
+    }
+
     await updateDoc(eventRef, sanitizeFirestoreData(updatePayload));
 
     return {
       sessions: updatedSessions,
       tickets: updatedTickets,
       bundles: updatedBundles,
+      merchandise: updatedMerchandise,
     };
   } catch (err) {
     console.warn("[Firestore] Failed to recalculate event capacity counters:", err);

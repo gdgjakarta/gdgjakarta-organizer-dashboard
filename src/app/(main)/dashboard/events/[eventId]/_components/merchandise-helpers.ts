@@ -275,3 +275,11 @@ export function collectMerchandiseFilterOptions(
     totalWithoutMerch,
   };
 }
+
+export {
+  getFirstAvailableVariationOption,
+  getMerchandiseItemStock,
+  getMerchandiseOptionStock,
+  isMerchandiseItemCompletelySoldOut,
+  type MerchandiseStockStatus,
+} from "@/lib/events/merchandise-templates";

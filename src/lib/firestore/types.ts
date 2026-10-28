@@ -142,6 +142,7 @@ export interface SessionCheckInRecord {
 export interface MerchandiseVariationOptionDetail {
   price?: number | null; // specific price override (IDR), null or undefined = use base item price
   stock?: number | null; // specific quota/stock override, null or undefined = use base stock
+  total_sold?: number; // total units sold/ordered for this specific variation option
   image_url?: string | null; // specific image for this variation option
 }
 
@@ -167,6 +168,7 @@ export interface EventMerchandiseItem {
   image_url: string; // Primary thumbnail URL
   images?: string[]; // Multiple product photos
   stock?: number | null; // null or undefined means unlimited
+  total_sold?: number; // total units sold/ordered across all variations or base item
   variations: MerchandiseVariation[];
   max_per_person?: number | null; // Limit items per person (null = unlimited or event-level limit)
   status: "active" | "draft" | "hidden" | "out_of_stock";

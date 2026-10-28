@@ -433,7 +433,8 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
       if (
         (currentOpt.price === null || currentOpt.price === undefined) &&
         (currentOpt.stock === null || currentOpt.stock === undefined) &&
-        !currentOpt.image_url
+        !currentOpt.image_url &&
+        !currentOpt.total_sold
       ) {
         delete details[optionName];
       } else {
@@ -488,6 +489,7 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
       image_url: primaryImage,
       images: cleanedImages,
       stock: hasStockLimit && stock !== null ? Number(stock) : null,
+      total_sold: item?.total_sold ?? 0,
       max_per_person: maxPerPerson && maxPerPerson > 0 ? Number(maxPerPerson) : null,
       variations: variations.filter((v) => v.name.trim().length > 0),
       status,
@@ -856,9 +858,25 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
               <div className="pt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {hasStockLimit ? (
                   <div className="space-y-1">
-                    <Label htmlFor="item-stock-limit" className="text-xs">
-                      Default Total Quota
-                    </Label>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="item-stock-limit" className="text-xs">
+                        Default Total Quota
+                      </Label>
+                      {item && (
+                        <span className="text-[10px] text-muted-foreground font-mono">
+                          Sold: {item.total_sold ?? 0} &bull;{" "}
+                          <span
+                            className={cn(
+                              (stock ?? 0) - (item.total_sold ?? 0) <= 0
+                                ? "text-destructive font-semibold"
+                                : "text-emerald-600 dark:text-emerald-400 font-medium",
+                            )}
+                          >
+                            {Math.max(0, (stock ?? 0) - (item.total_sold ?? 0))} left
+                          </span>
+                        </span>
+                      )}
+                    </div>
                     <Input
                       id="item-stock-limit"
                       type="number"
@@ -1032,8 +1050,21 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
                                 </span>
                               )}
                               {hasCustomStock && (
-                                <span className="rounded-xs bg-amber-500/10 px-1 text-[9px] font-mono text-amber-600 dark:text-amber-400">
+                                <span
+                                  className={cn(
+                                    "rounded-xs px-1 text-[9px] font-mono",
+                                    detail?.total_sold &&
+                                      detail.stock !== null &&
+                                      detail.stock !== undefined &&
+                                      detail.stock - detail.total_sold <= 0
+                                      ? "bg-destructive/10 text-destructive font-semibold"
+                                      : "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+                                  )}
+                                >
                                   Q: {detail?.stock}
+                                  {detail?.total_sold !== undefined && detail?.stock !== null
+                                    ? ` (${Math.max(0, (detail.stock ?? 0) - detail.total_sold)} left)`
+                                    : ""}
                                 </span>
                               )}
                               {hasCustomImage && (
@@ -1122,7 +1153,14 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
 
                                   {/* Quota override */}
                                   <div className="sm:col-span-3 space-y-1">
-                                    <Label className="text-[10px] text-muted-foreground">Quota</Label>
+                                    <div className="flex items-center justify-between">
+                                      <Label className="text-[10px] text-muted-foreground">Quota</Label>
+                                      {detail.total_sold !== undefined && (
+                                        <span className="text-[9px] font-mono text-muted-foreground">
+                                          Sold: {detail.total_sold}
+                                        </span>
+                                      )}
+                                    </div>
                                     <Input
                                       type="number"
                                       min="0"
@@ -1138,6 +1176,17 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
                                         )
                                       }
                                     />
+                                    {detail.stock !== null && detail.stock !== undefined && (
+                                      <div className="text-[9px] font-mono">
+                                        {detail.stock - (detail.total_sold ?? 0) <= 0 ? (
+                                          <span className="text-destructive font-semibold">0 left (Sold Out)</span>
+                                        ) : (
+                                          <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                                            {detail.stock - (detail.total_sold ?? 0)} remaining
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
                                   </div>
 
                                   {/* Image URL override */}

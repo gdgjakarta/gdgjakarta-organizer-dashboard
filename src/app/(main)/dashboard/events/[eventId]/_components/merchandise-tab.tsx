@@ -891,8 +891,26 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
 
                       {/* Footer stock & quick actions */}
                       <div className="mt-4 flex items-center justify-between border-border/60 border-t pt-3">
-                        <span className="text-[11px] text-muted-foreground">
-                          {item.stock !== null && item.stock !== undefined ? `Quota: ${item.stock} units` : "Unlimited"}
+                        <span className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                          <span>
+                            {item.stock !== null && item.stock !== undefined
+                              ? `Quota: ${item.stock} units`
+                              : "Unlimited"}
+                          </span>
+                          {item.stock !== null && item.stock !== undefined && (
+                            <>
+                              <span>&bull;</span>
+                              <span
+                                className={cn(
+                                  item.stock - (itemStats?.unitsSold ?? item.total_sold ?? 0) <= 0
+                                    ? "text-destructive font-medium"
+                                    : "text-emerald-600 dark:text-emerald-400 font-medium",
+                                )}
+                              >
+                                {Math.max(0, item.stock - (itemStats?.unitsSold ?? item.total_sold ?? 0))} remaining
+                              </span>
+                            </>
+                          )}
                         </span>
 
                         <div className="flex items-center gap-1">

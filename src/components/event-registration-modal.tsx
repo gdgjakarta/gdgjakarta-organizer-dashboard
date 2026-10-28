@@ -67,7 +67,13 @@ import {
   hasRegistrationPaymentRequirements,
 } from "@/lib/events/doku-payment";
 import { extractEventImageUrl } from "@/lib/events/media-utils";
-import { getMerchandiseSalesStatus } from "@/lib/events/merchandise-templates";
+import {
+  getFirstAvailableVariationOption,
+  getMerchandiseItemStock,
+  getMerchandiseOptionStock,
+  getMerchandiseSalesStatus,
+  isMerchandiseItemCompletelySoldOut,
+} from "@/lib/events/merchandise-templates";
 import { isEventCurationMode } from "@/lib/events/payment-deadline";
 import { calculatePaymentGatewayFee } from "@/lib/events/payment-fee";
 import {
@@ -1120,6 +1126,12 @@ export function EventRegistrationModal({
           return prev;
         }
 
+        // Check if item is completely sold out
+        if (isMerchandiseItemCompletelySoldOut(item)) {
+          toast.error(`The merchandise "${item.name}" is currently sold out.`);
+          return prev;
+        }
+
         // Event-level max check
         if (maxMerchandiseAllowed !== null && totalMerchandiseItems >= maxMerchandiseAllowed) {
           toast.error(`You can select at most ${maxMerchandiseAllowed} merchandise item(s) for this event.`);
@@ -1131,23 +1143,34 @@ export function EventRegistrationModal({
           toast.error(`Limit of ${itemMax} unit(s) per person for "${item.name}".`);
           return prev;
         }
-        // Stock quota check (variation-specific quota or item-level quota)
-        let maxStock = item.stock ?? null;
+
+        // Base item stock check
+        const itemStockStatus = getMerchandiseItemStock(item);
+        if (!itemStockStatus.isUnlimited && current.quantity >= itemStockStatus.remainingStock) {
+          toast.error(
+            itemStockStatus.remainingStock <= 0
+              ? `The merchandise "${item.name}" is sold out.`
+              : `Only ${itemStockStatus.remainingStock} item(s) available in stock for "${item.name}".`,
+          );
+          return prev;
+        }
+
+        // Option-level stock check
         if (current.selectedVariations && item.variations) {
           for (const v of item.variations) {
             const selectedOpt = current.selectedVariations[v.name];
-            if (
-              selectedOpt &&
-              v.option_details?.[selectedOpt]?.stock !== undefined &&
-              v.option_details[selectedOpt].stock !== null
-            ) {
-              maxStock = v.option_details[selectedOpt].stock;
+            if (selectedOpt) {
+              const optStock = getMerchandiseOptionStock(item, v.name, selectedOpt);
+              if (!optStock.isUnlimited && current.quantity >= optStock.remainingStock) {
+                toast.error(
+                  optStock.remainingStock <= 0
+                    ? `Option ${v.name} "${selectedOpt}" is sold out.`
+                    : `Only ${optStock.remainingStock} item(s) available in stock for ${v.name} "${selectedOpt}".`,
+                );
+                return prev;
+              }
             }
           }
-        }
-        if (maxStock !== null && current.quantity >= maxStock) {
-          toast.error(`Only ${maxStock} item(s) available in stock.`);
-          return prev;
         }
       }
 
@@ -1156,7 +1179,7 @@ export function EventRegistrationModal({
       if (newQty > 0 && item.variations && item.variations.length > 0) {
         for (const v of item.variations) {
           if (!nextVariations[v.name] && v.options.length > 0) {
-            nextVariations[v.name] = v.options[0];
+            nextVariations[v.name] = getFirstAvailableVariationOption(item, v.name);
           }
         }
       }
@@ -1172,12 +1195,29 @@ export function EventRegistrationModal({
   };
 
   const handleUpdateMerchVariation = (itemId: string, varName: string, optionVal: string) => {
+    const item = availableMerchandise.find((m) => m.id === itemId);
+    if (!item) return;
+
+    const optStock = getMerchandiseOptionStock(item, varName, optionVal);
+    if (optStock.isSoldOut) {
+      toast.error(`Option ${varName} "${optionVal}" is sold out and cannot be selected.`);
+      return;
+    }
+
     setSelectedMerch((prev) => {
       const current = prev[itemId] ?? { quantity: 1, selectedVariations: {} };
+      let newQty = current.quantity;
+
+      // If switching to an option with fewer remaining units than current cart quantity, clamp quantity
+      if (!optStock.isUnlimited && newQty > optStock.remainingStock) {
+        newQty = Math.max(1, optStock.remainingStock);
+        toast.info(`Adjusted quantity to ${newQty} based on remaining stock for ${optionVal}.`);
+      }
+
       return {
         ...prev,
         [itemId]: {
-          ...current,
+          quantity: newQty,
           selectedVariations: {
             ...current.selectedVariations,
             [varName]: optionVal,
@@ -1695,6 +1735,31 @@ export function EventRegistrationModal({
               if (!isCoveredByBundle && !salesStatus.isOpen) {
                 toast.error(salesStatus.message ?? `Merchandise "${item.name}" is not open for purchase.`);
                 return;
+              }
+
+              // Verify stock limit
+              const itemStockStatus = getMerchandiseItemStock(item);
+              if (!itemStockStatus.isUnlimited && order.quantity > itemStockStatus.remainingStock) {
+                toast.error(
+                  itemStockStatus.remainingStock <= 0
+                    ? `Merchandise "${item.name}" is sold out.`
+                    : `Only ${itemStockStatus.remainingStock} item(s) left in stock for "${item.name}". Please adjust quantity.`,
+                );
+                return;
+              }
+
+              if (order.selectedVariations && item.variations) {
+                for (const [vName, selOpt] of Object.entries(order.selectedVariations)) {
+                  const optStock = getMerchandiseOptionStock(item, vName, selOpt);
+                  if (!optStock.isUnlimited && order.quantity > optStock.remainingStock) {
+                    toast.error(
+                      optStock.remainingStock <= 0
+                        ? `Option ${vName} "${selOpt}" for "${item.name}" is sold out.`
+                        : `Only ${optStock.remainingStock} item(s) left in stock for ${vName} "${selOpt}". Please adjust quantity.`,
+                    );
+                    return;
+                  }
+                }
               }
 
               selectedMerchOrders.push({
@@ -3326,6 +3391,8 @@ export function EventRegistrationModal({
                         <div className="space-y-3 pt-1">
                           {availableMerchandise.map((item) => {
                             const salesStatus = getMerchandiseSalesStatus(item, effectiveNow);
+                            const itemStock = getMerchandiseItemStock(item);
+                            const isItemSoldOut = isMerchandiseItemCompletelySoldOut(item);
                             const order = selectedMerch[item.id] ?? { quantity: 0, selectedVariations: {} };
                             const isAdded = order.quantity > 0;
                             const bundledItemRecord = hasBundleMerchandise
@@ -3335,10 +3402,35 @@ export function EventRegistrationModal({
                             const isIncludedInTicket = Boolean(
                               selectedTicket?.perks?.some((p) => p.merchandise_id === item.id),
                             );
+
+                            let activeVariationRemaining: number | null = null;
+                            if (order.selectedVariations && item.variations) {
+                              for (const v of item.variations) {
+                                const selOpt = order.selectedVariations[v.name];
+                                if (selOpt) {
+                                  const optStock = getMerchandiseOptionStock(item, v.name, selOpt);
+                                  if (!optStock.isUnlimited) {
+                                    activeVariationRemaining =
+                                      activeVariationRemaining === null
+                                        ? optStock.remainingStock
+                                        : Math.min(activeVariationRemaining, optStock.remainingStock);
+                                  }
+                                }
+                              }
+                            }
+                            const effectiveRemainingStock =
+                              activeVariationRemaining !== null
+                                ? activeVariationRemaining
+                                : !itemStock.isUnlimited
+                                  ? itemStock.remainingStock
+                                  : null;
+
                             const itemMax = item.max_per_person ?? maxMerchandiseAllowed ?? null;
                             const reachedLimit =
                               (itemMax !== null && order.quantity >= itemMax) ||
-                              (maxMerchandiseAllowed !== null && totalMerchandiseItems >= maxMerchandiseAllowed);
+                              (maxMerchandiseAllowed !== null && totalMerchandiseItems >= maxMerchandiseAllowed) ||
+                              (effectiveRemainingStock !== null && order.quantity >= effectiveRemainingStock) ||
+                              isItemSoldOut;
 
                             const effectiveImg = getMerchEffectiveImage(item, order.selectedVariations);
                             const effectiveUnitPrice = isIncludedInTicket
@@ -3358,7 +3450,10 @@ export function EventRegistrationModal({
                                     : isAdded
                                       ? "border-primary/50 bg-background shadow-xs ring-1 ring-primary/20"
                                       : "border-border/70 bg-card",
-                                  !isItemInBundle && !salesStatus.isOpen && !isAdded && "bg-muted/20 opacity-80",
+                                  !isItemInBundle &&
+                                    (!salesStatus.isOpen || isItemSoldOut) &&
+                                    !isAdded &&
+                                    "bg-muted/20 opacity-80",
                                 )}
                               >
                                 <div className="flex items-start gap-3.5 min-w-0 flex-1">
@@ -3457,6 +3552,32 @@ export function EventRegistrationModal({
                                           {salesStatus.badgeLabel}
                                         </Badge>
                                       )}
+
+                                      {/* Stock status indicator badge */}
+                                      {isItemSoldOut ? (
+                                        <Badge
+                                          variant="outline"
+                                          className="border-destructive/30 bg-destructive/10 text-destructive text-[10px] px-1.5 py-0 font-semibold"
+                                        >
+                                          Sold Out
+                                        </Badge>
+                                      ) : effectiveRemainingStock !== null ? (
+                                        effectiveRemainingStock <= 5 ? (
+                                          <Badge
+                                            variant="outline"
+                                            className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 text-[10px] px-1.5 py-0 font-medium"
+                                          >
+                                            Only {effectiveRemainingStock} left!
+                                          </Badge>
+                                        ) : (
+                                          <Badge
+                                            variant="outline"
+                                            className="border-border/70 bg-muted/40 text-muted-foreground text-[10px] px-1.5 py-0"
+                                          >
+                                            {effectiveRemainingStock} available
+                                          </Badge>
+                                        )
+                                      ) : null}
                                     </div>
 
                                     {item.description && (
@@ -3507,15 +3628,34 @@ export function EventRegistrationModal({
                                               value={order.selectedVariations[v.name] || v.options[0]}
                                               onValueChange={(val) => handleUpdateMerchVariation(item.id, v.name, val)}
                                             >
-                                              <SelectTrigger className="h-6 w-20 px-1.5 py-0 text-[10px]">
+                                              <SelectTrigger className="h-6 min-w-20 px-1.5 py-0 text-[10px]">
                                                 <SelectValue />
                                               </SelectTrigger>
                                               <SelectContent>
-                                                {v.options.map((opt) => (
-                                                  <SelectItem key={opt} value={opt} className="text-xs">
-                                                    {opt}
-                                                  </SelectItem>
-                                                ))}
+                                                {v.options.map((opt) => {
+                                                  const optStock = getMerchandiseOptionStock(item, v.name, opt);
+                                                  return (
+                                                    <SelectItem
+                                                      key={opt}
+                                                      value={opt}
+                                                      className="text-xs"
+                                                      disabled={optStock.isSoldOut}
+                                                    >
+                                                      <div className="flex items-center justify-between gap-2 w-full">
+                                                        <span>{opt}</span>
+                                                        {optStock.isSoldOut ? (
+                                                          <span className="text-[9px] font-semibold text-destructive uppercase">
+                                                            Sold Out
+                                                          </span>
+                                                        ) : !optStock.isUnlimited && optStock.remainingStock <= 5 ? (
+                                                          <span className="text-[9px] text-amber-600 dark:text-amber-400 font-mono">
+                                                            ({optStock.remainingStock} left)
+                                                          </span>
+                                                        ) : null}
+                                                      </div>
+                                                    </SelectItem>
+                                                  );
+                                                })}
                                               </SelectContent>
                                             </Select>
                                           </div>
@@ -3557,7 +3697,7 @@ export function EventRegistrationModal({
                                       variant="outline"
                                       size="icon-xs"
                                       onClick={() => handleUpdateMerchQuantity(item.id, 1)}
-                                      disabled={isItemInBundle || reachedLimit || !salesStatus.isOpen}
+                                      disabled={isItemInBundle || reachedLimit || !salesStatus.isOpen || isItemSoldOut}
                                       className="size-7"
                                     >
                                       <Plus className="size-3" />
