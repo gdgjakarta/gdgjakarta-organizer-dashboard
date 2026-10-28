@@ -5481,6 +5481,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
         registration={inspectRegistration}
         event={currentEvent}
         isCurationMode={isCurationMode}
+        allRegistrations={registrationsList}
         onClose={() => setInspectRegistration(null)}
         onStatusChange={handleStatusChange}
         onUpdateRegistration={(updatedReg) => {

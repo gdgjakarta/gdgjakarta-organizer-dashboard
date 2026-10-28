@@ -2013,7 +2013,10 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
                         }
                         return bv;
                       });
-                      await updateDoc(purchaserRegRef, { bundle_vouchers: updatedBuyerVouchers });
+                      await updateDoc(purchaserRegRef, {
+                        bundle_vouchers: updatedBuyerVouchers,
+                        updated_at: new Date().toISOString(),
+                      });
                     }
                   }
                 } catch (buyerUpdateErr) {
@@ -2809,10 +2812,39 @@ export async function deleteEventRegistration(registrationId: string, eventId: s
     return;
   }
 
+  const regData = snap.data() as FirestoreRegistration;
+
   // 1. Delete registration doc
   await deleteDoc(docRef);
 
-  // 2. Recalculate event counters and capacity
+  // 2. Revert voucher redemption if voucher was used
+  const voucherCode = regData.voucher_code?.trim().toUpperCase();
+  if (voucherCode) {
+    try {
+      const vDocRef = doc(db, "event_vouchers", `${eventId}_${voucherCode}`);
+      const vSnap = await getDoc(vDocRef);
+      if (vSnap.exists()) {
+        const vData = vSnap.data() as EventVoucher;
+        const newTimesUsed = Math.max(0, (vData.times_used ?? 1) - 1);
+        await updateDoc(vDocRef, {
+          times_used: newTimesUsed,
+          ...(newTimesUsed === 0
+            ? {
+                redeemed_by_member_id: deleteField(),
+                redeemed_by_name: deleteField(),
+                redeemed_by_email: deleteField(),
+                redeemed_at: deleteField(),
+              }
+            : {}),
+          updated_at: new Date().toISOString(),
+        });
+      }
+    } catch (vErr) {
+      console.warn("[Firestore] Failed to revert voucher redemption on registration deletion:", vErr);
+    }
+  }
+
+  // 3. Recalculate event counters and capacity
   try {
     await recalculateEventCapacityCounters(eventId);
   } catch (err) {
@@ -3171,6 +3203,120 @@ export async function updateEventVouchers(
   } catch (evErr) {
     console.warn(`[Firestore] Note: Could not deleteField vouchers on events/${eventIdStr}:`, evErr);
   }
+}
+
+/**
+ * Resets redemptions for a specific voucher back to 0, clears redemption attribution,
+ * and records an immutable audit log entry capturing who cleared the redemptions.
+ */
+export async function resetEventVoucherRedemptions(
+  eventId: string,
+  voucherCode: string,
+  actor: { id: string; name: string; email?: string },
+  reason?: string,
+): Promise<{ success: boolean; previousTimesUsed: number }> {
+  if (typeof window === "undefined" || !eventId || !voucherCode) {
+    return { success: false, previousTimesUsed: 0 };
+  }
+
+  const eventIdStr = String(eventId);
+  const cleanCode = voucherCode.trim().toUpperCase();
+  const docId = `${eventIdStr}_${cleanCode}`;
+  const vDocRef = doc(db, "event_vouchers", docId);
+  const vSnap = await getDoc(vDocRef);
+
+  if (!vSnap.exists()) {
+    throw new Error(`Voucher "${cleanCode}" not found.`);
+  }
+
+  const vData = vSnap.data() as EventVoucher;
+  const previousTimesUsed = vData.times_used ?? 0;
+  const now = new Date().toISOString();
+
+  // 1. Reset voucher document in event_vouchers
+  const resetPayload: Record<string, unknown> = {
+    times_used: 0,
+    redeemed_by_member_id: deleteField(),
+    redeemed_by_name: deleteField(),
+    redeemed_by_email: deleteField(),
+    redeemed_at: deleteField(),
+    last_reset_at: now,
+    last_reset_by_id: actor.id,
+    last_reset_by_name: actor.name,
+    last_reset_previous_times_used: previousTimesUsed,
+    updated_at: now,
+  };
+  if (actor.email) {
+    resetPayload.last_reset_by_email = actor.email;
+  }
+  if (reason && reason.trim()) {
+    resetPayload.last_reset_reason = reason.trim();
+  }
+
+  await updateDoc(vDocRef, resetPayload);
+
+  // 2. If voucher originated from a bundle purchase, reset purchaser's friend voucher status
+  if (vData.source_registration_id) {
+    try {
+      const purchaserRegRef = doc(db, "event_registrations", vData.source_registration_id);
+      const purchaserRegSnap = await getDoc(purchaserRegRef);
+      if (purchaserRegSnap.exists()) {
+        const pData = purchaserRegSnap.data() as FirestoreRegistration;
+        if (Array.isArray(pData.bundle_vouchers)) {
+          const updatedBuyerVouchers = pData.bundle_vouchers.map((bv) => {
+            if (bv.code.toUpperCase() === cleanCode) {
+              const resetItem: BundleIssuedVoucher = {
+                ...bv,
+                status: "available",
+              };
+              delete resetItem.redeemed_by_member_id;
+              delete resetItem.redeemed_by_name;
+              delete resetItem.redeemed_by_email;
+              delete resetItem.redeemed_at;
+              return resetItem;
+            }
+            return bv;
+          });
+          await updateDoc(
+            purchaserRegRef,
+            sanitizeFirestoreData({
+              bundle_vouchers: updatedBuyerVouchers,
+              updated_at: now,
+            }),
+          );
+        }
+      }
+    } catch (buyerResetErr) {
+      console.warn("[Firestore] Failed to update purchaser bundle voucher state on reset:", buyerResetErr);
+    }
+  }
+
+  // 3. Write structured audit log entry to audit_logs collection
+  try {
+    const auditEntry: AuditLogEntry = {
+      action: "voucher_reset",
+      entity_type: "voucher",
+      entity_id: docId,
+      event_id: eventIdStr,
+      actor_id: actor.id,
+      actor_name: actor.name,
+      actor_email: actor.email,
+      previous_value: previousTimesUsed,
+      new_value: 0,
+      notes: reason?.trim()
+        ? `${reason.trim()} (previously ${previousTimesUsed} used${vData.redeemed_by_name ? `, claimed by ${vData.redeemed_by_name}` : ""})`
+        : `Voucher ${cleanCode} redemptions cleared (previously ${previousTimesUsed} used${vData.redeemed_by_name ? `, claimed by ${vData.redeemed_by_name}` : ""})`,
+      timestamp: now,
+    };
+    await addDoc(collection(db, "audit_logs"), sanitizeFirestoreData(auditEntry));
+    console.log(
+      `[Audit Log] Organizer ${actor.name} (${actor.email ?? "unknown"}) reset voucher ${cleanCode} (was ${previousTimesUsed} used).`,
+    );
+  } catch (auditErr) {
+    console.warn("[resetEventVoucherRedemptions] Failed writing audit log:", auditErr);
+  }
+
+  return { success: true, previousTimesUsed };
 }
 
 export async function updateEventReferralConfig(

@@ -1289,6 +1289,7 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
           event={effectiveEvent}
           isCurationMode={event.curation_mode}
           customQuestions={event.custom_questions}
+          allRegistrations={registrations}
           onClose={() => setInspectRegistration(null)}
           onStatusChange={(regId, newStatus) => {
             setRegistrations((prev) => prev.map((r) => (r.id === regId ? { ...r, status: newStatus } : r)));

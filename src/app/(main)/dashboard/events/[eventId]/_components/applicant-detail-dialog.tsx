@@ -61,6 +61,7 @@ import {
 import { formatRupiah, getRegistrationDiscountBreakdown, getRegistrationRefundAmount } from "@/lib/events/refund-utils";
 import { DEFAULT_COMBINED_QUESTIONS } from "@/lib/events/registration-defaults";
 import type {
+  BundleIssuedVoucher,
   CustomQuestion,
   FirestoreEvent,
   FirestoreRegistration,
@@ -78,6 +79,7 @@ interface ApplicantDetailDialogProps {
   registration: FirestoreRegistration | null;
   event?: FirestoreEvent;
   isCurationMode?: boolean;
+  allRegistrations?: FirestoreRegistration[];
   onClose: () => void;
   onStatusChange: (registrationId: string, newStatus: RegistrationStatus, updatedReg?: FirestoreRegistration) => void;
   onUpdateRegistration?: (updated: FirestoreRegistration) => void;
@@ -291,6 +293,7 @@ export function ApplicantDetailDialog({
   isResendingPaidWaitlist = false,
   onCancelRegistration,
   isCancelling = false,
+  allRegistrations = [],
 }: ApplicantDetailDialogProps) {
   const isCuration = isCurationMode ?? isEventCurationMode(event);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -300,6 +303,118 @@ export function ApplicantDetailDialog({
   const [isResendPaymentOpen, setIsResendPaymentOpen] = useState(false);
   const [isCheckPaymentOpen, setIsCheckPaymentOpen] = useState(false);
   const [referrerInfo, setReferrerInfo] = useState<ReferralOwnerInfo | null>(null);
+  const [eventVouchersMap, setEventVouchersMap] = useState<Map<string, import("@/lib/firestore/types").EventVoucher>>(
+    () => new Map(),
+  );
+
+  // Load private event_vouchers if this registration is a bundle purchaser to get live redemption state
+  useEffect(() => {
+    const eventId = registration?.event_id || event?.id;
+    if (!eventId || !Array.isArray(registration?.bundle_vouchers) || registration.bundle_vouchers.length === 0) {
+      return;
+    }
+
+    let isMounted = true;
+    void (async () => {
+      try {
+        const { getEventVouchers } = await import("@/lib/firestore/client");
+        const list = await getEventVouchers(String(eventId));
+        if (isMounted && list.length > 0) {
+          const vMap = new Map<string, import("@/lib/firestore/types").EventVoucher>();
+          for (const v of list) {
+            vMap.set(v.code.trim().toUpperCase(), v);
+          }
+          setEventVouchersMap(vMap);
+        }
+      } catch (err) {
+        console.warn("[ApplicantDetailDialog] Could not fetch event vouchers:", err);
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [registration?.event_id, registration?.bundle_vouchers, event?.id]);
+
+  // Compute live bundle friend vouchers redemption status by cross-referencing event registrations and voucher docs
+  const resolvedBundleVouchers = useMemo(() => {
+    if (!registration || !Array.isArray(registration.bundle_vouchers)) return [];
+
+    let hasDifferences = false;
+
+    const list = registration.bundle_vouchers.map((bv) => {
+      const cleanCode = (bv.code || "").trim().toUpperCase();
+
+      let isRedeemed = bv.status === "redeemed";
+      let redeemedByName = bv.redeemed_by_name;
+      let redeemedByEmail = bv.redeemed_by_email;
+      let redeemedAt = bv.redeemed_at;
+
+      // 1. Cross-reference with allRegistrations in the event
+      if (allRegistrations && allRegistrations.length > 0) {
+        const claimingReg = allRegistrations.find(
+          (r) =>
+            r.voucher_code?.trim().toUpperCase() === cleanCode &&
+            r.status !== "canceled" &&
+            r.status !== "cancelled" &&
+            r.refund_request?.status !== "refund_completed",
+        );
+        if (claimingReg) {
+          isRedeemed = true;
+          redeemedByName = claimingReg.member_name || redeemedByName;
+          redeemedByEmail = claimingReg.member_email || redeemedByEmail;
+          redeemedAt = claimingReg.registered_at || redeemedAt;
+        }
+      }
+
+      // 2. Cross-reference with event_vouchers
+      const vDoc = eventVouchersMap.get(cleanCode);
+      if (vDoc && ((vDoc.times_used ?? 0) > 0 || vDoc.redeemed_by_name || vDoc.redeemed_by_email)) {
+        isRedeemed = true;
+        redeemedByName = vDoc.redeemed_by_name || redeemedByName;
+        redeemedByEmail = vDoc.redeemed_by_email || redeemedByEmail;
+        redeemedAt = vDoc.redeemed_at || redeemedAt;
+      }
+
+      if (isRedeemed && bv.status !== "redeemed") {
+        hasDifferences = true;
+      }
+
+      const voucherItem: BundleIssuedVoucher = {
+        ...bv,
+        status: (isRedeemed ? "redeemed" : "available") as "available" | "redeemed",
+      };
+      if (redeemedByName) voucherItem.redeemed_by_name = redeemedByName;
+      else delete voucherItem.redeemed_by_name;
+      if (redeemedByEmail) voucherItem.redeemed_by_email = redeemedByEmail;
+      else delete voucherItem.redeemed_by_email;
+      if (redeemedAt) voucherItem.redeemed_at = redeemedAt;
+      else delete voucherItem.redeemed_at;
+
+      return voucherItem;
+    });
+
+    // Auto-heal purchaser registration document in Firestore if any vouchers were claimed
+    if (hasDifferences && registration.id && typeof window !== "undefined") {
+      void (async () => {
+        try {
+          const { updateDoc, doc } = await import("firebase/firestore");
+          const { db, sanitizeFirestoreData } = await import("@/lib/firestore/client");
+          const purchaserRegRef = doc(db, "event_registrations", registration.id);
+          const sanitizedPayload = sanitizeFirestoreData({
+            bundle_vouchers: list,
+            updated_at: new Date().toISOString(),
+          });
+          await updateDoc(purchaserRegRef, sanitizedPayload);
+          onUpdateRegistration?.({ ...registration, bundle_vouchers: list });
+        } catch (healErr) {
+          console.warn("[ApplicantDetailDialog] Could not background-heal bundle vouchers:", healErr);
+        }
+      })();
+    }
+
+    return list;
+  }, [registration, allRegistrations, eventVouchersMap, onUpdateRegistration]);
 
   // Fetch referrer profile ("Who does the referral belong to") if referral code was used
   useEffect(() => {
@@ -1182,19 +1297,19 @@ export function ApplicantDetailDialog({
                   </div>
 
                   {/* Generated Friend Vouchers from Bundle */}
-                  {Array.isArray(registration.bundle_vouchers) && registration.bundle_vouchers.length > 0 && (
+                  {resolvedBundleVouchers.length > 0 && (
                     <div className="space-y-1.5 border-primary/20 border-t pt-2">
                       <div className="flex items-center justify-between text-[11px]">
                         <span className="font-medium text-muted-foreground">
-                          Generated Friend Vouchers ({registration.bundle_vouchers.length}):
+                          Generated Friend Vouchers ({resolvedBundleVouchers.length}):
                         </span>
                         <span className="font-semibold text-[10px] text-primary">
-                          {registration.bundle_vouchers.filter((v) => v.status === "redeemed").length} /{" "}
-                          {registration.bundle_vouchers.length} claimed
+                          {resolvedBundleVouchers.filter((v) => v.status === "redeemed").length} /{" "}
+                          {resolvedBundleVouchers.length} claimed
                         </span>
                       </div>
                       <div className="space-y-1">
-                        {registration.bundle_vouchers.map((bv, idx) => {
+                        {resolvedBundleVouchers.map((bv, idx) => {
                           const isRedeemed = bv.status === "redeemed";
                           return (
                             <div

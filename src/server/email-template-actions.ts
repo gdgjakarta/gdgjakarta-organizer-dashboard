@@ -57,10 +57,7 @@ export interface EmailDispatchResult {
  *        "bodyEmail": "<!DOCTYPE html>..."
  *      }'
  */
-export async function sendEmailWebhookAction(data: SendEmailInput): Promise<EmailDispatchResult> {
-  if (!(await isAuthorizedOrganizerOrSelfEmail(data.email))) {
-    return { success: false, error: "Unauthorized: Organizer session required." };
-  }
+export async function sendEmailDirectInternal(data: SendEmailInput): Promise<EmailDispatchResult> {
   const safeData = {
     ...data,
     first_name: data.first_name.trim() || "Attendee",
@@ -173,6 +170,13 @@ export async function sendEmailWebhookAction(data: SendEmailInput): Promise<Emai
       details: error,
     };
   }
+}
+
+export async function sendEmailWebhookAction(data: SendEmailInput): Promise<EmailDispatchResult> {
+  if (!(await isAuthorizedOrganizerOrSelfEmail(data.email))) {
+    return { success: false, error: "Unauthorized: Organizer session required." };
+  }
+  return sendEmailDirectInternal(data);
 }
 
 /**

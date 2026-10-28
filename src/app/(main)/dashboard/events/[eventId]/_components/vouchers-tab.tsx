@@ -16,6 +16,7 @@ import {
   Package,
   Percent,
   Plus,
+  RotateCcw,
   Search,
   Share2,
   Sparkles,
@@ -497,6 +498,13 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
   const handleViewRedemptions = (v: EventVoucher) => {
     setViewingRedemptionsVoucher(v);
     setIsRedemptionsDialogOpen(true);
+  };
+
+  const handleVoucherResetSuccess = (updatedVoucher: EventVoucher) => {
+    setVouchers((prev) =>
+      prev.map((v) => (v.code.toUpperCase() === updatedVoucher.code.toUpperCase() ? updatedVoucher : v)),
+    );
+    setViewingRedemptionsVoucher(updatedVoucher);
   };
 
   const handleEdit = (v: EventVoucher) => {
@@ -1139,6 +1147,12 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
                           <DropdownMenuItem onClick={() => handleViewRedemptions(v)} className="gap-2 text-xs">
                             <Users className="size-3.5" /> View Redemptions
                           </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleViewRedemptions(v)}
+                            className="gap-2 text-amber-700 text-xs focus:text-amber-800 dark:text-amber-400 dark:focus:text-amber-300"
+                          >
+                            <RotateCcw className="size-3.5" /> Reset Redemptions
+                          </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleEdit(v)} className="gap-2 text-xs">
                             <Edit2 className="size-3.5" /> Edit
                           </DropdownMenuItem>
@@ -1238,6 +1252,17 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
                         />
                       </div>
                     )}
+                    {v.last_reset_at && (
+                      <div className="flex items-center gap-1 pt-0.5 font-medium text-[10px] text-amber-700 dark:text-amber-400">
+                        <RotateCcw className="size-2.5 shrink-0" />
+                        <span className="truncate">
+                          Reset by {v.last_reset_by_name || "Organizer"}
+                          {typeof v.last_reset_previous_times_used === "number"
+                            ? ` (${v.last_reset_previous_times_used} cleared)`
+                            : ""}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Conditions Pills */}
@@ -1282,6 +1307,7 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
         eventId={String(event.id)}
         eventTitle={event.title}
         registrations={registrations}
+        onVoucherUpdated={handleVoucherResetSuccess}
       />
 
       {/* ── FLOATING SAVE BAR ────────────────────────────────────────────── */}

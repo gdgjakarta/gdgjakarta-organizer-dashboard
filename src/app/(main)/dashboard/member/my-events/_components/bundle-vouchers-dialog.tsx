@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Check, Copy, Gift, Share2 } from "lucide-react";
 import { toast } from "sonner";
@@ -15,7 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { BundleIssuedVoucher, FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
+import type { BundleIssuedVoucher, EventVoucher, FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
 interface BundleVouchersDialogProps {
@@ -27,8 +27,51 @@ interface BundleVouchersDialogProps {
 
 export function BundleVouchersDialog({ open, onOpenChange, registration, event }: BundleVouchersDialogProps) {
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [eventVouchersMap, setEventVouchersMap] = useState<Map<string, EventVoucher>>(() => new Map());
 
-  const vouchers: BundleIssuedVoucher[] = registration.bundle_vouchers ?? [];
+  // Load private event_vouchers to resolve live redemption state
+  useEffect(() => {
+    if (!open || !registration?.event_id || !Array.isArray(registration.bundle_vouchers)) return;
+    let isMounted = true;
+    void (async () => {
+      try {
+        const { getEventVouchers } = await import("@/lib/firestore/client");
+        const list = await getEventVouchers(registration.event_id);
+        if (isMounted && list.length > 0) {
+          const vMap = new Map<string, EventVoucher>();
+          for (const v of list) {
+            vMap.set(v.code.trim().toUpperCase(), v);
+          }
+          setEventVouchersMap(vMap);
+        }
+      } catch {
+        // ignore read error
+      }
+    })();
+    return () => {
+      isMounted = false;
+    };
+  }, [open, registration?.event_id, registration?.bundle_vouchers]);
+
+  const vouchers: BundleIssuedVoucher[] = useMemo(() => {
+    const raw = registration.bundle_vouchers ?? [];
+    return raw.map((bv) => {
+      const cleanCode = (bv.code || "").trim().toUpperCase();
+      const vDoc = eventVouchersMap.get(cleanCode);
+      const isClaimed =
+        bv.status === "redeemed" ||
+        Boolean(vDoc && ((vDoc.times_used ?? 0) > 0 || vDoc.redeemed_by_name || vDoc.redeemed_by_email));
+
+      return {
+        ...bv,
+        status: (isClaimed ? "redeemed" : "available") as "available" | "redeemed",
+        redeemed_by_name: vDoc?.redeemed_by_name || bv.redeemed_by_name,
+        redeemed_by_email: vDoc?.redeemed_by_email || bv.redeemed_by_email,
+        redeemed_at: vDoc?.redeemed_at || bv.redeemed_at,
+      };
+    });
+  }, [registration.bundle_vouchers, eventVouchersMap]);
+
   const redeemedCount = vouchers.filter((v) => v.status === "redeemed").length;
   const availableCount = vouchers.filter((v) => v.status === "available").length;
 

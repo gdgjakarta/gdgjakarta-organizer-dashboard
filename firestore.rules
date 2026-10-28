@@ -276,6 +276,12 @@ service cloud.firestore {
     //   - purchaser_member_id: string|null (optional, <= 128 chars) - Buyer member UID for bundle vouchers
     //   - purchaser_name: string|null (optional, <= 150 chars) - Buyer name for bundle vouchers
     //   - purchaser_email: string|null (optional, <= 150 chars) - Buyer email for bundle vouchers
+    //   - last_reset_at: string|null (optional, <= 50 chars) - Timestamp of last voucher reset ISO string
+    //   - last_reset_by_id: string|null (optional, <= 128 chars) - UID of organizer who reset voucher
+    //   - last_reset_by_name: string|null (optional, <= 150 chars) - Name of organizer who reset voucher
+    //   - last_reset_by_email: string|null (optional, valid email, <= 150 chars) - Email of organizer who reset voucher
+    //   - last_reset_previous_times_used: int|float|null (optional, >= 0) - Usage count before reset
+    //   - last_reset_reason: string|null (optional, <= 500 chars) - Reason for resetting voucher
     // Permissions:
     //   - get: Public / anyone (`if true;`) to allow single voucher validation by exact doc ID / code during checkout without exposing other codes.
     //   - list: Restricted strictly to team members (`hasTeamAccess()`) to prevent scraping secret promo & sponsor vouchers.
@@ -341,8 +347,8 @@ service cloud.firestore {
     // Document ID: auditId (auto-generated ID)
     // Fields:
     //   - id: string|null (optional, <= 128 chars) - Audit log entry ID
-    //   - action: string (required, <= 100 chars) - Audit action type ('registration_status_change'|'event_update'|'member_update')
-    //   - entity_type: string (required, <= 50 chars) - Target entity ('registration'|'event'|'member')
+    //   - action: string (required, <= 100 chars) - Audit action type ('registration_status_change'|'event_update'|'member_update'|'voucher_reset')
+    //   - entity_type: string (required, <= 50 chars) - Target entity ('registration'|'event'|'member'|'voucher')
     //   - entity_id: string (required, <= 200 chars) - Target entity identifier
     //   - event_id: string|null (optional, <= 128 chars) - Associated event ID
     //   - event_title: string|null (optional, <= 300 chars) - Associated event title
@@ -954,8 +960,8 @@ service cloud.firestore {
           'member_id', 'member_name', 'member_email', 'actor_id', 'actor_name',
           'actor_email', 'previous_value', 'new_value', 'notes', 'timestamp'
         ]) &&
-        data.action is string && (data.action in ['registration_status_change', 'event_update', 'member_update']) &&
-        data.entity_type is string && (data.entity_type in ['registration', 'event', 'member']) &&
+        data.action is string && (data.action in ['registration_status_change', 'event_update', 'member_update', 'voucher_reset']) &&
+        data.entity_type is string && (data.entity_type in ['registration', 'event', 'member', 'voucher']) &&
         data.entity_id is string && data.entity_id.size() > 0 && data.entity_id.size() <= 200 &&
         data.actor_id is string && data.actor_id.size() > 0 && data.actor_id.size() <= 128 &&
         data.actor_name is string && data.actor_name.size() > 0 && data.actor_name.size() <= 150 &&
@@ -1023,7 +1029,9 @@ service cloud.firestore {
           'min_spend', 'max_discount', 'start_date', 'end_date', 'status',
           'created_at', 'updated_at', 'source_bundle_id', 'source_registration_id',
           'redeemed_by_member_id', 'redeemed_by_name', 'redeemed_by_email', 'redeemed_at',
-          'purchaser_member_id', 'purchaser_name', 'purchaser_email'
+          'purchaser_member_id', 'purchaser_name', 'purchaser_email',
+          'last_reset_at', 'last_reset_by_id', 'last_reset_by_name',
+          'last_reset_by_email', 'last_reset_previous_times_used', 'last_reset_reason'
         ]) &&
         data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
         data.event_id is string && data.event_id.size() > 0 && data.event_id.size() <= 128 &&
@@ -1049,7 +1057,13 @@ service cloud.firestore {
         (!('redeemed_at' in data) || data.redeemed_at == null || (data.redeemed_at is string && data.redeemed_at.size() <= 50)) &&
         (!('purchaser_member_id' in data) || data.purchaser_member_id == null || (data.purchaser_member_id is string && data.purchaser_member_id.size() <= 128)) &&
         (!('purchaser_name' in data) || data.purchaser_name == null || (data.purchaser_name is string && data.purchaser_name.size() <= 150)) &&
-        (!('purchaser_email' in data) || data.purchaser_email == null || (data.purchaser_email is string && data.purchaser_email.size() <= 150));
+        (!('purchaser_email' in data) || data.purchaser_email == null || (data.purchaser_email is string && data.purchaser_email.size() <= 150)) &&
+        (!('last_reset_at' in data) || data.last_reset_at == null || (data.last_reset_at is string && data.last_reset_at.size() <= 50)) &&
+        (!('last_reset_by_id' in data) || data.last_reset_by_id == null || (data.last_reset_by_id is string && data.last_reset_by_id.size() <= 128)) &&
+        (!('last_reset_by_name' in data) || data.last_reset_by_name == null || (data.last_reset_by_name is string && data.last_reset_by_name.size() <= 150)) &&
+        (!('last_reset_by_email' in data) || data.last_reset_by_email == null || (data.last_reset_by_email is string && isValidEmail(data.last_reset_by_email) && data.last_reset_by_email.size() <= 150)) &&
+        (!('last_reset_previous_times_used' in data) || data.last_reset_previous_times_used == null || ((data.last_reset_previous_times_used is int || data.last_reset_previous_times_used is float) && data.last_reset_previous_times_used >= 0)) &&
+        (!('last_reset_reason' in data) || data.last_reset_reason == null || (data.last_reset_reason is string && data.last_reset_reason.size() <= 500));
     }
 
     // Validates system_settings document structure, data types, and bounds

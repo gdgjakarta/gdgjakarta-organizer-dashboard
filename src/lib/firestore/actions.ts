@@ -248,6 +248,27 @@ export async function updateEventVouchersAction(
 }
 
 /**
+ * Reset redemptions for an event voucher and record an audit log.
+ */
+export async function resetEventVoucherRedemptionsAction(
+  eventId: string,
+  voucherCode: string,
+  actor: { id: string; name: string; email?: string },
+  reason?: string,
+): Promise<{ success: true; previousTimesUsed: number } | { success: false; error: string }> {
+  try {
+    const { resetEventVoucherRedemptions } = await import("./client");
+    const result = await resetEventVoucherRedemptions(eventId, voucherCode, actor, reason);
+    await revalidateDashboardPath(`/dashboard/events/${eventId}`);
+    return { success: true, previousTimesUsed: result.previousTimesUsed };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to reset voucher redemptions.";
+    console.error("[resetEventVoucherRedemptionsAction] error:", message);
+    return { success: false, error: message };
+  }
+}
+
+/**
  * Update event referral discount configuration override
  */
 export async function updateEventReferralConfigAction(

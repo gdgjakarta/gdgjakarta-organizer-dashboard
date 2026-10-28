@@ -233,6 +233,12 @@ export interface EventVoucher {
   redeemed_by_name?: string; // Friend's name when claimed
   redeemed_by_email?: string; // Friend's email when claimed
   redeemed_at?: string;
+  last_reset_at?: string;
+  last_reset_by_id?: string;
+  last_reset_by_name?: string;
+  last_reset_by_email?: string;
+  last_reset_previous_times_used?: number;
+  last_reset_reason?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -623,8 +629,13 @@ export interface RegistrationStatusLog {
 
 export interface AuditLogEntry {
   id?: string;
-  action: "registration_status_change" | "merchandise_collection_change" | "event_update" | "member_update";
-  entity_type: "registration" | "event" | "member";
+  action:
+    | "registration_status_change"
+    | "merchandise_collection_change"
+    | "event_update"
+    | "member_update"
+    | "voucher_reset";
+  entity_type: "registration" | "event" | "member" | "voucher";
   entity_id: string;
   event_id?: string;
   event_title?: string;

@@ -12,7 +12,7 @@ import {
 import { assertSafeWebhookUrl } from "@/lib/security/webhook-validator";
 
 import { isAuthorizedOrganizerOrSelfEmail, isAuthorizedOrganizerSession } from "./auth-guard";
-import { sendEmailWebhookAction } from "./email-template-actions";
+import { sendEmailDirectInternal, sendEmailWebhookAction } from "./email-template-actions";
 export interface RegistrationWebhookPayload {
   // Top-level compatibility fields for n8n workflows
   Session?: string;
@@ -202,7 +202,7 @@ export async function dispatchRegistrationWebhookAction(
         event: resolvedEvent,
       });
 
-      const emailRes = await sendEmailWebhookAction({
+      const emailRes = await sendEmailDirectInternal({
         first_name: rendered.firstName,
         last_name: rendered.lastName,
         email: payload.member.email,
@@ -216,24 +216,10 @@ export async function dispatchRegistrationWebhookAction(
       } else {
         emailError = emailRes.error ?? "Failed to send interest email";
         console.warn(`[Registration Curation Flow] Failed to send interest email:`, emailRes.error);
-        return {
-          success: false,
-          dispatched: false,
-          error: emailError,
-          emailDispatched: false,
-          emailError,
-        };
       }
     } catch (err) {
       emailError = err instanceof Error ? err.message : "Failed to dispatch interest email";
       console.warn("[Registration Curation Flow] Failed to dispatch interest email:", err);
-      return {
-        success: false,
-        dispatched: false,
-        error: emailError,
-        emailDispatched: false,
-        emailError,
-      };
     }
   }
 
