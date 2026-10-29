@@ -64,6 +64,7 @@ async function getVoucherDocDirect(eventId: string, code: string): Promise<Event
       method: "GET",
       headers: { Accept: "application/json" },
       cache: "no-store",
+      signal: typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(6_000) : undefined,
     });
 
     if (res.status === 404) return null;

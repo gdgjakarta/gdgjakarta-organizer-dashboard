@@ -948,14 +948,47 @@ export function EventRegistrationModal({
     }
   };
 
+  const autoVoucherCodeAppliedRef = useRef<string | null>(null);
+  const hasPrefilledVoucherRef = useRef(false);
+
+  // Reset voucher tracking states when modal is closed
+  useEffect(() => {
+    if (!open) {
+      hasPrefilledVoucherRef.current = false;
+      autoVoucherCodeAppliedRef.current = null;
+      setIsApplyingVoucher(false);
+    }
+  }, [open]);
+
   const handleRemoveVoucher = () => {
     setAppliedVoucher(null);
     setVoucherInput("");
     setVoucherError(null);
+    // Mark target URL voucher code as handled so auto-apply does not re-apply it after manual removal
+    const targetCode = (
+      initialVoucherCode?.trim() ||
+      (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("voucher")?.trim() || "" : "")
+    ).toUpperCase();
+    if (targetCode) {
+      autoVoucherCodeAppliedRef.current = targetCode;
+    }
     toast.info("Voucher removed.");
   };
 
-  const autoVoucherCodeAppliedRef = useRef<string | null>(null);
+  // Pre-fill voucher input once from URL or prop on modal open without overriding user edits
+  useEffect(() => {
+    if (!open) return;
+
+    const targetCode = (
+      initialVoucherCode?.trim() ||
+      (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("voucher")?.trim() || "" : "")
+    ).toUpperCase();
+
+    if (targetCode && !hasPrefilledVoucherRef.current) {
+      hasPrefilledVoucherRef.current = true;
+      setVoucherInput((prev) => (prev ? prev : targetCode));
+    }
+  }, [open, initialVoucherCode]);
 
   // Auto-apply voucher from initial prop or URL parameter when user is signed in
   useEffect(() => {
@@ -966,11 +999,8 @@ export function EventRegistrationModal({
       (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("voucher")?.trim() || "" : "")
     ).toUpperCase();
 
-    if (!targetCode) return;
-
-    setVoucherInput(targetCode);
-
     if (
+      !targetCode ||
       !user ||
       appliedVoucher?.code?.toUpperCase() === targetCode ||
       autoVoucherCodeAppliedRef.current === targetCode
@@ -978,6 +1008,8 @@ export function EventRegistrationModal({
       return;
     }
 
+    // Immediately mark as processed to prevent redundant duplicate invocations across rapid re-renders
+    autoVoucherCodeAppliedRef.current = targetCode;
     let isCancelled = false;
 
     async function autoApplyVoucherCode() {
@@ -1000,7 +1032,6 @@ export function EventRegistrationModal({
           return;
         }
 
-        autoVoucherCodeAppliedRef.current = targetCode;
         setAppliedVoucher(res.voucher as EventVoucher);
         setVoucherError(null);
 
@@ -1030,9 +1061,7 @@ export function EventRegistrationModal({
           setVoucherError("Failed to apply voucher code.");
         }
       } finally {
-        if (!isCancelled) {
-          setIsApplyingVoucher(false);
-        }
+        setIsApplyingVoucher(false);
       }
     }
 
@@ -1045,13 +1074,14 @@ export function EventRegistrationModal({
     open,
     user,
     initialVoucherCode,
-    eventConfig,
+    eventConfig.id,
+    eventConfig.bundles,
     effectiveBasePrice,
     merchandiseTotalPrice,
     hasSessions,
     preEventSessions.length,
     selectedSessionId,
-    appliedVoucher,
+    appliedVoucher?.code,
   ]);
 
   const handleApplyReferral = async () => {
