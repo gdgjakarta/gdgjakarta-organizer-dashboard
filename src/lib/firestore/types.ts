@@ -317,6 +317,7 @@ export interface EventEmailTemplateData {
   attendeeCode?: string;
   attendeeId?: string;
   qrCode?: string;
+  cancellationReason?: string;
 }
 
 export interface EventEmailTemplates {

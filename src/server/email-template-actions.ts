@@ -615,6 +615,7 @@ export interface CancelAttendeeEmailInput {
   eventId: string;
   attendeeName: string;
   attendeeEmail: string;
+  cancellationReason?: string;
   reviewer?: {
     id?: string;
     name?: string;
@@ -637,6 +638,10 @@ export async function sendCancelAttendeeEmailAction(
 ): Promise<CancelAttendeeEmailResult> {
   if (!(await isAuthorizedOrganizerSession())) {
     return { success: false, error: "Unauthorized: Organizer session required." };
+  }
+  const cleanReason = (input.cancellationReason || "").trim();
+  if (!cleanReason) {
+    return { success: false, error: "Cancellation reason is required." };
   }
   try {
     let event: FirestoreEvent | Partial<FirestoreEvent> | undefined = input.eventData;
@@ -681,6 +686,7 @@ export async function sendCancelAttendeeEmailAction(
         email: input.attendeeEmail,
       },
       event,
+      cancellationReason: cleanReason,
     });
 
     const emailResult = await sendEmailWebhookAction({

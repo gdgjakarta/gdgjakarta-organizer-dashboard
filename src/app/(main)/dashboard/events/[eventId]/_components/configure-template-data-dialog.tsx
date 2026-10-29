@@ -116,6 +116,7 @@ export function ConfigureTemplateDataDialog({
   const venueUrlId = useId();
   const attendeeCodeId = useId();
   const attendeeIdInputId = useId();
+  const cancellationReasonId = useId();
   const checklistInputId = useId();
 
   // Auto-populate attendeeCode / attendeeId from attendee ticket code if default dummy or empty
@@ -551,6 +552,36 @@ export function ConfigureTemplateDataDialog({
                   className="h-8 text-xs"
                 />
               </div>
+
+              {/* Specific Cancellation Reason Parameter */}
+              {currentKey === "cancelled" && (
+                <div className="mt-4 pt-3 border-t space-y-1.5">
+                  <Label
+                    htmlFor={cancellationReasonId}
+                    className="text-xs font-medium flex items-center justify-between"
+                  >
+                    <span>Simulated Cancellation Reason</span>
+                    <span className="text-[10px] text-muted-foreground font-normal font-mono">
+                      {"{{ $('event-params').item.json.cancellationReason }}"}
+                    </span>
+                  </Label>
+                  <Input
+                    id={cancellationReasonId}
+                    value={currentData.cancellationReason ?? ""}
+                    onChange={(e) =>
+                      handleUpdate((prev) => ({
+                        ...prev,
+                        cancellationReason: e.target.value,
+                      }))
+                    }
+                    placeholder="e.g. Incomplete registration profile or duplicate submission."
+                    className="h-8 text-xs"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Injected into the red alert box of the cancellation email sent to attendees.
+                  </p>
+                </div>
+              )}
 
               {/* Specific Accepted Pass Parameters */}
               {currentKey === "accepted" && (

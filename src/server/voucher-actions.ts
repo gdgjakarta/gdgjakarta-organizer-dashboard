@@ -157,6 +157,8 @@ export async function validateVoucherAction(params: ValidateVoucherActionParams)
   }
 
   // 3. If voucher was issued from a bundle purchase, verify that the purchaser's registration is confirmed/paid
+  let parentBundleId: string | undefined;
+  let parentTicketId: string | undefined;
   if (matchedVoucher.source_registration_id) {
     try {
       const parentReg = await getFirestoreDoc("event_registrations", matchedVoucher.source_registration_id);
@@ -170,28 +172,40 @@ export async function validateVoucherAction(params: ValidateVoucherActionParams)
             error: "This voucher is inactive because the original bundle package payment has not been completed.",
           };
         }
+        if (typeof parentReg.bundle_id === "string" && parentReg.bundle_id) {
+          parentBundleId = parentReg.bundle_id;
+        }
+        if (typeof parentReg.ticket_id === "string" && parentReg.ticket_id) {
+          parentTicketId = parentReg.ticket_id;
+        }
       }
     } catch (parentErr) {
       console.warn("[Voucher Action] Failed to check parent bundle registration status:", parentErr);
     }
   }
 
-  // 4. Resolve bundle ticket and its real price if ticketPrice was not yet populated
+  // 4. Resolve bundle ticket and its real price (always use the bundle's standalone ticket price, not any selected bundle price)
   let bundleTicketId: string | undefined;
   let effectiveTicketPrice = ticketPrice;
+  const resolvedSourceBundleId = matchedVoucher.source_bundle_id || parentBundleId;
 
-  if (matchedVoucher.source_bundle_id) {
+  if (resolvedSourceBundleId || parentTicketId || cleanCode.startsWith("BNDL-")) {
     try {
       const eventDoc = await getFirestoreEventByIdServer(eventId);
-      if (eventDoc && Array.isArray(eventDoc.bundles)) {
-        const bundle = eventDoc.bundles.find((b) => b.id === matchedVoucher.source_bundle_id);
-        if (bundle?.ticket_id && bundle.ticket_id !== "none") {
-          bundleTicketId = bundle.ticket_id;
-          if (effectiveTicketPrice <= 0 && Array.isArray(eventDoc.tickets)) {
-            const ticket = eventDoc.tickets.find((t) => t.id === bundle.ticket_id);
-            if (ticket && typeof ticket.price === "number") {
-              effectiveTicketPrice = ticket.price;
-            }
+      if (eventDoc) {
+        if (resolvedSourceBundleId && Array.isArray(eventDoc.bundles)) {
+          const bundle = eventDoc.bundles.find((b) => b.id === resolvedSourceBundleId);
+          if (bundle?.ticket_id && bundle.ticket_id !== "none") {
+            bundleTicketId = bundle.ticket_id;
+          }
+        }
+        if (!bundleTicketId && parentTicketId) {
+          bundleTicketId = parentTicketId;
+        }
+        if (bundleTicketId && Array.isArray(eventDoc.tickets)) {
+          const ticket = eventDoc.tickets.find((t) => t.id === bundleTicketId);
+          if (ticket && typeof ticket.price === "number") {
+            effectiveTicketPrice = ticket.price;
           }
         }
       }
@@ -227,7 +241,7 @@ export async function validateVoucherAction(params: ValidateVoucherActionParams)
       discount_type: matchedVoucher.discount_type,
       discount_value: matchedVoucher.discount_value,
       applies_to: matchedVoucher.applies_to,
-      source_bundle_id: matchedVoucher.source_bundle_id,
+      source_bundle_id: resolvedSourceBundleId,
       min_spend: matchedVoucher.min_spend ?? null,
       max_discount: matchedVoucher.max_discount ?? null,
       status: matchedVoucher.status || "active",

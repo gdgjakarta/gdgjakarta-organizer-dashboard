@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
@@ -132,53 +132,56 @@ export function PublicEventRsvpCard({
     event.banner?.url;
 
   // Map to FirestoreEvent compatible structure for EventRegistrationModal
-  const registrationEvent: FirestoreEvent = {
-    id: String(event.id),
-    title: event.title,
-    description: event.description,
-    description_short: event.description_short,
-    status: (event.status as FirestoreEvent["status"]) ?? "Published",
-    start_date: event.start_date,
-    end_date: event.end_date,
-    picture_url: event.cropped_picture_url ?? event.picture?.url,
-    banner_url: event.cropped_banner_url ?? event.banner?.url,
-    event_type_title: event.event_type_title,
-    audience_type: event.audience_type ?? "IN_PERSON",
-    is_virtual: Boolean(event.is_virtual_event),
-    venue: event.venue_name
-      ? {
-          name: event.venue_name,
-          address: event.venue_address,
-          city: event.venue_city,
-        }
-      : undefined,
-    url: event.url,
-    static_url: event.static_url,
-    tags: event.tags,
-    requires_approval: Boolean(firestoreEvent?.requires_approval),
-    curation_mode: Boolean(firestoreEvent?.curation_mode),
-    webhook_url: firestoreEvent?.webhook_url,
-    email_templates: firestoreEvent?.email_templates,
-    max_attendees: firestoreEvent?.max_attendees ?? event.total_capacity,
-    total_registrations: firestoreEvent?.total_registrations ?? event.total_attendees ?? 0,
-    total_approved: firestoreEvent?.total_approved ?? event.total_attendees ?? 0,
-    total_checked_in: firestoreEvent?.total_checked_in ?? event.checkin_count ?? 0,
-    custom_questions: firestoreEvent?.custom_questions,
-    sessions: firestoreEvent?.sessions,
-    tickets: ensureEventTickets(firestoreEvent?.tickets),
-    max_tickets_per_person: firestoreEvent?.max_tickets_per_person,
-    merchandise: firestoreEvent?.merchandise,
-    max_merchandise_per_person: firestoreEvent?.max_merchandise_per_person,
-    vouchers: firestoreEvent?.vouchers,
-    bundles: firestoreEvent?.bundles,
-    registration_status: firestoreEvent?.registration_status ?? "Closed",
-    registration_start_date: firestoreEvent?.registration_start_date,
-    registration_end_date: firestoreEvent?.registration_end_date,
-    is_hidden: event.is_hidden,
-    is_test: event.is_test,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  };
+  const registrationEvent: FirestoreEvent = useMemo(
+    () => ({
+      id: String(event.id),
+      title: event.title,
+      description: event.description,
+      description_short: event.description_short,
+      status: (event.status as FirestoreEvent["status"]) ?? "Published",
+      start_date: event.start_date,
+      end_date: event.end_date,
+      picture_url: event.cropped_picture_url ?? event.picture?.url,
+      banner_url: event.cropped_banner_url ?? event.banner?.url,
+      event_type_title: event.event_type_title,
+      audience_type: event.audience_type ?? "IN_PERSON",
+      is_virtual: Boolean(event.is_virtual_event),
+      venue: event.venue_name
+        ? {
+            name: event.venue_name,
+            address: event.venue_address,
+            city: event.venue_city,
+          }
+        : undefined,
+      url: event.url,
+      static_url: event.static_url,
+      tags: event.tags,
+      requires_approval: Boolean(firestoreEvent?.requires_approval),
+      curation_mode: Boolean(firestoreEvent?.curation_mode),
+      webhook_url: firestoreEvent?.webhook_url,
+      email_templates: firestoreEvent?.email_templates,
+      max_attendees: firestoreEvent?.max_attendees ?? event.total_capacity,
+      total_registrations: firestoreEvent?.total_registrations ?? event.total_attendees ?? 0,
+      total_approved: firestoreEvent?.total_approved ?? event.total_attendees ?? 0,
+      total_checked_in: firestoreEvent?.total_checked_in ?? event.checkin_count ?? 0,
+      custom_questions: firestoreEvent?.custom_questions,
+      sessions: firestoreEvent?.sessions,
+      tickets: ensureEventTickets(firestoreEvent?.tickets),
+      max_tickets_per_person: firestoreEvent?.max_tickets_per_person,
+      merchandise: firestoreEvent?.merchandise,
+      max_merchandise_per_person: firestoreEvent?.max_merchandise_per_person,
+      vouchers: firestoreEvent?.vouchers,
+      bundles: firestoreEvent?.bundles,
+      registration_status: firestoreEvent?.registration_status ?? "Closed",
+      registration_start_date: firestoreEvent?.registration_start_date,
+      registration_end_date: firestoreEvent?.registration_end_date,
+      is_hidden: event.is_hidden,
+      is_test: event.is_test,
+      created_at: firestoreEvent?.created_at ?? event.start_date ?? new Date().toISOString(),
+      updated_at: firestoreEvent?.updated_at ?? new Date().toISOString(),
+    }),
+    [event, firestoreEvent],
+  );
 
   useEffect(() => {
     let isMounted = true;

@@ -177,3 +177,57 @@ export interface FeaturedEventContent {
   updatedAt?: string;
   updatedBy?: string;
 }
+
+// ── Payment Policy Types ───────────────────────────────────────────────────
+
+export interface PaymentPolicySection {
+  id: string;
+  title: string;
+  iconName?: string;
+  badge?: string;
+  body: string;
+  bullets?: string[];
+  callout?: {
+    type: "info" | "warning" | "destructive" | "success";
+    title?: string;
+    message: string;
+  };
+  order?: number;
+  isActive?: boolean;
+}
+
+export interface PaymentPolicyChannel {
+  id: string;
+  title: string;
+  description: string;
+  iconName?: string;
+  links: {
+    label: string;
+    url: string;
+    isExternal?: boolean;
+  }[];
+}
+
+export interface PaymentPolicyContent {
+  header: {
+    badge: string;
+    title: string;
+    description: string;
+  };
+  notice: {
+    enabled: boolean;
+    title: string;
+    description: string;
+    verifiedEmails: string[];
+  };
+  sections: PaymentPolicySection[];
+  channels: PaymentPolicyChannel[];
+  contact: {
+    title: string;
+    description: string;
+    email: string;
+    instagram: string;
+  };
+  updatedAt?: string;
+  updatedBy?: string;
+}

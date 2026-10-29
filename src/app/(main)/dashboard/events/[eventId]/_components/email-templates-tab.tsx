@@ -53,6 +53,7 @@ import {
   EMAIL_TEMPLATES_CONFIG,
   type EmailTemplateKey,
   type EmailTemplateMeta,
+  ensureCancellationReasonInCancelledHtml,
   ensureCheckinDeadlineInAcceptedHtml,
   getAllCleanDefaultTemplatesData,
   getAllDefaultTemplatesData,
@@ -93,26 +94,8 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
     const acceptedHtml = ensureCheckinDeadlineInAcceptedHtml(
       event.email_templates?.accepted ?? getDefaultTemplateByKey("accepted"),
     );
-    return {
-      interest: event.email_templates?.interest ?? getDefaultTemplateByKey("interest"),
-      accepted: acceptedHtml,
-      waitlisted: event.email_templates?.waitlisted ?? getDefaultTemplateByKey("waitlisted"),
-      paid_waitlisted: event.email_templates?.paid_waitlisted ?? getDefaultTemplateByKey("paid_waitlisted"),
-      rejected_waitlisted: event.email_templates?.rejected_waitlisted ?? getDefaultTemplateByKey("rejected_waitlisted"),
-      rejected_paid_waitlisted:
-        event.email_templates?.rejected_paid_waitlisted ?? getDefaultTemplateByKey("rejected_paid_waitlisted"),
-      rejected_hybrid: event.email_templates?.rejected_hybrid ?? getDefaultTemplateByKey("rejected_hybrid"),
-      rejected_non_hybrid: event.email_templates?.rejected_non_hybrid ?? getDefaultTemplateByKey("rejected_non_hybrid"),
-      rejected_virtual: event.email_templates?.rejected_virtual ?? getDefaultTemplateByKey("rejected_virtual"),
-      cancelled: event.email_templates?.cancelled ?? getDefaultTemplateByKey("cancelled"),
-      cancelled_attendee: event.email_templates?.cancelled_attendee ?? getDefaultTemplateByKey("cancelled_attendee"),
-    };
-  });
-
-  // Initial templates reference for dirty tracking
-  const [savedTemplates, setSavedTemplates] = useState<Record<EmailTemplateKey, string>>(() => {
-    const acceptedHtml = ensureCheckinDeadlineInAcceptedHtml(
-      event.email_templates?.accepted ?? getDefaultTemplateByKey("accepted"),
+    const cancelledHtml = ensureCancellationReasonInCancelledHtml(
+      event.email_templates?.cancelled ?? getDefaultTemplateByKey("cancelled"),
     );
     return {
       interest: event.email_templates?.interest ?? getDefaultTemplateByKey("interest"),
@@ -125,7 +108,31 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
       rejected_hybrid: event.email_templates?.rejected_hybrid ?? getDefaultTemplateByKey("rejected_hybrid"),
       rejected_non_hybrid: event.email_templates?.rejected_non_hybrid ?? getDefaultTemplateByKey("rejected_non_hybrid"),
       rejected_virtual: event.email_templates?.rejected_virtual ?? getDefaultTemplateByKey("rejected_virtual"),
-      cancelled: event.email_templates?.cancelled ?? getDefaultTemplateByKey("cancelled"),
+      cancelled: cancelledHtml,
+      cancelled_attendee: event.email_templates?.cancelled_attendee ?? getDefaultTemplateByKey("cancelled_attendee"),
+    };
+  });
+
+  // Initial templates reference for dirty tracking
+  const [savedTemplates, setSavedTemplates] = useState<Record<EmailTemplateKey, string>>(() => {
+    const acceptedHtml = ensureCheckinDeadlineInAcceptedHtml(
+      event.email_templates?.accepted ?? getDefaultTemplateByKey("accepted"),
+    );
+    const cancelledHtml = ensureCancellationReasonInCancelledHtml(
+      event.email_templates?.cancelled ?? getDefaultTemplateByKey("cancelled"),
+    );
+    return {
+      interest: event.email_templates?.interest ?? getDefaultTemplateByKey("interest"),
+      accepted: acceptedHtml,
+      waitlisted: event.email_templates?.waitlisted ?? getDefaultTemplateByKey("waitlisted"),
+      paid_waitlisted: event.email_templates?.paid_waitlisted ?? getDefaultTemplateByKey("paid_waitlisted"),
+      rejected_waitlisted: event.email_templates?.rejected_waitlisted ?? getDefaultTemplateByKey("rejected_waitlisted"),
+      rejected_paid_waitlisted:
+        event.email_templates?.rejected_paid_waitlisted ?? getDefaultTemplateByKey("rejected_paid_waitlisted"),
+      rejected_hybrid: event.email_templates?.rejected_hybrid ?? getDefaultTemplateByKey("rejected_hybrid"),
+      rejected_non_hybrid: event.email_templates?.rejected_non_hybrid ?? getDefaultTemplateByKey("rejected_non_hybrid"),
+      rejected_virtual: event.email_templates?.rejected_virtual ?? getDefaultTemplateByKey("rejected_virtual"),
+      cancelled: cancelledHtml,
       cancelled_attendee: event.email_templates?.cancelled_attendee ?? getDefaultTemplateByKey("cancelled_attendee"),
     };
   });
@@ -238,7 +245,9 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
               rejected_non_hybrid:
                 docData.email_templates.rejected_non_hybrid ?? getDefaultTemplateByKey("rejected_non_hybrid"),
               rejected_virtual: docData.email_templates.rejected_virtual ?? getDefaultTemplateByKey("rejected_virtual"),
-              cancelled: docData.email_templates.cancelled ?? getDefaultTemplateByKey("cancelled"),
+              cancelled: ensureCancellationReasonInCancelledHtml(
+                docData.email_templates.cancelled ?? getDefaultTemplateByKey("cancelled"),
+              ),
               cancelled_attendee:
                 docData.email_templates.cancelled_attendee ?? getDefaultTemplateByKey("cancelled_attendee"),
             };
@@ -509,6 +518,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
               eventChecklistItems: cleanData.cancelled.event.eventChecklistItems,
               attendeeName: cleanData.cancelled.attendee.name,
               attendeeEmail: cleanData.cancelled.attendee.email,
+              cancellationReason: cleanData.cancelled.cancellationReason,
             },
             cancelled_attendee: {
               headerEmailUrl: cleanData.cancelled_attendee.event.headerEmailUrl,
@@ -677,6 +687,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
               eventChecklistItems: templatesData.cancelled.event.eventChecklistItems,
               attendeeName: templatesData.cancelled.attendee.name,
               attendeeEmail: templatesData.cancelled.attendee.email,
+              cancellationReason: templatesData.cancelled.cancellationReason,
             },
             cancelled_attendee: {
               headerEmailUrl: templatesData.cancelled_attendee.event.headerEmailUrl,

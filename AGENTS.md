@@ -130,6 +130,13 @@ Keep a component inside its route until it is reused by another feature. Do not 
 
 ## Feature Notes
 
+- **Organizer Registration Cancellation with Mandatory Reason**:
+  - Cancelling attendees from the dashboard (single attendee action and batch cancellation in `registrants-tab.tsx`) requires a non-empty cancellation reason input.
+  - The reason is propagated to `sendCancelAttendeeEmailAction` and `deleteEventRegistrationAction` (passed into DOKU payment cancellation payloads if active payment exists).
+  - The `cancelled` email template renders `<p><strong>Reason for Cancellation:</strong><br>{{ $('event-params').item.json.cancellationReason }}</p>` inside `.alert-box`.
+  - Backward compatibility helper `ensureCancellationReasonInCancelledHtml` automatically injects this block into existing Firestore event templates, and template interpolation formats multi-line reasons using `<br>`.
+  - Manual template test sender (`send-template-email-dialog.tsx`) and sample data config drawer (`configure-template-data-dialog.tsx`) also enforce / provide simulation for the cancellation reason.
+
 - **Total Registered Attendee card**: `registrant-statistics.tsx` overview shows approved + `paid_and_registered` (+ attended/confirmed/registered) as one card; clicking applies the `registered_attendees` status filter handled in `registrants-tab.tsx`. Documented in the Status & Metric Guide.
 
 - **Email Templates & Thermal Printers Ref & ID Alignment**:
@@ -142,6 +149,13 @@ Keep a component inside its route until it is reused by another feature. Do not 
   - **Core Utilities**: `src/lib/printers/types.ts`, `src/lib/printers/templates.ts`, and `src/lib/printers/qr-svg.ts` (self-contained ISO/IEC 18004 SVG QR generator for `eventId:attendeeId`).
   - **Template & Sizing**: Side-by-side Monaco HTML Source Code editor + true-millimeter `<iframe srcDoc>` Live Preview with dynamic CSS sizing (`syncTemplateDimensions`), Target Bevy Event selector (`PublishedEventSelector`), interactive **Configure Sample Data** drawer, and `FloatingSaveBar` for saving changes.
   - **Firestore & Kiosk Printing**: Persists configuration in `system_settings/printer` and bounded print queue jobs (`MAX_STORED_PRINT_JOBS = 30`) in `system_settings/printer_queue`. Integrates with `src/app/(main)/dashboard/events/[eventId]/_components/qr-checkin-scanner-dialog.tsx` to automatically enqueue badge labels on attendee check-in and print silently via Chrome `--kiosk-printing`.
+
+- **Payment Policy CMS (`/dashboard/faq` -> Payment Policy Page)**:
+  - **Firestore Model & Storage**: Persisted in `content_settings/payment_policy`. Validated in `firestore.rules` for fields `header`, `notice`, `sections`, `channels`, `contact`, `updatedAt`, `updatedBy`.
+  - **Hooks & State**: Handled via `usePaymentPolicyContent` (`src/lib/content/hooks.ts`) and `DEFAULT_PAYMENT_POLICY_CONTENT` (`src/lib/content/defaults.ts`). Auto-revalidates `/payment-policy`, `/faq`, and `/dashboard/faq`.
+  - **Organizer CMS Dashboard**: Integrated into `src/app/(main)/dashboard/faq/_components/payment-policy-editor.tsx` and `payment-policy-section-dialog.tsx` as a dedicated tab under `/dashboard/faq`. Supports structured section editing, ordering, active/hide toggling, callout banners, and `FloatingSaveBar`.
+  - **Public Display**: Rendered dynamically via `src/app/(external)/payment-policy/_components/payment-policy-view.tsx` with zero layout shift from default SSR baseline.
+
 
 ## Code conventions
 

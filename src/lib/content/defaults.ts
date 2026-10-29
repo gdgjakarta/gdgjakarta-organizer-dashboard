@@ -1,4 +1,4 @@
-import type { FaqContent, FeaturedEventContent, PartnershipContent } from "./types";
+import type { FaqContent, FeaturedEventContent, PartnershipContent, PaymentPolicyContent } from "./types";
 
 export const DEFAULT_FAQ_CONTENT: FaqContent = {
   header: {
@@ -543,4 +543,120 @@ export const DEFAULT_FEATURED_EVENT_CONTENT: FeaturedEventContent = {
   muted: true,
   loop: true,
   showControls: true,
+};
+
+export const DEFAULT_PAYMENT_POLICY_CONTENT: PaymentPolicyContent = {
+  header: {
+    badge: "Official GDG Jakarta Guidelines",
+    title: "Payment Policy",
+    description:
+      "Official guidance regarding event commitment fees, ticket reservations, merchandise distribution, and fraud prevention.",
+  },
+  notice: {
+    enabled: true,
+    title: "Crucial: Official Payment Verification",
+    description:
+      "All official payment requests from GDG Jakarta will ONLY originate from our verified emails (info@gdgjakarta.org or info@gdgjakarta.com). Any payment request originating from other email domains, WhatsApp numbers, Telegram accounts, or direct messages is invalid, unauthorized, and not from GDG Jakarta.",
+    verifiedEmails: ["info@gdgjakarta.org", "info@gdgjakarta.com"],
+  },
+  sections: [
+    {
+      id: "section-1",
+      order: 1,
+      title: "Introduction",
+      body: "Google Developer Groups (GDG) Jakarta is a community-driven group aimed at learning, sharing, and connecting around Google technologies and developer tools. While many of our community gatherings, study jams, and meetups are free of charge, certain flagship conferences or specialized workshops may require a nominal commitment fee or ticket payment. This policy document explains our standards, payment mechanisms, merchandise terms, and verification procedures to ensure attendee safety and transparency.",
+      bullets: [],
+      isActive: true,
+    },
+    {
+      id: "section-2",
+      order: 2,
+      title: "Commitment Fee & Ticket Payments",
+      body: "GDG Jakarta organizes events with limited seat allocations. In high-demand scenarios, we implement a commitment fee model.",
+      bullets: [
+        "**Purpose of Commitment Fee**: High RSVP no-show rates prevent truly interested developers from attending. A nominal commitment fee acts as a show-up guarantee, ensuring dedicated participants secure their physical seats.",
+        "**Official Ticketing Platform**: Official ticket registrations and payment checkouts are exclusively managed through the official GDG Jakarta portal or verified Google Bevy chapter platform (gdg.community.dev/gdg-jakarta) with authorized payment gateway integration.",
+        "**Non-Refundable Policy**: Unless explicitly stated on a specific event registration page or in the case of event cancellation initiated by GDG Jakarta, all commitment fees and ticket purchases are non-refundable once approved and processed.",
+        "**Non-Transferable Tickets**: Tickets and registered badges are personal to the registrant and may not be sold, resold, auctioned, or transferred to another individual without written authorization from GDG Jakarta organizers.",
+      ],
+      callout: {
+        type: "warning",
+        title: "Important Note on No-Shows",
+        message:
+          "Attendees who pay a commitment fee but fail to show up or check in before the final registration window without prior written notice forfeit their reservation and any associated souvenir merchandise.",
+      },
+      isActive: true,
+    },
+    {
+      id: "section-3",
+      order: 3,
+      title: "Event Merchandises & Souvenirs",
+      body: "From time to time, GDG Jakarta offers exclusive community merchandise (t-shirts, stickers, lanyard badges, hoodies, or swags).",
+      bullets: [
+        "**Attendee Giveaways & Swags**: Merchandise included with event tickets is distributed on-site during check-in or specific event sessions. Organizers do not ship unclaimed event swags unless explicitly agreed in writing.",
+        "**Official Pre-Orders & Community Sales**: When official merchandise is offered for pre-order or direct sale, it is announced exclusively through our verified Instagram account (@gdgjakarta) or official email blasts.",
+        "**No Unofficial Resellers**: GDG Jakarta has not authorized any third-party online shop, e-commerce store, personal seller, or agent to resell our official merchandise. Purchases from unauthorized channels risk being counterfeit or fraudulent.",
+        "**Defective Merchandise**: If an item received has manufacturing defects, report it to the event help desk on the same day or email info@gdgjakarta.org within 48 hours with photographic evidence for an exchange.",
+      ],
+      callout: {
+        type: "destructive",
+        title: "Beware of Unofficial Merchandise Vendors",
+        message:
+          "GDG Jakarta never asks members to transfer money to personal bank accounts for merchandise pre-orders via direct messages or chat groups. Always verify payment instructions on our verified domain.",
+      },
+      isActive: true,
+    },
+    {
+      id: "section-4",
+      order: 4,
+      title: "Anti-Fraud & Payment Security Rules",
+      body: "Please stay vigilant against scams, fraudulent impersonations, and social engineering attempts.",
+      bullets: [
+        "**Never Transfer to Personal Accounts**: GDG Jakarta will NEVER instruct you to transfer money to an individual's personal bank account, personal e-wallet (GoPay, OVO, Dana), or cryptocurrency address.",
+        "**Always Verify Sender Email**: Verify that emails originate from @gdgjakarta.org or @gdgjakarta.com. Be cautious of spoofed sender names with suspicious header addresses (e.g., gdgjakarta.event@gmail.com is NOT an official GDG Jakarta email).",
+        "**Payment Confirmation**: Official payments receive an automated confirmation email with a unique Bevy ticket code and invoice record. Retain this confirmation for check-in on event day.",
+        "**Report Suspicious Activity**: If you encounter suspicious accounts soliciting funds on behalf of GDG Jakarta, report them immediately to info@gdgjakarta.org.",
+      ],
+      isActive: true,
+    },
+  ],
+  channels: [
+    {
+      id: "chan-emails",
+      title: "Official Emails",
+      description: "Primary for ticket and payment communications:",
+      iconName: "Mail",
+      links: [
+        { label: "info@gdgjakarta.org", url: "mailto:info@gdgjakarta.org" },
+        { label: "info@gdgjakarta.com", url: "mailto:info@gdgjakarta.com" },
+      ],
+    },
+    {
+      id: "chan-instagram",
+      title: "Instagram",
+      description: "Official announcements, merchandise drops, and updates:",
+      iconName: "Instagram",
+      links: [{ label: "@gdgjakarta", url: "https://instagram.com/gdgjakarta", isExternal: true }],
+    },
+    {
+      id: "chan-bevy",
+      title: "Bevy Community Profile",
+      description: "Official Google Developer Groups chapter portal:",
+      iconName: "ShieldCheck",
+      links: [
+        {
+          label: "gdg.community.dev/gdg-jakarta",
+          url: "https://gdg.community.dev/gdg-jakarta/",
+          isExternal: true,
+        },
+      ],
+    },
+  ],
+  contact: {
+    title: "Questions or Doubts?",
+    description:
+      "If you are ever in doubt or receive any suspicious payment request or communication claiming to represent GDG Jakarta, please do not hesitate to contact us for immediate verification before taking any action.",
+    email: "info@gdgjakarta.org",
+    instagram: "https://instagram.com/gdgjakarta",
+  },
 };

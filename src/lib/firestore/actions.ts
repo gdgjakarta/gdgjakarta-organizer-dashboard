@@ -549,7 +549,7 @@ export async function deleteEventRegistrationAction(
   bevyAttendeeId?: number | string | null,
   attendeeEmail?: string | null,
   cachedRegistration?: Partial<FirestoreRegistration>,
-  options?: { skipBevyRemoval?: boolean; skipPaymentCancel?: boolean },
+  options?: { skipBevyRemoval?: boolean; skipPaymentCancel?: boolean; cancellationReason?: string },
 ) {
   try {
     let resolvedAttendeeId = bevyAttendeeId;
@@ -603,7 +603,7 @@ export async function deleteEventRegistrationAction(
             buildCancelPaymentPayload(
               registrationData,
               { id: eventId } as Partial<import("./types").FirestoreEvent>,
-              "Attendee removed from event roster",
+              options?.cancellationReason?.trim() || "Attendee removed from event roster",
             ),
           );
           if (!cancelRes.success) {

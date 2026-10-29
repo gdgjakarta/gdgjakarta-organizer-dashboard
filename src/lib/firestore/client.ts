@@ -24,7 +24,7 @@ import {
 export { deleteField };
 
 import { app, auth } from "@/config/firebase";
-import type { FaqContent, FeaturedEventContent, PartnershipContent } from "@/lib/content/types";
+import type { FaqContent, FeaturedEventContent, PartnershipContent, PaymentPolicyContent } from "@/lib/content/types";
 import { normalizeRelatedLink } from "@/lib/events/agenda-unification";
 
 import type { SelectedMerchandiseOrder, SessionRelatedLink } from "./types";
@@ -4341,6 +4341,55 @@ export function subscribeFeaturedEventContentDoc(
     },
     (err) => {
       console.warn("[Firestore] subscribeFeaturedEventContentDoc error:", err);
+      onError?.(err);
+    },
+  );
+}
+
+// ── Payment Policy Content Settings ────────────────────────────────────────
+
+export async function getPaymentPolicyContentDoc(): Promise<PaymentPolicyContent | null> {
+  if (typeof window === "undefined") return null;
+  try {
+    const docRef = doc(db, "content_settings", "payment_policy");
+    const snap = await getDoc(docRef);
+    if (!snap.exists()) return null;
+    return snap.data() as PaymentPolicyContent;
+  } catch (error) {
+    console.error("[Firestore] getPaymentPolicyContentDoc error:", error);
+    return null;
+  }
+}
+
+export async function savePaymentPolicyContentDoc(content: PaymentPolicyContent): Promise<void> {
+  if (typeof window === "undefined") return;
+  const docRef = doc(db, "content_settings", "payment_policy");
+  const sanitized = sanitizeFirestoreData({
+    ...content,
+    updatedAt: new Date().toISOString(),
+  });
+  await setDoc(docRef, sanitized, { merge: true });
+}
+
+export function subscribePaymentPolicyContentDoc(
+  onUpdate: (content: PaymentPolicyContent) => void,
+  onError?: (error: Error) => void,
+): () => void {
+  if (typeof window === "undefined") {
+    return () => {
+      // noop in server or non-window environment
+    };
+  }
+  const docRef = doc(db, "content_settings", "payment_policy");
+  return onSnapshot(
+    docRef,
+    (snap) => {
+      if (snap.exists()) {
+        onUpdate(snap.data() as PaymentPolicyContent);
+      }
+    },
+    (err) => {
+      console.warn("[Firestore] subscribePaymentPolicyContentDoc error:", err);
       onError?.(err);
     },
   );

@@ -26,7 +26,7 @@ export const DEFAULT_REJECTED_VIRTUAL_EMAIL_HTML =
   '<!DOCTYPE html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n    <title>Update regarding: {{ $(\'email-config\').item.json.eventName }}</title>\n    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet" />\n    <style>\n      body {\n        margin: 0;\n        padding: 0;\n        font-family: \'Poppins\', sans-serif;\n        background-color: #f1f3f4;\n        color: #3c4043;\n      }\n\n      .container {\n        max-width: 510px;\n        margin: 0 auto;\n        background-color: #ffffff;\n        padding: 30px;\n        border-radius: 8px;\n      }\n\n      .header-img {\n        width: 100%;\n        height: auto;\n        border-radius: 8px 8px 0 0;\n        background-color: #4285f4;\n        min-height: 100px;\n      }\n\n      .center {\n        text-align: center;\n      }\n\n      .start {\n        text-align: start;\n      }\n\n      .btn {\n        display: block;\n        background-color: #4285f4;\n        color: #ffffff !important;\n        text-align: center;\n        border-radius: 50px;\n        padding: 12px 24px;\n        text-decoration: none;\n        width: 60%;\n        margin: 30px auto;\n        font-weight: 600;\n        font-size: 15px;\n        box-shadow: 0 4px 6px rgba(0,0,0,0.1);\n      }\n      \n      .btn:hover {\n        background-color: #3367d6;\n      }\n\n      .checklist-box {\n        background-color: #f8f9fa;\n        border: 1px solid #e0e0e0;\n        border-radius: 8px;\n        padding: 20px;\n        margin: 20px 0;\n      }\n\n      .checklist-item {\n        margin-bottom: 15px;\n        display: flex;\n        align-items: flex-start;\n      }\n\n      .checklist-item:last-child {\n        margin-bottom: 0;\n      }\n\n      .icon {\n        margin-right: 12px;\n        font-size: 1.2em;\n        min-width: 25px;\n      }\n\n      .text {\n        font-size: 0.95em;\n        line-height: 1.5;\n      }\n\n      .footer {\n        margin-top: 24pt;\n        padding: 18pt;\n        background-color: #f8f9fa;\n        border-radius: 0 0 8px 8px;\n        text-align: center;\n      }\n\n      .content {\n        padding: 0 15px;\n      }\n\n      /* Fixed Info Box with Symmetrical Spacing adjusted to 16px */\n      .info-box {\n        background-color: #fce8e6;\n        border: 1px solid #ea4335;\n        border-radius: 8px;\n        padding: 16px; \n        margin: 24px 0;\n        color: #b31412;\n      }\n\n      .info-box p {\n        margin-top: 0; \n        margin-bottom: 16px; \n        line-height: 1.6;\n      }\n\n      .info-box p:last-child {\n        margin-bottom: 0; \n      }\n\n      p {\n        line-height: 1.6;\n        margin-bottom: 15px;\n      }\n\n      strong {\n        color: #202124;\n      }\n    </style>\n  </head>\n  <body>\n    <div class="container">\n      <div class="center">\n        <!-- Header Image -->\n        <img src="{{ $(\'email-config\').item.json.eventHeaderEmailUrl }}" onerror="this.src=\'https://placehold.co/600x300?text={{ $(\'email-config\').item.json.eventName }}\'" alt="Event Header" class="header-img" />\n      </div>\n      \n      <div class="content">\n        <div class="start">\n          <h2>Hi {{ $(\'loop-send-rejected-email\').item.json[\'Full Name\'] }},</h2>\n        </div>\n        \n        <div class="start">\n          <p>Thank you for your interest in attending <strong>{{ $(\'email-config\').item.json.eventName }}</strong>.</p>\n          \n          <div class="info-box">\n            <p>\n              Due to high registration interest and virtual workshop capacity limits, we are unfortunately unable to offer you an active participant spot for this virtual event.\n            </p>\n            <p>\n              Our selection process prioritizes applicants whose background, interests, and goals are most closely aligned with the interactive session topics and hands-on exercises.\n            </p>\n          </div>\n\n          <!-- Alternatives Checklist -->\n          <div class="checklist-box">\n            <h3 style="margin-top: 0; color: #4285f4;">\ud83d\udccc Next Steps &amp; Online Resources</h3>\n            {{ $(\'event-params\').item.json.eventChecklistItems }}\n          </div>\n\n          <p>We sincerely appreciate your interest and hope to welcome you at upcoming webinars, technical workshops, and virtual community initiatives.</p>\n          \n          <p>We encourage you to stay connected with the community and keep an eye on our event schedule for upcoming technical deep dives.</p>\n\n          <a href="{{ $(\'email-config\').item.json.actionButtonUrl }}" class="btn">Explore Community Events</a>\n\n          <p style="margin-top: 30px; font-size: 0.9em; color: #5f6368;">\n            Thank you for your understanding, and we look forward to seeing you at a future session!\n          </p>\n        </div>\n      </div>\n      \n      <div class="center">\n        <div class="footer">\n          <img alt="GDG Jakarta" src="https://assets.gdgjakarta.org/gdg-jakarta/gdg-sign-bubble-transparent.png" style="width: 113px; height: auto;" />\n        </div>\n      </div>\n    </div>\n  </body>\n</html>';
 
 export const DEFAULT_CANCELLED_EMAIL_HTML =
-  '<!DOCTYPE html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n    <title>Registration Cancelled: {{ $(\'event-params\').item.json.eventName }}</title>\n    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet" />\n    <style>\n      body {\n        margin: 0;\n        padding: 0;\n        font-family: \'Poppins\', sans-serif;\n        background-color: #f1f3f4;\n        color: #3c4043;\n      }\n\n      .container {\n        max-width: 510px;\n        margin: 0 auto;\n        background-color: #ffffff;\n        padding: 30px;\n        border-radius: 8px;\n      }\n\n      .header-img {\n        width: 100%;\n        height: auto;\n        border-radius: 8px 8px 0 0;\n        background-color: #ea4335;\n        min-height: 100px;\n      }\n\n      .center {\n        text-align: center;\n      }\n\n      .start {\n        text-align: start;\n      }\n\n      .btn {\n        display: block;\n        background-color: #ea4335;\n        color: #ffffff !important;\n        text-align: center;\n        border-radius: 50px;\n        padding: 12px 24px;\n        text-decoration: none;\n        width: 70%;\n        margin: 30px auto;\n        font-weight: 600;\n        font-size: 15px;\n        box-shadow: 0 4px 6px rgba(0,0,0,0.1);\n      }\n      \n      .btn:hover {\n        background-color: #d93025;\n      }\n\n      .checklist-box {\n        background-color: #f8f9fa;\n        border: 1px solid #e0e0e0;\n        border-radius: 8px;\n        padding: 20px;\n        margin: 20px 0;\n      }\n\n      .checklist-item {\n        margin-bottom: 15px;\n        display: flex;\n        align-items: flex-start;\n      }\n\n      .checklist-item:last-child {\n        margin-bottom: 0;\n      }\n\n      .icon {\n        margin-right: 12px;\n        font-size: 1.2em;\n        min-width: 25px;\n      }\n\n      .text {\n        font-size: 0.95em;\n        line-height: 1.5;\n      }\n\n      .footer {\n        margin-top: 24pt;\n        padding: 18pt;\n        background-color: #f8f9fa;\n        border-radius: 0 0 8px 8px;\n        text-align: center;\n      }\n\n      .content {\n        padding: 0 15px;\n      }\n\n      .alert-box {\n        background-color: #fce8e6;\n        border: 1px solid #ea4335;\n        border-radius: 8px;\n        padding: 16px;\n        margin: 24px 0;\n        color: #b31412;\n      }\n\n      .alert-box p {\n        margin-top: 0;\n        margin-bottom: 12px;\n        line-height: 1.6;\n      }\n\n      .alert-box p:last-child {\n        margin-bottom: 0;\n      }\n\n      p {\n        line-height: 1.6;\n        margin-bottom: 15px;\n      }\n\n      strong {\n        color: #202124;\n      }\n    </style>\n  </head>\n  <body>\n    <div class="container">\n      <div class="center">\n        <!-- Header Image -->\n        <img src="{{ $(\'event-params\').item.json.eventHeaderUrl }}" onerror="this.src=\'https://placehold.co/600x300?text=Registration+Cancelled\'" alt="Event Header" class="header-img" />\n      </div>\n      \n      <div class="content">\n        <div class="start">\n          <h2>Hi {{ $(\'loop-send-email\').item.json[\'Full Name\'] }},</h2>\n        </div>\n        \n        <div class="start">\n          <p>We are writing to notify you regarding your registration for <strong>{{ $(\'event-params\').item.json.eventName }}</strong>.</p>\n          \n          <div class="alert-box">\n            <p><strong>Notice of Registration Cancellation:</strong></p>\n            <p>Your registration has been cancelled by the organizer and you have been removed from the event. If you change your mind, you need to re-register again.</p>\n          </div>\n\n          <!-- Cancellation Checklist / Notes -->\n          <div class="checklist-box">\n            <h3 style="margin-top: 0; color: #ea4335;">\ud83d\udccb Important Information</h3>\n            {{ $(\'event-params\').item.json.eventChecklistItems }}\n          </div>\n\n          <p>If you have any questions or believe this was done in error, please feel free to reach out to our organizing team.</p>\n          \n          <a href="{{ $(\'event-params\').item.json.eventActionUrl }}" class="btn">View Event &amp; Re-Register</a>\n\n          <p style="margin-top: 30px; font-size: 0.9em; color: #5f6368; text-align: center;">\n            Thank you for your understanding.\n          </p>\n        </div>\n      </div>\n      \n      <div class="center">\n        <div class="footer">\n          <img alt="GDG Jakarta" src="https://assets.gdgjakarta.org/gdg-jakarta/gdg-sign-bubble-transparent.png" style="width: 113px; height: auto;" />\n        </div>\n      </div>\n    </div>\n  </body>\n</html>';
+  '<!DOCTYPE html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n    <title>Registration Cancelled: {{ $(\'event-params\').item.json.eventName }}</title>\n    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet" />\n    <style>\n      body {\n        margin: 0;\n        padding: 0;\n        font-family: \'Poppins\', sans-serif;\n        background-color: #f1f3f4;\n        color: #3c4043;\n      }\n\n      .container {\n        max-width: 510px;\n        margin: 0 auto;\n        background-color: #ffffff;\n        padding: 30px;\n        border-radius: 8px;\n      }\n\n      .header-img {\n        width: 100%;\n        height: auto;\n        border-radius: 8px 8px 0 0;\n        background-color: #ea4335;\n        min-height: 100px;\n      }\n\n      .center {\n        text-align: center;\n      }\n\n      .start {\n        text-align: start;\n      }\n\n      .btn {\n        display: block;\n        background-color: #ea4335;\n        color: #ffffff !important;\n        text-align: center;\n        border-radius: 50px;\n        padding: 12px 24px;\n        text-decoration: none;\n        width: 70%;\n        margin: 30px auto;\n        font-weight: 600;\n        font-size: 15px;\n        box-shadow: 0 4px 6px rgba(0,0,0,0.1);\n      }\n      \n      .btn:hover {\n        background-color: #d93025;\n      }\n\n      .checklist-box {\n        background-color: #f8f9fa;\n        border: 1px solid #e0e0e0;\n        border-radius: 8px;\n        padding: 20px;\n        margin: 20px 0;\n      }\n\n      .checklist-item {\n        margin-bottom: 15px;\n        display: flex;\n        align-items: flex-start;\n      }\n\n      .checklist-item:last-child {\n        margin-bottom: 0;\n      }\n\n      .icon {\n        margin-right: 12px;\n        font-size: 1.2em;\n        min-width: 25px;\n      }\n\n      .text {\n        font-size: 0.95em;\n        line-height: 1.5;\n      }\n\n      .footer {\n        margin-top: 24pt;\n        padding: 18pt;\n        background-color: #f8f9fa;\n        border-radius: 0 0 8px 8px;\n        text-align: center;\n      }\n\n      .content {\n        padding: 0 15px;\n      }\n\n      .alert-box {\n        background-color: #fce8e6;\n        border: 1px solid #ea4335;\n        border-radius: 8px;\n        padding: 16px;\n        margin: 24px 0;\n        color: #b31412;\n      }\n\n      .alert-box p {\n        margin-top: 0;\n        margin-bottom: 12px;\n        line-height: 1.6;\n      }\n\n      .alert-box p:last-child {\n        margin-bottom: 0;\n      }\n\n      p {\n        line-height: 1.6;\n        margin-bottom: 15px;\n      }\n\n      strong {\n        color: #202124;\n      }\n    </style>\n  </head>\n  <body>\n    <div class="container">\n      <div class="center">\n        <!-- Header Image -->\n        <img src="{{ $(\'event-params\').item.json.eventHeaderUrl }}" onerror="this.src=\'https://placehold.co/600x300?text=Registration+Cancelled\'" alt="Event Header" class="header-img" />\n      </div>\n      \n      <div class="content">\n        <div class="start">\n          <h2>Hi {{ $(\'loop-send-email\').item.json[\'Full Name\'] }},</h2>\n        </div>\n        \n        <div class="start">\n          <p>We are writing to notify you regarding your registration for <strong>{{ $(\'event-params\').item.json.eventName }}</strong>.</p>\n          \n          <div class="alert-box">\n            <p><strong>Notice of Registration Cancellation:</strong></p>\n            <p>Your registration has been cancelled by the organizer and you have been removed from the event. If you change your mind, you need to re-register again.</p>\n            <p><strong>Reason for Cancellation:</strong><br>{{ $(\'event-params\').item.json.cancellationReason }}</p>\n          </div>\n\n          <!-- Cancellation Checklist / Notes -->\n          <div class="checklist-box">\n            <h3 style="margin-top: 0; color: #ea4335;">📋 Important Information</h3>\n            {{ $(\'event-params\').item.json.eventChecklistItems }}\n          </div>\n\n          <p>If you have any questions or believe this was done in error, please feel free to reach out to our organizing team.</p>\n          \n          <a href="{{ $(\'event-params\').item.json.eventActionUrl }}" class="btn">View Event &amp; Re-Register</a>\n\n          <p style="margin-top: 30px; font-size: 0.9em; color: #5f6368; text-align: center;">\n            Thank you for your understanding.\n          </p>\n        </div>\n      </div>\n      \n      <div class="center">\n        <div class="footer">\n          <img alt="GDG Jakarta" src="https://assets.gdgjakarta.org/gdg-jakarta/gdg-sign-bubble-transparent.png" style="width: 113px; height: auto;" />\n        </div>\n      </div>\n    </div>\n  </body>\n</html>';
 
 export const DEFAULT_CANCELLED_ATTENDEE_EMAIL_HTML =
   '<!DOCTYPE html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n    <title>Registration Cancelled: {{ $(\'event-params\').item.json.eventName }}</title>\n    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet" />\n    <style>\n      body {\n        margin: 0;\n        padding: 0;\n        font-family: \'Poppins\', sans-serif;\n        background-color: #f1f3f4;\n        color: #3c4043;\n      }\n\n      .container {\n        max-width: 510px;\n        margin: 0 auto;\n        background-color: #ffffff;\n        padding: 30px;\n        border-radius: 8px;\n      }\n\n      .header-img {\n        width: 100%;\n        height: auto;\n        border-radius: 8px 8px 0 0;\n        background-color: #ea4335;\n        min-height: 100px;\n      }\n\n      .center {\n        text-align: center;\n      }\n\n      .start {\n        text-align: start;\n      }\n\n      .btn {\n        display: block;\n        background-color: #ea4335;\n        color: #ffffff !important;\n        text-align: center;\n        border-radius: 50px;\n        padding: 12px 24px;\n        text-decoration: none;\n        width: 70%;\n        margin: 30px auto;\n        font-weight: 600;\n        font-size: 15px;\n        box-shadow: 0 4px 6px rgba(0,0,0,0.1);\n      }\n      \n      .btn:hover {\n        background-color: #d93025;\n      }\n\n      .checklist-box {\n        background-color: #f8f9fa;\n        border: 1px solid #e0e0e0;\n        border-radius: 8px;\n        padding: 20px;\n        margin: 20px 0;\n      }\n\n      .checklist-item {\n        margin-bottom: 15px;\n        display: flex;\n        align-items: flex-start;\n      }\n\n      .checklist-item:last-child {\n        margin-bottom: 0;\n      }\n\n      .icon {\n        margin-right: 12px;\n        font-size: 1.2em;\n        min-width: 25px;\n      }\n\n      .text {\n        font-size: 0.95em;\n        line-height: 1.5;\n      }\n\n      .footer {\n        margin-top: 24pt;\n        padding: 18pt;\n        background-color: #f8f9fa;\n        border-radius: 0 0 8px 8px;\n        text-align: center;\n      }\n\n      .content {\n        padding: 0 15px;\n      }\n\n      .alert-box {\n        background-color: #fce8e6;\n        border: 1px solid #ea4335;\n        border-radius: 8px;\n        padding: 16px;\n        margin: 24px 0;\n        color: #b31412;\n      }\n\n      .alert-box p {\n        margin-top: 0;\n        margin-bottom: 12px;\n        line-height: 1.6;\n      }\n\n      .alert-box p:last-child {\n        margin-bottom: 0;\n      }\n\n      p {\n        line-height: 1.6;\n        margin-bottom: 15px;\n      }\n\n      strong {\n        color: #202124;\n      }\n    </style>\n  </head>\n  <body>\n    <div class="container">\n      <div class="center">\n        <!-- Header Image -->\n        <img src="{{ $(\'event-params\').item.json.eventHeaderUrl }}" onerror="this.src=\'https://placehold.co/600x300?text=Registration+Cancelled\'" alt="Event Header" class="header-img" />\n      </div>\n      \n      <div class="content">\n        <div class="start">\n          <h2>Hi {{ $(\'loop-send-email\').item.json[\'Full Name\'] }},</h2>\n        </div>\n        \n        <div class="start">\n          <p>We are writing to confirm that your registration for <strong>{{ $(\'event-params\').item.json.eventName }}</strong> has been cancelled.</p>\n          \n          <div class="alert-box">\n            <p><strong>Notice of Registration Cancellation:</strong></p>\n            <p>Your registration has been canceled and your registration will be removed from the event. If you change your mind, you need to re-register again.</p>\n          </div>\n\n          <!-- Cancellation Checklist / Notes -->\n          <div class="checklist-box">\n            <h3 style="margin-top: 0; color: #ea4335;">\ud83d\udccb Important Information</h3>\n            {{ $(\'event-params\').item.json.eventChecklistItems }}\n          </div>\n\n          <p>If you have any questions or cancelled this by mistake, you can return to the event page anytime while registration remains open.</p>\n          \n          <a href="{{ $(\'event-params\').item.json.eventActionUrl }}" class="btn">View Event &amp; Re-Register</a>\n\n          <p style="margin-top: 30px; font-size: 0.9em; color: #5f6368; text-align: center;">\n            Thank you for being part of the GDG Jakarta community.\n          </p>\n        </div>\n      </div>\n      \n      <div class="center" style="text-align: center;">\n        <div class="footer" style="margin-top: 24pt; padding: 18pt; background-color: #f8f9fa; border-radius: 0 0 8px 8px; text-align: center;">\n          <img alt="GDG Jakarta" src="https://assets.gdgjakarta.org/gdg-jakarta/gdg-sign-bubble-transparent.png" width="113" style="width: 113px; height: auto; display: inline-block; border: 0;" />\n        </div>\n      </div>\n    </div>\n  </body>\n</html>';
@@ -290,6 +290,12 @@ export const EMAIL_TEMPLATE_VARIABLES: Record<EmailTemplateKey, TemplateVariable
       label: "Attendee Full Name",
       description: "Recipient full name",
       sampleValue: "Alex Pratama",
+    },
+    {
+      tag: "{{ $('event-params').item.json.cancellationReason }}",
+      label: "Cancellation Reason",
+      description: "Reason provided by the organizer for cancelling the registration",
+      sampleValue: "Incomplete registration profile or duplicate submission.",
     },
     {
       tag: "{{ $('event-params').item.json.eventChecklistItems }}",
@@ -760,6 +766,7 @@ export interface TemplateSimulatedData {
   invoiceNumber?: string;
   paidAmount?: string;
   sessionName?: string;
+  cancellationReason?: string;
 }
 
 export const DEFAULT_INTEREST_CHECKLIST_ITEMS: string[] = [
@@ -992,6 +999,29 @@ export function ensureAttendeeIdInAcceptedHtml(html: string): string {
 }
 
 /**
+ * Ensures the cancellation reason section is present inside .alert-box
+ * for cancelled email templates even if saved in Firestore before this update.
+ */
+export function ensureCancellationReasonInCancelledHtml(html: string): string {
+  let result = html;
+  if (
+    !result.includes("cancellationReason") &&
+    !result.includes("cancellation_reason") &&
+    !result.includes("Reason for Cancellation:") &&
+    !result.includes("[[CancellationReason]]") &&
+    result.includes("alert-box")
+  ) {
+    const quote = result.includes("\\'") ? "\\'" : "'";
+    const reasonBlock = `\n            <p><strong>Reason for Cancellation:</strong><br>{{ $(${quote}event-params${quote}).item.json.cancellationReason }}</p>\n          `;
+    result = result.replace(
+      /(<div\b[^>]*class=["'][^"']*alert-box[^"']*["'][^>]*>[\s\S]*?)(<\/div>)/i,
+      `$1${reasonBlock}$2`,
+    );
+  }
+  return result;
+}
+
+/**
  * Ensures the Check-in Deadline row is included in the accepted ticket details box
  * if the template contains session time but omits checkin deadline, and ensures
  * venue button and footer styling are properly applied.
@@ -1143,6 +1173,9 @@ export function getCleanDefaultTemplateDataForType(
     qrCode: customData?.qrCode ?? SAMPLE_QR_CODE_BASE64,
     attendeeCode: customData?.attendeeCode ?? "GDG-JKT-89241",
     attendeeId: customData?.attendeeId ?? "2793132",
+    cancellationReason:
+      customData?.cancellationReason ??
+      (key === "cancelled" ? "Incomplete registration profile or duplicate submission." : undefined),
   };
 }
 
@@ -1248,6 +1281,7 @@ export function getDefaultTemplateDataForType(key: EmailTemplateKey, event: Fire
     qrCode: savedData.qrCode ?? cleanDefaults.qrCode,
     attendeeCode: savedData.attendeeCode ?? cleanDefaults.attendeeCode,
     attendeeId: savedData.attendeeId ?? cleanDefaults.attendeeId,
+    cancellationReason: savedData.cancellationReason ?? cleanDefaults.cancellationReason,
   };
 }
 
@@ -1389,6 +1423,17 @@ export function interpolateTemplateHtml(
     rendered = ensureCheckinDeadlineInAcceptedHtml(rendered);
   }
 
+  // Backwards-compatibility: Ensure cancellation reason is in alert-box if template omitted it
+  if (
+    (data.cancellationReason || rendered.includes("cancelled by the organizer")) &&
+    rendered.includes("alert-box") &&
+    !rendered.includes("cancellationReason") &&
+    !rendered.includes("cancellation_reason") &&
+    !rendered.includes("Reason for Cancellation:")
+  ) {
+    rendered = ensureCancellationReasonInCancelledHtml(rendered);
+  }
+
   const sessionTime =
     data.overrideSessionTime && data.overrideSessionTime.trim() !== ""
       ? data.overrideSessionTime.trim()
@@ -1439,6 +1484,17 @@ export function interpolateTemplateHtml(
     rendered = rendered.replaceAll("{{ attendeeId }}", attendeeId);
     rendered = rendered.replaceAll("{{ AttendeeId }}", attendeeId);
   }
+
+  // Cancellation Reason variables
+  const rawReason = data.cancellationReason || "Incomplete registration profile or duplicate submission.";
+  const formattedReason = rawReason.replace(/\n/g, "<br>");
+  rendered = rendered.replaceAll("{{ $('event-params').item.json.cancellationReason }}", formattedReason);
+  rendered = rendered.replaceAll("{ $('event-params').item.json.cancellationReason }", formattedReason);
+  rendered = rendered.replaceAll("{{ cancellation_reason }}", formattedReason);
+  rendered = rendered.replaceAll("{ cancellation_reason }", formattedReason);
+  rendered = rendered.replaceAll("{{ cancellationReason }}", formattedReason);
+  rendered = rendered.replaceAll("{ cancellationReason }", formattedReason);
+  rendered = rendered.replaceAll("[[CancellationReason]]", formattedReason);
 
   // Paid Waitlist variables
   rendered = rendered.replaceAll("{{ invoice_number }}", data.invoiceNumber ?? "INV-1792031921352-132640");
@@ -1620,6 +1676,7 @@ export function buildRenderedEmailForAttendee({
   invoiceNumber,
   paidAmount,
   sessionName,
+  cancellationReason,
 }: {
   templateKey: EmailTemplateKey;
   attendee: { name: string; email: string };
@@ -1627,6 +1684,7 @@ export function buildRenderedEmailForAttendee({
   invoiceNumber?: string;
   paidAmount?: string;
   sessionName?: string;
+  cancellationReason?: string;
 }): {
   firstName: string;
   lastName: string;
@@ -1674,6 +1732,7 @@ export function buildRenderedEmailForAttendee({
   if (invoiceNumber) simulatedData.invoiceNumber = invoiceNumber;
   if (paidAmount) simulatedData.paidAmount = paidAmount;
   if (sessionName) simulatedData.sessionName = sessionName;
+  if (cancellationReason) simulatedData.cancellationReason = cancellationReason;
 
   // Get raw template HTML
   const rawHtml =

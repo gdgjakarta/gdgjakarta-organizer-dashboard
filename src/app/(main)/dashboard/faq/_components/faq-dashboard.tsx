@@ -33,6 +33,7 @@ import { useFaqContent } from "@/lib/content/hooks";
 import type { FaqCategory, FaqItem } from "@/lib/content/types";
 
 import { FaqItemDialog } from "./faq-item-dialog";
+import { PaymentPolicyEditor } from "./payment-policy-editor";
 
 export function FaqDashboard() {
   const { content, setContent, hasChanges, discardChanges, saving, saveContent, resetToDefaults } = useFaqContent();
@@ -206,6 +207,9 @@ export function FaqDashboard() {
             </TabsTrigger>
             <TabsTrigger value="header" className="shrink-0 whitespace-nowrap px-3 py-1.5 text-xs sm:text-sm">
               Header & Support
+            </TabsTrigger>
+            <TabsTrigger value="payment-policy" className="shrink-0 whitespace-nowrap px-3 py-1.5 text-xs sm:text-sm">
+              Payment Policy Page
             </TabsTrigger>
           </TabsList>
         </div>
@@ -837,6 +841,11 @@ export function FaqDashboard() {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        {/* ── 5. Payment Policy Tab ── */}
+        <TabsContent value="payment-policy" className="space-y-6">
+          <PaymentPolicyEditor />
         </TabsContent>
       </Tabs>
 

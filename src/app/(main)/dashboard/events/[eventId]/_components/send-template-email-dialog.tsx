@@ -58,6 +58,9 @@ export function SendTemplateEmailDialog({
   const [lastName, setLastName] = useState("Doe");
   const [recipientEmail, setRecipientEmail] = useState("jane.doe@example.com");
   const [customSubject, setCustomSubject] = useState("");
+  const [cancellationReason, setCancellationReason] = useState(
+    "Incomplete registration profile or duplicate submission.",
+  );
   const [isSending, startTransition] = useTransition();
 
   // Keep selected key synchronized when dialog opens
@@ -117,8 +120,12 @@ export function SendTemplateEmailDialog({
         ...activeBaseData.event,
         eventName: activeBaseData.event.eventName || event.title,
       },
+      cancellationReason:
+        selectedKey === "cancelled"
+          ? cancellationReason.trim() || activeBaseData.cancellationReason
+          : activeBaseData.cancellationReason,
     };
-  }, [activeBaseData, firstName, lastName, recipientEmail, event.title]);
+  }, [activeBaseData, firstName, lastName, recipientEmail, event.title, selectedKey, cancellationReason]);
 
   // Compute subject and body
   const rawHtml = templates[selectedKey] ?? "";
@@ -138,6 +145,10 @@ export function SendTemplateEmailDialog({
   const handleSendRequest = () => {
     if (!recipientEmail?.includes("@")) {
       toast.error("Please enter a valid recipient email address.");
+      return;
+    }
+    if (selectedKey === "cancelled" && !cancellationReason.trim()) {
+      toast.error("Please provide a reason for cancellation.");
       return;
     }
 
@@ -329,6 +340,27 @@ export function SendTemplateEmailDialog({
                   className="h-8 text-xs"
                 />
               </div>
+
+              {selectedKey === "cancelled" && (
+                <div className="space-y-1 sm:col-span-2 pt-1 border-t">
+                  <Label className="text-[11px] font-medium flex items-center justify-between">
+                    <span>
+                      Reason for Cancellation <strong className="text-destructive">*</strong>
+                    </span>
+                    <span className="text-[10px] text-muted-foreground font-normal">Appended to email</span>
+                  </Label>
+                  <Input
+                    value={cancellationReason}
+                    onChange={(e) => setCancellationReason(e.target.value)}
+                    placeholder="e.g. Duplicate registration or incomplete profile"
+                    className="h-8 text-xs"
+                    required
+                  />
+                  {!cancellationReason.trim() && (
+                    <p className="text-[10px] text-destructive">Cancellation reason is required.</p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 

@@ -527,9 +527,73 @@ export function EventRegistrationModal({
     return hasPaidTicket || hasPaidBundle;
   }, [availableTickets, availableBundles]);
 
+  // Voucher state (declared before bundle/ticket selection so bundle vouchers lock ticket & disable packages)
+  const [voucherInput, setVoucherInput] = useState("");
+  const [appliedVoucher, setAppliedVoucher] = useState<EventVoucher | null>(null);
+  const [appliedBundleTicketId, setAppliedBundleTicketId] = useState<string>("");
+  const [voucherError, setVoucherError] = useState<string | null>(null);
+  const [isApplyingVoucher, setIsApplyingVoucher] = useState(false);
+
+  // Bundle vouchers already grant their package ticket, so selecting another bundle is blocked.
+  const hasBundleVoucher = Boolean(
+    appliedVoucher?.source_bundle_id ||
+      appliedVoucher?.code?.toUpperCase().startsWith("BNDL-") ||
+      appliedBundleTicketId,
+  );
+  const isPendingBundleVoucher = Boolean(
+    isApplyingVoucher &&
+      (voucherInput.trim().toUpperCase().startsWith("BNDL-") ||
+        initialVoucherCode?.trim().toUpperCase().startsWith("BNDL-")),
+  );
+
+  const bundleVoucherTicketId = useMemo(() => {
+    if (!hasBundleVoucher) return "";
+    if (appliedBundleTicketId) return appliedBundleTicketId;
+    if (appliedVoucher?.source_bundle_id && eventConfig.bundles) {
+      const matchingBundle = eventConfig.bundles.find((b) => b.id === appliedVoucher.source_bundle_id);
+      if (matchingBundle?.ticket_id && matchingBundle.ticket_id !== "none") {
+        return matchingBundle.ticket_id;
+      }
+    }
+    return selectedTicketId;
+  }, [
+    hasBundleVoucher,
+    appliedBundleTicketId,
+    appliedVoucher?.source_bundle_id,
+    eventConfig.bundles,
+    selectedTicketId,
+  ]);
+
+  const clearBundleSelectionForVoucher = React.useCallback(
+    (bundleToClear?: EventBundlePackage | null) => {
+      const targetBundle = bundleToClear ?? availableBundles.find((b) => b.id === selectedBundleId) ?? null;
+      setSelectedBundleId("");
+      if (targetBundle && targetBundle.merchandise_items.length > 0) {
+        const bundleMerchIds = new Set(targetBundle.merchandise_items.map((bi) => bi.merchandise_id));
+        setSelectedMerch((prev) => {
+          const updated: Record<string, { quantity: number; selectedVariations: Record<string, string> }> = {};
+          for (const [id, order] of Object.entries(prev)) {
+            if (!bundleMerchIds.has(id)) {
+              updated[id] = order;
+            }
+          }
+          return updated;
+        });
+      }
+    },
+    [availableBundles, selectedBundleId],
+  );
+
+  useEffect(() => {
+    if (hasBundleVoucher && selectedBundleId) {
+      clearBundleSelectionForVoucher();
+    }
+  }, [hasBundleVoucher, selectedBundleId, clearBundleSelectionForVoucher]);
+
   const selectedBundle = useMemo(() => {
+    if (hasBundleVoucher) return null;
     return availableBundles.find((b) => b.id === selectedBundleId) ?? null;
-  }, [availableBundles, selectedBundleId]);
+  }, [availableBundles, selectedBundleId, hasBundleVoucher]);
 
   const hasBundleTicket = Boolean(selectedBundle?.ticket_id);
   const hasBundleMerchandise = Boolean(
@@ -537,6 +601,10 @@ export function EventRegistrationModal({
   );
 
   const handleSelectBundle = (bundle: EventBundlePackage) => {
+    if (hasBundleVoucher || isPendingBundleVoucher) {
+      toast.info("Bundling packages cannot be selected while using a bundle voucher.");
+      return;
+    }
     if (selectedBundleId === bundle.id) {
       setSelectedBundleId("");
       if (bundle.merchandise_items.length > 0) {
@@ -602,7 +670,12 @@ export function EventRegistrationModal({
 
   // Auto-select first open ticket if none selected or if currently selected ticket is closed/unavailable
   useEffect(() => {
-    if (selectedBundleId && hasBundleTicket) return;
+    if ((selectedBundleId && hasBundleTicket) || hasBundleVoucher) {
+      if (hasBundleVoucher && bundleVoucherTicketId && selectedTicketId !== bundleVoucherTicketId) {
+        setSelectedTicketId(bundleVoucherTicketId);
+      }
+      return;
+    }
     const openTickets = availableTickets.filter((t) => getTicketSalesStatus(t, effectiveNow).isOpen);
     const currentTicket = availableTickets.find((t) => t.id === selectedTicketId);
     const isCurrentTicketOpen = currentTicket ? getTicketSalesStatus(currentTicket, effectiveNow).isOpen : false;
@@ -614,11 +687,20 @@ export function EventRegistrationModal({
         setSelectedTicketId("");
       }
     }
-  }, [availableTickets, selectedTicketId, selectedBundleId, hasBundleTicket, effectiveNow]);
+  }, [
+    availableTickets,
+    selectedTicketId,
+    selectedBundleId,
+    hasBundleTicket,
+    hasBundleVoucher,
+    bundleVoucherTicketId,
+    effectiveNow,
+  ]);
 
   const selectedTicket = useMemo(() => {
-    return availableTickets.find((t) => t.id === selectedTicketId) ?? null;
-  }, [availableTickets, selectedTicketId]);
+    const targetId = hasBundleVoucher && bundleVoucherTicketId ? bundleVoucherTicketId : selectedTicketId;
+    return availableTickets.find((t) => t.id === targetId) ?? null;
+  }, [availableTickets, selectedTicketId, hasBundleVoucher, bundleVoucherTicketId]);
 
   const selectedSession = useMemo(() => {
     return preEventSessions.find((s) => s.id === selectedSessionId) ?? null;
@@ -748,12 +830,6 @@ export function EventRegistrationModal({
     return base;
   }, [eventConfig.custom_questions, isPaymentRequired]);
 
-  // Voucher state
-  const [voucherInput, setVoucherInput] = useState("");
-  const [appliedVoucher, setAppliedVoucher] = useState<EventVoucher | null>(null);
-  const [voucherError, setVoucherError] = useState<string | null>(null);
-  const [isApplyingVoucher, setIsApplyingVoucher] = useState(false);
-
   // Referral state
   const [referralInput, setReferralInput] = useState("");
   const [appliedReferral, setAppliedReferral] = useState<{
@@ -863,11 +939,6 @@ export function EventRegistrationModal({
     }
   }, [appliedVoucher, effectiveBasePrice, merchandiseTotalPrice]);
 
-  // Bundle vouchers already grant their package ticket, so selecting another bundle is blocked.
-  const hasBundleVoucher = Boolean(
-    appliedVoucher?.source_bundle_id || appliedVoucher?.code?.toUpperCase().startsWith("BNDL-"),
-  );
-
   const voucherDiscount = useMemo(() => {
     if (!appliedVoucher) {
       return { ticketDiscount: 0, merchandiseDiscount: 0, totalDiscount: 0 };
@@ -913,14 +984,36 @@ export function EventRegistrationModal({
     setIsApplyingVoucher(true);
     setVoucherError(null);
     try {
-      const { validateVoucherAction } = await import("@/server/voucher-actions");
-      const res = await validateVoucherAction({
-        eventId: String(eventConfig.id),
-        voucherCode: cleanCode,
-        ticketPrice: effectiveBasePrice,
-        merchandiseTotal: merchandiseTotalPrice,
-        userEmail: user?.email,
-      });
+      let res: {
+        isValid: boolean;
+        voucher?: EventVoucher;
+        bundleTicketId?: string;
+        totalDiscount?: number;
+        error?: string;
+      };
+      try {
+        const apiRes = await fetch("/api/events/validate-voucher", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            eventId: String(eventConfig.id),
+            voucherCode: cleanCode,
+            ticketPrice: effectiveBasePrice,
+            merchandiseTotal: merchandiseTotalPrice,
+            userEmail: user?.email,
+          }),
+        });
+        res = await apiRes.json();
+      } catch {
+        const { validateVoucherAction } = await import("@/server/voucher-actions");
+        res = await validateVoucherAction({
+          eventId: String(eventConfig.id),
+          voucherCode: cleanCode,
+          ticketPrice: effectiveBasePrice,
+          merchandiseTotal: merchandiseTotalPrice,
+          userEmail: user?.email,
+        });
+      }
 
       if (!res.isValid || !res.voucher) {
         setVoucherError(res.error ?? `Voucher "${cleanCode}" is invalid or does not exist.`);
@@ -930,13 +1023,25 @@ export function EventRegistrationModal({
       setAppliedVoucher(res.voucher as EventVoucher);
       setVoucherError(null);
 
-      if (res.bundleTicketId) {
-        setSelectedTicketId(res.bundleTicketId);
-      } else if (res.voucher.source_bundle_id && eventConfig.bundles) {
-        const matchingBundle = eventConfig.bundles.find((b) => b.id === res.voucher?.source_bundle_id);
-        if (matchingBundle?.ticket_id && matchingBundle.ticket_id !== "none") {
-          setSelectedTicketId(matchingBundle.ticket_id);
+      const isBundleVch = Boolean(
+        res.bundleTicketId || res.voucher.source_bundle_id || res.voucher.code?.toUpperCase().startsWith("BNDL-"),
+      );
+
+      if (isBundleVch) {
+        clearBundleSelectionForVoucher();
+        let targetTicketId = res.bundleTicketId || "";
+        if (!targetTicketId && res.voucher.source_bundle_id && eventConfig.bundles) {
+          const matchingBundle = eventConfig.bundles.find((b) => b.id === res.voucher?.source_bundle_id);
+          if (matchingBundle?.ticket_id && matchingBundle.ticket_id !== "none") {
+            targetTicketId = matchingBundle.ticket_id;
+          }
         }
+        if (targetTicketId) {
+          setAppliedBundleTicketId(targetTicketId);
+          setSelectedTicketId(targetTicketId);
+        }
+      } else if (res.bundleTicketId) {
+        setSelectedTicketId(res.bundleTicketId);
       }
 
       const isFreePass = res.voucher.discount_type === "percentage" && res.voucher.discount_value === 100;
@@ -954,6 +1059,7 @@ export function EventRegistrationModal({
   };
 
   const autoVoucherCodeAppliedRef = useRef<string | null>(null);
+  const isAutoApplyingRef = useRef(false);
   const hasPrefilledVoucherRef = useRef(false);
 
   // Reset voucher tracking states when modal is closed
@@ -961,12 +1067,14 @@ export function EventRegistrationModal({
     if (!open) {
       hasPrefilledVoucherRef.current = false;
       autoVoucherCodeAppliedRef.current = null;
+      isAutoApplyingRef.current = false;
       setIsApplyingVoucher(false);
     }
   }, [open]);
 
   const handleRemoveVoucher = () => {
     setAppliedVoucher(null);
+    setAppliedBundleTicketId("");
     setVoucherInput("");
     setVoucherError(null);
     // Mark target URL voucher code as handled so auto-apply does not re-apply it after manual removal
@@ -995,7 +1103,7 @@ export function EventRegistrationModal({
     }
   }, [open, initialVoucherCode]);
 
-  // Auto-apply voucher from initial prop or URL parameter when user is signed in
+  // Auto-apply voucher from initial prop or URL parameter
   useEffect(() => {
     if (!open) return;
 
@@ -1006,47 +1114,82 @@ export function EventRegistrationModal({
 
     if (
       !targetCode ||
-      !user ||
       appliedVoucher?.code?.toUpperCase() === targetCode ||
-      autoVoucherCodeAppliedRef.current === targetCode
+      autoVoucherCodeAppliedRef.current === targetCode ||
+      isAutoApplyingRef.current
     ) {
       return;
     }
 
-    // Immediately mark as processed to prevent redundant duplicate invocations across rapid re-renders
-    autoVoucherCodeAppliedRef.current = targetCode;
-    const isCancelled = false;
+    isAutoApplyingRef.current = true;
 
     async function autoApplyVoucherCode() {
       setIsApplyingVoucher(true);
       setVoucherError(null);
       try {
-        const { validateVoucherAction } = await import("@/server/voucher-actions");
-        const res = await validateVoucherAction({
-          eventId: String(eventConfig.id),
-          voucherCode: targetCode,
-          ticketPrice: effectiveBasePrice,
-          merchandiseTotal: merchandiseTotalPrice,
-          userEmail: user?.email,
-        });
-
-        if (isCancelled) return;
+        let res: {
+          isValid: boolean;
+          voucher?: EventVoucher;
+          bundleTicketId?: string;
+          totalDiscount?: number;
+          error?: string;
+        };
+        try {
+          const apiRes = await fetch("/api/events/validate-voucher", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              eventId: String(eventConfig.id),
+              voucherCode: targetCode,
+              ticketPrice: effectiveBasePrice,
+              merchandiseTotal: merchandiseTotalPrice,
+              userEmail: user?.email,
+            }),
+          });
+          res = await apiRes.json();
+        } catch {
+          const { validateVoucherAction } = await import("@/server/voucher-actions");
+          res = await validateVoucherAction({
+            eventId: String(eventConfig.id),
+            voucherCode: targetCode,
+            ticketPrice: effectiveBasePrice,
+            merchandiseTotal: merchandiseTotalPrice,
+            userEmail: user?.email,
+          });
+        }
 
         if (!res.isValid || !res.voucher) {
+          // If auth is still loading, wait before permanently locking out retry
+          if (user || !isAuthLoading) {
+            autoVoucherCodeAppliedRef.current = targetCode;
+          }
           setVoucherError(res.error ?? `Voucher "${targetCode}" is invalid or does not exist.`);
           return;
         }
 
+        autoVoucherCodeAppliedRef.current = targetCode;
         setAppliedVoucher(res.voucher as EventVoucher);
         setVoucherError(null);
 
-        if (res.bundleTicketId) {
-          setSelectedTicketId(res.bundleTicketId);
-        } else if (res.voucher.source_bundle_id && eventConfig.bundles) {
-          const matchingBundle = eventConfig.bundles.find((b) => b.id === res.voucher?.source_bundle_id);
-          if (matchingBundle?.ticket_id && matchingBundle.ticket_id !== "none") {
-            setSelectedTicketId(matchingBundle.ticket_id);
+        const isBundleVch = Boolean(
+          res.bundleTicketId || res.voucher.source_bundle_id || res.voucher.code?.toUpperCase().startsWith("BNDL-"),
+        );
+
+        if (isBundleVch) {
+          clearBundleSelectionForVoucher();
+          let targetTicketId = res.bundleTicketId || "";
+          if (!targetTicketId && res.voucher.source_bundle_id && eventConfig.bundles) {
+            const matchingBundle = eventConfig.bundles.find((b) => b.id === res.voucher?.source_bundle_id);
+            if (matchingBundle?.ticket_id && matchingBundle.ticket_id !== "none") {
+              targetTicketId = matchingBundle.ticket_id;
+            }
           }
+          if (targetTicketId) {
+            setAppliedBundleTicketId(targetTicketId);
+            setSelectedTicketId(targetTicketId);
+          }
+        } else if (res.bundleTicketId) {
+          setSelectedTicketId(res.bundleTicketId);
         }
 
         const isFreePass = res.voucher.discount_type === "percentage" && res.voucher.discount_value === 100;
@@ -1055,35 +1198,27 @@ export function EventRegistrationModal({
             isFreePass ? "100% Free pass activated." : `Saved Rp ${(res.totalDiscount ?? 0).toLocaleString("id-ID")}.`
           }`,
         );
-
-        // Auto-advance to form step so user only needs to fill registrants data
-        if (!hasSessions || preEventSessions.length <= 1 || selectedSessionId) {
-          setRegistrationStep("form");
-        }
       } catch (err) {
-        if (!isCancelled) {
-          console.error("[EventRegistrationModal] Auto-apply voucher error:", err);
-          setVoucherError("Failed to apply voucher code.");
-        }
+        console.error("[EventRegistrationModal] Auto-apply voucher error:", err);
+        setVoucherError("Failed to apply voucher code.");
       } finally {
+        isAutoApplyingRef.current = false;
         setIsApplyingVoucher(false);
       }
     }
 
-    // No cancel-on-cleanup: price deps change mid-flight and the ref guard would block a retry.
     void autoApplyVoucherCode();
   }, [
     open,
     user,
+    isAuthLoading,
     initialVoucherCode,
     eventConfig.id,
     eventConfig.bundles,
     effectiveBasePrice,
     merchandiseTotalPrice,
-    hasSessions,
-    preEventSessions.length,
-    selectedSessionId,
     appliedVoucher?.code,
+    clearBundleSelectionForVoucher,
   ]);
 
   const handleApplyReferral = async () => {
@@ -2945,8 +3080,8 @@ export function EventRegistrationModal({
                         <div className="grid grid-cols-1 gap-3 pt-1">
                           {availableBundles.map((b) => {
                             const salesStatus = getBundleSalesStatus(b, effectiveNow);
-                            const isDisabled = !salesStatus.isAvailable || hasBundleVoucher;
-                            const isSelected = selectedBundleId === b.id;
+                            const isDisabled = !salesStatus.isAvailable || hasBundleVoucher || isPendingBundleVoucher;
+                            const isSelected = !hasBundleVoucher && selectedBundleId === b.id;
                             const pricing = calculateBundlePricing(b, availableTickets, availableMerchandise);
                             const linkedTicket = availableTickets.find((t) => t.id === b.ticket_id);
 
@@ -3083,18 +3218,20 @@ export function EventRegistrationModal({
                             <h3 className="font-semibold text-foreground text-sm">
                               {hasBundleTicket
                                 ? "Included Ticket Pass (Locked to Bundle)"
-                                : hasBundles
-                                  ? "Or Select Standard Ticket Pass"
-                                  : "Select Your Registration Ticket"}
+                                : hasBundleVoucher
+                                  ? "Included Ticket Pass (Locked to Bundle Voucher)"
+                                  : hasBundles
+                                    ? "Or Select Standard Ticket Pass"
+                                    : "Select Your Registration Ticket"}
                             </h3>
                             <span className="text-destructive">*</span>
                           </div>
-                          {hasBundleTicket ? (
+                          {hasBundleTicket || hasBundleVoucher ? (
                             <Badge
                               variant="outline"
                               className="border-primary/40 bg-primary/10 font-semibold text-[10px] text-primary"
                             >
-                              Bundle Active
+                              {hasBundleVoucher ? "Bundle Voucher Active" : "Bundle Active"}
                             </Badge>
                           ) : (
                             eventConfig.max_tickets_per_person && (
@@ -3113,6 +3250,18 @@ export function EventRegistrationModal({
                               <p className="mt-0.5 text-[11px] leading-relaxed text-primary/90">
                                 Your registration pass is auto-selected by the chosen bundle package (
                                 <strong>{selectedBundle?.name}</strong>). Standalone pass selection is disabled.
+                              </p>
+                            </div>
+                          </div>
+                        ) : hasBundleVoucher ? (
+                          <div className="flex items-start gap-2.5 rounded-lg border border-primary/30 bg-primary/10 p-3 text-primary text-xs">
+                            <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />
+                            <div>
+                              <p className="font-semibold">Ticket Pass Auto-Selected by Bundle Voucher</p>
+                              <p className="mt-0.5 text-[11px] leading-relaxed text-primary/90">
+                                Your registration pass is automatically selected based on your bundle voucher (
+                                <strong>{appliedVoucher?.code}</strong>). Standalone pass and bundling package
+                                selections are disabled.
                               </p>
                             </div>
                           </div>
@@ -3137,6 +3286,7 @@ export function EventRegistrationModal({
                         )}
 
                         {!hasBundleTicket &&
+                          !hasBundleVoucher &&
                           availableTickets.length > 0 &&
                           availableTickets.every((t) => !getTicketSalesStatus(t, effectiveNow).isOpen) && (
                             <div className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-amber-800 text-xs dark:text-amber-300">
@@ -3153,9 +3303,9 @@ export function EventRegistrationModal({
 
                         <RadioGroup
                           value={selectedTicketId}
-                          disabled={hasBundleTicket}
+                          disabled={hasBundleTicket || hasBundleVoucher}
                           onValueChange={(val) => {
-                            if (hasBundleTicket) return;
+                            if (hasBundleTicket || hasBundleVoucher) return;
                             const target = availableTickets.find((t) => t.id === val);
                             if (target && !getTicketSalesStatus(target, effectiveNow).isOpen) {
                               return;
@@ -3166,8 +3316,13 @@ export function EventRegistrationModal({
                         >
                           {availableTickets.map((t) => {
                             const salesStatus = getTicketSalesStatus(t, effectiveNow);
-                            const isTicketInBundle = Boolean(hasBundleTicket && selectedBundle?.ticket_id === t.id);
-                            const isDisabled = hasBundleTicket ? !isTicketInBundle : !salesStatus.isOpen;
+                            const isTicketInBundle = Boolean(
+                              (hasBundleTicket && selectedBundle?.ticket_id === t.id) ||
+                                (hasBundleVoucher &&
+                                  (bundleVoucherTicketId ? bundleVoucherTicketId === t.id : selectedTicketId === t.id)),
+                            );
+                            const isLockedByBundleOrVoucher = hasBundleTicket || hasBundleVoucher;
+                            const isDisabled = isLockedByBundleOrVoucher ? !isTicketInBundle : !salesStatus.isOpen;
                             const isSelected = selectedTicketId === t.id;
 
                             return (
@@ -3181,6 +3336,16 @@ export function EventRegistrationModal({
                                     if (!isTicketInBundle) {
                                       toast.info(
                                         `Ticket pass is locked to bundle "${selectedBundle?.name}". Deselect the bundle above to choose another pass.`,
+                                      );
+                                    }
+                                    return;
+                                  }
+                                  if (hasBundleVoucher) {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    if (!isTicketInBundle) {
+                                      toast.info(
+                                        `Ticket pass is locked to bundle voucher "${appliedVoucher?.code}". Remove the voucher below to choose another pass.`,
                                       );
                                     }
                                     return;
@@ -3205,6 +3370,16 @@ export function EventRegistrationModal({
                                       }
                                       return;
                                     }
+                                    if (hasBundleVoucher) {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      if (!isTicketInBundle) {
+                                        toast.info(
+                                          `Ticket pass is locked to bundle voucher "${appliedVoucher?.code}". Remove the voucher below to choose another pass.`,
+                                        );
+                                      }
+                                      return;
+                                    }
                                     if (isDisabled) {
                                       e.preventDefault();
                                       e.stopPropagation();
@@ -3216,14 +3391,14 @@ export function EventRegistrationModal({
                                 }}
                                 className={cn(
                                   "relative flex items-start gap-3 rounded-lg border p-3.5 transition-colors overflow-hidden",
-                                  hasBundleTicket
+                                  isLockedByBundleOrVoucher
                                     ? isTicketInBundle
                                       ? "cursor-default border-primary bg-primary/10 shadow-xs ring-1 ring-primary/40"
                                       : "cursor-not-allowed border-border/40 bg-muted/20 opacity-50"
                                     : isDisabled
                                       ? "cursor-not-allowed border-border/60 bg-muted/30 opacity-60 hover:bg-muted/30"
                                       : "cursor-pointer border-border bg-card hover:bg-muted/30",
-                                  !hasBundleTicket &&
+                                  !isLockedByBundleOrVoucher &&
                                     isSelected &&
                                     !isDisabled &&
                                     "border-primary bg-primary/10 shadow-xs ring-1 ring-primary/40",
@@ -3232,7 +3407,7 @@ export function EventRegistrationModal({
                                 <RadioGroupItem
                                   value={t.id}
                                   id={`ticket-opt-${t.id}`}
-                                  disabled={hasBundleTicket || isDisabled}
+                                  disabled={isLockedByBundleOrVoucher || isDisabled}
                                   className="mt-0.5 shrink-0"
                                 />
                                 <div className="min-w-0 flex-1 space-y-1">
@@ -3265,12 +3440,12 @@ export function EventRegistrationModal({
                                           variant="outline"
                                           className="border-primary/40 bg-primary/20 font-semibold text-[10px] text-primary"
                                         >
-                                          ✓ Included in Bundle
+                                          {hasBundleVoucher ? "✓ Included in Bundle Voucher" : "✓ Included in Bundle"}
                                         </Badge>
                                       )}
                                     </div>
                                     <div className="flex shrink-0 items-center gap-1.5">
-                                      {hasBundleTicket && isTicketInBundle ? (
+                                      {isLockedByBundleOrVoucher && isTicketInBundle ? (
                                         <Badge
                                           variant="secondary"
                                           className="border border-emerald-500/30 bg-emerald-500/10 font-bold text-[11px] text-emerald-700 dark:text-emerald-400"
@@ -3287,12 +3462,12 @@ export function EventRegistrationModal({
                                           {t.type === "free" ? "Free" : `Rp ${(t.price || 0).toLocaleString("id-ID")}`}
                                         </span>
                                       )}
-                                      {!hasBundleTicket && salesStatus.state === "sold_out" && (
+                                      {!isLockedByBundleOrVoucher && salesStatus.state === "sold_out" && (
                                         <Badge variant="destructive" className="text-[10px]">
                                           Sold Out
                                         </Badge>
                                       )}
-                                      {!hasBundleTicket && salesStatus.state === "upcoming" && (
+                                      {!isLockedByBundleOrVoucher && salesStatus.state === "upcoming" && (
                                         <Badge
                                           variant="outline"
                                           className="border-blue-500/40 bg-blue-500/10 font-medium text-[10px] text-blue-700 dark:text-blue-400"
@@ -3748,7 +3923,7 @@ export function EventRegistrationModal({
                     )}
 
                     {/* ── PROMO VOUCHER SECTION ───────────────────────────────── */}
-                    {rawSubtotal > 0 && (
+                    {(rawSubtotal > 0 || Boolean(appliedVoucher) || Boolean(voucherInput.trim())) && (
                       <div className="space-y-2 rounded-xl border bg-card p-3.5 shadow-2xs">
                         <div className="flex items-center justify-between font-semibold text-foreground text-xs">
                           <span className="flex items-center gap-1.5">
@@ -4935,7 +5110,7 @@ export function EventRegistrationModal({
                                   ? !getBundleSalesStatus(selectedBundle, effectiveNow).isAvailable
                                   : !getBundleSalesStatus(selectedBundle, effectiveNow).isAvailable ||
                                     !getTicketSalesStatus(selectedTicket, effectiveNow).isOpen
-                                : !getTicketSalesStatus(selectedTicket, effectiveNow).isOpen)))
+                                : !hasBundleVoucher && !getTicketSalesStatus(selectedTicket, effectiveNow).isOpen)))
                         }
                         className="flex-1 sm:flex-initial gap-2 shadow-xs"
                       >

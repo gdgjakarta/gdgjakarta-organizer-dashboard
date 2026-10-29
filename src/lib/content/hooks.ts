@@ -6,13 +6,18 @@ import { toast } from "sonner";
 
 import { revalidateDashboardPath } from "@/server/server-actions";
 
-import { DEFAULT_FAQ_CONTENT, DEFAULT_FEATURED_EVENT_CONTENT, DEFAULT_PARTNERSHIP_CONTENT } from "./defaults";
-import type { FaqContent, FeaturedEventContent, PartnershipContent } from "./types";
+import {
+  DEFAULT_FAQ_CONTENT,
+  DEFAULT_FEATURED_EVENT_CONTENT,
+  DEFAULT_PARTNERSHIP_CONTENT,
+  DEFAULT_PAYMENT_POLICY_CONTENT,
+} from "./defaults";
+import type { FaqContent, FeaturedEventContent, PartnershipContent, PaymentPolicyContent } from "./types";
 
 // NOTE: `@/lib/firestore/client` is always loaded via dynamic `import()` so that
 // `firebase/firestore` never ends up in the server / Cloudflare Worker bundle (see dev-note.md).
 
-type ContentKind = "faq" | "partnership" | "featuredEvent";
+type ContentKind = "faq" | "partnership" | "featuredEvent" | "paymentPolicy";
 
 interface ContentConfig<T> {
   cacheKey: string;
@@ -28,6 +33,7 @@ const CONFIGS: {
   faq: ContentConfig<FaqContent>;
   partnership: ContentConfig<PartnershipContent>;
   featuredEvent: ContentConfig<FeaturedEventContent>;
+  paymentPolicy: ContentConfig<PaymentPolicyContent>;
 } = {
   faq: {
     cacheKey: "gdg_faq_content_cache",
@@ -55,6 +61,15 @@ const CONFIGS: {
     load: async () => (await import("@/lib/firestore/client")).getFeaturedEventContentDoc(),
     save: async (content) => (await import("@/lib/firestore/client")).saveFeaturedEventContentDoc(content),
     subscribe: async (onUpdate) => (await import("@/lib/firestore/client")).subscribeFeaturedEventContentDoc(onUpdate),
+  },
+  paymentPolicy: {
+    cacheKey: "gdg_payment_policy_content_cache",
+    defaults: DEFAULT_PAYMENT_POLICY_CONTENT,
+    revalidatePaths: ["/payment-policy", "/faq", "/dashboard/faq"],
+    label: "Payment Policy",
+    load: async () => (await import("@/lib/firestore/client")).getPaymentPolicyContentDoc(),
+    save: async (content) => (await import("@/lib/firestore/client")).savePaymentPolicyContentDoc(content),
+    subscribe: async (onUpdate) => (await import("@/lib/firestore/client")).subscribePaymentPolicyContentDoc(onUpdate),
   },
 };
 
@@ -205,6 +220,10 @@ export function usePartnershipContent() {
 
 export function useFeaturedEventContent() {
   return useContent(CONFIGS.featuredEvent);
+}
+
+export function usePaymentPolicyContent() {
+  return useContent(CONFIGS.paymentPolicy);
 }
 
 export type { ContentKind };

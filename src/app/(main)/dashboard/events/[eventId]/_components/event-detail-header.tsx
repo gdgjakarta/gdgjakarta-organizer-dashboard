@@ -24,6 +24,7 @@ import {
   Radio,
   RefreshCw,
   RotateCcw,
+  Ticket,
   TrendingDown,
   UserCheck,
   Users,
@@ -574,6 +575,16 @@ export function EventDetailHeader({
                 <strong className="text-foreground">{liveTotals.totalRegistrations}</strong>
               )}{" "}
               Registrants
+            </span>
+            <span>•</span>
+            <span className="flex items-center gap-1.5 text-teal-600 dark:text-teal-400">
+              <Ticket className="size-4" />
+              {isLoadingTotals ? (
+                <Shimmer className="inline-block h-4 w-6 rounded-xs align-middle" />
+              ) : (
+                <strong>{totalExpected}</strong>
+              )}{" "}
+              Registered Attendee
             </span>
             {isCurationMode && (
               <>

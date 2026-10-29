@@ -302,7 +302,7 @@ service cloud.firestore {
     //   - synced_by: string|null (optional, <= 128 chars) - UID of organizer who ran sync
     //
     // Collection: content_settings
-    // Document ID: faq, partnership, featured_event
+    // Document ID: faq, partnership, payment_policy, featured_event
     // Fields (faq, partnership):
     //   - header: map|null (optional, <= 20 keys)
     //   - notice: map|null (optional, <= 20 keys)
@@ -318,6 +318,14 @@ service cloud.firestore {
     //   - tiers: list|null (optional, <= 50 items)
     //   - partnerTiers: list|null (optional, <= 50 items)
     //   - sponsors: list|null (optional, <= 50 items)
+    //   - updatedAt: string|null (optional, <= 50 chars)
+    //   - updatedBy: string|null (optional, <= 150 chars)
+    // Fields (payment_policy):
+    //   - header: map|null (optional, <= 20 keys)
+    //   - notice: map|null (optional, <= 20 keys)
+    //   - sections: list|null (optional, <= 50 items)
+    //   - channels: list|null (optional, <= 20 items)
+    //   - contact: map|null (optional, <= 20 keys)
     //   - updatedAt: string|null (optional, <= 50 chars)
     //   - updatedBy: string|null (optional, <= 150 chars)
     // Fields (featured_event):
@@ -1003,6 +1011,17 @@ service cloud.firestore {
           (!('tiers' in data) || data.tiers == null || (data.tiers is list && data.tiers.size() <= 50)) &&
           (!('partnerTiers' in data) || data.partnerTiers == null || (data.partnerTiers is list && data.partnerTiers.size() <= 50)) &&
           (!('sponsors' in data) || data.sponsors == null || (data.sponsors is list && data.sponsors.size() <= 50))) ||
+        (docId == 'payment_policy' &&
+          hasOnlyAllowedFields(data, [
+            'header', 'notice', 'sections', 'channels', 'contact', 'updatedAt', 'updatedBy'
+          ]) &&
+          (!('header' in data) || data.header == null || (data.header is map && data.header.size() <= 20)) &&
+          (!('notice' in data) || data.notice == null || (data.notice is map && data.notice.size() <= 20)) &&
+          (!('sections' in data) || data.sections == null || (data.sections is list && data.sections.size() <= 50)) &&
+          (!('channels' in data) || data.channels == null || (data.channels is list && data.channels.size() <= 20)) &&
+          (!('contact' in data) || data.contact == null || (data.contact is map && data.contact.size() <= 20)) &&
+          (!('updatedAt' in data) || data.updatedAt == null || (data.updatedAt is string && data.updatedAt.size() <= 50)) &&
+          (!('updatedBy' in data) || data.updatedBy == null || (data.updatedBy is string && data.updatedBy.size() <= 150))) ||
         (docId == 'featured_event' && isValidFeaturedEventSettings(data))
       );
     }
@@ -1483,7 +1502,7 @@ service cloud.firestore {
       allow delete: if isOrganizer();
 
       // Update: Organizers (full event editing), team members updating wrap-up media, sessions & counters, or authenticated users updating event registration/session/voucher counters upon RSVP or cancellation.
-      // Non-organizers are strictly constrained to only update total_registrations, total_approved, total_waitlisted, total_checked_in, vouchers, updated_at, sessions, tickets, and bundles, or wrap-up media/sessions and operational counters for team members.
+      // Non-organizers are strictly constrained to only update total_registrations, total_approved, total_waitlisted, total_checked_in, vouchers, updated_at, sessions, tickets, bundles, and merchandise, or wrap-up media/sessions and operational counters for team members.
       allow update: if isOrganizer() || (
         isAuthenticated() &&
         isValidEvent(request.resource.data) &&
@@ -1491,7 +1510,7 @@ service cloud.firestore {
           (
             request.resource.data.diff(resource.data).affectedKeys().hasOnly([
               'total_registrations', 'total_approved', 'total_waitlisted', 'total_checked_in',
-              'vouchers', 'updated_at', 'sessions', 'tickets', 'bundles'
+              'vouchers', 'updated_at', 'sessions', 'tickets', 'bundles', 'merchandise'
             ]) &&
             (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['total_registrations']) || ((request.resource.data.total_registrations is int || request.resource.data.total_registrations is float) && request.resource.data.total_registrations >= 0)) &&
             (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['total_approved']) || request.resource.data.total_approved == null || ((request.resource.data.total_approved is int || request.resource.data.total_approved is float) && request.resource.data.total_approved >= 0)) &&
@@ -1570,11 +1589,11 @@ service cloud.firestore {
       allow write: if isOrganizer() && isValidSyncMetadata(request.resource.data) && docId == 'bevy';
     }
 
-    // -------------------------------------------------------------
-    // Content Settings Collection (FAQ, Partnership, Featured Event)
-    // -------------------------------------------------------------
+    // ---------------------------------------------------------------------------------
+    // Content Settings Collection (FAQ, Partnership, Payment Policy, Featured Event)
+    // ---------------------------------------------------------------------------------
     match /content_settings/{docId} {
-      // Read: Public read for public website FAQ, partnership, and featured event content.
+      // Read: Public read for public website FAQ, partnership, payment policy, and featured event content.
       allow read: if true;
 
       // Write: Team access (Organizers & Staff / Core Team), validating schema and limits.

@@ -106,6 +106,14 @@ export function convertTemplateToCleanTokens(raw: string): string {
   text = text.replaceAll("{ $('add-bevy-attendee-api').item.json.id }", "[[AttendeeId]]");
   text = text.replaceAll("{{ attendeeId }}", "[[AttendeeId]]");
 
+  // Cancellation Reason
+  text = text.replaceAll("{{ $('event-params').item.json.cancellationReason }}", "[[CancellationReason]]");
+  text = text.replaceAll("{ $('event-params').item.json.cancellationReason }", "[[CancellationReason]]");
+  text = text.replaceAll("{{ cancellation_reason }}", "[[CancellationReason]]");
+  text = text.replaceAll("{ cancellation_reason }", "[[CancellationReason]]");
+  text = text.replaceAll("{{ cancellationReason }}", "[[CancellationReason]]");
+  text = text.replaceAll("{ cancellationReason }", "[[CancellationReason]]");
+
   return text;
 }
 

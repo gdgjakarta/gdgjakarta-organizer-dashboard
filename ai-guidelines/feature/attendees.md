@@ -98,3 +98,8 @@ await updateRegistrationStatusAction(
 1. **Optimistic Updates**: Apply immediate local state updates in UI tables, reverting automatically if the server action returns an error.
 2. **Referer Header Injection**: Ensure the dynamic event referer header is supplied on all mutating requests to prevent Bevy `403 Forbidden` errors.
 3. **Double Check-In Protection**: If an attendee has already checked in, display a confirmation dialog before sending an undo check-in request.
+4. **Mandatory Cancellation Reason on Registration Cancel**:
+   - When organizers cancel registrations (single or bulk from `registrants-tab.tsx`), an explanatory reason must be provided in the dialog.
+   - The reason is forwarded to `sendCancelAttendeeEmailAction` and `deleteEventRegistrationAction`.
+   - The reason is embedded into the cancellation notification email via the `{{ $('event-params').item.json.cancellationReason }}` placeholder (interpolated with HTML line breaks).
+
