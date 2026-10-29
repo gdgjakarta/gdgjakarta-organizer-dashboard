@@ -211,6 +211,10 @@ export function buildApprovedAttendeePayload(
     simulatedData.venueLocation = bevyEventLocation;
     simulatedData.venueLocationUrl = bevyEventLocationUrl;
     simulatedData.eventDate = bevyEventDate;
+    simulatedData.attendeeId = String(registration.bevy_attendee_id || registration.id);
+    if (registration.attendee_code) {
+      simulatedData.attendeeCode = registration.attendee_code;
+    }
 
     // If registrant is associated with a specific session that has a time slot, use it;
     // otherwise preserve the configured sessionTime from the event template data

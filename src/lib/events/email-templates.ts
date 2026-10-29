@@ -1491,25 +1491,38 @@ export function adjustBodyEmailForApprovedWebhook(html: string): string {
     "{{ $('Add Bevy Attendee API').item.json.attendee_code }}",
   );
   adjusted = adjusted.replaceAll(
+    "{{ $('add-bevy-attendee-api').item.json.id }}",
     "{{ $('Add Bevy Attendee API').item.json.id }}",
-    "{{ $('Add Bevy Attendee API').item.json.attendee_code }}",
+  );
+  adjusted = adjusted.replaceAll(
+    "{ $('add-bevy-attendee-api').item.json.id }",
+    "{{ $('Add Bevy Attendee API').item.json.id }}",
   );
   adjusted = adjusted.replaceAll(
     "{ $('Add Bevy Attendee API').item.json.id }",
-    "{{ $('Add Bevy Attendee API').item.json.attendee_code }}",
+    "{{ $('Add Bevy Attendee API').item.json.id }}",
   );
 
   // 4. Replace any hardcoded default sample attendee ref code with the dynamic expression
   adjusted = adjusted.replaceAll("GDG-JKT-89241", "{{ $('Add Bevy Attendee API').item.json.attendee_code }}");
 
-  // 5. Ensure any div with attendee-id class uses the dynamic attendee_code expression if not already
+  // 5. Ensure any div with attendee-id class uses dynamic attendee_code (Ref) and id (ID)
   adjusted = adjusted.replace(
     /(<div\b(?=[^>]*\bclass=["'][^"']*\battendee-id\b[^"']*["'])[^>]*>)([\s\S]*?)(<\/div>)/gi,
     (_match, prefix, content, suffix) => {
-      if (content.includes("{{ $('Add Bevy Attendee API').item.json.attendee_code }}")) {
-        return `${prefix}${content}${suffix}`;
+      let updated = content;
+      if (!updated.includes("{{ $('Add Bevy Attendee API').item.json.attendee_code }}")) {
+        updated = `<div>Ref: {{ $('Add Bevy Attendee API').item.json.attendee_code }}</div>`;
       }
-      return `${prefix}Ref: {{ $('Add Bevy Attendee API').item.json.attendee_code }}${suffix}`;
+      if (!updated.includes("{{ $('Add Bevy Attendee API').item.json.id }}")) {
+        const trimmed = updated.trim();
+        if (trimmed.includes("<div>")) {
+          updated = `${trimmed}\n              <div style="margin-top: 2px;">ID: {{ $('Add Bevy Attendee API').item.json.id }}</div>`;
+        } else {
+          updated = `<div>${trimmed}</div>\n              <div style="margin-top: 2px;">ID: {{ $('Add Bevy Attendee API').item.json.id }}</div>`;
+        }
+      }
+      return `${prefix}\n              ${updated.trim()}\n            ${suffix}`;
     },
   );
 
