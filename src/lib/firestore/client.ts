@@ -2820,6 +2820,7 @@ export async function updateRegistrationCheckIn(
   isCheckedIn: boolean,
   bevyAttendeeId?: number | null,
   checkinDate?: string | null,
+  attendeeCode?: string | null,
 ): Promise<void> {
   if (typeof window === "undefined") return;
   const docRef = doc(db, "event_registrations", registrationId);
@@ -2829,6 +2830,7 @@ export async function updateRegistrationCheckIn(
     checked_in_at: isCheckedIn ? (checkinDate ?? now) : undefined,
     ...(bevyAttendeeId !== undefined ? { bevy_attendee_id: bevyAttendeeId } : {}),
     ...(checkinDate !== undefined ? { checkin_date: checkinDate } : {}),
+    ...(attendeeCode !== undefined ? { attendee_code: attendeeCode } : {}),
   });
 
   await updateDoc(docRef, updatePayload);
@@ -4571,6 +4573,201 @@ export function subscribeMaintenanceConfigDoc(
     },
     (err) => {
       console.warn("[Firestore] subscribeMaintenanceConfigDoc error:", err);
+      onError?.(err);
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// PRINTER & PRINT QUEUE ACTIONS
+// ---------------------------------------------------------------------------
+
+export async function getPrinterConfigDoc(): Promise<import("@/lib/printers/types").PrinterConfig> {
+  const { DEFAULT_PRINTER_CONFIG } = await import("@/lib/printers/templates");
+  if (typeof window === "undefined") return DEFAULT_PRINTER_CONFIG;
+  try {
+    const docRef = doc(db, "system_settings", "printer");
+    const snap = await getDoc(docRef);
+    if (!snap.exists()) return DEFAULT_PRINTER_CONFIG;
+    return { ...DEFAULT_PRINTER_CONFIG, ...(snap.data() as Partial<import("@/lib/printers/types").PrinterConfig>) };
+  } catch (error) {
+    console.error("[Firestore] getPrinterConfigDoc error:", error);
+    return DEFAULT_PRINTER_CONFIG;
+  }
+}
+
+export async function savePrinterConfigDoc(
+  config: Partial<import("@/lib/printers/types").PrinterConfig>,
+): Promise<void> {
+  if (typeof window === "undefined") return;
+  if (typeof auth.authStateReady === "function") {
+    await auth.authStateReady();
+  }
+  const docRef = doc(db, "system_settings", "printer");
+  const sanitized = sanitizeFirestoreData({
+    ...config,
+    updated_at: new Date().toISOString(),
+  });
+  await setDoc(docRef, sanitized, { merge: true });
+}
+
+export function subscribePrinterConfigDoc(
+  onUpdate: (config: import("@/lib/printers/types").PrinterConfig) => void,
+  onError?: (error: Error) => void,
+): () => void {
+  if (typeof window === "undefined") {
+    return () => {
+      // No-op on server
+    };
+  }
+  const docRef = doc(db, "system_settings", "printer");
+  return onSnapshot(
+    docRef,
+    async (snap) => {
+      const { DEFAULT_PRINTER_CONFIG } = await import("@/lib/printers/templates");
+      if (snap.exists()) {
+        onUpdate({
+          ...DEFAULT_PRINTER_CONFIG,
+          ...(snap.data() as Partial<import("@/lib/printers/types").PrinterConfig>),
+        });
+      } else {
+        onUpdate(DEFAULT_PRINTER_CONFIG);
+      }
+    },
+    (err) => {
+      console.warn("[Firestore] subscribePrinterConfigDoc error:", err);
+      onError?.(err);
+    },
+  );
+}
+
+const MAX_STORED_PRINT_JOBS = 30;
+
+export async function enqueuePrintJob(
+  jobData: Omit<import("@/lib/printers/types").PrintJob, "id" | "status" | "created_at">,
+): Promise<string> {
+  if (typeof window === "undefined") return "";
+  if (typeof auth.authStateReady === "function") {
+    await auth.authStateReady();
+  }
+  const docRef = doc(db, "system_settings", "printer_queue");
+  const snap = await getDoc(docRef);
+  const existingJobs: import("@/lib/printers/types").PrintJob[] =
+    snap.exists() && Array.isArray(snap.data()?.jobs)
+      ? (snap.data()?.jobs as import("@/lib/printers/types").PrintJob[])
+      : [];
+
+  const now = new Date().toISOString();
+  const jobId = `job_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const newJob = sanitizeFirestoreData<import("@/lib/printers/types").PrintJob>({
+    ...jobData,
+    id: jobId,
+    status: "pending",
+    created_at: now,
+  });
+
+  const updatedJobs = [newJob, ...existingJobs].slice(0, MAX_STORED_PRINT_JOBS);
+  await setDoc(
+    docRef,
+    sanitizeFirestoreData({
+      id: "printer_queue",
+      jobs: updatedJobs,
+      updated_at: now,
+    }),
+    { merge: true },
+  );
+  return jobId;
+}
+
+export async function updatePrintJobStatus(
+  jobId: string,
+  status: import("@/lib/printers/types").PrintJob["status"],
+  errorMessage?: string,
+): Promise<void> {
+  if (typeof window === "undefined") return;
+  if (typeof auth.authStateReady === "function") {
+    await auth.authStateReady();
+  }
+  const docRef = doc(db, "system_settings", "printer_queue");
+  const snap = await getDoc(docRef);
+  if (!snap.exists() || !Array.isArray(snap.data()?.jobs)) return;
+
+  const now = new Date().toISOString();
+  const existingJobs = snap.data()?.jobs as import("@/lib/printers/types").PrintJob[];
+  const updatedJobs = existingJobs.map((job) =>
+    job.id === jobId
+      ? sanitizeFirestoreData<import("@/lib/printers/types").PrintJob>({
+          ...job,
+          status,
+          ...(status === "completed" ? { printed_at: now } : {}),
+          ...(errorMessage !== undefined ? { error_message: errorMessage } : {}),
+        })
+      : job,
+  );
+
+  await setDoc(
+    docRef,
+    sanitizeFirestoreData({
+      id: "printer_queue",
+      jobs: updatedJobs,
+      updated_at: now,
+    }),
+    { merge: true },
+  );
+}
+
+export function subscribePendingPrintQueue(
+  onJobsUpdate: (jobs: import("@/lib/printers/types").PrintJob[]) => void,
+  onError?: (error: Error) => void,
+): () => void {
+  if (typeof window === "undefined") {
+    return () => {
+      // No-op on server
+    };
+  }
+  const docRef = doc(db, "system_settings", "printer_queue");
+  return onSnapshot(
+    docRef,
+    (snap) => {
+      const allJobs: import("@/lib/printers/types").PrintJob[] =
+        snap.exists() && Array.isArray(snap.data()?.jobs)
+          ? (snap.data()?.jobs as import("@/lib/printers/types").PrintJob[])
+          : [];
+      const pendingJobs = allJobs
+        .filter((j) => j.status === "pending")
+        .sort((a, b) => a.created_at.localeCompare(b.created_at));
+      onJobsUpdate(pendingJobs);
+    },
+    (err) => {
+      console.warn("[Firestore] subscribePendingPrintQueue error:", err);
+      onError?.(err);
+    },
+  );
+}
+
+export function subscribeRecentPrintQueue(
+  limitCount = 25,
+  onJobsUpdate: (jobs: import("@/lib/printers/types").PrintJob[]) => void,
+  onError?: (error: Error) => void,
+): () => void {
+  if (typeof window === "undefined") {
+    return () => {
+      // No-op on server
+    };
+  }
+  const docRef = doc(db, "system_settings", "printer_queue");
+  return onSnapshot(
+    docRef,
+    (snap) => {
+      const allJobs: import("@/lib/printers/types").PrintJob[] =
+        snap.exists() && Array.isArray(snap.data()?.jobs)
+          ? (snap.data()?.jobs as import("@/lib/printers/types").PrintJob[])
+          : [];
+      const sortedJobs = [...allJobs].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, limitCount);
+      onJobsUpdate(sortedJobs);
+    },
+    (err) => {
+      console.warn("[Firestore] subscribeRecentPrintQueue error:", err);
       onError?.(err);
     },
   );

@@ -344,10 +344,11 @@ export async function updateRegistrationCheckInAction(
   isCheckedIn: boolean,
   bevyAttendeeId?: number | null,
   checkinDate?: string | null,
+  attendeeCode?: string | null,
 ) {
   try {
     const { updateRegistrationCheckIn } = await import("./client");
-    await updateRegistrationCheckIn(registrationId, eventId, isCheckedIn, bevyAttendeeId, checkinDate);
+    await updateRegistrationCheckIn(registrationId, eventId, isCheckedIn, bevyAttendeeId, checkinDate, attendeeCode);
     await revalidateDashboardPath(`/dashboard/events/${eventId}`);
     return { success: true };
   } catch (err) {
@@ -1463,6 +1464,61 @@ export async function includeEventInReferralsAction(eventId: string) {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to include event in referrals.";
     console.error("[includeEventInReferralsAction] error:", message);
+    return { success: false, error: message };
+  }
+}
+
+export async function fetchPrinterConfigAction() {
+  try {
+    const { getPrinterConfigDoc } = await import("./client");
+    const config = await getPrinterConfigDoc();
+    return { success: true, config };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to load printer settings.";
+    console.error("[fetchPrinterConfigAction] error:", message);
+    return { success: false, error: message };
+  }
+}
+
+export async function savePrinterConfigAction(config: Partial<import("@/lib/printers/types").PrinterConfig>) {
+  try {
+    const { savePrinterConfigDoc } = await import("./client");
+    await savePrinterConfigDoc(config);
+    await revalidateDashboardPath("/dashboard/printers");
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to save printer settings.";
+    console.error("[savePrinterConfigAction] error:", message);
+    return { success: false, error: message };
+  }
+}
+
+export async function enqueuePrintJobAction(
+  jobData: Omit<import("@/lib/printers/types").PrintJob, "id" | "status" | "created_at">,
+) {
+  try {
+    const { enqueuePrintJob } = await import("./client");
+    const jobId = await enqueuePrintJob(jobData);
+    return { success: true, jobId };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to queue print job.";
+    console.error("[enqueuePrintJobAction] error:", message);
+    return { success: false, error: message };
+  }
+}
+
+export async function updatePrintJobStatusAction(
+  jobId: string,
+  status: import("@/lib/printers/types").PrintJob["status"],
+  errorMessage?: string,
+) {
+  try {
+    const { updatePrintJobStatus } = await import("./client");
+    await updatePrintJobStatus(jobId, status, errorMessage);
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to update print job.";
+    console.error("[updatePrintJobStatusAction] error:", message);
     return { success: false, error: message };
   }
 }

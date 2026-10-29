@@ -15,6 +15,7 @@ import {
   Mail,
   PackageCheck,
   Phone,
+  Printer,
   QrCode,
   RefreshCw,
   Search,
@@ -38,11 +39,14 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { BevyAttendee } from "@/lib/bevy/types";
 import { DEFAULT_COMBINED_QUESTIONS } from "@/lib/events/registration-defaults";
 import {
+  enqueuePrintJobAction,
+  fetchPrinterConfigAction,
   updateBreakoutSessionCheckInAction,
   updateRegistrationCheckInAction,
   updateRegistrationMerchandiseCollectionAction,
 } from "@/lib/firestore/actions";
 import type { CustomQuestion, EventSession, FirestoreRegistration, RegistrationStatus } from "@/lib/firestore/types";
+import { DEFAULT_LABEL_TEMPLATE, renderLabelTemplate } from "@/lib/printers/templates";
 import { cn, getInitials } from "@/lib/utils";
 import { checkInBevyAttendeeAction, fetchAllBevyEventAttendeesAction } from "@/server/bevy-actions";
 import { useAuthStore } from "@/stores/auth/auth-provider";
@@ -324,6 +328,20 @@ export function QrCheckInScannerDialog({
   const [selectedSessionId, setSelectedSessionId] = React.useState<string>(initialSessionId || sessions[0]?.id || "");
   const [syncBevy, setSyncBevy] = React.useState<boolean>(initialMode === "event_checkin");
   const [autoExecuteOnScan, setAutoExecuteOnScan] = React.useState<boolean>(true);
+  const [autoPrintEnabled, setAutoPrintEnabled] = React.useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("gdg_auto_print_enabled");
+      return saved !== null ? saved === "true" : true;
+    }
+    return true;
+  });
+
+  const handleAutoPrintToggle = (checked: boolean) => {
+    setAutoPrintEnabled(checked);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("gdg_auto_print_enabled", String(checked));
+    }
+  };
 
   const [qrInput, setQrInput] = React.useState("");
   const [isProcessing, setIsProcessing] = React.useState(false);
@@ -676,6 +694,61 @@ export function QrCheckInScannerDialog({
               },
               ...prev.slice(0, 19),
             ]);
+
+            // Auto-print badge if enabled and attendee has a valid attendee ID
+            if (autoPrintEnabled) {
+              void (async () => {
+                try {
+                  const cfgRes = await fetchPrinterConfigAction();
+                  const printerCfg = cfgRes.success && cfgRes.config ? cfgRes.config : null;
+                  if (printerCfg && !printerCfg.enabled) return;
+
+                  const templateToUse = printerCfg?.template_html || DEFAULT_LABEL_TEMPLATE;
+                  const finalAttendeeId = attendeeIdToUse || reg.bevy_attendee_id || reg.id;
+                  const resolvedRole = getRegistrantRole(reg, questions) || "Participant";
+                  const resolvedCompany = getRegistrantOrg(reg, questions) || "GDG Community";
+                  const resolvedTicketCode = reg.attendee_code || `#${finalAttendeeId}`;
+                  const qrPayload = `${eventId}:${finalAttendeeId}`;
+                  const renderedHtml = renderLabelTemplate(templateToUse, {
+                    name: String(
+                      reg.member_name ||
+                        reg.answers?.full_name ||
+                        reg.answers?.["Full Name"] ||
+                        reg.answers?.Name ||
+                        reg.member_email ||
+                        "Attendee",
+                    ),
+                    email: reg.member_email || undefined,
+                    title: resolvedRole,
+                    company: resolvedCompany,
+                    sessionTrack:
+                      (reg.answers?.session_title as string) ||
+                      (reg.answers?.Session as string) ||
+                      (reg.answers?.session as string) ||
+                      undefined,
+                    eventTitle: eventTitle || `Event #${eventId}`,
+                    eventId,
+                    attendeeId: finalAttendeeId,
+                    ticketCode: resolvedTicketCode,
+                    attendeeCode: resolvedTicketCode,
+                    qrPayload,
+                  });
+
+                  await enqueuePrintJobAction({
+                    event_id: String(eventId),
+                    attendee_id: finalAttendeeId,
+                    registration_id: reg.id,
+                    member_name: reg.member_name || reg.member_email || "Attendee",
+                    member_title: resolvedRole,
+                    member_company: resolvedCompany,
+                    qr_payload: qrPayload,
+                    rendered_html: renderedHtml,
+                  });
+                } catch (printErr) {
+                  console.warn("[QR Scanner] Auto-print queue error:", printErr);
+                }
+              })();
+            }
           }
 
           toast.success(
@@ -823,7 +896,18 @@ export function QrCheckInScannerDialog({
         setIsProcessing(false);
       }
     },
-    [eventId, mode, onRegistrationUpdated, selectedSession, selectedSessionId, syncBevy, user],
+    [
+      autoPrintEnabled,
+      eventId,
+      eventTitle,
+      mode,
+      onRegistrationUpdated,
+      questions,
+      selectedSession,
+      selectedSessionId,
+      syncBevy,
+      user,
+    ],
   );
 
   // Handle QR code string submission (from camera or manual input)
@@ -892,6 +976,7 @@ export function QrCheckInScannerDialog({
       onSelectForOtsSale,
       otsModeOnly,
       parseQrPayload,
+      questions,
       resolveRegistration,
       stopCamera,
     ],
@@ -1296,6 +1381,25 @@ export function QrCheckInScannerDialog({
                   </div>
                   <Switch id="qr-auto-execute" checked={autoExecuteOnScan} onCheckedChange={setAutoExecuteOnScan} />
                 </div>
+
+                {mode === "event_checkin" && (
+                  <div className="flex items-center justify-between gap-3 rounded-md border bg-background px-3 py-2">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <Printer className="size-3.5 text-primary" />
+                        <Label htmlFor="qr-auto-print" className="cursor-pointer font-medium text-xs">
+                          Auto-Print Badge Label
+                        </Label>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        {autoPrintEnabled
+                          ? "Automatically sends label to Clabel 221B queue upon check-in"
+                          : "Skip automatic printing for this scanning session"}
+                      </p>
+                    </div>
+                    <Switch id="qr-auto-print" checked={autoPrintEnabled} onCheckedChange={handleAutoPrintToggle} />
+                  </div>
+                )}
               </div>
             </>
           )}
@@ -1645,7 +1749,15 @@ export function QrCheckInScannerDialog({
                                     phoneVal ||
                                     getAnswerDisplay(
                                       target,
-                                      ["whatsapp", "phone", "phone_number", "no_hp", "no_wa", "nomor_whatsapp", "mobile"],
+                                      [
+                                        "whatsapp",
+                                        "phone",
+                                        "phone_number",
+                                        "no_hp",
+                                        "no_wa",
+                                        "nomor_whatsapp",
+                                        "mobile",
+                                      ],
                                       questions,
                                       ["whatsapp", "phone", "no hp", "nomor wa"],
                                     );

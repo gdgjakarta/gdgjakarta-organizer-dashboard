@@ -11,7 +11,7 @@ For in-depth architectural patterns, Bevy API session spoofing specifications, r
 - [6. Repository & Data Layer Architecture](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/ai-guidelines/6-repository-and-data-layer.md)
 
 Feature Guidelines:
-- [Authentication](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/ai-guidelines/feature/authentication.md) | [Events](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/ai-guidelines/feature/events.md) | [Attendees](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/ai-guidelines/feature/attendees.md) | [QR Scanner](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/ai-guidelines/feature/scanner.md) | [Members](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/ai-guidelines/feature/members.md) | [Profile](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/ai-guidelines/feature/profile.md) | [Tickets](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/ai-guidelines/feature/tickets.md)
+- [Authentication](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/ai-guidelines/feature/authentication.md) | [Events](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/ai-guidelines/feature/events.md) | [Attendees](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/ai-guidelines/feature/attendees.md) | [QR Scanner](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/ai-guidelines/feature/scanner.md) | [Members](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/ai-guidelines/feature/members.md) | [Profile](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/ai-guidelines/feature/profile.md) | [Tickets](file:///Users/fachridantm/Library/CloudStorage/OneDrive-uinjkt.ac.id/IdeaProjects/gdgjakarta-organizer-dashboard/ai-guidelines/feature/tickets.md) | [Printers](file:///Users/fachridantm/IdeaProjects/gdgjakarta-organizer-dashboard/ai-guidelines/feature/printers.md)
 
 ---
 
@@ -25,6 +25,7 @@ Admin/organizer dashboard:
 - Create, edit, delete events
 - Create, edit, delete tickets
 - Create, edit, delete event merchandises
+- Configure thermal badge printers, label templates, and automated check-in print stations
 - Manage users
 - Manage news
 - Manage community 
@@ -124,6 +125,16 @@ Keep a component inside its route until it is reused by another feature. Do not 
 11. Use semantic theme tokens so new screens work with light mode, dark mode, and the existing theme presets.
 12. Handle relevant loading, empty, error, disabled, and overflow states.
 13. Keep screens accessible with semantic HTML, keyboard support, visible focus states, labels, and appropriate ARIA attributes.
+14. Use the shared [`FloatingSaveBar`](file:///Users/fachridantm/IdeaProjects/gdgjakarta-organizer-dashboard/src/app/(main)/dashboard/_components/floating-save-bar.tsx) (`src/app/(main)/dashboard/_components/floating-save-bar.tsx`) for screens or tabs with editable settings/configurations so dirty-state tracking, discard, and floating save actions remain consistent across the dashboard.
+15. **Document every new feature**: Whenever you add or extend a feature, add concise feature notes to `AGENTS.md` (under `## Feature Notes`) and update `ai-guidelines/` (`ai-guidelines/INDEX.md` and `ai-guidelines/feature/<feature>.md`).
+
+## Feature Notes
+
+- **Thermal Printers & Label Station (`/dashboard/printers`)**:
+  - **Routes & Components**: `src/app/(main)/dashboard/printers/page.tsx`, `src/app/(main)/dashboard/printers/_components/printers-dashboard.tsx`, and `src/app/(main)/dashboard/printers/_components/label-html-editor-preview.tsx`.
+  - **Core Utilities**: `src/lib/printers/types.ts`, `src/lib/printers/templates.ts`, and `src/lib/printers/qr-svg.ts` (self-contained ISO/IEC 18004 SVG QR generator for `eventId:attendeeId`).
+  - **Template & Sizing**: Side-by-side Monaco HTML Source Code editor + true-millimeter `<iframe srcDoc>` Live Preview with dynamic CSS sizing (`syncTemplateDimensions`), Target Bevy Event selector (`PublishedEventSelector`), interactive **Configure Sample Data** drawer, and `FloatingSaveBar` for saving changes.
+  - **Firestore & Kiosk Printing**: Persists configuration in `system_settings/printer` and bounded print queue jobs (`MAX_STORED_PRINT_JOBS = 30`) in `system_settings/printer_queue`. Integrates with `src/app/(main)/dashboard/events/[eventId]/_components/qr-checkin-scanner-dialog.tsx` to automatically enqueue badge labels on attendee check-in and print silently via Chrome `--kiosk-printing`.
 
 ## Code conventions
 

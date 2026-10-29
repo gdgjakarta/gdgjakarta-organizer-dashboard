@@ -10,6 +10,7 @@ import {
   Link2,
   type LucideIcon,
   Mail,
+  Printer,
   QrCode,
   Sparkles,
   Trophy,
@@ -143,6 +144,12 @@ export const organizerSidebarItems: NavGroup[] = [
         title: "Bucket Storage",
         url: "/dashboard/media",
         icon: HardDrive,
+      },
+      {
+        id: "printers",
+        title: "Printers",
+        url: "/dashboard/printers",
+        icon: Printer,
       },
       {
         id: "maintenance",
