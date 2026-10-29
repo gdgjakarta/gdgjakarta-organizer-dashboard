@@ -259,8 +259,12 @@ ${buildLabelCoreCss(widthMm, heightMm, orientation)}
           <div class="attendee-company">[[company]]</div>
 
           <div class="ref-pill">
-            <span class="ref-label">TICKET:</span>
+            <span class="ref-label">REF:</span>
             <span class="ref-code">[[ticketCode]]</span>
+          </div>
+          <div class="ref-pill" style="margin-top: 0.4mm;">
+            <span class="ref-label">ID:</span>
+            <span class="ref-code">[[attendeeId]]</span>
           </div>
         </div>
 
@@ -311,7 +315,8 @@ export function ensureFullLabelHtml(
     html.includes("border: 1.5pt dashed #1a73e8") ||
     html.includes("#[[attendeeId]]") ||
     html.includes('<span class="ref-code">[[attendeeCode]]</span>') ||
-    html.includes("text-overflow: ellipsis")
+    html.includes("text-overflow: ellipsis") ||
+    (html.includes('<span class="ref-label">TICKET:</span>') && !html.includes("[[attendeeId]]"))
   ) {
     return buildDefaultLabelTemplate(widthMm, heightMm, orientation);
   }
@@ -391,8 +396,11 @@ export function renderLabelTemplate(template: string, data: LabelTemplateData): 
     .replaceAll("[[EventVenue]]", eventVenue)
     .replaceAll("[[eventId]]", String(data.eventId))
     .replaceAll("[[attendeeId]]", String(data.attendeeId))
+    .replaceAll("[[AttendeeId]]", String(data.attendeeId))
     .replaceAll("[[ticketCode]]", ticketCode)
     .replaceAll("[[TicketCode]]", ticketCode)
+    .replaceAll("[[refCode]]", ticketCode)
+    .replaceAll("[[RefCode]]", ticketCode)
     .replaceAll("[[attendeeCode]]", ticketCode)
     .replaceAll("[[attendeCode]]", ticketCode)
     .replaceAll("[[AttendeeCode]]", ticketCode)
