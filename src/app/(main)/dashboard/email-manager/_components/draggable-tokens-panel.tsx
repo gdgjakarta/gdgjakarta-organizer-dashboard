@@ -52,6 +52,18 @@ export const ATTENDEE_DATA_TOKENS: DraggableTokenItem[] = [
     description: "e.g. In-Person Ticket, VIP Pass",
   },
   {
+    id: "ticket_code",
+    tag: "[[TicketCode]]",
+    label: "Ticket / Ref Code",
+    description: "e.g. GDG-JKT-89241 or GOOGA263443955",
+  },
+  {
+    id: "attendee_id",
+    tag: "[[AttendeeId]]",
+    label: "Attendee ID",
+    description: "Numeric Bevy Attendee ID (e.g. 2793132)",
+  },
+  {
     id: "checkin_status",
     tag: "[[CheckinStatus]]",
     label: "Check-in Status",
@@ -136,7 +148,10 @@ export const PREBUILT_HTML_BLOCKS: DraggableTokenItem[] = [
     snippet: `<div class="ticket-card">
   <div class="ticket-title">Official Entry Pass</div>
   <div class="attendee-name">[[Name]]</div>
-  <div class="attendee-id">Ticket: [[TicketType]]</div>
+  <div class="attendee-id">
+    <div>Ref: [[TicketCode]]</div>
+    <div style="margin-top: 2px;">ID: [[AttendeeId]]</div>
+  </div>
   <div class="details-box">
     <div class="detail-row">
       <span class="detail-icon">📅</span>

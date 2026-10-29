@@ -103,6 +103,8 @@ export async function sendQuickEmail(input: QuickEmailInput) {
         .replaceAll("[[LastName]]", lastName)
         .replaceAll("[[Email]]", data.recipientEmail)
         .replaceAll("[[TicketType]]", "Confirmed Entry Pass")
+        .replaceAll("[[TicketCode]]", "GDG-JKT-89241")
+        .replaceAll("[[AttendeeId]]", "2793132")
         .replaceAll("[[CheckinStatus]]", "Confirmed");
 
       if (data.customAttendeePlaceholders) {

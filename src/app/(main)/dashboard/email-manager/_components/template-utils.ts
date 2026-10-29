@@ -95,6 +95,17 @@ export function convertTemplateToCleanTokens(raw: string): string {
   text = text.replaceAll("{{ $('bevy-config').item.json.bevyEventLocationUrl }}", "[[EventUrl]]");
   text = text.replaceAll("{ $('bevy-config').item.json.bevyEventLocationUrl }", "[[EventUrl]]");
 
+  // Attendee Reference Code & Attendee ID
+  text = text.replaceAll("{{ $('Add Bevy Attendee API').item.json.attendee_code }}", "[[TicketCode]]");
+  text = text.replaceAll("{ $('Add Bevy Attendee API').item.json.attendee_code }", "[[TicketCode]]");
+  text = text.replaceAll("{{ $('add-bevy-attendee-api').item.json.attendee_code }}", "[[TicketCode]]");
+  text = text.replaceAll("{ $('add-bevy-attendee-api').item.json.attendee_code }", "[[TicketCode]]");
+  text = text.replaceAll("{{ $('Add Bevy Attendee API').item.json.id }}", "[[AttendeeId]]");
+  text = text.replaceAll("{ $('Add Bevy Attendee API').item.json.id }", "[[AttendeeId]]");
+  text = text.replaceAll("{{ $('add-bevy-attendee-api').item.json.id }}", "[[AttendeeId]]");
+  text = text.replaceAll("{ $('add-bevy-attendee-api').item.json.id }", "[[AttendeeId]]");
+  text = text.replaceAll("{{ attendeeId }}", "[[AttendeeId]]");
+
   return text;
 }
 
@@ -153,7 +164,8 @@ export const EMAIL_FEATURE_TEMPLATES: EmailFeatureTemplateItem[] = [
     category: "waitlist",
     badge: "Waitlist Closed",
     defaultSubject: "Waitlist Update: [[EventName]]",
-    description: "Notifies waitlisted attendees on a free event that all seats remained full and the waitlist is closed.",
+    description:
+      "Notifies waitlisted attendees on a free event that all seats remained full and the waitlist is closed.",
     getRawHtml: () => convertTemplateToCleanTokens(DEFAULT_REJECTED_WAITLISTED_EMAIL_HTML),
   },
   {

@@ -397,6 +397,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
               venueLocation: cleanData.accepted.venueLocation,
               venueLocationUrl: cleanData.accepted.venueLocationUrl,
               attendeeCode: cleanData.accepted.attendeeCode,
+              attendeeId: cleanData.accepted.attendeeId ? String(cleanData.accepted.attendeeId) : undefined,
             },
             waitlisted: {
               headerEmailUrl: cleanData.waitlisted.event.headerEmailUrl,
@@ -564,6 +565,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
               venueLocation: templatesData.accepted.venueLocation,
               venueLocationUrl: templatesData.accepted.venueLocationUrl,
               attendeeCode: templatesData.accepted.attendeeCode,
+              attendeeId: templatesData.accepted.attendeeId ? String(templatesData.accepted.attendeeId) : undefined,
             },
             waitlisted: {
               headerEmailUrl: templatesData.waitlisted.event.headerEmailUrl,
