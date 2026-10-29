@@ -326,7 +326,8 @@ export async function signInWithGoogle(): Promise<{ organizer: AuthOrganizer; is
       globalStore.getState().setUser(organizer, user);
     }
 
-    if (validation.wasImported || !validation.bevyUserId) {
+    // Only sync Bevy User ID in background if it wasn't resolved yet and user was newly imported
+    if (!validation.bevyUserId && validation.wasImported) {
       await syncBevyUserToFirestore(user.uid, email);
     }
 

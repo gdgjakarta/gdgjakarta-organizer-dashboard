@@ -121,10 +121,6 @@ export async function bevyFetchWithResponse<T>(
       cache: "no-store",
     });
 
-    if (!response.ok) {
-      return { response, ok: false, status: response.status, data: null as T | null };
-    }
-
     if (response.status === 204) {
       return { response, ok: true, status: response.status, data: null as T | null };
     }
@@ -138,6 +134,11 @@ export async function bevyFetchWithResponse<T>(
         // Response is non-JSON
       }
     }
+
+    if (!response.ok) {
+      return { response, ok: false, status: response.status, data };
+    }
+
     return { response, ok: true, status: response.status, data };
   };
 
@@ -157,7 +158,7 @@ export async function bevyFetchWithResponse<T>(
 
     if (!result.ok) {
       console.warn(`[Bevy API] Request to ${url} returned status ${result.status}`);
-      return { status: result.status, ok: false, data: null };
+      return { status: result.status, ok: false, data: result.data };
     }
 
     return { status: result.status, ok: true, data: result.data };
@@ -245,7 +246,50 @@ export async function getMemberById(
   }
 
   console.warn(`[Bevy Auth] No Bevy member found for identifier: ${userId} (status: ${directResult.status})`);
-  return { status: directResult.status || 404, ok: false, data: null };
+  return { status: directResult.status || 404, ok: false, data: (directResult.data as unknown as BevyUser) || null };
+}
+
+/**
+ * Determines whether a Bevy API member lookup response indicates that the user
+ * is truly not registered in Bevy (e.g. 404, 403 / 200 with permission denied message or empty object),
+ * as opposed to transient errors like 429 (rate limit) or 500+ (server errors).
+ */
+export function isBevyUserNotFoundError(response: { status?: number; data?: unknown }): boolean {
+  const status = response.status;
+  // Rate limits (429) or server errors (500+) are NOT "user not found"
+  if (status === 429 || (typeof status === "number" && status >= 500)) {
+    return false;
+  }
+
+  // 404 is definitely Not Found
+  if (status === 404) {
+    return true;
+  }
+
+  const data = response.data as Record<string, unknown> | null | undefined;
+  const detail = String(data?.detail || data?.message || data?.error || "").toLowerCase();
+
+  // Bevy returns "You do not have permission to perform this action" or 403 when user does not exist / cannot be viewed
+  if (detail.includes("permission") || detail.includes("not found")) {
+    return true;
+  }
+
+  if (status === 403) {
+    return true;
+  }
+
+  // 200 OK, but no valid user ID found in data
+  if (
+    status === 200 &&
+    (!data ||
+      (!("id" in data && data.id) &&
+        !("user" in data && (data.user as Record<string, unknown>).id) &&
+        (!Array.isArray(data.results) || data.results.length === 0)))
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 /**
@@ -616,8 +660,9 @@ export async function validateBevyOrganizer(
       `[Bevy Auth Flow] Bevy member lookup result for ${normalizedEmail}: Status = ${memberResponse.status}, ID = ${bevyUserId ?? "NOT FOUND"}`,
     );
 
-    // If Bevy response is not success or 200, member is new and hasn't registered on Bevy
-    if (!memberResponse.ok || memberResponse.status !== 200 || !bevyUser) {
+    // Only import if member is truly NOT registered on Bevy (e.g. 404, 403 / 200 permission message).
+    // Do NOT import on 429 (rate limit) or 500+ (server error).
+    if (!bevyUserId && isBevyUserNotFoundError(memberResponse)) {
       console.log(
         `[Bevy Auth Flow] Member ${normalizedEmail} is not registered on Bevy (status: ${memberResponse.status}). Registering new member via GDG Jakarta API...`,
       );
@@ -651,6 +696,12 @@ export async function validateBevyOrganizer(
       } else {
         console.warn(`[Bevy Auth Flow] Failed to import member to Bevy: ${importResult.error}`);
       }
+    } else if (memberResponse.status === 429) {
+      console.warn(`[Bevy Auth Flow] Bevy rate limit (429) encountered for ${normalizedEmail}. Skipping import.`);
+    } else if (typeof memberResponse.status === "number" && memberResponse.status >= 500) {
+      console.warn(
+        `[Bevy Auth Flow] Bevy server error (${memberResponse.status}) for ${normalizedEmail}. Skipping import.`,
+      );
     }
 
     // Step 2: Query chapter team role using Bevy User ID or verified email from /chapter/{chapterId}/team/
@@ -658,6 +709,9 @@ export async function validateBevyOrganizer(
     if (chapterRoleResult.isValidOrganizer) {
       if (!bevyUserId && chapterRoleResult.teamMember?.user?.id) {
         bevyUserId = String(chapterRoleResult.teamMember.user.id);
+      }
+      if (bevyUserId) {
+        wasImported = false; // Resolved via chapter team; already a Bevy user
       }
       console.log(
         `[Bevy Auth Flow] Chapter role resolution for ${normalizedEmail} (Bevy ID ${bevyUserId ?? "N/A"}): ${chapterRoleResult.chapterRole} (RoleId: ${chapterRoleResult.roleId}, Title: "${chapterRoleResult.roleTitle}")`,
@@ -699,7 +753,7 @@ export async function validateBevyOrganizer(
         roleTitle: "GDG Organizer",
         bevyUserId: bevyUserId ?? "1005761",
         bevyUser,
-        wasImported,
+        wasImported: false,
       };
     }
 

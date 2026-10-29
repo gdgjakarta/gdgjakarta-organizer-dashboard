@@ -4,7 +4,13 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { isCoreTeamOrStaff, isExecutiveOrganizer } from "@/lib/auth-roles";
-import { getUserById, importMemberToBevy, validateBevyOrganizer } from "@/lib/bevy/client";
+import {
+  getMemberById,
+  getUserById,
+  importMemberToBevy,
+  isBevyUserNotFoundError,
+  validateBevyOrganizer,
+} from "@/lib/bevy/client";
 import { type BevyUser, ChapterRole, type OrganizerValidationResult } from "@/lib/bevy/types";
 import { signRoleCookie } from "@/lib/security/session-cookie";
 import { splitFullName } from "@/lib/utils";
@@ -67,11 +73,23 @@ export async function syncMemberBevyUserAction(
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const user = await getUserById(normalizedEmail);
-      if (user?.id !== undefined && user?.id !== null) {
-        const bevyUserId = String(user.id);
+      const memberResponse = await getMemberById(normalizedEmail);
+      if (memberResponse.data?.id !== undefined && memberResponse.data?.id !== null) {
+        const bevyUserId = String(memberResponse.data.id);
         console.log(`[Sync Member to Bevy] Successfully resolved Bevy User ID: ${bevyUserId} on attempt ${attempt}`);
         return { success: true, bevyUserId };
+      }
+
+      // Abort retry loop immediately if rate limited (429) or server error (500+)
+      if (memberResponse.status === 429) {
+        console.warn(`[Sync Member to Bevy] Attempt ${attempt} hit Bevy 429 rate limit. Aborting retries.`);
+        return { success: false, error: "Bevy API rate limited (429)." };
+      }
+      if (typeof memberResponse.status === "number" && memberResponse.status >= 500) {
+        console.warn(
+          `[Sync Member to Bevy] Attempt ${attempt} hit Bevy server error (${memberResponse.status}). Aborting retries.`,
+        );
+        return { success: false, error: `Bevy API server error (${memberResponse.status}).` };
       }
     } catch (err) {
       console.warn(`[Sync Member to Bevy] Attempt ${attempt} failed for ${normalizedEmail}:`, err);
@@ -132,11 +150,22 @@ export async function syncSingleMemberToBevyAction(params: {
 
   // 1. Check if user already exists in Bevy
   try {
-    const existingUser = await getUserById(normalizedEmail);
-    if (existingUser?.id !== undefined && existingUser?.id !== null) {
-      const bevyUserId = String(existingUser.id);
+    const memberResponse = await getMemberById(normalizedEmail);
+    if (memberResponse.data?.id !== undefined && memberResponse.data?.id !== null) {
+      const bevyUserId = String(memberResponse.data.id);
       console.log(`[Sync Single Member] User ${normalizedEmail} is already a Bevy member (ID: ${bevyUserId})`);
       return { success: true, bevyUserId, isAlreadyMember: true };
+    }
+
+    if (memberResponse.status === 429) {
+      return { success: false, error: "Bevy API is currently rate limited (429). Please try again shortly." };
+    }
+    if (typeof memberResponse.status === "number" && memberResponse.status >= 500) {
+      return { success: false, error: `Bevy API server error (${memberResponse.status}).` };
+    }
+
+    if (!isBevyUserNotFoundError(memberResponse)) {
+      return { success: false, error: `Bevy member lookup returned unexpected status: ${memberResponse.status}.` };
     }
   } catch (err) {
     console.warn(`[Sync Single Member] Error checking user ${normalizedEmail}:`, err);
