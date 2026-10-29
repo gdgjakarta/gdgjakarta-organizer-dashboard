@@ -5043,7 +5043,7 @@ export function EventRegistrationModal({
 
       {/* Sizing & Product Guideline Dialog */}
       <Dialog open={Boolean(viewingGuidelineItem)} onOpenChange={(isOpen) => !isOpen && setViewingGuidelineItem(null)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="inset-0 m-auto h-fit max-h-[90vh] translate-x-0 translate-y-0 overflow-y-auto sm:max-w-md [transform:none]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Ruler className="size-5 text-primary" />

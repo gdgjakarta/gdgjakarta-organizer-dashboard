@@ -21,6 +21,7 @@ import {
   Ticket,
   User,
   UserCheck,
+  UserPlus,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -192,6 +193,7 @@ interface CreateOnTheSpotSaleDialogProps {
   initialItem?: EventMerchandiseItem | null;
   initialBundle?: EventBundlePackage | null;
   initialOrders?: EventMerchandiseOrder[];
+  onOpenAddFromRegistrants?: () => void;
 }
 
 export function CreateOnTheSpotSaleDialog({
@@ -203,6 +205,7 @@ export function CreateOnTheSpotSaleDialog({
   initialItem,
   initialBundle,
   initialOrders,
+  onOpenAddFromRegistrants,
 }: CreateOnTheSpotSaleDialogProps) {
   const user = useAuthStore((s) => s.user);
   // Existing orders for real-time quota calculations
@@ -929,11 +932,12 @@ export function CreateOnTheSpotSaleDialog({
                             variant="outline"
                             className="text-[10px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20"
                           >
-                            {selectedAttendee.attendee_code
-                              ? `Ticket: ${selectedAttendee.attendee_code}`
-                              : selectedAttendee.bevy_attendee_id
-                                ? `Bevy Ticket #${selectedAttendee.bevy_attendee_id}`
-                                : "Registered Attendee"}
+                            {(() => {
+                              if (selectedAttendee.attendee_code) return `Ticket: ${selectedAttendee.attendee_code}`;
+                              if (selectedAttendee.bevy_attendee_id)
+                                return `Bevy Ticket #${selectedAttendee.bevy_attendee_id}`;
+                              return "Registered Attendee";
+                            })()}
                           </Badge>
                         </div>
                         <p className="text-[11px] text-muted-foreground">
@@ -1005,14 +1009,28 @@ export function CreateOnTheSpotSaleDialog({
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <div className="relative">
-                    <Search className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
-                    <Input
-                      placeholder="Search registered attendee by name, email, or ticket code..."
-                      value={attendeeSearchQuery}
-                      onChange={(e) => setAttendeeSearchQuery(e.target.value)}
-                      className="h-8 pl-8 text-xs"
-                    />
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
+                      <Input
+                        placeholder="Search registered attendee by name, email, or ticket code..."
+                        value={attendeeSearchQuery}
+                        onChange={(e) => setAttendeeSearchQuery(e.target.value)}
+                        className="h-8 pl-8 text-xs"
+                      />
+                    </div>
+                    {onOpenAddFromRegistrants && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={onOpenAddFromRegistrants}
+                        className="h-8 shrink-0 gap-1 text-xs"
+                      >
+                        <UserPlus className="size-3.5" />
+                        <span className="hidden sm:inline">Browse</span> Registrants
+                      </Button>
+                    )}
                   </div>
 
                   {filteredAttendees.length > 0 && (

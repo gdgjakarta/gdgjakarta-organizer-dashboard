@@ -1165,7 +1165,7 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
 
       {/* Dialog for viewing product & sizing guidelines */}
       <Dialog open={Boolean(viewingGuidelineItem)} onOpenChange={(open) => !open && setViewingGuidelineItem(null)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="inset-0 m-auto h-fit max-h-[90vh] translate-x-0 translate-y-0 overflow-y-auto sm:max-w-md [transform:none]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Ruler className="size-5 text-primary" />

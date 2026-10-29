@@ -516,7 +516,7 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-xl md:max-w-2xl">
+      <DialogContent className="inset-0 m-auto h-fit max-h-[92vh] translate-x-0 translate-y-0 overflow-y-auto sm:max-w-xl md:max-w-2xl [transform:none]">
         <form onSubmit={handleSubmit} className="space-y-6">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -648,11 +648,7 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
                   Exclusive to on-site sales at the venue. Hidden from the online registration form.
                 </p>
               </div>
-              <Switch
-                id="merch-ots-only"
-                checked={isOtsOnly}
-                onCheckedChange={setIsOtsOnly}
-              />
+              <Switch id="merch-ots-only" checked={isOtsOnly} onCheckedChange={setIsOtsOnly} />
             </div>
 
             {/* Description */}

@@ -2232,7 +2232,7 @@ export function BreakoutSessionsTab({
 
       {/* DIALOG 2: INSPECT REGISTRATION FORM ANSWERS */}
       <Dialog open={Boolean(inspectReg)} onOpenChange={(open) => !open && setInspectReg(null)}>
-        <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-xl">
+        <DialogContent className="inset-0 m-auto h-fit max-h-[88vh] translate-x-0 translate-y-0 overflow-y-auto sm:max-w-xl [transform:none]">
           <DialogHeader>
             <DialogTitle className="text-base">
               Registration Form Submission — {inspectReg?.member_name || inspectReg?.member_email}

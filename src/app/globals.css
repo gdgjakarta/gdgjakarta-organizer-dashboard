@@ -740,10 +740,30 @@ textarea:disabled,
   border-color: transparent !important;
 }
 
-/* Dialog & alert-dialog overlay: remove background blur across modals */
+/* Modal overlays: eliminate all backdrop blur across all dialogs, alerts, sheets, and drawers */
 [data-slot="dialog-overlay"],
-[data-slot="alert-dialog-overlay"] {
-  backdrop-filter: none !important;
+[data-slot="alert-dialog-overlay"],
+[data-slot="sheet-overlay"],
+[data-slot="drawer-overlay"],
+[data-slot*="overlay"],
+div[class*="supports-backdrop-filter"][class*="fixed"][class*="inset-0"] {
+  --tw-backdrop-blur: none !important;
+  --tw-backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
   background-color: rgb(0 0 0 / 0.45) !important;
+}
+
+@supports ((-webkit-backdrop-filter: var(--tw)) or (backdrop-filter: var(--tw))) {
+  [data-slot="dialog-overlay"],
+  [data-slot="alert-dialog-overlay"],
+  [data-slot="sheet-overlay"],
+  [data-slot="drawer-overlay"],
+  [data-slot*="overlay"],
+  div[class*="supports-backdrop-filter"][class*="fixed"][class*="inset-0"] {
+    --tw-backdrop-blur: none !important;
+    --tw-backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
 }

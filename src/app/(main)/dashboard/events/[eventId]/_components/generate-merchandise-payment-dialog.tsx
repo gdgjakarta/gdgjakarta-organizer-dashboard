@@ -358,7 +358,7 @@ export function GenerateMerchandisePaymentDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-md">
+      <DialogContent className="inset-0 m-auto h-fit max-h-[92vh] translate-x-0 translate-y-0 overflow-y-auto sm:max-w-md [transform:none]">
         <DialogHeader>
           <div className="flex items-center gap-2">
             <div className="rounded-lg bg-primary/10 p-2 text-primary">

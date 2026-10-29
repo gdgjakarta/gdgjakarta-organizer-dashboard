@@ -178,7 +178,7 @@ export function RefundApprovalDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] max-w-lg overflow-y-auto sm:max-w-lg">
+      <DialogContent className="inset-0 m-auto h-fit max-h-[92vh] max-w-lg translate-x-0 translate-y-0 overflow-y-auto sm:max-w-lg [transform:none]">
         <DialogHeader>
           <div className="flex items-center gap-2">
             <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">

@@ -488,7 +488,7 @@ export function BundleDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="inset-0 m-auto h-fit max-h-[90vh] translate-x-0 translate-y-0 overflow-y-auto sm:max-w-2xl [transform:none]">
         <DialogHeader>
           <div className="flex items-center gap-2">
             <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -888,11 +888,7 @@ export function BundleDialog({
                     Exclusive to on-site sales at the venue. Hidden from the online registration form.
                   </p>
                 </div>
-                <Switch
-                  id="bundle-ots-only"
-                  checked={isOtsOnly}
-                  onCheckedChange={setIsOtsOnly}
-                />
+                <Switch id="bundle-ots-only" checked={isOtsOnly} onCheckedChange={setIsOtsOnly} />
               </div>
 
               <div className="flex items-center space-x-2 pt-1">

@@ -30,6 +30,7 @@ import {
   Trash2,
   User,
   UserCheck,
+  UserPlus,
   X,
   XCircle,
 } from "lucide-react";
@@ -143,6 +144,36 @@ function getOrderStatusLogMeta(action: string) {
   };
 }
 
+function getRegistrantStatusMeta(status?: string) {
+  const norm = (status || "").toLowerCase().trim();
+  if (norm === "approved") {
+    return {
+      label: "Approved",
+      badgeClass: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+      dotClass: "bg-emerald-500",
+    };
+  }
+  if (norm.includes("wait") || norm === "waiting_for_payment") {
+    return {
+      label: "Waiting for Payment",
+      badgeClass: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+      dotClass: "bg-amber-500",
+    };
+  }
+  if (norm === "rejected") {
+    return {
+      label: "Rejected",
+      badgeClass: "border-destructive/30 bg-destructive/10 text-destructive",
+      dotClass: "bg-destructive",
+    };
+  }
+  return {
+    label: norm ? norm.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) : "Registered",
+    badgeClass: "border-muted bg-muted/60 text-muted-foreground",
+    dotClass: "bg-muted-foreground",
+  };
+}
+
 export function OnTheSpotMerchTab({ event, registrations, onOpenScanner }: OnTheSpotMerchTabProps) {
   const user = useAuthStore((s) => s.user);
   const [orders, setOrders] = useState<EventMerchandiseOrder[]>([]);
@@ -186,6 +217,9 @@ export function OnTheSpotMerchTab({ event, registrations, onOpenScanner }: OnThe
   // Dialog states
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [isAddFromRegistrantsOpen, setIsAddFromRegistrantsOpen] = useState(false);
+  const [addRegistrantSearch, setAddRegistrantSearch] = useState("");
+  const [registrantStatusFilter, setRegistrantStatusFilter] = useState<string>("all");
   const [attendeeForSale, setAttendeeForSale] = useState<FirestoreRegistration | null>(null);
   const [viewingOrder, setViewingOrder] = useState<EventMerchandiseOrder | null>(null);
   const [checkingOrderId, setCheckingOrderId] = useState<string | null>(null);
@@ -267,6 +301,37 @@ export function OnTheSpotMerchTab({ event, registrations, onOpenScanner }: OnThe
     });
   }, [orders, searchQuery, paymentFilter, collectionFilter, customerFilter]);
 
+  // Filtered Registrants for "Add from Registrants" Dialog
+  const availableRegistrants = useMemo(() => {
+    return registrations.filter((reg) => {
+      if (registrantStatusFilter !== "all" && (reg.status || "").toLowerCase().trim() !== registrantStatusFilter) {
+        return false;
+      }
+      if (!addRegistrantSearch.trim()) return true;
+      const q = addRegistrantSearch.toLowerCase().trim();
+      const name = (reg.member_name || (reg.answers?.name as string) || "").toLowerCase();
+      const email = (reg.member_email || (reg.answers?.email as string) || "").toLowerCase();
+      const phone = (
+        reg.member_phone ||
+        (reg.answers?.phone as string) ||
+        (reg.answers?.whatsapp as string) ||
+        ""
+      ).toLowerCase();
+      const code = (reg.attendee_code || "").toLowerCase();
+      const bevyId = String(reg.bevy_attendee_id || "");
+      const ticket = (reg.ticket_name || reg.bundle_name || reg.ticket_tier || "").toLowerCase();
+
+      return (
+        name.includes(q) ||
+        email.includes(q) ||
+        phone.includes(q) ||
+        code.includes(q) ||
+        bevyId.includes(q) ||
+        ticket.includes(q)
+      );
+    });
+  }, [registrations, addRegistrantSearch, registrantStatusFilter]);
+
   // Check Payment for an order row
   const handleCheckPayment = async (order: EventMerchandiseOrder) => {
     setCheckingOrderId(order.id);
@@ -346,13 +411,13 @@ export function OnTheSpotMerchTab({ event, registrations, onOpenScanner }: OnThe
         if (viewingOrder?.id === targetOrder.id) {
           setViewingOrder(null);
         }
-        toast.success(
-          wasPaid
-            ? `Customer ${targetOrder.customer.name} removed from list. ${itemsCount} item(s) restored to merchandise stock!`
-            : res.cancelledPaymentLink
-              ? `Order #${targetOrder.order_number} for ${targetOrder.customer.name} removed and active DOKU payment link cancelled.`
-              : `Order #${targetOrder.order_number} for ${targetOrder.customer.name} removed.`,
-        );
+        let successMessage = `Order #${targetOrder.order_number} for ${targetOrder.customer.name} removed.`;
+        if (wasPaid) {
+          successMessage = `Customer ${targetOrder.customer.name} removed from list. ${itemsCount} item(s) restored to merchandise stock!`;
+        } else if (res.cancelledPaymentLink) {
+          successMessage = `Order #${targetOrder.order_number} for ${targetOrder.customer.name} removed and active DOKU payment link cancelled.`;
+        }
+        toast.success(successMessage);
         setOrderToDelete(null);
       } else {
         toast.error(res.error || "Failed to remove customer order.");
@@ -513,10 +578,24 @@ export function OnTheSpotMerchTab({ event, registrations, onOpenScanner }: OnThe
             size="sm"
             variant="outline"
             onClick={() => {
+              setAddRegistrantSearch("");
+              setRegistrantStatusFilter("all");
+              setIsAddFromRegistrantsOpen(true);
+            }}
+            className="h-8 gap-1.5 text-xs border-primary/30 text-primary hover:bg-primary/5"
+          >
+            <UserPlus className="size-3.5" />
+            Add from Registrants
+          </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
               setAttendeeForSale(null);
               setIsScannerOpen(true);
             }}
-            className="h-8 gap-1.5 text-xs border-primary/30 text-primary hover:bg-primary/5"
+            className="h-8 gap-1.5 text-xs"
           >
             <Camera className="size-3.5" />
             Scan Attendee QR
@@ -775,7 +854,142 @@ export function OnTheSpotMerchTab({ event, registrations, onOpenScanner }: OnThe
         </Table>
       </div>
 
-      {/* 4. Create Sale Dialog */}
+      {/* 4. Add from Registrants for OTS Sale Dialog */}
+      <Dialog open={isAddFromRegistrantsOpen} onOpenChange={setIsAddFromRegistrantsOpen}>
+        <DialogContent className="inset-0 m-auto h-fit max-h-[90vh] translate-x-0 translate-y-0 overflow-y-auto sm:max-w-2xl [transform:none]">
+          <DialogHeader>
+            <DialogTitle className="text-base flex items-center gap-2">
+              <UserPlus className="size-4 text-primary" />
+              Add from Registrants for OTS Sale
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Select an existing event registrant to create an on-the-spot merchandise sale with their profile and
+              ticket details.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="relative flex-1">
+                <Search className="pointer-events-none absolute top-2.5 left-2.5 size-4 text-muted-foreground" />
+                <Input
+                  value={addRegistrantSearch}
+                  onChange={(e) => setAddRegistrantSearch(e.target.value)}
+                  placeholder="Search registrants by name, email, ticket code, or phone..."
+                  className="h-9 pl-8 text-xs"
+                />
+              </div>
+
+              <Select value={registrantStatusFilter} onValueChange={setRegistrantStatusFilter}>
+                <SelectTrigger className="h-9 w-full sm:w-36 text-xs">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" className="text-xs">
+                    All Statuses
+                  </SelectItem>
+                  <SelectItem value="approved" className="text-xs">
+                    Approved
+                  </SelectItem>
+                  <SelectItem value="waiting_for_payment" className="text-xs">
+                    Waiting for Payment
+                  </SelectItem>
+                  <SelectItem value="registered" className="text-xs">
+                    Registered
+                  </SelectItem>
+                  <SelectItem value="rejected" className="text-xs">
+                    Rejected
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
+              <span>
+                Showing <strong className="text-foreground">{availableRegistrants.length}</strong> of{" "}
+                {registrations.length} registrants
+              </span>
+            </div>
+
+            <div className="max-h-80 divide-y overflow-y-auto rounded-lg border">
+              {availableRegistrants.length === 0 ? (
+                <div className="p-8 text-center text-muted-foreground text-xs">
+                  No registrants found matching your search.
+                </div>
+              ) : (
+                availableRegistrants.map((reg) => {
+                  const statusMeta = getRegistrantStatusMeta(reg.status);
+                  const ticketDisplay = reg.ticket_name || reg.bundle_name || reg.ticket_tier || "General Admission";
+                  return (
+                    <div
+                      key={reg.id}
+                      className="flex items-center justify-between gap-3 p-3 hover:bg-muted/40 transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary font-semibold text-xs">
+                          {(reg.member_name || reg.member_email || "U").charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium text-xs text-foreground truncate">
+                              {reg.member_name || "Unnamed Registrant"}
+                            </span>
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "shrink-0 gap-1 border px-1.5 py-0 text-[10px] font-medium",
+                                statusMeta.badgeClass,
+                              )}
+                            >
+                              <span className={cn("size-1.5 rounded-full", statusMeta.dotClass)} />
+                              {statusMeta.label}
+                            </Badge>
+                          </div>
+                          <div className="text-[11px] text-muted-foreground truncate flex items-center gap-1.5 flex-wrap">
+                            <span>{reg.member_email}</span>
+                            {reg.attendee_code && (
+                              <span className="font-mono text-foreground/80">• Ticket: {reg.attendee_code}</span>
+                            )}
+                            <span>• {ticketDisplay}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => {
+                          setAttendeeForSale(reg);
+                          setIsAddFromRegistrantsOpen(false);
+                          setIsCreateOpen(true);
+                        }}
+                        className="h-7 shrink-0 gap-1 text-xs px-2.5 font-medium"
+                      >
+                        <ShoppingBag className="size-3" />
+                        Select
+                      </Button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsAddFromRegistrantsOpen(false)}
+              className="text-xs"
+            >
+              Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 5. Create Sale Dialog */}
       <CreateOnTheSpotSaleDialog
         open={isCreateOpen}
         onOpenChange={(v) => {
@@ -785,6 +999,12 @@ export function OnTheSpotMerchTab({ event, registrations, onOpenScanner }: OnThe
         event={event}
         registrations={registrations}
         initialAttendee={attendeeForSale}
+        onOpenAddFromRegistrants={() => {
+          setIsCreateOpen(false);
+          setAddRegistrantSearch("");
+          setRegistrantStatusFilter("all");
+          setIsAddFromRegistrantsOpen(true);
+        }}
       />
 
       {/* Scanner Dialog */}
