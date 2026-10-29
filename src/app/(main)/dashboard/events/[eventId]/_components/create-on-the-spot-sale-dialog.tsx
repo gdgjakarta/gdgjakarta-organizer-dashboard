@@ -92,8 +92,12 @@ function extractCustomerDetails(
       matchedReg = {
         ...found,
         ...reg,
+        member_name: found.member_name || reg.member_name,
+        member_email: found.member_email || reg.member_email,
+        member_phone: found.member_phone || reg.member_phone,
+        bevy_attendee_id: found.bevy_attendee_id ?? reg.bevy_attendee_id,
+        attendee_code: found.attendee_code || reg.attendee_code,
         answers: { ...(found.answers ?? {}), ...(reg.answers ?? {}) },
-        member_phone: reg.member_phone || found.member_phone,
       };
     }
   }
@@ -302,11 +306,40 @@ export function CreateOnTheSpotSaleDialog({
     const prevAttendee = prevAttendeeRef.current;
     prevAttendeeRef.current = initialAttendee;
 
+    const resolveAttendee = (raw: FirestoreRegistration | null | undefined): FirestoreRegistration | null => {
+      if (!raw) return null;
+      const regEmail = (raw.member_email || (raw.answers?.email as string) || "").trim().toLowerCase();
+      const regBevyId = raw.bevy_attendee_id ? Number(raw.bevy_attendee_id) : null;
+      const code = (raw.attendee_code || "").trim().toLowerCase();
+      const found = registrations.find((r) => {
+        if (code && r.attendee_code && r.attendee_code.trim().toLowerCase() === code) return true;
+        if (regBevyId && Number(r.bevy_attendee_id) === regBevyId) return true;
+        if (raw.id && r.id === raw.id) return true;
+        if (regEmail && (r.member_email || (r.answers?.email as string) || "").trim().toLowerCase() === regEmail)
+          return true;
+        return false;
+      });
+      if (found) {
+        return {
+          ...found,
+          ...raw,
+          member_name: found.member_name || raw.member_name,
+          member_email: found.member_email || raw.member_email,
+          member_phone: found.member_phone || raw.member_phone,
+          bevy_attendee_id: found.bevy_attendee_id ?? raw.bevy_attendee_id,
+          attendee_code: found.attendee_code || raw.attendee_code,
+          answers: { ...(found.answers ?? {}), ...(raw.answers ?? {}) },
+        };
+      }
+      return raw;
+    };
+
     if (!wasOpen && open) {
       // Dialog just opened
       if (initialAttendee) {
-        const details = extractCustomerDetails(initialAttendee, registrations, event.custom_questions);
-        setSelectedAttendee(initialAttendee);
+        const resolved = resolveAttendee(initialAttendee) || initialAttendee;
+        const details = extractCustomerDetails(resolved, registrations, event.custom_questions);
+        setSelectedAttendee(resolved);
         setIsWalkIn(false);
         setCustomerName(details.name);
         setCustomerEmail(details.email);
@@ -328,8 +361,9 @@ export function CreateOnTheSpotSaleDialog({
       }
     } else if (open && initialAttendee && initialAttendee !== prevAttendee) {
       // initialAttendee prop changed while dialog is open
-      const details = extractCustomerDetails(initialAttendee, registrations, event.custom_questions);
-      setSelectedAttendee(initialAttendee);
+      const resolved = resolveAttendee(initialAttendee) || initialAttendee;
+      const details = extractCustomerDetails(resolved, registrations, event.custom_questions);
+      setSelectedAttendee(resolved);
       setIsWalkIn(false);
       setCustomerName(details.name);
       setCustomerEmail(details.email);
@@ -885,15 +919,21 @@ export function CreateOnTheSpotSaleDialog({
                             {customerName ||
                               selectedAttendee.member_name ||
                               (selectedAttendee.answers?.name as string) ||
-                              `Attendee #${selectedAttendee.bevy_attendee_id}`}
+                              (selectedAttendee.bevy_attendee_id
+                                ? `Attendee #${selectedAttendee.bevy_attendee_id}`
+                                : selectedAttendee.attendee_code
+                                  ? `Attendee (${selectedAttendee.attendee_code})`
+                                  : "Registered Attendee")}
                           </span>
                           <Badge
                             variant="outline"
                             className="text-[10px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20"
                           >
-                            {selectedAttendee.bevy_attendee_id
-                              ? `Bevy Ticket #${selectedAttendee.bevy_attendee_id}`
-                              : "Registered Attendee"}
+                            {selectedAttendee.attendee_code
+                              ? `Ticket: ${selectedAttendee.attendee_code}`
+                              : selectedAttendee.bevy_attendee_id
+                                ? `Bevy Ticket #${selectedAttendee.bevy_attendee_id}`
+                                : "Registered Attendee"}
                           </Badge>
                         </div>
                         <p className="text-[11px] text-muted-foreground">
@@ -990,6 +1030,7 @@ export function CreateOnTheSpotSaleDialog({
                             </span>
                             <span className="text-[11px] text-muted-foreground">
                               {r.member_email || (r.answers?.email as string)}
+                              {r.attendee_code ? ` • ${r.attendee_code}` : ""}
                             </span>
                           </div>
                           <Badge variant="outline" className="text-[10px]">

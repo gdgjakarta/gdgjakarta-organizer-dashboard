@@ -448,34 +448,60 @@ export function QrCheckInScannerDialog({
     };
   }, []);
 
-  // Parse `eventId:attendeeId` or fallback identifiers
+  // Parse `eventId:attendeeId`, `eventId:ticketCode`, or fallback identifiers
   const parseQrPayload = React.useCallback(
     (
       raw: string,
     ): {
       scannedEventId?: string;
       bevyAttendeeId?: number;
+      ticketCode?: string;
       fallbackQuery?: string;
       error?: string;
     } => {
       const trimmed = raw.trim();
       if (!trimmed) return { error: "Empty QR code payload." };
 
-      // Check standard Bevy QR format: `eventId:attendeeId`
+      // Support JSON payload e.g. { ticket_code: "...", attendee_code: "...", attendee_id: 123 }
+      if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+        try {
+          const parsed = JSON.parse(trimmed);
+          const tCode = parsed.ticket_code || parsed.attendee_code || parsed.ticketCode || parsed.attendeeCode;
+          const aId = Number(parsed.attendee_id || parsed.bevy_attendee_id || parsed.id);
+          if (tCode && typeof tCode === "string") {
+            return { ticketCode: tCode.trim(), fallbackQuery: tCode.trim() };
+          }
+          if (!Number.isNaN(aId) && aId > 0) {
+            return { bevyAttendeeId: aId };
+          }
+        } catch {
+          // ignore json parse error and proceed
+        }
+      }
+
+      // Check standard Bevy QR format: `eventId:attendeeId` or `eventId:ticketCode`
       if (trimmed.includes(":")) {
         const parts = trimmed.split(":");
         const left = parts[0]?.trim();
         const right = parts[1]?.trim();
-        const parsedAttendeeId = Number(right);
-        if (left && !Number.isNaN(parsedAttendeeId) && parsedAttendeeId > 0) {
+        if (left && right) {
           if (String(left) !== String(eventId)) {
             return {
               error: `QR belongs to Event ID ${left}, but current event is ${eventId}.`,
             };
           }
+          const parsedAttendeeId = Number(right);
+          if (!Number.isNaN(parsedAttendeeId) && parsedAttendeeId > 0 && /^\d+$/.test(right)) {
+            return {
+              scannedEventId: left,
+              bevyAttendeeId: parsedAttendeeId,
+            };
+          }
+          // Non-numeric right side in eventId:right -> treat as ticket code (e.g. 12345:GOOGA263443955)
           return {
             scannedEventId: left,
-            bevyAttendeeId: parsedAttendeeId,
+            ticketCode: right,
+            fallbackQuery: right,
           };
         }
       }
@@ -486,23 +512,199 @@ export function QrCheckInScannerDialog({
         return { bevyAttendeeId: numericId };
       }
 
-      // Fallback: email or Firestore registration ID
-      return { fallbackQuery: trimmed };
+      // Ticket code (e.g. GOOGA263443955) or email or Firestore registration ID
+      return { ticketCode: trimmed, fallbackQuery: trimmed };
     },
     [eventId],
   );
 
-  // Resolve FirestoreRegistration from Bevy Attendee ID or fallback query
+  // Resolve FirestoreRegistration from Bevy Attendee ID, ticket code, or fallback query
   const resolveRegistration = React.useCallback(
     async (
       bevyAttendeeId?: number,
       fallbackQuery?: string,
+      ticketCode?: string,
     ): Promise<{
       registration: FirestoreRegistration | null;
       resolvedBevyAttendeeId: number | null;
     }> => {
+      // 1. If ticketCode or fallbackQuery is provided, look up by ticket code / query first
+      const searchTarget = (ticketCode || fallbackQuery || "").trim();
+      const searchTargetLower = searchTarget.toLowerCase();
+
+      if (searchTarget) {
+        // Direct match in Firestore registrations by attendee_code, answers, id, email, or name
+        const match = registrations.find((r) => {
+          const rAny = r as unknown as Record<string, unknown>;
+          const rAnswers = r.answers || {};
+          const answerCode = (
+            (rAnswers.attendee_code as string) ||
+            (rAnswers.ticket_code as string) ||
+            (rAnswers.ticketCode as string) ||
+            (rAnswers.reference_code as string) ||
+            ""
+          )
+            .trim()
+            .toLowerCase();
+
+          return (
+            (r.attendee_code || "").trim().toLowerCase() === searchTargetLower ||
+            (rAny.ticket_code ? String(rAny.ticket_code).trim().toLowerCase() === searchTargetLower : false) ||
+            (answerCode && answerCode === searchTargetLower) ||
+            r.id.toLowerCase() === searchTargetLower ||
+            (r.member_email || "").trim().toLowerCase() === searchTargetLower ||
+            (r.member_name || "").trim().toLowerCase() === searchTargetLower ||
+            String(r.bevy_attendee_id || "") === searchTarget
+          );
+        });
+
+        if (match) {
+          let resolvedId = match.bevy_attendee_id ? Number(match.bevy_attendee_id) : null;
+          let attendeeCode = match.attendee_code || null;
+
+          // If Bevy attendee ID or attendee_code is missing, try looking up in Bevy attendees cache
+          if (!resolvedId || !attendeeCode) {
+            if (!bevyAttendeesCacheRef.current) {
+              const res = await fetchAllBevyEventAttendeesAction(eventId);
+              if (res.success && res.results) {
+                bevyAttendeesCacheRef.current = res.results;
+              }
+            }
+            const emailLower = (match.member_email || "").trim().toLowerCase();
+            const bevyAtt = bevyAttendeesCacheRef.current?.find((a) => {
+              const aAny = a as Record<string, unknown>;
+              const code = String(
+                a.attendee_code ||
+                  aAny.ticket_code ||
+                  aAny.code ||
+                  aAny.ticket_number ||
+                  aAny.reference ||
+                  aAny.reference_code ||
+                  a.order_id ||
+                  "",
+              )
+                .trim()
+                .toLowerCase();
+              return (
+                code === searchTargetLower ||
+                (emailLower && (a.email || "").trim().toLowerCase() === emailLower) ||
+                (resolvedId && Number(a.id) === Number(resolvedId))
+              );
+            });
+            if (bevyAtt) {
+              resolvedId = resolvedId ?? bevyAtt.id;
+              attendeeCode = attendeeCode ?? bevyAtt.attendee_code ?? null;
+            }
+          }
+
+          return {
+            registration: {
+              ...match,
+              attendee_code: attendeeCode ?? match.attendee_code ?? searchTarget,
+              bevy_attendee_id: resolvedId ?? match.bevy_attendee_id,
+            },
+            resolvedBevyAttendeeId: resolvedId,
+          };
+        }
+
+        // Not found in local registrations: check Bevy roster
+        if (!bevyAttendeesCacheRef.current) {
+          const res = await fetchAllBevyEventAttendeesAction(eventId);
+          if (res.success && res.results) {
+            bevyAttendeesCacheRef.current = res.results;
+          }
+        }
+
+        const bevyAttendee = bevyAttendeesCacheRef.current?.find((a) => {
+          const aAny = a as Record<string, unknown>;
+          const code = String(
+            a.attendee_code ||
+              aAny.ticket_code ||
+              aAny.code ||
+              aAny.ticket_number ||
+              aAny.reference ||
+              aAny.reference_code ||
+              a.order_id ||
+              "",
+          )
+            .trim()
+            .toLowerCase();
+          return (
+            code === searchTargetLower ||
+            (a.email || "").trim().toLowerCase() === searchTargetLower ||
+            String(a.id) === searchTarget ||
+            (a.name || "").trim().toLowerCase() === searchTargetLower
+          );
+        });
+
+        if (bevyAttendee) {
+          const emailLower = (bevyAttendee.email || "").trim().toLowerCase();
+          const emailMatch = emailLower
+            ? registrations.find(
+                (r) => (r.member_email || (r.answers?.email as string) || "").trim().toLowerCase() === emailLower,
+              )
+            : null;
+
+          const fullName =
+            bevyAttendee.name ||
+            [bevyAttendee.first_name, bevyAttendee.last_name].filter(Boolean).join(" ") ||
+            bevyAttendee.email?.split("@")[0] ||
+            `Bevy Attendee #${bevyAttendee.id}`;
+
+          const nameMatch =
+            !emailMatch && fullName
+              ? registrations.find((r) => {
+                  const rName = (r.member_name || (r.answers?.name as string) || "").trim().toLowerCase();
+                  return rName && rName === fullName.toLowerCase();
+                })
+              : null;
+
+          const matchedRegistration = emailMatch || nameMatch;
+
+          const bevyPhone =
+            (bevyAttendee.phone as string) ||
+            (bevyAttendee.mobile_phone as string) ||
+            (bevyAttendee.mobile as string) ||
+            "";
+
+          if (matchedRegistration) {
+            return {
+              registration: {
+                ...matchedRegistration,
+                bevy_attendee_id: bevyAttendee.id,
+                attendee_code: bevyAttendee.attendee_code || matchedRegistration.attendee_code || searchTarget,
+                member_phone: matchedRegistration.member_phone || bevyPhone,
+              },
+              resolvedBevyAttendeeId: bevyAttendee.id,
+            };
+          }
+
+          // Found in Bevy but not in Firestore registrations
+          return {
+            registration: {
+              id: `bevy_${bevyAttendee.id}`,
+              event_id: eventId,
+              event_title: eventTitle || "GDG Jakarta Event",
+              member_id: String(bevyAttendee.user_id || bevyAttendee.id),
+              member_name: fullName,
+              member_email: bevyAttendee.email || "",
+              member_phone: bevyPhone,
+              status: "approved",
+              ticket_tier: bevyAttendee.ticket_title || "Bevy Ticket",
+              bevy_attendee_id: bevyAttendee.id,
+              attendee_code: bevyAttendee.attendee_code || String(bevyAttendee.id),
+              registered_at: bevyAttendee.created_date || new Date().toISOString(),
+            },
+            resolvedBevyAttendeeId: bevyAttendee.id,
+          };
+        }
+
+        return { registration: null, resolvedBevyAttendeeId: null };
+      }
+
+      // 2. Numeric Bevy Attendee ID lookup (legacy QR)
       if (bevyAttendeeId) {
-        // 1. Direct match on cached `bevy_attendee_id` or `attendee_code` in Firestore registrations
+        // Direct match on cached `bevy_attendee_id` or `attendee_code` in Firestore registrations
         const directMatch = registrations.find(
           (r) =>
             Number(r.bevy_attendee_id) === Number(bevyAttendeeId) ||
@@ -516,7 +718,7 @@ export function QrCheckInScannerDialog({
           };
         }
 
-        // 2. Fallback lookup via Bevy Event Attendees API -> match email or name
+        // Fallback lookup via Bevy Event Attendees API -> match email or name
         if (!bevyAttendeesCacheRef.current) {
           const res = await fetchAllBevyEventAttendeesAction(eventId);
           if (res.success && res.results) {
@@ -559,6 +761,7 @@ export function QrCheckInScannerDialog({
               registration: {
                 ...matchedRegistration,
                 bevy_attendee_id: bevyAttendeeId,
+                attendee_code: bevyAttendee.attendee_code || matchedRegistration.attendee_code,
                 member_phone: matchedRegistration.member_phone || bevyPhone,
               },
               resolvedBevyAttendeeId: bevyAttendeeId,
@@ -584,7 +787,7 @@ export function QrCheckInScannerDialog({
           };
         }
 
-        // 3. Fallback for OTS Mode: allow creating an OTS sale with the verified Bevy ticket ID
+        // Fallback for OTS Mode: allow creating an OTS sale with the verified Bevy ticket ID
         if (otsModeOnly && bevyAttendeeId) {
           return {
             registration: {
@@ -605,22 +808,6 @@ export function QrCheckInScannerDialog({
         }
 
         return { registration: null, resolvedBevyAttendeeId: bevyAttendeeId };
-      }
-
-      if (fallbackQuery) {
-        const q = fallbackQuery.trim().toLowerCase();
-        const match = registrations.find(
-          (r) =>
-            r.id.toLowerCase() === q ||
-            (r.member_email || "").trim().toLowerCase() === q ||
-            (r.member_name || "").trim().toLowerCase() === q,
-        );
-        if (match) {
-          return {
-            registration: match,
-            resolvedBevyAttendeeId: match.bevy_attendee_id ? Number(match.bevy_attendee_id) : null,
-          };
-        }
       }
 
       return { registration: null, resolvedBevyAttendeeId: null };
@@ -665,7 +852,14 @@ export function QrCheckInScannerDialog({
           }
 
           const nowIso = targetStatus ? new Date().toISOString() : null;
-          const fsRes = await updateRegistrationCheckInAction(reg.id, eventId, targetStatus, attendeeIdToUse, nowIso);
+          const fsRes = await updateRegistrationCheckInAction(
+            reg.id,
+            eventId,
+            targetStatus,
+            attendeeIdToUse,
+            nowIso,
+            reg.attendee_code,
+          );
 
           if (!fsRes.success) {
             toast.error(fsRes.error || "Failed to update check-in in Firestore.");
@@ -924,15 +1118,18 @@ export function QrCheckInScannerDialog({
         const { registration, resolvedBevyAttendeeId } = await resolveRegistration(
           parsed.bevyAttendeeId,
           parsed.fallbackQuery,
+          parsed.ticketCode,
         );
         setLastScannedAttendeeId(resolvedBevyAttendeeId);
 
         if (!registration) {
           setActiveReg(null);
           toast.error(
-            parsed.bevyAttendeeId
-              ? `No registration found in Firestore matching Bevy Attendee ID #${parsed.bevyAttendeeId}.`
-              : `No registration found matching "${rawQrText}".`,
+            parsed.ticketCode
+              ? `No registration found matching ticket code "${parsed.ticketCode}".`
+              : parsed.bevyAttendeeId
+                ? `No registration found matching Bevy Attendee ID #${parsed.bevyAttendeeId}.`
+                : `No registration found matching "${rawQrText}".`,
           );
           return;
         }
@@ -1270,7 +1467,7 @@ export function QrCheckInScannerDialog({
               <DialogDescription className="text-xs">
                 {otsModeOnly ? (
                   <>
-                    Scan Bevy ticket QR or enter Attendee ID to load attendee for{" "}
+                    Scan Bevy ticket QR or enter Ticket Code (e.g. GOOGA263443955) to load attendee for{" "}
                     <span className="font-medium text-foreground">{eventTitle || `Event #${eventId}`}</span>
                   </>
                 ) : (
@@ -1529,12 +1726,12 @@ export function QrCheckInScannerDialog({
                 }}
                 className="space-y-1.5"
               >
-                <Label className="text-xs font-medium">QR Payload / Attendee ID / Email</Label>
+                <Label className="text-xs font-medium">QR Payload / Ticket Code / Email</Label>
                 <div className="flex gap-1.5">
                   <Input
                     value={qrInput}
                     onChange={(e) => setQrInput(e.target.value)}
-                    placeholder="Attendee ID or email..."
+                    placeholder="Ticket code (e.g. GOOGA263443955) or email..."
                     className="h-9 font-mono text-xs"
                   />
                   <Button
@@ -1548,7 +1745,7 @@ export function QrCheckInScannerDialog({
                   </Button>
                 </div>
                 <p className="text-[11px] text-muted-foreground">
-                  Supports USB barcode scanners, Bevy attendee ID, or registrant email.
+                  Supports USB barcode scanners, Bevy ticket code (e.g. GOOGA263443955), or registrant email.
                 </p>
               </form>
             </div>
@@ -1599,9 +1796,9 @@ export function QrCheckInScannerDialog({
                       </div>
                     </div>
 
-                    {(activeReg.bevy_attendee_id || lastScannedAttendeeId) && (
+                    {(activeReg.attendee_code || activeReg.bevy_attendee_id || lastScannedAttendeeId) && (
                       <Badge variant="outline" className="font-mono text-[10px]">
-                        Bevy ID #{activeReg.bevy_attendee_id ?? lastScannedAttendeeId}
+                        Ticket: {activeReg.attendee_code || `#${activeReg.bevy_attendee_id ?? lastScannedAttendeeId}`}
                       </Badge>
                     )}
                   </div>

@@ -739,3 +739,11 @@ textarea:disabled,
   border-bottom-width: 0 !important;
   border-color: transparent !important;
 }
+
+/* Dialog & alert-dialog overlay: remove background blur across modals */
+[data-slot="dialog-overlay"],
+[data-slot="alert-dialog-overlay"] {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background-color: rgb(0 0 0 / 0.45) !important;
+}

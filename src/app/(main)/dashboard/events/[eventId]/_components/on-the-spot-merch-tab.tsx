@@ -237,7 +237,8 @@ export function OnTheSpotMerchTab({ event, registrations, onOpenScanner }: OnThe
         const matchesCust =
           o.customer.name.toLowerCase().includes(q) ||
           o.customer.email.toLowerCase().includes(q) ||
-          o.customer.phone.toLowerCase().includes(q);
+          o.customer.phone.toLowerCase().includes(q) ||
+          Boolean(o.customer.attendee_code?.toLowerCase().includes(q));
         const matchesOrder =
           o.order_number.toLowerCase().includes(q) || (o.payment_invoice_number || "").toLowerCase().includes(q);
         const matchesItems = o.items.some((it) => it.name.toLowerCase().includes(q));
@@ -445,7 +446,7 @@ export function OnTheSpotMerchTab({ event, registrations, onOpenScanner }: OnThe
           <div className="relative min-w-48 flex-1 sm:max-w-xs">
             <Search className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
             <Input
-              placeholder="Search by customer, invoice, order #..."
+              placeholder="Search by customer, ticket code, order #..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="h-8 pl-8 text-xs"

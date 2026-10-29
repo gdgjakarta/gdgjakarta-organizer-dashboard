@@ -914,6 +914,7 @@ export function BreakoutSessionsTab({
       return (
         (reg.member_name || "").toLowerCase().includes(q) ||
         (reg.member_email || "").toLowerCase().includes(q) ||
+        (reg.attendee_code || "").toLowerCase().includes(q) ||
         phone.includes(q) ||
         org.includes(q) ||
         role.includes(q) ||
@@ -938,9 +939,11 @@ export function BreakoutSessionsTab({
       return (
         (reg.member_name || "").toLowerCase().includes(q) ||
         (reg.member_email || "").toLowerCase().includes(q) ||
+        (reg.attendee_code || "").toLowerCase().includes(q) ||
         org.includes(q) ||
         role.includes(q) ||
-        yoe.includes(q)
+        yoe.includes(q) ||
+        String(reg.bevy_attendee_id || "").includes(q)
       );
     });
   }, [localRegistrations, activeRosterSessionId, sessions, addRegistrantSearch, questions]);
@@ -1841,7 +1844,7 @@ export function BreakoutSessionsTab({
                   <Input
                     value={rosterSearch}
                     onChange={(e) => setRosterSearch(e.target.value)}
-                    placeholder="Search name, email, phone, institution, or Bevy ID..."
+                    placeholder="Search name, email, ticket code (e.g. GOOGA263443955), phone, or institution..."
                     className="h-9 pl-8 text-xs"
                   />
                 </div>
@@ -1978,9 +1981,14 @@ export function BreakoutSessionsTab({
                                   </Badge>
                                 );
                               })()}
-                              <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                              <span className="flex items-center gap-1 text-[11px] text-muted-foreground flex-wrap">
                                 <Ticket className="size-3" />
-                                {reg.ticket_name || reg.bundle_name || reg.ticket_tier || "General"}
+                                <span>{reg.ticket_name || reg.bundle_name || reg.ticket_tier || "General"}</span>
+                                {reg.attendee_code && (
+                                  <span className="font-mono text-[10px] text-muted-foreground/80">
+                                    • {reg.attendee_code}
+                                  </span>
+                                )}
                               </span>
                             </div>
                           </TableCell>
@@ -2107,7 +2115,7 @@ export function BreakoutSessionsTab({
 
       {/* DIALOG 1: ADD FROM REGISTRANTS (MANUAL PARTICIPANT ASSIGNMENT) */}
       <Dialog open={addRegistrantsOpen} onOpenChange={setAddRegistrantsOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+        <DialogContent className="inset-0 m-auto h-fit max-h-[90vh] translate-x-0 translate-y-0 overflow-y-auto sm:max-w-2xl [transform:none]">
           <DialogHeader>
             <DialogTitle className="text-base">
               Add Registrants to &ldquo;
@@ -2124,7 +2132,7 @@ export function BreakoutSessionsTab({
               <Input
                 value={addRegistrantSearch}
                 onChange={(e) => setAddRegistrantSearch(e.target.value)}
-                placeholder="Search registrants by name, email, or institution..."
+                placeholder="Search registrants by name, email, ticket code, or institution..."
                 className="h-9 pl-8 text-xs"
               />
             </div>
@@ -2265,9 +2273,10 @@ export function BreakoutSessionsTab({
                   </p>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Bevy ID:</span>
+                  <span className="text-muted-foreground">Ticket Code:</span>
                   <p className="font-mono font-medium">
-                    {inspectReg.bevy_attendee_id ? `#${inspectReg.bevy_attendee_id}` : "Not linked"}
+                    {inspectReg.attendee_code ||
+                      (inspectReg.bevy_attendee_id ? `#${inspectReg.bevy_attendee_id}` : "Not linked")}
                   </p>
                 </div>
               </div>
