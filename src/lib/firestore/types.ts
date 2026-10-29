@@ -315,6 +315,7 @@ export interface EventEmailTemplateData {
   venueLocation?: string;
   venueLocationUrl?: string;
   attendeeCode?: string;
+  attendeeId?: string;
   qrCode?: string;
 }
 
