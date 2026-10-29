@@ -37,7 +37,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { enqueuePrintJobAction, savePrinterConfigAction, updatePrintJobStatusAction } from "@/lib/firestore/actions";
+import {
+  enqueuePrintJobAction,
+  fetchEventRegistrationsAction,
+  savePrinterConfigAction,
+  updatePrintJobStatusAction,
+} from "@/lib/firestore/actions";
+import type { FirestoreRegistration } from "@/lib/firestore/types";
 import {
   buildPrintDocument,
   DEFAULT_LABEL_TEMPLATE,
@@ -129,6 +135,10 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
   // Target Bevy Event selector state (shared pattern with Email Templates)
   const [publishedEvents, setPublishedEvents] = React.useState<PublishedEventOption[]>([]);
   const [selectedEvent, setSelectedEvent] = React.useState<PublishedEventOption | undefined>();
+  const [selectedEventQuestions, setSelectedEventQuestions] = React.useState<
+    Array<{ id: string; label: string; placeholder?: string }>
+  >([]);
+  const [selectedEventRegistrations, setSelectedEventRegistrations] = React.useState<FirestoreRegistration[]>([]);
   const [isLoadingEvents, setIsLoadingEvents] = React.useState(true);
   const [isRefreshingEvents, setIsRefreshingEvents] = React.useState(false);
   const [isLoadingEventDetail, setIsLoadingEventDetail] = React.useState(false);
@@ -158,6 +168,33 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
         const res = await fetchBevyEventDetailAction(ev.id, { forceRefresh });
         if (res.success && res.event) {
           setSelectedEvent(res.event);
+        }
+
+        // Also fetch Firestore event custom questions to populate draggable question tokens
+        try {
+          const { getFirestoreEventById } = await import("@/lib/firestore/client");
+          const evDoc = await getFirestoreEventById(ev.id);
+          if (evDoc?.custom_questions && evDoc.custom_questions.length > 0) {
+            setSelectedEventQuestions(
+              evDoc.custom_questions.map((q) => ({
+                id: q.id,
+                label: q.label,
+                placeholder: q.placeholder,
+              })),
+            );
+          } else {
+            setSelectedEventQuestions([]);
+          }
+        } catch {
+          setSelectedEventQuestions([]);
+        }
+
+        // Fetch event registrations for quick-picking real attendee data
+        try {
+          const regs = await fetchEventRegistrationsAction(String(ev.id));
+          setSelectedEventRegistrations(regs || []);
+        } catch {
+          setSelectedEventRegistrations([]);
         }
       } catch (err) {
         console.warn("[Printers] Could not fetch Bevy event detail:", err);
@@ -869,6 +906,10 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
                 widthMm={config.paper_width_mm}
                 heightMm={config.paper_height_mm}
                 orientation={config.orientation}
+                customQuestions={selectedEventQuestions}
+                registrations={selectedEventRegistrations}
+                eventTitle={selectedEvent?.title}
+                eventId={selectedEvent?.id}
               />
             </CardContent>
           </Card>

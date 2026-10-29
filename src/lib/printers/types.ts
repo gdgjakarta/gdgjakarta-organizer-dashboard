@@ -76,4 +76,6 @@ export interface LabelTemplateData {
   attendeeCode?: string;
   qrPayload: string;
   checkinTime?: string;
+  answers?: Record<string, unknown>;
+  [key: string]: unknown;
 }

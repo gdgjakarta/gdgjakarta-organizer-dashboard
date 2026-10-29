@@ -336,6 +336,26 @@ export async function updateEventEmailTemplatesAction(
 }
 
 /**
+ * Update event-specific thermal printer & label template configuration
+ */
+export async function updateEventPrinterConfigAction(
+  eventId: string,
+  printerConfig: Partial<import("@/lib/printers/types").PrinterConfig>,
+  baseEvent?: Partial<FirestoreEvent>,
+) {
+  try {
+    const { updateEventPrinterConfig } = await import("./client");
+    await updateEventPrinterConfig(eventId, printerConfig, baseEvent);
+    await revalidateDashboardPath(`/dashboard/events/${eventId}`);
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to save event printer configuration.";
+    console.error("[updateEventPrinterConfigAction] error:", message);
+    return { success: false, error: message };
+  }
+}
+
+/**
  * Update attendee check-in state in Firestore
  */
 export async function updateRegistrationCheckInAction(

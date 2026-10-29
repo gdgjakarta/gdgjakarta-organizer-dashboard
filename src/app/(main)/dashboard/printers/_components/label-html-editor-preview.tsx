@@ -7,6 +7,7 @@ import {
   Calendar,
   Code,
   Eye,
+  FileSpreadsheet,
   GripVertical,
   Laptop,
   Maximize2,
@@ -15,7 +16,6 @@ import {
   Sparkles,
   User,
   Wand2,
-  X,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 
@@ -24,9 +24,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { FirestoreRegistration } from "@/lib/firestore/types";
 import { buildDefaultLabelTemplate, ensureFullLabelHtml, renderLabelTemplate } from "@/lib/printers/templates";
 import type { LabelTemplateData } from "@/lib/printers/types";
 import { cn } from "@/lib/utils";
+
+import { ConfigurePrinterTemplateDataDialog } from "./configure-printer-template-data-dialog";
 
 type EditorInstance = Parameters<OnMount>[0];
 
@@ -138,6 +141,10 @@ interface LabelHtmlEditorPreviewProps {
   widthMm: number;
   heightMm: number;
   orientation: "portrait" | "landscape";
+  customQuestions?: Array<{ id: string; label: string; placeholder?: string }>;
+  registrations?: FirestoreRegistration[];
+  eventTitle?: string;
+  eventId?: string | number;
 }
 
 export function LabelHtmlEditorPreview({
@@ -149,11 +156,15 @@ export function LabelHtmlEditorPreview({
   widthMm,
   heightMm,
   orientation,
+  customQuestions = [],
+  registrations = [],
+  eventTitle,
+  eventId,
 }: LabelHtmlEditorPreviewProps) {
   const editorRef = React.useRef<EditorInstance | null>(null);
   const { theme } = useTheme();
   const [interpolatePreview, setInterpolatePreview] = React.useState<boolean>(true);
-  const [isEditingSampleData, setIsEditingSampleData] = React.useState<boolean>(false);
+  const [isConfigureDialogOpen, setIsConfigureDialogOpen] = React.useState<boolean>(false);
   const [previewScaleMode, setPreviewScaleMode] = React.useState<"badge" | "expanded">("badge");
 
   // Ensure the editor always displays a complete <!DOCTYPE html> document with <style>
@@ -256,11 +267,17 @@ export function LabelHtmlEditorPreview({
         </div>
 
         <Tabs defaultValue="attendee" className="w-full">
-          <TabsList className="grid h-8 w-full grid-cols-3">
+          <TabsList className={cn("grid h-8 w-full", customQuestions.length > 0 ? "grid-cols-4" : "grid-cols-3")}>
             <TabsTrigger value="attendee" className="gap-1 text-[11px]">
               <User className="size-3 text-emerald-500" />
               Attendee &amp; QR Data
             </TabsTrigger>
+            {customQuestions.length > 0 && (
+              <TabsTrigger value="questions" className="gap-1 text-[11px]">
+                <FileSpreadsheet className="size-3 text-amber-500" />
+                Form Questions ({customQuestions.length})
+              </TabsTrigger>
+            )}
             <TabsTrigger value="event" className="gap-1 text-[11px]">
               <Calendar className="size-3 text-sky-500" />
               Event Data
@@ -295,6 +312,36 @@ export function LabelHtmlEditorPreview({
               ))}
             </div>
           </TabsContent>
+
+          {/* Tab: Form Questions Tokens (Answered questions from registration form) */}
+          {customQuestions.length > 0 && (
+            <TabsContent value="questions" className="mt-2.5">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                {customQuestions.map((q) => {
+                  const tag = `[[${q.id}]]`;
+                  return (
+                    <button
+                      type="button"
+                      key={q.id}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, tag)}
+                      onClick={() => insertContent(tag)}
+                      title={`${q.label} (ID: ${q.id}) - Drag to editor or click to insert`}
+                      className="group flex cursor-grab items-center gap-1.5 rounded-md border border-amber-500/20 bg-amber-500/5 px-2 py-1.5 text-left transition-all hover:border-amber-500/40 hover:bg-amber-500/10 active:cursor-grabbing"
+                    >
+                      <GripVertical className="size-3 shrink-0 text-amber-500/50 group-hover:text-amber-500" />
+                      <div className="flex min-w-0 flex-1 flex-col">
+                        <span className="truncate font-semibold text-[11px] text-amber-800 dark:text-amber-200">
+                          {q.label}
+                        </span>
+                        <span className="truncate font-mono text-[9px] text-muted-foreground">{tag}</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </TabsContent>
+          )}
 
           {/* Tab 2: Event Data Tokens */}
           <TabsContent value="event" className="mt-2.5">
@@ -434,9 +481,9 @@ export function LabelHtmlEditorPreview({
               {onSampleDataChange && (
                 <Button
                   type="button"
-                  variant={isEditingSampleData ? "default" : "outline"}
+                  variant="outline"
                   size="sm"
-                  onClick={() => setIsEditingSampleData((prev) => !prev)}
+                  onClick={() => setIsConfigureDialogOpen(true)}
                   className="h-6 gap-1 px-2 text-[11px]"
                   title="Configure sample attendee and event values used in Live Preview and Test Print"
                 >
@@ -469,120 +516,6 @@ export function LabelHtmlEditorPreview({
               </Button>
             </div>
           </div>
-
-          {isEditingSampleData && onSampleDataChange && (
-            <div className="border-b bg-card/90 p-3 shadow-xs">
-              <div className="mb-2.5 flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <SlidersHorizontal className="size-3.5 text-primary" />
-                  <span className="font-semibold text-foreground text-xs">Configure Sample Data</span>
-                  <span className="text-[11px] text-muted-foreground">(Updates preview &amp; test print live)</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  {onResetSampleData && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 gap-1 px-2 text-[11px]"
-                      onClick={onResetSampleData}
-                      title="Restore default sample attendee data"
-                    >
-                      <RotateCcw className="size-3" />
-                      Reset Default
-                    </Button>
-                  )}
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="size-6 p-0"
-                    onClick={() => setIsEditingSampleData(false)}
-                    title="Close sample data configuration"
-                  >
-                    <X className="size-3.5" />
-                  </Button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-                <div className="space-y-1">
-                  <Label className="font-medium text-[11px] text-muted-foreground">Full Name [[Name]]</Label>
-                  <Input
-                    value={sampleData.name}
-                    onChange={(e) => onSampleDataChange({ name: e.target.value })}
-                    placeholder="Fachridan Tio"
-                    className="h-7 text-xs"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="font-medium text-[11px] text-muted-foreground">Job Title [[title]]</Label>
-                  <Input
-                    value={sampleData.title || ""}
-                    onChange={(e) => onSampleDataChange({ title: e.target.value })}
-                    placeholder="Game Engineer"
-                    className="h-7 text-xs"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="font-medium text-[11px] text-muted-foreground">Company / Org [[company]]</Label>
-                  <Input
-                    value={sampleData.company || ""}
-                    onChange={(e) => onSampleDataChange({ company: e.target.value })}
-                    placeholder="Harvest Moon"
-                    className="h-7 text-xs"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="font-medium text-[11px] text-muted-foreground">Ticket Code [[ticketCode]]</Label>
-                  <Input
-                    value={sampleData.ticketCode || ""}
-                    onChange={(e) => onSampleDataChange({ ticketCode: e.target.value, attendeeCode: e.target.value })}
-                    placeholder="GOOGA263443955"
-                    className="h-7 font-mono text-xs"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="font-medium text-[11px] text-muted-foreground">Attendee ID [[attendeeId]]</Label>
-                  <Input
-                    value={String(sampleData.attendeeId ?? "")}
-                    onChange={(e) => onSampleDataChange({ attendeeId: e.target.value })}
-                    placeholder="263443955"
-                    className="h-7 font-mono text-xs"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="font-medium text-[11px] text-muted-foreground">
-                    Session Track [[sessionTrack]]
-                  </Label>
-                  <Input
-                    value={sampleData.sessionTrack || ""}
-                    onChange={(e) => onSampleDataChange({ sessionTrack: e.target.value })}
-                    placeholder="Full Session"
-                    className="h-7 text-xs"
-                  />
-                </div>
-                <div className="space-y-1 sm:col-span-2">
-                  <Label className="font-medium text-[11px] text-muted-foreground">Event Title [[EventName]]</Label>
-                  <Input
-                    value={sampleData.eventTitle || ""}
-                    onChange={(e) => onSampleDataChange({ eventTitle: e.target.value })}
-                    placeholder="DevFest Jakarta 2026"
-                    className="h-7 text-xs"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="font-medium text-[11px] text-muted-foreground">Event ID [[eventId]]</Label>
-                  <Input
-                    value={String(sampleData.eventId ?? "")}
-                    onChange={(e) => onSampleDataChange({ eventId: e.target.value })}
-                    placeholder="132640"
-                    className="h-7 font-mono text-xs"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
 
           <div className="relative flex h-full min-h-130 flex-1 flex-col items-center justify-center overflow-auto bg-muted/10 p-6">
             {/* Outer card frame like Email Preview */}
@@ -622,6 +555,21 @@ export function LabelHtmlEditorPreview({
           </div>
         </div>
       </div>
+
+      {/* Configure Template Data Modal Dialog (matches Email Templates dialog UX) */}
+      {onSampleDataChange && (
+        <ConfigurePrinterTemplateDataDialog
+          open={isConfigureDialogOpen}
+          onOpenChange={setIsConfigureDialogOpen}
+          sampleData={sampleData}
+          onSampleDataChange={onSampleDataChange}
+          onResetSampleData={onResetSampleData}
+          registrations={registrations}
+          customQuestions={customQuestions}
+          eventTitle={eventTitle || sampleData.eventTitle}
+          eventId={eventId || sampleData.eventId}
+        />
+      )}
     </div>
   );
 }

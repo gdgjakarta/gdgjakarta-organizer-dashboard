@@ -144,11 +144,12 @@ Keep a component inside its route until it is reused by another feature. Do not 
   - Dynamic n8n webhook payload sanitizers (`adjustBodyEmailForApprovedWebhook`) and template parsers (`interpolateTemplateHtml`, `ensureAttendeeIdInAcceptedHtml`) preserve both ID and Ref code tags.
   - Thermal badge print templates render stacked reference badges (`REF: [[ticketCode]]` and `ID: [[attendeeId]]`), supported across default label templates, Monaco editor palettes, and auto-print queue generators.
 
-- **Thermal Printers & Label Station (`/dashboard/printers`)**:
-  - **Routes & Components**: `src/app/(main)/dashboard/printers/page.tsx`, `src/app/(main)/dashboard/printers/_components/printers-dashboard.tsx`, and `src/app/(main)/dashboard/printers/_components/label-html-editor-preview.tsx`.
-  - **Core Utilities**: `src/lib/printers/types.ts`, `src/lib/printers/templates.ts`, and `src/lib/printers/qr-svg.ts` (self-contained ISO/IEC 18004 SVG QR generator for `eventId:attendeeId`).
-  - **Template & Sizing**: Side-by-side Monaco HTML Source Code editor + true-millimeter `<iframe srcDoc>` Live Preview with dynamic CSS sizing (`syncTemplateDimensions`), Target Bevy Event selector (`PublishedEventSelector`), interactive **Configure Sample Data** drawer, and `FloatingSaveBar` for saving changes.
-  - **Firestore & Kiosk Printing**: Persists configuration in `system_settings/printer` and bounded print queue jobs (`MAX_STORED_PRINT_JOBS = 30`) in `system_settings/printer_queue`. Integrates with `src/app/(main)/dashboard/events/[eventId]/_components/qr-checkin-scanner-dialog.tsx` to automatically enqueue badge labels on attendee check-in and print silently via Chrome `--kiosk-printing`.
+- **Thermal Printers & Label Station (`/dashboard/printers`) & Per-Event Printer Templates**:
+  - **Routes & Components**: `src/app/(main)/dashboard/printers/page.tsx`, `src/app/(main)/dashboard/printers/_components/printers-dashboard.tsx`, `src/app/(main)/dashboard/printers/_components/label-html-editor-preview.tsx`, and `src/app/(main)/dashboard/events/[eventId]/_components/event-printer-tab.tsx`.
+  - **Per-Event Printer Templates & Form Questions**: Each event can configure its own thermal badge dimensions, orientation, and HTML badge template under the **Badge Printer** tab in `/dashboard/events/[eventId]`. Organizers can drag & drop answered registration form questions (`[[<question_id>]]`, `[[answers.<question_id>]]`, `[[question:<question_id>]]`) into the badge HTML template.
+  - **Core Utilities**: `src/lib/printers/types.ts`, `src/lib/printers/templates.ts`, and `src/lib/printers/qr-svg.ts` (self-contained ISO/IEC 18004 SVG QR generator for `eventId:attendeeId`). `renderLabelTemplate` interpolates custom question answers from registration data alongside standard tokens.
+  - **Check-In Integration**: `src/app/(main)/dashboard/events/[eventId]/_components/qr-checkin-scanner-dialog.tsx` checks event-specific `printer_config` first (falling back to system settings) when auto-printing badges on attendee check-in.
+  - **Firestore & Kiosk Printing**: Persists system configuration in `system_settings/printer`, event configuration in `events/{eventId}.printer_config`, and print jobs (`MAX_STORED_PRINT_JOBS = 30`) in `system_settings/printer_queue`.
 
 - **Payment Policy CMS (`/dashboard/faq` -> Payment Policy Page)**:
   - **Firestore Model & Storage**: Persisted in `content_settings/payment_policy`. Validated in `firestore.rules` for fields `header`, `notice`, `sections`, `channels`, `contact`, `updatedAt`, `updatedBy`.

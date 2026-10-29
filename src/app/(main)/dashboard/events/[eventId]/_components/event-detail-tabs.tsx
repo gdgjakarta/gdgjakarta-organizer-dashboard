@@ -10,6 +10,7 @@ import {
   Mail,
   Package,
   PackageCheck,
+  Printer,
   RotateCcw,
   ShoppingBag,
   Sparkles,
@@ -39,6 +40,7 @@ import { BreakoutSessionsTab } from "./breakout-sessions-tab";
 import { BundlesTab } from "./bundles-tab";
 import { CustomFormTab } from "./custom-form-tab";
 import { EmailTemplatesTab } from "./email-templates-tab";
+import { EventPrinterTab } from "./event-printer-tab";
 import { HighlightsMediaTab } from "./highlights-media-tab";
 import { MerchandiseDeliveryTab } from "./merchandise-delivery-tab";
 import { MerchandiseTab } from "./merchandise-tab";
@@ -414,15 +416,26 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
           </TabsTrigger>
 
           {isOrganizer && (
-            <TabsTrigger
-              id="tab-trigger-emails"
-              data-value="emails"
-              value="emails"
-              className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm"
-            >
-              <Mail className="size-4" />
-              Email Templates
-            </TabsTrigger>
+            <>
+              <TabsTrigger
+                id="tab-trigger-emails"
+                data-value="emails"
+                value="emails"
+                className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm"
+              >
+                <Mail className="size-4" />
+                Email Templates
+              </TabsTrigger>
+              <TabsTrigger
+                id="tab-trigger-printer"
+                data-value="printer"
+                value="printer"
+                className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm"
+              >
+                <Printer className="size-4" />
+                Badge Printer
+              </TabsTrigger>
+            </>
           )}
         </TabsList>
       </div>
@@ -499,9 +512,15 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
       </TabsContent>
 
       {isOrganizer && (
-        <TabsContent value="emails" className="space-y-4">
-          <EmailTemplatesTab event={activeEvent} />
-        </TabsContent>
+        <>
+          <TabsContent value="emails" className="space-y-4">
+            <EmailTemplatesTab event={activeEvent} />
+          </TabsContent>
+
+          <TabsContent value="printer" className="space-y-4">
+            <EventPrinterTab event={activeEvent} registrations={activeRegistrations} />
+          </TabsContent>
+        </>
       )}
     </Tabs>
   );

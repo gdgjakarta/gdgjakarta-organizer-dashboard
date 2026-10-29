@@ -470,6 +470,9 @@ export interface FirestoreEvent {
   // Email Automation Templates (n8n workflows)
   email_templates?: EventEmailTemplates;
 
+  // Event Thermal Printer & Label Template Configuration
+  printer_config?: Partial<import("@/lib/printers/types").PrinterConfig>;
+
   // Short.io Generated Links
   short_url?: string;
   live_short_url?: string;

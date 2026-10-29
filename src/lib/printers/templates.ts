@@ -361,7 +361,8 @@ export function generateQrImageUrl(payload: string): string {
 }
 
 /**
- * Replace [[placeholder]] tokens with attendee & event values.
+ * Replace [[placeholder]] tokens with attendee & event values,
+ * including answered questions from custom registration forms.
  */
 export function renderLabelTemplate(template: string, data: LabelTemplateData): string {
   const qrImgTag = `<img src="${generateQrImageUrl(data.qrPayload)}" alt="QR Code" class="qr-img" />`;
@@ -375,7 +376,7 @@ export function renderLabelTemplate(template: string, data: LabelTemplateData): 
   const sessionTrack = data.sessionTrack || "Full Session";
   const techStack = data.techStack || "";
 
-  return ensureFullLabelHtml(template)
+  let rendered = ensureFullLabelHtml(template)
     .replaceAll("[[name]]", attendeeName)
     .replaceAll("[[Name]]", attendeeName)
     .replaceAll("[[email]]", attendeeEmail)
@@ -410,6 +411,50 @@ export function renderLabelTemplate(template: string, data: LabelTemplateData): 
       "[[checkinTime]]",
       data.checkinTime || new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }),
     );
+
+  // Dynamically interpolate answered questions from the registration form
+  const answers: Record<string, unknown> = {
+    ...(data.answers || {}),
+  };
+
+  // Also include top-level dynamic properties passed on data
+  for (const [key, val] of Object.entries(data)) {
+    if (val !== undefined && val !== null && !(key in answers)) {
+      answers[key] = val;
+    }
+  }
+
+  // Regex to match [[question_id]], [[question:id]], [[answers.id]], or [[Question Label]]
+  rendered = rendered.replace(/\[\[([^\]]+)\]\]/g, (match, rawKey: string) => {
+    const key = rawKey.trim();
+    if (!key) return match;
+
+    // Check direct match
+    if (key in answers) {
+      const val = answers[key];
+      return Array.isArray(val) ? val.join(", ") : String(val ?? "");
+    }
+
+    // Check with prefixes stripped (e.g. [[question:id]], [[answers:id]], [[answers.id]], [[question.id]])
+    const strippedPrefix = key.replace(/^(question:|answers:|question\.|answers\.)/i, "");
+    if (strippedPrefix in answers) {
+      const val = answers[strippedPrefix];
+      return Array.isArray(val) ? val.join(", ") : String(val ?? "");
+    }
+
+    // Case-insensitive lookup against answers keys
+    const lowerKey = key.toLowerCase();
+    const lowerStripped = strippedPrefix.toLowerCase();
+    for (const [ansKey, val] of Object.entries(answers)) {
+      if (ansKey.toLowerCase() === lowerKey || ansKey.toLowerCase() === lowerStripped) {
+        return Array.isArray(val) ? val.join(", ") : String(val ?? "");
+      }
+    }
+
+    return match;
+  });
+
+  return rendered;
 }
 
 /**

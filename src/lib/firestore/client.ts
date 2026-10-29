@@ -3299,6 +3299,7 @@ const ALLOWED_EVENT_DOC_KEYS = new Set<string>([
   "recap_description",
   "presentation_slides",
   "email_templates",
+  "printer_config",
   "synced_from_bevy_at",
   "created_at",
   "updated_at",
@@ -3824,6 +3825,25 @@ export async function updateEventEmailTemplates(
   const eventRef = doc(db, "events", String(eventId));
   const updatePayload: Record<string, unknown> = {
     email_templates: emailTemplates,
+    updated_at: new Date().toISOString(),
+  };
+
+  const exists = await ensureEventDocInitialized(eventId, baseEvent, updatePayload);
+  if (!exists) return;
+
+  const sanitized = sanitizeFirestoreData(updatePayload);
+  await setDoc(eventRef, sanitized, { merge: true });
+}
+
+export async function updateEventPrinterConfig(
+  eventId: string,
+  printerConfig: Partial<import("@/lib/printers/types").PrinterConfig>,
+  baseEvent?: Partial<FirestoreEvent>,
+): Promise<void> {
+  if (typeof window === "undefined") return;
+  const eventRef = doc(db, "events", String(eventId));
+  const updatePayload: Record<string, unknown> = {
+    printer_config: printerConfig,
     updated_at: new Date().toISOString(),
   };
 

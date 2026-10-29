@@ -929,11 +929,27 @@ export function QrCheckInScannerDialog({
             if (autoPrintEnabled) {
               void (async () => {
                 try {
-                  const cfgRes = await fetchPrinterConfigAction();
-                  const printerCfg = cfgRes.success && cfgRes.config ? cfgRes.config : null;
-                  if (printerCfg && !printerCfg.enabled) return;
+                  // Check event-level printer config first; fallback to system default printer config
+                  let eventPrinterCfg: Partial<import("@/lib/printers/types").PrinterConfig> | null = null;
+                  try {
+                    const { getFirestoreEventById } = await import("@/lib/firestore/client");
+                    const evDoc = await getFirestoreEventById(eventId);
+                    if (evDoc?.printer_config) {
+                      eventPrinterCfg = evDoc.printer_config;
+                    }
+                  } catch (e) {
+                    console.warn("[QR Scanner] Could not fetch event printer config:", e);
+                  }
 
-                  const templateToUse = printerCfg?.template_html || DEFAULT_LABEL_TEMPLATE;
+                  const cfgRes = await fetchPrinterConfigAction();
+                  const systemPrinterCfg = cfgRes.success && cfgRes.config ? cfgRes.config : null;
+
+                  // If event-level config explicitly disables printing, return
+                  if (eventPrinterCfg && eventPrinterCfg.enabled === false) return;
+                  if (!eventPrinterCfg && systemPrinterCfg && !systemPrinterCfg.enabled) return;
+
+                  const templateToUse =
+                    eventPrinterCfg?.template_html || systemPrinterCfg?.template_html || DEFAULT_LABEL_TEMPLATE;
                   const finalAttendeeId = attendeeIdToUse || reg.bevy_attendee_id || reg.id;
                   const resolvedRole = getRegistrantRole(reg, questions) || "Participant";
                   const resolvedCompany = getRegistrantOrg(reg, questions) || "GDG Community";
@@ -962,6 +978,7 @@ export function QrCheckInScannerDialog({
                     ticketCode: resolvedTicketCode,
                     attendeeCode: resolvedTicketCode,
                     qrPayload,
+                    answers: reg.answers || {},
                   });
 
                   await enqueuePrintJobAction({

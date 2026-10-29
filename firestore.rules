@@ -244,6 +244,7 @@ service cloud.firestore {
     //   - photo_album_title: string|null (optional, <= 300 chars) - Photo album title
     //   - recap_description: string|null (optional, <= 10000 chars) - Post-event recap description
     //   - email_templates: map|null (optional, <= 20 keys) - Email template configurations
+    //   - printer_config: map|null (optional, <= 20 keys) - Thermal printer and label template settings
     //   - synced_from_bevy_at: string|null (optional, <= 50 chars) - Bevy sync timestamp
     //   - created_at: string|null (optional, <= 50 chars) - Creation timestamp
     //   - updated_at: string (required, <= 50 chars) - Last update timestamp
@@ -873,7 +874,7 @@ service cloud.firestore {
           'referral_discount_percentage', 'referral_discount_type', 'referral_discount_amount', 'referral_enabled',
           'refund_enabled', 'refund_cutoff_days_before', 'refund_cutoff_date', 'refund_policy_notes',
           'highlight_video_url', 'highlight_video_title', 'photo_album_url', 'photo_album_title', 'recap_description',
-          'email_templates',
+          'email_templates', 'printer_config',
           'synced_from_bevy_at', 'created_at', 'updated_at'
         ]) &&
         data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
@@ -939,6 +940,7 @@ service cloud.firestore {
         (!('photo_album_title' in data) || data.photo_album_title == null || (data.photo_album_title is string && data.photo_album_title.size() <= 300)) &&
         (!('recap_description' in data) || data.recap_description == null || (data.recap_description is string && data.recap_description.size() <= 10000)) &&
         (!('email_templates' in data) || data.email_templates == null || (data.email_templates is map && data.email_templates.size() <= 20)) &&
+        (!('printer_config' in data) || data.printer_config == null || (data.printer_config is map && data.printer_config.size() <= 20)) &&
         (!('synced_from_bevy_at' in data) || data.synced_from_bevy_at == null || (data.synced_from_bevy_at is string && data.synced_from_bevy_at.size() <= 50)) &&
         (!('created_at' in data) || data.created_at == null || (data.created_at is string && data.created_at.size() <= 50));
     }
