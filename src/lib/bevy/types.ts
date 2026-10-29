@@ -272,6 +272,8 @@ export interface BevyEvent {
   photo_album_url?: string;
   photo_album_title?: string;
   recap_description?: string;
+  google_maps_url?: string;
+  venue_map_url?: string;
   [key: string]: unknown;
 }
 

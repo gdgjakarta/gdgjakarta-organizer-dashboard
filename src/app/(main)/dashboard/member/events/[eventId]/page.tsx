@@ -165,6 +165,7 @@ export default async function MemberEventDetailPage({ params, searchParams }: Me
               agenda: event.agenda ?? firestoreDoc.agenda,
               speakers: event.speakers ?? firestoreDoc.speakers,
               google_maps_url: firestoreDoc.google_maps_url ?? event.google_maps_url,
+              venue_map_url: firestoreDoc.venue_map_url ?? event.venue_map_url,
             }
           : firestoreDoc;
       }

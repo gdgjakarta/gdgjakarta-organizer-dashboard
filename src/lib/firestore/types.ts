@@ -381,8 +381,10 @@ export interface FirestoreEvent {
     city?: string;
     url?: string;
     google_maps_url?: string;
+    venue_map_url?: string;
   };
   google_maps_url?: string;
+  venue_map_url?: string;
   url?: string;
   static_url?: string;
   tags?: string[];

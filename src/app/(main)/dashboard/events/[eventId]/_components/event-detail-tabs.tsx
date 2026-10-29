@@ -126,6 +126,7 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
               end_date: prev.end_date || docData.end_date,
               venue: prev.venue ?? docData.venue,
               google_maps_url: docData.google_maps_url ?? prev.google_maps_url,
+              venue_map_url: docData.venue_map_url ?? prev.venue_map_url,
               tickets: ensureEventTickets(docData.tickets ?? prev.tickets),
               merchandise: docData.merchandise ?? prev.merchandise,
               agenda: hasActualAgendaActivities(docData.agenda) ? docData.agenda : prev.agenda,

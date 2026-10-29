@@ -158,6 +158,7 @@ export function CustomFormTab({ event, onSwitchTab }: CustomFormTabProps) {
   const [googleMapsUrlOverride, setGoogleMapsUrlOverride] = useState<string>(
     event.google_maps_url ?? event.venue?.google_maps_url ?? "",
   );
+  const [venueMapUrl, setVenueMapUrl] = useState<string>(event.venue_map_url ?? "");
   const [newSession, setNewSession] = useState<Omit<EventSession, "id">>({
     title: "",
     description: "",
@@ -314,6 +315,7 @@ export function CustomFormTab({ event, onSwitchTab }: CustomFormTabProps) {
       registrationStartDate,
       registrationEndDate,
       googleMapsUrlOverride: googleMapsUrlOverride.trim(),
+      venueMapUrl: venueMapUrl.trim(),
     });
   }, [
     requiresApproval,
@@ -331,6 +333,7 @@ export function CustomFormTab({ event, onSwitchTab }: CustomFormTabProps) {
     registrationStartDate,
     registrationEndDate,
     googleMapsUrlOverride,
+    venueMapUrl,
   ]);
 
   const isDirty =
@@ -405,6 +408,7 @@ export function CustomFormTab({ event, onSwitchTab }: CustomFormTabProps) {
           currentEvent.venue?.google_maps_url ??
           ""
         ).trim();
+        const loadedVenueMapUrl = (docData?.venue_map_url ?? currentEvent.venue_map_url ?? "").trim();
 
         setRequiresApproval(loadedApproval);
         setAllowWaitlist(loadedAllowWaitlist);
@@ -416,6 +420,7 @@ export function CustomFormTab({ event, onSwitchTab }: CustomFormTabProps) {
         setDefaultSessionLocation(loadedDefaultSessionLocation);
         setDefaultSessionLocationUrl(loadedDefaultSessionLocationUrl);
         setGoogleMapsUrlOverride(loadedGoogleMapsUrl);
+        setVenueMapUrl(loadedVenueMapUrl);
         setTickets(loadedTickets);
         setQuestions(loadedQuestions);
         setRegistrationStatus(loadedStatus);
@@ -438,6 +443,7 @@ export function CustomFormTab({ event, onSwitchTab }: CustomFormTabProps) {
           registrationStartDate: loadedStartDate,
           registrationEndDate: loadedEndDate,
           googleMapsUrlOverride: loadedGoogleMapsUrl,
+          venueMapUrl: loadedVenueMapUrl,
         });
       } catch (err) {
         console.warn("[CustomFormTab] Failed to load Firestore document:", err);
@@ -457,6 +463,7 @@ export function CustomFormTab({ event, onSwitchTab }: CustomFormTabProps) {
           registrationStartDate: toDateTimeLocal(currentEvent.registration_start_date),
           registrationEndDate: toDateTimeLocal(currentEvent.registration_end_date),
           googleMapsUrlOverride: (currentEvent.google_maps_url ?? currentEvent.venue?.google_maps_url ?? "").trim(),
+          venueMapUrl: (currentEvent.venue_map_url ?? "").trim(),
         });
       } finally {
         setIsInitialLoaded(true);
@@ -939,6 +946,7 @@ export function CustomFormTab({ event, onSwitchTab }: CustomFormTabProps) {
           registrationStartDate: string;
           registrationEndDate: string;
           googleMapsUrlOverride?: string;
+          venueMapUrl?: string;
         };
         setRequiresApproval(snap.requiresApproval);
         if (snap.allowWaitlist !== undefined) setAllowWaitlist(snap.allowWaitlist);
@@ -951,6 +959,7 @@ export function CustomFormTab({ event, onSwitchTab }: CustomFormTabProps) {
         if (snap.defaultSessionLocation !== undefined) setDefaultSessionLocation(snap.defaultSessionLocation);
         if (snap.defaultSessionLocationUrl !== undefined) setDefaultSessionLocationUrl(snap.defaultSessionLocationUrl);
         if (snap.googleMapsUrlOverride !== undefined) setGoogleMapsUrlOverride(snap.googleMapsUrlOverride);
+        if (snap.venueMapUrl !== undefined) setVenueMapUrl(snap.venueMapUrl);
         setQuestions(snap.questions);
         setRegistrationStatus(snap.registrationStatus);
         setRegistrationStartDate(snap.registrationStartDate);
@@ -1010,6 +1019,7 @@ export function CustomFormTab({ event, onSwitchTab }: CustomFormTabProps) {
               ? defaultSessionLocationUrl.trim()
               : deleteField(),
             google_maps_url: googleMapsUrlOverride.trim() ? googleMapsUrlOverride.trim() : deleteField(),
+            venue_map_url: venueMapUrl.trim() ? venueMapUrl.trim() : deleteField(),
             tickets: tickets.length > 0 ? tickets : deleteField(),
             custom_questions: questions.filter((q) => q.label.trim().length > 0),
             updated_at: new Date().toISOString(),
@@ -1038,6 +1048,7 @@ export function CustomFormTab({ event, onSwitchTab }: CustomFormTabProps) {
             registrationStartDate,
             registrationEndDate,
             googleMapsUrlOverride: googleMapsUrlOverride.trim(),
+            venueMapUrl: venueMapUrl.trim(),
           });
 
           if (finalStatus === "Draft") {
@@ -1626,6 +1637,36 @@ export function CustomFormTab({ event, onSwitchTab }: CustomFormTabProps) {
               By default, Google Maps directions are automatically searched using the venue name{" "}
               <strong>({event.venue?.name ?? "Venue"})</strong> and address. Enter a custom Google Maps URL here to
               override it across the public event page, attendee ticket cards, and confirmation emails.
+            </p>
+          </Field>
+
+          <Field className="space-y-1.5 pt-2 border-t border-border/50">
+            <div className="flex items-center justify-between">
+              <FieldLabel htmlFor="venue-map-url" className="font-medium text-xs">
+                Venue Map (Optional)
+              </FieldLabel>
+              {venueMapUrl.trim() && (
+                <a
+                  href={venueMapUrl.trim()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 font-medium text-[11px] text-primary hover:underline"
+                >
+                  Test venue map link <ExternalLink className="size-2.5" />
+                </a>
+              )}
+            </div>
+            <Input
+              id="venue-map-url"
+              placeholder="https://... (image, PDF, or interactive floor plan URL)"
+              value={venueMapUrl}
+              onChange={(e) => setVenueMapUrl(e.target.value)}
+              className="h-9 font-mono text-xs"
+            />
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              Provide a floor plan image or interactive map URL. When attendees view the Agenda tab on the public event
+              page, a dynamic floating &quot;View Venue Map&quot; button will appear to help them navigate tracks and
+              rooms.
             </p>
           </Field>
         </CardContent>

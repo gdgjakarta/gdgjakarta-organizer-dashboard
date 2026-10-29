@@ -45,6 +45,7 @@ import type { EventSession, FirestoreEvent } from "@/lib/firestore/types";
 import { sanitizeHtml } from "@/lib/utils";
 
 import { UnifiedAgendaTimeline } from "./unified-agenda-timeline";
+import { VenueMapFloatingButton } from "./venue-map-floating-button";
 
 const VIDEO_PLATFORM_LABELS: Record<string, string> = {
   youtube: "YouTube",
@@ -131,9 +132,12 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
   const hasHighlights =
     Boolean(parsedVideo) || Boolean(parsedAlbum) || Boolean(recapDescription) || isEventPast || hasAnySlides;
 
+  const [activeTab, setActiveTab] = useState<string>("about");
+  const venueMapUrl = firestoreEvent?.venue_map_url?.trim() || event.venue_map_url?.trim() || "";
+
   return (
     <div className="space-y-6">
-      <Tabs defaultValue="about" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} defaultValue="about" className="w-full">
         {/* Tab Navigation Row */}
         <div className="scrollbar-none -mx-4 w-[calc(100%+2rem)] overflow-x-auto border-border/70 border-b px-4 touch-pan-x sm:mx-0 sm:w-full sm:px-0">
           <TabsList className="inline-flex h-12 w-max min-w-full items-center justify-start gap-1 rounded-none bg-transparent p-0 sm:gap-2">
@@ -607,6 +611,15 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
           </TabsContent>
         )}
       </Tabs>
+
+      {/* Floating Action Button for Venue Map (visible when Agenda tab is active and venue_map_url is not empty) */}
+      {activeTab === "agenda" && Boolean(venueMapUrl) && (
+        <VenueMapFloatingButton
+          venueMapUrl={venueMapUrl}
+          venueName={firestoreEvent?.venue?.name ?? event.venue_name}
+          eventTitle={event.title}
+        />
+      )}
     </div>
   );
 }
