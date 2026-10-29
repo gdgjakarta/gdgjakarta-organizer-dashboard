@@ -508,12 +508,14 @@ export function EventRegistrationModal({
   const hasTickets = availableTickets.length > 0;
 
   const availableMerchandise = useMemo(() => {
-    return (eventConfig.merchandise ?? []).filter((m) => m.status !== "hidden" && m.status !== "draft");
+    return (eventConfig.merchandise ?? []).filter(
+      (m) => m.status !== "hidden" && m.status !== "draft" && !m.is_ots_only,
+    );
   }, [eventConfig.merchandise]);
   const hasMerchandise = availableMerchandise.length > 0;
 
   const availableBundles = useMemo(() => {
-    return (eventConfig.bundles ?? []).filter((b) => b.status !== "hidden");
+    return (eventConfig.bundles ?? []).filter((b) => b.status !== "hidden" && !b.is_ots_only);
   }, [eventConfig.bundles]);
   const hasBundles = availableBundles.length > 0;
 

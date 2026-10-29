@@ -41,9 +41,16 @@ import { Label } from "@/components/ui/label";
 import { getMerchandiseSalesStatus } from "@/lib/events/merchandise-templates";
 import { calculateMerchandiseRevenueMetrics } from "@/lib/events/revenue-utils";
 import { updateEventMerchandiseAction } from "@/lib/firestore/actions";
-import type { EventMerchandiseItem, FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
+import { subscribeEventMerchandiseOrders } from "@/lib/firestore/merchandise-orders";
+import type {
+  EventMerchandiseItem,
+  EventMerchandiseOrder,
+  FirestoreEvent,
+  FirestoreRegistration,
+} from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
+import { CreateOnTheSpotSaleDialog } from "./create-on-the-spot-sale-dialog";
 import { GenerateMerchandisePaymentDialog } from "./generate-merchandise-payment-dialog";
 import { MerchandiseItemDialog } from "./merchandise-item-dialog";
 import { MerchandiseTemplateDialog } from "./merchandise-template-dialog";
@@ -87,6 +94,7 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
   );
   const [editingItem, setEditingItem] = useState<EventMerchandiseItem | null>(null);
   const [paymentItem, setPaymentItem] = useState<EventMerchandiseItem | null>(null);
+  const [otsSaleItem, setOtsSaleItem] = useState<EventMerchandiseItem | null>(null);
   const [viewingGuidelineItem, setViewingGuidelineItem] = useState<EventMerchandiseItem | null>(null);
   const [isItemDialogOpen, setIsItemDialogOpen] = useState(false);
   const [isTemplateDialogOpen, setIsTemplateDialogOpen] = useState(false);
@@ -94,6 +102,7 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
   const [isSaving, startTransition] = useTransition();
   const [isDirty, setIsDirty] = useState(false);
   const [registrations, setRegistrations] = useState<FirestoreRegistration[]>([]);
+  const [merchandiseOrders, setMerchandiseOrders] = useState<EventMerchandiseOrder[]>([]);
 
   // Real-time live subscription to registrations for merchandise sales and telemetry
   useEffect(() => {
@@ -133,10 +142,17 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
     };
   }, [event.id]);
 
-  // Derived merchandise revenue, discounts, and units telemetry
+  // Real-time subscription to on-the-spot merchandise orders
+  useEffect(() => {
+    if (!event.id) return;
+    const unsub = subscribeEventMerchandiseOrders(String(event.id), setMerchandiseOrders);
+    return () => unsub();
+  }, [event.id]);
+
+  // Derived merchandise revenue, discounts, and units telemetry (combines pre-registrations + paid OTS sales)
   const merchRevenueMetrics = useMemo(
-    () => calculateMerchandiseRevenueMetrics(registrations, items),
-    [registrations, items],
+    () => calculateMerchandiseRevenueMetrics(registrations, items, merchandiseOrders),
+    [registrations, items, merchandiseOrders],
   );
 
   // Derived merchandise items list with calculated sales, revenue, and redemptions
@@ -726,6 +742,14 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
                         <Badge variant="outline" className="bg-background/90 text-[10px] backdrop-blur-md">
                           {item.tag || "Perk"}
                         </Badge>
+                        {item.is_ots_only && (
+                          <Badge
+                            variant="outline"
+                            className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px] backdrop-blur-md font-semibold"
+                          >
+                            OTS Only
+                          </Badge>
+                        )}
                       </div>
 
                       {/* Photos count pill if multiple */}
@@ -914,6 +938,15 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
                         </span>
 
                         <div className="flex items-center gap-1">
+                          <Button
+                            size="icon-xs"
+                            variant="ghost"
+                            onClick={() => setOtsSaleItem(item)}
+                            title="Sell on the spot (OTS)"
+                            className="text-muted-foreground hover:text-primary hover:bg-primary/10"
+                          >
+                            <ShoppingBag className="size-3.5" />
+                          </Button>
                           {!item.is_free && (
                             <Button
                               size="icon-xs"
@@ -1039,6 +1072,16 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
         onOpenChange={setIsPaymentDialogOpen}
         item={paymentItem}
         event={event}
+      />
+
+      {/* Dialog for selling merchandise on the spot */}
+      <CreateOnTheSpotSaleDialog
+        open={Boolean(otsSaleItem)}
+        onOpenChange={(v) => !v && setOtsSaleItem(null)}
+        event={event}
+        registrations={registrations}
+        initialItem={otsSaleItem}
+        initialOrders={merchandiseOrders}
       />
 
       {/* Dialog for viewing product & sizing guidelines */}

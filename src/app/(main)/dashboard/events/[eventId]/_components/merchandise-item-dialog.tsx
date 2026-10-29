@@ -130,6 +130,7 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
   const [hasStockLimit, setHasStockLimit] = useState(false);
   const [stock, setStock] = useState<number | null>(null);
   const [maxPerPerson, setMaxPerPerson] = useState<number | null>(null);
+  const [isOtsOnly, setIsOtsOnly] = useState(false);
   const [variations, setVariations] = useState<MerchandiseVariation[]>([]);
   const [expandedVarDetails, setExpandedVarDetails] = useState<Record<number, boolean>>({});
   const [status, setStatus] = useState<"active" | "draft" | "hidden" | "out_of_stock">("active");
@@ -168,6 +169,7 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
       setHasStockLimit(item.stock !== null && item.stock !== undefined);
       setStock(item.stock ?? null);
       setMaxPerPerson(item.max_per_person ?? null);
+      setIsOtsOnly(Boolean(item.is_ots_only));
       setVariations(JSON.parse(JSON.stringify(item.variations ?? [])));
       setStatus(item.status);
 
@@ -202,6 +204,7 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
         },
       ]);
       setStatus("active");
+      setIsOtsOnly(false);
       setGuidelineTitle("");
       setGuidelineText("");
       setGuidelineImageUrl("");
@@ -491,6 +494,7 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
       stock: hasStockLimit && stock !== null ? Number(stock) : null,
       total_sold: item?.total_sold ?? 0,
       max_per_person: maxPerPerson && maxPerPerson > 0 ? Number(maxPerPerson) : null,
+      is_ots_only: isOtsOnly,
       variations: variations.filter((v) => v.name.trim().length > 0),
       status,
       sales_start_date: salesStartDate ? new Date(salesStartDate).toISOString() : null,
@@ -632,6 +636,23 @@ export function MerchandiseItemDialog({ open, onOpenChange, item, onSave }: Merc
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            {/* OTS Only Toggle */}
+            <div className="flex items-center justify-between rounded-xl border p-3.5 bg-muted/20">
+              <div className="space-y-0.5 pr-4">
+                <Label htmlFor="merch-ots-only" className="font-semibold text-xs cursor-pointer">
+                  On-the-Spot (OTS) Only
+                </Label>
+                <p className="text-muted-foreground text-[11px] leading-normal">
+                  Exclusive to on-site sales at the venue. Hidden from the online registration form.
+                </p>
+              </div>
+              <Switch
+                id="merch-ots-only"
+                checked={isOtsOnly}
+                onCheckedChange={setIsOtsOnly}
+              />
             </div>
 
             {/* Description */}

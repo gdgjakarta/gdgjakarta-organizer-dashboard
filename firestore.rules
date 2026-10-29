@@ -430,6 +430,52 @@ service cloud.firestore {
     //   - read: Allowed for authenticated users and public visitors.
     //   - create, update, delete: Team access (Organizers & Staff / Core Team).
     //
+    // Collection: event_merchandise_orders
+    // Document ID: orderId (e.g. OTS-20261028-XXXX or auto-generated ID)
+    // Fields:
+    //   - id: string (required, immutable, <= 128 chars) - Order ID
+    //   - order_number: string (required, <= 128 chars) - Human-readable order number
+    //   - event_id: string (required, <= 128 chars) - Associated event ID
+    //   - event_title: string (required, <= 300 chars) - Associated event title
+    //   - order_type: string (required) - Order fulfillment type ('on_the_spot')
+    //   - sale_type: string (required) - Sale type ('item'|'bundle')
+    //   - bundle_id: string|null (optional, <= 128 chars) - Associated bundle ID
+    //   - bundle_name: string|null (optional, <= 200 chars) - Associated bundle name
+    //   - customer: map (required, <= 10 keys) - Customer details
+    //     Fields in customer:
+    //       - name: string (required, <= 150 chars) - Customer display name
+    //       - email: string (required, valid email, <= 150 chars) - Customer email
+    //       - phone: string (required, <= 50 chars) - Customer phone number
+    //       - registration_id: string|null (optional, <= 200 chars) - Linked registration ID
+    //       - attendee_code: string|null (optional, <= 100 chars) - Attendee ticket QR tag / code
+    //       - bevy_attendee_id: int|float|string|null (optional, <= 64 chars if string) - Bevy attendee ID
+    //       - is_imported_attendee: bool (required) - Flag for attendee source
+    //   - items: list (required, 1..50 items) - Ordered merchandise items
+    //   - subtotal: int|float (required, >= 0) - Items subtotal amount in IDR
+    //   - fee_amount: int|float (required, >= 0) - Convenience or payment fee in IDR
+    //   - fee_label: string|null (optional, <= 100 chars) - Fee description label
+    //   - total_amount: int|float (required, >= 0) - Grand total amount in IDR
+    //   - payment_method: string (required) - Payment method ('qris'|'cash_manual')
+    //   - payment_status: string (required) - Payment status ('waiting_for_payment'|'paid'|'failed'|'expired'|'cancelled')
+    //   - collection_status: string (required) - Merchandise handover status ('collected'|'uncollected')
+    //   - collected_at: string|null (optional, <= 50 chars) - Timestamp when items were collected
+    //   - collected_by_id: string|null (optional, <= 128 chars) - Staff UID who marked collected
+    //   - collected_by_name: string|null (optional, <= 150 chars) - Staff name who marked collected
+    //   - payment_url: string|null (optional, <= 2000 chars) - QRIS / checkout payment link
+    //   - payment_invoice_number: string|null (optional, <= 128 chars) - Invoice reference
+    //   - payment_channel: string|null (optional, <= 100 chars) - Payment channel details
+    //   - paid_at: string|null (optional, <= 50 chars) - Timestamp when payment was settled
+    //   - status_logs: list|null (optional, <= 100 items) - Order status transition history
+    //   - created_at: string (required, immutable, <= 50 chars) - Creation timestamp ISO string
+    //   - updated_at: string (required, <= 50 chars) - Last update timestamp ISO string
+    //   - created_by_id: string (required, immutable, <= 128 chars) - Staff creator UID
+    //   - created_by_name: string (required, <= 150 chars) - Staff creator display name
+    //   - notes: string|null (optional, <= 2000 chars) - Order or fulfillment notes
+    // Permissions:
+    //   - read: Allowed for public visitors and authenticated users (booth sales telemetry and real-time order subscriptions).
+    //   - create, update: Authenticated users / Team access (Organizers & Staff) with strict domain validation & immutable fields.
+    //   - delete: Authenticated users / Team access (Organizers & Staff).
+    //
     // ===============================================================
 
     // ===============================================================
@@ -460,9 +506,13 @@ service cloud.firestore {
       return data != null && (
         (
           'role' in data && data.role is string &&
-          data.role in [
-            'organizer', 'Organizer', 'Core Team', 'core_team', 'core-team', 'googler', 'Googler'
-          ]
+          (
+            data.role in [
+              'organizer', 'Organizer', 'Core Team', 'core_team', 'core-team', 'googler', 'Googler'
+            ] ||
+            data.role.matches('.*[oO]rganizer.*') ||
+            data.role.matches('.*Core Team.*')
+          )
         ) ||
         (
           'team' in data && data.team is string &&
@@ -487,11 +537,16 @@ service cloud.firestore {
       return data != null && (
         (
           'role' in data && data.role is string &&
-          data.role in [
-            'Core Team', 'core_team', 'core-team',
-            'Check-in Staff', 'check_in_staff', 'checkin_staff', 'check-in staff',
-            'Team Member', 'team_member', 'team-member'
-          ]
+          (
+            data.role in [
+              'Core Team', 'core_team', 'core-team',
+              'Check-in Staff', 'check_in_staff', 'checkin_staff', 'check-in staff',
+              'Team Member', 'team_member', 'team-member'
+            ] ||
+            data.role.matches('.*Team Member.*') ||
+            data.role.matches('.*Staff.*') ||
+            data.role.matches('.*Core Team.*')
+          )
         ) ||
         (
           'team' in data && data.team is string &&
@@ -1106,6 +1161,63 @@ service cloud.firestore {
         (!('updatedByName' in data) || data.updatedByName == null || (data.updatedByName is string && data.updatedByName.size() <= 200));
     }
 
+    // Validates event_merchandise_orders document structure, data types, and bounds
+    function isValidEventMerchandiseOrder(data) {
+      return hasRequiredFields(data, [
+        'id', 'order_number', 'event_id', 'event_title', 'order_type', 'sale_type',
+        'customer', 'items', 'subtotal', 'fee_amount', 'total_amount',
+        'payment_method', 'payment_status', 'collection_status',
+        'created_at', 'updated_at', 'created_by_id', 'created_by_name'
+      ]) &&
+        hasOnlyAllowedFields(data, [
+          'id', 'order_number', 'event_id', 'event_title', 'order_type', 'sale_type',
+          'bundle_id', 'bundle_name', 'customer', 'items', 'subtotal', 'fee_amount',
+          'fee_label', 'total_amount', 'payment_method', 'payment_status', 'collection_status',
+          'collected_at', 'collected_by_id', 'collected_by_name',
+          'payment_url', 'payment_invoice_number', 'payment_channel', 'paid_at',
+          'status_logs', 'created_at', 'updated_at', 'created_by_id', 'created_by_name', 'notes'
+        ]) &&
+        data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
+        data.order_number is string && data.order_number.size() > 0 && data.order_number.size() <= 128 &&
+        data.event_id is string && data.event_id.size() > 0 && data.event_id.size() <= 128 &&
+        data.event_title is string && data.event_title.size() > 0 && data.event_title.size() <= 300 &&
+        data.order_type is string && data.order_type == 'on_the_spot' &&
+        data.sale_type is string && (data.sale_type in ['item', 'bundle']) &&
+        (!('bundle_id' in data) || data.bundle_id == null || (data.bundle_id is string && data.bundle_id.size() <= 128)) &&
+        (!('bundle_name' in data) || data.bundle_name == null || (data.bundle_name is string && data.bundle_name.size() <= 200)) &&
+        data.customer is map &&
+        hasRequiredFields(data.customer, ['name', 'email']) &&
+        hasOnlyAllowedFields(data.customer, ['name', 'email', 'phone', 'registration_id', 'attendee_code', 'bevy_attendee_id', 'is_imported_attendee', 'member_id', 'id']) &&
+        data.customer.name is string && data.customer.name.size() > 0 && data.customer.name.size() <= 150 &&
+        data.customer.email is string && data.customer.email.size() > 0 && data.customer.email.size() <= 150 && data.customer.email.matches('.*@.*') &&
+        (!('phone' in data.customer) || data.customer.phone == null || (data.customer.phone is string && data.customer.phone.size() <= 50)) &&
+        (!('is_imported_attendee' in data.customer) || data.customer.is_imported_attendee is bool) &&
+        (!('registration_id' in data.customer) || data.customer.registration_id == null || (data.customer.registration_id is string && data.customer.registration_id.size() <= 200)) &&
+        (!('attendee_code' in data.customer) || data.customer.attendee_code == null || (data.customer.attendee_code is string && data.customer.attendee_code.size() <= 100)) &&
+        (!('bevy_attendee_id' in data.customer) || data.customer.bevy_attendee_id == null || data.customer.bevy_attendee_id is int || data.customer.bevy_attendee_id is float || (data.customer.bevy_attendee_id is string && data.customer.bevy_attendee_id.size() <= 64)) &&
+        data.items is list && data.items.size() > 0 && data.items.size() <= 50 &&
+        (data.subtotal is int || data.subtotal is float) && data.subtotal >= 0 &&
+        (data.fee_amount is int || data.fee_amount is float) && data.fee_amount >= 0 &&
+        (!('fee_label' in data) || data.fee_label == null || (data.fee_label is string && data.fee_label.size() <= 100)) &&
+        (data.total_amount is int || data.total_amount is float) && data.total_amount >= 0 &&
+        data.payment_method is string && (data.payment_method in ['qris', 'cash_manual']) &&
+        data.payment_status is string && (data.payment_status in ['waiting_for_payment', 'paid', 'failed', 'expired', 'cancelled']) &&
+        data.collection_status is string && (data.collection_status in ['collected', 'uncollected']) &&
+        (!('collected_at' in data) || data.collected_at == null || (data.collected_at is string && data.collected_at.size() <= 50)) &&
+        (!('collected_by_id' in data) || data.collected_by_id == null || (data.collected_by_id is string && data.collected_by_id.size() <= 128)) &&
+        (!('collected_by_name' in data) || data.collected_by_name == null || (data.collected_by_name is string && data.collected_by_name.size() <= 150)) &&
+        (!('payment_url' in data) || data.payment_url == null || (data.payment_url is string && data.payment_url.size() <= 2000)) &&
+        (!('payment_invoice_number' in data) || data.payment_invoice_number == null || (data.payment_invoice_number is string && data.payment_invoice_number.size() <= 128)) &&
+        (!('payment_channel' in data) || data.payment_channel == null || (data.payment_channel is string && data.payment_channel.size() <= 100)) &&
+        (!('paid_at' in data) || data.paid_at == null || (data.paid_at is string && data.paid_at.size() <= 50)) &&
+        (!('status_logs' in data) || data.status_logs == null || (data.status_logs is list && data.status_logs.size() <= 100)) &&
+        data.created_at is string && data.created_at.size() <= 50 &&
+        data.updated_at is string && data.updated_at.size() <= 50 &&
+        data.created_by_id is string && data.created_by_id.size() <= 128 &&
+        data.created_by_name is string && data.created_by_name.size() <= 150 &&
+        (!('notes' in data) || data.notes == null || (data.notes is string && data.notes.size() <= 2000));
+    }
+
     // ===============================================================
     // Collection Security Rules
     // ===============================================================
@@ -1533,6 +1645,31 @@ service cloud.firestore {
         (settingId != 'maintenance' && isValidSystemSetting(request.resource.data))
       );
       allow delete: if hasTeamAccess() || isOrganizer();
+    }
+
+    // -------------------------------------------------------------
+    // Event Merchandise Orders Collection
+    // -------------------------------------------------------------
+    match /event_merchandise_orders/{orderId} {
+      // Read: Public read allowed (enables real-time client subscriptions for merchandise order telemetry and booth sales without failing during client auth hydration or cookie-based sessions).
+      allow read: if true;
+
+      // Create: Team access (Organizers & Staff), or authenticated users (via verified organizer sessions or server actions),
+      // validating schema, bounds, and document ID consistency.
+      allow create: if (hasTeamAccess() || isOrganizer() || isAuthenticated()) &&
+        isValidEventMerchandiseOrder(request.resource.data) &&
+        (!('id' in request.resource.data) || request.resource.data.id == orderId);
+
+      // Update: Team access (Organizers & Staff), or authenticated users (via server actions, order handover, or payment status reconciliation),
+      // validating schema and protecting immutable fields (id, created_at, created_by_id).
+      allow update: if (hasTeamAccess() || isOrganizer() || isAuthenticated()) &&
+        isValidEventMerchandiseOrder(request.resource.data) &&
+        request.resource.data.id == resource.data.id &&
+        request.resource.data.created_at == resource.data.created_at &&
+        request.resource.data.created_by_id == resource.data.created_by_id;
+
+      // Delete: Team access (Organizers & Staff), or authenticated users.
+      allow delete: if hasTeamAccess() || isOrganizer() || isAuthenticated();
     }
   }
 }

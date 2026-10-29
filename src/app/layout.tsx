@@ -150,10 +150,12 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       suppressHydrationWarning
     >
       <head>
-        {/* Applies theme and layout preferences on load to avoid flicker and unnecessary server rerenders. */}
-        <ThemeBootScript />
+        {/* Prevent Dark Reader extension from modifying DOM attributes before React hydration */}
+        <meta name="darkreader-lock" />
       </head>
       <body className={`${fontVars} min-h-screen antialiased`}>
+        {/* Applies theme and layout preferences on load to avoid flicker and unnecessary server rerenders. */}
+        <ThemeBootScript />
         <ApiLoggerBoot />
         <TooltipProvider>
           <AuthStoreProvider>

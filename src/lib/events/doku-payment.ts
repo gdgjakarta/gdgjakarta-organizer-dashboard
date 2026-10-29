@@ -404,6 +404,7 @@ export function hasRegistrationPaymentRequirements(registration?: Partial<Firest
 export function extractCustomerPhone(
   registration: Partial<FirestoreRegistration>,
   answersOverride?: Record<string, unknown>,
+  customQuestions?: Array<{ id: string; label?: string }>,
 ): string {
   const ans = answersOverride ?? ((registration.answers ?? {}) as Record<string, unknown>);
 
@@ -413,29 +414,101 @@ export function extractCustomerPhone(
     ans.whatsapp_number ??
     ans["WhatsApp Phone Number"] ??
     ans["whatsapp phone number"] ??
+    ans["Nomor WhatsApp"] ??
+    ans["Nomor WhatsApp (Aktif)"] ??
+    ans["No. WhatsApp"] ??
+    ans["No WhatsApp"] ??
+    ans.nomor_whatsapp ??
     ans.phone ??
     ans.phone_number ??
     ans["Phone Number"] ??
+    ans.no_hp ??
+    ans.no_wa ??
+    ans["Nomor HP"] ??
+    ans["No HP"] ??
+    ans["No. HP"] ??
+    ans.nomor_hp ??
+    ans.mobile ??
+    ans.mobile_phone ??
+    ans.cell_phone ??
+    ans.telepon ??
+    ans.handphone ??
     ans.recipientPhone ??
     ans.recipient_phone ??
     registration.member_phone ??
     (registration as unknown as Record<string, unknown>).phone ??
+    (registration as unknown as Record<string, unknown>).mobile_phone ??
+    (registration as unknown as Record<string, unknown>).mobile ??
     "";
 
-  let raw = typeof candidate === "string" ? candidate.trim() : "";
+  let raw = candidate != null ? String(candidate).trim() : "";
+
+  // Fallback: match via custom questions labels
+  if (!raw && customQuestions && customQuestions.length > 0) {
+    for (const q of customQuestions) {
+      const qLabel = (q.label || "").toLowerCase();
+      if (
+        qLabel.includes("whatsapp") ||
+        qLabel.includes("phone") ||
+        qLabel.includes("telepon") ||
+        qLabel.includes("hp") ||
+        qLabel.includes("nomor") ||
+        qLabel.includes("mobile") ||
+        qLabel.includes("wa") ||
+        qLabel.includes("handphone")
+      ) {
+        const val = ans[q.id];
+        if (val != null) {
+          const strVal = String(val).trim();
+          if (strVal) {
+            raw = strVal;
+            break;
+          }
+        }
+      }
+    }
+  }
 
   // Fallback: search any answer key matching whatsapp or phone
   if (!raw) {
     for (const [key, val] of Object.entries(ans)) {
-      if (typeof val === "string" && val.trim().length > 0) {
+      if (val != null) {
+        const strVal = String(val).trim();
+        if (!strVal) continue;
         const lowerKey = key.toLowerCase();
         if (
           lowerKey.includes("whatsapp") ||
           lowerKey.includes("phone") ||
           lowerKey.includes("telepon") ||
-          lowerKey.includes("hp")
+          lowerKey.includes("hp") ||
+          lowerKey.includes("nomor") ||
+          lowerKey.includes("mobile") ||
+          lowerKey.includes("wa") ||
+          lowerKey.includes("handphone")
         ) {
-          raw = val.trim();
+          raw = strVal;
+          break;
+        }
+      }
+    }
+  }
+
+  // Fallback: search any value in answers that looks like an Indonesian or international phone number
+  if (!raw) {
+    for (const [key, val] of Object.entries(ans)) {
+      if (key === "session_id" || key === "session_title" || key === "session" || key === "bevy_user_id") continue;
+      if (val != null) {
+        const strVal = String(val).trim();
+        const digits = strVal.replace(/[^0-9]/g, "");
+        if (
+          (strVal.startsWith("+62") ||
+            strVal.startsWith("62") ||
+            strVal.startsWith("08") ||
+            (strVal.startsWith("8") && digits.length >= 9)) &&
+          digits.length >= 8 &&
+          digits.length <= 15
+        ) {
+          raw = strVal;
           break;
         }
       }
@@ -444,12 +517,16 @@ export function extractCustomerPhone(
 
   if (!raw) return "";
 
-  let clean = raw.replace(/[\s-]/g, "");
+  let clean = raw.replace(/[\s\-\(\)\.]/g, "");
   if (clean.startsWith("+")) {
     clean = clean.slice(1);
   }
-  if (clean.startsWith("0")) {
+  if (clean.startsWith("08")) {
+    clean = `628${clean.slice(2)}`;
+  } else if (clean.startsWith("0")) {
     clean = `62${clean.slice(1)}`;
+  } else if (clean.startsWith("8") && clean.length >= 9 && clean.length <= 14) {
+    clean = `62${clean}`;
   }
   return clean;
 }

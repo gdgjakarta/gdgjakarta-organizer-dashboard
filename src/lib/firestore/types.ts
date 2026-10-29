@@ -171,6 +171,7 @@ export interface EventMerchandiseItem {
   total_sold?: number; // total units sold/ordered across all variations or base item
   variations: MerchandiseVariation[];
   max_per_person?: number | null; // Limit items per person (null = unlimited or event-level limit)
+  is_ots_only?: boolean; // When true, exclusive to on-the-spot sales and hidden from public registration form
   status: "active" | "draft" | "hidden" | "out_of_stock";
   guideline?: MerchandiseGuideline; // Dedicated field notes / size chart
   sales_start_date?: string | null; // ISO string when sales/ordering opens
@@ -268,6 +269,7 @@ export interface EventBundlePackage {
   sales_start_date?: string | null; // ISO string
   sales_end_date?: string | null; // ISO string
   badge?: string; // e.g. "Best Value", "Save 25%", "Limited Edition"
+  is_ots_only?: boolean; // When true, exclusive to on-the-spot sales and hidden from public registration form
   generate_vouchers?: boolean; // Whether to generate friend vouchers for additional tickets
   created_at?: string;
   updated_at?: string;
@@ -837,6 +839,72 @@ export interface FirestoreSyncMetadata {
   status: "idle" | "syncing" | "success" | "error";
   error_message?: string;
   synced_by?: string;
+}
+
+export interface MerchandiseOrderItem {
+  merchandise_id: string;
+  name: string;
+  price: number;
+  quantity: number;
+  selected_variations?: Record<string, string>;
+  image_url?: string;
+  bundle_id?: string;
+  bundle_name?: string;
+}
+
+export interface MerchandiseOrderCustomer {
+  name: string;
+  email: string;
+  phone: string;
+  registration_id?: string | null;
+  attendee_code?: string | null;
+  bevy_attendee_id?: number | null;
+  is_imported_attendee: boolean;
+}
+
+export type MerchandiseOrderPaymentStatus = "waiting_for_payment" | "paid" | "failed" | "expired" | "cancelled";
+export type MerchandiseOrderCollectionStatus = "collected" | "uncollected";
+
+export interface MerchandiseOrderStatusLog {
+  id: string;
+  action: string;
+  timestamp: string;
+  actor_id: string;
+  actor_name: string;
+  notes?: string;
+}
+
+export interface EventMerchandiseOrder {
+  id: string;
+  order_number: string;
+  event_id: string;
+  event_title: string;
+  order_type: "on_the_spot";
+  sale_type: "item" | "bundle";
+  bundle_id?: string | null;
+  bundle_name?: string | null;
+  customer: MerchandiseOrderCustomer;
+  items: MerchandiseOrderItem[];
+  subtotal: number;
+  fee_amount: number;
+  fee_label?: string;
+  total_amount: number;
+  payment_method: "qris" | "cash_manual";
+  payment_status: MerchandiseOrderPaymentStatus;
+  collection_status: MerchandiseOrderCollectionStatus;
+  collected_at?: string | null;
+  collected_by_id?: string | null;
+  collected_by_name?: string | null;
+  payment_url?: string | null;
+  payment_invoice_number?: string | null;
+  payment_channel?: string | null;
+  paid_at?: string | null;
+  status_logs: MerchandiseOrderStatusLog[];
+  created_at: string;
+  updated_at: string;
+  created_by_id: string;
+  created_by_name: string;
+  notes?: string | null;
 }
 
 export type { MaintenanceConfig } from "@/config/maintenance-config";

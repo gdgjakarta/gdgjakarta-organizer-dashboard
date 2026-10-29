@@ -82,6 +82,7 @@ export function BundleDialog({
   const [hasCapacityLimit, setHasCapacityLimit] = useState(false);
   const [capacity, setCapacity] = useState<number | null>(null);
   const [status, setStatus] = useState<"active" | "sold_out" | "hidden">("active");
+  const [isOtsOnly, setIsOtsOnly] = useState(false);
   const [salesStartDate, setSalesStartDate] = useState("");
   const [salesEndDate, setSalesEndDate] = useState("");
   const [saveAsTemplateChecked, setSaveAsTemplateChecked] = useState(false);
@@ -107,6 +108,7 @@ export function BundleDialog({
       setHasCapacityLimit(bundle.capacity != null);
       setCapacity(bundle.capacity ?? null);
       setStatus(bundle.status);
+      setIsOtsOnly(Boolean(bundle.is_ots_only));
       setSalesStartDate(toDateTimeLocalValue(bundle.sales_start_date));
       setSalesEndDate(toDateTimeLocalValue(bundle.sales_end_date));
     } else {
@@ -123,6 +125,7 @@ export function BundleDialog({
       setHasCapacityLimit(false);
       setCapacity(null);
       setStatus("active");
+      setIsOtsOnly(false);
       setSalesStartDate("");
       setSalesEndDate("");
     }
@@ -261,6 +264,7 @@ export function BundleDialog({
       capacity: hasCapacityLimit && capacity && capacity > 0 ? Number(capacity) : null,
       total_registered: bundle?.total_registered ?? 0,
       status,
+      is_ots_only: isOtsOnly,
       sales_start_date: salesStartDate ? new Date(salesStartDate).toISOString() : null,
       sales_end_date: salesEndDate ? new Date(salesEndDate).toISOString() : null,
       created_at: bundle?.created_at ?? new Date().toISOString(),
@@ -872,6 +876,23 @@ export function BundleDialog({
                     <SelectItem value="hidden">Hidden (Organizer view only)</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+
+              {/* OTS Only Toggle */}
+              <div className="flex items-center justify-between rounded-xl border p-3.5 bg-muted/20">
+                <div className="space-y-0.5 pr-4">
+                  <Label htmlFor="bundle-ots-only" className="font-semibold text-xs cursor-pointer">
+                    On-the-Spot (OTS) Only
+                  </Label>
+                  <p className="text-muted-foreground text-[11px] leading-normal">
+                    Exclusive to on-site sales at the venue. Hidden from the online registration form.
+                  </p>
+                </div>
+                <Switch
+                  id="bundle-ots-only"
+                  checked={isOtsOnly}
+                  onCheckedChange={setIsOtsOnly}
+                />
               </div>
 
               <div className="flex items-center space-x-2 pt-1">

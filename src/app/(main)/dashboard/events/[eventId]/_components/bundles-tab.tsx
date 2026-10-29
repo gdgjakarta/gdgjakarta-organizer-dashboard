@@ -13,6 +13,7 @@ import {
   Package,
   PackageCheck,
   Plus,
+  ShoppingBag,
   Sparkles,
   Ticket,
   Trash2,
@@ -47,6 +48,7 @@ import type { EventBundlePackage, EventMerchandiseItem, EventTicketTier, Firesto
 import { cn } from "@/lib/utils";
 
 import { BundleDialog } from "./bundle-dialog";
+import { CreateOnTheSpotSaleDialog } from "./create-on-the-spot-sale-dialog";
 
 const BUNDLE_SKELETON_KEYS = ["bundle-skel-1", "bundle-skel-2", "bundle-skel-3"];
 
@@ -57,6 +59,7 @@ interface BundlesTabProps {
 export function BundlesTab({ event }: BundlesTabProps) {
   const [bundles, setBundles] = useState<EventBundlePackage[]>(() => ensureEventBundles(event.bundles));
   const [editingBundle, setEditingBundle] = useState<EventBundlePackage | null>(null);
+  const [otsSaleBundle, setOtsSaleBundle] = useState<EventBundlePackage | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSaving, startTransition] = useTransition();
   const [isDirty, setIsDirty] = useState(false);
@@ -570,9 +573,26 @@ export function BundlesTab({ event }: BundlesTabProps) {
                               {b.badge}
                             </Badge>
                           )}
+                          {b.is_ots_only && (
+                            <Badge
+                              variant="outline"
+                              className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px] font-semibold"
+                            >
+                              OTS Only
+                            </Badge>
+                          )}
                         </div>
 
                         <div className="flex items-center gap-1">
+                          <Button
+                            size="icon-xs"
+                            variant="ghost"
+                            className="size-7 text-muted-foreground hover:text-primary hover:bg-primary/10"
+                            onClick={() => setOtsSaleBundle(b)}
+                            title="Sell bundle on the spot (OTS)"
+                          >
+                            <ShoppingBag className="size-3.5" />
+                          </Button>
                           <Button
                             size="icon-xs"
                             variant="ghost"
@@ -773,6 +793,15 @@ export function BundlesTab({ event }: BundlesTabProps) {
         eventMerchandise={eventMerchandise}
         isLoading={isLoadingItems}
         onSave={handleSaveBundle}
+      />
+
+      {/* On-the-Spot Bundle Sale Dialog */}
+      <CreateOnTheSpotSaleDialog
+        open={Boolean(otsSaleBundle)}
+        onOpenChange={(v) => !v && setOtsSaleBundle(null)}
+        event={event}
+        registrations={[]}
+        initialBundle={otsSaleBundle}
       />
 
       {/* Floating Save Bar */}

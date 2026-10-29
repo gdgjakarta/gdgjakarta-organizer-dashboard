@@ -52,6 +52,40 @@ export async function isAuthorizedExecutiveOrganizerSession(): Promise<boolean> 
 }
 
 /**
+ * Extracts the authenticated user's ID, display name, and email from the session cookie.
+ */
+export async function getAuthenticatedSessionUser(): Promise<{
+  id: string;
+  name: string;
+  email: string;
+} | null> {
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get("auth_token")?.value;
+    if (!token?.includes(".")) return null;
+    const parts = token.split(".");
+    if (parts.length < 2) return null;
+    const payloadBase64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const jsonStr = Buffer.from(payloadBase64, "base64").toString("utf-8");
+    const payload = JSON.parse(jsonStr) as {
+      user_id?: string;
+      sub?: string;
+      name?: string;
+      email?: string;
+    };
+    const id = payload.user_id || payload.sub || "organizer";
+    const email = payload.email ? payload.email.toLowerCase().trim() : "";
+    let name = payload.name?.trim() || "";
+    if (!name && email) {
+      name = email.split("@")[0];
+    }
+    return { id, name: name || "Event Organizer", email };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Extracts the authenticated user email from the auth_token cookie.
  */
 export async function getAuthenticatedSessionEmail(): Promise<string | null> {

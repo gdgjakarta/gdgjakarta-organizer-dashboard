@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { z } from "zod";
 
-import { updateRegistrationFromPayment } from "@/server/firestore-admin";
+import { updateMerchandiseOrderFromPayment, updateRegistrationFromPayment } from "@/server/firestore-admin";
 import { revalidateDashboardPath } from "@/server/server-actions";
 
 function isAuthorized(req: Request): boolean {
@@ -75,7 +75,27 @@ export async function POST(req: NextRequest) {
     const result = await updateRegistrationFromPayment(parsed.data);
 
     if (!result.success) {
-      return NextResponse.json({ error: result.error }, { status: 404 });
+      // Reconcile as on-the-spot merchandise order if not an event registration
+      const merchResult = await updateMerchandiseOrderFromPayment({
+        invoiceNumber: parsed.data.invoiceNumber,
+        amount: parsed.data.amount,
+        paymentChannel: parsed.data.paymentChannel,
+        paidAt: parsed.data.paidAt,
+        errorReason: parsed.data.errorReason,
+      });
+
+      if (!merchResult.success) {
+        return NextResponse.json({ error: result.error || merchResult.error }, { status: 404 });
+      }
+
+      try {
+        await revalidateDashboardPath("/dashboard/events");
+        await revalidateDashboardPath("/dashboard/organizer");
+      } catch {
+        // ignore revalidation error in edge contexts
+      }
+
+      return NextResponse.json({ success: true, order: merchResult.order }, { status: 200 });
     }
 
     // Revalidate dashboard paths so organizers see updated attendee status in real-time

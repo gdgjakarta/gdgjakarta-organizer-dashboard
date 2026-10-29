@@ -1,4 +1,10 @@
-import type { EventMerchandiseItem, EventTicketTier, FirestoreRegistration, TicketType } from "@/lib/firestore/types";
+import type {
+  EventMerchandiseItem,
+  EventMerchandiseOrder,
+  EventTicketTier,
+  FirestoreRegistration,
+  TicketType,
+} from "@/lib/firestore/types";
 
 export interface TicketTypeRevenueSummary {
   type: TicketType;
@@ -289,6 +295,7 @@ export function calculateTicketRevenueMetrics(
 export function calculateMerchandiseRevenueMetrics(
   registrations: FirestoreRegistration[],
   merchandise: EventMerchandiseItem[],
+  merchandiseOrders?: EventMerchandiseOrder[],
 ): MerchandiseRevenueMetrics {
   const byItemMap = new Map<string, MerchandiseItemRevenueSummary>();
 
@@ -431,6 +438,51 @@ export function calculateMerchandiseRevenueMetrics(
       itemSummary.ordersCount += 1;
       if (itemVoucherCut > 0 || (hasVoucher && reg.voucher_applies_to === "merchandise")) {
         itemSummary.vouchersRedeemed += 1;
+      }
+    }
+  }
+
+  // Account for on-the-spot (OTS) merchandise sales that have been paid
+  if (merchandiseOrders && merchandiseOrders.length > 0) {
+    for (const mo of merchandiseOrders) {
+      if (mo.payment_status !== "paid") continue;
+
+      totalOrdersCount += 1;
+      const orderTotal = mo.total_amount ?? 0;
+      totalGrossRevenue += orderTotal;
+      totalNetRevenue += orderTotal;
+
+      for (const it of mo.items) {
+        const qty = it.quantity || 1;
+        totalUnitsSold += qty;
+
+        const itPrice = it.price ?? 0;
+        const itGross = itPrice * qty;
+
+        byType.paid.grossRevenue += itGross;
+        byType.paid.netRevenue += itGross;
+        byType.paid.unitsSold += qty;
+
+        let itemSummary = byItemMap.get(it.merchandise_id);
+        if (!itemSummary) {
+          itemSummary = {
+            merchandiseId: it.merchandise_id,
+            name: it.name,
+            isFree: false,
+            grossRevenue: 0,
+            netRevenue: 0,
+            voucherDiscount: 0,
+            vouchersRedeemed: 0,
+            unitsSold: 0,
+            ordersCount: 0,
+          };
+          byItemMap.set(it.merchandise_id, itemSummary);
+        }
+
+        itemSummary.grossRevenue += itGross;
+        itemSummary.netRevenue += itGross;
+        itemSummary.unitsSold += qty;
+        itemSummary.ordersCount += 1;
       }
     }
   }

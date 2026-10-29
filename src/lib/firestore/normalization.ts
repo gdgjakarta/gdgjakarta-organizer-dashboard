@@ -1,6 +1,7 @@
 import { toISOStringSafe } from "@/lib/date-utils";
 import { ensureEventTickets } from "@/lib/events/ticket-templates";
 import type {
+  EventMerchandiseOrder,
   EventTicketTier,
   FirestoreEvent,
   FirestoreRegistration,
@@ -154,4 +155,68 @@ export function normalizeEventDoc(docData: Record<string, unknown>, id: string):
       (typeof docData.updated_at === "string" ? docData.updated_at : new Date().toISOString()),
     tickets: ensureEventTickets(docData.tickets as EventTicketTier[] | undefined),
   } as FirestoreEvent;
+}
+
+/**
+ * Normalizes a raw Firestore merchandise order document into typed EventMerchandiseOrder.
+ * Safe for both server actions and client components.
+ */
+export function normalizeMerchandiseOrder(raw: Record<string, unknown>, docId: string): EventMerchandiseOrder {
+  const customerRaw = (raw.customer as Record<string, unknown>) ?? {};
+  return {
+    id: docId,
+    order_number: String(raw.order_number || docId),
+    event_id: String(raw.event_id || ""),
+    event_title: String(raw.event_title || ""),
+    order_type: "on_the_spot",
+    sale_type: (raw.sale_type as "item" | "bundle") || "item",
+    bundle_id: raw.bundle_id ? String(raw.bundle_id) : null,
+    bundle_name: raw.bundle_name ? String(raw.bundle_name) : null,
+    customer: {
+      name: String(customerRaw.name || ""),
+      email: String(customerRaw.email || "")
+        .toLowerCase()
+        .trim(),
+      phone: String(customerRaw.phone || ""),
+      registration_id: customerRaw.registration_id ? String(customerRaw.registration_id) : null,
+      attendee_code: customerRaw.attendee_code ? String(customerRaw.attendee_code) : null,
+      bevy_attendee_id: customerRaw.bevy_attendee_id ? Number(customerRaw.bevy_attendee_id) : null,
+      is_imported_attendee: Boolean(customerRaw.is_imported_attendee),
+    },
+    items: Array.isArray(raw.items)
+      ? raw.items.map((it: unknown) => {
+          const itemObj = (it as Record<string, unknown>) ?? {};
+          return {
+            merchandise_id: String(itemObj.merchandise_id || itemObj.id || ""),
+            name: String(itemObj.name || ""),
+            price: Number(itemObj.price || 0),
+            quantity: Number(itemObj.quantity || 1),
+            selected_variations: (itemObj.selected_variations as Record<string, string>) ?? undefined,
+            image_url: itemObj.image_url ? String(itemObj.image_url) : undefined,
+            bundle_id: itemObj.bundle_id ? String(itemObj.bundle_id) : undefined,
+            bundle_name: itemObj.bundle_name ? String(itemObj.bundle_name) : undefined,
+          };
+        })
+      : [],
+    subtotal: Number(raw.subtotal || 0),
+    fee_amount: Number(raw.fee_amount || 0),
+    fee_label: raw.fee_label ? String(raw.fee_label) : undefined,
+    total_amount: Number(raw.total_amount || 0),
+    payment_method: (raw.payment_method as "qris" | "cash_manual") || "qris",
+    payment_status: (raw.payment_status as EventMerchandiseOrder["payment_status"]) || "waiting_for_payment",
+    collection_status: (raw.collection_status as EventMerchandiseOrder["collection_status"]) || "uncollected",
+    collected_at: raw.collected_at ? String(raw.collected_at) : null,
+    collected_by_id: raw.collected_by_id ? String(raw.collected_by_id) : null,
+    collected_by_name: raw.collected_by_name ? String(raw.collected_by_name) : null,
+    payment_url: raw.payment_url ? String(raw.payment_url) : null,
+    payment_invoice_number: raw.payment_invoice_number ? String(raw.payment_invoice_number) : null,
+    payment_channel: raw.payment_channel ? String(raw.payment_channel) : null,
+    paid_at: raw.paid_at ? String(raw.paid_at) : null,
+    status_logs: Array.isArray(raw.status_logs) ? (raw.status_logs as EventMerchandiseOrder["status_logs"]) : [],
+    created_at: String(raw.created_at || new Date().toISOString()),
+    updated_at: String(raw.updated_at || new Date().toISOString()),
+    created_by_id: String(raw.created_by_id || ""),
+    created_by_name: String(raw.created_by_name || "Organizer"),
+    notes: raw.notes ? String(raw.notes) : null,
+  };
 }

@@ -31,6 +31,7 @@ import {
   findRegistrationDoc,
   getFirestoreDoc,
   patchFirestoreDoc,
+  updateMerchandiseOrderFromPayment,
   updateRegistrationFromPayment,
 } from "@/server/firestore-admin";
 import { revalidateDashboardPath } from "@/server/server-actions";
@@ -652,6 +653,18 @@ export async function checkDokuPaymentStatusInternal(
         if (updateResult.success) {
           updatedStatusLogs = updateResult.statusLogs;
           newLogEntry = updateResult.logEntry;
+        } else {
+          // Attempt reconciliation as an on-the-spot merchandise order
+          await updateMerchandiseOrderFromPayment(
+            {
+              invoiceNumber,
+              amount: amount ?? notificationPayload.order.amount,
+              paymentChannel,
+              paidAt,
+              isTeamAccess,
+            },
+            idToken,
+          );
         }
       } catch (dbErr) {
         console.error(`[DOKU Check Status] Failed to update Firestore registration:`, dbErr);

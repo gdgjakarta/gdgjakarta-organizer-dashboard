@@ -3,11 +3,17 @@ import { cache } from "react";
 import { DEFAULT_MAINTENANCE_CONFIG, type MaintenanceConfig } from "@/config/maintenance-config";
 import { buildApprovedAttendeePayload } from "@/lib/events/approved-attendee-webhook";
 import { generateBundleFriendVouchers } from "@/lib/events/bundle-voucher-generator";
-import { normalizeEventDoc, normalizeRegistrationDoc } from "@/lib/firestore/normalization";
+import {
+  normalizeEventDoc,
+  normalizeMerchandiseOrder,
+  normalizeRegistrationDoc,
+} from "@/lib/firestore/normalization";
 import type {
   BundleIssuedVoucher,
+  EventMerchandiseOrder,
   FirestoreEvent,
   FirestoreRegistration,
+  MerchandiseOrderStatusLog,
   RefundRequest,
   RefundStatus,
   RegistrationStatus,
@@ -244,6 +250,38 @@ export async function patchFirestoreDoc(
 }
 
 /**
+ * Deletes a document via Firestore REST API.
+ */
+export async function deleteFirestoreDoc(
+  collectionName: string,
+  docId: string,
+  token?: string,
+): Promise<boolean> {
+  try {
+    const url = `${FIRESTORE_BASE_URL}/${collectionName}/${encodeURIComponent(docId)}?key=${getFirebaseApiKey()}`;
+    const headers: Record<string, string> = { Accept: "application/json" };
+    const authToken = await resolveAuthToken(token);
+    if (authToken) {
+      headers.Authorization = `Bearer ${authToken}`;
+    }
+    const res = await fetch(url, {
+      method: "DELETE",
+      headers,
+    });
+    if (res.status === 404) return true; // Already deleted
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      console.warn(`[Firestore REST] DELETE ${collectionName}/${docId} returned ${res.status}: ${errText}`);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn(`[Firestore REST] Failed deleting ${collectionName}/${docId}:`, err);
+    return false;
+  }
+}
+
+/**
  * Queries a collection using Firestore REST runQuery.
  */
 async function queryRegistrationDoc(
@@ -384,6 +422,169 @@ export async function findRegistrationDoc(
   if (matchTop) return matchTop;
 
   return null;
+}
+
+/**
+ * Executes a structured query against event_merchandise_orders collection.
+ */
+async function queryMerchandiseOrderDoc(
+  fieldPath: string,
+  value: string,
+  token?: string,
+): Promise<{ id: string; data: EventMerchandiseOrder } | null> {
+  try {
+    const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents:runQuery?key=${getFirebaseApiKey()}`;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    };
+    const authToken = await resolveAuthToken(token);
+    if (authToken) {
+      headers.Authorization = `Bearer ${authToken}`;
+    }
+    const body = {
+      structuredQuery: {
+        from: [{ collectionId: "event_merchandise_orders" }],
+        where: {
+          fieldFilter: {
+            field: { fieldPath },
+            op: "EQUAL",
+            value: { stringValue: value },
+          },
+        },
+        limit: 1,
+      },
+    };
+    const res = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) return null;
+    const items = (await res.json()) as Array<{ document?: { name?: string; fields?: Record<string, unknown> } }>;
+    if (!Array.isArray(items) || items.length === 0 || !items[0]?.document) return null;
+    const doc = items[0].document;
+    const id = doc.name?.split("/").pop() ?? "";
+    const decoded = decodeFirestoreDoc(doc);
+    return decoded ? { id, data: normalizeMerchandiseOrder(decoded, id) } : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Finds an on-the-spot merchandise order document by invoice number or document ID.
+ */
+export async function findMerchandiseOrderDoc(
+  invoiceNumber: string,
+  token?: string,
+): Promise<{ id: string; data: EventMerchandiseOrder } | null> {
+  const strippedId = invoiceNumber.replace(/^INV-/, "");
+  try {
+    const data = await getFirestoreDoc("event_merchandise_orders", strippedId, token);
+    if (data) return { id: strippedId, data: normalizeMerchandiseOrder(data, strippedId) };
+  } catch {
+    // Ignore and proceed
+  }
+
+  try {
+    const data = await getFirestoreDoc("event_merchandise_orders", invoiceNumber, token);
+    if (data) return { id: invoiceNumber, data: normalizeMerchandiseOrder(data, invoiceNumber) };
+  } catch {
+    // Ignore and proceed
+  }
+
+  const matchPaymentInvoice = await queryMerchandiseOrderDoc("payment_invoice_number", invoiceNumber, token);
+  if (matchPaymentInvoice) return matchPaymentInvoice;
+
+  const matchOrderNumber = await queryMerchandiseOrderDoc("order_number", invoiceNumber, token);
+  if (matchOrderNumber) return matchOrderNumber;
+
+  return null;
+}
+
+export interface UpdateMerchandiseOrderFromPaymentInput {
+  invoiceNumber: string;
+  orderId?: string;
+  amount?: number;
+  paymentChannel?: string;
+  paidAt?: string;
+  errorReason?: string;
+  isTeamAccess?: boolean;
+}
+
+/**
+ * Reconciles an on-the-spot merchandise order upon payment confirmation.
+ * Marks payment as 'paid' while keeping collection status manual.
+ */
+export async function updateMerchandiseOrderFromPayment(
+  input: UpdateMerchandiseOrderFromPaymentInput,
+  token?: string,
+): Promise<{ success: boolean; error?: string; order?: EventMerchandiseOrder }> {
+  const invoiceNumber = (input.invoiceNumber || "").trim();
+  const orderId = (input.orderId || "").trim();
+  if (!invoiceNumber && !orderId) {
+    return { success: false, error: "invoiceNumber or orderId is required." };
+  }
+
+  let targetDoc: { id: string; data: EventMerchandiseOrder } | null = null;
+  if (orderId) {
+    const directDoc = await getFirestoreDoc("event_merchandise_orders", orderId, token);
+    if (directDoc) {
+      targetDoc = { id: orderId, data: normalizeMerchandiseOrder(directDoc, orderId) };
+    }
+  }
+
+  if (!targetDoc && invoiceNumber) {
+    targetDoc = await findMerchandiseOrderDoc(invoiceNumber, token);
+  }
+
+  if (!targetDoc) {
+    return { success: false, error: `Merchandise order with invoice "${invoiceNumber || orderId}" not found.` };
+  }
+
+  const orderData = targetDoc.data;
+  const now = new Date().toISOString();
+  const isFailed = Boolean(input.errorReason);
+  const nextPaymentStatus = isFailed ? "failed" : "paid";
+
+  const existingLogs = Array.isArray(orderData.status_logs) ? orderData.status_logs : [];
+  const logEntry: MerchandiseOrderStatusLog = {
+    id: `log_${Date.now()}_doku`,
+    action: isFailed ? "payment_failed" : "payment_confirmed",
+    timestamp: now,
+    actor_id: input.isTeamAccess ? "organizer_doku_check" : "doku_automation",
+    actor_name: "DOKU Payment Gateway",
+    notes: isFailed
+      ? `Payment notification: ${input.errorReason}`
+      : `Payment confirmed via ${input.paymentChannel || "QRIS"} (${invoiceNumber || targetDoc.id}).`,
+  };
+
+  const updatePayload = sanitizePayload<Record<string, unknown>>({
+    payment_status: nextPaymentStatus,
+    ...(isFailed ? {} : { paid_at: input.paidAt || now }),
+    ...(input.paymentChannel ? { payment_channel: input.paymentChannel } : {}),
+    ...(invoiceNumber ? { payment_invoice_number: invoiceNumber } : {}),
+    updated_at: now,
+    status_logs: [...existingLogs, logEntry],
+  });
+
+  const patchSuccess = await patchFirestoreDoc("event_merchandise_orders", targetDoc.id, updatePayload, true, token);
+  if (!patchSuccess) {
+    return { success: false, error: "Failed to patch merchandise order document." };
+  }
+
+  return {
+    success: true,
+    order: {
+      ...orderData,
+      payment_status: nextPaymentStatus,
+      paid_at: isFailed ? orderData.paid_at : input.paidAt || now,
+      payment_channel: input.paymentChannel || orderData.payment_channel,
+      status_logs: [...existingLogs, logEntry],
+      updated_at: now,
+    },
+  };
 }
 
 /**

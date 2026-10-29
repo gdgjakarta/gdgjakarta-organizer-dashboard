@@ -140,6 +140,8 @@ interface QrCheckInScannerDialogProps {
   registrations: FirestoreRegistration[];
   questions?: CustomQuestion[];
   onRegistrationUpdated?: (updated: FirestoreRegistration) => void;
+  onSelectForOtsSale?: (reg: FirestoreRegistration) => void;
+  otsModeOnly?: boolean;
 }
 
 interface ScanHistoryEntry {
@@ -313,6 +315,8 @@ export function QrCheckInScannerDialog({
   registrations,
   questions = [],
   onRegistrationUpdated,
+  onSelectForOtsSale,
+  otsModeOnly = false,
 }: QrCheckInScannerDialogProps) {
   const user = useAuthStore((s) => s.user);
 
@@ -405,10 +409,12 @@ export function QrCheckInScannerDialog({
     setIsStartingCamera(false);
   }, []);
 
-  // Stop camera when dialog closes
+  // Stop camera and reset attendee lookup state when dialog closes
   React.useEffect(() => {
     if (!open) {
       stopCamera();
+      setActiveReg(null);
+      setQrInput("");
     }
   }, [open, stopCamera]);
 
@@ -478,8 +484,13 @@ export function QrCheckInScannerDialog({
       resolvedBevyAttendeeId: number | null;
     }> => {
       if (bevyAttendeeId) {
-        // 1. Direct match on cached `bevy_attendee_id` in Firestore registrations
-        const directMatch = registrations.find((r) => Number(r.bevy_attendee_id) === Number(bevyAttendeeId));
+        // 1. Direct match on cached `bevy_attendee_id` or `attendee_code` in Firestore registrations
+        const directMatch = registrations.find(
+          (r) =>
+            Number(r.bevy_attendee_id) === Number(bevyAttendeeId) ||
+            String(r.bevy_attendee_id) === String(bevyAttendeeId) ||
+            r.attendee_code === String(bevyAttendeeId),
+        );
         if (directMatch) {
           return {
             registration: directMatch,
@@ -487,7 +498,7 @@ export function QrCheckInScannerDialog({
           };
         }
 
-        // 2. Fallback lookup via Bevy Event Attendees API -> match email
+        // 2. Fallback lookup via Bevy Event Attendees API -> match email or name
         if (!bevyAttendeesCacheRef.current) {
           const res = await fetchAllBevyEventAttendeesAction(eventId);
           if (res.success && res.results) {
@@ -495,18 +506,84 @@ export function QrCheckInScannerDialog({
           }
         }
         const bevyAttendee = bevyAttendeesCacheRef.current?.find((a) => Number(a.id) === Number(bevyAttendeeId));
-        if (bevyAttendee?.email) {
-          const emailLower = bevyAttendee.email.trim().toLowerCase();
-          const emailMatch = registrations.find((r) => (r.member_email || "").trim().toLowerCase() === emailLower);
-          if (emailMatch) {
+        if (bevyAttendee) {
+          const emailLower = (bevyAttendee.email || "").trim().toLowerCase();
+          const emailMatch = emailLower
+            ? registrations.find(
+                (r) => (r.member_email || (r.answers?.email as string) || "").trim().toLowerCase() === emailLower,
+              )
+            : null;
+
+          const fullName =
+            bevyAttendee.name ||
+            [bevyAttendee.first_name, bevyAttendee.last_name].filter(Boolean).join(" ") ||
+            bevyAttendee.email?.split("@")[0] ||
+            `Bevy Attendee #${bevyAttendee.id}`;
+
+          const nameMatch =
+            !emailMatch && fullName
+              ? registrations.find((r) => {
+                  const rName = (r.member_name || (r.answers?.name as string) || "").trim().toLowerCase();
+                  return rName && rName === fullName.toLowerCase();
+                })
+              : null;
+
+          const matchedRegistration = emailMatch || nameMatch;
+
+          const bevyPhone =
+            (bevyAttendee.phone as string) ||
+            (bevyAttendee.mobile_phone as string) ||
+            (bevyAttendee.mobile as string) ||
+            "";
+
+          if (matchedRegistration) {
             return {
               registration: {
-                ...emailMatch,
+                ...matchedRegistration,
                 bevy_attendee_id: bevyAttendeeId,
+                member_phone: matchedRegistration.member_phone || bevyPhone,
               },
               resolvedBevyAttendeeId: bevyAttendeeId,
             };
           }
+
+          return {
+            registration: {
+              id: `bevy_${bevyAttendee.id}`,
+              event_id: eventId,
+              event_title: eventTitle || "GDG Jakarta Event",
+              member_id: String(bevyAttendee.user_id || bevyAttendee.id),
+              member_name: fullName,
+              member_email: bevyAttendee.email || "",
+              member_phone: bevyPhone,
+              status: "approved",
+              ticket_tier: bevyAttendee.ticket_title || "Bevy Ticket",
+              bevy_attendee_id: bevyAttendee.id,
+              attendee_code: bevyAttendee.attendee_code || String(bevyAttendee.id),
+              registered_at: bevyAttendee.created_date || new Date().toISOString(),
+            },
+            resolvedBevyAttendeeId: bevyAttendeeId,
+          };
+        }
+
+        // 3. Fallback for OTS Mode: allow creating an OTS sale with the verified Bevy ticket ID
+        if (otsModeOnly && bevyAttendeeId) {
+          return {
+            registration: {
+              id: `bevy_${bevyAttendeeId}`,
+              event_id: eventId,
+              event_title: eventTitle || "GDG Jakarta Event",
+              member_id: String(bevyAttendeeId),
+              member_name: "",
+              member_email: "",
+              status: "approved",
+              ticket_tier: "Bevy Ticket",
+              bevy_attendee_id: bevyAttendeeId,
+              attendee_code: String(bevyAttendeeId),
+              registered_at: new Date().toISOString(),
+            },
+            resolvedBevyAttendeeId: bevyAttendeeId,
+          };
         }
 
         return { registration: null, resolvedBevyAttendeeId: bevyAttendeeId };
@@ -530,7 +607,7 @@ export function QrCheckInScannerDialog({
 
       return { registration: null, resolvedBevyAttendeeId: null };
     },
-    [eventId, registrations],
+    [eventId, registrations, eventTitle, otsModeOnly],
   );
 
   // Execute action for a resolved registration
@@ -778,6 +855,27 @@ export function QrCheckInScannerDialog({
 
         setActiveReg(registration);
 
+        if (otsModeOnly && onSelectForOtsSale) {
+          toast.success(`Attendee identified: ${registration.member_name || registration.member_email}`);
+          stopCamera();
+          const resolvedPhone =
+            registration.member_phone ||
+            getAnswerDisplay(
+              registration,
+              ["whatsapp", "phone", "phone_number", "no_hp", "no_wa", "nomor_whatsapp", "mobile"],
+              questions,
+              ["whatsapp", "phone", "no hp", "nomor wa"],
+            );
+          const regWithPhone = {
+            ...registration,
+            member_phone: resolvedPhone || registration.member_phone || "",
+          };
+          setActiveReg(regWithPhone);
+          onSelectForOtsSale(regWithPhone);
+          onOpenChange(false);
+          return;
+        }
+
         if (autoExecuteOnScan) {
           await executeModeAction(registration, resolvedBevyAttendeeId, rawQrText, true);
         } else {
@@ -787,7 +885,16 @@ export function QrCheckInScannerDialog({
         setIsProcessing(false);
       }
     },
-    [autoExecuteOnScan, executeModeAction, parseQrPayload, resolveRegistration],
+    [
+      autoExecuteOnScan,
+      executeModeAction,
+      onOpenChange,
+      onSelectForOtsSale,
+      otsModeOnly,
+      parseQrPayload,
+      resolveRegistration,
+      stopCamera,
+    ],
   );
 
   // Start camera & request browser camera permission on click
@@ -1060,103 +1167,138 @@ export function QrCheckInScannerDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
+      <DialogContent className="inset-0 m-auto h-fit max-h-[92vh] translate-x-0 translate-y-0 overflow-y-auto sm:max-w-3xl [transform:none]">
         <DialogHeader>
           <div className="flex items-center gap-2.5">
-            <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <QrCode className="size-5" />
+            <div
+              className={cn(
+                "flex size-9 items-center justify-center rounded-lg",
+                otsModeOnly ? "bg-amber-500/10 text-amber-600" : "bg-primary/10 text-primary",
+              )}
+            >
+              {otsModeOnly ? <ShoppingBag className="size-5" /> : <QrCode className="size-5" />}
             </div>
             <div>
-              <DialogTitle className="text-lg">Bevy QR Scanner & On-Site Desk</DialogTitle>
+              <DialogTitle className="text-lg">
+                {otsModeOnly ? "Scan Attendee for OTS Merchandise" : "Bevy QR Scanner & On-Site Desk"}
+              </DialogTitle>
               <DialogDescription className="text-xs">
-                Scan Bevy QR codes for{" "}
-                <span className="font-medium text-foreground">{eventTitle || `Event #${eventId}`}</span>
+                {otsModeOnly ? (
+                  <>
+                    Scan Bevy ticket QR or enter Attendee ID to load attendee for{" "}
+                    <span className="font-medium text-foreground">{eventTitle || `Event #${eventId}`}</span>
+                  </>
+                ) : (
+                  <>
+                    Scan Bevy QR codes for{" "}
+                    <span className="font-medium text-foreground">{eventTitle || `Event #${eventId}`}</span>
+                  </>
+                )}
               </DialogDescription>
             </div>
           </div>
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* 1. Operational Mode Selector */}
-          <div className="space-y-2">
-            <Label className="font-semibold text-muted-foreground text-xs uppercase tracking-wider">Scanner Mode</Label>
-            <Tabs value={mode} onValueChange={(v) => handleModeChange(v as QrScannerMode)} className="w-full">
-              <TabsList className="grid h-auto w-full grid-cols-1 gap-1.5 rounded-xl border border-border/60 bg-muted/60 p-1.5 group-data-horizontal/tabs:h-auto sm:grid-cols-3">
-                <TabsTrigger
-                  value="event_checkin"
-                  className="h-auto gap-2 rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground transition-all hover:bg-background/50 hover:text-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20 focus-visible:outline-none data-active:border-border/60 data-active:bg-popover data-active:text-foreground data-active:shadow-xs dark:data-active:border-border dark:data-active:bg-card data-active:[&_svg]:text-primary"
-                >
-                  <UserCheck className="size-3.5" />
-                  Main Event Check-in
-                </TabsTrigger>
-                <TabsTrigger
-                  value="session_checkin"
-                  disabled={sessions.length === 0}
-                  className="h-auto gap-2 rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground transition-all hover:bg-background/50 hover:text-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20 focus-visible:outline-none data-active:border-border/60 data-active:bg-popover data-active:text-foreground data-active:shadow-xs dark:data-active:border-border dark:data-active:bg-card data-active:[&_svg]:text-primary"
-                >
-                  <Layers className="size-3.5" />
-                  Breakout Session Check-in
-                </TabsTrigger>
-                <TabsTrigger
-                  value="merchandise_collection"
-                  className="h-auto gap-2 rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground transition-all hover:bg-background/50 hover:text-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20 focus-visible:outline-none data-active:border-border/60 data-active:bg-popover data-active:text-foreground data-active:shadow-xs dark:data-active:border-border dark:data-active:bg-card data-active:[&_svg]:text-primary"
-                >
-                  <ShoppingBag className="size-3.5" />
-                  Merchandise Collection
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
-          </div>
-
-          {/* 2. Mode Configuration Bar (Session selector + Sync Bevy toggle + Auto-execute toggle) */}
-          <div className="grid grid-cols-1 gap-3 rounded-lg border bg-muted/30 p-3 sm:grid-cols-2">
-            {mode === "session_checkin" && (
-              <div className="space-y-1.5 sm:col-span-2">
-                <Label className="text-xs font-medium">Target Breakout Session</Label>
-                <Select value={selectedSessionId} onValueChange={handleSessionChange}>
-                  <SelectTrigger className="h-9 w-full min-w-0 bg-background text-xs [&>span]:block [&>span]:min-w-0 [&>span]:truncate [&>span]:text-left *:data-[slot=select-value]:block *:data-[slot=select-value]:min-w-0 *:data-[slot=select-value]:truncate *:data-[slot=select-value]:text-left">
-                    <SelectValue placeholder="Choose a breakout session..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {sessions.map((s) => (
-                      <SelectItem key={s.id} value={s.id} className="text-xs">
-                        {s.title} {s.time_slot ? `(${s.time_slot})` : ""} —{" "}
-                        {s.include_in_registration === false ? "On-Site / Manual" : "Pre-Event Form"}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+          {otsModeOnly ? (
+            <div className="flex items-center gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-xs text-amber-800 dark:text-amber-200">
+              <ShoppingBag className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+              <div>
+                <span className="font-semibold block">On-The-Spot Sale Attendee Lookup</span>
+                <span className="text-[11px] text-amber-700/80 dark:text-amber-300/80">
+                  Scan the attendee&apos;s Bevy ticket QR or search by email/code to import their profile into the OTS
+                  sale dialog. No event check-in will be triggered.
+                </span>
               </div>
-            )}
-
-            {mode !== "merchandise_collection" && (
-              <div className="flex items-center justify-between gap-3 rounded-md border bg-background px-3 py-2">
-                <div className="space-y-0.5">
-                  <Label htmlFor="qr-sync-bevy" className="cursor-pointer font-medium text-xs">
-                    Sync Check-in to Bevy API
-                  </Label>
-                  <p className="text-[11px] text-muted-foreground">
-                    {syncBevy ? "Calls Bevy Check-in API + saves to Firestore" : "Saves check-in log to Firestore only"}
-                  </p>
-                </div>
-                <Switch id="qr-sync-bevy" checked={syncBevy} onCheckedChange={setSyncBevy} />
-              </div>
-            )}
-
-            <div className="flex items-center justify-between gap-3 rounded-md border bg-background px-3 py-2">
-              <div className="space-y-0.5">
-                <Label htmlFor="qr-auto-execute" className="cursor-pointer font-medium text-xs">
-                  {mode === "merchandise_collection" ? "Auto-Collect on Scan" : "Auto Check-in on Scan"}
-                </Label>
-                <p className="text-[11px] text-muted-foreground">
-                  {autoExecuteOnScan
-                    ? "Immediately processes attendee when QR is read"
-                    : "Inspect attendee & answers before confirming"}
-                </p>
-              </div>
-              <Switch id="qr-auto-execute" checked={autoExecuteOnScan} onCheckedChange={setAutoExecuteOnScan} />
             </div>
-          </div>
+          ) : (
+            <>
+              {/* 1. Operational Mode Selector */}
+              <div className="space-y-2">
+                <Label className="font-semibold text-muted-foreground text-xs uppercase tracking-wider">
+                  Scanner Mode
+                </Label>
+                <Tabs value={mode} onValueChange={(v) => handleModeChange(v as QrScannerMode)} className="w-full">
+                  <TabsList className="grid h-auto w-full grid-cols-1 gap-1.5 rounded-xl border border-border/60 bg-muted/60 p-1.5 group-data-horizontal/tabs:h-auto sm:grid-cols-3">
+                    <TabsTrigger
+                      value="event_checkin"
+                      className="h-auto gap-2 rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground transition-all hover:bg-background/50 hover:text-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20 focus-visible:outline-none data-active:border-border/60 data-active:bg-popover data-active:text-foreground data-active:shadow-xs dark:data-active:border-border dark:data-active:bg-card data-active:[&_svg]:text-primary"
+                    >
+                      <UserCheck className="size-3.5" />
+                      Main Event Check-in
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="session_checkin"
+                      disabled={sessions.length === 0}
+                      className="h-auto gap-2 rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground transition-all hover:bg-background/50 hover:text-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20 focus-visible:outline-none data-active:border-border/60 data-active:bg-popover data-active:text-foreground data-active:shadow-xs dark:data-active:border-border dark:data-active:bg-card data-active:[&_svg]:text-primary"
+                    >
+                      <Layers className="size-3.5" />
+                      Breakout Session Check-in
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="merchandise_collection"
+                      className="h-auto gap-2 rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground transition-all hover:bg-background/50 hover:text-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20 focus-visible:outline-none data-active:border-border/60 data-active:bg-popover data-active:text-foreground data-active:shadow-xs dark:data-active:border-border dark:data-active:bg-card data-active:[&_svg]:text-primary"
+                    >
+                      <ShoppingBag className="size-3.5" />
+                      Merchandise Collection
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
+
+              {/* 2. Mode Configuration Bar (Session selector + Sync Bevy toggle + Auto-execute toggle) */}
+              <div className="grid grid-cols-1 gap-3 rounded-lg border bg-muted/30 p-3 sm:grid-cols-2">
+                {mode === "session_checkin" && (
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label className="text-xs font-medium">Target Breakout Session</Label>
+                    <Select value={selectedSessionId} onValueChange={handleSessionChange}>
+                      <SelectTrigger className="h-9 w-full min-w-0 bg-background text-xs [&>span]:block [&>span]:min-w-0 [&>span]:truncate [&>span]:text-left *:data-[slot=select-value]:block *:data-[slot=select-value]:min-w-0 *:data-[slot=select-value]:truncate *:data-[slot=select-value]:text-left">
+                        <SelectValue placeholder="Choose a breakout session..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {sessions.map((s) => (
+                          <SelectItem key={s.id} value={s.id} className="text-xs">
+                            {s.title} {s.time_slot ? `(${s.time_slot})` : ""} —{" "}
+                            {s.include_in_registration === false ? "On-Site / Manual" : "Pre-Event Form"}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {mode !== "merchandise_collection" && (
+                  <div className="flex items-center justify-between gap-3 rounded-md border bg-background px-3 py-2">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="qr-sync-bevy" className="cursor-pointer font-medium text-xs">
+                        Sync Check-in to Bevy API
+                      </Label>
+                      <p className="text-[11px] text-muted-foreground">
+                        {syncBevy
+                          ? "Calls Bevy Check-in API + saves to Firestore"
+                          : "Saves check-in log to Firestore only"}
+                      </p>
+                    </div>
+                    <Switch id="qr-sync-bevy" checked={syncBevy} onCheckedChange={setSyncBevy} />
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between gap-3 rounded-md border bg-background px-3 py-2">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="qr-auto-execute" className="cursor-pointer font-medium text-xs">
+                      {mode === "merchandise_collection" ? "Auto-Collect on Scan" : "Auto Check-in on Scan"}
+                    </Label>
+                    <p className="text-[11px] text-muted-foreground">
+                      {autoExecuteOnScan
+                        ? "Immediately processes attendee when QR is read"
+                        : "Inspect attendee & answers before confirming"}
+                    </p>
+                  </div>
+                  <Switch id="qr-auto-execute" checked={autoExecuteOnScan} onCheckedChange={setAutoExecuteOnScan} />
+                </div>
+              </div>
+            </>
+          )}
 
           {/* 3. Camera Viewfinder & Manual / USB Scanner Input */}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-12">
@@ -1426,37 +1568,101 @@ export function QrCheckInScannerDialog({
                     </div>
 
                     <div className="flex items-center gap-1.5">
-                      {isAlreadyCompletedInCurrentMode ? (
+                      {otsModeOnly ? (
                         <Button
                           type="button"
                           size="sm"
-                          variant="outline"
-                          disabled={isProcessing}
-                          onClick={() => executeModeAction(activeReg, lastScannedAttendeeId, qrInput, false)}
-                          className="h-8 gap-1 text-xs"
+                          onClick={() => {
+                            stopCamera();
+                            const target = activeReg;
+                            if (target) {
+                              const resolvedPhone =
+                                target.member_phone ||
+                                phoneVal ||
+                                getAnswerDisplay(
+                                  target,
+                                  ["whatsapp", "phone", "phone_number", "no_hp", "no_wa", "nomor_whatsapp", "mobile"],
+                                  questions,
+                                  ["whatsapp", "phone", "no hp", "nomor wa"],
+                                );
+                              onSelectForOtsSale?.({
+                                ...target,
+                                member_phone: resolvedPhone || target.member_phone || "",
+                              });
+                            }
+                            onOpenChange(false);
+                          }}
+                          className="h-8 gap-1.5 text-xs font-semibold bg-amber-600 hover:bg-amber-700 text-white"
                         >
-                          <Undo2 className="size-3.5" />
-                          Undo
+                          <ShoppingBag className="size-3.5" />
+                          Proceed to OTS Sale
                         </Button>
                       ) : (
-                        <Button
-                          type="button"
-                          size="sm"
-                          disabled={isProcessing}
-                          onClick={() => executeModeAction(activeReg, lastScannedAttendeeId, qrInput, true)}
-                          className="h-8 gap-1.5 text-xs"
-                        >
-                          {isProcessing ? (
-                            <Loader2 className="size-3.5 animate-spin" />
-                          ) : mode === "merchandise_collection" ? (
-                            <PackageCheck className="size-3.5" />
+                        <>
+                          {isAlreadyCompletedInCurrentMode ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={isProcessing}
+                              onClick={() => executeModeAction(activeReg, lastScannedAttendeeId, qrInput, false)}
+                              className="h-8 gap-1 text-xs"
+                            >
+                              <Undo2 className="size-3.5" />
+                              Undo
+                            </Button>
                           ) : (
-                            <UserCheck className="size-3.5" />
+                            <Button
+                              type="button"
+                              size="sm"
+                              disabled={isProcessing}
+                              onClick={() => executeModeAction(activeReg, lastScannedAttendeeId, qrInput, true)}
+                              className="h-8 gap-1.5 text-xs"
+                            >
+                              {isProcessing ? (
+                                <Loader2 className="size-3.5 animate-spin" />
+                              ) : mode === "merchandise_collection" ? (
+                                <PackageCheck className="size-3.5" />
+                              ) : (
+                                <UserCheck className="size-3.5" />
+                              )}
+                              {mode === "event_checkin" && "Check In Now"}
+                              {mode === "session_checkin" && "Check In to Session"}
+                              {mode === "merchandise_collection" && "Mark Merchandise Collected"}
+                            </Button>
                           )}
-                          {mode === "event_checkin" && "Check In Now"}
-                          {mode === "session_checkin" && "Check In to Session"}
-                          {mode === "merchandise_collection" && "Mark Merchandise Collected"}
-                        </Button>
+
+                          {onSelectForOtsSale && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                const target = activeReg;
+                                if (target) {
+                                  const resolvedPhone =
+                                    target.member_phone ||
+                                    phoneVal ||
+                                    getAnswerDisplay(
+                                      target,
+                                      ["whatsapp", "phone", "phone_number", "no_hp", "no_wa", "nomor_whatsapp", "mobile"],
+                                      questions,
+                                      ["whatsapp", "phone", "no hp", "nomor wa"],
+                                    );
+                                  onSelectForOtsSale({
+                                    ...target,
+                                    member_phone: resolvedPhone || target.member_phone || "",
+                                  });
+                                }
+                                onOpenChange(false);
+                              }}
+                              className="h-8 gap-1.5 text-xs border-primary/40 bg-primary/5 text-primary hover:bg-primary/10"
+                            >
+                              <ShoppingBag className="size-3.5" />
+                              Buy Merch (OTS)
+                            </Button>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>

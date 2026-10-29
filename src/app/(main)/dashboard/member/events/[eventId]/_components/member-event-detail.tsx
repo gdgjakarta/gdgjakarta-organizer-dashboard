@@ -18,9 +18,11 @@ import {
   Layers,
   Lock,
   MapPin,
+  PackageCheck,
   Radio,
   RotateCcw,
   Share2,
+  ShoppingBag,
   Sparkles,
   Truck,
   Users,
@@ -52,7 +54,9 @@ import { getEffectiveRegistrationStatus, getRegistrationPaymentDeadline } from "
 import { getEventRefundPolicyNotes, isRegistrationEligibleForRefund } from "@/lib/events/refund-utils";
 import { getRegistrationWindowStatus } from "@/lib/events/registration-defaults";
 import { checkEventRegistrationAction } from "@/lib/firestore/actions";
+import { subscribeMemberMerchandiseOrders } from "@/lib/firestore/merchandise-orders";
 import type {
+  EventMerchandiseOrder,
   FirestoreEvent,
   FirestoreRegistration,
   RegistrationStatus,
@@ -199,7 +203,16 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
   const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
   const [isRefundStatusOpen, setIsRefundStatusOpen] = useState(false);
   const [isCheckingPayment, setIsCheckingPayment] = useState(false);
+  const [eventOtsOrders, setEventOtsOrders] = useState<EventMerchandiseOrder[]>([]);
   const { isVirtual, isHybrid } = resolveEventAudience(currentEvent.audience_type, currentEvent.is_virtual);
+
+  useEffect(() => {
+    if (!user?.email || !currentEvent.id) return;
+    const unsubscribe = subscribeMemberMerchandiseOrders(user.email, (orders) => {
+      setEventOtsOrders(orders.filter((o) => String(o.event_id) === String(currentEvent.id)));
+    });
+    return () => unsubscribe();
+  }, [user?.email, currentEvent.id]);
 
   const rawFrom = from ? decodeURIComponent(from) : undefined;
   const validFrom = rawFrom?.startsWith("/dashboard") ? rawFrom : undefined;
@@ -1185,6 +1198,126 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
               {actionButton}
             </CardContent>
           </Card>
+
+          {/* Your Event Merchandise Card */}
+          {((registration?.selected_merchandise?.length ?? 0) > 0 || eventOtsOrders.length > 0) && (
+            <Card className="bg-card shadow-xs">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center justify-between">
+                  <span>Your Event Merchandise</span>
+                  <ShoppingBag className="size-4 text-primary" />
+                </CardTitle>
+                <CardDescription className="text-xs">Merchandise items acquired for this event.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3 text-xs">
+                {/* 1. Pre-event registration items */}
+                {registration?.selected_merchandise && registration.selected_merchandise.length > 0 && (
+                  <div className="space-y-1.5 rounded-lg border bg-muted/20 p-2.5">
+                    <div className="flex items-center justify-between">
+                      <Badge
+                        variant="outline"
+                        className="border-blue-500/40 bg-blue-500/10 text-blue-700 dark:text-blue-300 text-[10px] font-semibold"
+                      >
+                        Included with Ticket
+                      </Badge>
+                      <span className="text-[10px] text-muted-foreground">
+                        {registration.is_merchandise_collected ? "✓ Collected" : "Pickup at desk"}
+                      </span>
+                    </div>
+                    {registration.selected_merchandise.map((m, idx) => {
+                      const varEntries = m.selected_variations
+                        ? Object.values(m.selected_variations).filter(Boolean)
+                        : [];
+                      const fallbackVar = m.selected_variant || m.selected_size || "";
+                      const variantText = varEntries.length > 0 ? varEntries.join(", ") : fallbackVar;
+                      return (
+                        <div
+                          key={idx}
+                          className="flex items-center justify-between text-xs pt-1 border-t border-border/40 first:border-0 first:pt-0"
+                        >
+                          <span className="font-medium text-foreground">
+                            {m.quantity || 1}x {m.name || m.merchandise_title}
+                          </span>
+                          {variantText && <span className="text-[11px] text-muted-foreground">({variantText})</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* 2. On-the-spot items */}
+                {eventOtsOrders.map((order) => {
+                  const isPaid = order.payment_status === "paid";
+                  const isPending = order.payment_status === "waiting_for_payment";
+                  const isCollected = order.collection_status === "collected";
+
+                  return (
+                    <div key={order.id} className="space-y-1.5 rounded-lg border bg-muted/20 p-2.5">
+                      <div className="flex items-center justify-between gap-1">
+                        <Badge
+                          variant="outline"
+                          className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px] font-semibold"
+                        >
+                          Purchased OTS
+                        </Badge>
+                        {isPaid ? (
+                          <Badge
+                            variant="outline"
+                            className="border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[10px]"
+                          >
+                            {isCollected ? "Collected" : "Paid • Ready"}
+                          </Badge>
+                        ) : isPending ? (
+                          <Badge
+                            variant="outline"
+                            className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px]"
+                          >
+                            Pending QRIS
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-[10px]">
+                            {order.payment_status}
+                          </Badge>
+                        )}
+                      </div>
+
+                      {order.items.map((it, idx) => {
+                        const varText = it.selected_variations
+                          ? Object.values(it.selected_variations).filter(Boolean).join(", ")
+                          : "";
+                        return (
+                          <div
+                            key={idx}
+                            className="flex items-center justify-between text-xs pt-1 border-t border-border/40 first:border-0 first:pt-0"
+                          >
+                            <span className="font-medium text-foreground">
+                              {it.quantity}x {it.name}
+                            </span>
+                            {varText && <span className="text-[11px] text-muted-foreground">({varText})</span>}
+                          </div>
+                        );
+                      })}
+
+                      {isPending && order.payment_url && (
+                        <div className="pt-2">
+                          <Button
+                            asChild
+                            size="sm"
+                            className="w-full h-7 gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+                          >
+                            <a href={order.payment_url} target="_blank" rel="noopener noreferrer">
+                              <ExternalLink className="size-3" />
+                              Pay Now (Rp {order.total_amount.toLocaleString("id-ID")})
+                            </a>
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Event Details Card */}
           <Card>

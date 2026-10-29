@@ -11,6 +11,7 @@ import {
   Package,
   PackageCheck,
   RotateCcw,
+  ShoppingBag,
   Sparkles,
   Ticket,
   TicketPercent,
@@ -41,6 +42,7 @@ import { EmailTemplatesTab } from "./email-templates-tab";
 import { HighlightsMediaTab } from "./highlights-media-tab";
 import { MerchandiseDeliveryTab } from "./merchandise-delivery-tab";
 import { MerchandiseTab } from "./merchandise-tab";
+import { OnTheSpotMerchTab } from "./on-the-spot-merch-tab";
 import { PaymentGatewayTab } from "./payment-gateway-tab";
 import { RefundsTab } from "./refunds-tab";
 import { RegistrantsTab } from "./registrants-tab";
@@ -308,6 +310,15 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
                 <PackageCheck className="size-4" />
                 Bundles
               </TabsTrigger>
+              <TabsTrigger
+                id="tab-trigger-ots-merch"
+                data-value="ots-merch"
+                value="ots-merch"
+                className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm"
+              >
+                <ShoppingBag className="size-4" />
+                OTS Merch
+              </TabsTrigger>
               {hasMerchandise && (
                 <TabsTrigger
                   id="tab-trigger-delivery"
@@ -418,6 +429,10 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
 
           <TabsContent value="bundles" className="space-y-4">
             <BundlesTab event={activeEvent} />
+          </TabsContent>
+
+          <TabsContent value="ots-merch" className="space-y-4">
+            <OnTheSpotMerchTab event={activeEvent} registrations={registrations} />
           </TabsContent>
 
           {hasMerchandise && (
