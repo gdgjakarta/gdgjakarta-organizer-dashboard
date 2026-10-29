@@ -90,7 +90,7 @@ import {
   isRegistrationPaymentOverdue,
 } from "@/lib/events/payment-deadline";
 import { calculatePaymentGatewayFee } from "@/lib/events/payment-fee";
-import { formatRupiah } from "@/lib/events/refund-utils";
+import { formatRupiah, getRegistrationDiscountBreakdown } from "@/lib/events/refund-utils";
 import { DEFAULT_COMBINED_QUESTIONS } from "@/lib/events/registration-defaults";
 import {
   deleteBatchEventRegistrationsAction,
@@ -216,14 +216,22 @@ function getTicketBadgeText(
   price?: number,
   bundlePrice?: number | null,
   isBundleBuyer?: boolean,
+  discountedPrice?: number | null,
 ): string {
-  if (isBundleBuyer && typeof bundlePrice === "number") {
-    if (bundlePrice === 0) return "Free Bundle";
-    return `Rp ${bundlePrice.toLocaleString("id-ID")}`;
+  const effectivePrice =
+    typeof discountedPrice === "number"
+      ? discountedPrice
+      : isBundleBuyer && typeof bundlePrice === "number"
+        ? bundlePrice
+        : (price ?? 0);
+
+  if (isBundleBuyer) {
+    if (effectivePrice === 0) return "Free Bundle";
+    return `Rp ${effectivePrice.toLocaleString("id-ID")}`;
   }
   if (type === "free") return "Free RSVP";
-  if (type === "paid") return `Rp ${(price ?? 0).toLocaleString("id-ID")}`;
-  return `Deposit Rp ${(price ?? 0).toLocaleString("id-ID")}`;
+  if (type === "paid") return `Rp ${effectivePrice.toLocaleString("id-ID")}`;
+  return `Deposit Rp ${effectivePrice.toLocaleString("id-ID")}`;
 }
 
 function resolveAnswerValue(
@@ -4816,90 +4824,96 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
 
                         {(hasTickets || hasBundles) && visibleStandardColumns.ticket !== false && (
                           <TableCell onClick={() => setInspectRegistration(reg)}>
-                            {reg.ticket_name ? (
-                              <div className="flex flex-col gap-0.5">
-                                <span className="font-medium text-foreground text-xs">{reg.ticket_name}</span>
-                                <Badge
-                                  variant="outline"
-                                  className={cn(
-                                    "w-fit px-1.5 py-0 font-semibold text-[10px]",
-                                    reg.ticket_type === "free" &&
-                                      !(
-                                        Boolean(reg.bundle_id) &&
-                                        typeof reg.bundle_price === "number" &&
-                                        reg.bundle_price > 0
-                                      ) &&
-                                      "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
-                                    (reg.ticket_type === "paid" ||
-                                      (Boolean(reg.bundle_id) &&
-                                        typeof reg.bundle_price === "number" &&
-                                        reg.bundle_price > 0)) &&
-                                      "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-400",
-                                    reg.ticket_type === "commitment_fee" &&
-                                      "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400",
+                            {(() => {
+                              const discountBreakdown = getRegistrationDiscountBreakdown(reg, event);
+                              const hasDiscount = discountBreakdown.hasDiscount;
+                              const finalTicketPrice = hasDiscount ? discountBreakdown.netTicketPrice : null;
+                              const isPaidAmount =
+                                typeof finalTicketPrice === "number"
+                                  ? finalTicketPrice > 0
+                                  : reg.ticket_type === "paid" ||
+                                    (Boolean(reg.bundle_id) &&
+                                      typeof reg.bundle_price === "number" &&
+                                      reg.bundle_price > 0);
+
+                              return reg.ticket_name ? (
+                                <div className="flex flex-col gap-0.5">
+                                  <span className="font-medium text-foreground text-xs">{reg.ticket_name}</span>
+                                  <Badge
+                                    variant="outline"
+                                    className={cn(
+                                      "w-fit px-1.5 py-0 font-semibold text-[10px]",
+                                      !isPaidAmount &&
+                                        "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+                                      isPaidAmount &&
+                                        "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-400",
+                                      reg.ticket_type === "commitment_fee" &&
+                                        "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400",
+                                    )}
+                                  >
+                                    {getTicketBadgeText(
+                                      reg.ticket_type,
+                                      reg.ticket_price,
+                                      reg.bundle_price,
+                                      Boolean(reg.bundle_id),
+                                      finalTicketPrice,
+                                    )}
+                                  </Badge>
+                                  {reg.voucher_code && (
+                                    <Badge
+                                      variant="outline"
+                                      className="w-fit border-primary/30 bg-primary/10 px-1.5 py-0 font-mono font-semibold text-[9px] text-primary"
+                                    >
+                                      Promo: {reg.voucher_code}
+                                    </Badge>
                                   )}
-                                >
-                                  {getTicketBadgeText(
-                                    reg.ticket_type,
-                                    reg.ticket_price,
-                                    reg.bundle_price,
-                                    Boolean(reg.bundle_id),
+                                  {reg.referral_code && (
+                                    <Badge
+                                      variant="outline"
+                                      className="w-fit border-border/80 bg-muted/60 px-1.5 py-0 font-mono font-semibold text-[9px] text-foreground"
+                                    >
+                                      Referral: {reg.referral_code}
+                                    </Badge>
                                   )}
-                                </Badge>
-                                {reg.voucher_code && (
-                                  <Badge
-                                    variant="outline"
-                                    className="w-fit border-primary/30 bg-primary/10 px-1.5 py-0 font-mono font-semibold text-[9px] text-primary"
-                                  >
-                                    Promo: {reg.voucher_code}
-                                  </Badge>
-                                )}
-                                {reg.referral_code && (
-                                  <Badge
-                                    variant="outline"
-                                    className="w-fit border-border/80 bg-muted/60 px-1.5 py-0 font-mono font-semibold text-[9px] text-foreground"
-                                  >
-                                    Referral: {reg.referral_code}
-                                  </Badge>
-                                )}
-                                {reg.bundle_name && (
-                                  <Badge
-                                    variant="outline"
-                                    className="w-fit border-primary/40 bg-primary/10 px-1.5 py-0 font-semibold text-[9px] text-primary"
-                                  >
-                                    Bundle: {reg.bundle_name}
-                                  </Badge>
-                                )}
-                              </div>
-                            ) : (
-                              <div className="flex flex-col gap-0.5">
-                                <span className="text-muted-foreground text-xs">General RSVP</span>
-                                {reg.voucher_code && (
-                                  <Badge
-                                    variant="outline"
-                                    className="w-fit border-primary/30 bg-primary/10 px-1.5 py-0 font-mono font-semibold text-[9px] text-primary"
-                                  >
-                                    Promo: {reg.voucher_code}
-                                  </Badge>
-                                )}
-                                {reg.referral_code && (
-                                  <Badge
-                                    variant="outline"
-                                    className="w-fit border-border/80 bg-muted/60 px-1.5 py-0 font-mono font-semibold text-[9px] text-foreground"
-                                  >
-                                    Referral: {reg.referral_code}
-                                  </Badge>
-                                )}
-                                {reg.bundle_name && (
-                                  <Badge
-                                    variant="outline"
-                                    className="w-fit border-primary/40 bg-primary/10 px-1.5 py-0 font-semibold text-[9px] text-primary"
-                                  >
-                                    Bundle: {reg.bundle_name}
-                                  </Badge>
-                                )}
-                              </div>
-                            )}
+                                  {reg.bundle_name && (
+                                    <Badge
+                                      variant="outline"
+                                      className="w-fit border-primary/40 bg-primary/10 px-1.5 py-0 font-semibold text-[9px] text-primary"
+                                    >
+                                      Bundle: {reg.bundle_name}
+                                    </Badge>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="flex flex-col gap-0.5">
+                                  <span className="text-muted-foreground text-xs">General RSVP</span>
+                                  {reg.voucher_code && (
+                                    <Badge
+                                      variant="outline"
+                                      className="w-fit border-primary/30 bg-primary/10 px-1.5 py-0 font-mono font-semibold text-[9px] text-primary"
+                                    >
+                                      Promo: {reg.voucher_code}
+                                    </Badge>
+                                  )}
+                                  {reg.referral_code && (
+                                    <Badge
+                                      variant="outline"
+                                      className="w-fit border-border/80 bg-muted/60 px-1.5 py-0 font-mono font-semibold text-[9px] text-foreground"
+                                    >
+                                      Referral: {reg.referral_code}
+                                    </Badge>
+                                  )}
+                                  {reg.bundle_name && (
+                                    <Badge
+                                      variant="outline"
+                                      className="w-fit border-primary/40 bg-primary/10 px-1.5 py-0 font-semibold text-[9px] text-primary"
+                                    >
+                                      Bundle: {reg.bundle_name}
+                                    </Badge>
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </TableCell>
                         )}
 
