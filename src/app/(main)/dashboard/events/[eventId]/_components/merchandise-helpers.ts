@@ -277,9 +277,13 @@ export function collectMerchandiseFilterOptions(
 }
 
 export {
+  calculateMerchandiseComprehensiveStock,
   getFirstAvailableVariationOption,
   getMerchandiseItemStock,
   getMerchandiseOptionStock,
   isMerchandiseItemCompletelySoldOut,
+  type MerchandiseComprehensiveStock,
+  type MerchandiseOptionStockBreakdown,
   type MerchandiseStockStatus,
+  type MerchandiseVariationStockBreakdown,
 } from "@/lib/events/merchandise-templates";

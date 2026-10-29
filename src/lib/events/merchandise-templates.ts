@@ -542,3 +542,111 @@ export function getFirstAvailableVariationOption(item: EventMerchandiseItem, var
 
   return variation.options[0] ?? "";
 }
+
+export interface MerchandiseOptionStockBreakdown {
+  option: string;
+  quota: number | null; // null if unlimited
+  sold: number;
+  remaining: number | null; // null if unlimited
+  isSoldOut: boolean;
+}
+
+export interface MerchandiseVariationStockBreakdown {
+  variationName: string;
+  hasCustomQuotas: boolean;
+  options: MerchandiseOptionStockBreakdown[];
+}
+
+export interface MerchandiseComprehensiveStock {
+  totalCapacity: number | null; // null if truly unlimited
+  totalSold: number;
+  totalRemaining: number | null; // null if truly unlimited
+  isUnlimited: boolean;
+  isSoldOut: boolean;
+  hasVariationQuotas: boolean;
+  variations: MerchandiseVariationStockBreakdown[];
+}
+
+/**
+ * Calculates comprehensive stock metrics for a merchandise item.
+ * If base item stock is null, but variation options have explicit quotas (e.g. S:40, M:50, L:40, XL:20),
+ * aggregates the primary variation's option quotas into total capacity.
+ */
+export function calculateMerchandiseComprehensiveStock(
+  item: EventMerchandiseItem,
+  liveSoldUnits?: number,
+): MerchandiseComprehensiveStock {
+  const totalSold = typeof liveSoldUnits === "number" ? liveSoldUnits : (item.total_sold ?? 0);
+
+  const variationsBreakdown: MerchandiseVariationStockBreakdown[] = item.variations.map((v) => {
+    let hasCustomQuotas = false;
+    const options: MerchandiseOptionStockBreakdown[] = v.options.map((opt) => {
+      const detail = v.option_details?.[opt];
+      const hasSpecificStock = detail?.stock !== null && detail?.stock !== undefined;
+      if (hasSpecificStock) hasCustomQuotas = true;
+
+      let quota: number | null = null;
+      if (hasSpecificStock) {
+        quota = Number(detail?.stock);
+      } else if (item.stock !== null && item.stock !== undefined) {
+        quota = Number(item.stock);
+      }
+
+      const sold = detail?.total_sold ?? 0;
+      const remaining = quota !== null ? Math.max(0, quota - sold) : null;
+      const isSoldOut = (quota !== null && remaining !== null && remaining <= 0) || item.status === "out_of_stock";
+
+      return {
+        option: opt,
+        quota,
+        sold,
+        remaining,
+        isSoldOut,
+      };
+    });
+
+    return {
+      variationName: v.name,
+      hasCustomQuotas,
+      options,
+    };
+  });
+
+  // Calculate overall total capacity
+  let totalCapacity: number | null = null;
+  let hasVariationQuotas = false;
+
+  if (item.stock !== null && item.stock !== undefined) {
+    totalCapacity = Number(item.stock);
+  } else {
+    // Check if variations have custom quotas (e.g., Size has S:40, M:50, etc.)
+    const variationWithQuotas = variationsBreakdown.find((vb) => vb.hasCustomQuotas);
+    if (variationWithQuotas) {
+      hasVariationQuotas = true;
+      let sumQuota = 0;
+      for (const opt of variationWithQuotas.options) {
+        if (opt.quota !== null) {
+          sumQuota += opt.quota;
+        }
+      }
+      totalCapacity = sumQuota > 0 ? sumQuota : null;
+    }
+  }
+
+  const isUnlimited = totalCapacity === null;
+  const totalRemaining = totalCapacity !== null ? Math.max(0, totalCapacity - totalSold) : null;
+  const isSoldOut =
+    item.status === "out_of_stock" ||
+    (totalRemaining !== null && totalRemaining <= 0) ||
+    isMerchandiseItemCompletelySoldOut(item);
+
+  return {
+    totalCapacity,
+    totalSold,
+    totalRemaining,
+    isUnlimited,
+    isSoldOut,
+    hasVariationQuotas,
+    variations: variationsBreakdown,
+  };
+}
