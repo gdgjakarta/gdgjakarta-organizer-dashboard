@@ -432,7 +432,11 @@ function parseSearchTokens(query: string): string[] {
   return Array.from(new Set(tokens));
 }
 
-function matchesRegistrationToken(reg: FirestoreRegistration, tokenLower: string): boolean {
+function matchesRegistrationToken(
+  reg: FirestoreRegistration,
+  tokenLower: string,
+  bevyAttendee?: BevyAttendee,
+): boolean {
   if (!tokenLower) return true;
 
   const matchesMerch = Boolean(
@@ -452,6 +456,8 @@ function matchesRegistrationToken(reg: FirestoreRegistration, tokenLower: string
   return Boolean(
     reg.member_name.toLowerCase().includes(tokenLower) ||
       reg.member_email.toLowerCase().includes(tokenLower) ||
+      Boolean(reg.attendee_code?.toLowerCase().includes(tokenLower)) ||
+      Boolean(bevyAttendee?.attendee_code?.toLowerCase().includes(tokenLower)) ||
       Boolean(reg.referral_code?.toLowerCase().includes(tokenLower)) ||
       Boolean(reg.referrer_name?.toLowerCase().includes(tokenLower)) ||
       Boolean(reg.voucher_code?.toLowerCase().includes(tokenLower)) ||
@@ -768,13 +774,19 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                 const isCheckedIn = Boolean(bevyAtt.is_checked_in);
                 const bevyId = bevyAtt.id;
                 const checkinDate = bevyAtt.checkin_date || (isCheckedIn ? new Date().toISOString() : null);
+                const attendeeCode = bevyAtt.attendee_code || reg.attendee_code || null;
 
-                if (reg.is_checked_in !== isCheckedIn || reg.bevy_attendee_id !== bevyId) {
-                  void updateRegistrationCheckInAction(reg.id, eventId, isCheckedIn, bevyId, checkinDate);
+                if (
+                  reg.is_checked_in !== isCheckedIn ||
+                  reg.bevy_attendee_id !== bevyId ||
+                  (bevyAtt.attendee_code && reg.attendee_code !== bevyAtt.attendee_code)
+                ) {
+                  void updateRegistrationCheckInAction(reg.id, eventId, isCheckedIn, bevyId, checkinDate, attendeeCode);
                   return {
                     ...reg,
                     is_checked_in: isCheckedIn,
                     bevy_attendee_id: bevyId,
+                    attendee_code: attendeeCode,
                     checkin_date: checkinDate,
                     checked_in_at: isCheckedIn ? (checkinDate ?? new Date().toISOString()) : undefined,
                   };
@@ -1572,8 +1584,11 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
     const tokensLower = searchTokens.map((t) => t.toLowerCase());
 
     return registrationsList.filter((reg) => {
+      const emailLower = (reg.member_email || "").toLowerCase().trim();
+      const bevyAtt = bevyAttendeesMap.get(emailLower);
       const matchesSearch =
-        tokensLower.length === 0 || tokensLower.some((tokenLower) => matchesRegistrationToken(reg, tokenLower));
+        tokensLower.length === 0 ||
+        tokensLower.some((tokenLower) => matchesRegistrationToken(reg, tokenLower, bevyAtt));
 
       const matchesSession =
         sessionFilter === "all" ||
@@ -1711,6 +1726,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
     selectedQuestionColumns,
     questionFilters,
     questionLabelMap,
+    bevyAttendeesMap,
   ]);
 
   // Status Counters for Filters & Badges (reflects active non-status filters)
@@ -3835,7 +3851,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                 </InputGroupAddon>
                 <InputGroupInput
                   className="h-8 text-xs"
-                  placeholder="Search name, email, details... (';' to multi-filter)"
+                  placeholder="Search name, email, ticket code, details... (';' to multi-filter)"
                   value={search}
                   onChange={(e) => handleSearchChange(e.target.value)}
                 />
