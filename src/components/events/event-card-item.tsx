@@ -290,7 +290,7 @@ export function EventCardItem({
     return localBundleVouchers;
   }, [reg?.bundle_vouchers, localBundleVouchers]);
 
-  // Auto-heal missing friend vouchers for confirmed multi-ticket bundle registrations
+  // Authoritatively sync and load friend vouchers for confirmed multi-ticket bundle registrations
   useEffect(() => {
     const activeReg = reg;
     if (!activeReg || !activeReg.id || !effectiveEvent?.id) return;
@@ -313,61 +313,31 @@ export function EventCardItem({
 
     let isCancelled = false;
 
-    async function autoHealBundleVouchers(regDoc: FirestoreRegistration) {
+    async function syncBundleVouchers(regDoc: FirestoreRegistration) {
       try {
-        const { getFirestoreEventById, syncMissingBundleVouchers } = await import("@/lib/firestore/client");
-        const { generateBundleFriendVouchers } = await import("@/lib/events/bundle-voucher-generator");
+        const { auth } = await import("@/config/firebase");
+        const idToken = await auth?.currentUser?.getIdToken();
+        const { getOrGenerateRegistrationBundleVouchersAction } = await import("@/server/voucher-actions");
 
-        let evData = effectiveEvent;
-        if (!evData.bundles || evData.bundles.length === 0) {
-          const fetched = await getFirestoreEventById(String(effectiveEvent.id));
-          if (fetched) {
-            evData = fetched;
-          }
-        }
-
-        const matchingBundle = evData.bundles?.find(
-          (b) =>
-            (regDoc.bundle_id && b.id === regDoc.bundle_id) ||
-            (regDoc.bundle_name && b.name.toLowerCase() === regDoc.bundle_name.toLowerCase()),
-        );
-
-        if (
-          !matchingBundle ||
-          (matchingBundle.ticket_quantity ?? 1) <= 1 ||
-          matchingBundle.generate_vouchers === false
-        ) {
-          return;
-        }
-
-        const matchingTicketTier = evData.tickets?.find((t) => t.id === matchingBundle.ticket_id);
-        const generated = generateBundleFriendVouchers({
-          bundle: matchingBundle,
-          buyerRegistrationId: regDoc.id,
-          buyerMemberId: regDoc.member_id,
-          buyerName: regDoc.member_name || "Bundle Purchaser",
-          buyerEmail: regDoc.member_email || "",
-          ticketTier: matchingTicketTier,
-          eventStartDate: evData.start_date,
+        const res = await getOrGenerateRegistrationBundleVouchersAction({
+          eventId: String(effectiveEvent.id),
+          registrationId: regDoc.id,
+          idToken: idToken || undefined,
         });
 
-        if (generated.registrationVouchers.length === 0 || isCancelled) return;
-
-        setLocalBundleVouchers(generated.registrationVouchers);
-        onRegistrationUpdated?.({
-          ...regDoc,
-          bundle_vouchers: generated.registrationVouchers,
-        });
-
-        await syncMissingBundleVouchers(String(effectiveEvent.id), generated.newEventVouchers, [
-          { registrationId: regDoc.id, bundleVouchers: generated.registrationVouchers },
-        ]);
+        if (res.success && res.vouchers && res.vouchers.length > 0 && !isCancelled) {
+          setLocalBundleVouchers(res.vouchers);
+          onRegistrationUpdated?.({
+            ...regDoc,
+            bundle_vouchers: res.vouchers,
+          });
+        }
       } catch (err) {
-        console.warn("[EventCardItem] Auto-heal bundle vouchers warning:", err);
+        console.warn("[EventCardItem] Failed to sync bundle vouchers:", err);
       }
     }
 
-    void autoHealBundleVouchers(activeReg);
+    void syncBundleVouchers(activeReg);
 
     return () => {
       isCancelled = true;

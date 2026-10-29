@@ -3,14 +3,11 @@ import { cache } from "react";
 import { DEFAULT_MAINTENANCE_CONFIG, type MaintenanceConfig } from "@/config/maintenance-config";
 import { buildApprovedAttendeePayload } from "@/lib/events/approved-attendee-webhook";
 import { generateBundleFriendVouchers } from "@/lib/events/bundle-voucher-generator";
-import {
-  normalizeEventDoc,
-  normalizeMerchandiseOrder,
-  normalizeRegistrationDoc,
-} from "@/lib/firestore/normalization";
+import { normalizeEventDoc, normalizeMerchandiseOrder, normalizeRegistrationDoc } from "@/lib/firestore/normalization";
 import type {
   BundleIssuedVoucher,
   EventMerchandiseOrder,
+  EventVoucher,
   FirestoreEvent,
   FirestoreRegistration,
   MerchandiseOrderStatusLog,
@@ -252,11 +249,7 @@ export async function patchFirestoreDoc(
 /**
  * Deletes a document via Firestore REST API.
  */
-export async function deleteFirestoreDoc(
-  collectionName: string,
-  docId: string,
-  token?: string,
-): Promise<boolean> {
+export async function deleteFirestoreDoc(collectionName: string, docId: string, token?: string): Promise<boolean> {
   try {
     const url = `${FIRESTORE_BASE_URL}/${collectionName}/${encodeURIComponent(docId)}?key=${getFirebaseApiKey()}`;
     const headers: Record<string, string> = { Accept: "application/json" };
@@ -422,6 +415,58 @@ export async function findRegistrationDoc(
   if (matchTop) return matchTop;
 
   return null;
+}
+
+/**
+ * Queries event_vouchers collection for all vouchers originating from a specific registration.
+ */
+export async function getVouchersByRegistrationIdServer(
+  registrationId: string,
+  token?: string,
+): Promise<EventVoucher[]> {
+  try {
+    const url = `${FIRESTORE_BASE_URL}:runQuery?key=${getFirebaseApiKey()}`;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    };
+    const authToken = await resolveAuthToken(token);
+    if (authToken) {
+      headers.Authorization = `Bearer ${authToken}`;
+    }
+    const body = {
+      structuredQuery: {
+        from: [{ collectionId: "event_vouchers" }],
+        where: {
+          fieldFilter: {
+            field: { fieldPath: "source_registration_id" },
+            op: "EQUAL",
+            value: { stringValue: registrationId },
+          },
+        },
+      },
+    };
+    const res = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) return [];
+    const items = (await res.json()) as Array<{ document?: { name?: string; fields?: Record<string, unknown> } }>;
+    if (!Array.isArray(items)) return [];
+    const vouchers: EventVoucher[] = [];
+    for (const item of items) {
+      if (!item.document) continue;
+      const decoded = decodeFirestoreDoc(item.document);
+      if (decoded && decoded.code) {
+        vouchers.push(decoded as unknown as EventVoucher);
+      }
+    }
+    return vouchers;
+  } catch (err) {
+    console.warn(`[Firestore REST] Failed querying vouchers by registration ${registrationId}:`, err);
+    return [];
+  }
 }
 
 /**

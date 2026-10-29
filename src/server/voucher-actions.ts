@@ -5,8 +5,16 @@ import {
   type VoucherValidationResult,
   validateVoucherForCart,
 } from "@/lib/events/voucher-utils";
-import type { EventVoucher, VoucherStatus } from "@/lib/firestore/types";
-import { getFirestoreDoc, getFirestoreEventByIdServer } from "@/server/firestore-admin";
+import { normalizeRegistrationDoc } from "@/lib/firestore/normalization";
+import type { BundleIssuedVoucher, EventVoucher, VoucherStatus } from "@/lib/firestore/types";
+import { verifyFirebaseIdToken } from "@/server/auth-actions";
+import { isAuthorizedOrganizerSession } from "@/server/auth-guard";
+import {
+  getFirestoreDoc,
+  getFirestoreEventByIdServer,
+  getVouchersByRegistrationIdServer,
+  patchFirestoreDoc,
+} from "@/server/firestore-admin";
 
 const FIREBASE_PROJECT_ID = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "gdgjakarta-app";
 function getFirebaseApiKey(): string {
@@ -243,4 +251,211 @@ export async function validateVoucherAction(params: ValidateVoucherActionParams)
     merchandiseDiscount: validation.merchandiseDiscount,
     totalDiscount: validation.totalDiscount,
   };
+}
+
+export interface GetOrGenerateRegistrationBundleVouchersParams {
+  eventId: string;
+  registrationId: string;
+  idToken?: string;
+}
+
+export interface GetOrGenerateRegistrationBundleVouchersResult {
+  success: boolean;
+  vouchers?: BundleIssuedVoucher[];
+  error?: string;
+}
+
+/**
+ * Authoritatively retrieves or generates friend vouchers for a confirmed bundle registration.
+ * Checks existing registration vouchers, recovers vouchers already in event_vouchers,
+ * and only generates new vouchers once if none exist yet.
+ */
+export async function getOrGenerateRegistrationBundleVouchersAction(
+  params: GetOrGenerateRegistrationBundleVouchersParams,
+): Promise<GetOrGenerateRegistrationBundleVouchersResult> {
+  const { eventId, registrationId, idToken } = params;
+  if (!eventId || !registrationId) {
+    return { success: false, error: "eventId and registrationId are required." };
+  }
+
+  // 1. Resolve auth
+  let authToken = idToken?.trim();
+  if (!authToken) {
+    try {
+      const { cookies } = await import("next/headers");
+      const cookieStore = await cookies();
+      authToken = cookieStore.get("auth_token")?.value?.trim();
+    } catch {
+      // Ignore in non-request contexts
+    }
+  }
+
+  if (!authToken) {
+    return { success: false, error: "Authentication required to access vouchers." };
+  }
+
+  const tokenVerification = await verifyFirebaseIdToken(authToken);
+  if (!tokenVerification.valid || !tokenVerification.uid) {
+    return { success: false, error: "Invalid or expired session. Please log in again." };
+  }
+
+  const callerUid = tokenVerification.uid;
+  const callerEmail = tokenVerification.email;
+  const isOrganizer = await isAuthorizedOrganizerSession();
+
+  // 2. Fetch registration document
+  const rawReg = await getFirestoreDoc("event_registrations", registrationId, authToken);
+  if (!rawReg) {
+    return { success: false, error: "Registration not found." };
+  }
+  const reg = normalizeRegistrationDoc(rawReg, registrationId);
+
+  // Check ownership: caller must own registration or be organizer/staff
+  if (!isOrganizer) {
+    const regMemberId = String(reg.member_id || "");
+    const regMemberEmail = String(reg.member_email || "")
+      .toLowerCase()
+      .trim();
+    if (regMemberId !== callerUid && (!callerEmail || regMemberEmail !== callerEmail.toLowerCase().trim())) {
+      return { success: false, error: "Unauthorized access to this registration." };
+    }
+  }
+
+  // Check if registration is confirmed/paid
+  const regStatus = (reg.status || "").toLowerCase().trim();
+  const isConfirmed =
+    regStatus === "paid_and_registered" ||
+    regStatus === "approved" ||
+    regStatus === "registered" ||
+    reg.payment_status === "paid";
+  if (!isConfirmed) {
+    return { success: false, error: "Registration payment is not yet confirmed." };
+  }
+
+  // 3. Fetch Event Document to inspect bundle package
+  const eventDoc = await getFirestoreEventByIdServer(eventId);
+  if (!eventDoc) {
+    return { success: false, error: "Event not found." };
+  }
+
+  const matchingBundle = eventDoc.bundles?.find(
+    (b) =>
+      (reg.bundle_id && b.id === reg.bundle_id) ||
+      (reg.bundle_name && b.name.toLowerCase() === reg.bundle_name.toLowerCase()),
+  );
+
+  if (!matchingBundle || (matchingBundle.ticket_quantity ?? 1) <= 1 || matchingBundle.generate_vouchers === false) {
+    return { success: false, error: "This registration does not include a multi-ticket voucher bundle." };
+  }
+
+  const matchingTicketTier = eventDoc.tickets?.find((t) => t.id === matchingBundle.ticket_id);
+  const now = new Date().toISOString();
+
+  // 4. If registration doc already has bundle_vouchers array stored, make sure they are in event_vouchers
+  if (Array.isArray(reg.bundle_vouchers) && reg.bundle_vouchers.length > 0) {
+    for (const bv of reg.bundle_vouchers) {
+      if (!bv.code) continue;
+      const cleanCode = bv.code.trim().toUpperCase();
+      const existingDoc = await getVoucherDocDirect(eventId, cleanCode);
+      if (!existingDoc) {
+        const voucherDocId = `${eventId}_${cleanCode}`;
+        await patchFirestoreDoc(
+          "event_vouchers",
+          voucherDocId,
+          {
+            id: bv.voucher_id || `bndl-vch-${Date.now()}-${cleanCode}`,
+            event_id: eventId,
+            code: cleanCode,
+            description: `100% Ticket Pass sponsored by ${reg.member_name || "Friend"} (${matchingBundle.name})`,
+            discount_type: "percentage",
+            discount_value: 100,
+            applies_to: "ticket",
+            usage_limit: 1,
+            times_used: bv.status === "redeemed" ? 1 : 0,
+            min_spend: null,
+            max_discount: null,
+            start_date: reg.registered_at ?? now,
+            end_date: matchingBundle.sales_end_date ?? eventDoc.start_date ?? null,
+            status: "active",
+            source_bundle_id: matchingBundle.id,
+            source_registration_id: registrationId,
+            purchaser_member_id: reg.member_id,
+            purchaser_name: reg.member_name,
+            purchaser_email: reg.member_email,
+            created_at: reg.registered_at ?? now,
+            updated_at: now,
+          },
+          true,
+          authToken,
+        );
+      }
+    }
+    return { success: true, vouchers: reg.bundle_vouchers };
+  }
+
+  // 5. If registration doc is missing bundle_vouchers, check if event_vouchers already exist for this registration!
+  const existingVouchers = await getVouchersByRegistrationIdServer(registrationId, authToken);
+  if (existingVouchers.length > 0) {
+    const recoveredVouchers: BundleIssuedVoucher[] = existingVouchers.map((ev) => ({
+      code: ev.code.trim().toUpperCase(),
+      voucher_id: ev.id,
+      ticket_id: matchingBundle.ticket_id || "ticket",
+      ticket_name: matchingTicketTier?.name ?? "Event Admission Ticket",
+      status: (ev.times_used && ev.times_used > 0) || ev.redeemed_at ? "redeemed" : "available",
+      redeemed_by_member_id: ev.redeemed_by_member_id,
+      redeemed_by_name: ev.redeemed_by_name,
+      redeemed_by_email: ev.redeemed_by_email,
+      redeemed_at: ev.redeemed_at,
+    }));
+
+    await patchFirestoreDoc(
+      "event_registrations",
+      registrationId,
+      {
+        bundle_vouchers: recoveredVouchers,
+        updated_at: now,
+      },
+      true,
+      authToken,
+    );
+
+    return { success: true, vouchers: recoveredVouchers };
+  }
+
+  // 6. Generate fresh friend vouchers authoritatively once on server
+  const { generateBundleFriendVouchers } = await import("@/lib/events/bundle-voucher-generator");
+  const generated = generateBundleFriendVouchers({
+    bundle: matchingBundle,
+    buyerRegistrationId: registrationId,
+    buyerMemberId: reg.member_id,
+    buyerName: reg.member_name || "Bundle Purchaser",
+    buyerEmail: reg.member_email || "",
+    ticketTier: matchingTicketTier,
+    eventStartDate: eventDoc.start_date,
+  });
+
+  if (generated.registrationVouchers.length === 0) {
+    return { success: false, error: "Failed to generate bundle friend vouchers." };
+  }
+
+  // Save new friend vouchers into event_vouchers
+  for (const fv of generated.newEventVouchers) {
+    const cleanCode = fv.code.trim().toUpperCase();
+    const voucherDocId = `${eventId}_${cleanCode}`;
+    await patchFirestoreDoc("event_vouchers", voucherDocId, fv as unknown as Record<string, unknown>, true, authToken);
+  }
+
+  // Save generated bundle vouchers onto the registration doc
+  await patchFirestoreDoc(
+    "event_registrations",
+    registrationId,
+    {
+      bundle_vouchers: generated.registrationVouchers,
+      updated_at: now,
+    },
+    true,
+    authToken,
+  );
+
+  return { success: true, vouchers: generated.registrationVouchers };
 }
