@@ -53,8 +53,14 @@ const ATTENDEE_TOKENS: TokenItem[] = [
   {
     id: "ticket_code",
     tag: "[[ticketCode]]",
-    label: "Ticket Code",
-    description: "Official Bevy ticket code (e.g. GOOGA263443955)",
+    label: "Ticket / Ref Code",
+    description: "Official Bevy ticket / reference code (e.g. GOOGA263443955)",
+  },
+  {
+    id: "attendee_id",
+    tag: "[[attendeeId]]",
+    label: "Attendee ID",
+    description: "Numeric Bevy Attendee ID (e.g. 263443955)",
   },
   { id: "qr", tag: "[[qr]]", label: "QR Code Image", description: "Rendered <img> tag for eventId:attendeeId" },
   { id: "session_track", tag: "[[sessionTrack]]", label: "Session Track", description: "e.g. Full Session" },
@@ -80,8 +86,12 @@ const LABEL_HTML_BLOCKS: TokenItem[] = [
       <div class="attendee-title">[[title]]</div>
       <div class="attendee-company">[[company]]</div>
       <div class="ref-pill">
-        <span class="ref-label">TICKET:</span>
+        <span class="ref-label">REF:</span>
         <span class="ref-code">[[ticketCode]]</span>
+      </div>
+      <div class="ref-pill" style="margin-top: 0.4mm;">
+        <span class="ref-label">ID:</span>
+        <span class="ref-code">[[attendeeId]]</span>
       </div>
     </div>
     <div class="ticket-qr-section">
@@ -105,12 +115,16 @@ const LABEL_HTML_BLOCKS: TokenItem[] = [
   },
   {
     id: "block_ref_pill",
-    tag: "Ticket Code Pill",
-    label: "Ticket Code Pill",
-    description: "Monospace ticket code badge displaying [[ticketCode]]",
+    tag: "Ref & ID Pills",
+    label: "Ref & ID Pills",
+    description: "Monospace reference code and attendee ID pills",
     snippet: `<div class="ref-pill">
-  <span class="ref-label">TICKET:</span>
+  <span class="ref-label">REF:</span>
   <span class="ref-code">[[ticketCode]]</span>
+</div>
+<div class="ref-pill" style="margin-top: 0.4mm;">
+  <span class="ref-label">ID:</span>
+  <span class="ref-code">[[attendeeId]]</span>
 </div>`,
   },
 ];
