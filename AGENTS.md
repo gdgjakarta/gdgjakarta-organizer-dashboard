@@ -130,6 +130,11 @@ Keep a component inside its route until it is reused by another feature. Do not 
 
 ## Feature Notes
 
+- **Email Templates & Thermal Printers Ref & ID Alignment**:
+  - Accepted / Ticket Confirmation email templates (`DEFAULT_ACCEPTED_EMAIL_HTML`) render the Attendee ID (`ID: {{ $('Add Bevy Attendee API').item.json.id }}`) directly beneath the Attendee Ref Code (`Ref: {{ $('Add Bevy Attendee API').item.json.attendee_code }}`).
+  - Dynamic n8n webhook payload sanitizers (`adjustBodyEmailForApprovedWebhook`) and template parsers (`interpolateTemplateHtml`, `ensureAttendeeIdInAcceptedHtml`) preserve both ID and Ref code tags.
+  - Thermal badge print templates render stacked reference badges (`REF: [[ticketCode]]` and `ID: [[attendeeId]]`), supported across default label templates, Monaco editor palettes, and auto-print queue generators.
+
 - **Thermal Printers & Label Station (`/dashboard/printers`)**:
   - **Routes & Components**: `src/app/(main)/dashboard/printers/page.tsx`, `src/app/(main)/dashboard/printers/_components/printers-dashboard.tsx`, and `src/app/(main)/dashboard/printers/_components/label-html-editor-preview.tsx`.
   - **Core Utilities**: `src/lib/printers/types.ts`, `src/lib/printers/templates.ts`, and `src/lib/printers/qr-svg.ts` (self-contained ISO/IEC 18004 SVG QR generator for `eventId:attendeeId`).
