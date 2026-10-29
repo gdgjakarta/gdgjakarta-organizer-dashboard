@@ -211,7 +211,16 @@ const STATUS_VARIANTS: Record<RegistrationStatus, { label: string; badgeClass: s
   },
 };
 
-function getTicketBadgeText(type?: string, price?: number): string {
+function getTicketBadgeText(
+  type?: string,
+  price?: number,
+  bundlePrice?: number | null,
+  isBundleBuyer?: boolean,
+): string {
+  if (isBundleBuyer && typeof bundlePrice === "number") {
+    if (bundlePrice === 0) return "Free Bundle";
+    return `Rp ${bundlePrice.toLocaleString("id-ID")}`;
+  }
   if (type === "free") return "Free RSVP";
   if (type === "paid") return `Rp ${(price ?? 0).toLocaleString("id-ID")}`;
   return `Deposit Rp ${(price ?? 0).toLocaleString("id-ID")}`;
@@ -4815,14 +4824,27 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                                   className={cn(
                                     "w-fit px-1.5 py-0 font-semibold text-[10px]",
                                     reg.ticket_type === "free" &&
+                                      !(
+                                        Boolean(reg.bundle_id) &&
+                                        typeof reg.bundle_price === "number" &&
+                                        reg.bundle_price > 0
+                                      ) &&
                                       "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
-                                    reg.ticket_type === "paid" &&
+                                    (reg.ticket_type === "paid" ||
+                                      (Boolean(reg.bundle_id) &&
+                                        typeof reg.bundle_price === "number" &&
+                                        reg.bundle_price > 0)) &&
                                       "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-400",
                                     reg.ticket_type === "commitment_fee" &&
                                       "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400",
                                   )}
                                 >
-                                  {getTicketBadgeText(reg.ticket_type, reg.ticket_price)}
+                                  {getTicketBadgeText(
+                                    reg.ticket_type,
+                                    reg.ticket_price,
+                                    reg.bundle_price,
+                                    Boolean(reg.bundle_id),
+                                  )}
                                 </Badge>
                                 {reg.voucher_code && (
                                   <Badge
