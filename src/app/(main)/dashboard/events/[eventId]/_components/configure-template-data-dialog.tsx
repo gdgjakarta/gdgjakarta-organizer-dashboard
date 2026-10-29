@@ -98,6 +98,7 @@ export function ConfigureTemplateDataDialog({
   const venueLocationId = useId();
   const venueUrlId = useId();
   const attendeeCodeId = useId();
+  const attendeeIdInputId = useId();
   const checklistInputId = useId();
 
   // If dialog opens and selectedKey differs, sync once or keep user on active key
@@ -541,7 +542,25 @@ export function ConfigureTemplateDataDialog({
                           }))
                         }
                         placeholder="GDG-JKT-89241"
-                        className="h-8 text-xs"
+                        className="h-8 text-xs font-mono"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label htmlFor={attendeeIdInputId} className="text-xs font-medium">
+                        Attendee ID
+                      </Label>
+                      <Input
+                        id={attendeeIdInputId}
+                        value={currentData.attendeeId ? String(currentData.attendeeId) : ""}
+                        onChange={(e) =>
+                          handleUpdate((prev) => ({
+                            ...prev,
+                            attendeeId: e.target.value,
+                          }))
+                        }
+                        placeholder="2793132"
+                        className="h-8 text-xs font-mono"
                       />
                     </div>
 
