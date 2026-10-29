@@ -1829,6 +1829,15 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
       if (filterStatus === "checked_in") {
         return Boolean(reg.is_checked_in) || regStatus === "attended";
       }
+      if (filterStatus === "registered_attendees") {
+        return (
+          regStatus === "approved" ||
+          regStatus === "paid_and_registered" ||
+          regStatus === "attended" ||
+          regStatus === "confirmed" ||
+          regStatus === "registered"
+        );
+      }
       if (filterStatus === "approved") {
         return (
           regStatus === "approved" ||
@@ -4365,7 +4374,9 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                       ? "Checked In"
                       : statusFilter === "not_checked_in"
                         ? "Not Checked In (Drop)"
-                        : STATUS_VARIANTS[statusFilter as RegistrationStatus]?.label || statusFilter}
+                        : statusFilter === "registered_attendees"
+                          ? "Total Registered Attendee"
+                          : STATUS_VARIANTS[statusFilter as RegistrationStatus]?.label || statusFilter}
                   </span>
                   <button
                     type="button"

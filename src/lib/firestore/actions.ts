@@ -345,10 +345,19 @@ export async function updateRegistrationCheckInAction(
   bevyAttendeeId?: number | null,
   checkinDate?: string | null,
   attendeeCode?: string | null,
+  fallbackRegistration?: Partial<FirestoreRegistration>,
 ) {
   try {
     const { updateRegistrationCheckIn } = await import("./client");
-    await updateRegistrationCheckIn(registrationId, eventId, isCheckedIn, bevyAttendeeId, checkinDate, attendeeCode);
+    await updateRegistrationCheckIn(
+      registrationId,
+      eventId,
+      isCheckedIn,
+      bevyAttendeeId,
+      checkinDate,
+      attendeeCode,
+      fallbackRegistration,
+    );
     await revalidateDashboardPath(`/dashboard/events/${eventId}`);
     return { success: true };
   } catch (err) {

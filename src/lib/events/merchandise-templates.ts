@@ -1,4 +1,10 @@
-import type { EventMerchandiseItem, MerchandiseGuideline, MerchandiseVariation } from "@/lib/firestore/types";
+import type {
+  EventMerchandiseItem,
+  EventMerchandiseOrder,
+  FirestoreRegistration,
+  MerchandiseGuideline,
+  MerchandiseVariation,
+} from "@/lib/firestore/types";
 
 export interface VariationTemplatePreset {
   id: string;
@@ -568,16 +574,120 @@ export interface MerchandiseComprehensiveStock {
 }
 
 /**
+ * Extracts live units sold for each variation option across registrations and paid OTS orders.
+ * Returns: { [variationName]: { [optionValue]: count } }
+ */
+export function extractLiveOptionSoldUnits(
+  merchandise: EventMerchandiseItem[],
+  registrations: FirestoreRegistration[],
+  orders?: EventMerchandiseOrder[],
+): Record<string, Record<string, Record<string, number>>> {
+  const liveCountMap: Record<string, Record<string, Record<string, number>>> = {};
+
+  for (const m of merchandise) {
+    liveCountMap[m.id] = {};
+    const variations = m.variations;
+    for (const v of variations) {
+      liveCountMap[m.id][v.name] = {};
+      const options = v.options || [];
+      for (const opt of options) {
+        liveCountMap[m.id][v.name][opt] = 0;
+      }
+    }
+  }
+
+  // Count from eligible attendee registrations
+  for (const reg of registrations) {
+    if (reg.status === "cancelled" || reg.status === "canceled" || reg.status === "rejected") continue;
+    for (const item of reg.selected_merchandise ?? []) {
+      const matched = merchandise.find(
+        (m) =>
+          m.id === item.id ||
+          m.id === item.merchandise_id ||
+          m.name.toLowerCase().trim() === item.name?.toLowerCase().trim(),
+      );
+      if (!matched) continue;
+      const qty = item.quantity || 1;
+      const varMap = liveCountMap[matched.id];
+      if (!varMap) continue;
+
+      if (item.selected_variations && typeof item.selected_variations === "object") {
+        for (const [vName, optVal] of Object.entries(item.selected_variations)) {
+          if (!optVal) continue;
+          for (const realVName of Object.keys(varMap)) {
+            if (realVName.toLowerCase() === vName.toLowerCase()) {
+              varMap[realVName][String(optVal)] = (varMap[realVName][String(optVal)] || 0) + qty;
+            }
+          }
+        }
+      }
+      if (item.selected_size) {
+        for (const realVName of Object.keys(varMap)) {
+          if (realVName.toLowerCase().includes("size") || realVName.toLowerCase().includes("ukuran")) {
+            const sizeVal = String(item.selected_size);
+            varMap[realVName][sizeVal] = (varMap[realVName][sizeVal] || 0) + qty;
+          }
+        }
+      }
+    }
+  }
+
+  // Count from paid on-the-spot merchandise orders
+  if (orders) {
+    for (const o of orders) {
+      if (o.payment_status !== "paid") continue;
+      for (const it of o.items ?? []) {
+        const matched = merchandise.find(
+          (m) => m.id === it.merchandise_id || m.name.toLowerCase().trim() === it.name?.toLowerCase().trim(),
+        );
+        if (!matched) continue;
+        const qty = it.quantity || 1;
+        const varMap = liveCountMap[matched.id];
+        if (!varMap) continue;
+
+        if (it.selected_variations && typeof it.selected_variations === "object") {
+          for (const [vName, optVal] of Object.entries(it.selected_variations)) {
+            if (!optVal) continue;
+            for (const realVName of Object.keys(varMap)) {
+              if (realVName.toLowerCase() === vName.toLowerCase()) {
+                varMap[realVName][String(optVal)] = (varMap[realVName][String(optVal)] || 0) + qty;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Merge live counts with baseline item variation detail sold counts (never double-counting)
+  const result: Record<string, Record<string, Record<string, number>>> = {};
+  for (const m of merchandise) {
+    result[m.id] = {};
+    const variations = m.variations;
+    for (const v of variations) {
+      result[m.id][v.name] = {};
+      const options = v.options || [];
+      for (const opt of options) {
+        const baseSold = v.option_details?.[opt]?.total_sold ?? 0;
+        const liveSold = liveCountMap[m.id]?.[v.name]?.[opt] ?? 0;
+        result[m.id][v.name][opt] = Math.max(baseSold, liveSold);
+      }
+    }
+  }
+
+  return result;
+}
+
+/**
  * Calculates comprehensive stock metrics for a merchandise item.
  * If base item stock is null, but variation options have explicit quotas (e.g. S:40, M:50, L:40, XL:20),
- * aggregates the primary variation's option quotas into total capacity.
+ * aggregates the primary variation's option quotas into total capacity and available remaining stock.
  */
 export function calculateMerchandiseComprehensiveStock(
   item: EventMerchandiseItem,
   liveSoldUnits?: number,
+  liveOptionSoldUnits?: Record<string, Record<string, number>>,
 ): MerchandiseComprehensiveStock {
-  const totalSold = typeof liveSoldUnits === "number" ? liveSoldUnits : (item.total_sold ?? 0);
-
   const variationsBreakdown: MerchandiseVariationStockBreakdown[] = item.variations.map((v) => {
     let hasCustomQuotas = false;
     const options: MerchandiseOptionStockBreakdown[] = v.options.map((opt) => {
@@ -592,7 +702,9 @@ export function calculateMerchandiseComprehensiveStock(
         quota = Number(item.stock);
       }
 
-      const sold = detail?.total_sold ?? 0;
+      const rawSold = detail?.total_sold ?? 0;
+      const liveSold = liveOptionSoldUnits?.[v.name]?.[opt];
+      const sold = typeof liveSold === "number" ? Math.max(rawSold, liveSold) : rawSold;
       const remaining = quota !== null ? Math.max(0, quota - sold) : null;
       const isSoldOut = (quota !== null && remaining !== null && remaining <= 0) || item.status === "out_of_stock";
 
@@ -612,29 +724,51 @@ export function calculateMerchandiseComprehensiveStock(
     };
   });
 
-  // Calculate overall total capacity
+  // Check if variations have custom quotas (e.g., Size has S:25, M:25, L:25, XL:20)
+  const variationWithQuotas = variationsBreakdown.find((vb) => vb.hasCustomQuotas);
+
   let totalCapacity: number | null = null;
   let hasVariationQuotas = false;
+  let totalRemaining: number | null = null;
+  let totalSold = typeof liveSoldUnits === "number" && liveSoldUnits > 0 ? liveSoldUnits : (item.total_sold ?? 0);
 
-  if (item.stock !== null && item.stock !== undefined) {
-    totalCapacity = Number(item.stock);
-  } else {
-    // Check if variations have custom quotas (e.g., Size has S:40, M:50, etc.)
-    const variationWithQuotas = variationsBreakdown.find((vb) => vb.hasCustomQuotas);
-    if (variationWithQuotas) {
-      hasVariationQuotas = true;
-      let sumQuota = 0;
-      for (const opt of variationWithQuotas.options) {
-        if (opt.quota !== null) {
-          sumQuota += opt.quota;
-        }
+  if (variationWithQuotas) {
+    hasVariationQuotas = true;
+    let sumQuota = 0;
+    let sumRemaining = 0;
+    let sumOptionSold = 0;
+    let hasUnlimitedOption = false;
+
+    for (const opt of variationWithQuotas.options) {
+      if (opt.quota !== null) {
+        sumQuota += opt.quota;
+        sumRemaining += Math.max(0, opt.remaining ?? 0);
+      } else {
+        hasUnlimitedOption = true;
       }
+      sumOptionSold += opt.sold;
+    }
+
+    if (item.stock !== null && item.stock !== undefined) {
+      totalCapacity = Number(item.stock);
+    } else {
       totalCapacity = sumQuota > 0 ? sumQuota : null;
     }
+
+    totalSold = Math.max(totalSold, sumOptionSold);
+    // When an item has variation quotas, the true available remaining stock is the sum of remaining units across selectable options
+    totalRemaining = hasUnlimitedOption && item.stock === null ? null : sumRemaining;
+  } else if (item.stock !== null && item.stock !== undefined) {
+    totalCapacity = Number(item.stock);
+    totalSold = Math.max(totalSold, typeof liveSoldUnits === "number" ? liveSoldUnits : 0);
+    totalRemaining = Math.max(0, totalCapacity - totalSold);
+  } else {
+    // Truly unlimited stock
+    totalSold = Math.max(totalSold, typeof liveSoldUnits === "number" ? liveSoldUnits : 0);
+    totalRemaining = null;
   }
 
   const isUnlimited = totalCapacity === null;
-  const totalRemaining = totalCapacity !== null ? Math.max(0, totalCapacity - totalSold) : null;
   const isSoldOut =
     item.status === "out_of_stock" ||
     (totalRemaining !== null && totalRemaining <= 0) ||

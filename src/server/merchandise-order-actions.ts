@@ -3,8 +3,7 @@
 import { z } from "zod";
 
 import { normalizeMerchandiseOrder } from "@/lib/firestore/normalization";
-import type { EventMerchandiseOrder, MerchandiseOrderStatusLog } from "@/lib/firestore/types";
-import { verifyFirebaseIdToken } from "@/server/auth-actions";
+import type { MerchandiseOrderStatusLog } from "@/lib/firestore/types";
 import { getAuthenticatedSessionUser, isAuthorizedOrganizerSession } from "@/server/auth-guard";
 import {
   deleteFirestoreDoc,
@@ -60,6 +59,7 @@ const createOrderSchema = z.object({
   isProduction: z.boolean().optional(),
   actorName: z.string().optional(),
   actorId: z.string().optional(),
+  authToken: z.string().optional(),
 });
 
 export type CreateOnTheSpotOrderInput = z.input<typeof createOrderSchema>;
@@ -80,6 +80,24 @@ export async function createOnTheSpotMerchandiseOrderAction(input: CreateOnTheSp
   }
 
   const data = parsed.data;
+
+  // If a fresh ID token is provided by client, refresh session cookie to avoid stale bearer tokens
+  if (data.authToken) {
+    try {
+      const { cookies } = await import("next/headers");
+      const cookieStore = await cookies();
+      cookieStore.set("auth_token", data.authToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: 60 * 60 * 24 * 7,
+      });
+    } catch {
+      // non-fatal
+    }
+  }
+
   const sessionUser = await getAuthenticatedSessionUser();
   const actorName = data.actorName?.trim() || sessionUser?.name || "Event Organizer";
   const actorId = data.actorId?.trim() || sessionUser?.id || "organizer";
@@ -157,13 +175,13 @@ export async function createOnTheSpotMerchandiseOrderAction(input: CreateOnTheSp
       notes: data.notes || null,
     };
 
-    const saved = await patchFirestoreDoc("event_merchandise_orders", orderId, orderDocPayload);
+    const saved = await patchFirestoreDoc("event_merchandise_orders", orderId, orderDocPayload, true, data.authToken);
     if (!saved) {
       return { success: false, error: "Failed to save merchandise order to Firestore." };
     }
 
-    void revalidateDashboardPath(`/dashboard/events/${data.eventId}`).catch(() => {});
-    void revalidateDashboardPath("/dashboard/member/purchases").catch(() => {});
+    void revalidateDashboardPath(`/dashboard/events/${data.eventId}`).catch(() => undefined);
+    void revalidateDashboardPath("/dashboard/member/purchases").catch(() => undefined);
 
     return {
       success: true,
@@ -280,13 +298,13 @@ export async function createOnTheSpotMerchandiseOrderAction(input: CreateOnTheSp
     notes: data.notes || null,
   };
 
-  const saved = await patchFirestoreDoc("event_merchandise_orders", orderId, orderDocPayload);
+  const saved = await patchFirestoreDoc("event_merchandise_orders", orderId, orderDocPayload, true, data.authToken);
   if (!saved) {
     return { success: false, error: "Payment link generated but failed to save order to Firestore." };
   }
 
-  void revalidateDashboardPath(`/dashboard/events/${data.eventId}`).catch(() => {});
-  void revalidateDashboardPath("/dashboard/member/purchases").catch(() => {});
+  void revalidateDashboardPath(`/dashboard/events/${data.eventId}`).catch(() => undefined);
+  void revalidateDashboardPath("/dashboard/member/purchases").catch(() => undefined);
 
   return {
     success: true,
@@ -303,7 +321,7 @@ export async function createOnTheSpotMerchandiseOrderAction(input: CreateOnTheSp
  * Server Action: Checks payment status for an on-the-spot merchandise order.
  * Queries DOKU Status API directly and reconciles Firestore order if paid.
  */
-export async function checkOnTheSpotPaymentStatusAction(orderId: string, invoiceNumber?: string) {
+export async function checkOnTheSpotPaymentStatusAction(orderId: string, invoiceNumber?: string, token?: string) {
   const isOrganizer = await isAuthorizedOrganizerSession();
   if (!isOrganizer) {
     return { success: false, error: "Unauthorized: Organizer access required to check payment status." };
@@ -358,13 +376,16 @@ export async function checkOnTheSpotPaymentStatusAction(orderId: string, invoice
   }
 
   if (statusRes.isPaid) {
-    const reconcileRes = await updateMerchandiseOrderFromPayment({
-      invoiceNumber: targetInvoice,
-      orderId: order.id,
-      amount: order.total_amount,
-      paymentChannel: "QRIS",
-      isTeamAccess: true,
-    });
+    const reconcileRes = await updateMerchandiseOrderFromPayment(
+      {
+        invoiceNumber: targetInvoice,
+        orderId: order.id,
+        amount: order.total_amount,
+        paymentChannel: "QRIS",
+        isTeamAccess: true,
+      },
+      token,
+    );
 
     try {
       await revalidateDashboardPath(`/dashboard/events/${order.event_id}`);
@@ -397,6 +418,7 @@ export async function updateMerchandiseOrderCollectionStatusAction(
   isCollected: boolean,
   notes?: string,
   actor?: { id?: string; name?: string },
+  token?: string,
 ) {
   const isOrganizer = await isAuthorizedOrganizerSession();
   if (!isOrganizer) {
@@ -407,7 +429,7 @@ export async function updateMerchandiseOrderCollectionStatusAction(
   const actorName = actor?.name?.trim() || sessionUser?.name || "Event Organizer";
   const actorId = actor?.id?.trim() || sessionUser?.id || "organizer";
 
-  const orderDoc = await getFirestoreDoc("event_merchandise_orders", orderId);
+  const orderDoc = await getFirestoreDoc("event_merchandise_orders", orderId, token);
   if (!orderDoc) {
     return { success: false, error: `Order ${orderId} not found.` };
   }
@@ -448,7 +470,7 @@ export async function updateMerchandiseOrderCollectionStatusAction(
     updated_at: now,
   };
 
-  const success = await patchFirestoreDoc("event_merchandise_orders", orderId, patchPayload);
+  const success = await patchFirestoreDoc("event_merchandise_orders", orderId, patchPayload, true, token);
   if (!success) {
     return { success: false, error: "Failed to update collection status." };
   }
@@ -472,6 +494,7 @@ export async function cancelOnTheSpotOrderAction(
   orderId: string,
   reason?: string,
   actor?: { id?: string; name?: string },
+  token?: string,
 ) {
   const isOrganizer = await isAuthorizedOrganizerSession();
   if (!isOrganizer) {
@@ -482,7 +505,7 @@ export async function cancelOnTheSpotOrderAction(
   const actorName = actor?.name?.trim() || sessionUser?.name || "Event Organizer";
   const actorId = actor?.id?.trim() || sessionUser?.id || "organizer";
 
-  const orderDoc = await getFirestoreDoc("event_merchandise_orders", orderId);
+  const orderDoc = await getFirestoreDoc("event_merchandise_orders", orderId, token);
   if (!orderDoc) {
     return { success: false, error: `Order ${orderId} not found.` };
   }
@@ -545,13 +568,13 @@ export async function cancelOnTheSpotOrderAction(
     updated_at: now,
   };
 
-  const success = await patchFirestoreDoc("event_merchandise_orders", orderId, patchPayload);
+  const success = await patchFirestoreDoc("event_merchandise_orders", orderId, patchPayload, true, token);
   if (!success) {
     return { success: false, error: "Failed to cancel order." };
   }
 
-  void revalidateDashboardPath(`/dashboard/events/${existing.event_id}`).catch(() => {});
-  void revalidateDashboardPath("/dashboard/member/purchases").catch(() => {});
+  void revalidateDashboardPath(`/dashboard/events/${existing.event_id}`).catch(() => undefined);
+  void revalidateDashboardPath("/dashboard/member/purchases").catch(() => undefined);
 
   return { success: true };
 }
@@ -626,9 +649,9 @@ export async function deleteOnTheSpotOrderAction(orderId: string, eventId?: stri
   }
 
   if (targetEventId) {
-    void revalidateDashboardPath(`/dashboard/events/${targetEventId}`).catch(() => {});
+    void revalidateDashboardPath(`/dashboard/events/${targetEventId}`).catch(() => undefined);
   }
-  void revalidateDashboardPath("/dashboard/member/purchases").catch(() => {});
+  void revalidateDashboardPath("/dashboard/member/purchases").catch(() => undefined);
 
   return {
     success: true,

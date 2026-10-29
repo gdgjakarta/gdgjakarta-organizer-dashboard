@@ -22,7 +22,7 @@ import { Switch } from "@/components/ui/switch";
 import { DEFAULT_PAYMENT_HEADER_EMAIL_URL } from "@/lib/events/doku-payment";
 import { calculatePaymentGatewayFee } from "@/lib/events/payment-fee";
 import { calculateVoucherDiscount, formatVoucherDiscountDisplay } from "@/lib/events/voucher-utils";
-import type { EventMerchandiseItem, FirestoreEvent } from "@/lib/firestore/types";
+import type { EventMerchandiseItem, EventVoucher, FirestoreEvent } from "@/lib/firestore/types";
 import { generatePaymentLinkAction } from "@/server/payment-actions";
 
 interface GenerateMerchandisePaymentDialogProps {
@@ -43,6 +43,7 @@ export function GenerateMerchandisePaymentDialog({
   const [customerEmail, setCustomerEmail] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [selectedVariations, setSelectedVariations] = useState<Record<string, string>>({});
+  const [eventVouchers, setEventVouchers] = useState<EventVoucher[]>([]);
   const [selectedVoucherId, setSelectedVoucherId] = useState<string>("none");
   const [sendEmail, setSendEmail] = useState(true);
   const [includeCommitmentFee, setIncludeCommitmentFee] = useState(false);
@@ -80,8 +81,14 @@ export function GenerateMerchandisePaymentDialog({
 
     async function loadLatestPaymentEnv() {
       try {
-        const { getFirestoreEventById } = await import("@/lib/firestore/client");
-        const docData = await getFirestoreEventById(String(event.id));
+        const { getFirestoreEventById, getEventVouchers } = await import("@/lib/firestore/client");
+        const [docData, vouchersList] = await Promise.all([
+          getFirestoreEventById(String(event.id)),
+          getEventVouchers(String(event.id)),
+        ]);
+        if (vouchersList) {
+          setEventVouchers(vouchersList);
+        }
         if (docData) {
           setLatestEventConfig(docData);
           const resolvedEnv =
@@ -222,7 +229,7 @@ export function GenerateMerchandisePaymentDialog({
       }
     }
 
-    const eligibleVouchers = (event.vouchers ?? []).filter(
+    const eligibleVouchers = eventVouchers.filter(
       (v) => v.status === "active" && (v.applies_to === "merchandise" || v.applies_to === "all"),
     );
     const selectedVoucher = eligibleVouchers.find((v) => v.id === selectedVoucherId);
@@ -340,7 +347,7 @@ export function GenerateMerchandisePaymentDialog({
     }
   }
 
-  const eligibleVouchers = (event.vouchers ?? []).filter(
+  const eligibleVouchers = eventVouchers.filter(
     (v) => v.status === "active" && (v.applies_to === "merchandise" || v.applies_to === "all"),
   );
   const selectedVoucher = eligibleVouchers.find((v) => v.id === selectedVoucherId);
@@ -427,7 +434,7 @@ export function GenerateMerchandisePaymentDialog({
                 </a>
               </Button>
               <Button variant="outline" size="sm" asChild className="w-full gap-2 text-xs">
-                <a href="https://sandbox.doku.com/qris-simulator/customer" target="_blank" rel="noopener noreferrer">
+                <a href="https://sandbox.doku.com/qris-simulator/" target="_blank" rel="noopener noreferrer">
                   <QrCode className="size-3.5 text-primary" />
                   Test with DOKU QRIS Simulator
                 </a>

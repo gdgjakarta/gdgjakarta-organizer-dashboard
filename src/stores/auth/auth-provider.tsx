@@ -2,7 +2,14 @@
 
 import { createContext, use, useEffect, useState } from "react";
 
-import { getAdditionalUserInfo, onAuthStateChanged, signInWithPopup, signOut, type User } from "firebase/auth";
+import {
+  getAdditionalUserInfo,
+  onAuthStateChanged,
+  onIdTokenChanged,
+  signInWithPopup,
+  signOut,
+  type User,
+} from "firebase/auth";
 import { type StoreApi, useStore } from "zustand";
 
 import { auth, googleProvider } from "@/config/firebase";
@@ -251,7 +258,22 @@ export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    return () => unsubscribe();
+    const unsubscribeToken = onIdTokenChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        try {
+          const freshToken = await firebaseUser.getIdToken();
+          const currentRole = store.getState().user?.role;
+          await restoreSessionCookieAction(freshToken, currentRole);
+        } catch {
+          // background sync error is non-fatal
+        }
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      unsubscribeToken();
+    };
   }, [store]);
 
   return <AuthStoreContext.Provider value={store}>{children}</AuthStoreContext.Provider>;

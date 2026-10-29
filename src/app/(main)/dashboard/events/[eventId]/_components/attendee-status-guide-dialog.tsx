@@ -336,10 +336,10 @@ export function AttendeeStatusGuideDialog({ open, onOpenChange }: AttendeeStatus
               <div className="rounded-xl border bg-card p-4 space-y-2">
                 <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
                   <UserCheck className="size-4 text-emerald-600 dark:text-emerald-400" />
-                  <span>1. Confirmed Expected Attendees (Denominator)</span>
+                  <span>1. Total Registered Attendee (Denominator)</span>
                 </div>
                 <div className="rounded-md bg-muted/50 p-2.5 font-mono text-xs">
-                  Total Confirmed = (Approved) + (Paid & Registered) + (Attended) + (Registered)
+                  Total Registered Attendee = (Approved) + (Paid & Registered) + (Attended) + (Registered)
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">
                   Every attendee who holds an admission pass is expected to attend. In GDG Jakarta events, this includes

@@ -273,6 +273,7 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
 
   // Listen to recent jobs
   React.useEffect(() => {
+    if (!user) return;
     let unsubscribe: (() => void) | undefined;
     void (async () => {
       try {
@@ -285,7 +286,7 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
       }
     })();
     return () => unsubscribe?.();
-  }, []);
+  }, [user]);
 
   // Build active LabelTemplateData combining selected Bevy event + sample attendee overrides
   const activeSampleData = React.useMemo<LabelTemplateData>(() => {

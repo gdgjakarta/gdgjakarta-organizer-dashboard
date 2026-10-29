@@ -146,20 +146,8 @@ export async function validateVoucherAction(params: ValidateVoucherActionParams)
     };
   }
 
-  // 1. First look up the private voucher record in `event_vouchers/{eventId}_{code}`
-  let matchedVoucher = await getVoucherDocDirect(eventId, cleanCode);
-
-  // 2. Fallback to legacy event document if not yet migrated to event_vouchers
-  if (!matchedVoucher) {
-    try {
-      const legacyEvent = await getFirestoreEventByIdServer(eventId, { includeVouchers: true });
-      if (legacyEvent && Array.isArray(legacyEvent.vouchers)) {
-        matchedVoucher = legacyEvent.vouchers.find((v) => v.code.toUpperCase() === cleanCode) ?? null;
-      }
-    } catch (fallbackErr) {
-      console.warn("[Voucher Action] Fallback legacy event check error:", fallbackErr);
-    }
-  }
+  // 1. Look up the private voucher record in `event_vouchers/{eventId}_{code}`
+  const matchedVoucher = await getVoucherDocDirect(eventId, cleanCode);
 
   if (!matchedVoucher) {
     return {

@@ -1546,16 +1546,18 @@ service cloud.firestore {
       allow delete: if hasTeamAccess();
 
       // Update: Team members (full voucher editing) or authenticated users redeeming a voucher upon registration checkout.
-      // Regular users are strictly restricted to updating redemption tracking fields and non-negative times_used counter.
+      // Regular users are strictly restricted to updating redemption tracking fields and incrementing times_used counter within usage limits.
       allow update: if isValidEventVoucher(request.resource.data) && (
         hasTeamAccess() ||
         (
           isAuthenticated() &&
+          resource.data.status == 'active' &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'times_used', 'redeemed_by_member_id', 'redeemed_by_name',
             'redeemed_by_email', 'redeemed_at', 'updated_at'
           ]) &&
-          (!('times_used' in request.resource.data) || ((request.resource.data.times_used is int || request.resource.data.times_used is float) && request.resource.data.times_used >= 0))
+          request.resource.data.times_used == (('times_used' in resource.data && resource.data.times_used != null) ? resource.data.times_used + 1 : 1) &&
+          (!('usage_limit' in resource.data && resource.data.usage_limit != null) || request.resource.data.times_used <= resource.data.usage_limit)
         )
       );
     }

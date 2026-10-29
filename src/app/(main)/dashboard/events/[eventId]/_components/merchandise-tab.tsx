@@ -38,7 +38,11 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { calculateMerchandiseComprehensiveStock, getMerchandiseSalesStatus } from "@/lib/events/merchandise-templates";
+import {
+  calculateMerchandiseComprehensiveStock,
+  extractLiveOptionSoldUnits,
+  getMerchandiseSalesStatus,
+} from "@/lib/events/merchandise-templates";
 import { calculateMerchandiseRevenueMetrics } from "@/lib/events/revenue-utils";
 import { updateEventMerchandiseAction } from "@/lib/firestore/actions";
 import { subscribeEventMerchandiseOrders } from "@/lib/firestore/merchandise-orders";
@@ -154,6 +158,10 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
     () => calculateMerchandiseRevenueMetrics(registrations, items, merchandiseOrders),
     [registrations, items, merchandiseOrders],
   );
+
+  const liveOptionSoldMap = useMemo(() => {
+    return extractLiveOptionSoldUnits(items, registrations, merchandiseOrders);
+  }, [items, registrations, merchandiseOrders]);
 
   // Derived merchandise items list with calculated sales, revenue, and redemptions
   const merchandiseItemList = useMemo(() => {
@@ -702,7 +710,11 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
               {items.map((item) => {
                 const salesStatus = getMerchandiseSalesStatus(item);
                 const itemStats = merchRevenueMetrics.byItem.get(item.id);
-                const stockMetrics = calculateMerchandiseComprehensiveStock(item, itemStats?.unitsSold);
+                const stockMetrics = calculateMerchandiseComprehensiveStock(
+                  item,
+                  itemStats?.unitsSold,
+                  liveOptionSoldMap[item.id],
+                );
 
                 return (
                   <div

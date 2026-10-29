@@ -80,10 +80,8 @@ interface VouchersTabProps {
 }
 
 export function VouchersTab({ event, registrations: initialRegistrations }: VouchersTabProps) {
-  const [vouchers, setVouchers] = useState<EventVoucher[]>(event.vouchers ?? []);
-  const [isLoadingVouchers, setIsLoadingVouchers] = useState<boolean>(
-    () => !event.vouchers || event.vouchers.length === 0,
-  );
+  const [vouchers, setVouchers] = useState<EventVoucher[]>([]);
+  const [isLoadingVouchers, setIsLoadingVouchers] = useState<boolean>(true);
   const [registrations, setRegistrations] = useState<FirestoreRegistration[]>(initialRegistrations ?? []);
   const [editingVoucher, setEditingVoucher] = useState<EventVoucher | null>(null);
   const [viewingRedemptionsVoucher, setViewingRedemptionsVoucher] = useState<EventVoucher | null>(null);
@@ -106,9 +104,23 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
   const [referralDiscountAmount, setReferralDiscountAmount] = useState<string>(
     typeof event.referral_discount_amount === "number" ? String(event.referral_discount_amount) : "",
   );
+  const [savedReferralConfig, setSavedReferralConfig] = useState(() => ({
+    enabled: event.referral_enabled !== false,
+    discountType: (event.referral_discount_type === "fixed" ? "fixed" : "percentage") as "percentage" | "fixed",
+    discountOverride:
+      typeof event.referral_discount_percentage === "number" ? String(event.referral_discount_percentage) : "",
+    discountAmount: typeof event.referral_discount_amount === "number" ? String(event.referral_discount_amount) : "",
+  }));
   const [isSavingReferral, setIsSavingReferral] = useState(false);
   const [isGloballyExcluded, setIsGloballyExcluded] = useState(false);
   const [globalIneligibilityReason, setGlobalIneligibilityReason] = useState<string | null>(null);
+
+  const hasReferralChanges =
+    referralEnabled !== savedReferralConfig.enabled ||
+    referralDiscountType !== savedReferralConfig.discountType ||
+    (referralDiscountType === "percentage"
+      ? referralDiscountOverride.trim() !== savedReferralConfig.discountOverride
+      : referralDiscountAmount.trim() !== savedReferralConfig.discountAmount);
 
   useEffect(() => {
     if (!event.id) return;
@@ -157,6 +169,16 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
         event,
       );
       if (res.success) {
+        const nextOverride = parsedPercentage !== null ? String(parsedPercentage) : "";
+        const nextAmount = parsedAmount !== null ? String(parsedAmount) : "";
+        setReferralDiscountOverride(nextOverride);
+        setReferralDiscountAmount(nextAmount);
+        setSavedReferralConfig({
+          enabled: referralEnabled,
+          discountType: referralDiscountType,
+          discountOverride: nextOverride,
+          discountAmount: nextAmount,
+        });
         toast.success("Event referral settings updated successfully!");
       } else {
         toast.error(res.error || "Failed to update referral settings.");
@@ -235,7 +257,12 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
     const byCode = new Map<string, EventVoucher>();
     for (const v of vouchers) {
       if (!v.code) continue;
-      byCode.set(v.code.trim().toUpperCase(), v);
+      const cleanCode = v.code.trim().toUpperCase();
+      byCode.set(cleanCode, {
+        ...v,
+        id: v.id || `vch-${cleanCode}`,
+        code: cleanCode,
+      });
     }
 
     const confirmedStatuses = new Set(["approved", "paid_and_registered", "registered"]);
@@ -401,7 +428,7 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
     }
   }, [event.id, event.bundles, event.tickets, event.start_date, registrations, vouchers]);
 
-  // Matched registrations per voucher ID
+  // Matched registrations per voucher ID and Code
   const redeemedRegistrationsMap = useMemo(() => {
     const map = new Map<string, FirestoreRegistration[]>();
 
@@ -410,10 +437,11 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
       const matched = registrations.filter((reg) => {
         const regCode = reg.voucher_code ? reg.voucher_code.trim().toUpperCase() : "";
         const matchesCode = regCode.length > 0 && regCode === normCode;
-        const matchesId = Boolean(reg.voucher_id && reg.voucher_id === v.id);
+        const matchesId = Boolean(reg.voucher_id && (reg.voucher_id === v.id || reg.voucher_id === normCode));
         return matchesCode || matchesId;
       });
-      map.set(v.id, matched);
+      if (v.id) map.set(v.id, matched);
+      map.set(normCode, matched);
     }
 
     return map;
@@ -424,15 +452,23 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
     const map = new Map<string, number>();
 
     for (const v of allVouchers) {
-      const matched = redeemedRegistrationsMap.get(v.id) ?? [];
-      let count = matched.length;
+      const normCode = v.code.trim().toUpperCase();
+      const matched = redeemedRegistrationsMap.get(v.id) ?? redeemedRegistrationsMap.get(normCode) ?? [];
+      const activeMatched = matched.filter((r) => {
+        const s = (r.status || "").toLowerCase();
+        return s !== "rejected" && s !== "canceled" && s !== "cancelled";
+      });
+      let count = activeMatched.length;
       // Fallback: If no registrations matched but the voucher document has direct redemption metadata
       if (count === 0 && (v.redeemed_by_name || v.redeemed_by_email)) {
         count = 1;
       }
 
-      // Best effort: take the maximum between live registrations count and stored times_used
-      map.set(v.id, Math.max(count, v.times_used || 0));
+      // If registrations are loaded and match this voucher, use active registrations count.
+      // Otherwise fall back to stored times_used.
+      const resolvedCount = matched.length > 0 ? count : (v.times_used ?? count);
+      if (v.id) map.set(v.id, resolvedCount);
+      map.set(normCode, resolvedCount);
     }
 
     return map;
@@ -454,24 +490,44 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
 
   // Filtered List
   const filteredVouchers = useMemo(() => {
+    const rawQuery = searchQuery.trim().toLowerCase();
+    const queryTokens = rawQuery ? rawQuery.split(/\s+/).filter(Boolean) : [];
+
     return allVouchers.filter((v) => {
       const isBundleVoucher = Boolean(
         v.source_bundle_id || v.purchaser_name || v.code.toUpperCase().startsWith("BNDL-"),
       );
 
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        const matchesCode = v.code.toLowerCase().includes(q);
-        const matchesDesc = (v.description || "").toLowerCase().includes(q);
-        const matchesPurchaser =
-          (v.purchaser_name || "").toLowerCase().includes(q) || (v.purchaser_email || "").toLowerCase().includes(q);
-        const matchesRedeemer =
-          (v.redeemed_by_name || "").toLowerCase().includes(q) ||
-          (v.redeemed_by_email || "").toLowerCase().includes(q) ||
-          (redeemedRegistrationsMap.get(v.id) ?? []).some(
-            (r) => (r.member_name || "").toLowerCase().includes(q) || (r.member_email || "").toLowerCase().includes(q),
-          );
-        if (!matchesCode && !matchesDesc && !matchesPurchaser && !matchesRedeemer) return false;
+      if (queryTokens.length > 0) {
+        const normCode = v.code.trim().toLowerCase();
+        const codeSpaced = normCode.replace(/[-_]/g, " ");
+        const codePacked = normCode.replace(/[-_]/g, "");
+        const desc = (v.description || "").toLowerCase();
+        const purchaserName = (v.purchaser_name || "").toLowerCase();
+        const purchaserEmail = (v.purchaser_email || "").toLowerCase();
+        const redeemerName = (v.redeemed_by_name || "").toLowerCase();
+        const redeemerEmail = (v.redeemed_by_email || "").toLowerCase();
+        const discountType = (v.discount_type || "").toLowerCase();
+        const appliesTo = (v.applies_to || "").toLowerCase();
+        const status = (v.status || "").toLowerCase();
+        const discountVal = String(v.discount_value ?? "");
+        const discountFormatted = formatVoucherDiscountDisplay(v).toLowerCase();
+
+        const matchedAttendees =
+          redeemedRegistrationsMap.get(v.id) ?? redeemedRegistrationsMap.get(v.code.trim().toUpperCase()) ?? [];
+
+        const attendeeCorpus = matchedAttendees
+          .map(
+            (r) =>
+              `${r.member_name || ""} ${r.member_email || ""} ${r.member_phone || ""} ${r.ticket_name || ""} ${r.ticket_tier || ""} ${r.attendee_code || ""}`,
+          )
+          .join(" ")
+          .toLowerCase();
+
+        const fullCorpus = `${normCode} ${codeSpaced} ${codePacked} ${desc} ${purchaserName} ${purchaserEmail} ${redeemerName} ${redeemerEmail} ${discountType} ${appliesTo} ${status} ${discountVal} ${discountFormatted} ${attendeeCorpus}`;
+
+        const matchesQuery = queryTokens.every((token) => fullCorpus.includes(token));
+        if (!matchesQuery) return false;
       }
 
       if (statusFilter !== "all" && v.status !== statusFilter) {
@@ -482,6 +538,10 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
         if (!isBundleVoucher) return false;
       } else if (targetFilter === "promo") {
         if (isBundleVoucher) return false;
+      } else if (targetFilter === "ticket") {
+        if (v.applies_to !== "ticket" && v.applies_to !== "all") return false;
+      } else if (targetFilter === "merchandise") {
+        if (v.applies_to !== "merchandise" && v.applies_to !== "all") return false;
       } else if (targetFilter !== "all" && v.applies_to !== targetFilter) {
         return false;
       }
@@ -511,7 +571,7 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
     const liveCount = redemptionsCountMap.get(v.id) ?? v.times_used ?? 0;
     setEditingVoucher({
       ...v,
-      times_used: Math.max(liveCount, v.times_used ?? 0),
+      times_used: liveCount,
     });
     setIsDialogOpen(true);
   };
@@ -620,7 +680,7 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
           const liveCount = redemptionsCountMap.get(v.id) ?? v.times_used ?? 0;
           return {
             ...v,
-            times_used: Math.max(liveCount, v.times_used ?? 0),
+            times_used: liveCount,
           };
         });
 
@@ -643,13 +703,9 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
     try {
       const { getEventVouchers } = await import("@/lib/firestore/client");
       const list = await getEventVouchers(String(event.id));
-      if (list && list.length > 0) {
-        setVouchers(list);
-      } else {
-        setVouchers(event.vouchers ?? []);
-      }
+      setVouchers(list || []);
     } catch {
-      setVouchers(event.vouchers ?? []);
+      setVouchers([]);
     }
     setIsDirty(false);
     toast.info("Reverted unsaved voucher changes.");
@@ -900,7 +956,7 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
           <Button
             size="sm"
             onClick={handleSaveReferralConfig}
-            disabled={isSavingReferral}
+            disabled={isSavingReferral || !hasReferralChanges}
             className="h-8 shrink-0 self-end text-xs sm:self-center"
           >
             {isSavingReferral && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
@@ -1042,8 +1098,13 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
           {filteredVouchers.map((v) => {
             const isPercentage = v.discount_type === "percentage";
             const discountDisplay = formatVoucherDiscountDisplay(v);
-            const actualRedeemed = redemptionsCountMap.get(v.id) ?? v.times_used ?? 0;
-            const matchedRedemptions = redeemedRegistrationsMap.get(v.id) ?? [];
+            const actualRedeemed =
+              redemptionsCountMap.get(v.id) ??
+              redemptionsCountMap.get(v.code.trim().toUpperCase()) ??
+              v.times_used ??
+              0;
+            const matchedRedemptions =
+              redeemedRegistrationsMap.get(v.id) ?? redeemedRegistrationsMap.get(v.code.trim().toUpperCase()) ?? [];
             const isBundleVoucher = Boolean(
               v.source_bundle_id || v.purchaser_name || v.code.toUpperCase().startsWith("BNDL-"),
             );

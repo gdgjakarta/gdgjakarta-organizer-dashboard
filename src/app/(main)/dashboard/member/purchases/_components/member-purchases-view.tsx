@@ -440,57 +440,63 @@ export function MemberPurchasesView({ initialRegistrations = [] }: MemberPurchas
       {/* Content */}
       {renderPurchasesContent()}
 
-      {/* QRIS Dialog for Pending Order */}
+      {/* Payment Link Dialog for Pending Order */}
       {selectedPaymentOrder && selectedPaymentOrder.payment_url && (
         <Dialog open={Boolean(selectedPaymentOrder)} onOpenChange={(v) => !v && setSelectedPaymentOrder(null)}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle className="text-base font-semibold">
-                Complete Payment: #{selectedPaymentOrder.order_number}
+                DOKU Checkout: #{selectedPaymentOrder.order_number}
               </DialogTitle>
               <DialogDescription className="text-xs">
-                Scan with GoPay, OVO, Dana, BCA, or mobile banking QRIS to complete your purchase.
+                Open the official DOKU payment portal to complete payment via QRIS, Virtual Account, or E-Wallet.
               </DialogDescription>
             </DialogHeader>
 
-            <div className="flex flex-col items-center justify-center p-4 text-center space-y-3">
-              <div className="overflow-hidden rounded-xl border bg-white p-2 shadow-xs">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=${encodeURIComponent(
-                    selectedPaymentOrder.payment_url,
-                  )}`}
-                  alt="QRIS Code"
-                  className="size-48 object-contain"
-                />
-              </div>
-
-              <div>
-                <p className="text-xs text-muted-foreground">Invoice #{selectedPaymentOrder.payment_invoice_number}</p>
-                <p className="text-xl font-bold tracking-tight text-foreground">
+            <div className="flex flex-col items-center justify-center p-4 text-center space-y-4">
+              <div className="rounded-xl border bg-muted/30 p-4 w-full space-y-1 text-center">
+                <p className="text-xs text-muted-foreground font-mono">
+                  Invoice #{selectedPaymentOrder.payment_invoice_number}
+                </p>
+                <p className="text-2xl font-bold tracking-tight text-foreground">
                   Rp {selectedPaymentOrder.total_amount.toLocaleString("id-ID")}
                 </p>
+                <div className="pt-1 flex justify-center">
+                  <Badge
+                    variant="outline"
+                    className="border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400 gap-1.5 text-xs font-medium"
+                  >
+                    <span className="size-1.5 rounded-full bg-amber-500 shrink-0" />
+                    Waiting for Payment
+                  </Badge>
+                </div>
               </div>
 
-              <div className="w-full space-y-2 pt-2">
-                <div className="flex items-center gap-2">
-                  <Input
-                    readOnly
-                    value={selectedPaymentOrder.payment_url}
-                    className="h-8 font-mono text-xs text-muted-foreground"
-                  />
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleCopy(selectedPaymentOrder.payment_url!)}
-                    className="shrink-0 gap-1.5 text-xs h-8"
-                  >
-                    {hasCopied ? <Check className="size-3 text-emerald-600" /> : <Copy className="size-3" />}
-                    <span>{hasCopied ? "Copied" : "Copy"}</span>
-                  </Button>
+              <div className="w-full space-y-2.5">
+                <div className="space-y-1 text-left">
+                  <label htmlFor="member-checkout-url" className="text-[11px] font-medium text-muted-foreground">
+                    Checkout URL
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="member-checkout-url"
+                      readOnly
+                      value={selectedPaymentOrder.payment_url}
+                      className="h-8 font-mono text-xs text-muted-foreground"
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleCopy(selectedPaymentOrder.payment_url!)}
+                      className="shrink-0 gap-1.5 text-xs h-8"
+                    >
+                      {hasCopied ? <Check className="size-3 text-emerald-600" /> : <Copy className="size-3" />}
+                      <span>{hasCopied ? "Copied" : "Copy"}</span>
+                    </Button>
+                  </div>
                 </div>
 
-                <Button asChild className="w-full gap-2 text-xs h-8">
+                <Button asChild className="w-full gap-2 text-xs font-semibold h-9">
                   <a href={selectedPaymentOrder.payment_url} target="_blank" rel="noopener noreferrer">
                     <ExternalLink className="size-3.5" />
                     Open Checkout in New Tab

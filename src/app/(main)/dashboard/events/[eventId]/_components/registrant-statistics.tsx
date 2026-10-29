@@ -244,6 +244,8 @@ export function RegistrantStatistics({
     return totalPaidFlow > 0 || registrations.some((r) => isPaidRegistration(r));
   }, [event, totalPaidFlow, registrations]);
 
+  const registeredPercent =
+    totalRegistrations > 0 ? ((totalConfirmedAttendees / totalRegistrations) * 100).toFixed(1) : "0.0";
   const approvedPercent = totalRegistrations > 0 ? ((totalApproved / totalRegistrations) * 100).toFixed(1) : "0.0";
   let checkedInPercent = "0.0";
   if (totalConfirmedAttendees > 0) {
@@ -865,7 +867,7 @@ export function RegistrantStatistics({
       <div
         className={cn(
           "grid gap-3 sm:gap-4",
-          isCurationMode ? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-6" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-2",
+          isCurationMode ? "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-7" : "grid-cols-1 sm:grid-cols-3",
         )}
       >
         {/* Total Registrants */}
@@ -901,6 +903,52 @@ export function RegistrantStatistics({
                   ) : (
                     <span>All registered applicants</span>
                   )}
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Total Registered Attendee = approved + paid & registered */}
+        <Card
+          onClick={() =>
+            onSelectStatusFilter?.(activeStatusFilter === "registered_attendees" ? "all" : "registered_attendees")
+          }
+          className={cn(
+            "cursor-pointer transition-all hover:border-teal-500/50 hover:shadow-xs",
+            activeStatusFilter === "registered_attendees" && "border-teal-500/50 bg-teal-500/5 ring-1 ring-teal-500/30",
+          )}
+        >
+          <CardContent className="p-4 sm:p-5">
+            <div className="flex items-center justify-between text-muted-foreground text-xs">
+              <span className="font-medium">Total Registered Attendee</span>
+              <CheckCircle2 className="size-4 text-teal-600 dark:text-teal-400" />
+            </div>
+            {isLoading ? (
+              <>
+                <div className="mt-2.5">
+                  <Shimmer className="h-7 sm:h-8 w-14" />
+                </div>
+                <div className="mt-2">
+                  <Shimmer className="h-4 w-28 rounded-xs" />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="mt-2 font-bold text-2xl tracking-tight text-teal-600 dark:text-teal-400 sm:text-3xl">
+                  {totalConfirmedAttendees}
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <Badge
+                    variant="outline"
+                    className="border-teal-500/20 bg-teal-500/10 px-1.5 py-0 font-semibold text-[10px] text-teal-600 dark:text-teal-400"
+                  >
+                    {registeredPercent}%
+                  </Badge>
+                  <span>
+                    {totalApproved} approved
+                    {hasPaidFlow ? ` · ${totalPaidAndRegistered} paid` : ""}
+                  </span>
                 </div>
               </>
             )}

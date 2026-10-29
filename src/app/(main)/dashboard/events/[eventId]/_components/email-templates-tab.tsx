@@ -157,6 +157,53 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
         const { getEventRegistrations } = await import("@/lib/firestore/client");
         const list = await getEventRegistrations(String(event.id));
         setRegistrations(list ?? []);
+
+        // Auto-populate attendeeCode / attendeeId from real ticket code if template still has dummy sample values
+        const firstWithTicket =
+          (list ?? []).find(
+            (r) =>
+              Boolean(r.attendee_code || r.bevy_attendee_id) &&
+              (r.status === "approved" ||
+                r.status === "paid_and_registered" ||
+                r.status === "attended" ||
+                Boolean(r.is_checked_in)),
+          ) ?? (list ?? []).find((r) => Boolean(r.attendee_code || r.bevy_attendee_id));
+
+        if (firstWithTicket) {
+          const code =
+            firstWithTicket.attendee_code ||
+            (firstWithTicket.answers?.ticket_code as string) ||
+            (firstWithTicket.answers?.ticketCode as string) ||
+            (firstWithTicket.bevy_attendee_id ? `#${firstWithTicket.bevy_attendee_id}` : undefined);
+          const attId = firstWithTicket.bevy_attendee_id ? String(firstWithTicket.bevy_attendee_id) : undefined;
+          if (code) {
+            setTemplatesData((prev) => {
+              const currentCode = prev.accepted.attendeeCode;
+              if (currentCode === "GDG-JKT-89241" || !currentCode) {
+                return {
+                  ...prev,
+                  accepted: {
+                    ...prev.accepted,
+                    attendeeCode: code,
+                    ...(attId && (prev.accepted.attendeeId === "2793132" || !prev.accepted.attendeeId)
+                      ? { attendeeId: attId }
+                      : {}),
+                    ...(firstWithTicket.member_name && prev.accepted.attendee.name === "Alex Pratama"
+                      ? {
+                          attendee: {
+                            ...prev.accepted.attendee,
+                            name: firstWithTicket.member_name,
+                            email: firstWithTicket.member_email || prev.accepted.attendee.email,
+                          },
+                        }
+                      : {}),
+                  },
+                };
+              }
+              return prev;
+            });
+          }
+        }
       } catch (err) {
         console.warn("[EmailTemplatesTab] Failed to load event registrations:", err);
       }

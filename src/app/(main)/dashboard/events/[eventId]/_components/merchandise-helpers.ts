@@ -278,6 +278,7 @@ export function collectMerchandiseFilterOptions(
 
 export {
   calculateMerchandiseComprehensiveStock,
+  extractLiveOptionSoldUnits,
   getFirstAvailableVariationOption,
   getMerchandiseItemStock,
   getMerchandiseOptionStock,

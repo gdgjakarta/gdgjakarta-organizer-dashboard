@@ -134,10 +134,27 @@ function encodeFirestoreFields(data: Record<string, unknown>): Record<string, un
 }
 
 /**
+ * Checks if a JWT string is expired (or near expiration within 10s).
+ */
+function isJwtExpired(token: string): boolean {
+  try {
+    const parts = token.split(".");
+    if (parts.length < 2) return true;
+    const payload = JSON.parse(Buffer.from(parts[1], "base64").toString("utf-8"));
+    if (typeof payload.exp === "number") {
+      return payload.exp * 1000 <= Date.now() + 10_000;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Resolves Firebase Auth ID token from an explicit parameter or the HTTP-only session cookie.
  */
 async function resolveAuthToken(explicitToken?: string): Promise<string | undefined> {
-  if (explicitToken?.trim()) {
+  if (explicitToken?.trim() && !isJwtExpired(explicitToken.trim())) {
     return explicitToken.trim();
   }
   try {
@@ -145,7 +162,10 @@ async function resolveAuthToken(explicitToken?: string): Promise<string | undefi
     const cookieStore = await cookies();
     const cookieToken = cookieStore.get("auth_token")?.value;
     if (cookieToken?.trim()) {
-      return cookieToken.trim();
+      if (!isJwtExpired(cookieToken.trim())) {
+        return cookieToken.trim();
+      }
+      console.warn("[Firestore REST] auth_token cookie is expired (JWT exp check). Skipping stale bearer token.");
     }
   } catch {
     // cookies() unavailable in non-request contexts
@@ -936,23 +956,21 @@ export async function updateRegistrationFromPayment(input: UpdateRegistrationFro
 /**
  * Loads an event from Firestore on the server (Node/RSC/Cloudflare Worker) via native REST.
  */
-export const getFirestoreEventByIdServer = cache(
-  async (eventId: string, options?: { includeVouchers?: boolean }): Promise<FirestoreEvent | null> => {
-    try {
-      const data = await getFirestoreDoc("events", String(eventId));
-      if (!data) return null;
-      const normalized = normalizeEventDoc(data, String(eventId));
-      if (!options?.includeVouchers && normalized && "vouchers" in normalized) {
-        const { vouchers: _stripped, ...safe } = normalized;
-        return safe as FirestoreEvent;
-      }
-      return normalized;
-    } catch (err) {
-      console.error(`[Firestore Server] getFirestoreEventByIdServer error for ${eventId}:`, err);
-      return null;
+export const getFirestoreEventByIdServer = cache(async (eventId: string): Promise<FirestoreEvent | null> => {
+  try {
+    const data = await getFirestoreDoc("events", String(eventId));
+    if (!data) return null;
+    const normalized = normalizeEventDoc(data, String(eventId));
+    if (normalized && "vouchers" in normalized) {
+      const { vouchers: _stripped, ...safe } = normalized;
+      return safe as FirestoreEvent;
     }
-  },
-);
+    return normalized;
+  } catch (err) {
+    console.error(`[Firestore Server] getFirestoreEventByIdServer error for ${eventId}:`, err);
+    return null;
+  }
+});
 
 /**
  * Updates an event's short link properties in Firestore on the server via native REST.
@@ -1064,6 +1082,23 @@ export async function updateRefundStatusServer(
     if (status === "refund_completed") {
       updatePayload.payment_status = "refunded";
       updatePayload.status = "canceled";
+
+      const vCode = existing.voucher_code?.trim().toUpperCase();
+      const wasAlreadyVoid =
+        existing.status === "rejected" || existing.status === "canceled" || existing.status === "cancelled";
+      if (vCode && !wasAlreadyVoid && existing.event_id) {
+        try {
+          const vDocId = `${existing.event_id}_${vCode}`;
+          const rawVoucher = await getFirestoreDoc("event_vouchers", vDocId, token);
+          if (rawVoucher) {
+            const currentTimes = typeof rawVoucher.times_used === "number" ? rawVoucher.times_used : 1;
+            const newTimes = Math.max(0, currentTimes - 1);
+            await patchFirestoreDoc("event_vouchers", vDocId, { times_used: newTimes, updated_at: now }, true, token);
+          }
+        } catch (vErr) {
+          console.warn("[updateRefundStatusServer] Failed to decrement voucher times_used:", vErr);
+        }
+      }
     }
 
     const existingLogs = Array.isArray(existing.status_logs) ? existing.status_logs : [];

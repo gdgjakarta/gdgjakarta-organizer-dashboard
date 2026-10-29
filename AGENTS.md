@@ -130,6 +130,8 @@ Keep a component inside its route until it is reused by another feature. Do not 
 
 ## Feature Notes
 
+- **Total Registered Attendee card**: `registrant-statistics.tsx` overview shows approved + `paid_and_registered` (+ attended/confirmed/registered) as one card; clicking applies the `registered_attendees` status filter handled in `registrants-tab.tsx`. Documented in the Status & Metric Guide.
+
 - **Email Templates & Thermal Printers Ref & ID Alignment**:
   - Accepted / Ticket Confirmation email templates (`DEFAULT_ACCEPTED_EMAIL_HTML`) render the Attendee ID (`ID: {{ $('Add Bevy Attendee API').item.json.id }}`) directly beneath the Attendee Ref Code (`Ref: {{ $('Add Bevy Attendee API').item.json.attendee_code }}`).
   - Dynamic n8n webhook payload sanitizers (`adjustBodyEmailForApprovedWebhook`) and template parsers (`interpolateTemplateHtml`, `ensureAttendeeIdInAcceptedHtml`) preserve both ID and Ref code tags.

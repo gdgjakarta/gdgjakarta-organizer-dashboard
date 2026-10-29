@@ -14,6 +14,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  runTransaction,
   setDoc,
   updateDoc,
   where,
@@ -1945,208 +1946,237 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
   });
   const writePayload = refundHistory.length > 0 ? { ...cleanPayload, refund_history: refundHistory } : cleanPayload;
 
+  // ── ATOMIC REGISTRATION & VOUCHER TRANSACTION ─────────────────────────────
+  // Validates voucher existence, active status, validity dates, and usage_limit
+  // atomically before writing the registration and incrementing times_used.
+  const normalizedVoucherCode = registration.voucher_code?.trim().toUpperCase();
+  const vDocRef = normalizedVoucherCode ? doc(db, "event_vouchers", `${eventIdStr}_${normalizedVoucherCode}`) : null;
+
   try {
-    if (isReRegistration) {
-      await setDoc(docRef, writePayload);
-    } else {
-      await setDoc(docRef, writePayload, { merge: true });
-    }
-  } catch (setErr) {
-    console.error("[registerMemberForEvent] Failed to write registration document:", setErr, {
+    await runTransaction(db, async (transaction) => {
+      // 1. Transactional Reads
+      let voucherData: EventVoucher | null = null;
+      let purchaserRegRef: ReturnType<typeof doc> | null = null;
+      let purchaserRegData: FirestoreRegistration | null = null;
+
+      if (vDocRef) {
+        const vSnap = await transaction.get(vDocRef);
+        if (!vSnap.exists()) {
+          throw new Error(`Voucher "${normalizedVoucherCode}" is invalid or does not exist.`);
+        }
+        voucherData = vSnap.data() as EventVoucher;
+
+        if (voucherData.status !== "active") {
+          throw new Error(voucherData.status === "expired" ? "This voucher has expired." : "This voucher is inactive.");
+        }
+
+        if (voucherData.start_date && authoritativeTimeMillis < new Date(voucherData.start_date).getTime()) {
+          throw new Error("This voucher is not active yet.");
+        }
+        if (voucherData.end_date && authoritativeTimeMillis > new Date(voucherData.end_date).getTime()) {
+          throw new Error("This voucher has expired.");
+        }
+
+        const currentTimesUsed = voucherData.times_used ?? 0;
+        if (
+          voucherData.usage_limit !== null &&
+          voucherData.usage_limit !== undefined &&
+          currentTimesUsed >= voucherData.usage_limit
+        ) {
+          throw new Error("This voucher has reached its maximum redemption limit.");
+        }
+
+        if (voucherData.source_registration_id) {
+          purchaserRegRef = doc(db, "event_registrations", voucherData.source_registration_id);
+          const pSnap = await transaction.get(purchaserRegRef);
+          if (pSnap.exists()) {
+            purchaserRegData = pSnap.data() as FirestoreRegistration;
+          }
+        }
+      }
+
+      const eventSnap = await transaction.get(eventRef);
+      const currentEventData: FirestoreEvent | null = eventSnap.exists()
+        ? (eventSnap.data() as FirestoreEvent)
+        : eventData;
+
+      // 2. Transactional Writes
+      // Write the registration document
+      if (isReRegistration) {
+        transaction.set(docRef, writePayload);
+      } else {
+        transaction.set(docRef, writePayload, { merge: true });
+      }
+
+      // Atomically update voucher document with +1 times_used and redemption metadata
+      if (vDocRef && voucherData) {
+        const nextTimesUsed = (voucherData.times_used ?? 0) + 1;
+        transaction.update(vDocRef, {
+          times_used: nextTimesUsed,
+          redeemed_by_member_id: effectiveMemberId,
+          redeemed_by_name: registration.member_name || undefined,
+          redeemed_by_email: normalizedEmail,
+          redeemed_at: authoritativeTimeIso,
+          updated_at: authoritativeTimeIso,
+        });
+
+        if (purchaserRegRef && purchaserRegData && Array.isArray(purchaserRegData.bundle_vouchers)) {
+          const updatedBuyerVouchers = purchaserRegData.bundle_vouchers.map((bv) => {
+            if (bv.code.toUpperCase() === normalizedVoucherCode) {
+              return {
+                ...bv,
+                status: "redeemed" as const,
+                redeemed_by_member_id: effectiveMemberId,
+                redeemed_by_name: registration.member_name || "Friend",
+                redeemed_by_email: normalizedEmail,
+                redeemed_at: authoritativeTimeIso,
+              };
+            }
+            return bv;
+          });
+          transaction.update(purchaserRegRef, {
+            bundle_vouchers: updatedBuyerVouchers,
+            updated_at: authoritativeTimeIso,
+          });
+        }
+      }
+
+      // Update event counters if event document exists
+      if (currentEventData) {
+        const isCurated = Boolean(currentEventData.curation_mode ?? currentEventData.requires_approval);
+        const isSeatConsumingRegistration =
+          resolvedStatus === "approved" ||
+          resolvedStatus === "paid_and_registered" ||
+          resolvedStatus === "registered" ||
+          (!isCurated && resolvedStatus !== "waitlisted" && resolvedStatus !== "rejected");
+
+        const currentCount =
+          typeof currentEventData.total_registrations === "number" ? currentEventData.total_registrations : 0;
+        const currentWaitlistCount =
+          typeof currentEventData.total_waitlisted === "number" ? currentEventData.total_waitlisted : 0;
+
+        const updateData: Record<string, unknown> = {
+          total_registrations: currentCount + 1,
+          ...(resolvedStatus === "approved" ? { total_approved: (currentEventData.total_approved ?? 0) + 1 } : {}),
+          ...(isWaitlisted ? { total_waitlisted: currentWaitlistCount + 1 } : {}),
+          updated_at: authoritativeTimeIso,
+        };
+
+        if (registration.session_id && Array.isArray(currentEventData.sessions)) {
+          updateData.sessions = currentEventData.sessions.map((sess) => {
+            if (sess.id === registration.session_id) {
+              return {
+                ...sess,
+                total_registered: (sess.total_registered ?? 0) + (isSeatConsumingRegistration ? 1 : 0),
+              };
+            }
+            return sess;
+          });
+        }
+
+        if (registration.ticket_id && Array.isArray(currentEventData.tickets)) {
+          updateData.tickets = currentEventData.tickets.map((t) => {
+            if (t.id === registration.ticket_id) {
+              return {
+                ...t,
+                total_registered: (t.total_registered ?? 0) + (isSeatConsumingRegistration ? 1 : 0),
+              };
+            }
+            return t;
+          });
+        }
+
+        if (registration.bundle_id && Array.isArray(currentEventData.bundles)) {
+          updateData.bundles = currentEventData.bundles.map((b) => {
+            if (b.id === registration.bundle_id) {
+              return {
+                ...b,
+                total_registered: (b.total_registered ?? 0) + (isSeatConsumingRegistration ? 1 : 0),
+              };
+            }
+            return b;
+          });
+        }
+
+        if (
+          isSeatConsumingRegistration &&
+          Array.isArray(registration.selected_merchandise) &&
+          registration.selected_merchandise.length > 0 &&
+          Array.isArray(currentEventData.merchandise)
+        ) {
+          const orderMap = new Map<string, SelectedMerchandiseOrder>();
+          for (const order of registration.selected_merchandise) {
+            orderMap.set(order.id, order);
+          }
+
+          const updatedMerchandise = currentEventData.merchandise.map((item) => {
+            const matchingOrder = orderMap.get(item.id);
+            if (!matchingOrder) return item;
+
+            const addedQty = matchingOrder.quantity || 1;
+            const nextItemSold = (item.total_sold ?? 0) + addedQty;
+
+            let updatedVariations = item.variations;
+            if (matchingOrder.selected_variations && Array.isArray(item.variations)) {
+              updatedVariations = item.variations.map((v) => {
+                const selectedOpt = matchingOrder.selected_variations?.[v.name];
+                if (!selectedOpt) return v;
+
+                const details = { ...(v.option_details || {}) };
+                const currentDetail = details[selectedOpt] || {};
+                details[selectedOpt] = {
+                  ...currentDetail,
+                  total_sold: (currentDetail.total_sold ?? 0) + addedQty,
+                };
+
+                return {
+                  ...v,
+                  option_details: details,
+                };
+              });
+            }
+
+            return {
+              ...item,
+              total_sold: nextItemSold,
+              variations: updatedVariations,
+            };
+          });
+
+          updateData.merchandise = updatedMerchandise;
+        }
+
+        transaction.update(eventRef, sanitizeFirestoreData(updateData));
+      }
+    });
+  } catch (txErr) {
+    console.error("[registerMemberForEvent] Failed atomic registration transaction:", txErr, {
       regId,
       effectiveMemberId,
       status: resolvedStatus,
       isReRegistration,
-      payloadKeys: Object.keys(writePayload),
+      voucherCode: normalizedVoucherCode,
     });
-    throw setErr;
+    throw txErr;
   }
 
-  // Update event registration counter, waitlisted counter & session total if available
-  try {
-    if (eventData) {
-      const isCurated = Boolean(eventData.curation_mode ?? eventData.requires_approval);
-      const isSeatConsumingRegistration =
-        resolvedStatus === "approved" ||
-        resolvedStatus === "paid_and_registered" ||
-        resolvedStatus === "registered" ||
-        (!isCurated && resolvedStatus !== "waitlisted" && resolvedStatus !== "rejected");
-
-      const currentCount = typeof eventData.total_registrations === "number" ? eventData.total_registrations : 0;
-      const currentWaitlistCount = typeof eventData.total_waitlisted === "number" ? eventData.total_waitlisted : 0;
-
-      const updateData: Record<string, unknown> = {
-        total_registrations: currentCount + 1,
-        ...(resolvedStatus === "approved" ? { total_approved: (eventData.total_approved ?? 0) + 1 } : {}),
-        ...(isWaitlisted ? { total_waitlisted: currentWaitlistCount + 1 } : {}),
-        updated_at: new Date().toISOString(),
-      };
-
-      if (registration.session_id && Array.isArray(eventData.sessions)) {
-        const updatedSessions = eventData.sessions.map((sess) => {
-          if (sess.id === registration.session_id) {
-            return {
-              ...sess,
-              total_registered: (sess.total_registered ?? 0) + (isSeatConsumingRegistration ? 1 : 0),
-            };
-          }
-          return sess;
+  // Save newly generated friend vouchers to private event_vouchers collection
+  if (newFriendVouchers.length > 0) {
+    try {
+      const friendBatch = writeBatch(db);
+      for (const fv of newFriendVouchers) {
+        const fvDocRef = doc(db, "event_vouchers", `${eventIdStr}_${fv.code.trim().toUpperCase()}`);
+        friendBatch.set(fvDocRef, {
+          ...fv,
+          event_id: eventIdStr,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
         });
-        updateData.sessions = updatedSessions;
       }
-
-      if (registration.ticket_id && Array.isArray(eventData.tickets)) {
-        const updatedTickets = eventData.tickets.map((t) => {
-          if (t.id === registration.ticket_id) {
-            return {
-              ...t,
-              total_registered: (t.total_registered ?? 0) + (isSeatConsumingRegistration ? 1 : 0),
-            };
-          }
-          return t;
-        });
-        updateData.tickets = updatedTickets;
-      }
-
-      // Handle applied voucher redemption tracking in private event_vouchers collection
-      if (registration.voucher_id || registration.voucher_code) {
-        const normalizedCode = registration.voucher_code?.trim().toUpperCase();
-        if (normalizedCode) {
-          try {
-            const vDocRef = doc(db, "event_vouchers", `${eventIdStr}_${normalizedCode}`);
-            const vDocSnap = await getDoc(vDocRef);
-            if (vDocSnap.exists()) {
-              const vData = vDocSnap.data() as EventVoucher;
-              await updateDoc(vDocRef, {
-                times_used: (vData.times_used ?? 0) + 1,
-                redeemed_by_member_id: effectiveMemberId,
-                redeemed_by_name: registration.member_name || undefined,
-                redeemed_by_email: normalizedEmail,
-                redeemed_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-              });
-
-              if (vData.source_registration_id) {
-                try {
-                  const purchaserRegRef = doc(db, "event_registrations", vData.source_registration_id);
-                  const purchaserRegSnap = await getDoc(purchaserRegRef);
-                  if (purchaserRegSnap.exists()) {
-                    const pData = purchaserRegSnap.data() as FirestoreRegistration;
-                    if (Array.isArray(pData.bundle_vouchers)) {
-                      const updatedBuyerVouchers = pData.bundle_vouchers.map((bv) => {
-                        if (bv.code.toUpperCase() === normalizedCode) {
-                          return {
-                            ...bv,
-                            status: "redeemed" as const,
-                            redeemed_by_member_id: effectiveMemberId,
-                            redeemed_by_name: registration.member_name || "Friend",
-                            redeemed_by_email: normalizedEmail,
-                            redeemed_at: new Date().toISOString(),
-                          };
-                        }
-                        return bv;
-                      });
-                      await updateDoc(purchaserRegRef, {
-                        bundle_vouchers: updatedBuyerVouchers,
-                        updated_at: new Date().toISOString(),
-                      });
-                    }
-                  }
-                } catch (buyerUpdateErr) {
-                  console.warn("[Firestore] Failed to update purchaser bundle voucher state:", buyerUpdateErr);
-                }
-              }
-            }
-          } catch (vErr) {
-            console.warn("[Firestore] Failed updating private event_voucher redemption:", vErr);
-          }
-        }
-      }
-
-      // Save newly generated friend vouchers to private event_vouchers collection
-      if (newFriendVouchers.length > 0) {
-        try {
-          const friendBatch = writeBatch(db);
-          for (const fv of newFriendVouchers) {
-            const fvDocRef = doc(db, "event_vouchers", `${eventIdStr}_${fv.code.trim().toUpperCase()}`);
-            friendBatch.set(fvDocRef, {
-              ...fv,
-              event_id: eventIdStr,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            });
-          }
-          await friendBatch.commit();
-        } catch (fErr) {
-          console.warn("[Firestore] Failed saving bundle friend vouchers to event_vouchers:", fErr);
-        }
-      }
-
-      if (registration.bundle_id && Array.isArray(eventData.bundles)) {
-        const updatedBundles = eventData.bundles.map((b) => {
-          if (b.id === registration.bundle_id) {
-            return {
-              ...b,
-              total_registered: (b.total_registered ?? 0) + (isSeatConsumingRegistration ? 1 : 0),
-            };
-          }
-          return b;
-        });
-        updateData.bundles = updatedBundles;
-      }
-
-      if (
-        isSeatConsumingRegistration &&
-        Array.isArray(registration.selected_merchandise) &&
-        registration.selected_merchandise.length > 0 &&
-        Array.isArray(eventData.merchandise)
-      ) {
-        const orderMap = new Map<string, SelectedMerchandiseOrder>();
-        for (const order of registration.selected_merchandise) {
-          orderMap.set(order.id, order);
-        }
-
-        const updatedMerchandise = eventData.merchandise.map((item) => {
-          const matchingOrder = orderMap.get(item.id);
-          if (!matchingOrder) return item;
-
-          const addedQty = matchingOrder.quantity || 1;
-          const nextItemSold = (item.total_sold ?? 0) + addedQty;
-
-          let updatedVariations = item.variations;
-          if (matchingOrder.selected_variations && Array.isArray(item.variations)) {
-            updatedVariations = item.variations.map((v) => {
-              const selectedOpt = matchingOrder.selected_variations?.[v.name];
-              if (!selectedOpt) return v;
-
-              const details = { ...(v.option_details || {}) };
-              const currentDetail = details[selectedOpt] || {};
-              details[selectedOpt] = {
-                ...currentDetail,
-                total_sold: (currentDetail.total_sold ?? 0) + addedQty,
-              };
-
-              return {
-                ...v,
-                option_details: details,
-              };
-            });
-          }
-
-          return {
-            ...item,
-            total_sold: nextItemSold,
-            variations: updatedVariations,
-          };
-        });
-
-        updateData.merchandise = updatedMerchandise;
-      }
-
-      await updateDoc(eventRef, sanitizeFirestoreData(updateData));
+      await friendBatch.commit();
+    } catch (fErr) {
+      console.warn("[Firestore] Failed saving bundle friend vouchers to event_vouchers:", fErr);
     }
-  } catch (err) {
-    console.warn("[Firestore] Failed to update event registration / session counters:", err);
   }
 
   // 4. Process Referral Redemption & Award Points
@@ -2519,6 +2549,115 @@ export async function getEventSessionRegistrationCounts(
   }
 }
 
+/**
+ * Decrements the voucher's times_used counter when an attendee is rejected, canceled, or removed,
+ * and releases bundle friend vouchers back to 'available' if applicable.
+ */
+export async function revertVoucherUsage(
+  eventId: string,
+  voucherCode: string,
+  regData?: Partial<FirestoreRegistration> | null,
+): Promise<void> {
+  if (!voucherCode || typeof window === "undefined") return;
+  const cleanCode = voucherCode.trim().toUpperCase();
+  const eventIdStr = String(eventId);
+  const now = new Date().toISOString();
+
+  try {
+    const vDocRef = doc(db, "event_vouchers", `${eventIdStr}_${cleanCode}`);
+    const vSnap = await getDoc(vDocRef);
+    if (vSnap.exists()) {
+      const vData = vSnap.data() as EventVoucher;
+      const newTimesUsed = Math.max(0, (vData.times_used ?? 1) - 1);
+      const isSameRedeemer =
+        vData.redeemed_by_member_id === regData?.member_id ||
+        (Boolean(regData?.member_email) &&
+          vData.redeemed_by_email?.toLowerCase() === regData?.member_email?.trim().toLowerCase());
+
+      await updateDoc(vDocRef, {
+        times_used: newTimesUsed,
+        ...(isSameRedeemer || newTimesUsed === 0
+          ? {
+              redeemed_by_member_id: deleteField(),
+              redeemed_by_name: deleteField(),
+              redeemed_by_email: deleteField(),
+              redeemed_at: deleteField(),
+            }
+          : {}),
+        updated_at: now,
+      });
+
+      // If this voucher originated from a bundle package, revert the friend voucher back to available
+      if (vData.source_registration_id) {
+        try {
+          const purchaserRegRef = doc(db, "event_registrations", vData.source_registration_id);
+          const purchaserRegSnap = await getDoc(purchaserRegRef);
+          if (purchaserRegSnap.exists()) {
+            const pData = purchaserRegSnap.data() as FirestoreRegistration;
+            if (Array.isArray(pData.bundle_vouchers)) {
+              const updatedBuyerVouchers = pData.bundle_vouchers.map((bv) => {
+                if (bv.code.toUpperCase() === cleanCode) {
+                  return {
+                    ...bv,
+                    status: "available" as const,
+                    redeemed_by_member_id: undefined,
+                    redeemed_by_name: undefined,
+                    redeemed_by_email: undefined,
+                    redeemed_at: undefined,
+                  };
+                }
+                return bv;
+              });
+              await updateDoc(purchaserRegRef, {
+                bundle_vouchers: updatedBuyerVouchers,
+                updated_at: now,
+              });
+            }
+          }
+        } catch (buyerRevertErr) {
+          console.warn("[revertVoucherUsage] Failed to revert purchaser bundle voucher:", buyerRevertErr);
+        }
+      }
+    }
+  } catch (vErr) {
+    console.warn("[revertVoucherUsage] Failed to decrement voucher usage:", vErr);
+  }
+}
+
+/**
+ * Re-increments the voucher's times_used counter if a previously rejected/canceled registration
+ * is restored back to an active status (e.g. approved or pending).
+ */
+export async function restoreVoucherUsage(
+  eventId: string,
+  voucherCode: string,
+  regData?: Partial<FirestoreRegistration> | null,
+): Promise<void> {
+  if (!voucherCode || typeof window === "undefined") return;
+  const cleanCode = voucherCode.trim().toUpperCase();
+  const eventIdStr = String(eventId);
+  const now = new Date().toISOString();
+
+  try {
+    const vDocRef = doc(db, "event_vouchers", `${eventIdStr}_${cleanCode}`);
+    const vSnap = await getDoc(vDocRef);
+    if (vSnap.exists()) {
+      const vData = vSnap.data() as EventVoucher;
+      const nextTimesUsed = (vData.times_used ?? 0) + 1;
+      await updateDoc(vDocRef, {
+        times_used: nextTimesUsed,
+        redeemed_by_member_id: regData?.member_id,
+        redeemed_by_name: regData?.member_name || undefined,
+        redeemed_by_email: regData?.member_email ? regData.member_email.trim().toLowerCase() : undefined,
+        redeemed_at: now,
+        updated_at: now,
+      });
+    }
+  } catch (vErr) {
+    console.warn("[restoreVoucherUsage] Failed to increment voucher usage:", vErr);
+  }
+}
+
 export async function updateRegistrationStatus(
   registrationId: string,
   eventId: string,
@@ -2681,6 +2820,20 @@ export async function updateRegistrationStatus(
     }
   }
 
+  // Handle voucher redemption decrement when registration is rejected or canceled
+  const voucherCode = (regData?.voucher_code || extraFields?.voucher_code)?.trim().toUpperCase();
+  if (voucherCode) {
+    const isVoid = (s?: string) => s === "rejected" || s === "canceled" || s === "cancelled";
+    const isNowVoid = isVoid(status);
+    const wasVoid = isVoid(previousStatus);
+
+    if (isNowVoid && !wasVoid) {
+      await revertVoucherUsage(eventId, voucherCode, regData);
+    } else if (wasVoid && !isNowVoid) {
+      await restoreVoucherUsage(eventId, voucherCode, regData);
+    }
+  }
+
   // Dedicated audit_logs collection entry (skip if already in target status with duplicate log)
   if (!hasSameDuplicateLog) {
     try {
@@ -2821,8 +2974,15 @@ export async function updateRegistrationCheckIn(
   bevyAttendeeId?: number | null,
   checkinDate?: string | null,
   attendeeCode?: string | null,
+  fallbackRegistration?: Partial<FirestoreRegistration>,
 ): Promise<void> {
   if (typeof window === "undefined") return;
+
+  // 1. Skip writing to Firestore for sample mock attendees (e.g. GOOGA263443955)
+  if (registrationId.startsWith("sample_")) {
+    return;
+  }
+
   const docRef = doc(db, "event_registrations", registrationId);
   const now = new Date().toISOString();
   const updatePayload = sanitizeFirestoreData<Partial<FirestoreRegistration>>({
@@ -2833,7 +2993,40 @@ export async function updateRegistrationCheckIn(
     ...(attendeeCode !== undefined ? { attendee_code: attendeeCode } : {}),
   });
 
-  await updateDoc(docRef, updatePayload);
+  try {
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      await updateDoc(docRef, updatePayload);
+    } else if (fallbackRegistration) {
+      // Document does not exist in Firestore yet: upsert it with available registration info
+      const createPayload = sanitizeFirestoreData<FirestoreRegistration>({
+        id: registrationId,
+        event_id: eventId,
+        event_title: fallbackRegistration.event_title || "GDG Jakarta Event",
+        member_id: fallbackRegistration.member_id || String(bevyAttendeeId || registrationId),
+        member_name: fallbackRegistration.member_name || "Community Attendee",
+        member_email: fallbackRegistration.member_email || "",
+        member_phone: fallbackRegistration.member_phone || "",
+        status: fallbackRegistration.status || "approved",
+        ticket_tier: fallbackRegistration.ticket_tier || "Bevy Ticket",
+        bevy_attendee_id: bevyAttendeeId ?? fallbackRegistration.bevy_attendee_id,
+        attendee_code: attendeeCode ?? fallbackRegistration.attendee_code ?? null,
+        registered_at: fallbackRegistration.registered_at || now,
+        registered_at_millis: Date.now(),
+        is_checked_in: isCheckedIn,
+        checked_in_at: isCheckedIn ? (checkinDate ?? now) : undefined,
+        ...fallbackRegistration,
+        ...updatePayload,
+      } as FirestoreRegistration);
+      await setDoc(docRef, createPayload, { merge: true });
+    }
+  } catch (err) {
+    if (registrationId.startsWith("bevy_")) {
+      console.warn(`[Firestore] Check-in document ${registrationId} update skipped:`, err);
+      return;
+    }
+    throw err;
+  }
 
   // Update event checked-in counter
   try {
@@ -2863,11 +3056,29 @@ export async function updateRegistrationMerchandiseCollection(
   if (typeof window === "undefined") {
     throw new Error("Client Firestore call not supported on server.");
   }
+
+  const now = new Date().toISOString();
+  if (registrationId.startsWith("sample_")) {
+    return {
+      statusLog: {
+        id: `log_${Date.now()}_merch`,
+        status: isCollected ? "merchandise_collected" : "merchandise_uncollected",
+        changed_at: now,
+        changed_by_id: reviewer?.id || "organizer",
+        changed_by_name: reviewer?.name || "GDG Organizer",
+        changed_by_email: reviewer?.email,
+        notes: isCollected
+          ? "Merchandise marked as collected (Demo sample)"
+          : "Merchandise collection undone (Demo sample)",
+      },
+      collectedAt: now,
+    };
+  }
+
   const docRef = doc(db, "event_registrations", registrationId);
   const existingSnap = await getDoc(docRef);
   const existingData = existingSnap.exists() ? (existingSnap.data() as FirestoreRegistration) : null;
 
-  const now = new Date().toISOString();
   const actorId = reviewer?.id || "system_organizer";
   const actorName = reviewer?.name || "GDG Organizer";
   const actorEmail = reviewer?.email;
@@ -2960,31 +3171,13 @@ export async function deleteEventRegistration(registrationId: string, eventId: s
   // 1. Delete registration doc
   await deleteDoc(docRef);
 
-  // 2. Revert voucher redemption if voucher was used
+  // 2. Revert voucher redemption if voucher was used and registration was NOT already void (rejected/canceled)
   const voucherCode = regData.voucher_code?.trim().toUpperCase();
-  if (voucherCode) {
-    try {
-      const vDocRef = doc(db, "event_vouchers", `${eventId}_${voucherCode}`);
-      const vSnap = await getDoc(vDocRef);
-      if (vSnap.exists()) {
-        const vData = vSnap.data() as EventVoucher;
-        const newTimesUsed = Math.max(0, (vData.times_used ?? 1) - 1);
-        await updateDoc(vDocRef, {
-          times_used: newTimesUsed,
-          ...(newTimesUsed === 0
-            ? {
-                redeemed_by_member_id: deleteField(),
-                redeemed_by_name: deleteField(),
-                redeemed_by_email: deleteField(),
-                redeemed_at: deleteField(),
-              }
-            : {}),
-          updated_at: new Date().toISOString(),
-        });
-      }
-    } catch (vErr) {
-      console.warn("[Firestore] Failed to revert voucher redemption on registration deletion:", vErr);
-    }
+  const wasAlreadyVoid =
+    regData.status === "rejected" || regData.status === "canceled" || regData.status === "cancelled";
+
+  if (voucherCode && !wasAlreadyVoid) {
+    await revertVoucherUsage(eventId, voucherCode, regData);
   }
 
   // 3. Recalculate event counters and capacity
@@ -3016,6 +3209,15 @@ export async function deleteBatchEventRegistrations(registrationIds: string[], e
   if (regsToDelete.length === 0) return;
 
   await batch.commit();
+
+  // Revert vouchers used across deleted registrations
+  for (const reg of regsToDelete) {
+    const vCode = reg.voucher_code?.trim().toUpperCase();
+    const wasAlreadyVoid = reg.status === "rejected" || reg.status === "canceled" || reg.status === "cancelled";
+    if (vCode && !wasAlreadyVoid) {
+      await revertVoucherUsage(eventId, vCode, reg);
+    }
+  }
 
   // Recalculate event counters and capacity
   try {
@@ -3207,25 +3409,18 @@ export async function getEventVouchers(eventId: string): Promise<EventVoucher[]>
     const q = query(collection(db, "event_vouchers"), where("event_id", "==", String(eventId)));
     const snap = await getDocs(q);
     if (!snap.empty) {
-      return snap.docs.map((d) => d.data() as EventVoucher);
+      return snap.docs.map((d) => {
+        const data = d.data() as EventVoucher;
+        return {
+          ...data,
+          id: data.id || d.id,
+        };
+      });
     }
   } catch (err) {
     console.warn(`[Firestore] getEventVouchers error for ${eventId}:`, err);
   }
 
-  // Fallback to legacy events doc if not yet migrated
-  try {
-    const eventRef = doc(db, "events", String(eventId));
-    const eventSnap = await getDoc(eventRef);
-    if (eventSnap.exists()) {
-      const data = eventSnap.data() as FirestoreEvent;
-      if (Array.isArray(data.vouchers)) {
-        return data.vouchers;
-      }
-    }
-  } catch {
-    // Ignore fallback read error
-  }
   return [];
 }
 
@@ -3892,6 +4087,22 @@ export async function updateBreakoutSessionCheckIn(
     throw new Error("Client Firestore call not supported on server.");
   }
 
+  const now = new Date().toISOString();
+  if (registrationId.startsWith("sample_")) {
+    return {
+      session_id: sessionId,
+      session_title: sessionTitle,
+      checked_in_at: isCheckedIn ? now : null,
+      is_checked_in: isCheckedIn,
+      checked_in_by_id: reviewer?.id ?? null,
+      checked_in_by_name: reviewer?.name ?? null,
+      checked_in_by_email: reviewer?.email ?? null,
+      check_in_method: reviewer?.method ?? "qr_scan",
+      raw_qr_text: reviewer?.rawQr,
+      synced_to_bevy: Boolean(reviewer?.syncedToBevy),
+    };
+  }
+
   const regRef = doc(db, "event_registrations", registrationId);
   const snap = await getDoc(regRef);
   if (!snap.exists()) {
@@ -3899,7 +4110,6 @@ export async function updateBreakoutSessionCheckIn(
   }
 
   const data = snap.data() as FirestoreRegistration;
-  const now = new Date().toISOString();
 
   const currentBreakoutIds = Array.isArray(data.breakout_session_ids) ? [...data.breakout_session_ids] : [];
   if (isCheckedIn && data.session_id !== sessionId && !currentBreakoutIds.includes(sessionId)) {
@@ -4302,6 +4512,13 @@ export async function updateRefundStatus(
   if (status === "refund_completed") {
     updatePayload.payment_status = "refunded";
     updatePayload.status = "canceled";
+
+    const vCode = existing.voucher_code?.trim().toUpperCase();
+    const wasAlreadyVoid =
+      existing.status === "rejected" || existing.status === "canceled" || existing.status === "cancelled";
+    if (vCode && !wasAlreadyVoid) {
+      await revertVoucherUsage(existing.event_id, vCode, existing);
+    }
   }
 
   const existingLogs = Array.isArray(existing.status_logs) ? existing.status_logs : [];
@@ -4635,7 +4852,15 @@ export function subscribePrinterConfigDoc(
       }
     },
     (err) => {
-      console.warn("[Firestore] subscribePrinterConfigDoc error:", err);
+      const isPermission =
+        err &&
+        typeof err === "object" &&
+        ("code" in err
+          ? (err as { code?: string }).code === "permission-denied"
+          : "message" in err && (err as { message?: string }).message?.includes("permission"));
+      if (!isPermission) {
+        console.warn("[Firestore] subscribePrinterConfigDoc error:", err);
+      }
       onError?.(err);
     },
   );
@@ -4739,7 +4964,17 @@ export function subscribePendingPrintQueue(
       onJobsUpdate(pendingJobs);
     },
     (err) => {
-      console.warn("[Firestore] subscribePendingPrintQueue error:", err);
+      const isPermission =
+        err &&
+        typeof err === "object" &&
+        ("code" in err
+          ? (err as { code?: string }).code === "permission-denied"
+          : "message" in err && (err as { message?: string }).message?.includes("permission"));
+      if (isPermission) {
+        onJobsUpdate([]);
+      } else {
+        console.warn("[Firestore] subscribePendingPrintQueue error:", err);
+      }
       onError?.(err);
     },
   );
@@ -4767,7 +5002,17 @@ export function subscribeRecentPrintQueue(
       onJobsUpdate(sortedJobs);
     },
     (err) => {
-      console.warn("[Firestore] subscribeRecentPrintQueue error:", err);
+      const isPermission =
+        err &&
+        typeof err === "object" &&
+        ("code" in err
+          ? (err as { code?: string }).code === "permission-denied"
+          : "message" in err && (err as { message?: string }).message?.includes("permission"));
+      if (isPermission) {
+        onJobsUpdate([]);
+      } else {
+        console.warn("[Firestore] subscribeRecentPrintQueue error:", err);
+      }
       onError?.(err);
     },
   );

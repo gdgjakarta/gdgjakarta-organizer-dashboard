@@ -42,7 +42,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { extractCustomerPhone } from "@/lib/events/doku-payment";
+import {
+  calculateMerchandiseComprehensiveStock,
+  extractLiveOptionSoldUnits,
+  type MerchandiseComprehensiveStock,
+} from "@/lib/events/merchandise-templates";
 import { calculatePaymentGatewayFee } from "@/lib/events/payment-fee";
+import { calculateMerchandiseRevenueMetrics } from "@/lib/events/revenue-utils";
 import {
   calculateCustomerRemainingBundleLimit,
   calculateCustomerRemainingMerchLimit,
@@ -189,6 +195,7 @@ interface CreateOnTheSpotSaleDialogProps {
   onOpenChange: (open: boolean) => void;
   event: FirestoreEvent;
   registrations: FirestoreRegistration[];
+  merchandise?: EventMerchandiseItem[];
   initialAttendee?: FirestoreRegistration | null;
   initialItem?: EventMerchandiseItem | null;
   initialBundle?: EventBundlePackage | null;
@@ -201,6 +208,7 @@ export function CreateOnTheSpotSaleDialog({
   onOpenChange,
   event,
   registrations,
+  merchandise,
   initialAttendee,
   initialItem,
   initialBundle,
@@ -240,10 +248,31 @@ export function CreateOnTheSpotSaleDialog({
   const [customerEmail, setCustomerEmail] = useState(initialDetails.email);
   const [customerPhone, setCustomerPhone] = useState(initialDetails.phone);
 
-  // Single Item selection state
+  // Single Item selection state & live stock calculation
+  const merchandiseItems = useMemo(() => {
+    return merchandise ?? event.merchandise ?? [];
+  }, [merchandise, event.merchandise]);
+
   const availableItems = useMemo(() => {
-    return (event.merchandise ?? []).filter((m) => m.status !== "hidden" && m.status !== "draft");
-  }, [event.merchandise]);
+    return merchandiseItems.filter((m) => m.status !== "hidden" && m.status !== "draft");
+  }, [merchandiseItems]);
+
+  const liveOptionSoldMap = useMemo(() => {
+    return extractLiveOptionSoldUnits(merchandiseItems, registrations, orders);
+  }, [merchandiseItems, registrations, orders]);
+
+  const revenueMetrics = useMemo(() => {
+    return calculateMerchandiseRevenueMetrics(registrations, merchandiseItems, orders);
+  }, [registrations, merchandiseItems, orders]);
+
+  const itemStockMap = useMemo(() => {
+    const map = new Map<string, MerchandiseComprehensiveStock>();
+    for (const item of merchandiseItems) {
+      const unitsSold = revenueMetrics.byItem.get(item.id)?.unitsSold;
+      map.set(item.id, calculateMerchandiseComprehensiveStock(item, unitsSold, liveOptionSoldMap[item.id]));
+    }
+    return map;
+  }, [merchandiseItems, revenueMetrics.byItem, liveOptionSoldMap]);
 
   const [selectedItemId, setSelectedItemId] = useState<string>(initialItem?.id || availableItems[0]?.id || "");
   const [selectedVariations, setSelectedVariations] = useState<Record<string, string>>({});
@@ -454,31 +483,42 @@ export function CreateOnTheSpotSaleDialog({
     });
   }, [currentBundle, targetEmail, orders]);
 
-  // Remaining total item stock (event-wide across registrations and paid OTS orders)
-  const itemTotalSold = useMemo(() => {
-    if (!currentItem) return 0;
-    let sold = 0;
-    for (const o of orders) {
-      if (o.payment_status === "paid") {
-        for (const it of o.items) {
-          if (it.merchandise_id === currentItem.id) sold += it.quantity || 1;
-        }
-      }
-    }
-    for (const r of registrations) {
-      if (r.status !== "cancelled" && r.status !== "canceled" && r.status !== "rejected") {
-        for (const m of r.selected_merchandise ?? []) {
-          if (m.id === currentItem.id || m.merchandise_id === currentItem.id) sold += m.quantity || 1;
-        }
-      }
-    }
-    return sold;
-  }, [currentItem, orders, registrations]);
+  // Comprehensive item stock based on Merchandise tab quotas & live sales
+  const currentItemStock = useMemo(() => {
+    if (!currentItem) return null;
+    return itemStockMap.get(currentItem.id) ?? null;
+  }, [currentItem, itemStockMap]);
 
-  const remainingItemStock =
-    currentItem?.stock !== null && currentItem?.stock !== undefined
-      ? Math.max(0, currentItem.stock - itemTotalSold)
-      : null;
+  // Breakdown for selected variation option (e.g. Size: M)
+  const selectedOptionStockBreakdown = useMemo(() => {
+    if (!currentItemStock || !currentItem?.variations) return null;
+    for (const v of currentItemStock.variations) {
+      const selectedOpt = selectedVariations[v.variationName];
+      if (selectedOpt) {
+        const opt = v.options.find((o) => o.option === selectedOpt);
+        if (opt && opt.quota !== null) {
+          return { ...opt, variationName: v.variationName };
+        }
+      }
+    }
+    return null;
+  }, [currentItemStock, currentItem?.variations, selectedVariations]);
+
+  const remainingItemStock = useMemo(() => {
+    if (selectedOptionStockBreakdown && selectedOptionStockBreakdown.remaining !== null) {
+      return selectedOptionStockBreakdown.remaining;
+    }
+    return currentItemStock?.totalRemaining ?? null;
+  }, [selectedOptionStockBreakdown, currentItemStock]);
+
+  const isCurrentItemSoldOut = useMemo(() => {
+    if (selectedOptionStockBreakdown) {
+      return selectedOptionStockBreakdown.isSoldOut;
+    }
+    return currentItemStock?.isSoldOut ?? false;
+  }, [selectedOptionStockBreakdown, currentItemStock]);
+
+  const itemTotalSold = currentItemStock?.totalSold ?? 0;
 
   // Remaining bundle capacity (event-wide)
   const bundleTotalSold = useMemo(() => {
@@ -562,7 +602,13 @@ export function CreateOnTheSpotSaleDialog({
     if (!createdResult?.orderId) return;
     setIsCheckingPayment(true);
     try {
-      const res = await checkOnTheSpotPaymentStatusAction(createdResult.orderId, createdResult.invoiceNumber);
+      const { auth } = await import("@/config/firebase");
+      const freshToken = await auth.currentUser?.getIdToken().catch(() => undefined);
+      const res = await checkOnTheSpotPaymentStatusAction(
+        createdResult.orderId,
+        createdResult.invoiceNumber,
+        freshToken || undefined,
+      );
       if (res.success && res.isPaid) {
         setCreatedResult((prev) => (prev ? { ...prev, isPaid: true } : prev));
         toast.success("Payment confirmed via DOKU QRIS!");
@@ -602,12 +648,22 @@ export function CreateOnTheSpotSaleDialog({
         toast.error("Please select a merchandise item.");
         return;
       }
-      if (remainingItemStock !== null && remainingItemStock <= 0) {
-        toast.error("This merchandise item is currently out of stock.");
+      if (isCurrentItemSoldOut || (remainingItemStock !== null && remainingItemStock <= 0)) {
+        if (selectedOptionStockBreakdown) {
+          toast.error(`Option "${selectedOptionStockBreakdown.option}" for "${currentItem.name}" is sold out.`);
+        } else {
+          toast.error(`"${currentItem.name}" is currently out of stock.`);
+        }
         return;
       }
       if (remainingItemStock !== null && itemQuantity > remainingItemStock) {
-        toast.error(`Not enough stock available. Remaining stock: ${remainingItemStock} unit(s).`);
+        if (selectedOptionStockBreakdown) {
+          toast.error(
+            `Not enough stock for ${selectedOptionStockBreakdown.variationName} "${selectedOptionStockBreakdown.option}". Remaining: ${remainingItemStock} unit(s).`,
+          );
+        } else {
+          toast.error(`Not enough stock available. Remaining stock: ${remainingItemStock} unit(s).`);
+        }
         return;
       }
       if (itemQuota.maxAllowed !== null && itemQuota.remaining <= 0) {
@@ -719,9 +775,18 @@ export function CreateOnTheSpotSaleDialog({
 
     startTransition(async () => {
       try {
+        const { auth } = await import("@/config/firebase");
+        let authToken: string | undefined;
+        try {
+          authToken = (await auth.currentUser?.getIdToken(true)) || undefined;
+        } catch (tokenErr) {
+          console.warn("[OTS Dialog] Failed fetching fresh ID token:", tokenErr);
+        }
+
         const res = await createOnTheSpotMerchandiseOrderAction({
           eventId: String(event.id),
           eventTitle: event.title,
+          authToken,
           customer: {
             name: customerName.trim(),
             email: customerEmail.trim(),
@@ -773,12 +838,6 @@ export function CreateOnTheSpotSaleDialog({
     });
   };
 
-  const qrImageUrl = createdResult?.paymentUrl
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=${encodeURIComponent(
-        createdResult.paymentUrl,
-      )}`
-    : null;
-
   return (
     <Dialog open={open} onOpenChange={(v) => (!v ? handleClose() : onOpenChange(v))}>
       <DialogContent className="inset-0 m-auto h-fit max-h-[92vh] translate-x-0 translate-y-0 overflow-y-auto sm:max-w-xl md:max-w-2xl [transform:none]">
@@ -798,7 +857,7 @@ export function CreateOnTheSpotSaleDialog({
 
         {createdResult ? (
           /* =======================================================
-             STAGE 2: QRIS Checkout & Live Status Presentation
+             STAGE 2: DOKU Payment Link & Live Status Presentation
              ======================================================= */
           <div className="space-y-4 py-2">
             {createdResult.isPaid ? (
@@ -821,22 +880,24 @@ export function CreateOnTheSpotSaleDialog({
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="flex flex-col items-center justify-center rounded-xl border bg-card p-5 text-center">
-                  <Badge variant="outline" className="mb-2 border-primary/30 bg-primary/10 text-primary text-[10px]">
-                    Scan QRIS to Pay
+                <div className="flex flex-col items-center justify-center rounded-xl border bg-card p-5 text-center space-y-2">
+                  <Badge
+                    variant="outline"
+                    className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-xs gap-1.5"
+                  >
+                    <span className="size-1.5 rounded-full bg-amber-500" />
+                    Waiting for Payment
                   </Badge>
-                  {qrImageUrl ? (
-                    <div className="overflow-hidden rounded-xl border bg-white p-2 shadow-xs">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={qrImageUrl} alt="QRIS Payment Code" className="size-48 object-contain" />
-                    </div>
-                  ) : null}
-                  <div className="mt-3">
+                  <div>
                     <p className="text-xs text-muted-foreground">Invoice #{createdResult.invoiceNumber}</p>
-                    <p className="text-xl font-bold tracking-tight text-foreground">
+                    <p className="text-2xl font-bold tracking-tight text-foreground">
                       Rp {(createdResult.amount ?? finalTotal).toLocaleString("id-ID")}
                     </p>
                   </div>
+                  <p className="text-xs text-muted-foreground max-w-sm">
+                    Open the DOKU payment link to complete payment with QRIS or share the checkout URL with the
+                    attendee.
+                  </p>
                 </div>
 
                 <div className="space-y-1.5">
@@ -855,10 +916,19 @@ export function CreateOnTheSpotSaleDialog({
                 </div>
 
                 <div className="flex flex-col gap-2 pt-1">
+                  {createdResult.paymentUrl && (
+                    <Button asChild size="sm" className="w-full gap-1.5 text-xs font-semibold h-9">
+                      <a href={createdResult.paymentUrl} target="_blank" rel="noopener noreferrer">
+                        <ExternalLink className="size-3.5" />
+                        Open Checkout in New Tab
+                      </a>
+                    </Button>
+                  )}
                   <Button
                     onClick={handleManualCheckPayment}
                     disabled={isCheckingPayment}
-                    className="w-full gap-2 text-xs"
+                    variant="outline"
+                    className="w-full gap-2 text-xs h-9"
                   >
                     {isCheckingPayment ? (
                       <Loader2 className="size-3.5 animate-spin" />
@@ -867,14 +937,6 @@ export function CreateOnTheSpotSaleDialog({
                     )}
                     Check Payment Status
                   </Button>
-                  {createdResult.paymentUrl && (
-                    <Button variant="outline" asChild size="sm" className="w-full gap-1.5 text-xs">
-                      <a href={createdResult.paymentUrl} target="_blank" rel="noopener noreferrer">
-                        <ExternalLink className="size-3.5" />
-                        Open Checkout in New Tab
-                      </a>
-                    </Button>
-                  )}
                 </div>
               </div>
             )}
@@ -1136,12 +1198,43 @@ export function CreateOnTheSpotSaleDialog({
                       <SelectValue placeholder="Choose merchandise item..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {availableItems.map((item) => (
-                        <SelectItem key={item.id} value={item.id} className="text-xs">
-                          {item.name} — Rp {(item.price || 0).toLocaleString("id-ID")}
-                          {item.is_ots_only ? " (OTS Only)" : ""}
-                        </SelectItem>
-                      ))}
+                      {availableItems.map((item) => {
+                        const stock = itemStockMap.get(item.id);
+                        const isSoldOut = stock?.isSoldOut || item.status === "out_of_stock";
+                        const remainingText = isSoldOut
+                          ? "Sold Out"
+                          : typeof stock?.totalRemaining === "number"
+                            ? `${stock.totalRemaining} left`
+                            : "In Stock";
+                        return (
+                          <SelectItem
+                            key={item.id}
+                            value={item.id}
+                            disabled={isSoldOut}
+                            className={cn("text-xs", isSoldOut && "opacity-50 text-muted-foreground")}
+                          >
+                            <div className="flex items-center justify-between w-full gap-2">
+                              <span>
+                                {item.name} — Rp {(item.price || 0).toLocaleString("id-ID")}
+                                {item.is_ots_only ? " (OTS Only)" : ""}
+                              </span>
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  "text-[10px] h-4 px-1.5 shrink-0 font-medium ml-2",
+                                  isSoldOut
+                                    ? "border-destructive/30 text-destructive bg-destructive/10"
+                                    : typeof stock?.totalRemaining === "number" && stock.totalRemaining <= 10
+                                      ? "border-amber-500/30 text-amber-600 bg-amber-500/10"
+                                      : "border-muted text-muted-foreground bg-muted/40",
+                                )}
+                              >
+                                {remainingText}
+                              </Badge>
+                            </div>
+                          </SelectItem>
+                        );
+                      })}
                     </SelectContent>
                   </Select>
                 </div>
@@ -1161,12 +1254,39 @@ export function CreateOnTheSpotSaleDialog({
                           <SelectContent>
                             {v.options.map((opt) => {
                               const optPrice = v.option_details?.[opt]?.price;
+                              const vBreakdown = currentItemStock?.variations.find((vb) => vb.variationName === v.name);
+                              const optBreakdown = vBreakdown?.options.find((ob) => ob.option === opt);
+                              const isOptSoldOut = optBreakdown?.isSoldOut ?? false;
+                              const optRemaining = optBreakdown?.remaining;
                               return (
-                                <SelectItem key={opt} value={opt} className="text-xs">
-                                  {opt}
-                                  {optPrice !== undefined && optPrice !== null
-                                    ? ` (Rp ${optPrice.toLocaleString("id-ID")})`
-                                    : ""}
+                                <SelectItem
+                                  key={opt}
+                                  value={opt}
+                                  disabled={isOptSoldOut}
+                                  className={cn("text-xs", isOptSoldOut && "opacity-50 text-muted-foreground")}
+                                >
+                                  <div className="flex items-center justify-between w-full gap-2">
+                                    <span>
+                                      {opt}
+                                      {optPrice !== undefined && optPrice !== null
+                                        ? ` (Rp ${optPrice.toLocaleString("id-ID")})`
+                                        : ""}
+                                    </span>
+                                    {isOptSoldOut ? (
+                                      <span className="text-[10px] font-semibold text-destructive ml-2">Sold Out</span>
+                                    ) : optRemaining !== null && optRemaining !== undefined ? (
+                                      <span
+                                        className={cn(
+                                          "text-[10px] font-medium ml-2",
+                                          optRemaining <= 5
+                                            ? "text-amber-600 dark:text-amber-400"
+                                            : "text-muted-foreground",
+                                        )}
+                                      >
+                                        {optRemaining} left
+                                      </span>
+                                    ) : null}
+                                  </div>
                                 </SelectItem>
                               );
                             })}
@@ -1205,7 +1325,9 @@ export function CreateOnTheSpotSaleDialog({
                         >
                           {remainingItemStock <= 0
                             ? "⚠️ Out of Stock (0 units left)"
-                            : `Stock Quota: ${remainingItemStock} units left (Sold: ${itemTotalSold} of ${currentItem?.stock})`}
+                            : selectedOptionStockBreakdown
+                              ? `Stock (${selectedOptionStockBreakdown.variationName}: ${selectedOptionStockBreakdown.option}): ${remainingItemStock} units left (Sold: ${selectedOptionStockBreakdown.sold} of ${selectedOptionStockBreakdown.quota})`
+                              : `Stock Quota: ${remainingItemStock} units left (Sold: ${itemTotalSold} of ${currentItemStock?.totalCapacity ?? currentItem?.stock})`}
                         </span>
                       )}
                     </div>

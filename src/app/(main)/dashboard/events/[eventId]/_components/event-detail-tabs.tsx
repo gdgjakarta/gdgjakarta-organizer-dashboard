@@ -59,10 +59,40 @@ interface EventDetailTabsProps {
 export function EventDetailTabs({ eventId, event, registrations, initialRole }: EventDetailTabsProps) {
   const user = useAuthStore((s) => s.user);
   const [activeEvent, setActiveEvent] = useState<FirestoreEvent>(event);
+  const [activeRegistrations, setActiveRegistrations] = useState<FirestoreRegistration[]>(registrations);
 
   useEffect(() => {
     setActiveEvent(event);
   }, [event]);
+
+  useEffect(() => {
+    if (registrations.length > 0) {
+      setActiveRegistrations(registrations);
+    }
+  }, [registrations]);
+
+  useEffect(() => {
+    if (!eventId) return;
+    let unsubscribe: (() => void) | undefined;
+    async function setupRegs() {
+      try {
+        const { getEventRegistrations, subscribeEventRegistrations } = await import("@/lib/firestore/client");
+        const list = await getEventRegistrations(String(eventId));
+        if (list && list.length > 0) {
+          setActiveRegistrations(list);
+        }
+        unsubscribe = subscribeEventRegistrations(String(eventId), (liveList) => {
+          if (liveList && liveList.length > 0) {
+            setActiveRegistrations(liveList);
+          }
+        });
+      } catch (err) {
+        console.warn("[EventDetailTabs] Failed to subscribe to registrations:", err);
+      }
+    }
+    void setupRegs();
+    return () => unsubscribe?.();
+  }, [eventId]);
 
   useEffect(() => {
     if (!eventId) return;
@@ -167,14 +197,14 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
   }, [user, initialRole]);
 
   const pendingRefundsCount = useMemo(() => {
-    return registrations.filter((r) => r.refund_request?.status === "waiting_for_approval").length;
-  }, [registrations]);
+    return activeRegistrations.filter((r) => r.refund_request?.status === "waiting_for_approval").length;
+  }, [activeRegistrations]);
 
   // Financial & payment features check: paid registration, merchandise to purchase, or commitment fee
   const hasPaidFeatures = useMemo(() => {
     return (
       hasPaidTicketOrMerchandise(activeEvent) ||
-      registrations.some(
+      activeRegistrations.some(
         (r) =>
           r.ticket_type === "paid" ||
           r.ticket_type === "commitment_fee" ||
@@ -183,17 +213,17 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
           (typeof r.payment_status === "string" && r.payment_status === "paid"),
       )
     );
-  }, [activeEvent, registrations]);
+  }, [activeEvent, activeRegistrations]);
 
   // Merchandise delivery check: show delivery tab whenever event or attendees have merchandise
   const hasMerchandise = useMemo(() => {
     const eventHasMerch = (activeEvent.merchandise?.length ?? 0) > 0;
     const eventHasBundleMerch = (activeEvent.bundles ?? []).some((b) => (b.merchandise_items?.length ?? 0) > 0);
-    const regHasMerch = registrations.some((r) =>
+    const regHasMerch = activeRegistrations.some((r) =>
       Boolean(r.delivery_request || (r.selected_merchandise && r.selected_merchandise.length > 0)),
     );
     return eventHasMerch || eventHasBundleMerch || regHasMerch;
-  }, [activeEvent, registrations]);
+  }, [activeEvent, activeRegistrations]);
 
   const agendaActivitiesCount = useMemo(() => {
     if (activeEvent.presentation_slides && activeEvent.presentation_slides.length > 0) {
@@ -402,14 +432,14 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
           <TabsContent value="registrants" className="space-y-4">
             <RegistrantsTab
               eventId={eventId}
-              registrations={registrations}
+              registrations={activeRegistrations}
               event={activeEvent}
               onSwitchTab={setActiveTab}
             />
           </TabsContent>
 
           <TabsContent value="breakout-sessions" className="space-y-4">
-            <BreakoutSessionsTab eventId={eventId} event={activeEvent} registrations={registrations} />
+            <BreakoutSessionsTab eventId={eventId} event={activeEvent} registrations={activeRegistrations} />
           </TabsContent>
         </>
       )}
@@ -433,7 +463,7 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
           </TabsContent>
 
           <TabsContent value="ots-merch" className="space-y-4">
-            <OnTheSpotMerchTab event={activeEvent} registrations={registrations} />
+            <OnTheSpotMerchTab event={activeEvent} registrations={activeRegistrations} />
           </TabsContent>
 
           {hasMerchandise && (
@@ -445,11 +475,11 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
           {hasPaidFeatures && (
             <>
               <TabsContent value="refunds" className="space-y-4">
-                <RefundsTab event={activeEvent} eventId={eventId} registrations={registrations} />
+                <RefundsTab event={activeEvent} eventId={eventId} registrations={activeRegistrations} />
               </TabsContent>
 
               <TabsContent value="vouchers" className="space-y-4">
-                <VouchersTab event={activeEvent} registrations={registrations} />
+                <VouchersTab event={activeEvent} registrations={activeRegistrations} />
               </TabsContent>
 
               <TabsContent value="payment" className="space-y-4">

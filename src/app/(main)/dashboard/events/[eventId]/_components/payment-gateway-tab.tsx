@@ -815,7 +815,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Button size="sm" variant="outline" asChild className="h-8 gap-1.5 text-xs">
-                <a href="https://sandbox.doku.com/qris-simulator/customer" target="_blank" rel="noopener noreferrer">
+                <a href="https://sandbox.doku.com/qris-simulator/" target="_blank" rel="noopener noreferrer">
                   <QrCode className="size-3.5 text-primary" />
                   QRIS Simulator
                   <ExternalLink className="size-3 opacity-60" />
@@ -859,7 +859,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
               </div>
               <div className="pt-3">
                 <Button variant="outline" size="sm" asChild className="w-full gap-1.5 text-xs">
-                  <a href="https://sandbox.doku.com/qris-simulator/customer" target="_blank" rel="noopener noreferrer">
+                  <a href="https://sandbox.doku.com/qris-simulator/" target="_blank" rel="noopener noreferrer">
                     <QrCode className="size-3.5" />
                     Open QRIS Simulator
                     <ExternalLink className="size-3 opacity-60" />
@@ -2111,7 +2111,7 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
               </p>
               <div className="flex flex-wrap items-center gap-2 pt-1.5">
                 <Button size="sm" variant="outline" asChild className="h-7 gap-1.5 text-xs">
-                  <a href="https://sandbox.doku.com/qris-simulator/customer" target="_blank" rel="noopener noreferrer">
+                  <a href="https://sandbox.doku.com/qris-simulator/" target="_blank" rel="noopener noreferrer">
                     <QrCode className="size-3 text-primary" />
                     Open DOKU QRIS Simulator
                     <ExternalLink className="size-2.5 opacity-60" />

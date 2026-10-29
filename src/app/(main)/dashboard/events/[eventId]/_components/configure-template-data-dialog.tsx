@@ -73,9 +73,26 @@ export function ConfigureTemplateDataDialog({
   onChangeData,
 }: ConfigureTemplateDataDialogProps) {
   const [selectedKey, setSelectedKey] = useState<EmailTemplateKey>(activeTemplateKey);
+
+  // If dialog opens and selectedKey differs, sync once or keep user on active key
+  const currentKey = selectedKey ?? activeTemplateKey;
+  const currentData = templatesData[currentKey] ?? getDefaultTemplateDataForType(currentKey, event);
+  const currentMeta = EMAIL_TEMPLATES_CONFIG.find((c) => c.key === currentKey) ?? EMAIL_TEMPLATES_CONFIG[0];
+
   const [newChecklistItem, setNewChecklistItem] = useState("");
   const [isCopyDialogOpen, setIsCopyDialogOpen] = useState(false);
   const [copyDialogInitialTarget, setCopyDialogInitialTarget] = useState<"all" | "banner" | "checklist">("all");
+
+  // Find first attendee with a real ticket code
+  const firstWithTicket =
+    registrations.find(
+      (r) =>
+        Boolean(r.attendee_code || r.bevy_attendee_id) &&
+        (r.status === "approved" ||
+          r.status === "paid_and_registered" ||
+          r.status === "attended" ||
+          Boolean(r.is_checked_in)),
+    ) ?? registrations.find((r) => Boolean(r.attendee_code || r.bevy_attendee_id));
 
   // Sync selectedKey whenever dialog opens or activeTemplateKey changes
   useEffect(() => {
@@ -101,10 +118,27 @@ export function ConfigureTemplateDataDialog({
   const attendeeIdInputId = useId();
   const checklistInputId = useId();
 
-  // If dialog opens and selectedKey differs, sync once or keep user on active key
-  const currentKey = selectedKey ?? activeTemplateKey;
-  const currentData = templatesData[currentKey] ?? getDefaultTemplateDataForType(currentKey, event);
-  const currentMeta = EMAIL_TEMPLATES_CONFIG.find((c) => c.key === currentKey) ?? EMAIL_TEMPLATES_CONFIG[0];
+  // Auto-populate attendeeCode / attendeeId from attendee ticket code if default dummy or empty
+  useEffect(() => {
+    if (open && firstWithTicket) {
+      const ticketCode =
+        firstWithTicket.attendee_code ||
+        (firstWithTicket.answers?.ticket_code as string) ||
+        (firstWithTicket.answers?.ticketCode as string) ||
+        (firstWithTicket.bevy_attendee_id ? `#${firstWithTicket.bevy_attendee_id}` : undefined);
+      const attId = firstWithTicket.bevy_attendee_id ? String(firstWithTicket.bevy_attendee_id) : undefined;
+      const isDummyCode = !currentData.attendeeCode || currentData.attendeeCode === "GDG-JKT-89241";
+      const isDummyId = !currentData.attendeeId || currentData.attendeeId === "2793132";
+
+      if (ticketCode && (isDummyCode || isDummyId)) {
+        onChangeData(currentKey, {
+          ...currentData,
+          ...(isDummyCode && ticketCode ? { attendeeCode: ticketCode } : {}),
+          ...(isDummyId && attId ? { attendeeId: attId } : {}),
+        });
+      }
+    }
+  }, [open, firstWithTicket, currentKey, currentData, onChangeData]);
 
   const bevySessionTime = formatBevySessionTime(event.start_date, event.end_date);
   const bevyCheckinDeadline = formatBevyCheckinDeadline(event.start_date, 30);
@@ -187,6 +221,18 @@ export function ConfigureTemplateDataDialog({
 
     const chosenName = reg.member_name || "Attendee";
     const chosenEmail = reg.member_email || "";
+    const resolvedTicketCode =
+      reg.attendee_code ||
+      (reg.answers?.ticket_code as string) ||
+      (reg.answers?.ticketCode as string) ||
+      (reg.answers?.attendee_code as string) ||
+      (reg.bevy_attendee_id ? `#${reg.bevy_attendee_id}` : undefined);
+    let resolvedAttendeeId: string | undefined;
+    if (reg.bevy_attendee_id) {
+      resolvedAttendeeId = String(reg.bevy_attendee_id);
+    } else if (reg.id) {
+      resolvedAttendeeId = String(reg.id);
+    }
 
     handleUpdate((prev) => ({
       ...prev,
@@ -194,8 +240,10 @@ export function ConfigureTemplateDataDialog({
         name: chosenName,
         email: chosenEmail,
       },
+      ...(resolvedTicketCode ? { attendeeCode: resolvedTicketCode } : {}),
+      ...(resolvedAttendeeId ? { attendeeId: resolvedAttendeeId } : {}),
     }));
-    toast.success(`Selected attendee: ${chosenName}`);
+    toast.success(`Selected attendee: ${chosenName}${resolvedTicketCode ? ` (${resolvedTicketCode})` : ""}`);
   };
 
   const handleAddChecklistItem = () => {
@@ -529,9 +577,41 @@ export function ConfigureTemplateDataDialog({
                     </div>
 
                     <div className="space-y-1.5">
-                      <Label htmlFor={attendeeCodeId} className="text-xs font-medium">
-                        Attendee Ref Code
-                      </Label>
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor={attendeeCodeId} className="text-xs font-medium">
+                          Attendee Ref Code
+                        </Label>
+                        {firstWithTicket && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const code =
+                                firstWithTicket.attendee_code ||
+                                (firstWithTicket.answers?.ticket_code as string) ||
+                                (firstWithTicket.answers?.ticketCode as string) ||
+                                (firstWithTicket.bevy_attendee_id ? `#${firstWithTicket.bevy_attendee_id}` : "");
+                              let attId: string | undefined;
+                              if (firstWithTicket.bevy_attendee_id) {
+                                attId = String(firstWithTicket.bevy_attendee_id);
+                              } else if (firstWithTicket.id) {
+                                attId = String(firstWithTicket.id);
+                              }
+                              if (code) {
+                                handleUpdate((prev) => ({
+                                  ...prev,
+                                  attendeeCode: code,
+                                  ...(attId ? { attendeeId: attId } : {}),
+                                }));
+                                toast.success(`Auto-filled ticket code: ${code}`);
+                              }
+                            }}
+                            className="text-[11px] text-primary hover:underline inline-flex items-center gap-1 font-normal cursor-pointer"
+                          >
+                            <SparklesIcon className="h-3 w-3" />
+                            Auto-fill from ticket
+                          </button>
+                        )}
+                      </div>
                       <Input
                         id={attendeeCodeId}
                         value={currentData.attendeeCode ?? ""}
@@ -541,7 +621,7 @@ export function ConfigureTemplateDataDialog({
                             attendeeCode: e.target.value,
                           }))
                         }
-                        placeholder="GDG-JKT-89241"
+                        placeholder={firstWithTicket?.attendee_code || "GDG-JKT-89241"}
                         className="h-8 text-xs font-mono"
                       />
                     </div>

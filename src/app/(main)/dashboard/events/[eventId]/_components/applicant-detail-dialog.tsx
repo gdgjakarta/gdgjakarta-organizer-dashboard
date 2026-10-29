@@ -416,6 +416,17 @@ export function ApplicantDetailDialog({
     return list;
   }, [registration, allRegistrations, eventVouchersMap, onUpdateRegistration]);
 
+  // Buyer of the bundle that issued this registration's voucher
+  const bundleBuyer = useMemo(() => {
+    const code = registration?.voucher_code?.trim().toUpperCase();
+    if (!code) return null;
+    return (
+      allRegistrations.find(
+        (r) => r.id !== registration?.id && r.bundle_vouchers?.some((bv) => bv.code?.trim().toUpperCase() === code),
+      ) ?? null
+    );
+  }, [registration?.id, registration?.voucher_code, allRegistrations]);
+
   // Fetch referrer profile ("Who does the referral belong to") if referral code was used
   useEffect(() => {
     if (!registration?.referral_code) {
@@ -1506,6 +1517,15 @@ export function ApplicantDetailDialog({
                   >
                     -Rp {(registration.voucher_discount_amount ?? 0).toLocaleString("id-ID")}
                   </Badge>
+                </div>
+              )}
+              {bundleBuyer && (
+                <div className="flex items-center gap-1.5 rounded-lg border bg-muted/30 px-3 py-2 text-xs">
+                  <span className="shrink-0 text-[11px] text-muted-foreground">Bundle buyer:</span>
+                  <span className="truncate font-semibold text-foreground">{bundleBuyer.member_name}</span>
+                  {bundleBuyer.member_email && (
+                    <span className="truncate text-[11px] text-muted-foreground">({bundleBuyer.member_email})</span>
+                  )}
                 </div>
               )}
 

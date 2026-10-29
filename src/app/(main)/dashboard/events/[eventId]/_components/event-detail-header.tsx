@@ -763,7 +763,7 @@ export function EventDetailHeader({
                   Simulator & Testing
                 </DropdownMenuLabel>
                 <DropdownMenuItem asChild>
-                  <a href="https://sandbox.doku.com/qris-simulator/customer" target="_blank" rel="noopener noreferrer">
+                  <a href="https://sandbox.doku.com/qris-simulator/" target="_blank" rel="noopener noreferrer">
                     <QrCode className="mr-2 size-3.5 text-primary" />
                     DOKU QRIS Simulator
                   </a>

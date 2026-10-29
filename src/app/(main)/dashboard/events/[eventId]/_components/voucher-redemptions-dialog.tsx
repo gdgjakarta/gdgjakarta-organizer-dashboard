@@ -27,7 +27,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatVoucherDiscountDisplay } from "@/lib/events/voucher-utils";
 import type { EventVoucher, FirestoreRegistration } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
@@ -147,16 +146,28 @@ export function VoucherRedemptionsDialog({
 
   // Search filter
   const filteredRedemptions = useMemo(() => {
-    if (!searchQuery.trim()) return redeemedRegistrations;
-    const q = searchQuery.toLowerCase();
+    const rawQuery = searchQuery.trim().toLowerCase();
+    if (!rawQuery) return redeemedRegistrations;
+
+    const queryTokens = rawQuery.split(/\s+/).filter(Boolean);
+
     return redeemedRegistrations.filter((r) => {
       const name = (r.member_name || "").toLowerCase();
       const email = (r.member_email || "").toLowerCase();
       const phone = (r.member_phone || "").toLowerCase();
       const ticket = (r.ticket_name || r.ticket_tier || "").toLowerCase();
-      return name.includes(q) || email.includes(q) || phone.includes(q) || ticket.includes(q);
+      const voucherCode = (r.voucher_code || currentVoucher?.code || "").toLowerCase();
+      const voucherSpaced = voucherCode.replace(/[-_]/g, " ");
+      const voucherPacked = voucherCode.replace(/[-_]/g, "");
+      const status = (r.status || "").toLowerCase();
+      const attendeeCode = (r.attendee_code || "").toLowerCase();
+      const id = (r.id || "").toLowerCase();
+      const invoice = (r.payment_invoice_number || "").toLowerCase();
+
+      const corpus = `${name} ${email} ${phone} ${ticket} ${voucherCode} ${voucherSpaced} ${voucherPacked} ${status} ${attendeeCode} ${id} ${invoice}`;
+      return queryTokens.every((token) => corpus.includes(token));
     });
-  }, [redeemedRegistrations, searchQuery]);
+  }, [redeemedRegistrations, searchQuery, currentVoucher]);
 
   // Aggregate metrics
   const totalDiscountGiven = useMemo(() => {
@@ -170,6 +181,13 @@ export function VoucherRedemptionsDialog({
       return sum;
     }, 0);
   }, [redeemedRegistrations, currentVoucher]);
+
+  const activeRedemptionsCount = useMemo(() => {
+    return redeemedRegistrations.filter((r) => {
+      const s = (r.status || "").toLowerCase();
+      return s !== "rejected" && s !== "canceled" && s !== "cancelled";
+    }).length;
+  }, [redeemedRegistrations]);
 
   const paidOrApprovedCount = useMemo(() => {
     return redeemedRegistrations.filter(
@@ -347,9 +365,9 @@ export function VoucherRedemptionsDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden p-0 sm:max-w-3xl">
+        <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
           {/* Header */}
-          <DialogHeader className="space-y-3 border-b p-6 pb-4">
+          <DialogHeader className="shrink-0 space-y-3 border-b p-6 pb-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
@@ -470,7 +488,7 @@ export function VoucherRedemptionsDialog({
                     <span>Redemptions</span>
                   </div>
                   <div className="mt-1 font-bold text-foreground text-lg">
-                    {redeemedRegistrations.length}
+                    {redeemedRegistrations.length > 0 ? activeRedemptionsCount : (currentVoucher.times_used ?? 0)}
                     {currentVoucher.usage_limit ? (
                       <span className="font-normal text-muted-foreground text-xs"> / {currentVoucher.usage_limit}</span>
                     ) : null}
@@ -514,7 +532,7 @@ export function VoucherRedemptionsDialog({
           </DialogHeader>
 
           {/* Content list */}
-          <ScrollArea className="flex-1 p-6 pt-4">
+          <div className="min-h-0 flex-1 overflow-y-auto p-6 pt-4">
             {(() => {
               if (isLoading) {
                 return (
@@ -700,7 +718,7 @@ export function VoucherRedemptionsDialog({
                 </div>
               );
             })()}
-          </ScrollArea>
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -724,7 +742,7 @@ export function VoucherRedemptionsDialog({
               <div className="flex justify-between">
                 <span>Current Redemptions Used:</span>
                 <span className="font-bold font-mono text-foreground">
-                  {currentVoucher.times_used ?? redeemedRegistrations.length}
+                  {redeemedRegistrations.length > 0 ? activeRedemptionsCount : (currentVoucher.times_used ?? 0)}
                   {currentVoucher.usage_limit ? ` / ${currentVoucher.usage_limit}` : ""}
                 </span>
               </div>

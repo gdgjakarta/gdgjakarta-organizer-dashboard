@@ -863,6 +863,11 @@ export function EventRegistrationModal({
     }
   }, [appliedVoucher, effectiveBasePrice, merchandiseTotalPrice]);
 
+  // Bundle vouchers already grant their package ticket, so selecting another bundle is blocked.
+  const hasBundleVoucher = Boolean(
+    appliedVoucher?.source_bundle_id || appliedVoucher?.code?.toUpperCase().startsWith("BNDL-"),
+  );
+
   const voucherDiscount = useMemo(() => {
     if (!appliedVoucher) {
       return { ticketDiscount: 0, merchandiseDiscount: 0, totalDiscount: 0 };
@@ -1010,7 +1015,7 @@ export function EventRegistrationModal({
 
     // Immediately mark as processed to prevent redundant duplicate invocations across rapid re-renders
     autoVoucherCodeAppliedRef.current = targetCode;
-    let isCancelled = false;
+    const isCancelled = false;
 
     async function autoApplyVoucherCode() {
       setIsApplyingVoucher(true);
@@ -1065,11 +1070,8 @@ export function EventRegistrationModal({
       }
     }
 
+    // No cancel-on-cleanup: price deps change mid-flight and the ref guard would block a retry.
     void autoApplyVoucherCode();
-
-    return () => {
-      isCancelled = true;
-    };
   }, [
     open,
     user,
@@ -2943,7 +2945,7 @@ export function EventRegistrationModal({
                         <div className="grid grid-cols-1 gap-3 pt-1">
                           {availableBundles.map((b) => {
                             const salesStatus = getBundleSalesStatus(b, effectiveNow);
-                            const isDisabled = !salesStatus.isAvailable;
+                            const isDisabled = !salesStatus.isAvailable || hasBundleVoucher;
                             const isSelected = selectedBundleId === b.id;
                             const pricing = calculateBundlePricing(b, availableTickets, availableMerchandise);
                             const linkedTicket = availableTickets.find((t) => t.id === b.ticket_id);
@@ -3048,9 +3050,11 @@ export function EventRegistrationModal({
 
                                 <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-border/40 border-t pt-2.5 text-xs">
                                   <span className="text-[11px] text-muted-foreground">
-                                    {isSelected
-                                      ? "✓ Selected package — ticket and merchandise auto-included"
-                                      : "Click to select this bundling package"}
+                                    {hasBundleVoucher
+                                      ? "Unavailable while a bundle voucher is applied"
+                                      : isSelected
+                                        ? "✓ Selected package — ticket and merchandise auto-included"
+                                        : "Click to select this bundling package"}
                                   </span>
                                   <Button
                                     type="button"

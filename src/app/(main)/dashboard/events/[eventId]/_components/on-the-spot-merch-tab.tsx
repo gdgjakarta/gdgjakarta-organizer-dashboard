@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 
 import {
   AlertCircle,
   Banknote,
+  Boxes,
   Camera,
   Check,
   CheckCircle2,
@@ -26,6 +27,7 @@ import {
   RefreshCw,
   Search,
   ShoppingBag,
+  SlidersHorizontal,
   Tag,
   Trash2,
   User,
@@ -60,6 +62,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { calculateMerchandiseComprehensiveStock, extractLiveOptionSoldUnits } from "@/lib/events/merchandise-templates";
+import { calculateMerchandiseRevenueMetrics } from "@/lib/events/revenue-utils";
+import { updateEventMerchandiseAction } from "@/lib/firestore/actions";
 import { subscribeEventMerchandiseOrders } from "@/lib/firestore/merchandise-orders";
 import type {
   EventBundlePackage,
@@ -67,6 +72,7 @@ import type {
   EventMerchandiseOrder,
   FirestoreEvent,
   FirestoreRegistration,
+  RegistrationStatus,
 } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 import {
@@ -78,11 +84,12 @@ import {
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
 import { CreateOnTheSpotSaleDialog } from "./create-on-the-spot-sale-dialog";
+import { MerchandiseItemDialog } from "./merchandise-item-dialog";
 import { QrCheckInScannerDialog } from "./qr-checkin-scanner-dialog";
 
 interface OnTheSpotMerchTabProps {
   event: FirestoreEvent;
-  registrations: FirestoreRegistration[];
+  registrations?: FirestoreRegistration[];
   onOpenScanner?: () => void;
 }
 
@@ -144,40 +151,340 @@ function getOrderStatusLogMeta(action: string) {
   };
 }
 
-function getRegistrantStatusMeta(status?: string) {
+function getOrderPaymentStatusBadge(status: string) {
   const norm = (status || "").toLowerCase().trim();
-  if (norm === "approved") {
+  if (norm === "paid" || norm.includes("confirmed")) {
     return {
-      label: "Approved",
-      badgeClass: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+      label: "Paid",
+      badgeClass: "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
       dotClass: "bg-emerald-500",
     };
   }
-  if (norm.includes("wait") || norm === "waiting_for_payment") {
+  if (norm === "waiting_for_payment" || norm.includes("pending")) {
     return {
       label: "Waiting for Payment",
-      badgeClass: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+      badgeClass: "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400",
       dotClass: "bg-amber-500",
     };
   }
-  if (norm === "rejected") {
+  if (norm === "cancelled" || norm === "canceled") {
     return {
-      label: "Rejected",
-      badgeClass: "border-destructive/30 bg-destructive/10 text-destructive",
+      label: "Cancelled",
+      badgeClass: "border-destructive/20 bg-destructive/10 text-destructive",
       dotClass: "bg-destructive",
     };
   }
+  if (norm === "refunded") {
+    return {
+      label: "Refunded",
+      badgeClass: "border-purple-500/20 bg-purple-500/10 text-purple-600 dark:text-purple-400",
+      dotClass: "bg-purple-500",
+    };
+  }
   return {
-    label: norm ? norm.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) : "Registered",
+    label: status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
     badgeClass: "border-muted bg-muted/60 text-muted-foreground",
     dotClass: "bg-muted-foreground",
   };
 }
 
-export function OnTheSpotMerchTab({ event, registrations, onOpenScanner }: OnTheSpotMerchTabProps) {
+const REGISTRANT_STATUS_VARIANTS: Record<RegistrationStatus, { label: string; badgeClass: string; dotClass: string }> =
+  {
+    pending: {
+      label: "Pending Review",
+      badgeClass: "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400",
+      dotClass: "bg-amber-500",
+    },
+    waiting_for_payment: {
+      label: "Waiting for Payment",
+      badgeClass: "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400",
+      dotClass: "bg-amber-500",
+    },
+    paid_and_registered: {
+      label: "Paid & Registered",
+      badgeClass: "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+      dotClass: "bg-emerald-500",
+    },
+    expired: {
+      label: "Expired",
+      badgeClass: "border-zinc-500/20 bg-zinc-500/10 text-zinc-600 dark:text-zinc-400",
+      dotClass: "bg-zinc-500",
+    },
+    failed: {
+      label: "Failed",
+      badgeClass: "border-rose-500/20 bg-rose-500/10 text-rose-600 dark:text-rose-400",
+      dotClass: "bg-rose-500",
+    },
+    canceled: {
+      label: "Canceled",
+      badgeClass: "border-slate-500/20 bg-slate-500/10 text-slate-600 dark:text-slate-400",
+      dotClass: "bg-slate-500",
+    },
+    cancelled: {
+      label: "Canceled",
+      badgeClass: "border-slate-500/20 bg-slate-500/10 text-slate-600 dark:text-slate-400",
+      dotClass: "bg-slate-500",
+    },
+    approved: {
+      label: "Approved",
+      badgeClass: "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+      dotClass: "bg-emerald-500",
+    },
+    registered: {
+      label: "Registered",
+      badgeClass: "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+      dotClass: "bg-emerald-500",
+    },
+    rejected: {
+      label: "Rejected",
+      badgeClass: "border-destructive/20 bg-destructive/10 text-destructive",
+      dotClass: "bg-destructive",
+    },
+    waitlisted: {
+      label: "Waitlisted",
+      badgeClass: "border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400",
+      dotClass: "bg-blue-500",
+    },
+    paid_waitlisted: {
+      label: "Paid Waitlist",
+      badgeClass: "border-indigo-500/20 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400",
+      dotClass: "bg-indigo-500",
+    },
+    attended: {
+      label: "Attended",
+      badgeClass: "border-purple-500/20 bg-purple-500/10 text-purple-600 dark:text-purple-400",
+      dotClass: "bg-purple-500",
+    },
+  };
+
+function getRegistrantStatusMeta(status?: string) {
+  const norm = (status || "").toLowerCase().trim();
+  if (norm && norm in REGISTRANT_STATUS_VARIANTS) {
+    return REGISTRANT_STATUS_VARIANTS[norm as RegistrationStatus];
+  }
+  if (norm === "confirmed") {
+    return REGISTRANT_STATUS_VARIANTS.approved;
+  }
+  const fallbackLabel = norm ? norm.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) : "Registered";
+  return {
+    label: fallbackLabel,
+    badgeClass: "border-slate-500/20 bg-slate-500/10 text-slate-600 dark:text-slate-400",
+    dotClass: "bg-slate-500",
+  };
+}
+
+export function OnTheSpotMerchTab({ event, registrations: propRegistrations, onOpenScanner }: OnTheSpotMerchTabProps) {
   const user = useAuthStore((s) => s.user);
   const [orders, setOrders] = useState<EventMerchandiseOrder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [registrations, setRegistrations] = useState<FirestoreRegistration[]>(propRegistrations ?? []);
+  const [isLoadingRegistrations, setIsLoadingRegistrations] = useState(false);
+  const [isSyncingBevy, setIsSyncingBevy] = useState(false);
+  const [merchandise, setMerchandise] = useState<EventMerchandiseItem[]>(event.merchandise ?? []);
+  const [isStockOverviewOpen, setIsStockOverviewOpen] = useState(false);
+  const [editingMerchItem, setEditingMerchItem] = useState<EventMerchandiseItem | null>(null);
+  const [, startTransition] = useTransition();
+
+  useEffect(() => {
+    if (event.merchandise && event.merchandise.length > 0) {
+      setMerchandise(event.merchandise);
+    }
+  }, [event.merchandise]);
+
+  // Synchronize live with Merchandise tab events
+  useEffect(() => {
+    const handleMerchUpdated = (e: Event) => {
+      const customEvent = e as CustomEvent<{ eventId: string; merchandise: EventMerchandiseItem[] }>;
+      if (customEvent.detail?.eventId === String(event.id) && Array.isArray(customEvent.detail.merchandise)) {
+        setMerchandise(customEvent.detail.merchandise);
+      }
+    };
+    window.addEventListener("gdg:merchandise-updated", handleMerchUpdated);
+    return () => {
+      window.removeEventListener("gdg:merchandise-updated", handleMerchUpdated);
+    };
+  }, [event.id]);
+
+  // Fetch latest merchandise on mount
+  useEffect(() => {
+    if (!event.id) return;
+    async function fetchLatestMerchandise() {
+      try {
+        const { getFirestoreEventById } = await import("@/lib/firestore/client");
+        const docData = await getFirestoreEventById(String(event.id));
+        if (docData?.merchandise && Array.isArray(docData.merchandise)) {
+          setMerchandise(docData.merchandise);
+        }
+      } catch (err) {
+        console.warn("[OnTheSpotMerchTab] Failed to fetch latest merchandise:", err);
+      }
+    }
+    void fetchLatestMerchandise();
+  }, [event.id]);
+
+  useEffect(() => {
+    if (propRegistrations && propRegistrations.length > 0) {
+      setRegistrations(propRegistrations);
+    }
+  }, [propRegistrations]);
+
+  const syncFromBevy = useCallback(
+    async (showToast = true) => {
+      if (!event.id) return;
+      setIsSyncingBevy(true);
+      try {
+        const { fetchAllBevyEventAttendeesAction } = await import("@/server/bevy-actions");
+        const res = await fetchAllBevyEventAttendeesAction(String(event.id));
+        if (!res.success || !res.results) {
+          if (showToast) {
+            toast.error(res.error || "Failed to fetch attendees from Bevy.");
+          }
+          return;
+        }
+
+        const bevyAttendees = res.results;
+        if (bevyAttendees.length === 0) {
+          if (showToast) {
+            toast.info("No attendees found in Bevy for this event.");
+          }
+          return;
+        }
+
+        const convertedRegs: FirestoreRegistration[] = bevyAttendees.map((att) => {
+          const attAny = att as Record<string, unknown>;
+          const fullName =
+            att.name ||
+            [att.first_name, att.last_name].filter(Boolean).join(" ") ||
+            att.email?.split("@")[0] ||
+            `Attendee #${att.id}`;
+          const phone = (att.phone as string) || (att.mobile_phone as string) || (att.mobile as string) || "";
+          const ticketCode = String(
+            att.attendee_code ||
+              attAny.ticket_code ||
+              attAny.code ||
+              attAny.ticket_number ||
+              attAny.reference ||
+              attAny.reference_code ||
+              att.order_id ||
+              att.id ||
+              "",
+          ).trim();
+
+          return {
+            id: `bevy_${att.id}`,
+            event_id: String(event.id),
+            event_title: event.title || "GDG Jakarta Event",
+            member_id: String(att.user_id || att.id),
+            member_name: fullName,
+            member_email: att.email || "",
+            member_phone: phone,
+            status: "approved",
+            ticket_tier: att.ticket_title || "Bevy Ticket",
+            bevy_attendee_id: att.id,
+            attendee_code: ticketCode || String(att.id),
+            registered_at: att.created_date || new Date().toISOString(),
+            is_checked_in: Boolean(att.is_checked_in),
+            checkin_date: att.checkin_date || null,
+          };
+        });
+
+        setRegistrations((prev) => {
+          if (prev.length === 0) return convertedRegs;
+          const existingMap = new Map<string, FirestoreRegistration>();
+          for (const reg of prev) {
+            const key = (reg.member_email || "").toLowerCase().trim() || String(reg.bevy_attendee_id || reg.id);
+            existingMap.set(key, reg);
+          }
+          for (const c of convertedRegs) {
+            const key = (c.member_email || "").toLowerCase().trim() || String(c.bevy_attendee_id || c.id);
+            const existing = existingMap.get(key);
+            if (existing) {
+              existingMap.set(key, {
+                ...existing,
+                bevy_attendee_id: c.bevy_attendee_id ?? existing.bevy_attendee_id,
+                attendee_code: c.attendee_code || existing.attendee_code,
+                is_checked_in: c.is_checked_in || existing.is_checked_in,
+                member_phone: existing.member_phone || c.member_phone,
+              });
+            } else {
+              existingMap.set(key, c);
+            }
+          }
+          return Array.from(existingMap.values());
+        });
+
+        if (showToast) {
+          toast.success(`Synced ${bevyAttendees.length} registrants from Bevy.`);
+        }
+      } catch (err) {
+        console.error("[OnTheSpotMerchTab] Error syncing attendees from Bevy:", err);
+        if (showToast) {
+          toast.error("Failed to sync registrants from Bevy.");
+        }
+      } finally {
+        setIsSyncingBevy(false);
+      }
+    },
+    [event.id, event.title],
+  );
+
+  const loadRegistrations = useCallback(async () => {
+    if (!event.id) return;
+    setIsLoadingRegistrations(true);
+    try {
+      const { getEventRegistrations } = await import("@/lib/firestore/client");
+      const list = await getEventRegistrations(String(event.id));
+      if (list && list.length > 0) {
+        setRegistrations(list);
+      } else {
+        void syncFromBevy(false);
+      }
+    } catch (err) {
+      console.warn("[OnTheSpotMerchTab] Failed to load registrations from Firestore:", err);
+      void syncFromBevy(false);
+    } finally {
+      setIsLoadingRegistrations(false);
+    }
+  }, [event.id, syncFromBevy]);
+
+  useEffect(() => {
+    if (!event.id) return;
+    let isMounted = true;
+    let unsubscribe: (() => void) | undefined;
+
+    async function init() {
+      try {
+        const { getEventRegistrations, subscribeEventRegistrations } = await import("@/lib/firestore/client");
+        const list = await getEventRegistrations(String(event.id));
+        if (isMounted && list && list.length > 0) {
+          setRegistrations(list);
+        } else if (isMounted && (!propRegistrations || propRegistrations.length === 0)) {
+          void syncFromBevy(false);
+        }
+
+        unsubscribe = subscribeEventRegistrations(
+          String(event.id),
+          (liveList) => {
+            if (isMounted && liveList.length > 0) {
+              setRegistrations(liveList);
+            }
+          },
+          (err) => {
+            console.warn("[OnTheSpotMerchTab] Live registrations listener warning:", err);
+          },
+        );
+      } catch (err) {
+        console.warn("[OnTheSpotMerchTab] Failed to initialize registrations listener:", err);
+      }
+    }
+
+    void init();
+
+    return () => {
+      isMounted = false;
+      unsubscribe?.();
+    };
+  }, [event.id, propRegistrations, syncFromBevy]);
 
   // Real-time subscription to on-the-spot orders for this event
   useEffect(() => {
@@ -221,6 +528,12 @@ export function OnTheSpotMerchTab({ event, registrations, onOpenScanner }: OnThe
   const [addRegistrantSearch, setAddRegistrantSearch] = useState("");
   const [registrantStatusFilter, setRegistrantStatusFilter] = useState<string>("all");
   const [attendeeForSale, setAttendeeForSale] = useState<FirestoreRegistration | null>(null);
+
+  useEffect(() => {
+    if (isAddFromRegistrantsOpen && registrations.length === 0 && !isLoadingRegistrations && !isSyncingBevy) {
+      void loadRegistrations();
+    }
+  }, [isAddFromRegistrantsOpen, registrations.length, isLoadingRegistrations, isSyncingBevy, loadRegistrations]);
   const [viewingOrder, setViewingOrder] = useState<EventMerchandiseOrder | null>(null);
   const [checkingOrderId, setCheckingOrderId] = useState<string | null>(null);
   const [togglingOrderId, setTogglingOrderId] = useState<string | null>(null);
@@ -261,6 +574,83 @@ export function OnTheSpotMerchTab({ event, registrations, onOpenScanner }: OnThe
 
     return { totalRevenue, unitsSold, collectedCount, uncollectedCount, pendingPaymentCount };
   }, [orders]);
+
+  // Real-time stock telemetry computed exactly like the Merchandise tab
+  const liveOptionSoldMap = useMemo(() => {
+    return extractLiveOptionSoldUnits(merchandise, registrations, orders);
+  }, [merchandise, registrations, orders]);
+
+  const merchRevenueMetrics = useMemo(() => {
+    return calculateMerchandiseRevenueMetrics(registrations, merchandise, orders);
+  }, [registrations, merchandise, orders]);
+
+  const merchandiseStockOverview = useMemo(() => {
+    let totalRemaining: number | null = 0;
+    let hasUnlimited = false;
+    let soldOutCount = 0;
+    let lowStockCount = 0;
+
+    const itemsWithStock = merchandise.map((item) => {
+      const stats = merchRevenueMetrics.byItem.get(item.id);
+      const stock = calculateMerchandiseComprehensiveStock(item, stats?.unitsSold, liveOptionSoldMap[item.id]);
+      if (stock.isUnlimited) hasUnlimited = true;
+      if (stock.totalRemaining !== null) {
+        if (totalRemaining !== null) totalRemaining += stock.totalRemaining;
+      } else {
+        totalRemaining = null;
+      }
+      if (stock.isSoldOut) soldOutCount += 1;
+      else if (stock.totalRemaining !== null && stock.totalRemaining <= 10) lowStockCount += 1;
+
+      return {
+        item,
+        stock,
+        stats,
+      };
+    });
+
+    return {
+      items: itemsWithStock,
+      totalRemaining,
+      hasUnlimited,
+      soldOutCount,
+      lowStockCount,
+      totalItems: merchandise.length,
+    };
+  }, [merchandise, merchRevenueMetrics, liveOptionSoldMap]);
+
+  // Save stock configurations updated via OTS Merch and sync to Merchandise tab
+  const handleSaveConfiguredStock = (savedItem: EventMerchandiseItem) => {
+    if (!event.id) return;
+    const updated = merchandise.map((m) => (String(m.id) === String(savedItem.id) ? savedItem : m));
+    if (!updated.some((m) => String(m.id) === String(savedItem.id))) {
+      updated.push(savedItem);
+    }
+
+    setMerchandise(updated);
+    startTransition(async () => {
+      try {
+        const res = await updateEventMerchandiseAction(
+          String(event.id),
+          updated,
+          event.max_merchandise_per_person ?? null,
+          event,
+        );
+        if (res.success) {
+          window.dispatchEvent(
+            new CustomEvent("gdg:merchandise-updated", {
+              detail: { eventId: String(event.id), merchandise: updated },
+            }),
+          );
+          toast.success(`Stock configuration for "${savedItem.name}" saved!`);
+        } else {
+          toast.error(res.error || "Failed to save stock configuration.");
+        }
+      } catch {
+        toast.error("An error occurred while saving stock configuration.");
+      }
+    });
+  };
 
   // Filtered Orders
   const filteredOrders = useMemo(() => {
@@ -354,11 +744,14 @@ export function OnTheSpotMerchTab({ event, registrations, onOpenScanner }: OnThe
     setTogglingOrderId(order.id);
     const nextState = order.collection_status !== "collected";
     try {
+      const { auth } = await import("@/config/firebase");
+      const freshToken = await auth.currentUser?.getIdToken().catch(() => undefined);
       const res = await updateMerchandiseOrderCollectionStatusAction(
         order.id,
         nextState,
         undefined,
         user ? { name: user.name, id: user.id } : undefined,
+        freshToken || undefined,
       );
       if (res.success) {
         toast.success(
@@ -440,7 +833,7 @@ export function OnTheSpotMerchTab({ event, registrations, onOpenScanner }: OnThe
   return (
     <div className="space-y-6">
       {/* 1. Summary Metric Cards */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <Card className="shadow-2xs">
           <CardHeader className="p-4 pb-2">
             <CardDescription className="text-xs font-medium">Total OTS Revenue</CardDescription>
@@ -500,6 +893,51 @@ export function OnTheSpotMerchTab({ event, registrations, onOpenScanner }: OnThe
             <span className="text-[11px] text-muted-foreground flex items-center gap-1">
               <Clock className="size-3 text-amber-500" />
               Waiting for customer scan
+            </span>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-2xs">
+          <CardHeader className="p-4 pb-2">
+            <div className="flex items-center justify-between">
+              <CardDescription className="text-xs font-medium">Merchandise Stock</CardDescription>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsStockOverviewOpen(true)}
+                className="h-5 px-1.5 text-[10px] text-primary gap-1 hover:bg-primary/10"
+              >
+                <SlidersHorizontal className="size-2.5" />
+                Configure
+              </Button>
+            </div>
+            <CardTitle className="text-lg font-bold text-foreground flex items-center gap-1.5">
+              {(() => {
+                if (merchandiseStockOverview.totalRemaining !== null) {
+                  return merchandiseStockOverview.totalRemaining;
+                }
+                if (merchandiseStockOverview.hasUnlimited) {
+                  return "In Stock";
+                }
+                return "0";
+              })()}
+              <span className="text-xs font-normal text-muted-foreground">
+                {merchandiseStockOverview.totalRemaining !== null ? "left" : ""}
+              </span>
+              {merchandiseStockOverview.soldOutCount > 0 && (
+                <Badge
+                  variant="outline"
+                  className="border-destructive/30 text-destructive text-[9px] font-normal h-3.5 px-1 ml-auto"
+                >
+                  {merchandiseStockOverview.soldOutCount} sold out
+                </Badge>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+              <Boxes className="size-3 text-blue-500" />
+              {merchandise.length} items from Merchandise tab
             </span>
           </CardContent>
         </Card>
@@ -574,6 +1012,16 @@ export function OnTheSpotMerchTab({ event, registrations, onOpenScanner }: OnThe
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setIsStockOverviewOpen(true)}
+            className="h-8 gap-1.5 text-xs border-border/80 hover:bg-muted"
+          >
+            <Boxes className="size-3.5 text-blue-500" />
+            Stock & Inventory
+          </Button>
+
           <Button
             size="sm"
             variant="outline"
@@ -733,25 +1181,15 @@ export function OnTheSpotMerchTab({ event, registrations, onOpenScanner }: OnThe
                     </TableCell>
 
                     <TableCell className="align-top py-3">
-                      {isPaid ? (
-                        <Badge
-                          variant="outline"
-                          className="border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[10px]"
-                        >
-                          Paid
-                        </Badge>
-                      ) : isPending ? (
-                        <Badge
-                          variant="outline"
-                          className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[10px]"
-                        >
-                          Pending QRIS
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="border-destructive/30 text-destructive text-[10px]">
-                          {o.payment_status}
-                        </Badge>
-                      )}
+                      {(() => {
+                        const meta = getOrderPaymentStatusBadge(o.payment_status);
+                        return (
+                          <Badge variant="outline" className={cn("gap-1.5 text-[10px] font-medium", meta.badgeClass)}>
+                            <span className={cn("size-1.5 rounded-full shrink-0", meta.dotClass)} />
+                            <span>{meta.label}</span>
+                          </Badge>
+                        );
+                      })()}
                     </TableCell>
 
                     <TableCell className="align-top py-3">
@@ -790,15 +1228,15 @@ export function OnTheSpotMerchTab({ event, registrations, onOpenScanner }: OnThe
                           </Button>
                         )}
 
-                        {/* QRIS Link Presentation */}
+                        {/* Payment Link Presentation */}
                         {isPending && o.payment_url && (
                           <Button
                             size="icon-xs"
                             variant="ghost"
                             onClick={() => setActivePaymentOrder(o)}
-                            title="Show QRIS Checkout"
+                            title="Open DOKU Payment Link"
                           >
-                            <QrCode className="size-3.5 text-primary" />
+                            <ExternalLink className="size-3.5 text-primary" />
                           </Button>
                         )}
 
@@ -891,11 +1329,23 @@ export function OnTheSpotMerchTab({ event, registrations, onOpenScanner }: OnThe
                   <SelectItem value="approved" className="text-xs">
                     Approved
                   </SelectItem>
+                  <SelectItem value="paid_and_registered" className="text-xs">
+                    Paid & Registered
+                  </SelectItem>
+                  <SelectItem value="pending" className="text-xs">
+                    Pending Review
+                  </SelectItem>
                   <SelectItem value="waiting_for_payment" className="text-xs">
                     Waiting for Payment
                   </SelectItem>
                   <SelectItem value="registered" className="text-xs">
                     Registered
+                  </SelectItem>
+                  <SelectItem value="attended" className="text-xs">
+                    Attended
+                  </SelectItem>
+                  <SelectItem value="waitlisted" className="text-xs">
+                    Waitlisted
                   </SelectItem>
                   <SelectItem value="rejected" className="text-xs">
                     Rejected
@@ -909,10 +1359,48 @@ export function OnTheSpotMerchTab({ event, registrations, onOpenScanner }: OnThe
                 Showing <strong className="text-foreground">{availableRegistrants.length}</strong> of{" "}
                 {registrations.length} registrants
               </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => syncFromBevy(true)}
+                disabled={isSyncingBevy || isLoadingRegistrations}
+                className="h-7 text-[11px] gap-1.5 px-2 text-muted-foreground hover:text-foreground cursor-pointer"
+                title="Sync attendee roster from Bevy"
+              >
+                <RefreshCw className={cn("size-3", (isSyncingBevy || isLoadingRegistrations) && "animate-spin")} />
+                {isSyncingBevy ? "Syncing..." : "Sync from Bevy"}
+              </Button>
             </div>
 
             <div className="max-h-80 divide-y overflow-y-auto rounded-lg border">
-              {availableRegistrants.length === 0 ? (
+              {isLoadingRegistrations || isSyncingBevy ? (
+                <div className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground text-xs gap-2">
+                  <RefreshCw className="size-5 animate-spin text-primary" />
+                  <span>Loading event registrants...</span>
+                </div>
+              ) : registrations.length === 0 ? (
+                <div className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground text-xs gap-3">
+                  <UserPlus className="size-8 text-muted-foreground/40" />
+                  <div className="space-y-1">
+                    <p className="font-medium text-foreground">No registrants loaded yet</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Sync attendee roster from Bevy to quickly select a registrant for an on-the-spot sale.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => syncFromBevy(true)}
+                    disabled={isSyncingBevy}
+                    className="h-8 gap-1.5 text-xs cursor-pointer"
+                  >
+                    <RefreshCw className={cn("size-3.5", isSyncingBevy && "animate-spin")} />
+                    Sync Attendees from Bevy
+                  </Button>
+                </div>
+              ) : availableRegistrants.length === 0 ? (
                 <div className="p-8 text-center text-muted-foreground text-xs">
                   No registrants found matching your search.
                 </div>
@@ -998,6 +1486,8 @@ export function OnTheSpotMerchTab({ event, registrations, onOpenScanner }: OnThe
         }}
         event={event}
         registrations={registrations}
+        merchandise={merchandise}
+        initialOrders={orders}
         initialAttendee={attendeeForSale}
         onOpenAddFromRegistrants={() => {
           setIsCreateOpen(false);
@@ -1006,6 +1496,163 @@ export function OnTheSpotMerchTab({ event, registrations, onOpenScanner }: OnThe
           setIsAddFromRegistrantsOpen(true);
         }}
       />
+
+      {/* Merchandise Stock Overview & Configuration Dialog */}
+      <Dialog open={isStockOverviewOpen} onOpenChange={setIsStockOverviewOpen}>
+        <DialogContent className="sm:max-w-2xl md:max-w-3xl w-full max-h-[88vh] overflow-y-auto">
+          <DialogHeader className="pr-6">
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <DialogTitle className="text-base font-semibold flex items-center gap-2">
+                  <Boxes className="size-4 text-blue-500" />
+                  Merchandise Stock & Inventory
+                </DialogTitle>
+                <DialogDescription className="text-xs">
+                  Stock levels and quotas configured in the Merchandise tab, reflecting live registrations and paid OTS
+                  sales.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2">
+            {merchandiseStockOverview.items.length === 0 ? (
+              <div className="text-center py-8 text-xs text-muted-foreground">
+                No merchandise items configured yet on the Merchandise tab.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {merchandiseStockOverview.items.map(({ item, stock }) => (
+                  <div
+                    key={item.id}
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-3.5 rounded-xl border bg-muted/20 hover:bg-muted/30 transition-colors"
+                  >
+                    <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                      <div className="size-14 rounded-lg bg-muted flex items-center justify-center shrink-0 overflow-hidden border">
+                        {item.image_url ? (
+                          // biome-ignore lint/a11y/useAltText: merchandise thumbnail
+                          // biome-ignore lint/performance/noImgElement: merchandise thumbnail
+                          <img src={item.image_url} className="size-full object-cover" />
+                        ) : (
+                          <Package className="size-6 text-muted-foreground" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold text-xs sm:text-sm text-foreground truncate">{item.name}</p>
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "text-[10px] h-5 px-1.5 shrink-0 font-medium",
+                              stock.isSoldOut
+                                ? "border-destructive/30 bg-destructive/10 text-destructive"
+                                : stock.totalRemaining !== null && stock.totalRemaining <= 10
+                                  ? "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                                  : "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+                            )}
+                          >
+                            {stock.isSoldOut
+                              ? "Sold Out"
+                              : stock.totalRemaining !== null
+                                ? `${stock.totalRemaining} remaining`
+                                : "Unlimited"}
+                          </Badge>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+                          <span className="font-semibold text-foreground">
+                            Rp {(item.price || 0).toLocaleString("id-ID")}
+                          </span>
+                          <span>•</span>
+                          <span>
+                            Sold: <strong>{stock.totalSold}</strong> unit{stock.totalSold === 1 ? "" : "s"}
+                            {stock.totalCapacity !== null && (
+                              <>
+                                {" "}
+                                of <strong>{stock.totalCapacity}</strong> quota
+                              </>
+                            )}
+                          </span>
+                          {stock.totalRemaining !== null && (
+                            <>
+                              <span>•</span>
+                              <span
+                                className={cn(
+                                  stock.totalRemaining <= 10 ? "text-amber-600 dark:text-amber-400 font-medium" : "",
+                                )}
+                              >
+                                <strong>{stock.totalRemaining}</strong> left to sell
+                              </span>
+                            </>
+                          )}
+                        </div>
+                        {/* Variation option breakdown */}
+                        {stock.variations.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                            {stock.variations.map((v) =>
+                              v.options.map((opt) => (
+                                <Badge
+                                  key={`${v.variationName}-${opt.option}`}
+                                  variant="outline"
+                                  className={cn(
+                                    "text-[10px] h-5 px-1.5 gap-1 font-normal",
+                                    opt.isSoldOut
+                                      ? "border-destructive/20 bg-destructive/5 text-destructive"
+                                      : opt.remaining !== null && opt.remaining <= 5
+                                        ? "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium"
+                                        : "border-border/70 bg-background text-foreground",
+                                  )}
+                                >
+                                  <span className="font-medium">{opt.option}</span>
+                                  {opt.quota !== null ? (
+                                    <span className="text-[9px] opacity-80">
+                                      {opt.isSoldOut ? "(Sold Out)" : `(${opt.remaining} left)`}
+                                    </span>
+                                  ) : null}
+                                </Badge>
+                              )),
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setEditingMerchItem(item);
+                      }}
+                      className="shrink-0 whitespace-nowrap h-8 text-xs gap-1.5 self-start sm:self-center"
+                    >
+                      <SlidersHorizontal className="size-3" />
+                      Configure Stock
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="pt-2">
+            <Button size="sm" variant="outline" onClick={() => setIsStockOverviewOpen(false)} className="text-xs">
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Item Stock Configuration Dialog */}
+      {editingMerchItem && (
+        <MerchandiseItemDialog
+          open={Boolean(editingMerchItem)}
+          onOpenChange={(v) => !v && setEditingMerchItem(null)}
+          item={editingMerchItem}
+          onSave={(saved) => {
+            handleSaveConfiguredStock(saved);
+            setEditingMerchItem(null);
+          }}
+        />
+      )}
 
       {/* Scanner Dialog */}
       <QrCheckInScannerDialog
@@ -1022,67 +1669,78 @@ export function OnTheSpotMerchTab({ event, registrations, onOpenScanner }: OnThe
         }}
       />
 
-      {/* 5. View QRIS Modal for Pending Order */}
+      {/* 5. View DOKU Payment Link Modal for Pending Order */}
       {activePaymentOrder && activePaymentOrder.payment_url && (
         <Dialog open={Boolean(activePaymentOrder)} onOpenChange={(v) => !v && setActivePaymentOrder(null)}>
           <DialogContent className="inset-0 m-auto h-fit max-h-[92vh] translate-x-0 translate-y-0 sm:max-w-md [transform:none]">
             <DialogHeader>
               <DialogTitle className="text-base font-semibold">
-                QRIS Checkout: #{activePaymentOrder.order_number}
+                DOKU Payment Link: #{activePaymentOrder.order_number}
               </DialogTitle>
               <DialogDescription className="text-xs">
-                Scan with any mobile banking or e-wallet app to pay.
+                Open checkout in a browser tab to pay with QRIS or share the link with the attendee.
               </DialogDescription>
             </DialogHeader>
 
             <div className="flex flex-col items-center justify-center p-4 text-center space-y-3">
-              <div className="overflow-hidden rounded-xl border bg-white p-2 shadow-xs">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=${encodeURIComponent(
-                    activePaymentOrder.payment_url,
-                  )}`}
-                  alt="QRIS Code"
-                  className="size-48 object-contain"
-                />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Invoice #{activePaymentOrder.payment_invoice_number}</p>
-                <p className="text-xl font-bold tracking-tight text-foreground">
-                  Rp {activePaymentOrder.total_amount.toLocaleString("id-ID")}
-                </p>
+              <div className="w-full rounded-xl border bg-card p-4 text-center space-y-1.5">
+                <Badge
+                  variant="outline"
+                  className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-[11px] gap-1.5"
+                >
+                  <span className="size-1.5 rounded-full bg-amber-500" />
+                  Waiting for Payment
+                </Badge>
+                <div>
+                  <p className="text-xs text-muted-foreground">Invoice #{activePaymentOrder.payment_invoice_number}</p>
+                  <p className="text-2xl font-bold tracking-tight text-foreground">
+                    Rp {activePaymentOrder.total_amount.toLocaleString("id-ID")}
+                  </p>
+                </div>
               </div>
 
-              <div className="w-full space-y-2 pt-2">
-                <div className="flex items-center gap-2">
-                  <Input
-                    readOnly
-                    value={activePaymentOrder.payment_url}
-                    className="h-8 font-mono text-xs text-muted-foreground"
-                  />
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleCopyPaymentUrl(activePaymentOrder.payment_url)}
-                    className="shrink-0 gap-1.5 text-xs h-8"
-                  >
-                    {hasCopied ? <Check className="size-3 text-emerald-600" /> : <Copy className="size-3" />}
-                    <span>{hasCopied ? "Copied" : "Copy"}</span>
-                  </Button>
+              <div className="w-full space-y-2 pt-1 text-left">
+                <div className="space-y-1.5">
+                  <span className="text-[11px] font-medium text-muted-foreground">DOKU Checkout URL</span>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      readOnly
+                      value={activePaymentOrder.payment_url}
+                      className="h-8 font-mono text-xs text-muted-foreground"
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleCopyPaymentUrl(activePaymentOrder.payment_url)}
+                      className="shrink-0 gap-1.5 text-xs h-8"
+                    >
+                      {hasCopied ? <Check className="size-3 text-emerald-600" /> : <Copy className="size-3" />}
+                      <span>{hasCopied ? "Copied" : "Copy"}</span>
+                    </Button>
+                  </div>
                 </div>
 
-                <Button
-                  onClick={() => handleCheckPayment(activePaymentOrder)}
-                  disabled={checkingOrderId === activePaymentOrder.id}
-                  className="w-full gap-2 text-xs h-8"
-                >
-                  {checkingOrderId === activePaymentOrder.id ? (
-                    <Loader2 className="size-3.5 animate-spin" />
-                  ) : (
-                    <RefreshCw className="size-3.5" />
-                  )}
-                  Check Payment Status
-                </Button>
+                <div className="flex flex-col gap-2 pt-2">
+                  <Button asChild size="sm" className="w-full gap-1.5 text-xs font-semibold h-9">
+                    <a href={activePaymentOrder.payment_url} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="size-3.5" />
+                      Open Checkout in New Tab
+                    </a>
+                  </Button>
+                  <Button
+                    onClick={() => handleCheckPayment(activePaymentOrder)}
+                    disabled={checkingOrderId === activePaymentOrder.id}
+                    variant="outline"
+                    className="w-full gap-2 text-xs h-9"
+                  >
+                    {checkingOrderId === activePaymentOrder.id ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <RefreshCw className="size-3.5" />
+                    )}
+                    Check Payment Status
+                  </Button>
+                </div>
               </div>
             </div>
           </DialogContent>
@@ -1108,18 +1766,15 @@ export function OnTheSpotMerchTab({ event, registrations, onOpenScanner }: OnThe
                     })}
                   </DialogDescription>
                 </div>
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    "text-xs capitalize",
-                    viewingOrder.payment_status === "paid" &&
-                      "border-emerald-500/30 bg-emerald-500/10 text-emerald-700",
-                    viewingOrder.payment_status === "waiting_for_payment" &&
-                      "border-amber-500/30 bg-amber-500/10 text-amber-700",
-                  )}
-                >
-                  {viewingOrder.payment_status.replace(/_/g, " ")}
-                </Badge>
+                {(() => {
+                  const meta = getOrderPaymentStatusBadge(viewingOrder.payment_status);
+                  return (
+                    <Badge variant="outline" className={cn("gap-1.5 text-xs font-medium", meta.badgeClass)}>
+                      <span className={cn("size-1.5 rounded-full shrink-0", meta.dotClass)} />
+                      <span>{meta.label}</span>
+                    </Badge>
+                  );
+                })()}
               </div>
             </DialogHeader>
 
@@ -1310,9 +1965,17 @@ export function OnTheSpotMerchTab({ event, registrations, onOpenScanner }: OnThe
                     </p>
 
                     <div className="rounded-lg border bg-muted/40 p-3 space-y-1.5 text-[11px]">
-                      <div className="flex justify-between">
+                      <div className="flex items-center justify-between">
                         <span className="text-muted-foreground">Status:</span>
-                        <span className="font-semibold uppercase text-foreground">{orderToDelete.payment_status}</span>
+                        {(() => {
+                          const meta = getOrderPaymentStatusBadge(orderToDelete.payment_status);
+                          return (
+                            <Badge variant="outline" className={cn("gap-1.5 font-medium text-[11px]", meta.badgeClass)}>
+                              <span className={cn("size-1.5 rounded-full shrink-0", meta.dotClass)} />
+                              <span>{meta.label}</span>
+                            </Badge>
+                          );
+                        })()}
                       </div>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Purchased Items:</span>

@@ -290,26 +290,15 @@ export function getRegistrationDiscountBreakdown(
   let voucherDiscount = 0;
   if (typeof registration.voucher_discount_amount === "number" && registration.voucher_discount_amount > 0) {
     voucherDiscount = registration.voucher_discount_amount;
-  } else if (registration.voucher_code || registration.voucher_id) {
-    if (typeof registration.voucher_discount_value === "number" && registration.voucher_discount_value > 0) {
-      if (registration.voucher_discount_type === "percentage") {
-        voucherDiscount = Math.round((baseTicketPrice * registration.voucher_discount_value) / 100);
-      } else {
-        voucherDiscount = registration.voucher_discount_value;
-      }
-    } else if (event?.vouchers) {
-      const matchVoucher = event.vouchers.find(
-        (v) =>
-          (registration.voucher_code && v.code.toUpperCase() === registration.voucher_code.toUpperCase()) ||
-          (registration.voucher_id && v.id === registration.voucher_id),
-      );
-      if (matchVoucher) {
-        const calc = calculateVoucherDiscount(matchVoucher, {
-          ticketPrice: baseTicketPrice,
-          merchandiseTotal: 0,
-        });
-        voucherDiscount = calc.ticketDiscount || calc.totalDiscount;
-      }
+  } else if (
+    (registration.voucher_code || registration.voucher_id) &&
+    typeof registration.voucher_discount_value === "number" &&
+    registration.voucher_discount_value > 0
+  ) {
+    if (registration.voucher_discount_type === "percentage") {
+      voucherDiscount = Math.round((baseTicketPrice * registration.voucher_discount_value) / 100);
+    } else {
+      voucherDiscount = registration.voucher_discount_value;
     }
   }
 
