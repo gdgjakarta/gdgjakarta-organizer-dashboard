@@ -4945,12 +4945,6 @@ export async function enqueuePrintJob(
     await auth.authStateReady();
   }
   const docRef = doc(db, "system_settings", "printer_queue");
-  const snap = await getDoc(docRef);
-  const existingJobs: import("@/lib/printers/types").PrintJob[] =
-    snap.exists() && Array.isArray(snap.data()?.jobs)
-      ? (snap.data()?.jobs as import("@/lib/printers/types").PrintJob[])
-      : [];
-
   const now = new Date().toISOString();
   const jobId = `job_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
   const newJob = sanitizeFirestoreData<import("@/lib/printers/types").PrintJob>({
@@ -4960,16 +4954,24 @@ export async function enqueuePrintJob(
     created_at: now,
   });
 
-  const updatedJobs = [newJob, ...existingJobs].slice(0, MAX_STORED_PRINT_JOBS);
-  await setDoc(
-    docRef,
-    sanitizeFirestoreData({
-      id: "printer_queue",
-      jobs: updatedJobs,
-      updated_at: now,
-    }),
-    { merge: true },
-  );
+  // Transaction: several scanners can enqueue at once, and all jobs live in one array field.
+  await runTransaction(db, async (transaction) => {
+    const snap = await transaction.get(docRef);
+    const existingJobs: import("@/lib/printers/types").PrintJob[] =
+      snap.exists() && Array.isArray(snap.data()?.jobs)
+        ? (snap.data()?.jobs as import("@/lib/printers/types").PrintJob[])
+        : [];
+    const updatedJobs = [newJob, ...existingJobs].slice(0, MAX_STORED_PRINT_JOBS);
+    transaction.set(
+      docRef,
+      sanitizeFirestoreData({
+        id: "printer_queue",
+        jobs: updatedJobs,
+        updated_at: now,
+      }),
+      { merge: true },
+    );
+  });
   return jobId;
 }
 
@@ -4983,31 +4985,35 @@ export async function updatePrintJobStatus(
     await auth.authStateReady();
   }
   const docRef = doc(db, "system_settings", "printer_queue");
-  const snap = await getDoc(docRef);
-  if (!snap.exists() || !Array.isArray(snap.data()?.jobs)) return;
 
-  const now = new Date().toISOString();
-  const existingJobs = snap.data()?.jobs as import("@/lib/printers/types").PrintJob[];
-  const updatedJobs = existingJobs.map((job) =>
-    job.id === jobId
-      ? sanitizeFirestoreData<import("@/lib/printers/types").PrintJob>({
-          ...job,
-          status,
-          ...(status === "completed" ? { printed_at: now } : {}),
-          ...(errorMessage !== undefined ? { error_message: errorMessage } : {}),
-        })
-      : job,
-  );
+  // Transaction: jobs print in parallel, so status updates must not overwrite each other.
+  await runTransaction(db, async (transaction) => {
+    const snap = await transaction.get(docRef);
+    if (!snap.exists() || !Array.isArray(snap.data()?.jobs)) return;
 
-  await setDoc(
-    docRef,
-    sanitizeFirestoreData({
-      id: "printer_queue",
-      jobs: updatedJobs,
-      updated_at: now,
-    }),
-    { merge: true },
-  );
+    const now = new Date().toISOString();
+    const existingJobs = snap.data()?.jobs as import("@/lib/printers/types").PrintJob[];
+    const updatedJobs = existingJobs.map((job) =>
+      job.id === jobId
+        ? sanitizeFirestoreData<import("@/lib/printers/types").PrintJob>({
+            ...job,
+            status,
+            ...(status === "completed" ? { printed_at: now } : {}),
+            ...(errorMessage !== undefined ? { error_message: errorMessage } : {}),
+          })
+        : job,
+    );
+
+    transaction.set(
+      docRef,
+      sanitizeFirestoreData({
+        id: "printer_queue",
+        jobs: updatedJobs,
+        updated_at: now,
+      }),
+      { merge: true },
+    );
+  });
 }
 
 export function subscribePendingPrintQueue(
