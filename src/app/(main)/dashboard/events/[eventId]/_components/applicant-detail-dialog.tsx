@@ -307,10 +307,13 @@ export function ApplicantDetailDialog({
     () => new Map(),
   );
 
-  // Load private event_vouchers if this registration is a bundle purchaser to get live redemption state
+  // Load private event_vouchers if this registration is a bundle purchaser or redeemed a voucher
   useEffect(() => {
     const eventId = registration?.event_id || event?.id;
-    if (!eventId || !Array.isArray(registration?.bundle_vouchers) || registration.bundle_vouchers.length === 0) {
+    const hasBundleVouchers = Array.isArray(registration?.bundle_vouchers) && registration.bundle_vouchers.length > 0;
+    const hasVoucherCode = Boolean(registration?.voucher_code?.trim());
+
+    if (!eventId || (!hasBundleVouchers && !hasVoucherCode)) {
       return;
     }
 
@@ -334,7 +337,7 @@ export function ApplicantDetailDialog({
     return () => {
       isMounted = false;
     };
-  }, [registration?.event_id, registration?.bundle_vouchers, event?.id]);
+  }, [registration?.event_id, registration?.bundle_vouchers, registration?.voucher_code, event?.id]);
 
   // Compute live bundle friend vouchers redemption status by cross-referencing event registrations and voucher docs
   const resolvedBundleVouchers = useMemo(() => {
@@ -416,16 +419,70 @@ export function ApplicantDetailDialog({
     return list;
   }, [registration, allRegistrations, eventVouchersMap, onUpdateRegistration]);
 
+  // Applied voucher document (if found in event vouchers or event.vouchers)
+  const appliedVoucherDoc = useMemo(() => {
+    const code = registration?.voucher_code?.trim().toUpperCase();
+    if (!code) return null;
+    return eventVouchersMap.get(code) ?? event?.vouchers?.find((v) => v.code.trim().toUpperCase() === code) ?? null;
+  }, [registration?.voucher_code, eventVouchersMap, event?.vouchers]);
+
   // Buyer of the bundle that issued this registration's voucher
   const bundleBuyer = useMemo(() => {
     const code = registration?.voucher_code?.trim().toUpperCase();
     if (!code) return null;
-    return (
-      allRegistrations.find(
-        (r) => r.id !== registration?.id && r.bundle_vouchers?.some((bv) => bv.code?.trim().toUpperCase() === code),
-      ) ?? null
+
+    // 1. Direct cross-reference with allRegistrations in the event
+    const regBuyer = allRegistrations.find(
+      (r) => r.id !== registration?.id && r.bundle_vouchers?.some((bv) => bv.code?.trim().toUpperCase() === code),
     );
-  }, [registration?.id, registration?.voucher_code, allRegistrations]);
+    if (regBuyer) return regBuyer;
+
+    // 2. Cross-reference using source_registration_id / purchaser_member_id from voucher doc
+    if (appliedVoucherDoc?.source_registration_id) {
+      const byRegId = allRegistrations.find((r) => r.id === appliedVoucherDoc.source_registration_id);
+      if (byRegId) return byRegId;
+    }
+    if (appliedVoucherDoc?.purchaser_member_id) {
+      const byMemberId = allRegistrations.find((r) => r.member_id === appliedVoucherDoc.purchaser_member_id);
+      if (byMemberId) return byMemberId;
+    }
+
+    // 3. Fallback mock object if purchaser name/email exists in voucher document
+    if (appliedVoucherDoc?.purchaser_name || appliedVoucherDoc?.purchaser_email) {
+      return {
+        id: appliedVoucherDoc.source_registration_id || "bundle-purchaser",
+        event_id: registration?.event_id || "",
+        event_title: registration?.event_title || "",
+        member_id: appliedVoucherDoc.purchaser_member_id || "",
+        member_name: appliedVoucherDoc.purchaser_name || "Bundle Purchaser",
+        member_email: appliedVoucherDoc.purchaser_email || "",
+        status: "approved" as RegistrationStatus,
+        registered_at: appliedVoucherDoc.created_at || "",
+        bundle_name: "Ticket Bundle",
+      } as FirestoreRegistration;
+    }
+
+    return null;
+  }, [
+    registration?.id,
+    registration?.event_id,
+    registration?.event_title,
+    registration?.voucher_code,
+    allRegistrations,
+    appliedVoucherDoc,
+  ]);
+
+  // Description of the applied voucher
+  const voucherDescription = useMemo(() => {
+    if (appliedVoucherDoc?.description) {
+      return appliedVoucherDoc.description;
+    }
+    if (bundleBuyer) {
+      const bundleLabel = bundleBuyer.bundle_name || "Ticket Bundle";
+      return `100% Ticket Pass sponsored by ${bundleBuyer.member_name || "Bundle Purchaser"} (${bundleLabel})`;
+    }
+    return null;
+  }, [appliedVoucherDoc, bundleBuyer]);
 
   // Fetch referrer profile ("Who does the referral belong to") if referral code was used
   useEffect(() => {
@@ -1501,30 +1558,76 @@ export function ApplicantDetailDialog({
                 </div>
               )}
 
-              {/* Voucher Discount Details if applied */}
+              {/* Voucher Discount Details & Ownership if applied */}
               {Boolean(registration.voucher_code) && (
-                <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
-                  <div className="flex min-w-0 items-center gap-1.5">
-                    <Tag className="size-3.5 shrink-0 text-primary" />
-                    <span className="shrink-0 text-[11px] text-muted-foreground">Voucher:</span>
-                    <span className="truncate font-mono font-semibold text-[11px] text-foreground">
-                      {registration.voucher_code}
-                    </span>
+                <div className="flex flex-col gap-2 rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <Tag className="size-3.5 shrink-0 text-primary" />
+                      <span className="shrink-0 font-medium text-[11px] text-muted-foreground">Voucher:</span>
+                      <span className="truncate font-mono font-semibold text-[11px] text-foreground">
+                        {registration.voucher_code}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        className="size-5 text-muted-foreground hover:text-foreground"
+                        title="Copy voucher code"
+                        onClick={() => handleCopy(registration.voucher_code ?? "", "Voucher code", "voucher_code")}
+                      >
+                        {copiedKey === "voucher_code" ? (
+                          <Check className="size-3 text-emerald-600" />
+                        ) : (
+                          <Copy className="size-3" />
+                        )}
+                      </Button>
+                    </div>
+
+                    <Badge
+                      variant="outline"
+                      className="shrink-0 border-primary/30 bg-primary/10 font-mono font-semibold text-[10px] text-primary"
+                    >
+                      -Rp {(registration.voucher_discount_amount ?? 0).toLocaleString("id-ID")}
+                    </Badge>
                   </div>
-                  <Badge
-                    variant="outline"
-                    className="shrink-0 border-primary/30 bg-primary/10 font-semibold text-[10px] text-primary"
-                  >
-                    -Rp {(registration.voucher_discount_amount ?? 0).toLocaleString("id-ID")}
-                  </Badge>
-                </div>
-              )}
-              {bundleBuyer && (
-                <div className="flex items-center gap-1.5 rounded-lg border bg-muted/30 px-3 py-2 text-xs">
-                  <span className="shrink-0 text-[11px] text-muted-foreground">Bundle buyer:</span>
-                  <span className="truncate font-semibold text-foreground">{bundleBuyer.member_name}</span>
-                  {bundleBuyer.member_email && (
-                    <span className="truncate text-[11px] text-muted-foreground">({bundleBuyer.member_email})</span>
+
+                  {/* Voucher Description */}
+                  {voucherDescription && (
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">{voucherDescription}</p>
+                  )}
+
+                  {/* Bundle Buyer ("Belongs to") */}
+                  {bundleBuyer && (
+                    <div className="flex items-center justify-between rounded-md border border-primary/20 bg-background/80 px-2.5 py-1.5 text-xs">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <Avatar className="size-6 shrink-0 border border-border/60">
+                          <AvatarImage
+                            src={bundleBuyer.member_avatar ?? undefined}
+                            alt={bundleBuyer.member_name || "Bundle Buyer"}
+                          />
+                          <AvatarFallback className="font-semibold text-[9px]">
+                            {getInitials(bundleBuyer.member_name || "Buyer")}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex min-w-0 flex-col">
+                          <div className="flex items-center gap-1.5">
+                            <span className="shrink-0 text-[10px] text-muted-foreground">Belongs to:</span>
+                            <span className="truncate font-semibold text-[11px] text-foreground">
+                              {bundleBuyer.member_name}
+                            </span>
+                          </div>
+                          {Boolean(bundleBuyer.member_email) && (
+                            <span className="truncate text-[10px] text-muted-foreground">
+                              {bundleBuyer.member_email}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <Badge variant="secondary" className="shrink-0 px-1.5 py-0 text-[9px]">
+                        {bundleBuyer.bundle_name || "Bundle Buyer"}
+                      </Badge>
+                    </div>
                   )}
                 </div>
               )}
