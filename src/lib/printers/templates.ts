@@ -1,3 +1,4 @@
+import { escapeHtml, initialsOf, injectNameFit, shortenName } from "./name-fit";
 import { generateQrSvgDataUrl } from "./qr-svg";
 import type { LabelTemplateData, PrinterConfig } from "./types";
 
@@ -360,6 +361,10 @@ export function generateQrImageUrl(payload: string): string {
   return generateQrSvgDataUrl(payload);
 }
 
+function answerToHtml(value: unknown): string {
+  return escapeHtml(Array.isArray(value) ? value.join(", ") : String(value ?? ""));
+}
+
 /**
  * Replace [[placeholder]] tokens with attendee & event values,
  * including answered questions from custom registration forms.
@@ -376,41 +381,49 @@ export function renderLabelTemplate(template: string, data: LabelTemplateData): 
   const sessionTrack = data.sessionTrack || "Full Session";
   const techStack = data.techStack || "";
 
-  let rendered = ensureFullLabelHtml(template)
-    .replaceAll("[[name]]", attendeeName)
-    .replaceAll("[[Name]]", attendeeName)
-    .replaceAll("[[email]]", attendeeEmail)
-    .replaceAll("[[Email]]", attendeeEmail)
-    .replaceAll("[[title]]", data.title || "Participant")
-    .replaceAll("[[company]]", data.company || "Community Member")
-    .replaceAll("[[sessionTrack]]", sessionTrack)
-    .replaceAll("[[SessionTrack]]", sessionTrack)
-    .replaceAll("[[techStack]]", techStack)
-    .replaceAll("[[TechStack]]", techStack)
-    .replaceAll("[[eventTitle]]", eventTitle)
-    .replaceAll("[[EventName]]", eventTitle)
-    .replaceAll("[[eventDate]]", eventDate)
-    .replaceAll("[[EventDate]]", eventDate)
-    .replaceAll("[[eventTime]]", eventTime)
-    .replaceAll("[[EventTime]]", eventTime)
-    .replaceAll("[[eventVenue]]", eventVenue)
-    .replaceAll("[[EventVenue]]", eventVenue)
-    .replaceAll("[[eventId]]", String(data.eventId))
-    .replaceAll("[[attendeeId]]", String(data.attendeeId))
-    .replaceAll("[[AttendeeId]]", String(data.attendeeId))
-    .replaceAll("[[ticketCode]]", ticketCode)
-    .replaceAll("[[TicketCode]]", ticketCode)
-    .replaceAll("[[refCode]]", ticketCode)
-    .replaceAll("[[RefCode]]", ticketCode)
-    .replaceAll("[[attendeeCode]]", ticketCode)
-    .replaceAll("[[attendeCode]]", ticketCode)
-    .replaceAll("[[AttendeeCode]]", ticketCode)
-    .replaceAll("[[qrPayload]]", data.qrPayload)
-    .replace(/\[\[\s*qr\s*\]\]/gi, qrImgTag)
-    .replaceAll(
-      "[[checkinTime]]",
-      data.checkinTime || new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }),
-    );
+  // Every value is HTML-escaped (and `[`/`]` too, so a value can never be re-read as a token).
+  // Replacements use a function so `$&`-style sequences in values are inserted literally.
+  const checkinTime =
+    data.checkinTime || new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+  const tokenValues: Array<[string[], string]> = [
+    [["[[name]]", "[[Name]]"], attendeeName],
+    [["[[nameShort]]", "[[NameShort]]"], shortenName(attendeeName)],
+    [["[[nameInitials]]", "[[NameInitials]]"], initialsOf(attendeeName)],
+    [["[[email]]", "[[Email]]"], attendeeEmail],
+    [["[[title]]"], data.title || "Participant"],
+    [["[[company]]"], data.company || "Community Member"],
+    [["[[sessionTrack]]", "[[SessionTrack]]"], sessionTrack],
+    [["[[techStack]]", "[[TechStack]]"], techStack],
+    [["[[eventTitle]]", "[[EventName]]"], eventTitle],
+    [["[[eventDate]]", "[[EventDate]]"], eventDate],
+    [["[[eventTime]]", "[[EventTime]]"], eventTime],
+    [["[[eventVenue]]", "[[EventVenue]]"], eventVenue],
+    [["[[eventId]]"], String(data.eventId)],
+    [["[[attendeeId]]", "[[AttendeeId]]"], String(data.attendeeId)],
+    [
+      [
+        "[[ticketCode]]",
+        "[[TicketCode]]",
+        "[[refCode]]",
+        "[[RefCode]]",
+        "[[attendeeCode]]",
+        "[[attendeCode]]",
+        "[[AttendeeCode]]",
+      ],
+      ticketCode,
+    ],
+    [["[[qrPayload]]"], data.qrPayload],
+    [["[[checkinTime]]"], checkinTime],
+  ];
+
+  let rendered = ensureFullLabelHtml(template);
+  for (const [keys, value] of tokenValues) {
+    const safeValue = escapeHtml(value);
+    for (const key of keys) {
+      rendered = rendered.replaceAll(key, () => safeValue);
+    }
+  }
+  rendered = rendered.replace(/\[\[\s*qr\s*\]\]/gi, () => qrImgTag);
 
   // Dynamically interpolate answered questions from the registration form
   const answers: Record<string, unknown> = {
@@ -431,15 +444,13 @@ export function renderLabelTemplate(template: string, data: LabelTemplateData): 
 
     // Check direct match
     if (key in answers) {
-      const val = answers[key];
-      return Array.isArray(val) ? val.join(", ") : String(val ?? "");
+      return answerToHtml(answers[key]);
     }
 
     // Check with prefixes stripped (e.g. [[question:id]], [[answers:id]], [[answers.id]], [[question.id]])
     const strippedPrefix = key.replace(/^(question:|answers:|question\.|answers\.)/i, "");
     if (strippedPrefix in answers) {
-      const val = answers[strippedPrefix];
-      return Array.isArray(val) ? val.join(", ") : String(val ?? "");
+      return answerToHtml(answers[strippedPrefix]);
     }
 
     // Case-insensitive lookup against answers keys
@@ -447,7 +458,7 @@ export function renderLabelTemplate(template: string, data: LabelTemplateData): 
     const lowerStripped = strippedPrefix.toLowerCase();
     for (const [ansKey, val] of Object.entries(answers)) {
       if (ansKey.toLowerCase() === lowerKey || ansKey.toLowerCase() === lowerStripped) {
-        return Array.isArray(val) ? val.join(", ") : String(val ?? "");
+        return answerToHtml(val);
       }
     }
 
@@ -481,8 +492,10 @@ export function buildPrintDocument(
       }
     </style>`;
 
-  if (fullDoc.includes("</head>")) {
-    return fullDoc.replace("</head>", `${pageStyle}\n  </head>`);
+  // Shrink or abbreviate attendee names that do not fit (see name-fit.ts).
+  const fitted = injectNameFit(fullDoc);
+  if (fitted.includes("</head>")) {
+    return fitted.replace("</head>", `${pageStyle}\n  </head>`);
   }
-  return `${pageStyle}\n${fullDoc}`;
+  return `${pageStyle}\n${fitted}`;
 }

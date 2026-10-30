@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { FirestoreRegistration } from "@/lib/firestore/types";
+import { injectNameFit } from "@/lib/printers/name-fit";
 import { buildDefaultLabelTemplate, ensureFullLabelHtml, renderLabelTemplate } from "@/lib/printers/templates";
 import type { LabelTemplateData } from "@/lib/printers/types";
 import { cn } from "@/lib/utils";
@@ -51,6 +52,13 @@ const EVENT_TOKENS: TokenItem[] = [
 
 const ATTENDEE_TOKENS: TokenItem[] = [
   { id: "name", tag: "[[Name]]", label: "Full Name", description: "e.g. Fachridan Tio" },
+  {
+    id: "name_short",
+    tag: "[[nameShort]]",
+    label: "Short Name",
+    description: "Last word as initial, e.g. Muhammad Fachridan T.",
+  },
+  { id: "name_initials", tag: "[[nameInitials]]", label: "Initials", description: "e.g. M. F. T." },
   { id: "title", tag: "[[title]]", label: "Job Title / Role", description: "e.g. Game Engineer" },
   { id: "company", tag: "[[company]]", label: "Company / Org", description: "e.g. Harvest Moon" },
   {
@@ -242,7 +250,7 @@ export function LabelHtmlEditorPreview({
     if (!interpolatePreview) {
       return normalizedValue;
     }
-    return renderLabelTemplate(normalizedValue, sampleData);
+    return injectNameFit(renderLabelTemplate(normalizedValue, sampleData));
   }, [normalizedValue, interpolatePreview, sampleData]);
 
   // Scale factor for the true-mm iframe (1mm = 3.7795275591px at 96 DPI)

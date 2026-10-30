@@ -10,6 +10,7 @@ The **Thermal Printers & Label Station** (`/dashboard/printers`) allows organize
 - **Event-Specific Badge Printer Tab**: `src/app/(main)/dashboard/events/[eventId]/_components/event-printer-tab.tsx`
 - **Types & Presets**: `src/lib/printers/types.ts`
 - **Template Engine & Dynamic Sizing**: `src/lib/printers/templates.ts`
+- **Name Fitting & Escaping**: `src/lib/printers/name-fit.ts`
 - **Offline SVG QR Generator**: `src/lib/printers/qr-svg.ts`
 - **Check-In Scanner Integration**: `src/app/(main)/dashboard/events/[eventId]/_components/qr-checkin-scanner-dialog.tsx`
 - **Local Print Worker**: `scripts/print-worker/{main,worker,setup,build}.mjs`, client in `src/lib/printers/local-worker.ts`, install UI in `src/app/(main)/dashboard/printers/_components/{install-print-worker-dialog,print-worker-status}.tsx`
@@ -44,3 +45,7 @@ The **Thermal Printers & Label Station** (`/dashboard/printers`) allows organize
    - `npm run print-worker:build` produces a self-contained Apple Silicon executable (Node SEA + ad-hoc codesign) as `scripts/print-worker/dist/gdg-print-worker-macos-arm64.tar.gz`. Build only works on darwin/arm64. The archive is ~42 MB and must be hosted outside the Worker bundle (R2 key `downloads/gdg-print-worker-macos-arm64.tar.gz`, or `NEXT_PUBLIC_PRINT_WORKER_DOWNLOAD_URL`).
    - Header **Install Worker** button: starts the download, then shows a dialog with copyable Terminal steps (extract, remove quarantine, `setup --origin <this dashboard origin>`) and a live "Worker connected" indicator (polls every 3s while open).
    - Executable CLI: `run`, `stop`, `setup [--origin]`, `uninstall`, `version`. There is **no auto-start**: the worker runs only while started by hand (setup offers to start it right away; it keeps running in that Terminal window, Ctrl+C or `stop` ends it). Setup remembers previous answers, keeps a stable copy at `~/.gdg-print-worker/bin/gdg-print-worker`, and removes any old launchd agent from earlier versions. The install dialog and the status popover both show the start/stop commands.
+10. **Name fitting & safe templating**:
+   - Names that do not fit their box are handled by a script injected into the print document (`injectNameFit` in `name-fit.ts`, used by `buildPrintDocument` and the editor preview). Cascade: full name -> last word as initial (`Muhammad Fachridan T.`) -> one more word from the back each time (`Muhammad F. T.`) -> all initials (`M. F. T.`); the first that fits within 2 lines wins and the first name is only abbreviated in the last step. The font size is NOT changed by default; add `data-fit-min="6"` (pt) to an element to also allow shrinking (each variant is tried down to that size before moving to a shorter one). Single words are truncated with `…`. Other overrides: `data-fit-lines`; opt a custom element in with `data-fit-name`.
+   - Tokens: `[[nameShort]]` (last word as initial) and `[[nameInitials]]`.
+   - All token and answer values are HTML-escaped (brackets included) in `renderLabelTemplate`, so names containing `<`, `&`, `"` or `[[token]]` render as plain text and cannot break or inject into the label.
