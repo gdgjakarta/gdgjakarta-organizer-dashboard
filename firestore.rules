@@ -1417,14 +1417,16 @@ service cloud.firestore {
         );
       }
 
-      // Individual registration lookup: Team access (Organizers & Staff), or the registrant themselves (matching member_id, member_email, or doc ID suffix).
+      // Individual registration lookup: Team access (Organizers & Staff), the registrant themselves (matching member_id, member_email, or doc ID suffix),
+      // or authenticated attendees redeeming/reverting a friend voucher from a bundle purchase (registration containing bundle_vouchers).
       // Handles non-existent doc lookup gracefully when resource == null before registration.
       allow get: if hasTeamAccess() ||
         (isAuthenticated() && (
           resource == null ||
           resource.data.member_id == request.auth.uid ||
           resource.data.member_email == request.auth.token.email ||
-          (registrationId.size() >= request.auth.uid.size() && registrationId[registrationId.size() - request.auth.uid.size():] == request.auth.uid)
+          (registrationId.size() >= request.auth.uid.size() && registrationId[registrationId.size() - request.auth.uid.size():] == request.auth.uid) ||
+          ('bundle_vouchers' in resource.data && resource.data.bundle_vouchers is list)
         ));
 
       // Listing registrations: Team access (Organizers & Staff), or authenticated users querying their own registrations.
