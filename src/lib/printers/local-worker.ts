@@ -4,6 +4,8 @@
 export const DEFAULT_PRINT_WORKER_URL = "http://127.0.0.1:17777";
 /** Object key of the uploaded archive inside the R2 bucket (as uploaded: note `-tar.gz`, not `.tar.gz`). */
 export const PRINT_WORKER_ARCHIVE_KEY = "gdg-jakarta/gdg-print-worker-macos-arm64-tar.gz";
+/** Public R2 domain used when NEXT_PUBLIC_R2_PUBLIC_URL is not set in the build (it is not part of wrangler vars). */
+const DEFAULT_ASSETS_BASE_URL = "https://assets.gdgjakarta.org";
 /** Production dashboard address the worker is told to accept (`setup --origin`). */
 export const PRINT_WORKER_DASHBOARD_ORIGIN = "https://gdgjakarta.com";
 export const PRINT_WORKER_BINARY_NAME = "gdg-print-worker";
@@ -84,14 +86,14 @@ export async function printViaWorker(payload: PrintWorkerPayload): Promise<void>
 
 /**
  * Where the packaged worker (`npm run print-worker:build`) is downloaded from. It is ~42 MB, over Cloudflare's
- * 25 MiB static asset limit, so it is hosted on R2: `<NEXT_PUBLIC_R2_PUBLIC_URL>/<PRINT_WORKER_ARCHIVE_KEY>`.
+ * 25 MiB static asset limit, so it is hosted on R2: `<NEXT_PUBLIC_R2_PUBLIC_URL, else https://assets.gdgjakarta.org>/<PRINT_WORKER_ARCHIVE_KEY>`.
  * `NEXT_PUBLIC_PRINT_WORKER_DOWNLOAD_URL` overrides it (e.g. a GitHub Release).
  */
 export function getPrintWorkerDownloadUrl(): string {
   const explicit = process.env.NEXT_PUBLIC_PRINT_WORKER_DOWNLOAD_URL;
   if (explicit) return explicit;
-  const r2BaseUrl = process.env.NEXT_PUBLIC_R2_PUBLIC_URL;
-  return r2BaseUrl ? `${r2BaseUrl.replace(/\/$/, "")}/${PRINT_WORKER_ARCHIVE_KEY}` : `/${PRINT_WORKER_ARCHIVE_KEY}`;
+  const baseUrl = process.env.NEXT_PUBLIC_R2_PUBLIC_URL || DEFAULT_ASSETS_BASE_URL;
+  return `${baseUrl.replace(/\/+$/, "")}/${PRINT_WORKER_ARCHIVE_KEY}`;
 }
 
 /** File name the browser saves the download as (last path segment of the URL), used in the install commands. */
