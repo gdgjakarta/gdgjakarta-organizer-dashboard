@@ -45,6 +45,12 @@ import {
 } from "@/lib/firestore/actions";
 import type { FirestoreRegistration } from "@/lib/firestore/types";
 import {
+  fetchPrintWorkerHealth,
+  type PrintWorkerHealth,
+  PrintWorkerUnreachableError,
+  printViaWorker,
+} from "@/lib/printers/local-worker";
+import {
   buildPrintDocument,
   DEFAULT_LABEL_TEMPLATE,
   ensureFullLabelHtml,
@@ -54,7 +60,9 @@ import {
 import { CLABEL_PAPER_PRESETS, type LabelTemplateData, type PrinterConfig, type PrintJob } from "@/lib/printers/types";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
+import { InstallPrintWorkerDialog } from "./install-print-worker-dialog";
 import { LabelHtmlEditorPreview } from "./label-html-editor-preview";
+import { PrintWorkerStatus } from "./print-worker-status";
 
 const CLIENT_EVENTS_CACHE_KEY = "gdg_email_published_events_cache_v1";
 const CLIENT_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
@@ -145,7 +153,29 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
 
   // Hidden print iframe reference
   const printIframeRef = React.useRef<HTMLIFrameElement | null>(null);
-  const isPrintingRef = React.useRef<boolean>(false);
+  // Print Station bookkeeping: job ids already picked up this session, and how many are printing now.
+  const handledJobIdsRef = React.useRef<Set<string>>(new Set());
+  const activeJobsRef = React.useRef<number>(0);
+
+  // Local print worker (dialog-free printing). Polled so the header indicator stays live.
+  const [workerHealth, setWorkerHealth] = React.useState<PrintWorkerHealth | null>(null);
+  const workerHealthRef = React.useRef<PrintWorkerHealth | null>(null);
+
+  const [isCheckingWorker, setIsCheckingWorker] = React.useState(false);
+
+  const checkWorker = React.useCallback(async () => {
+    setIsCheckingWorker(true);
+    const health = await fetchPrintWorkerHealth();
+    workerHealthRef.current = health;
+    setWorkerHealth(health);
+    setIsCheckingWorker(false);
+  }, []);
+
+  React.useEffect(() => {
+    void checkWorker();
+    const timer = window.setInterval(() => void checkWorker(), 10_000);
+    return () => window.clearInterval(timer);
+  }, [checkWorker]);
 
   // Select a Bevy event and fetch its detailed metadata
   const handleSelectEvent = React.useCallback(
@@ -372,6 +402,26 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
   // Helper to execute silent print on an HTML snippet
   const executeSilentPrint = React.useCallback(
     async (renderedBodyHtml: string): Promise<void> => {
+      if (workerHealthRef.current) {
+        try {
+          await printViaWorker({
+            html: buildPrintDocument(
+              renderedBodyHtml,
+              config.paper_width_mm,
+              config.paper_height_mm,
+              config.orientation,
+            ),
+            widthMm: config.paper_width_mm,
+            heightMm: config.paper_height_mm,
+          });
+          return;
+        } catch (err) {
+          // Worker answered with an error: surface it. Only fall back to the browser dialog if it vanished.
+          if (!(err instanceof PrintWorkerUnreachableError)) throw err;
+          workerHealthRef.current = null;
+        }
+      }
+
       return new Promise<void>((resolve, reject) => {
         try {
           const iframe = printIframeRef.current;
@@ -422,32 +472,58 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
     [config.paper_width_mm, config.paper_height_mm, config.orientation],
   );
 
-  // Background Print Station Listener loop
+  // Background Print Station Listener loop.
+  // Jobs print in parallel, up to one per printer the worker reports (the worker picks the printer itself).
+  // Without a worker the shared iframe can only print one label at a time.
   React.useEffect(() => {
     if (!isStationRunning) return;
 
     let unsubscribe: (() => void) | undefined;
+    let stopped = false;
+    let pendingJobs: PrintJob[] = [];
+
+    const runJob = async (job: PrintJob) => {
+      try {
+        await updatePrintJobStatusAction(job.id, "printing");
+        await executeSilentPrint(job.rendered_html);
+        await updatePrintJobStatusAction(job.id, "completed");
+        toast.success(`Printed label for ${job.member_name}`);
+      } catch (printErr) {
+        const errMsg = printErr instanceof Error ? printErr.message : "Print execution error";
+        console.error("[Print Station] Print failure:", printErr);
+        await updatePrintJobStatusAction(job.id, "failed", errMsg);
+        toast.error(`Print failed for ${job.member_name}: ${errMsg}`);
+      }
+    };
+
+    const drain = () => {
+      if (stopped) return;
+      for (const job of pendingJobs) {
+        // `handled` also covers jobs finished before the next snapshot arrives, so none prints twice.
+        if (handledJobIdsRef.current.has(job.id)) continue;
+        const limit = Math.max(1, workerHealthRef.current?.printers.length ?? 1);
+        if (activeJobsRef.current >= limit) break;
+
+        handledJobIdsRef.current.add(job.id);
+        activeJobsRef.current += 1;
+        void runJob(job).finally(() => {
+          activeJobsRef.current -= 1;
+          drain();
+        });
+      }
+    };
+
     void (async () => {
       try {
         const { subscribePendingPrintQueue } = await import("@/lib/firestore/client");
-        unsubscribe = subscribePendingPrintQueue(async (jobs) => {
-          if (!jobs || jobs.length === 0 || isPrintingRef.current) return;
-
-          isPrintingRef.current = true;
-          for (const job of jobs) {
-            try {
-              await updatePrintJobStatusAction(job.id, "printing");
-              await executeSilentPrint(job.rendered_html);
-              await updatePrintJobStatusAction(job.id, "completed");
-              toast.success(`Printed label for ${job.member_name}`);
-            } catch (printErr) {
-              const errMsg = printErr instanceof Error ? printErr.message : "Print execution error";
-              console.error("[Print Station] Print failure:", printErr);
-              await updatePrintJobStatusAction(job.id, "failed", errMsg);
-              toast.error(`Print failed for ${job.member_name}: ${errMsg}`);
-            }
+        if (stopped) return;
+        unsubscribe = subscribePendingPrintQueue((jobs) => {
+          pendingJobs = jobs ?? [];
+          const pendingIds = new Set(pendingJobs.map((job) => job.id));
+          for (const id of handledJobIdsRef.current) {
+            if (!pendingIds.has(id)) handledJobIdsRef.current.delete(id);
           }
-          isPrintingRef.current = false;
+          drain();
         });
       } catch (err) {
         console.warn("[Printers] Print Station subscription failed:", err);
@@ -455,8 +531,8 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
     })();
 
     return () => {
+      stopped = true;
       unsubscribe?.();
-      isPrintingRef.current = false;
     };
   }, [isStationRunning, executeSilentPrint]);
 
@@ -630,6 +706,10 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2 lg:w-fit">
+          <PrintWorkerStatus health={workerHealth} isChecking={isCheckingWorker} onRecheck={() => void checkWorker()} />
+
+          <InstallPrintWorkerDialog health={workerHealth} onRecheck={() => void checkWorker()} />
+
           <Button
             size="sm"
             variant={isStationRunning ? "destructive" : "outline"}
@@ -1047,9 +1127,27 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
                 </p>
               </div>
 
+              <div className="space-y-2 rounded-lg border border-primary/40 p-4 md:col-span-2">
+                <div className="font-semibold text-foreground text-sm">
+                  3. Install the Local Print Worker (Recommended, macOS Apple Silicon)
+                </div>
+                <p className="text-muted-foreground text-xs leading-relaxed">
+                  A tiny background app on the check-in Mac prints badges straight to your Clabel printers, so no
+                  browser print dialog ever appears. Click <strong>Install Worker</strong> at the top of this page: it
+                  downloads the app and shows the exact Terminal commands. The <strong>Worker</strong> indicator turns
+                  green once it is running. Keep this page open with <strong>Start Print Station</strong> on.
+                </p>
+                <p className="text-muted-foreground text-xs leading-relaxed">
+                  With several printers selected during setup, badges print in parallel and the worker picks a free
+                  printer for each one. The worker does not auto-start: keep its Terminal window open while printing and
+                  press <strong>Ctrl+C</strong> there to stop it. Chrome may ask once to allow local network access;
+                  choose <strong>Allow</strong>.
+                </p>
+              </div>
+
               <div className="space-y-2 rounded-lg border p-4 md:col-span-2">
                 <div className="font-semibold text-foreground text-sm">
-                  3. Launch Chrome with Kiosk Printing (Zero Dialogs)
+                  4. Fallback: Launch Chrome with Kiosk Printing (Zero Dialogs)
                 </div>
                 <p className="text-muted-foreground text-xs leading-relaxed">
                   To bypass the browser print dialog completely, launch Chrome with the{" "}

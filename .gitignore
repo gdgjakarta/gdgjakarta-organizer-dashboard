@@ -67,3 +67,6 @@ Thumbs.db
 graphify-out/
 .graphify_*.json
 
+# print worker build output (large binary, hosted outside the repo)
+scripts/print-worker/.cache/
+scripts/print-worker/dist/
