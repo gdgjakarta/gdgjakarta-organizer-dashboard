@@ -210,7 +210,7 @@ export interface EventTicketTier {
 }
 
 export type VoucherDiscountType = "percentage" | "fixed";
-export type VoucherAppliesTo = "all" | "ticket" | "merchandise";
+export type VoucherAppliesTo = "all" | "ticket" | "bundle" | "merchandise";
 export type VoucherStatus = "active" | "inactive" | "expired";
 
 export interface EventVoucher {
@@ -219,7 +219,13 @@ export interface EventVoucher {
   description?: string; // e.g. "Early Bird 50% discount on tickets"
   discount_type: VoucherDiscountType; // "percentage" | "fixed"
   discount_value: number; // e.g. 20 (for 20%) or 50000 (for Rp 50.000)
-  applies_to: VoucherAppliesTo; // "all" | "ticket" | "merchandise"
+  applies_to: VoucherAppliesTo; // "all" | "ticket" | "bundle" | "merchandise"
+  /** Optional list of eligible ticket tier IDs when scope includes tickets ("all" or "ticket"). Null/undefined = all tickets eligible. */
+  eligible_ticket_ids?: string[] | null;
+  /** Optional list of eligible bundle package IDs when scope includes bundles ("all" or "bundle"). Null/undefined = all bundles eligible. */
+  eligible_bundle_ids?: string[] | null;
+  /** Optional list of eligible merchandise item IDs when scope includes merchandise ("all" or "merchandise"). Null/undefined = all merchandise eligible. */
+  eligible_merchandise_ids?: string[] | null;
   min_spend?: number | null; // Minimum eligible cart amount in IDR
   max_discount?: number | null; // Maximum discount cap in IDR (for percentage discounts)
   usage_limit?: number | null; // Total redemptions allowed across all attendees (null = unlimited)

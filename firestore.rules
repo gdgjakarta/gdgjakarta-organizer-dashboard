@@ -258,7 +258,10 @@ service cloud.firestore {
     //   - description: string|null (optional, <= 500 chars) - Voucher description or perks
     //   - discount_type: string (required) - Discount calculation type ('percentage'|'fixed')
     //   - discount_value: int|float (required, >= 0) - Discount face value in IDR or percentage
-    //   - applies_to: string (required) - Discount application scope ('all'|'ticket'|'merchandise')
+    //   - applies_to: string (required) - Discount application scope ('all'|'ticket'|'bundle'|'merchandise')
+    //   - eligible_ticket_ids: list|null (optional, <= 100 items) - Specific ticket IDs eligible for discount
+    //   - eligible_bundle_ids: list|null (optional, <= 100 items) - Specific bundle IDs eligible for discount
+    //   - eligible_merchandise_ids: list|null (optional, <= 100 items) - Specific merchandise IDs eligible for discount
     //   - usage_limit: int|float|null (optional, >= 0) - Total redemptions limit (null = unlimited)
     //   - times_used: int|float|null (optional, >= 0) - Times voucher has been redeemed
     //   - min_spend: int|float|null (optional, >= 0) - Minimum eligible cart amount in IDR
@@ -851,7 +854,8 @@ service cloud.firestore {
         data.member_email is string && data.member_email.size() > 0 && data.member_email.size() <= 150 &&
         data.status is string && data.status.size() > 0 && data.status.size() <= 50 &&
         data.registered_at is string && data.registered_at.size() <= 50 &&
-        (!('registered_at_millis' in data) || ((data.registered_at_millis is int || data.registered_at_millis is float) && data.registered_at_millis > 0));
+        (!('registered_at_millis' in data) || ((data.registered_at_millis is int || data.registered_at_millis is float) && data.registered_at_millis > 0)) &&
+        (!('voucher_applies_to' in data) || data.voucher_applies_to == null || (data.voucher_applies_to is string && (data.voucher_applies_to in ['all', 'ticket', 'bundle', 'merchandise'])));
     }
 
     // Validates events document structure, data types, and bounds
@@ -1106,6 +1110,7 @@ service cloud.firestore {
           'created_at', 'updated_at', 'source_bundle_id', 'source_registration_id',
           'redeemed_by_member_id', 'redeemed_by_name', 'redeemed_by_email', 'redeemed_at',
           'purchaser_member_id', 'purchaser_name', 'purchaser_email',
+          'eligible_ticket_ids', 'eligible_bundle_ids', 'eligible_merchandise_ids',
           'last_reset_at', 'last_reset_by_id', 'last_reset_by_name',
           'last_reset_by_email', 'last_reset_previous_times_used', 'last_reset_reason'
         ]) &&
@@ -1114,7 +1119,7 @@ service cloud.firestore {
         data.code is string && data.code.size() > 0 && data.code.size() <= 64 &&
         data.discount_type is string && (data.discount_type in ['percentage', 'fixed']) &&
         (data.discount_value is int || data.discount_value is float) && data.discount_value >= 0 &&
-        data.applies_to is string && (data.applies_to in ['all', 'ticket', 'merchandise']) &&
+        data.applies_to is string && (data.applies_to in ['all', 'ticket', 'bundle', 'merchandise']) &&
         data.status is string && (data.status in ['active', 'inactive', 'expired']) &&
         data.created_at is string && data.created_at.size() <= 50 &&
         data.updated_at is string && data.updated_at.size() <= 50 &&
@@ -1134,6 +1139,9 @@ service cloud.firestore {
         (!('purchaser_member_id' in data) || data.purchaser_member_id == null || (data.purchaser_member_id is string && data.purchaser_member_id.size() <= 128)) &&
         (!('purchaser_name' in data) || data.purchaser_name == null || (data.purchaser_name is string && data.purchaser_name.size() <= 150)) &&
         (!('purchaser_email' in data) || data.purchaser_email == null || (data.purchaser_email is string && data.purchaser_email.size() <= 150)) &&
+        (!('eligible_ticket_ids' in data) || data.eligible_ticket_ids == null || (data.eligible_ticket_ids is list && data.eligible_ticket_ids.size() <= 100)) &&
+        (!('eligible_bundle_ids' in data) || data.eligible_bundle_ids == null || (data.eligible_bundle_ids is list && data.eligible_bundle_ids.size() <= 100)) &&
+        (!('eligible_merchandise_ids' in data) || data.eligible_merchandise_ids == null || (data.eligible_merchandise_ids is list && data.eligible_merchandise_ids.size() <= 100)) &&
         (!('last_reset_at' in data) || data.last_reset_at == null || (data.last_reset_at is string && data.last_reset_at.size() <= 50)) &&
         (!('last_reset_by_id' in data) || data.last_reset_by_id == null || (data.last_reset_by_id is string && data.last_reset_by_id.size() <= 128)) &&
         (!('last_reset_by_name' in data) || data.last_reset_by_name == null || (data.last_reset_by_name is string && data.last_reset_by_name.size() <= 150)) &&

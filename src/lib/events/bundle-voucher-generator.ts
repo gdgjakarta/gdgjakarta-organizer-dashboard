@@ -59,6 +59,9 @@ export function generateBundleFriendVouchers(params: {
       discount_type: "percentage",
       discount_value: 100, // 100% Free
       applies_to: "ticket",
+      eligible_ticket_ids: bundle.ticket_id ? [bundle.ticket_id] : null,
+      eligible_bundle_ids: null,
+      eligible_merchandise_ids: null,
       usage_limit: 1, // Single-use redemption
       times_used: 0,
       min_spend: null,

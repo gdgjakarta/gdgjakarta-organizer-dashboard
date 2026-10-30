@@ -1,8 +1,9 @@
-import type { EventVoucher } from "@/lib/firestore/types";
+import type { EventBundlePackage, EventVoucher } from "@/lib/firestore/types";
 
 export interface VoucherCartContext {
   ticketPrice: number;
   merchandiseTotal: number;
+  bundlePrice?: number;
   userEmail?: string;
 }
 
@@ -11,23 +12,90 @@ export interface VoucherValidationResult {
   error?: string;
   ticketDiscount: number;
   merchandiseDiscount: number;
+  bundleDiscount?: number;
   totalDiscount: number;
 }
 
 export interface VoucherDiscountCalculation {
   ticketDiscount: number;
   merchandiseDiscount: number;
+  bundleDiscount?: number;
   totalDiscount: number;
 }
 
-function resolveApplicableSpend(voucher: EventVoucher, ticketPrice: number, merchandiseTotal: number): number {
+/**
+ * Checks if a specific ticket tier is eligible under the voucher's scope and item checklist.
+ */
+export function isTicketEligibleForVoucher(
+  voucher: EventVoucher | null | undefined,
+  ticketId: string,
+  eventBundles?: EventBundlePackage[],
+): boolean {
+  if (!voucher) return true;
+  if (voucher.applies_to !== "all" && voucher.applies_to !== "ticket") {
+    return false;
+  }
+  if (Array.isArray(voucher.eligible_ticket_ids)) {
+    return voucher.eligible_ticket_ids.includes(ticketId);
+  }
+  // Legacy fallback for friend vouchers generated from bundles without eligible_ticket_ids
+  if (voucher.source_bundle_id && voucher.applies_to === "ticket" && eventBundles && eventBundles.length > 0) {
+    const srcBundle = eventBundles.find((b) => b.id === voucher.source_bundle_id);
+    if (srcBundle?.ticket_id) {
+      return srcBundle.ticket_id === ticketId;
+    }
+  }
+  return true;
+}
+
+/**
+ * Checks if a specific bundle package is eligible under the voucher's scope and item checklist.
+ */
+export function isBundleEligibleForVoucher(voucher: EventVoucher | null | undefined, bundleId: string): boolean {
+  if (!voucher) return true;
+  if (voucher.applies_to !== "all" && voucher.applies_to !== "bundle") {
+    return false;
+  }
+  if (Array.isArray(voucher.eligible_bundle_ids)) {
+    return voucher.eligible_bundle_ids.includes(bundleId);
+  }
+  return true;
+}
+
+/**
+ * Checks if a specific merchandise item is eligible under the voucher's scope and item checklist.
+ */
+export function isMerchandiseEligibleForVoucher(
+  voucher: EventVoucher | null | undefined,
+  merchandiseId: string,
+): boolean {
+  if (!voucher) return true;
+  if (voucher.applies_to !== "all" && voucher.applies_to !== "merchandise") {
+    return false;
+  }
+  if (Array.isArray(voucher.eligible_merchandise_ids)) {
+    return voucher.eligible_merchandise_ids.includes(merchandiseId);
+  }
+  return true;
+}
+
+function resolveApplicableSpend(
+  voucher: EventVoucher,
+  ticketPrice: number,
+  merchandiseTotal: number,
+  bundlePrice = 0,
+): number {
   if (voucher.applies_to === "ticket") {
     return ticketPrice;
+  }
+  if (voucher.applies_to === "bundle") {
+    return bundlePrice;
   }
   if (voucher.applies_to === "merchandise") {
     return merchandiseTotal;
   }
-  return ticketPrice + merchandiseTotal;
+  // "all" covers bundles, tickets, and merchandise
+  return (bundlePrice > 0 ? bundlePrice : ticketPrice) + merchandiseTotal;
 }
 
 /**
@@ -35,19 +103,21 @@ function resolveApplicableSpend(voucher: EventVoucher, ticketPrice: number, merc
  */
 export function calculateVoucherDiscount(
   voucher: EventVoucher,
-  context: { ticketPrice: number; merchandiseTotal: number },
+  context: { ticketPrice: number; merchandiseTotal: number; bundlePrice?: number },
 ): VoucherDiscountCalculation {
   const ticketPrice = Math.max(0, context.ticketPrice || 0);
   const merchandiseTotal = Math.max(0, context.merchandiseTotal || 0);
-  const subtotal = ticketPrice + merchandiseTotal;
+  const bundlePrice = Math.max(0, context.bundlePrice || 0);
+  const primaryAdmissionPrice = bundlePrice > 0 ? bundlePrice : ticketPrice;
+  const subtotal = primaryAdmissionPrice + merchandiseTotal;
 
   if (subtotal <= 0) {
-    return { ticketDiscount: 0, merchandiseDiscount: 0, totalDiscount: 0 };
+    return { ticketDiscount: 0, merchandiseDiscount: 0, bundleDiscount: 0, totalDiscount: 0 };
   }
 
   if (voucher.applies_to === "ticket") {
     if (ticketPrice <= 0) {
-      return { ticketDiscount: 0, merchandiseDiscount: 0, totalDiscount: 0 };
+      return { ticketDiscount: 0, merchandiseDiscount: 0, bundleDiscount: 0, totalDiscount: 0 };
     }
     let rawDiscount =
       voucher.discount_type === "percentage"
@@ -62,13 +132,36 @@ export function calculateVoucherDiscount(
     return {
       ticketDiscount,
       merchandiseDiscount: 0,
+      bundleDiscount: 0,
       totalDiscount: ticketDiscount,
+    };
+  }
+
+  if (voucher.applies_to === "bundle") {
+    if (bundlePrice <= 0) {
+      return { ticketDiscount: 0, merchandiseDiscount: 0, bundleDiscount: 0, totalDiscount: 0 };
+    }
+    let rawDiscount =
+      voucher.discount_type === "percentage"
+        ? Math.round(bundlePrice * (voucher.discount_value / 100))
+        : voucher.discount_value;
+
+    if (voucher.discount_type === "percentage" && voucher.max_discount && voucher.max_discount > 0) {
+      rawDiscount = Math.min(rawDiscount, voucher.max_discount);
+    }
+
+    const bundleDiscount = Math.min(bundlePrice, Math.max(0, rawDiscount));
+    return {
+      ticketDiscount: 0,
+      merchandiseDiscount: 0,
+      bundleDiscount,
+      totalDiscount: bundleDiscount,
     };
   }
 
   if (voucher.applies_to === "merchandise") {
     if (merchandiseTotal <= 0) {
-      return { ticketDiscount: 0, merchandiseDiscount: 0, totalDiscount: 0 };
+      return { ticketDiscount: 0, merchandiseDiscount: 0, bundleDiscount: 0, totalDiscount: 0 };
     }
     let rawDiscount =
       voucher.discount_type === "percentage"
@@ -83,11 +176,12 @@ export function calculateVoucherDiscount(
     return {
       ticketDiscount: 0,
       merchandiseDiscount,
+      bundleDiscount: 0,
       totalDiscount: merchandiseDiscount,
     };
   }
 
-  // applies_to === "all"
+  // applies_to === "all" (applies to admission ticket or bundle, and merchandise)
   let rawDiscount =
     voucher.discount_type === "percentage"
       ? Math.round(subtotal * (voucher.discount_value / 100))
@@ -98,14 +192,24 @@ export function calculateVoucherDiscount(
   }
 
   const totalCap = Math.min(subtotal, Math.max(0, rawDiscount));
-  const ticketDiscount = Math.min(ticketPrice, totalCap);
-  const remainingDiscount = totalCap - ticketDiscount;
+  let ticketDiscount = 0;
+  let bundleDiscount = 0;
+
+  if (bundlePrice > 0) {
+    bundleDiscount = Math.min(bundlePrice, totalCap);
+  } else {
+    ticketDiscount = Math.min(ticketPrice, totalCap);
+  }
+
+  const admissionDiscount = bundleDiscount > 0 ? bundleDiscount : ticketDiscount;
+  const remainingDiscount = totalCap - admissionDiscount;
   const merchandiseDiscount = Math.min(merchandiseTotal, remainingDiscount);
 
   return {
     ticketDiscount,
     merchandiseDiscount,
-    totalDiscount: ticketDiscount + merchandiseDiscount,
+    bundleDiscount,
+    totalDiscount: admissionDiscount + merchandiseDiscount,
   };
 }
 
@@ -117,6 +221,7 @@ export function validateVoucherForCart(voucher: EventVoucher, context: VoucherCa
     isValid: false,
     ticketDiscount: 0,
     merchandiseDiscount: 0,
+    bundleDiscount: 0,
     totalDiscount: 0,
   };
 
@@ -161,6 +266,7 @@ export function validateVoucherForCart(voucher: EventVoucher, context: VoucherCa
 
   const ticketPrice = Math.max(0, context.ticketPrice || 0);
   const merchandiseTotal = Math.max(0, context.merchandiseTotal || 0);
+  const bundlePrice = Math.max(0, context.bundlePrice || 0);
 
   const isFreePassVoucher =
     Boolean(voucher.source_bundle_id) || (voucher.discount_type === "percentage" && voucher.discount_value === 100);
@@ -171,12 +277,20 @@ export function validateVoucherForCart(voucher: EventVoucher, context: VoucherCa
         isValid: true,
         ticketDiscount: 0,
         merchandiseDiscount: 0,
+        bundleDiscount: 0,
         totalDiscount: 0,
       };
     }
     return {
       ...zeroResult,
       error: "This voucher only applies to paid event tickets.",
+    };
+  }
+
+  if (voucher.applies_to === "bundle" && bundlePrice <= 0) {
+    return {
+      ...zeroResult,
+      error: "This voucher only applies to bundle packages.",
     };
   }
 
@@ -187,7 +301,7 @@ export function validateVoucherForCart(voucher: EventVoucher, context: VoucherCa
     };
   }
 
-  const applicableSpend = resolveApplicableSpend(voucher, ticketPrice, merchandiseTotal);
+  const applicableSpend = resolveApplicableSpend(voucher, ticketPrice, merchandiseTotal, bundlePrice);
 
   if (applicableSpend <= 0) {
     if (isFreePassVoucher) {
@@ -195,6 +309,7 @@ export function validateVoucherForCart(voucher: EventVoucher, context: VoucherCa
         isValid: true,
         ticketDiscount: 0,
         merchandiseDiscount: 0,
+        bundleDiscount: 0,
         totalDiscount: 0,
       };
     }
@@ -212,7 +327,7 @@ export function validateVoucherForCart(voucher: EventVoucher, context: VoucherCa
   }
 
   const calculation = calculateVoucherDiscount(voucher, context);
-  if (calculation.totalDiscount <= 0) {
+  if (calculation.totalDiscount <= 0 && !isFreePassVoucher) {
     return {
       ...zeroResult,
       error: "No discount could be applied to your current selection.",

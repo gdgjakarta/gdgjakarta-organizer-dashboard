@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react";
 
-import { CheckCircle2, Percent, RefreshCw, Tag } from "lucide-react";
+import { CheckCircle2, Package, Percent, RefreshCw, Tag, Ticket } from "lucide-react";
 import { toast } from "sonner";
 
 import { DatePicker } from "@/components/date-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -22,22 +23,45 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { generateRandomVoucherCode } from "@/lib/events/voucher-utils";
-import type { EventVoucher, VoucherAppliesTo, VoucherDiscountType } from "@/lib/firestore/types";
+import type {
+  EventBundlePackage,
+  EventMerchandiseItem,
+  EventTicketTier,
+  EventVoucher,
+  VoucherAppliesTo,
+  VoucherDiscountType,
+} from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
 interface VoucherDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   voucher: EventVoucher | null;
+  tickets?: EventTicketTier[];
+  bundles?: EventBundlePackage[];
+  merchandise?: EventMerchandiseItem[];
   onSave: (voucher: EventVoucher) => void;
 }
 
-export function VoucherDialog({ open, onOpenChange, voucher, onSave }: VoucherDialogProps) {
+export function VoucherDialog({
+  open,
+  onOpenChange,
+  voucher,
+  tickets = [],
+  bundles = [],
+  merchandise = [],
+  onSave,
+}: VoucherDialogProps) {
   const [code, setCode] = useState("");
   const [description, setDescription] = useState("");
   const [discountType, setDiscountType] = useState<VoucherDiscountType>("percentage");
   const [discountValue, setDiscountValue] = useState<number>(20);
   const [appliesTo, setAppliesTo] = useState<VoucherAppliesTo>("all");
+
+  // Item checklists
+  const [selectedTicketIds, setSelectedTicketIds] = useState<string[]>([]);
+  const [selectedBundleIds, setSelectedBundleIds] = useState<string[]>([]);
+  const [selectedMerchIds, setSelectedMerchIds] = useState<string[]>([]);
 
   // Limits & Conditions
   const [hasUsageLimit, setHasUsageLimit] = useState(false);
@@ -62,6 +86,28 @@ export function VoucherDialog({ open, onOpenChange, voucher, onSave }: VoucherDi
       setDiscountValue(voucher.discount_value);
       setAppliesTo(voucher.applies_to);
 
+      // Initialize selected items
+      if (Array.isArray(voucher.eligible_ticket_ids)) {
+        setSelectedTicketIds(voucher.eligible_ticket_ids);
+      } else if (voucher.source_bundle_id && voucher.applies_to === "ticket") {
+        const srcB = bundles.find((b) => b.id === voucher.source_bundle_id);
+        setSelectedTicketIds(srcB?.ticket_id ? [srcB.ticket_id] : tickets.map((t) => t.id));
+      } else {
+        setSelectedTicketIds(tickets.map((t) => t.id));
+      }
+
+      if (Array.isArray(voucher.eligible_bundle_ids)) {
+        setSelectedBundleIds(voucher.eligible_bundle_ids);
+      } else {
+        setSelectedBundleIds(bundles.map((b) => b.id));
+      }
+
+      if (Array.isArray(voucher.eligible_merchandise_ids)) {
+        setSelectedMerchIds(voucher.eligible_merchandise_ids);
+      } else {
+        setSelectedMerchIds(merchandise.map((m) => m.id));
+      }
+
       setHasUsageLimit(voucher.usage_limit !== null && voucher.usage_limit !== undefined);
       setUsageLimit(voucher.usage_limit ?? 50);
 
@@ -84,6 +130,10 @@ export function VoucherDialog({ open, onOpenChange, voucher, onSave }: VoucherDi
       setDiscountValue(20);
       setAppliesTo("all");
 
+      setSelectedTicketIds(tickets.map((t) => t.id));
+      setSelectedBundleIds(bundles.map((b) => b.id));
+      setSelectedMerchIds(merchandise.map((m) => m.id));
+
       setHasUsageLimit(false);
       setUsageLimit(50);
       setHasMinSpend(false);
@@ -97,16 +147,42 @@ export function VoucherDialog({ open, onOpenChange, voucher, onSave }: VoucherDi
 
       setIsActive(true);
     }
-  }, [voucher]);
+  }, [voucher, tickets, bundles, merchandise]);
 
   const handleGenerateCode = () => {
     let prefix = "GDG";
     if (appliesTo === "ticket") {
       prefix = "TICKET";
+    } else if (appliesTo === "bundle") {
+      prefix = "BUNDLE";
     } else if (appliesTo === "merchandise") {
       prefix = "MERCH";
     }
     setCode(generateRandomVoucherCode(prefix));
+  };
+
+  const toggleAllTickets = (checked: boolean) => {
+    setSelectedTicketIds(checked ? tickets.map((t) => t.id) : []);
+  };
+
+  const toggleAllBundles = (checked: boolean) => {
+    setSelectedBundleIds(checked ? bundles.map((b) => b.id) : []);
+  };
+
+  const toggleAllMerch = (checked: boolean) => {
+    setSelectedMerchIds(checked ? merchandise.map((m) => m.id) : []);
+  };
+
+  const toggleTicket = (id: string) => {
+    setSelectedTicketIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
+  };
+
+  const toggleBundle = (id: string) => {
+    setSelectedBundleIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
+  };
+
+  const toggleMerch = (id: string) => {
+    setSelectedMerchIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -131,6 +207,49 @@ export function VoucherDialog({ open, onOpenChange, voucher, onSave }: VoucherDi
       return;
     }
 
+    // Verify at least one item is selected for the chosen scope
+    if (appliesTo === "ticket" && tickets.length > 0 && selectedTicketIds.length === 0) {
+      toast.error("Please select at least one eligible ticket tier.");
+      return;
+    }
+    if (appliesTo === "bundle" && bundles.length > 0 && selectedBundleIds.length === 0) {
+      toast.error("Please select at least one eligible bundle package.");
+      return;
+    }
+    if (appliesTo === "merchandise" && merchandise.length > 0 && selectedMerchIds.length === 0) {
+      toast.error("Please select at least one eligible merchandise item.");
+      return;
+    }
+    if (
+      appliesTo === "all" &&
+      tickets.length + bundles.length + merchandise.length > 0 &&
+      selectedTicketIds.length + selectedBundleIds.length + selectedMerchIds.length === 0
+    ) {
+      toast.error("Please select at least one eligible item.");
+      return;
+    }
+
+    let eligibleTicketIds: string[] | null = null;
+    if (appliesTo === "all" || appliesTo === "ticket") {
+      if (selectedTicketIds.length !== tickets.length) {
+        eligibleTicketIds = selectedTicketIds;
+      }
+    }
+
+    let eligibleBundleIds: string[] | null = null;
+    if (appliesTo === "all" || appliesTo === "bundle") {
+      if (selectedBundleIds.length !== bundles.length) {
+        eligibleBundleIds = selectedBundleIds;
+      }
+    }
+
+    let eligibleMerchIds: string[] | null = null;
+    if (appliesTo === "all" || appliesTo === "merchandise") {
+      if (selectedMerchIds.length !== merchandise.length) {
+        eligibleMerchIds = selectedMerchIds;
+      }
+    }
+
     const now = new Date().toISOString();
     const finalVoucher: EventVoucher = {
       id: voucher?.id ?? `voucher-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -139,6 +258,10 @@ export function VoucherDialog({ open, onOpenChange, voucher, onSave }: VoucherDi
       discount_type: discountType,
       discount_value: Number(discountValue),
       applies_to: appliesTo,
+      eligible_ticket_ids: eligibleTicketIds,
+      eligible_bundle_ids: eligibleBundleIds,
+      eligible_merchandise_ids: eligibleMerchIds,
+      source_bundle_id: voucher?.source_bundle_id,
       usage_limit: hasUsageLimit && usageLimit > 0 ? Number(usageLimit) : null,
       times_used: voucher?.times_used ?? 0,
       min_spend: hasMinSpend && minSpend > 0 ? Number(minSpend) : null,
@@ -156,6 +279,10 @@ export function VoucherDialog({ open, onOpenChange, voucher, onSave }: VoucherDi
 
   const discountBadgeText =
     discountType === "percentage" ? `${discountValue}% OFF` : `Rp ${(discountValue || 0).toLocaleString("id-ID")} OFF`;
+
+  const showTickets = appliesTo === "all" || appliesTo === "ticket";
+  const showBundles = appliesTo === "all" || appliesTo === "bundle";
+  const showMerch = appliesTo === "all" || appliesTo === "merchandise";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -190,6 +317,7 @@ export function VoucherDialog({ open, onOpenChange, voucher, onSave }: VoucherDi
                 <Badge variant="secondary" className="text-[11px] capitalize">
                   {(() => {
                     if (appliesTo === "ticket") return "Tickets Only";
+                    if (appliesTo === "bundle") return "Bundle Only";
                     if (appliesTo === "merchandise") return "Merch Only";
                     return "All Items";
                   })()}
@@ -354,12 +482,17 @@ export function VoucherDialog({ open, onOpenChange, voucher, onSave }: VoucherDi
           </div>
 
           {/* ── APPLIES TO (SCOPE TARGET) ──────────────────────────────────── */}
-          <div className="space-y-2 rounded-xl border bg-card p-4">
-            <Label className="text-xs font-semibold text-foreground">Discount Scope (Applies To)</Label>
+          <div className="space-y-4 rounded-xl border bg-card p-4">
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-foreground">Discount Scope (Applies To)</Label>
+              <p className="text-[11px] text-muted-foreground">
+                Select which categories this voucher applies to, then customize eligible items below.
+              </p>
+            </div>
             <RadioGroup
               value={appliesTo}
               onValueChange={(val) => setAppliesTo(val as VoucherAppliesTo)}
-              className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1"
+              className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1"
             >
               <div
                 className={cn(
@@ -371,7 +504,7 @@ export function VoucherDialog({ open, onOpenChange, voucher, onSave }: VoucherDi
                 <Label htmlFor="scope-all" className="cursor-pointer text-xs font-medium leading-none">
                   All Items
                   <span className="block text-[10px] text-muted-foreground font-normal mt-0.5">
-                    Tickets &amp; Merch
+                    Tickets, Merch &amp; Bundles
                   </span>
                 </Label>
               </div>
@@ -392,6 +525,19 @@ export function VoucherDialog({ open, onOpenChange, voucher, onSave }: VoucherDi
               <div
                 className={cn(
                   "flex items-center gap-2.5 rounded-lg border p-3 transition-colors cursor-pointer",
+                  appliesTo === "bundle" ? "border-primary bg-primary/5" : "border-border hover:bg-muted/40",
+                )}
+              >
+                <RadioGroupItem value="bundle" id="scope-bundle" />
+                <Label htmlFor="scope-bundle" className="cursor-pointer text-xs font-medium leading-none">
+                  Bundle Only
+                  <span className="block text-[10px] text-muted-foreground font-normal mt-0.5">Combo packages</span>
+                </Label>
+              </div>
+
+              <div
+                className={cn(
+                  "flex items-center gap-2.5 rounded-lg border p-3 transition-colors cursor-pointer",
                   appliesTo === "merchandise" ? "border-primary bg-primary/5" : "border-border hover:bg-muted/40",
                 )}
               >
@@ -404,6 +550,166 @@ export function VoucherDialog({ open, onOpenChange, voucher, onSave }: VoucherDi
                 </Label>
               </div>
             </RadioGroup>
+
+            {/* ── CHECKLIST OF ELIGIBLE ITEMS ───────────────────────────────── */}
+            <div className="mt-3 space-y-3 rounded-lg border bg-muted/20 p-3">
+              <div className="flex items-center justify-between border-b pb-2">
+                <div>
+                  <div className="text-xs font-semibold text-foreground">Eligible Items Checklist</div>
+                  <div className="text-[10px] text-muted-foreground">
+                    Checklisted items are selectable on the registration form. Unchecked items will be disabled.
+                  </div>
+                </div>
+              </div>
+
+              {/* Tickets Section */}
+              {showTickets && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-1.5 font-medium text-xs text-foreground">
+                      <Ticket className="size-3 text-primary" /> Tickets ({selectedTicketIds.length}/{tickets.length})
+                    </span>
+                    {tickets.length > 0 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => toggleAllTickets(selectedTicketIds.length !== tickets.length)}
+                        className="h-6 text-[10px] px-2 text-muted-foreground hover:text-foreground"
+                      >
+                        {selectedTicketIds.length === tickets.length ? "Deselect All" : "Select All"}
+                      </Button>
+                    )}
+                  </div>
+                  {tickets.length === 0 ? (
+                    <p className="text-[11px] text-muted-foreground italic">No tickets found for this event.</p>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                      {tickets.map((t) => {
+                        const isChecked = selectedTicketIds.includes(t.id);
+                        const checkboxId = `voucher-ticket-${t.id}`;
+                        return (
+                          <div
+                            key={t.id}
+                            className={cn(
+                              "flex items-center gap-2 rounded-md border p-2 text-xs transition-colors",
+                              isChecked ? "border-primary/40 bg-primary/5" : "border-border hover:bg-muted/40",
+                            )}
+                          >
+                            <Checkbox id={checkboxId} checked={isChecked} onCheckedChange={() => toggleTicket(t.id)} />
+                            <label htmlFor={checkboxId} className="flex-1 min-w-0 cursor-pointer">
+                              <span className="block truncate font-medium text-foreground">{t.name}</span>
+                              <span className="block text-[10px] text-muted-foreground">
+                                {t.price === 0 ? "Free" : `Rp ${t.price.toLocaleString("id-ID")}`} • {t.type}
+                              </span>
+                            </label>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Bundles Section */}
+              {showBundles && (
+                <div className="space-y-2 pt-2 border-t">
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-1.5 font-medium text-xs text-foreground">
+                      <Package className="size-3 text-primary" /> Bundles ({selectedBundleIds.length}/{bundles.length})
+                    </span>
+                    {bundles.length > 0 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => toggleAllBundles(selectedBundleIds.length !== bundles.length)}
+                        className="h-6 text-[10px] px-2 text-muted-foreground hover:text-foreground"
+                      >
+                        {selectedBundleIds.length === bundles.length ? "Deselect All" : "Select All"}
+                      </Button>
+                    )}
+                  </div>
+                  {bundles.length === 0 ? (
+                    <p className="text-[11px] text-muted-foreground italic">No bundles found for this event.</p>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                      {bundles.map((b) => {
+                        const isChecked = selectedBundleIds.includes(b.id);
+                        const checkboxId = `voucher-bundle-${b.id}`;
+                        return (
+                          <div
+                            key={b.id}
+                            className={cn(
+                              "flex items-center gap-2 rounded-md border p-2 text-xs transition-colors",
+                              isChecked ? "border-primary/40 bg-primary/5" : "border-border hover:bg-muted/40",
+                            )}
+                          >
+                            <Checkbox id={checkboxId} checked={isChecked} onCheckedChange={() => toggleBundle(b.id)} />
+                            <label htmlFor={checkboxId} className="flex-1 min-w-0 cursor-pointer">
+                              <span className="block truncate font-medium text-foreground">{b.name}</span>
+                              <span className="block text-[10px] text-muted-foreground">
+                                Rp {b.price.toLocaleString("id-ID")}
+                              </span>
+                            </label>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Merchandise Section */}
+              {showMerch && (
+                <div className="space-y-2 pt-2 border-t">
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-1.5 font-medium text-xs text-foreground">
+                      <Tag className="size-3 text-primary" /> Merchandise ({selectedMerchIds.length}/
+                      {merchandise.length})
+                    </span>
+                    {merchandise.length > 0 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => toggleAllMerch(selectedMerchIds.length !== merchandise.length)}
+                        className="h-6 text-[10px] px-2 text-muted-foreground hover:text-foreground"
+                      >
+                        {selectedMerchIds.length === merchandise.length ? "Deselect All" : "Select All"}
+                      </Button>
+                    )}
+                  </div>
+                  {merchandise.length === 0 ? (
+                    <p className="text-[11px] text-muted-foreground italic">No merchandise found for this event.</p>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                      {merchandise.map((m) => {
+                        const isChecked = selectedMerchIds.includes(m.id);
+                        const checkboxId = `voucher-merch-${m.id}`;
+                        return (
+                          <div
+                            key={m.id}
+                            className={cn(
+                              "flex items-center gap-2 rounded-md border p-2 text-xs transition-colors",
+                              isChecked ? "border-primary/40 bg-primary/5" : "border-border hover:bg-muted/40",
+                            )}
+                          >
+                            <Checkbox id={checkboxId} checked={isChecked} onCheckedChange={() => toggleMerch(m.id)} />
+                            <label htmlFor={checkboxId} className="flex-1 min-w-0 cursor-pointer">
+                              <span className="block truncate font-medium text-foreground">{m.name}</span>
+                              <span className="block text-[10px] text-muted-foreground">
+                                {m.price === 0 || m.is_free ? "Free" : `Rp ${m.price.toLocaleString("id-ID")}`}
+                              </span>
+                            </label>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* ── USAGE LIMITS & CONSTRAINTS ─────────────────────────────────── */}

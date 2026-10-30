@@ -93,6 +93,7 @@ export interface ValidateVoucherActionParams {
   voucherCode: string;
   ticketPrice: number;
   merchandiseTotal: number;
+  bundlePrice?: number;
   userEmail?: string;
 }
 
@@ -106,7 +107,10 @@ export interface ValidateVoucherActionResult {
     description?: string;
     discount_type: "percentage" | "fixed";
     discount_value: number;
-    applies_to: "all" | "ticket" | "merchandise";
+    applies_to: "all" | "ticket" | "bundle" | "merchandise";
+    eligible_ticket_ids?: string[] | null;
+    eligible_bundle_ids?: string[] | null;
+    eligible_merchandise_ids?: string[] | null;
     source_bundle_id?: string;
     min_spend?: number | null;
     max_discount?: number | null;
@@ -118,6 +122,7 @@ export interface ValidateVoucherActionResult {
   };
   ticketDiscount?: number;
   merchandiseDiscount?: number;
+  bundleDiscount?: number;
   totalDiscount?: number;
 }
 
@@ -129,7 +134,7 @@ export interface ValidateVoucherActionResult {
  * - Callers can only check a specific code they already possess.
  */
 export async function validateVoucherAction(params: ValidateVoucherActionParams): Promise<ValidateVoucherActionResult> {
-  const { eventId, voucherCode, ticketPrice, merchandiseTotal, userEmail } = params;
+  const { eventId, voucherCode, ticketPrice, merchandiseTotal, bundlePrice: paramBundlePrice, userEmail } = params;
 
   const cleanCode = (voucherCode || "").trim().toUpperCase();
   if (!cleanCode) {
@@ -187,11 +192,25 @@ export async function validateVoucherAction(params: ValidateVoucherActionParams)
   // 4. Resolve bundle ticket and its real price (always use the bundle's standalone ticket price, not any selected bundle price)
   let bundleTicketId: string | undefined;
   let effectiveTicketPrice = ticketPrice;
+  let effectiveBundlePrice = paramBundlePrice ?? 0;
   const resolvedSourceBundleId = matchedVoucher.source_bundle_id || parentBundleId;
+
+  // If voucher is bundle-only or all, and no bundlePrice was supplied, check event bundles for fallback price
+  let eventDocCache: Awaited<ReturnType<typeof getFirestoreEventByIdServer>> | null = null;
+  const loadEventDoc = async () => {
+    if (!eventDocCache) {
+      try {
+        eventDocCache = await getFirestoreEventByIdServer(eventId);
+      } catch (err) {
+        console.warn("[Voucher Action] Failed to load eventDoc:", err);
+      }
+    }
+    return eventDocCache;
+  };
 
   if (resolvedSourceBundleId || parentTicketId || cleanCode.startsWith("BNDL-")) {
     try {
-      const eventDoc = await getFirestoreEventByIdServer(eventId);
+      const eventDoc = await loadEventDoc();
       if (eventDoc) {
         if (resolvedSourceBundleId && Array.isArray(eventDoc.bundles)) {
           const bundle = eventDoc.bundles.find((b) => b.id === resolvedSourceBundleId);
@@ -214,9 +233,31 @@ export async function validateVoucherAction(params: ValidateVoucherActionParams)
     }
   }
 
+  // If voucher applies to bundle, but cart has no bundle selected yet (e.g. initial form state),
+  // simulate an eligible bundle from event data so user can validate and auto-select the bundle
+  if (matchedVoucher.applies_to === "bundle" && effectiveBundlePrice <= 0) {
+    try {
+      const eventDoc = await loadEventDoc();
+      if (eventDoc && Array.isArray(eventDoc.bundles) && eventDoc.bundles.length > 0) {
+        const eligibleBundle = eventDoc.bundles.find((b) => {
+          if (Array.isArray(matchedVoucher.eligible_bundle_ids) && matchedVoucher.eligible_bundle_ids.length > 0) {
+            return matchedVoucher.eligible_bundle_ids.includes(b.id);
+          }
+          return true;
+        });
+        if (eligibleBundle && typeof eligibleBundle.price === "number") {
+          effectiveBundlePrice = eligibleBundle.price;
+        }
+      }
+    } catch (simErr) {
+      console.warn("[Voucher Action] Failed to resolve fallback bundle price:", simErr);
+    }
+  }
+
   // 5. Validate against cart rules (status, dates, limits, min_spend, applies_to)
   const cartContext: VoucherCartContext = {
     ticketPrice: effectiveTicketPrice,
+    bundlePrice: effectiveBundlePrice,
     merchandiseTotal,
     userEmail,
   };
@@ -241,6 +282,9 @@ export async function validateVoucherAction(params: ValidateVoucherActionParams)
       discount_type: matchedVoucher.discount_type,
       discount_value: matchedVoucher.discount_value,
       applies_to: matchedVoucher.applies_to,
+      eligible_ticket_ids: matchedVoucher.eligible_ticket_ids ?? null,
+      eligible_bundle_ids: matchedVoucher.eligible_bundle_ids ?? null,
+      eligible_merchandise_ids: matchedVoucher.eligible_merchandise_ids ?? null,
       source_bundle_id: resolvedSourceBundleId,
       min_spend: matchedVoucher.min_spend ?? null,
       max_discount: matchedVoucher.max_discount ?? null,
@@ -252,6 +296,7 @@ export async function validateVoucherAction(params: ValidateVoucherActionParams)
     },
     ticketDiscount: validation.ticketDiscount,
     merchandiseDiscount: validation.merchandiseDiscount,
+    bundleDiscount: validation.bundleDiscount,
     totalDiscount: validation.totalDiscount,
   };
 }

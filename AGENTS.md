@@ -137,6 +137,12 @@ Keep a component inside its route until it is reused by another feature. Do not 
   - Backward compatibility helper `ensureCancellationReasonInCancelledHtml` automatically injects this block into existing Firestore event templates, and template interpolation formats multi-line reasons using `<br>`.
   - Manual template test sender (`send-template-email-dialog.tsx`) and sample data config drawer (`configure-template-data-dialog.tsx`) also enforce / provide simulation for the cancellation reason.
 
+- **Configurable Voucher Scope ("Bundle Only", "All Items") & Eligible Item Checklist**:
+  - `VoucherAppliesTo` supports `"all" | "ticket" | "bundle" | "merchandise"`.
+  - `EventVoucher` supports optional item checklists (`eligible_ticket_ids`, `eligible_bundle_ids`, `eligible_merchandise_ids`). When null or omitted, all items within the active scope are eligible.
+  - In `VoucherDialog`, organizers can select **"All Items"** (Tickets, Merch & Bundles), **"Tickets Only"**, **"Bundle Only"**, or **"Merch Only"**. An interactive checklist panel below Discount Scope lists the event's items filtered to the active scope, allowing organizers to customize which tickets, bundles, or merchandise items are checklisted.
+  - On the registration form (`event-registration-modal.tsx`), when a voucher is applied, checklisted items are enabled and selectable, while unselected items are disabled with an informative prompt.
+
 - **Total Registered Attendee card**: `registrant-statistics.tsx` overview shows approved + `paid_and_registered` (+ attended/confirmed/registered) as one card; clicking applies the `registered_attendees` status filter handled in `registrants-tab.tsx`. Documented in the Status & Metric Guide.
 
 - **Email Templates & Thermal Printers Ref & ID Alignment**:

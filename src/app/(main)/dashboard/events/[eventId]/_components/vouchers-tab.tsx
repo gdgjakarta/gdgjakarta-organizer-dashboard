@@ -1171,6 +1171,10 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
                             <span className="flex items-center gap-1">
                               <Ticket className="size-2.5" /> Tickets
                             </span>
+                          ) : v.applies_to === "bundle" ? (
+                            <span className="flex items-center gap-1">
+                              <Package className="size-2.5" /> Bundle
+                            </span>
                           ) : (
                             <span className="flex items-center gap-1">
                               <Package className="size-2.5" /> Merch
@@ -1357,6 +1361,9 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
         open={isDialogOpen}
         onOpenChange={setIsDialogOpen}
         voucher={editingVoucher}
+        tickets={event.tickets ?? []}
+        bundles={event.bundles ?? []}
+        merchandise={event.merchandise ?? []}
         onSave={handleSaveVoucher}
       />
 

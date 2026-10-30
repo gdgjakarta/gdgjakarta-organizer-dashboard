@@ -335,6 +335,13 @@ export function VoucherRedemptionsDialog({
         </span>
       );
     }
+    if (currentVoucher.applies_to === "bundle") {
+      return (
+        <span className="flex items-center gap-1">
+          <Layers className="size-2.5" /> Bundle
+        </span>
+      );
+    }
     return (
       <span className="flex items-center gap-1">
         <Layers className="size-2.5" /> Merch
