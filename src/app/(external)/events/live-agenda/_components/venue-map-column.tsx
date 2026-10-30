@@ -21,7 +21,7 @@ export function VenueMapColumn() {
       />
 
       <h3 className="text-balance font-medium text-base text-shadow-[0_2px_16px] text-shadow-black/50 text-white/90">
-        Find your way around Taman Mini Indonesia Indah, from the entrance gate to the halls
+        Find your way around Taman Mini Indonesia Indah, from the entrance gate, food stalls, and mosque.
       </h3>
     </section>
   );
