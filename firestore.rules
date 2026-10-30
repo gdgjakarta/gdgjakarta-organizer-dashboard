@@ -1573,8 +1573,8 @@ service cloud.firestore {
 
       // Update: Team members (full voucher editing) or authenticated users redeeming a voucher upon registration checkout.
       // Regular users are strictly restricted to updating redemption tracking fields and incrementing times_used counter within usage limits.
+      // Redemption branch is evaluated first: hasTeamAccess() does Bevy member lookups that deny attendees with a dangling bevy_user_id.
       allow update: if isValidEventVoucher(request.resource.data) && (
-        hasTeamAccess() ||
         (
           isAuthenticated() &&
           resource.data.status == 'active' &&
@@ -1584,7 +1584,8 @@ service cloud.firestore {
           ]) &&
           request.resource.data.times_used == (('times_used' in resource.data && resource.data.times_used != null) ? resource.data.times_used + 1 : 1) &&
           (!('usage_limit' in resource.data && resource.data.usage_limit != null) || request.resource.data.times_used <= resource.data.usage_limit)
-        )
+        ) ||
+        hasTeamAccess()
       );
     }
 
