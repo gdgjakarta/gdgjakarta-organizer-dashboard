@@ -865,7 +865,6 @@ export function ResendPaymentLinkDialog({
           <AlertDialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <AlertDialogCancel disabled={isSubmitting}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              variant="destructive"
               className="bg-amber-600 text-white shadow-xs hover:bg-amber-700 dark:bg-amber-600 dark:hover:bg-amber-500"
               disabled={isSubmitting}
               onClick={(e) => {

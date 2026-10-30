@@ -747,7 +747,7 @@ textarea:disabled,
 [data-slot="drawer-overlay"],
 [data-slot*="overlay"],
 div[class*="supports-backdrop-filter"][class*="fixed"][class*="inset-0"] {
-  --tw-backdrop-blur: none !important;
+  --tw-backdrop-blur: blur(0px) !important;
   --tw-backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
@@ -761,7 +761,7 @@ div[class*="supports-backdrop-filter"][class*="fixed"][class*="inset-0"] {
   [data-slot="drawer-overlay"],
   [data-slot*="overlay"],
   div[class*="supports-backdrop-filter"][class*="fixed"][class*="inset-0"] {
-    --tw-backdrop-blur: none !important;
+    --tw-backdrop-blur: blur(0px) !important;
     --tw-backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
     backdrop-filter: none !important;

@@ -5624,7 +5624,6 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
           <AlertDialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <AlertDialogCancel disabled={Boolean(rejectingRegistrationId)}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              variant="destructive"
               className="bg-destructive text-white shadow-xs hover:bg-destructive/90"
               disabled={Boolean(rejectingRegistrationId)}
               onClick={(e) => {
@@ -5670,7 +5669,6 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
           <AlertDialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <AlertDialogCancel disabled={isBatchRejecting}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              variant="destructive"
               className="bg-destructive text-white shadow-xs hover:bg-destructive/90"
               disabled={isBatchRejecting}
               onClick={(e) => {
@@ -5754,7 +5752,6 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
           <AlertDialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <AlertDialogCancel disabled={isCancelling}>Keep Registration</AlertDialogCancel>
             <AlertDialogAction
-              variant="destructive"
               className="bg-destructive text-white shadow-xs hover:bg-destructive/90"
               disabled={isCancelling || !cancelReason.trim()}
               onClick={(e) => {
@@ -5840,7 +5837,6 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
           <AlertDialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <AlertDialogCancel disabled={isCancelling}>Keep Registrations</AlertDialogCancel>
             <AlertDialogAction
-              variant="destructive"
               className="bg-destructive text-white shadow-xs hover:bg-destructive/90"
               disabled={isCancelling || !cancelReason.trim()}
               onClick={(e) => {
@@ -5885,7 +5881,6 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
           <AlertDialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              variant="destructive"
               className="bg-destructive text-white shadow-xs hover:bg-destructive/90"
               disabled={isDeleting}
               onClick={(e) => {
@@ -5930,7 +5925,6 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
           <AlertDialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              variant="destructive"
               className="bg-destructive text-white shadow-xs hover:bg-destructive/90"
               disabled={isDeleting}
               onClick={(e) => {
