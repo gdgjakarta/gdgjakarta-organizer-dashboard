@@ -30,6 +30,21 @@ const CHROME_CANDIDATES = [
 
 const uid = process.getuid?.() ?? 501;
 
+/** Dashboard allowed to print when nothing else is configured. */
+export const DEFAULT_ORIGINS = ["https://gdgjakarta.com"];
+
+/**
+ * Reduces "https://gdgjakarta.com/" or "https://gdgjakarta.com/dashboard" to the bare origin a browser sends in
+ * its Origin header ("https://gdgjakarta.com"), so a pasted URL still matches.
+ */
+export function normalizeOrigin(value) {
+  try {
+    return new URL(value.trim()).origin;
+  } catch {
+    throw new Error(`"${value}" is not a valid URL. Use something like https://gdgjakarta.com`);
+  }
+}
+
 /** Earlier versions installed a login auto-start agent; remove it so it cannot fight the manual worker. */
 async function removeLegacyAgent() {
   if (!existsSync(PLIST_PATH)) return false;
@@ -104,7 +119,7 @@ async function loadPreviousConfig() {
 }
 
 /**
- * @param {{ origins?: string[] }} [options] origins offered as the default for the allowed-origins question
+ * @param {{ origins?: string[] }} [options] origins offered as the default for the allowed-origins question (default: https://gdgjakarta.com)
  * @returns {Promise<{ startNow: boolean }>}
  */
 export async function runSetup(options = {}) {
@@ -131,17 +146,20 @@ export async function runSetup(options = {}) {
       throw new Error("Port must be between 1024 and 65535.");
     }
 
-    const defaultOrigins = options.origins?.length
-      ? options.origins
-      : (previous.allowedOrigins ?? ["http://localhost:3000"]);
+    const defaultOrigins = options.origins?.length ? options.origins : (previous.allowedOrigins ?? DEFAULT_ORIGINS);
     const originsInput = await ask(
-      "Dashboard origins allowed to print (comma separated, e.g. https://app.gdgjakarta.org)",
+      "Dashboard address(es) allowed to print (comma separated)",
       defaultOrigins.join(","),
     );
-    const allowedOrigins = originsInput
-      .split(",")
-      .map((o) => o.trim().replace(/\/$/, ""))
-      .filter(Boolean);
+    const allowedOrigins = [
+      ...new Set(
+        originsInput
+          .split(",")
+          .filter((o) => o.trim())
+          .map(normalizeOrigin),
+      ),
+    ];
+    if (allowedOrigins.length === 0) throw new Error("At least one dashboard address is required.");
 
     await mkdir(CONFIG_DIR, { recursive: true });
     await writeFile(

@@ -8,9 +8,10 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
+  getPrintWorkerArchiveFileName,
   getPrintWorkerDownloadUrl,
-  PRINT_WORKER_ARCHIVE_NAME,
   PRINT_WORKER_BINARY_NAME,
+  PRINT_WORKER_DASHBOARD_ORIGIN,
   type PrintWorkerHealth,
 } from "@/lib/printers/local-worker";
 
@@ -25,7 +26,7 @@ interface InstallPrintWorkerDialogProps {
 function startDownload(url: string) {
   const link = document.createElement("a");
   link.href = url;
-  link.download = PRINT_WORKER_ARCHIVE_NAME;
+  link.download = getPrintWorkerArchiveFileName();
   link.rel = "noreferrer";
   document.body.appendChild(link);
   link.click();
@@ -76,7 +77,14 @@ function Step({ index, title, children }: { index: number; title: string; childr
 export function InstallPrintWorkerDialog({ health, onRecheck }: InstallPrintWorkerDialogProps) {
   const [open, setOpen] = React.useState(false);
   const isConnected = health !== null;
-  const origin = typeof window === "undefined" ? "" : window.location.origin;
+  const archiveFileName = getPrintWorkerArchiveFileName();
+  // The production dashboard is always allowed. When this page is open from elsewhere (e.g. localhost while
+  // developing) that address is added too, otherwise the worker would refuse it.
+  const currentOrigin = typeof window === "undefined" ? "" : window.location.origin;
+  const originArgs = [PRINT_WORKER_DASHBOARD_ORIGIN, currentOrigin]
+    .filter((origin, index, all) => origin && all.indexOf(origin) === index)
+    .map((origin) => `--origin ${origin}`)
+    .join(" ");
 
   // While the dialog is open, check often so the "connected" state shows as soon as setup finishes.
   React.useEffect(() => {
@@ -92,9 +100,9 @@ export function InstallPrintWorkerDialog({ health, onRecheck }: InstallPrintWork
 
   const installCommand = [
     "cd ~/Downloads",
-    `tar -xzf ${PRINT_WORKER_ARCHIVE_NAME}`,
+    `tar -xzf ${archiveFileName}`,
     `xattr -d com.apple.quarantine ${PRINT_WORKER_BINARY_NAME} 2>/dev/null`,
-    `./${PRINT_WORKER_BINARY_NAME} setup --origin ${origin}`,
+    `./${PRINT_WORKER_BINARY_NAME} setup ${originArgs}`,
   ].join("\n");
 
   return (
@@ -120,8 +128,7 @@ export function InstallPrintWorkerDialog({ health, onRecheck }: InstallPrintWork
           <ol className="space-y-4">
             <Step index={1} title="Download started">
               <p className="text-muted-foreground text-xs leading-relaxed">
-                <span className="font-mono text-foreground">{PRINT_WORKER_ARCHIVE_NAME}</span> is saving to your
-                Downloads folder.{" "}
+                <span className="font-mono text-foreground">{archiveFileName}</span> is saving to your Downloads folder.{" "}
                 <button
                   type="button"
                   className="text-primary underline underline-offset-2"

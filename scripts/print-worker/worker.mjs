@@ -20,7 +20,7 @@ const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const MAX_QUEUED_JOBS = 100;
 const MAX_WAIT_MS = 120_000; // a job that finds no free printer for this long is rejected
 const PRINTER_COOLDOWN_MS = 30_000; // a printer that just failed is skipped for this long
-export const VERSION = "2.1.0";
+export const VERSION = "2.2.0";
 
 async function loadConfig() {
   try {

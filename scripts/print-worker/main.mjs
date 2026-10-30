@@ -6,7 +6,7 @@
 //   gdg-print-worker uninstall           remove the installed program (and any old auto-start agent)
 //   gdg-print-worker version
 
-import { runSetup, runUninstall } from "./setup.mjs";
+import { normalizeOrigin, runSetup, runUninstall } from "./setup.mjs";
 import { startWorker, stopWorker, VERSION } from "./worker.mjs";
 
 const USAGE = `GDG Print Worker v${VERSION}
@@ -15,7 +15,8 @@ Usage: gdg-print-worker <command>
 
   run                        Start the local print service (Ctrl+C stops it)
   stop                       Stop a running print service
-  setup [--origin <url>]     Choose printers and dashboard origin, then start the worker
+  setup [--origin <url>]     Choose printers and dashboard address (default https://gdgjakarta.com), then start the worker
+                             --origin can be repeated to allow several addresses
   uninstall                  Remove the installed program
   version                    Show the version
 `;
@@ -26,7 +27,7 @@ function readOrigins(args) {
     if (arg === "--origin" && args[i + 1]) origins.push(args[i + 1]);
     if (arg.startsWith("--origin=")) origins.push(arg.slice("--origin=".length));
   });
-  return origins.map((o) => o.trim().replace(/\/$/, "")).filter(Boolean);
+  return origins.filter((o) => o.trim()).map(normalizeOrigin);
 }
 
 // Same layout for `node main.mjs <args>` and the packaged executable: user arguments start at index 2.
