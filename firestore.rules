@@ -1451,29 +1451,33 @@ service cloud.firestore {
       // Registrants cannot alter review fields or check-in status/timestamps. Identifier value preservation is verified.
       // For merchandise delivery requests, registrants can submit delivery address & fee payment (pending_payment / pending_review), while organizers/staff handle review, approval, rejection, and fulfillment.
       // For refund requests, registrants can submit claims in 'waiting_for_approval' status without setting organizer review/completion fields; completed refunds cannot be tampered with.
-      allow update: if isAuthenticated() && isValidRegistration(request.resource.data) && (
-        hasTeamAccess() ||
+      allow update: if isAuthenticated() && (
         (
-          (
-            resource.data.member_id == request.auth.uid ||
-            request.resource.data.member_id == request.auth.uid ||
-            (registrationId.size() >= request.auth.uid.size() && registrationId[registrationId.size() - request.auth.uid.size():] == request.auth.uid)
-          ) &&
-          !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-            'reviewed_at', 'reviewed_by_id', 'reviewed_by_name', 'reviewed_by_email',
-            'checked_in_at', 'is_checked_in', 'bevy_attendee_id', 'attendee_code',
-            'registered_at', 'registered_at_millis', 'refund_history'
-          ]) &&
-          isValidMemberRegistrationUpdate(resource.data, request.resource.data) &&
-          isValidMemberDeliveryUpdate(resource.data, request.resource.data) &&
-          isValidMemberRefundUpdate(resource.data, request.resource.data)
-        ) ||
-        (
-          (
-            resource.data.member_id == request.auth.uid ||
-            (registrationId.size() >= request.auth.uid.size() && registrationId[registrationId.size() - request.auth.uid.size():] == request.auth.uid)
-          ) &&
-          isValidMemberReRegistration(resource.data, request.resource.data)
+          isValidRegistration(request.resource.data) && (
+            hasTeamAccess() ||
+            (
+              (
+                resource.data.member_id == request.auth.uid ||
+                request.resource.data.member_id == request.auth.uid ||
+                (registrationId.size() >= request.auth.uid.size() && registrationId[registrationId.size() - request.auth.uid.size():] == request.auth.uid)
+              ) &&
+              !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+                'reviewed_at', 'reviewed_by_id', 'reviewed_by_name', 'reviewed_by_email',
+                'checked_in_at', 'is_checked_in', 'bevy_attendee_id', 'attendee_code',
+                'registered_at', 'registered_at_millis', 'refund_history'
+              ]) &&
+              isValidMemberRegistrationUpdate(resource.data, request.resource.data) &&
+              isValidMemberDeliveryUpdate(resource.data, request.resource.data) &&
+              isValidMemberRefundUpdate(resource.data, request.resource.data)
+            ) ||
+            (
+              (
+                resource.data.member_id == request.auth.uid ||
+                (registrationId.size() >= request.auth.uid.size() && registrationId[registrationId.size() - request.auth.uid.size():] == request.auth.uid)
+              ) &&
+              isValidMemberReRegistration(resource.data, request.resource.data)
+            )
+          )
         ) ||
         (
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['bundle_vouchers', 'updated_at']) &&
@@ -1509,7 +1513,6 @@ service cloud.firestore {
       // Non-organizers are strictly constrained to only update total_registrations, total_approved, total_waitlisted, total_checked_in, vouchers, updated_at, sessions, tickets, bundles, and merchandise, or wrap-up media/sessions and operational counters for team members.
       allow update: if isOrganizer() || (
         isAuthenticated() &&
-        isValidEvent(request.resource.data) &&
         (
           (
             request.resource.data.diff(resource.data).affectedKeys().hasOnly([
