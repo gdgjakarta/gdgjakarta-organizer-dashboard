@@ -99,6 +99,7 @@ export function VenueTicketDriveDialog({
   const [deliveryFilter, setDeliveryFilter] = useState<
     "all" | "sent" | "not_sent" | "shared" | "not_shared" | "pending_send" | "unassigned"
   >("all");
+  const [seqRangeInput, setSeqRangeInput] = useState<string>("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const isVehicleUrlDirty = useMemo(
@@ -156,10 +157,46 @@ export function VenueTicketDriveDialog({
     [eligibleRegistrants],
   );
 
+  const parsedSeqRange = useMemo(() => {
+    const raw = seqRangeInput.trim();
+    if (!raw) return null;
+
+    // Handles: "559 - End", "559-end", "559-", "559 - 700", "559..700", "559", etc.
+    const parts = raw.split(/[-–—]|(\.\.)/);
+    if (parts.length === 1 || !raw.match(/[-–—]|(\.\.)/)) {
+      const singleNum = Number.parseInt(raw, 10);
+      if (!Number.isNaN(singleNum)) {
+        return { start: singleNum, end: singleNum };
+      }
+      return null;
+    }
+
+    const segments = raw.split(/[-–—]|\.\./);
+    const startStr = segments[0]?.trim() || "";
+    const endStr = segments[1]?.trim() || "";
+
+    const startNum = startStr ? Number.parseInt(startStr, 10) : 1;
+    const isEndKeyword = !endStr || endStr.toLowerCase() === "end" || endStr.toLowerCase() === "max";
+    const endNum = isEndKeyword ? Number.POSITIVE_INFINITY : Number.parseInt(endStr, 10);
+
+    const safeStart = Number.isNaN(startNum) ? 1 : startNum;
+    const safeEnd = Number.isNaN(endNum) ? Number.POSITIVE_INFINITY : endNum;
+
+    return {
+      start: Math.min(safeStart, safeEnd),
+      end: Math.max(safeStart, safeEnd),
+    };
+  }, [seqRangeInput]);
+
   const filteredRegistrantsWithIndex = useMemo(() => {
     return eligibleRegistrants
       .map((reg, index) => ({ reg, sequenceNumber: index + 1 }))
-      .filter(({ reg }) => {
+      .filter(({ reg, sequenceNumber }) => {
+        if (parsedSeqRange) {
+          if (sequenceNumber < parsedSeqRange.start || sequenceNumber > parsedSeqRange.end) {
+            return false;
+          }
+        }
         if (deliveryFilter === "all") return true;
         if (deliveryFilter === "sent") return Boolean(reg.venue_ticket_sent_at);
         if (deliveryFilter === "not_sent") return !reg.venue_ticket_sent_at;
@@ -171,7 +208,7 @@ export function VenueTicketDriveDialog({
         if (deliveryFilter === "unassigned") return !reg.venue_ticket_file_id;
         return true;
       });
-  }, [eligibleRegistrants, deliveryFilter]);
+  }, [eligibleRegistrants, deliveryFilter, parsedSeqRange]);
 
   const handleSyncAndMap = async () => {
     const folderId = extractDriveFolderId(folderUrl);
@@ -709,6 +746,24 @@ export function VenueTicketDriveDialog({
                     <SelectItem value="unassigned">Unassigned ({eligibleRegistrants.length - mappedCount})</SelectItem>
                   </SelectContent>
                 </Select>
+                <div className="relative flex items-center">
+                  <Input
+                    type="text"
+                    value={seqRangeInput}
+                    onChange={(e) => setSeqRangeInput(e.target.value)}
+                    placeholder="No. (e.g. 559 - End)"
+                    className="h-7 w-[150px] pr-6 text-xs tabular-nums"
+                  />
+                  {seqRangeInput && (
+                    <button
+                      type="button"
+                      onClick={() => setSeqRangeInput("")}
+                      className="absolute right-1.5 text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="size-3" />
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 {config?.updated_at && (
