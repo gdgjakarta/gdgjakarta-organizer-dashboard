@@ -15,6 +15,8 @@ const PRINT_TIMEOUT_MS = 45_000;
 
 export interface PrintWorkerPrinter {
   name: string | null;
+  /** CUPS device URI. Two printers with the same URI are the same device to CUPS (workers from 2.3.0). */
+  uri?: string | null;
   state: string;
   busy: boolean;
   /** False while the worker is skipping this printer after a failure. */
@@ -22,9 +24,17 @@ export interface PrintWorkerPrinter {
   lastError: string | null;
 }
 
+export interface PrintWorkerDevice {
+  computerName: string;
+  model: string | null;
+  os: string;
+}
+
 export interface PrintWorkerHealth {
   ok: boolean;
   version: string;
+  /** Which laptop the worker runs on. Missing on workers older than 2.3.0. */
+  device?: PrintWorkerDevice;
   printers: PrintWorkerPrinter[];
   /** Jobs waiting inside the worker for a free printer. */
   queued: number;
@@ -35,6 +45,13 @@ export interface PrintWorkerPayload {
   widthMm: number;
   heightMm: number;
   copies?: number;
+  /** Print on exactly this printer (workers from 2.3.0). Without it the worker picks an idle one itself. */
+  printer?: string;
+}
+
+export interface PrintWorkerResult {
+  /** Printer that printed, as the worker reports it (null for the system default). */
+  printer: string | null;
 }
 
 /** Thrown when the worker cannot be reached at all (not running, blocked, or permission denied). */
@@ -65,7 +82,7 @@ export async function fetchPrintWorkerHealth(): Promise<PrintWorkerHealth | null
   }
 }
 
-export async function printViaWorker(payload: PrintWorkerPayload): Promise<void> {
+export async function printViaWorker(payload: PrintWorkerPayload): Promise<PrintWorkerResult> {
   let res: Response;
   try {
     res = await fetch(`${getPrintWorkerUrl()}/print`, {
@@ -78,10 +95,11 @@ export async function printViaWorker(payload: PrintWorkerPayload): Promise<void>
     throw new PrintWorkerUnreachableError(err);
   }
 
-  const data = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+  const data = (await res.json().catch(() => null)) as { ok?: boolean; error?: string; printer?: string | null } | null;
   if (!res.ok || !data?.ok) {
     throw new Error(data?.error ?? `Print worker responded with ${res.status}`);
   }
+  return { printer: data.printer ?? null };
 }
 
 /**

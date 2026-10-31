@@ -9,7 +9,7 @@ import { execFile, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
-import { homedir, tmpdir } from "node:os";
+import { homedir, hostname, platform, release, tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
@@ -20,7 +20,7 @@ const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const MAX_QUEUED_JOBS = 100;
 const MAX_WAIT_MS = 120_000; // a job that finds no free printer for this long is rejected
 const PRINTER_COOLDOWN_MS = 30_000; // a printer that just failed is skipped for this long
-export const VERSION = "2.2.0";
+export const VERSION = "2.3.0";
 
 async function loadConfig() {
   try {
@@ -40,8 +40,65 @@ async function defaultPrinterName() {
   }
 }
 
+/**
+ * Device address (CUPS device URI) of every queue: `{ "<queue>": "usb://Clabel-/CT221B?serial=..." }`.
+ * Two identical printers often report the same USB serial and so get the same URI, which makes CUPS print on one of
+ * them only. Exported for the setup, which warns about it.
+ */
+export async function readPrinterUris() {
+  const uris = {};
+  try {
+    const { stdout } = await execFileAsync("lpstat", ["-v"], { timeout: 5_000 });
+    for (const line of stdout.split("\n")) {
+      const match = line.match(/^device for (.+?): (.+)$/);
+      if (match) uris[match[1]] = match[2].trim();
+    }
+  } catch {
+    // no CUPS queues: nothing to report
+  }
+  return uris;
+}
+
+/** Groups of queue names that share one device URI (they cannot be told apart by CUPS). */
+export function findSharedDevices(names, uris) {
+  const byUri = new Map();
+  for (const name of names) {
+    const uri = uris[name];
+    if (!uri) continue;
+    byUri.set(uri, [...(byUri.get(uri) ?? []), name]);
+  }
+  return [...byUri.entries()].filter(([, group]) => group.length > 1).map(([uri, group]) => ({ uri, printers: group }));
+}
+
+async function readCommand(command, args) {
+  try {
+    const { stdout } = await execFileAsync(command, args, { timeout: 5_000 });
+    return stdout.trim();
+  } catch {
+    return "";
+  }
+}
+
+/** Which laptop this is, shown next to its printers in the dashboard (computer name, hardware model, OS). */
+async function readDeviceInfo() {
+  if (platform() === "darwin") {
+    const [computerName, model, osVersion] = await Promise.all([
+      readCommand("scutil", ["--get", "ComputerName"]),
+      readCommand("sysctl", ["-n", "hw.model"]),
+      readCommand("sw_vers", ["-productVersion"]),
+    ]);
+    return {
+      computerName: computerName || hostname(),
+      model: model || null,
+      os: osVersion ? `macOS ${osVersion}` : `macOS ${release()}`,
+    };
+  }
+  return { computerName: hostname(), model: null, os: `${platform()} ${release()}` };
+}
+
 // Filled in by startWorker().
 let config;
+let deviceInfo = { computerName: hostname(), model: null, os: platform() };
 let allowedOrigins = new Set();
 let slots = [];
 
@@ -53,8 +110,10 @@ async function initPool() {
   ];
   if (printerNames.length === 0) printerNames.push("");
 
+  const uris = await readPrinterUris();
   slots = printerNames.map((name) => ({
     name,
+    uri: uris[name] ?? null,
     busy: false,
     lastUsedAt: 0,
     unavailableUntil: 0,
@@ -168,6 +227,8 @@ const pending = [];
 
 function pickSlot(entry) {
   const now = Date.now();
+  // A job pinned to one printer (the dashboard already decided where it goes) only ever runs on that printer.
+  if (entry.only) return entry.only.busy ? undefined : entry.only;
   return slots
     .filter((slot) => !slot.busy && slot.unavailableUntil <= now && !entry.tried.has(slot))
     .sort((a, b) => a.lastUsedAt - b.lastUsedAt)[0];
@@ -194,7 +255,10 @@ async function runOnSlot(slot, entry) {
       slot.lastError = message;
       slot.unavailableUntil = Date.now() + PRINTER_COOLDOWN_MS;
       entry.tried.add(slot);
-      if (entry.tried.size < slots.length) {
+      if (entry.only) {
+        // Pinned job: never move it to another printer here, the dashboard decides what happens next.
+        entry.reject(err);
+      } else if (entry.tried.size < slots.length) {
         console.warn(`[pool] ${message}; retrying on another printer`);
         pending.unshift(entry);
       } else {
@@ -210,7 +274,12 @@ async function runOnSlot(slot, entry) {
   }
 }
 
-function submitJob(job) {
+function submitJob(job, printerName) {
+  let only = null;
+  if (typeof printerName === "string" && printerName) {
+    only = slots.find((slot) => slot.name === printerName) ?? null;
+    if (!only) return Promise.reject(new Error(`Unknown printer "${printerName}"`));
+  }
   if (pending.length >= MAX_QUEUED_JOBS) return Promise.reject(new Error("Print queue is full"));
   return new Promise((resolve, reject) => {
     const waitTimer = setTimeout(() => {
@@ -221,6 +290,7 @@ function submitJob(job) {
     }, MAX_WAIT_MS);
     const entry = {
       job,
+      only,
       tried: new Set(),
       resolve: (value) => {
         clearTimeout(waitTimer);
@@ -241,6 +311,7 @@ async function poolStatus() {
   const printers = await Promise.all(
     slots.map(async (slot) => ({
       name: slot.name || null,
+      uri: slot.uri,
       state: await printerStatusLine(slot.name),
       busy: slot.busy,
       available: slot.unavailableUntil <= now,
@@ -309,7 +380,7 @@ const server = createServer(async (req, res) => {
   const { pathname } = new URL(req.url ?? "/", "http://127.0.0.1");
 
   if (req.method === "GET" && pathname === "/health") {
-    send(res, 200, { ok: true, version: VERSION, ...(await poolStatus()) }, cors);
+    send(res, 200, { ok: true, version: VERSION, device: deviceInfo, ...(await poolStatus()) }, cors);
     return;
   }
 
@@ -326,7 +397,9 @@ const server = createServer(async (req, res) => {
         send(res, 400, { ok: false, error: "`widthMm` and `heightMm` must be numbers between 10 and 200" }, cors);
         return;
       }
-      const result = await submitJob({ html, widthMm, heightMm, copies });
+      // Optional: print on this exact printer (the dashboard assigned it). Without it the pool picks an idle one.
+      const printerName = typeof body.printer === "string" ? body.printer : undefined;
+      const result = await submitJob({ html, widthMm, heightMm, copies }, printerName);
       console.log(`[print] ${widthMm}x${heightMm}mm x${copies} -> ${result.printer ?? "default"}: ${result.message}`);
       send(res, 200, { ok: true, printer: result.printer, message: result.message }, cors);
     } catch (err) {
@@ -344,13 +417,23 @@ export async function startWorker() {
   config = await loadConfig();
   allowedOrigins = new Set(config.allowedOrigins ?? []);
   await initPool();
+  deviceInfo = await readDeviceInfo();
 
   // Wakes jobs that were waiting for a printer's cooldown to end.
   setInterval(dispatch, 2_000).unref();
 
   server.listen(config.port, "127.0.0.1", () => {
     console.log(`GDG Print Worker v${VERSION} listening on http://127.0.0.1:${config.port}`);
+    console.log(`Device: ${deviceInfo.computerName}${deviceInfo.model ? ` (${deviceInfo.model})` : ""}, ${deviceInfo.os}`);
     console.log(`Printers (${slots.length}): ${slots.map((s) => s.name || "(system default)").join(", ")}`);
+    for (const shared of findSharedDevices(
+      slots.map((s) => s.name),
+      Object.fromEntries(slots.map((s) => [s.name, s.uri])),
+    )) {
+      console.warn(
+        `WARNING: ${shared.printers.join(" and ")} point to the same device (${shared.uri}), so labels may all print on one printer. Re-run setup for the fix.`,
+      );
+    }
     console.log(`Allowed origins: ${[...allowedOrigins].join(", ") || "(none)"}`);
   });
   server.on("error", (err) => {

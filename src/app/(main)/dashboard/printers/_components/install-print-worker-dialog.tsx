@@ -2,7 +2,7 @@
 
 import * as React from "react";
 
-import { CheckCircle2, Copy, Download, Loader2 } from "lucide-react";
+import { CheckCircle2, Copy, Download, ExternalLink, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ import {
 
 const RECHECK_INTERVAL_MS = 3000;
 const INSTALLED_WORKER_PATH = `~/.gdg-print-worker/bin/${PRINT_WORKER_BINARY_NAME}`;
+const PRINTER_DRIVER_URL = "https://ga.ctaiot.com/";
 
 interface InstallPrintWorkerDialogProps {
   health: PrintWorkerHealth | null;
@@ -126,7 +127,24 @@ export function InstallPrintWorkerDialog({ health, onRecheck }: InstallPrintWork
           </DialogHeader>
 
           <ol className="space-y-4">
-            <Step index={1} title="Download started">
+            <Step index={1} title="Install the printer driver">
+              <p className="text-muted-foreground text-xs leading-relaxed">
+                Download and install the Clabel driver from{" "}
+                <a
+                  href={PRINTER_DRIVER_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-0.5 text-primary underline underline-offset-2"
+                >
+                  ga.ctaiot.com <ExternalLink className="size-3" />
+                </a>
+                , then connect each printer by USB. The printers must show up in{" "}
+                <strong className="text-foreground">System Settings → Printers &amp; Scanners</strong> before the worker
+                can use them.
+              </p>
+            </Step>
+
+            <Step index={2} title="Worker download started">
               <p className="text-muted-foreground text-xs leading-relaxed">
                 <span className="font-mono text-foreground">{archiveFileName}</span> is saving to your Downloads folder.{" "}
                 <button
@@ -139,7 +157,7 @@ export function InstallPrintWorkerDialog({ health, onRecheck }: InstallPrintWork
               </p>
             </Step>
 
-            <Step index={2} title="Open Terminal and run this once">
+            <Step index={3} title="Open Terminal and run this once">
               <CommandBlock command={installCommand} />
               <p className="text-muted-foreground text-xs leading-relaxed">
                 The <span className="font-mono">xattr</span> line lets macOS run the downloaded file. If the file was
@@ -148,12 +166,18 @@ export function InstallPrintWorkerDialog({ health, onRecheck }: InstallPrintWork
               </p>
             </Step>
 
-            <Step index={3} title="Answer the setup questions">
+            <Step index={4} title="Answer the setup questions">
               <ul className="list-disc space-y-0.5 pl-4 text-muted-foreground text-xs leading-relaxed">
                 <li>
                   <strong className="text-foreground">Printers:</strong> type every label printer number, separated by
                   commas (e.g. <span className="font-mono">1,2</span>). They print in parallel and the worker picks a
                   free one for each badge.
+                </li>
+                <li>
+                  Two printers of the same model can share one USB address, so every label would print on only one of
+                  them. If setup warns that printers{" "}
+                  <strong className="text-foreground">point to the same device</strong>, follow the steps it prints
+                  before continuing.
                 </li>
                 <li>Press Enter to accept the Chrome path, port and dashboard address.</li>
                 <li>
@@ -164,7 +188,7 @@ export function InstallPrintWorkerDialog({ health, onRecheck }: InstallPrintWork
               </ul>
             </Step>
 
-            <Step index={4} title="Allow local network access">
+            <Step index={5} title="Allow local network access">
               <p className="text-muted-foreground text-xs leading-relaxed">
                 Chrome may ask to let this site connect to devices on your local network. Choose{" "}
                 <strong className="text-foreground">Allow</strong>, then keep this page open and press{" "}

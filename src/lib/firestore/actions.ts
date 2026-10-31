@@ -1524,30 +1524,15 @@ export async function savePrinterConfigAction(config: Partial<import("@/lib/prin
 
 export async function enqueuePrintJobAction(
   jobData: Omit<import("@/lib/printers/types").PrintJob, "id" | "status" | "created_at">,
+  options?: { printedBy?: import("./client").PrintJobClaimant },
 ) {
   try {
     const { enqueuePrintJob } = await import("./client");
-    const jobId = await enqueuePrintJob(jobData);
+    const jobId = await enqueuePrintJob(jobData, options);
     return { success: true, jobId };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to queue print job.";
     console.error("[enqueuePrintJobAction] error:", message);
-    return { success: false, error: message };
-  }
-}
-
-export async function updatePrintJobStatusAction(
-  jobId: string,
-  status: import("@/lib/printers/types").PrintJob["status"],
-  errorMessage?: string,
-) {
-  try {
-    const { updatePrintJobStatus } = await import("./client");
-    await updatePrintJobStatus(jobId, status, errorMessage);
-    return { success: true };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Failed to update print job.";
-    console.error("[updatePrintJobStatusAction] error:", message);
     return { success: false, error: message };
   }
 }

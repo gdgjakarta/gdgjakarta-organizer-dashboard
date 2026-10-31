@@ -14,6 +14,8 @@ import { createInterface } from "node:readline/promises";
 import { isSea } from "node:sea";
 import { promisify } from "node:util";
 
+import { findSharedDevices, readPrinterUris } from "./worker.mjs";
+
 const execFileAsync = promisify(execFile);
 
 const CONFIG_DIR = join(homedir(), ".gdg-print-worker");
@@ -70,6 +72,21 @@ async function listPrinters() {
   }
 }
 
+// Two identical printers usually report the same USB serial, so CUPS gives their queues the same device URI and every
+// label lands on one printer. Tell the user how to give each queue its own USB port (location ID).
+function warnSharedDevices(picked, uris) {
+  for (const shared of findSharedDevices(picked, uris)) {
+    console.log(`\nWARNING: ${shared.printers.join(" and ")} point to the same device:\n  ${shared.uri}`);
+    console.log("Identical printers often share one USB serial, so CUPS prints on only one of them. To fix it:");
+    console.log("  1. Find each printer's USB location:  ioreg -p IOUSB -l -w0 | grep -E 'CT221B|locationID'");
+    console.log("     (locationID is decimal; convert it to 8 hex digits, e.g. 17825792 -> 01100000)");
+    console.log('  2. Point every queue to its own port, WITHOUT serial=:');
+    console.log('     lpadmin -p <queue name> -v "usb://<Make>/<Model>?location=<8 hex digits>"');
+    console.log("  3. Print one label per queue and check each comes out of a different printer.");
+    console.log("Keep each printer in the same USB port afterwards.\n");
+  }
+}
+
 // Returns the printer pool. Every selected printer prints in parallel; the worker assigns jobs itself.
 async function pickPrinters(ask, previous) {
   const printers = await listPrinters();
@@ -78,9 +95,10 @@ async function pickPrinters(ask, previous) {
     const name = await ask("Printer name", "");
     return [name];
   }
+  const uris = await readPrinterUris();
   console.log("\nInstalled printers:");
   printers.forEach((name, i) => {
-    console.log(`  ${i + 1}) ${name}`);
+    console.log(`  ${i + 1}) ${name}${uris[name] ? `  -> ${uris[name]}` : ""}`);
   });
   const remembered = printers.flatMap((name, i) => (previous.includes(name) ? [i + 1] : []));
   const clabels = printers.flatMap((name, i) => (/clabel|ct221/i.test(name) ? [i + 1] : []));
@@ -96,6 +114,7 @@ async function pickPrinters(ask, previous) {
     ),
   ].map((n) => (n === 0 ? "" : printers[n - 1]));
   if (picked.length === 0) throw new Error("No valid printer selected.");
+  warnSharedDevices(picked, uris);
   return picked;
 }
 

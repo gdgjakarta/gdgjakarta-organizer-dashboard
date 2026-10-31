@@ -1740,6 +1740,32 @@ service cloud.firestore {
     }
 
     // -------------------------------------------------------------
+    // Thermal Printer Queue & Print Stations
+    // -------------------------------------------------------------
+    // print_jobs: one document per badge label. Stations claim a job in a transaction (status pending -> printing),
+    // so reads/writes are limited to the team (organizers + check-in staff). Contains attendee names, so never public.
+    match /print_jobs/{jobId} {
+      allow read: if hasTeamAccess();
+      allow create: if hasTeamAccess() &&
+        request.resource.data.id == jobId &&
+        request.resource.data.status in ['pending', 'completed'];
+      allow update: if hasTeamAccess() &&
+        request.resource.data.id == resource.data.id &&
+        request.resource.data.status in ['pending', 'printing', 'completed', 'failed'];
+      allow delete: if isOrganizer();
+    }
+
+    // print_workers: heartbeat of each laptop with the dashboard open (name, model, OS, printers and their status).
+    match /print_workers/{stationId} {
+      allow read: if hasTeamAccess();
+      allow create, update: if hasTeamAccess() &&
+        request.resource.data.id == stationId &&
+        request.resource.data.printers is list &&
+        request.resource.data.printers.size() <= 20;
+      allow delete: if hasTeamAccess();
+    }
+
+    // -------------------------------------------------------------
     // Event Merchandise Orders Collection
     // -------------------------------------------------------------
     match /event_merchandise_orders/{orderId} {

@@ -65,7 +65,7 @@ export function PrintWorkerStatus({ health, isChecking, onRecheck }: PrintWorker
           </div>
           <p className="text-muted-foreground text-xs">
             {isConnected
-              ? "Badges print straight to the printers with no browser dialog. The worker assigns each job to a free printer."
+              ? "Badges print straight to the printers with no browser dialog. Each queued job is assigned to one free printer and logged in the Print Queue."
               : "Printing falls back to the browser print dialog until the worker is running."}
           </p>
         </div>

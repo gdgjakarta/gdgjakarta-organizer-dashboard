@@ -37,19 +37,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  enqueuePrintJobAction,
-  fetchEventRegistrationsAction,
-  savePrinterConfigAction,
-  updatePrintJobStatusAction,
-} from "@/lib/firestore/actions";
+import { enqueuePrintJobAction, fetchEventRegistrationsAction, savePrinterConfigAction } from "@/lib/firestore/actions";
+import { retryPrintJob } from "@/lib/firestore/client";
 import type { FirestoreRegistration } from "@/lib/firestore/types";
-import {
-  fetchPrintWorkerHealth,
-  type PrintWorkerHealth,
-  PrintWorkerUnreachableError,
-  printViaWorker,
-} from "@/lib/printers/local-worker";
+import { printViaWorker } from "@/lib/printers/local-worker";
 import {
   buildPrintDocument,
   DEFAULT_LABEL_TEMPLATE,
@@ -57,12 +48,22 @@ import {
   renderLabelTemplate,
   syncTemplateDimensions,
 } from "@/lib/printers/templates";
-import { CLABEL_PAPER_PRESETS, type LabelTemplateData, type PrinterConfig, type PrintJob } from "@/lib/printers/types";
+import {
+  BROWSER_PRINTER_NAME,
+  CLABEL_PAPER_PRESETS,
+  isPrintStationOnline,
+  type LabelTemplateData,
+  MAX_PRINT_ATTEMPTS,
+  type PrinterConfig,
+  type PrintJob,
+} from "@/lib/printers/types";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
 import { InstallPrintWorkerDialog } from "./install-print-worker-dialog";
 import { LabelHtmlEditorPreview } from "./label-html-editor-preview";
+import { PrintStationsCard } from "./print-stations-card";
 import { PrintWorkerStatus } from "./print-worker-status";
+import { usePrintStation } from "./use-print-station";
 
 const CLIENT_EVENTS_CACHE_KEY = "gdg_email_published_events_cache_v1";
 const CLIENT_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
@@ -153,29 +154,6 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
 
   // Hidden print iframe reference
   const printIframeRef = React.useRef<HTMLIFrameElement | null>(null);
-  // Print Station bookkeeping: job ids already picked up this session, and how many are printing now.
-  const handledJobIdsRef = React.useRef<Set<string>>(new Set());
-  const activeJobsRef = React.useRef<number>(0);
-
-  // Local print worker (dialog-free printing). Polled so the header indicator stays live.
-  const [workerHealth, setWorkerHealth] = React.useState<PrintWorkerHealth | null>(null);
-  const workerHealthRef = React.useRef<PrintWorkerHealth | null>(null);
-
-  const [isCheckingWorker, setIsCheckingWorker] = React.useState(false);
-
-  const checkWorker = React.useCallback(async () => {
-    setIsCheckingWorker(true);
-    const health = await fetchPrintWorkerHealth();
-    workerHealthRef.current = health;
-    setWorkerHealth(health);
-    setIsCheckingWorker(false);
-  }, []);
-
-  React.useEffect(() => {
-    void checkWorker();
-    const timer = window.setInterval(() => void checkWorker(), 10_000);
-    return () => window.clearInterval(timer);
-  }, [checkWorker]);
 
   // Select a Bevy event and fetch its detailed metadata
   const handleSelectEvent = React.useCallback(
@@ -399,30 +377,10 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
     toast.success("Sample data reset to default.");
   }, []);
 
-  // Helper to execute silent print on an HTML snippet
-  const executeSilentPrint = React.useCallback(
-    async (renderedBodyHtml: string): Promise<void> => {
-      if (workerHealthRef.current) {
-        try {
-          await printViaWorker({
-            html: buildPrintDocument(
-              renderedBodyHtml,
-              config.paper_width_mm,
-              config.paper_height_mm,
-              config.orientation,
-            ),
-            widthMm: config.paper_width_mm,
-            heightMm: config.paper_height_mm,
-          });
-          return;
-        } catch (err) {
-          // Worker answered with an error: surface it. Only fall back to the browser dialog if it vanished.
-          if (!(err instanceof PrintWorkerUnreachableError)) throw err;
-          workerHealthRef.current = null;
-        }
-      }
-
-      return new Promise<void>((resolve, reject) => {
+  // Prints through the hidden iframe (browser print dialog, or silent with --kiosk-printing).
+  const printInBrowser = React.useCallback(
+    (renderedBodyHtml: string): Promise<void> =>
+      new Promise<void>((resolve, reject) => {
         try {
           const iframe = printIframeRef.current;
           if (!iframe) {
@@ -467,74 +425,51 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
         } catch (err) {
           reject(err);
         }
-      });
-    },
+      }),
     [config.paper_width_mm, config.paper_height_mm, config.orientation],
   );
 
-  // Background Print Station Listener loop.
-  // Jobs print in parallel, up to one per printer the worker reports (the worker picks the printer itself).
-  // Without a worker the shared iframe can only print one label at a time.
-  React.useEffect(() => {
-    if (!isStationRunning) return;
+  const buildDocument = React.useCallback(
+    (renderedBodyHtml: string) =>
+      buildPrintDocument(renderedBodyHtml, config.paper_width_mm, config.paper_height_mm, config.orientation),
+    [config.paper_width_mm, config.paper_height_mm, config.orientation],
+  );
 
-    let unsubscribe: (() => void) | undefined;
-    let stopped = false;
-    let pendingJobs: PrintJob[] = [];
+  // This laptop's link to the queue: heartbeat to Firestore, claim jobs for idle printers, print through the worker.
+  const {
+    stationId,
+    stationName,
+    health: workerHealth,
+    healthRef: workerHealthRef,
+    isCheckingWorker,
+    recheckWorker,
+    stations,
+  } = usePrintStation({
+    isStationRunning,
+    userEmail: user?.email,
+    buildDocument,
+    widthMm: config.paper_width_mm,
+    heightMm: config.paper_height_mm,
+    printInBrowser,
+    recentJobs,
+  });
 
-    const runJob = async (job: PrintJob) => {
-      try {
-        await updatePrintJobStatusAction(job.id, "printing");
-        await executeSilentPrint(job.rendered_html);
-        await updatePrintJobStatusAction(job.id, "completed");
-        toast.success(`Printed label for ${job.member_name}`);
-      } catch (printErr) {
-        const errMsg = printErr instanceof Error ? printErr.message : "Print execution error";
-        console.error("[Print Station] Print failure:", printErr);
-        await updatePrintJobStatusAction(job.id, "failed", errMsg);
-        toast.error(`Print failed for ${job.member_name}: ${errMsg}`);
-      }
-    };
-
-    const drain = () => {
-      if (stopped) return;
-      for (const job of pendingJobs) {
-        // `handled` also covers jobs finished before the next snapshot arrives, so none prints twice.
-        if (handledJobIdsRef.current.has(job.id)) continue;
-        const limit = Math.max(1, workerHealthRef.current?.printers.length ?? 1);
-        if (activeJobsRef.current >= limit) break;
-
-        handledJobIdsRef.current.add(job.id);
-        activeJobsRef.current += 1;
-        void runJob(job).finally(() => {
-          activeJobsRef.current -= 1;
-          drain();
+  // Prints right now on this laptop, outside the queue (test print while the station is off). Returns the printer used.
+  const executeSilentPrint = React.useCallback(
+    async (renderedBodyHtml: string): Promise<string | null> => {
+      if (workerHealthRef.current) {
+        const result = await printViaWorker({
+          html: buildDocument(renderedBodyHtml),
+          widthMm: config.paper_width_mm,
+          heightMm: config.paper_height_mm,
         });
+        return result.printer;
       }
-    };
-
-    void (async () => {
-      try {
-        const { subscribePendingPrintQueue } = await import("@/lib/firestore/client");
-        if (stopped) return;
-        unsubscribe = subscribePendingPrintQueue((jobs) => {
-          pendingJobs = jobs ?? [];
-          const pendingIds = new Set(pendingJobs.map((job) => job.id));
-          for (const id of handledJobIdsRef.current) {
-            if (!pendingIds.has(id)) handledJobIdsRef.current.delete(id);
-          }
-          drain();
-        });
-      } catch (err) {
-        console.warn("[Printers] Print Station subscription failed:", err);
-      }
-    })();
-
-    return () => {
-      stopped = true;
-      unsubscribe?.();
-    };
-  }, [isStationRunning, executeSilentPrint]);
+      await printInBrowser(renderedBodyHtml);
+      return BROWSER_PRINTER_NAME;
+    },
+    [workerHealthRef, buildDocument, printInBrowser, config.paper_width_mm, config.paper_height_mm],
+  );
 
   // Handle Preset Selection
   const handlePresetChange = (presetId: string) => {
@@ -658,25 +593,57 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
       };
 
       if (isStationRunning) {
+        // This laptop takes jobs, so the queue hands the test label to whichever printer is idle.
         const res = await enqueuePrintJobAction(jobPayload);
-        if (!res.success) {
-          await executeSilentPrint(renderedHtml);
-          toast.success("Direct test print sent to Clabel 221B.");
-        }
-      } else {
-        await executeSilentPrint(renderedHtml);
-        const res = await enqueuePrintJobAction(jobPayload);
-        if (res.success && res.jobId) {
-          await updatePrintJobStatusAction(res.jobId, "completed");
-        }
-        toast.success("Test print sent to Clabel 221B.");
+        if (!res.success) throw new Error(res.error || "Could not queue the test print.");
+        toast.success("Test print queued.");
+        return;
       }
+
+      // Station is off here: print directly on this laptop and log it as already printed.
+      const printedOn = await executeSilentPrint(renderedHtml);
+      if (stationId) {
+        await enqueuePrintJobAction(jobPayload, { printedBy: { stationId, stationName, printer: printedOn } });
+      }
+      toast.success(`Test print sent to ${printedOn ?? "the default printer"}.`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Test print failed");
     }
   };
 
+  const anyStationTakingJobs = stations.some((station) => station.station_running && isPrintStationOnline(station));
+
+  // Reprint = a fresh job in the queue, so it gets assigned to a printer and logged like any other.
+  const handleReprint = async (job: PrintJob) => {
+    const res = await enqueuePrintJobAction({
+      event_id: job.event_id,
+      attendee_id: job.attendee_id,
+      registration_id: job.registration_id,
+      member_name: job.member_name,
+      member_title: job.member_title,
+      member_company: job.member_company,
+      qr_payload: job.qr_payload,
+      rendered_html: job.rendered_html,
+    });
+    if (!res.success) {
+      toast.error(res.error || "Could not queue the reprint.");
+      return;
+    }
+    if (anyStationTakingJobs) toast.success(`Reprint queued for ${job.member_name}.`);
+    else toast.warning(`Reprint queued for ${job.member_name}, but no print station is running.`);
+  };
+
+  const handleRetry = async (job: PrintJob) => {
+    try {
+      await retryPrintJob(job.id);
+      toast.success(`Retrying ${job.member_name}.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not retry the job.");
+    }
+  };
+
   const pendingJobsCount = recentJobs.filter((j) => j.status === "pending").length;
+  const failedJobsCount = recentJobs.filter((j) => j.status === "failed").length;
   const completedJobsCount = recentJobs.filter((j) => j.status === "completed").length;
 
   return (
@@ -706,9 +673,13 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2 lg:w-fit">
-          <PrintWorkerStatus health={workerHealth} isChecking={isCheckingWorker} onRecheck={() => void checkWorker()} />
+          <PrintWorkerStatus
+            health={workerHealth}
+            isChecking={isCheckingWorker}
+            onRecheck={() => void recheckWorker()}
+          />
 
-          <InstallPrintWorkerDialog health={workerHealth} onRecheck={() => void checkWorker()} />
+          <InstallPrintWorkerDialog health={workerHealth} onRecheck={() => void recheckWorker()} />
 
           <Button
             size="sm"
@@ -764,7 +735,9 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
               )}
             </div>
             <div className="mt-2 text-right text-muted-foreground text-xs">
-              {isStationRunning ? "Auto-printing check-in badges" : "Click Start Print Station to listen"}
+              {isStationRunning
+                ? `Taking jobs as ${stationName}`
+                : "Click Start Print Station to take jobs on this laptop"}
             </div>
           </CardContent>
         </Card>
@@ -817,6 +790,8 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
           </CardContent>
         </Card>
       </div>
+
+      <PrintStationsCard stations={stations} ownStationId={stationId} jobs={recentJobs} />
 
       {/* Main Content Tabs */}
       <Tabs defaultValue="editor" className="flex flex-col gap-5">
@@ -1000,8 +975,15 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
           <Card>
             <CardHeader>
               <CardTitle>Real-Time Print Queue</CardTitle>
-              <CardDescription>Latest 30 print jobs logged from QR check-in scans across the venue.</CardDescription>
-              <CardAction>
+              <CardDescription>
+                Latest 30 print jobs from QR check-in scans across the venue. Each job is held by exactly one printer.
+              </CardDescription>
+              <CardAction className="flex gap-1.5">
+                {failedJobsCount > 0 && (
+                  <Badge className="border-rose-500/20 bg-rose-500/10 text-rose-600 text-xs">
+                    {failedJobsCount} Failed
+                  </Badge>
+                )}
                 <Badge variant="outline" className="text-xs">
                   {pendingJobsCount} Pending
                 </Badge>
@@ -1025,6 +1007,7 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
                         <TableHead>Attendee</TableHead>
                         <TableHead>Event ID</TableHead>
                         <TableHead>QR Payload</TableHead>
+                        <TableHead>Printed on</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead className="text-right">Action</TableHead>
                       </TableRow>
@@ -1048,6 +1031,16 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
                           <TableCell className="font-mono text-xs">#{job.event_id}</TableCell>
                           <TableCell className="font-mono text-muted-foreground text-xs">{job.qr_payload}</TableCell>
                           <TableCell>
+                            {job.assigned_station_name ? (
+                              <>
+                                <div className="font-medium text-xs">{job.assigned_printer ?? "Default printer"}</div>
+                                <div className="text-[11px] text-muted-foreground">{job.assigned_station_name}</div>
+                              </>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">Waiting for a printer</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
                             {job.status === "completed" && (
                               <Badge className="border-emerald-500/20 bg-emerald-500/10 text-[10px] text-emerald-600">
                                 <CheckCircle2 className="mr-1 size-3" />
@@ -1057,7 +1050,7 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
                             {job.status === "pending" && (
                               <Badge className="border-amber-500/20 bg-amber-500/10 text-[10px] text-amber-600">
                                 <Clock className="mr-1 size-3" />
-                                Queued
+                                {job.attempts?.length ? "Retrying" : "Queued"}
                               </Badge>
                             )}
                             {job.status === "printing" && (
@@ -1072,16 +1065,48 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
                                 Failed
                               </Badge>
                             )}
+                            {job.error_message && job.status !== "completed" && job.status !== "printing" && (
+                              <div
+                                className="mt-1 max-w-56 break-words text-[11px] text-rose-600 dark:text-rose-400"
+                                title={job.error_message}
+                              >
+                                {job.error_message}
+                              </div>
+                            )}
+                            {job.attempts && job.attempts.length > 1 && (
+                              <div
+                                className="mt-1 text-[11px] text-muted-foreground"
+                                title={job.attempts
+                                  .map(
+                                    (attempt, index) =>
+                                      `#${index + 1} ${attempt.printer ?? "default"} @ ${attempt.station_name}${attempt.error ? `: ${attempt.error}` : ""}`,
+                                  )
+                                  .join("\n")}
+                              >
+                                {job.attempts.length} attempts (max {MAX_PRINT_ATTEMPTS})
+                              </div>
+                            )}
                           </TableCell>
                           <TableCell className="text-right">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 text-xs"
-                              onClick={() => executeSilentPrint(job.rendered_html)}
-                            >
-                              Reprint
-                            </Button>
+                            {job.status === "failed" ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-xs"
+                                onClick={() => void handleRetry(job)}
+                              >
+                                Retry
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs"
+                                onClick={() => void handleReprint(job)}
+                              >
+                                Reprint
+                              </Button>
+                            )}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -1138,10 +1163,12 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
                   green once it is running. Keep this page open with <strong>Start Print Station</strong> on.
                 </p>
                 <p className="text-muted-foreground text-xs leading-relaxed">
-                  With several printers selected during setup, badges print in parallel and the worker picks a free
-                  printer for each one. The worker does not auto-start: keep its Terminal window open while printing and
-                  press <strong>Ctrl+C</strong> there to stop it. Chrome may ask once to allow local network access;
-                  choose <strong>Allow</strong>.
+                  With several printers selected during setup, badges print in parallel: every queued label is assigned
+                  to one free printer and the Print Queue shows which laptop and printer printed it. Several laptops can
+                  run a station at the same time (each one opens this page and clicks{" "}
+                  <strong>Start Print Station</strong>); a label is only ever printed by one of them. The worker does
+                  not auto-start: keep its Terminal window open while printing and press <strong>Ctrl+C</strong> there
+                  to stop it. Chrome may ask once to allow local network access; choose <strong>Allow</strong>.
                 </p>
               </div>
 

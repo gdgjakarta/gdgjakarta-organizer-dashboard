@@ -5369,89 +5369,239 @@ export function subscribePrinterConfigDoc(
   );
 }
 
-const MAX_STORED_PRINT_JOBS = 30;
+// ---- Print queue & print stations ------------------------------------------------------------------
+// One document per job (`print_jobs`) and per laptop (`print_workers`). Several laptops write at the same time, so a
+// job changes hands only inside a transaction: whichever printer claims it first holds it, nobody else can.
 
-export async function enqueuePrintJob(
-  jobData: Omit<import("@/lib/printers/types").PrintJob, "id" | "status" | "created_at">,
-): Promise<string> {
-  if (typeof window === "undefined") return "";
+type PrintTypes = typeof import("@/lib/printers/types");
+type PrintJob = import("@/lib/printers/types").PrintJob;
+type PrintStation = import("@/lib/printers/types").PrintStation;
+
+const PRINT_JOBS_COLLECTION = "print_jobs";
+const PRINT_WORKERS_COLLECTION = "print_workers";
+
+function isPermissionDeniedError(err: unknown): boolean {
+  return (
+    !!err &&
+    typeof err === "object" &&
+    ("code" in err
+      ? (err as { code?: string }).code === "permission-denied"
+      : "message" in err && (err as { message?: string }).message?.includes("permission") === true)
+  );
+}
+
+async function waitForAuthReady(): Promise<void> {
   if (typeof auth.authStateReady === "function") {
     await auth.authStateReady();
   }
-  const docRef = doc(db, "system_settings", "printer_queue");
+}
+
+export interface PrintJobClaimant {
+  stationId: string;
+  stationName: string;
+  /** Printer the job is handed to (`BROWSER_PRINTER_NAME` for the browser dialog fallback). */
+  printer: string | null;
+}
+
+export type PrintJobOutcome =
+  /** `printer` is the printer that really printed, when the worker reports it. */
+  | { ok: true; printer?: string | null }
+  /** `retryElsewhere` is true when another online printer could still take the job. */
+  | { ok: false; error: string; retryElsewhere: boolean };
+
+export async function enqueuePrintJob(
+  jobData: Omit<PrintJob, "id" | "status" | "created_at">,
+  options?: { printedBy?: PrintJobClaimant },
+): Promise<string> {
+  if (typeof window === "undefined") return "";
+  await waitForAuthReady();
   const now = new Date().toISOString();
   const jobId = `job_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-  const newJob = sanitizeFirestoreData<import("@/lib/printers/types").PrintJob>({
+  // A job that was already printed directly (test print) is logged as completed so no station picks it up.
+  const printedBy = options?.printedBy;
+  const newJob = sanitizeFirestoreData<PrintJob>({
     ...jobData,
     id: jobId,
-    status: "pending",
+    status: printedBy ? "completed" : "pending",
     created_at: now,
+    ...(printedBy
+      ? {
+          printed_at: now,
+          assigned_station_id: printedBy.stationId,
+          assigned_station_name: printedBy.stationName,
+          assigned_printer: printedBy.printer,
+          assigned_at: now,
+        }
+      : {}),
   });
-
-  // Transaction: several scanners can enqueue at once, and all jobs live in one array field.
-  await runTransaction(db, async (transaction) => {
-    const snap = await transaction.get(docRef);
-    const existingJobs: import("@/lib/printers/types").PrintJob[] =
-      snap.exists() && Array.isArray(snap.data()?.jobs)
-        ? (snap.data()?.jobs as import("@/lib/printers/types").PrintJob[])
-        : [];
-    const updatedJobs = [newJob, ...existingJobs].slice(0, MAX_STORED_PRINT_JOBS);
-    transaction.set(
-      docRef,
-      sanitizeFirestoreData({
-        id: "printer_queue",
-        jobs: updatedJobs,
-        updated_at: now,
-      }),
-      { merge: true },
-    );
-  });
+  await setDoc(doc(db, PRINT_JOBS_COLLECTION, jobId), newJob);
   return jobId;
 }
 
-export async function updatePrintJobStatus(
-  jobId: string,
-  status: import("@/lib/printers/types").PrintJob["status"],
-  errorMessage?: string,
-): Promise<void> {
-  if (typeof window === "undefined") return;
-  if (typeof auth.authStateReady === "function") {
-    await auth.authStateReady();
-  }
-  const docRef = doc(db, "system_settings", "printer_queue");
+/**
+ * Hands a pending job to one printer. Returns the job when this printer won it, or null when another printer
+ * already took it (or the job is gone / this printer already failed it).
+ */
+export async function claimPrintJob(jobId: string, claimant: PrintJobClaimant): Promise<PrintJob | null> {
+  if (typeof window === "undefined") return null;
+  await waitForAuthReady();
+  const { printerKey }: PrintTypes = await import("@/lib/printers/types");
+  const ref = doc(db, PRINT_JOBS_COLLECTION, jobId);
 
-  // Transaction: jobs print in parallel, so status updates must not overwrite each other.
-  await runTransaction(db, async (transaction) => {
-    const snap = await transaction.get(docRef);
-    if (!snap.exists() || !Array.isArray(snap.data()?.jobs)) return;
+  return runTransaction(db, async (transaction) => {
+    const snap = await transaction.get(ref);
+    if (!snap.exists()) return null;
+    const job = snap.data() as PrintJob;
+    if (job.status !== "pending") return null;
+    if (job.excluded_printers?.includes(printerKey(claimant.stationId, claimant.printer))) return null;
 
     const now = new Date().toISOString();
-    const existingJobs = snap.data()?.jobs as import("@/lib/printers/types").PrintJob[];
-    const updatedJobs = existingJobs.map((job) =>
-      job.id === jobId
-        ? sanitizeFirestoreData<import("@/lib/printers/types").PrintJob>({
-            ...job,
-            status,
-            ...(status === "completed" ? { printed_at: now } : {}),
-            ...(errorMessage !== undefined ? { error_message: errorMessage } : {}),
-          })
-        : job,
-    );
+    const patch = {
+      status: "printing" as const,
+      assigned_station_id: claimant.stationId,
+      assigned_station_name: claimant.stationName,
+      assigned_printer: claimant.printer,
+      assigned_at: now,
+      attempts: [
+        ...(job.attempts ?? []),
+        {
+          station_id: claimant.stationId,
+          station_name: claimant.stationName,
+          printer: claimant.printer,
+          started_at: now,
+        },
+      ],
+    };
+    transaction.update(ref, sanitizeFirestoreData({ ...patch, error_message: deleteField() }));
+    return { ...job, ...patch };
+  });
+}
 
-    transaction.set(
-      docRef,
+/** Records how a claimed job ended: completed, back to pending for another printer, or failed. */
+export async function finishPrintJob(jobId: string, stationId: string, outcome: PrintJobOutcome): Promise<void> {
+  if (typeof window === "undefined") return;
+  await waitForAuthReady();
+  const { MAX_PRINT_ATTEMPTS, printerKey }: PrintTypes = await import("@/lib/printers/types");
+  const ref = doc(db, PRINT_JOBS_COLLECTION, jobId);
+
+  await runTransaction(db, async (transaction) => {
+    const snap = await transaction.get(ref);
+    if (!snap.exists()) return;
+    const job = snap.data() as PrintJob;
+    // Someone else (e.g. the lost-station sweep) already settled this job: leave it alone.
+    if (job.status !== "printing" || job.assigned_station_id !== stationId) return;
+
+    const now = new Date().toISOString();
+    const attempts = [...(job.attempts ?? [])];
+    const last = attempts[attempts.length - 1];
+    if (last && last.station_id === stationId && !last.ended_at) {
+      attempts[attempts.length - 1] = {
+        ...last,
+        ended_at: now,
+        ...(outcome.ok ? {} : { error: outcome.error }),
+        ...(outcome.ok && outcome.printer !== undefined ? { printer: outcome.printer } : {}),
+      };
+    }
+
+    if (outcome.ok) {
+      transaction.update(
+        ref,
+        sanitizeFirestoreData({
+          status: "completed" as const,
+          printed_at: now,
+          assigned_printer: outcome.printer !== undefined ? outcome.printer : (job.assigned_printer ?? null),
+          attempts,
+          error_message: deleteField(),
+        }),
+      );
+      return;
+    }
+
+    const triesUsed = attempts.length - (job.retry_from_attempt ?? 0);
+    if (outcome.retryElsewhere && triesUsed < MAX_PRINT_ATTEMPTS) {
+      transaction.update(
+        ref,
+        sanitizeFirestoreData({
+          status: "pending" as const,
+          excluded_printers: [
+            ...new Set([...(job.excluded_printers ?? []), printerKey(stationId, job.assigned_printer ?? null)]),
+          ],
+          assigned_station_id: deleteField(),
+          assigned_station_name: deleteField(),
+          assigned_printer: deleteField(),
+          assigned_at: deleteField(),
+          attempts,
+          error_message: outcome.error,
+        }),
+      );
+      return;
+    }
+
+    transaction.update(
+      ref,
+      sanitizeFirestoreData({ status: "failed" as const, failed_at: now, attempts, error_message: outcome.error }),
+    );
+  });
+}
+
+/** Puts a failed job back in the queue with a fresh retry budget (any printer, including ones that failed it). */
+export async function retryPrintJob(jobId: string): Promise<void> {
+  if (typeof window === "undefined") return;
+  await waitForAuthReady();
+  const ref = doc(db, PRINT_JOBS_COLLECTION, jobId);
+
+  await runTransaction(db, async (transaction) => {
+    const snap = await transaction.get(ref);
+    if (!snap.exists()) return;
+    const job = snap.data() as PrintJob;
+    if (job.status !== "failed") return;
+    transaction.update(
+      ref,
       sanitizeFirestoreData({
-        id: "printer_queue",
-        jobs: updatedJobs,
-        updated_at: now,
+        status: "pending" as const,
+        excluded_printers: [],
+        retry_from_attempt: (job.attempts ?? []).length,
+        failed_at: deleteField(),
+        error_message: deleteField(),
+        assigned_station_id: deleteField(),
+        assigned_station_name: deleteField(),
+        assigned_printer: deleteField(),
+        assigned_at: deleteField(),
       }),
-      { merge: true },
+    );
+  });
+}
+
+/**
+ * Fails a job whose laptop stopped answering while it was printing. It is not handed to another printer: the label
+ * may already have come out, so a person checks and retries.
+ */
+export async function failLostPrintJob(jobId: string, stationId: string, reason: string): Promise<void> {
+  if (typeof window === "undefined") return;
+  await waitForAuthReady();
+  const ref = doc(db, PRINT_JOBS_COLLECTION, jobId);
+
+  await runTransaction(db, async (transaction) => {
+    const snap = await transaction.get(ref);
+    if (!snap.exists()) return;
+    const job = snap.data() as PrintJob;
+    if (job.status !== "printing" || job.assigned_station_id !== stationId) return;
+
+    const now = new Date().toISOString();
+    const attempts = [...(job.attempts ?? [])];
+    const last = attempts[attempts.length - 1];
+    if (last && last.station_id === stationId && !last.ended_at) {
+      attempts[attempts.length - 1] = { ...last, ended_at: now, error: reason };
+    }
+    transaction.update(
+      ref,
+      sanitizeFirestoreData({ status: "failed" as const, failed_at: now, attempts, error_message: reason }),
     );
   });
 }
 
 export function subscribePendingPrintQueue(
-  onJobsUpdate: (jobs: import("@/lib/printers/types").PrintJob[]) => void,
+  onJobsUpdate: (jobs: PrintJob[]) => void,
   onError?: (error: Error) => void,
 ): () => void {
   if (typeof window === "undefined") {
@@ -5459,27 +5609,16 @@ export function subscribePendingPrintQueue(
       // No-op on server
     };
   }
-  const docRef = doc(db, "system_settings", "printer_queue");
   return onSnapshot(
-    docRef,
+    query(collection(db, PRINT_JOBS_COLLECTION), where("status", "==", "pending")),
     (snap) => {
-      const allJobs: import("@/lib/printers/types").PrintJob[] =
-        snap.exists() && Array.isArray(snap.data()?.jobs)
-          ? (snap.data()?.jobs as import("@/lib/printers/types").PrintJob[])
-          : [];
-      const pendingJobs = allJobs
-        .filter((j) => j.status === "pending")
+      const pendingJobs = snap.docs
+        .map((d) => d.data() as PrintJob)
         .sort((a, b) => a.created_at.localeCompare(b.created_at));
       onJobsUpdate(pendingJobs);
     },
     (err) => {
-      const isPermission =
-        err &&
-        typeof err === "object" &&
-        ("code" in err
-          ? (err as { code?: string }).code === "permission-denied"
-          : "message" in err && (err as { message?: string }).message?.includes("permission"));
-      if (isPermission) {
+      if (isPermissionDeniedError(err)) {
         onJobsUpdate([]);
       } else {
         console.warn("[Firestore] subscribePendingPrintQueue error:", err);
@@ -5491,7 +5630,7 @@ export function subscribePendingPrintQueue(
 
 export function subscribeRecentPrintQueue(
   limitCount = 25,
-  onJobsUpdate: (jobs: import("@/lib/printers/types").PrintJob[]) => void,
+  onJobsUpdate: (jobs: PrintJob[]) => void,
   onError?: (error: Error) => void,
 ): () => void {
   if (typeof window === "undefined") {
@@ -5499,28 +5638,61 @@ export function subscribeRecentPrintQueue(
       // No-op on server
     };
   }
-  const docRef = doc(db, "system_settings", "printer_queue");
   return onSnapshot(
-    docRef,
+    query(collection(db, PRINT_JOBS_COLLECTION), orderBy("created_at", "desc"), limit(limitCount)),
     (snap) => {
-      const allJobs: import("@/lib/printers/types").PrintJob[] =
-        snap.exists() && Array.isArray(snap.data()?.jobs)
-          ? (snap.data()?.jobs as import("@/lib/printers/types").PrintJob[])
-          : [];
-      const sortedJobs = [...allJobs].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, limitCount);
-      onJobsUpdate(sortedJobs);
+      onJobsUpdate(snap.docs.map((d) => d.data() as PrintJob));
     },
     (err) => {
-      const isPermission =
-        err &&
-        typeof err === "object" &&
-        ("code" in err
-          ? (err as { code?: string }).code === "permission-denied"
-          : "message" in err && (err as { message?: string }).message?.includes("permission"));
-      if (isPermission) {
+      if (isPermissionDeniedError(err)) {
         onJobsUpdate([]);
       } else {
         console.warn("[Firestore] subscribeRecentPrintQueue error:", err);
+      }
+      onError?.(err);
+    },
+  );
+}
+
+/** Heartbeat of one laptop: who it is, whether its worker runs, which printers it has and what they are doing. */
+export async function upsertPrintStation(station: Omit<PrintStation, "last_seen_at">): Promise<void> {
+  if (typeof window === "undefined") return;
+  await waitForAuthReady();
+  await setDoc(
+    doc(db, PRINT_WORKERS_COLLECTION, station.id),
+    sanitizeFirestoreData({ ...station, last_seen_at: new Date().toISOString() }),
+  );
+}
+
+export async function removePrintStation(stationId: string): Promise<void> {
+  if (typeof window === "undefined") return;
+  await waitForAuthReady();
+  await deleteDoc(doc(db, PRINT_WORKERS_COLLECTION, stationId));
+}
+
+export function subscribePrintStations(
+  onUpdate: (stations: PrintStation[]) => void,
+  onError?: (error: Error) => void,
+): () => void {
+  if (typeof window === "undefined") {
+    return () => {
+      // No-op on server
+    };
+  }
+  return onSnapshot(
+    collection(db, PRINT_WORKERS_COLLECTION),
+    (snap) => {
+      onUpdate(
+        snap.docs
+          .map((d) => d.data() as PrintStation)
+          .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)),
+      );
+    },
+    (err) => {
+      if (isPermissionDeniedError(err)) {
+        onUpdate([]);
+      } else {
+        console.warn("[Firestore] subscribePrintStations error:", err);
       }
       onError?.(err);
     },
