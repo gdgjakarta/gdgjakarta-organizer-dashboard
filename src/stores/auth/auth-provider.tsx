@@ -182,8 +182,14 @@ export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
 
           // If member profile in Firestore already confirms organizer or staff, set fast interactive state
           if (isDocOrg || isDocStaff) {
-            const initialRole = isDocOrg ? "organizer" : "core_team";
-            const initialChapterRole = memberDoc?.chapter_role ?? (isDocOrg ? "Organizer" : "Core Team");
+            const isDocCheckIn =
+              memberDoc?.role === "check_in_staff" ||
+              memberDoc?.role === "Check-in Staff" ||
+              (typeof memberDoc?.chapter_role === "string" &&
+                memberDoc.chapter_role.toLowerCase().includes("check-in"));
+            const initialRole = isDocOrg ? "organizer" : isDocCheckIn ? "check_in_staff" : "core_team";
+            const initialChapterRole =
+              memberDoc?.chapter_role ?? (isDocOrg ? "Organizer" : isDocCheckIn ? "Check-in Staff" : "Core Team");
             const initialOrganizer: AuthOrganizer = {
               id: firebaseUser.uid,
               name: memberDoc?.name || firebaseUser.displayName || "User",
@@ -193,7 +199,13 @@ export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
               bevyUserId: memberDoc?.bevy_user_id ? String(memberDoc.bevy_user_id) : undefined,
               chapterRole: initialChapterRole,
               chapterRoleType: isDocOrg ? ChapterRole.ORGANIZER : ChapterRole.CORE_TEAM,
-              roleId: isDocOrg ? 1 : typeof memberDoc?.bevy_member_id === "number" ? memberDoc.bevy_member_id : 2,
+              roleId: isDocOrg
+                ? 1
+                : typeof memberDoc?.bevy_member_id === "number"
+                  ? memberDoc.bevy_member_id
+                  : isDocCheckIn
+                    ? 3
+                    : 2,
             };
             store.getState().setUser(initialOrganizer, firebaseUser);
           }
@@ -205,18 +217,27 @@ export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
             restoreRes.role === "organizer" ||
             (Boolean(restoreRes.isValidOrganizer) && restoreRes.roleId === 1) ||
             isDocOrg;
+          const isCheckInStaff =
+            !isOrg &&
+            (restoreRes.role === "check_in_staff" ||
+              restoreRes.roleId === 3 ||
+              memberDoc?.role === "check_in_staff" ||
+              memberDoc?.role === "Check-in Staff" ||
+              (typeof memberDoc?.chapter_role === "string" &&
+                memberDoc.chapter_role.toLowerCase().includes("check-in")));
           const isStaff =
-            !isOrg && (restoreRes.role === "core_team" || isDocStaff || Boolean(restoreRes.isValidOrganizer));
+            !isOrg &&
+            (isCheckInStaff || restoreRes.role === "core_team" || isDocStaff || Boolean(restoreRes.isValidOrganizer));
 
-          const finalRole = isOrg ? "organizer" : isStaff ? "core_team" : "member";
+          const finalRole = isOrg ? "organizer" : isCheckInStaff ? "check_in_staff" : isStaff ? "core_team" : "member";
           const finalChapterRole =
             restoreRes.chapterRole ||
             memberDoc?.chapter_role ||
-            (isOrg ? "Organizer" : isStaff ? "Core Team" : "Member");
+            (isOrg ? "Organizer" : isCheckInStaff ? "Check-in Staff" : isStaff ? "Core Team" : "Member");
           const finalChapterRoleType =
             restoreRes.chapterRoleType ??
             (isOrg ? ChapterRole.ORGANIZER : isStaff ? ChapterRole.CORE_TEAM : ChapterRole.MEMBER);
-          const finalRoleId = restoreRes.roleId ?? (isOrg ? 1 : isStaff ? 2 : undefined);
+          const finalRoleId = restoreRes.roleId ?? (isOrg ? 1 : isCheckInStaff ? 3 : isStaff ? 2 : undefined);
           const finalBevyUserId =
             restoreRes.bevyUserId || (memberDoc?.bevy_user_id ? String(memberDoc.bevy_user_id) : undefined);
 

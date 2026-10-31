@@ -307,9 +307,10 @@ export async function handleUserPostLoginAction(params: UserAuthSyncParams): Pro
     });
 
     const isAuthorizedTeam = validation.isValidOrganizer || isExecutive || isCoreStaff;
-    const role = isExecutive ? "organizer" : isCoreStaff ? "core_team" : "member";
+    const isCheckInStaff = validation.role === "check_in_staff" || validation.roleId === 3;
+    const role = isExecutive ? "organizer" : isCheckInStaff ? "check_in_staff" : isCoreStaff ? "core_team" : "member";
     const chapterRole = isAuthorizedTeam
-      ? (validation.chapterRole ?? (isExecutive ? "Organizer" : "Core Team"))
+      ? (validation.chapterRole ?? (isExecutive ? "Organizer" : isCheckInStaff ? "Check-in Staff" : "Core Team"))
       : "Member";
     const team = isAuthorizedTeam ? "Core Team" : "Community";
     console.log(
@@ -435,23 +436,26 @@ export async function restoreSessionCookieAction(token: string, cachedRole?: str
     const { verifyRoleCookie } = await import("@/lib/security/session-cookie");
     const verifiedExistingRole = await verifyRoleCookie(existingRoleCookie);
 
-    // Fast-path ONLY when existing signed role is ALREADY an organizer or core_team
+    // Fast-path ONLY when existing signed role is ALREADY an organizer, core_team, or check_in_staff
     // and matches the cachedRole. Never fast-path a "member" role because members
     // can be assigned as organizers in Bevy at any time!
     if (
       existingToken === token &&
       verifiedExistingRole &&
-      (verifiedExistingRole === "organizer" || verifiedExistingRole === "core_team") &&
+      (verifiedExistingRole === "organizer" ||
+        verifiedExistingRole === "core_team" ||
+        verifiedExistingRole === "check_in_staff") &&
       cachedRole?.toLowerCase() === verifiedExistingRole.toLowerCase()
     ) {
       const isExecutive = verifiedExistingRole === "organizer";
+      const isStaff = verifiedExistingRole === "check_in_staff";
       return {
         success: true,
         role: verifiedExistingRole,
-        chapterRole: isExecutive ? "Organizer" : "Core Team",
+        chapterRole: isExecutive ? "Organizer" : isStaff ? "Check-in Staff" : "Core Team",
         chapterRoleType: isExecutive ? ChapterRole.ORGANIZER : ChapterRole.CORE_TEAM,
-        roleId: isExecutive ? 1 : 2,
-        roleTitle: isExecutive ? "Organizer" : "Core Team",
+        roleId: isExecutive ? 1 : isStaff ? 3 : 2,
+        roleTitle: isExecutive ? "Organizer" : isStaff ? "Check-in Staff" : "Core Team",
         bevyUserId: null,
         isValidOrganizer: true,
       };
@@ -501,9 +505,10 @@ export async function restoreSessionCookieAction(token: string, cachedRole?: str
     });
 
     const isAuthorizedTeam = validation.isValidOrganizer || isExecutive || isCoreStaff;
-    const role = isExecutive ? "organizer" : isCoreStaff ? "core_team" : "member";
+    const isCheckInStaff = validation.role === "check_in_staff" || validation.roleId === 3;
+    const role = isExecutive ? "organizer" : isCheckInStaff ? "check_in_staff" : isCoreStaff ? "core_team" : "member";
     const chapterRole = isAuthorizedTeam
-      ? (validation.chapterRole ?? (isExecutive ? "Organizer" : "Core Team"))
+      ? (validation.chapterRole ?? (isExecutive ? "Organizer" : isCheckInStaff ? "Check-in Staff" : "Core Team"))
       : "Member";
 
     let resolvedRoleType: ChapterRole = ChapterRole.MEMBER;
@@ -519,7 +524,7 @@ export async function restoreSessionCookieAction(token: string, cachedRole?: str
       role,
       chapterRole,
       chapterRoleType: validation.chapterRoleType ?? resolvedRoleType,
-      roleId: validation.roleId ?? (isExecutive ? 1 : isCoreStaff ? 2 : null),
+      roleId: validation.roleId ?? (isExecutive ? 1 : isCheckInStaff ? 3 : isCoreStaff ? 2 : null),
       roleTitle: validation.roleTitle ?? chapterRole,
       bevyUserId: validation.bevyUserId ? String(validation.bevyUserId) : null,
       isValidOrganizer: isAuthorizedTeam,
@@ -603,10 +608,13 @@ export async function refreshUserRoleAction(params: {
       roleId: validation.roleId,
     });
     const isAuthorizedTeam = isExecutive || isCoreStaff;
+    const isCheckInStaff = validation.role === "check_in_staff" || validation.roleId === 3;
 
     let role = "member";
     if (isExecutive) {
       role = "organizer";
+    } else if (isCheckInStaff) {
+      role = "check_in_staff";
     } else if (isCoreStaff) {
       role = "core_team";
     }
@@ -614,6 +622,8 @@ export async function refreshUserRoleAction(params: {
     let defaultChapterRole = "Member";
     if (isExecutive) {
       defaultChapterRole = "Organizer";
+    } else if (isCheckInStaff) {
+      defaultChapterRole = "Check-in Staff";
     } else if (isCoreStaff) {
       defaultChapterRole = "Core Team";
     }
