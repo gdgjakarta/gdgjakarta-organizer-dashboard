@@ -99,7 +99,7 @@ export function VenueTicketDriveDialog({
   const [deliveryFilter, setDeliveryFilter] = useState<
     "all" | "sent" | "not_sent" | "shared" | "not_shared" | "pending_send" | "unassigned"
   >("all");
-  const [seqRangeInput, setSeqRangeInput] = useState<string>("");
+  const [seqRangeOption, setSeqRangeOption] = useState<string>("all");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const isVehicleUrlDirty = useMemo(
@@ -157,36 +157,34 @@ export function VenueTicketDriveDialog({
     [eligibleRegistrants],
   );
 
-  const parsedSeqRange = useMemo(() => {
-    const raw = seqRangeInput.trim();
-    if (!raw) return null;
+  const seqRangeOptions = useMemo(() => {
+    const total = eligibleRegistrants.length;
+    if (total === 0) return [];
 
-    // Handles: "559 - End", "559-end", "559-", "559 - 700", "559..700", "559", etc.
-    const parts = raw.split(/[-–—]|(\.\.)/);
-    if (parts.length === 1 || !raw.match(/[-–—]|(\.\.)/)) {
-      const singleNum = Number.parseInt(raw, 10);
-      if (!Number.isNaN(singleNum)) {
-        return { start: singleNum, end: singleNum };
-      }
-      return null;
+    const bucketSize = 100;
+    const options: Array<{ label: string; value: string; start: number; end: number }> = [];
+
+    for (let start = 1; start <= total; start += bucketSize) {
+      const end = Math.min(start + bucketSize - 1, total);
+      options.push({
+        label: `No. ${start} – ${end === total ? `${end} (End)` : end}`,
+        value: `${start}-${end}`,
+        start,
+        end,
+      });
     }
 
-    const segments = raw.split(/[-–—]|\.\./);
-    const startStr = segments[0]?.trim() || "";
-    const endStr = segments[1]?.trim() || "";
+    return options;
+  }, [eligibleRegistrants.length]);
 
-    const startNum = startStr ? Number.parseInt(startStr, 10) : 1;
-    const isEndKeyword = !endStr || endStr.toLowerCase() === "end" || endStr.toLowerCase() === "max";
-    const endNum = isEndKeyword ? Number.POSITIVE_INFINITY : Number.parseInt(endStr, 10);
-
-    const safeStart = Number.isNaN(startNum) ? 1 : startNum;
-    const safeEnd = Number.isNaN(endNum) ? Number.POSITIVE_INFINITY : endNum;
-
-    return {
-      start: Math.min(safeStart, safeEnd),
-      end: Math.max(safeStart, safeEnd),
-    };
-  }, [seqRangeInput]);
+  const parsedSeqRange = useMemo(() => {
+    if (seqRangeOption === "all") return null;
+    const parts = seqRangeOption.split("-");
+    const start = Number.parseInt(parts[0], 10);
+    const end = Number.parseInt(parts[1], 10);
+    if (Number.isNaN(start) || Number.isNaN(end)) return null;
+    return { start, end };
+  }, [seqRangeOption]);
 
   const filteredRegistrantsWithIndex = useMemo(() => {
     return eligibleRegistrants
@@ -746,24 +744,21 @@ export function VenueTicketDriveDialog({
                     <SelectItem value="unassigned">Unassigned ({eligibleRegistrants.length - mappedCount})</SelectItem>
                   </SelectContent>
                 </Select>
-                <div className="relative flex items-center">
-                  <Input
-                    type="text"
-                    value={seqRangeInput}
-                    onChange={(e) => setSeqRangeInput(e.target.value)}
-                    placeholder="No. (e.g. 559 - End)"
-                    className="h-7 w-[150px] pr-6 text-xs tabular-nums"
-                  />
-                  {seqRangeInput && (
-                    <button
-                      type="button"
-                      onClick={() => setSeqRangeInput("")}
-                      className="absolute right-1.5 text-muted-foreground hover:text-foreground"
-                    >
-                      <X className="size-3" />
-                    </button>
-                  )}
-                </div>
+                {seqRangeOptions.length > 1 && (
+                  <Select value={seqRangeOption} onValueChange={setSeqRangeOption}>
+                    <SelectTrigger className="h-7 w-[160px] text-xs tabular-nums">
+                      <SelectValue placeholder="All Sequence No." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All No. (1 – {eligibleRegistrants.length})</SelectItem>
+                      {seqRangeOptions.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 {config?.updated_at && (
