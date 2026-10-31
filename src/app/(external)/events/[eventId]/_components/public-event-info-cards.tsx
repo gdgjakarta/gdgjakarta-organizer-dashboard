@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 import { format, parseISO } from "date-fns";
-import { Calendar, Clock, Copy, ExternalLink, Globe, MapPin, Radio, Users } from "lucide-react";
+import { Calendar, Clock, Copy, ExternalLink, Globe, MapPin, Radio, Users, Video } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -92,6 +92,26 @@ export function PublicEventInfoCards({ event, firestoreEvent }: PublicEventInfoC
 
   const gCalUrl = getGoogleCalendarUrl();
 
+  // Online virtual stream / meeting URL from Bevy API
+  const onlineStreamUrl = event.attendee_virtual_venue_link?.trim() || event.video_url?.trim() || undefined;
+
+  let streamLabel = "Join Live Stream";
+  if (onlineStreamUrl) {
+    if (/youtube\.com|youtu\.be/i.test(onlineStreamUrl)) {
+      streamLabel = "Watch on YouTube";
+    } else if (/meet\.google\.com/i.test(onlineStreamUrl)) {
+      streamLabel = "Join Google Meet";
+    } else if (/zoom\.us/i.test(onlineStreamUrl)) {
+      streamLabel = "Join Zoom Meeting";
+    }
+  }
+
+  let virtualVenueDescription = "Details will be shared prior to event";
+  if (isVirtual) {
+    virtualVenueDescription = onlineStreamUrl
+      ? "Online access link available below"
+      : "Accessible via meeting link upon registration";
+  }
   let formatAttendanceTitle = "In-Person Attendance";
   let FormatAttendanceIcon = Users;
   if (isVirtual) {
@@ -154,35 +174,55 @@ export function PublicEventInfoCards({ event, firestoreEvent }: PublicEventInfoC
                 {[event.venue_address, event.venue_city, event.venue_country].filter(Boolean).join(", ")}
               </p>
             ) : (
-              <p className="text-muted-foreground text-xs">
-                {isVirtual ? "Accessible via meeting link upon registration" : "Details will be shared prior to event"}
-              </p>
+              <p className="text-muted-foreground text-xs">{virtualVenueDescription}</p>
             )}
           </div>
         </div>
 
-        {googleMapsUrl && (
-          <div className="mt-3 flex items-center justify-between border-border/40 border-t pt-2.5">
+        {/* Action row: Google Maps and/or Online Stream */}
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-border/40 border-t pt-2.5">
+          {googleMapsUrl && !isVirtual ? (
+            <div className="flex items-center gap-2">
+              <a
+                href={googleMapsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 font-medium text-primary text-xs hover:underline"
+              >
+                <ExternalLink className="size-3" />
+                View on Google Maps
+              </a>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                onClick={handleCopyAddress}
+                title="Copy Address"
+                className="size-6 text-muted-foreground hover:text-foreground"
+              >
+                <Copy className={cn("size-3", addressCopied && "text-emerald-500")} />
+              </Button>
+            </div>
+          ) : null}
+
+          {onlineStreamUrl && (
             <a
-              href={googleMapsUrl}
+              href={onlineStreamUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 font-medium text-primary text-xs hover:underline"
+              className={cn(
+                "inline-flex items-center gap-1 font-medium text-xs hover:underline",
+                isVirtual ? "text-primary" : "text-emerald-600 dark:text-emerald-400",
+              )}
             >
-              <ExternalLink className="size-3" />
-              View on Google Maps
+              <Video className="size-3" />
+              {streamLabel}
             </a>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={handleCopyAddress}
-              title="Copy Address"
-              className="size-6 text-muted-foreground hover:text-foreground"
-            >
-              <Copy className={cn("size-3", addressCopied && "text-emerald-500")} />
-            </Button>
-          </div>
-        )}
+          )}
+
+          {!onlineStreamUrl && isVirtual && !googleMapsUrl && (
+            <span className="text-[11px] text-muted-foreground italic">Link provided by organizer</span>
+          )}
+        </div>
       </Card>
 
       {/* 3. Format & Capacity Card */}

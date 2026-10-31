@@ -473,6 +473,22 @@ export function PublicEventRsvpCard({
             </>
           )}
 
+          {/* Online Stream / Virtual Meeting Direct Join Button */}
+          {event.attendee_virtual_venue_link && (
+            <Button
+              variant="default"
+              size="sm"
+              asChild
+              className="w-full gap-1.5 bg-emerald-600 font-medium text-white shadow-2xs hover:bg-emerald-700 dark:bg-emerald-600 dark:hover:bg-emerald-700"
+            >
+              <a href={event.attendee_virtual_venue_link} target="_blank" rel="noopener noreferrer">
+                <Video className="size-3.5" />
+                Join Virtual Live Stream
+                <ExternalLink className="ml-auto size-3 opacity-70" />
+              </a>
+            </Button>
+          )}
+
           {/* Secondary Actions */}
           <div className="space-y-2 pt-1">
             {liveShortLink ? (

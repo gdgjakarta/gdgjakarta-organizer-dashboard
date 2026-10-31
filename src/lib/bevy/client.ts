@@ -830,7 +830,7 @@ export async function getBevyChapterEvents(
 
   const isAllStatus = !status || status.toLowerCase() === "all";
   const fields =
-    "id,title,description_short,description,event_type_title,audience_type,is_virtual_event,start_date,end_date,status,picture,banner,cropped_banner_url,cropped_picture_url,url,static_url,total_attendees,checkin_count,total_tickets,total_rsvps_sold,completed,tags,chapter,is_hidden,is_test,venue_name,venue_address,venue_city";
+    "id,title,description_short,description,event_type_title,audience_type,is_virtual_event,virtual_event_type,attendee_virtual_venue_link,video_url,start_date,end_date,status,picture,banner,cropped_banner_url,cropped_picture_url,url,static_url,total_attendees,checkin_count,total_tickets,total_rsvps_sold,completed,tags,chapter,is_hidden,is_test,venue_name,venue_address,venue_city";
   const hiddenParam = includeHidden ? "" : "&is_hidden=false";
   const statusParam = !isAllStatus ? `&status=${encodeURIComponent(status)}` : "";
   const result = await bevyFetch<BevyEventsResponse>(

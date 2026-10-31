@@ -206,6 +206,8 @@ export interface BevyEvent {
   event_type_slug?: string;
   audience_type?: "IN_PERSON" | "VIRTUAL" | "HYBRID" | string;
   is_virtual_event?: boolean;
+  virtual_event_type?: string | null;
+  attendee_virtual_venue_link?: string | null;
   start_date: string;
   end_date: string;
   timezone?: string;
