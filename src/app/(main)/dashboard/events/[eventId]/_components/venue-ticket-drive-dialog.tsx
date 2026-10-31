@@ -356,12 +356,21 @@ export function VenueTicketDriveDialog({
         setBulkProgress({ current: i + 1, total: pendingSendRegistrants.length });
         const currentValidToken = getCachedDriveAccessToken(user?.email) || token;
         const ok = await onSendVenueTicketEmail(reg, currentValidToken);
-        if (ok) successCount += 1;
+        if (ok) {
+          successCount += 1;
+        } else {
+          toast.error(
+            `Bulk delivery stopped at ${reg.member_name} (${i + 1}/${pendingSendRegistrants.length}) due to an error.`,
+          );
+          break;
+        }
       }
 
-      toast.success(
-        `Sent Venue Ticket email and granted view access to ${successCount} of ${pendingSendRegistrants.length} registrant(s).`,
-      );
+      if (successCount > 0) {
+        toast.success(
+          `Sent Venue Ticket email and granted view access to ${successCount} of ${pendingSendRegistrants.length} registrant(s).`,
+        );
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to complete bulk venue ticket delivery.";
       toast.error(msg);
@@ -388,12 +397,21 @@ export function VenueTicketDriveDialog({
         setBulkProgress({ current: i + 1, total: selectedWithTicket.length });
         const currentValidToken = getCachedDriveAccessToken(user?.email) || token;
         const ok = await onSendVenueTicketEmail(reg, currentValidToken);
-        if (ok) successCount += 1;
+        if (ok) {
+          successCount += 1;
+        } else {
+          toast.error(
+            `Selected bulk delivery stopped at ${reg.member_name} (${i + 1}/${selectedWithTicket.length}) due to an error.`,
+          );
+          break;
+        }
       }
 
-      toast.success(
-        `Sent Venue Ticket email and granted view access to ${successCount} of ${selectedWithTicket.length} selected registrant(s).`,
-      );
+      if (successCount > 0) {
+        toast.success(
+          `Sent Venue Ticket email and granted view access to ${successCount} of ${selectedWithTicket.length} selected registrant(s).`,
+        );
+      }
       setSelectedIds(new Set());
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to complete selected venue ticket delivery.";
