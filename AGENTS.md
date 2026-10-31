@@ -130,6 +130,13 @@ Keep a component inside its route until it is reused by another feature. Do not 
 
 ## Feature Notes
 
+- **Partner & Sponsor Voucher Redemption Reports (Zero-Leak Live Sharing)**:
+  - **Opaque Share Token (`/vouchers/report/[shareToken]`)**: Generates an unguessable 24-character token (`vshr_...`) stored on `event_vouchers` (`partner_share_token`). Document ID (`{eventId}_{code}`) and promo code are NEVER exposed in the public URL to prevent attendee voucher code leaks.
+  - **Access Code Enforcement**: Access to the report is gated behind an organizer-configurable access code (`partner_access_code`, e.g. `GDG-XXXXXX`). Partners can enter it in the access gate or organizers can share direct links with `?code=GDG-XXXXXX`.
+  - **Anti-Leak Display Protection**: Optional `partner_show_voucher_code` toggle (defaults to false). When false, the report masks the promo code as `DEV****50` so partner presentations or screenshares do not leak the code to attendees.
+  - **Server-Side PII Masking**: Handled exclusively in `getPartnerVoucherReportAction` (`src/server/voucher-partner-actions.ts`) using `src/lib/security/pii-mask.ts`. Raw emails (`fa***n@gmail.com`), full names (`Muhammad F*** T***`), and phone numbers (`+62 812-****-**89`) are masked on the server before dispatching data to the client, preventing attendee scraping.
+  - **Organizer Controls**: Integrated into `VoucherDialog` (`voucher-dialog.tsx`), `VouchersTab` (`vouchers-tab.tsx`), and `VoucherRedemptionsDialog` (`voucher-redemptions-dialog.tsx`) with instant link copying, access code regeneration, and visual status badges.
+
 - **Organizer Registration Cancellation with Mandatory Reason**:
   - Cancelling attendees from the dashboard (single attendee action and batch cancellation in `registrants-tab.tsx`) requires a non-empty cancellation reason input.
   - The reason is propagated to `sendCancelAttendeeEmailAction` and `deleteEventRegistrationAction` (passed into DOKU payment cancellation payloads if active payment exists).

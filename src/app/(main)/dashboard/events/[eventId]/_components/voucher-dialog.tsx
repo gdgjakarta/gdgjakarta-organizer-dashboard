@@ -2,7 +2,19 @@
 
 import { useEffect, useState } from "react";
 
-import { CheckCircle2, Package, Percent, RefreshCw, Tag, Ticket } from "lucide-react";
+import {
+  CheckCircle2,
+  Copy,
+  ExternalLink,
+  Globe,
+  KeyRound,
+  Package,
+  Percent,
+  RefreshCw,
+  ShieldCheck,
+  Tag,
+  Ticket,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { DatePicker } from "@/components/date-picker";
@@ -31,6 +43,7 @@ import type {
   VoucherAppliesTo,
   VoucherDiscountType,
 } from "@/lib/firestore/types";
+import { generateOpaqueShareToken, generatePartnerAccessCode } from "@/lib/security/pii-mask";
 import { cn } from "@/lib/utils";
 
 interface VoucherDialogProps {
@@ -78,6 +91,13 @@ export function VoucherDialog({
 
   const [isActive, setIsActive] = useState(true);
 
+  // Partner & Sponsor Sharing
+  const [partnerShareEnabled, setPartnerShareEnabled] = useState(false);
+  const [partnerShareToken, setPartnerShareToken] = useState("");
+  const [partnerAccessCode, setPartnerAccessCode] = useState("");
+  const [partnerName, setPartnerName] = useState("");
+  const [partnerShowVoucherCode, setPartnerShowVoucherCode] = useState(false);
+
   useEffect(() => {
     if (voucher) {
       setCode(voucher.code);
@@ -122,6 +142,13 @@ export function VoucherDialog({
       setEndDate(voucher.end_date ? voucher.end_date.slice(0, 10) : "");
 
       setIsActive(voucher.status === "active");
+
+      // Partner share fields
+      setPartnerShareEnabled(Boolean(voucher.partner_share_enabled));
+      setPartnerShareToken(voucher.partner_share_token || "");
+      setPartnerAccessCode(voucher.partner_access_code || "");
+      setPartnerName(voucher.partner_name || "");
+      setPartnerShowVoucherCode(Boolean(voucher.partner_show_voucher_code));
     } else {
       // Default new voucher
       setCode(generateRandomVoucherCode());
@@ -146,6 +173,13 @@ export function VoucherDialog({
       setEndDate("");
 
       setIsActive(true);
+
+      // Default partner fields
+      setPartnerShareEnabled(false);
+      setPartnerShareToken("");
+      setPartnerAccessCode("");
+      setPartnerName("");
+      setPartnerShowVoucherCode(false);
     }
   }, [voucher, tickets, bundles, merchandise]);
 
@@ -251,6 +285,11 @@ export function VoucherDialog({
     }
 
     const now = new Date().toISOString();
+    // Ensure partner token exists if partner sharing is enabled
+    const finalPartnerToken = partnerShareEnabled
+      ? partnerShareToken || generateOpaqueShareToken()
+      : partnerShareToken || undefined;
+
     const finalVoucher: EventVoucher = {
       id: voucher?.id ?? `voucher-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       code: cleanCode,
@@ -269,6 +308,12 @@ export function VoucherDialog({
       start_date: hasExpiry && startDate ? new Date(startDate).toISOString() : null,
       end_date: hasExpiry && endDate ? new Date(endDate).toISOString() : null,
       status: isActive ? "active" : "inactive",
+      // Partner sharing config
+      partner_share_enabled: partnerShareEnabled,
+      partner_share_token: finalPartnerToken,
+      partner_access_code: partnerAccessCode.trim() || undefined,
+      partner_name: partnerName.trim() || undefined,
+      partner_show_voucher_code: partnerShowVoucherCode,
       created_at: voucher?.created_at ?? now,
       updated_at: now,
     };
@@ -837,6 +882,130 @@ export function VoucherDialog({
                 </div>
               </div>
               <Switch checked={isActive} onCheckedChange={setIsActive} />
+            </div>
+
+            {/* Partner & Sponsor Live Report Sharing */}
+            <div className="space-y-3 rounded-lg border border-primary/20 bg-primary/5 p-3.5">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                    <Globe className="size-3.5 text-primary" />
+                    Public Partner Live Report
+                  </div>
+                  <div className="text-[11px] text-muted-foreground">
+                    Share an access-code protected live redemption report with sponsors or partners
+                  </div>
+                </div>
+                <Switch
+                  checked={partnerShareEnabled}
+                  onCheckedChange={(checked) => {
+                    setPartnerShareEnabled(checked);
+                    if (checked) {
+                      if (!partnerShareToken) setPartnerShareToken(generateOpaqueShareToken());
+                      if (!partnerAccessCode) setPartnerAccessCode(generatePartnerAccessCode());
+                    }
+                  }}
+                />
+              </div>
+
+              {partnerShareEnabled && (
+                <div className="space-y-3 border-t border-primary/10 pt-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div className="space-y-1">
+                      <Label className="text-[11px] font-medium text-foreground">Partner / Sponsor Name</Label>
+                      <Input
+                        value={partnerName}
+                        onChange={(e) => setPartnerName(e.target.value)}
+                        placeholder="e.g. Google Cloud, Dicoding"
+                        className="h-8 text-xs"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-[11px] font-medium text-foreground">Required Access Code</Label>
+                        <button
+                          type="button"
+                          onClick={() => setPartnerAccessCode(generatePartnerAccessCode())}
+                          className="text-[10px] text-primary hover:underline flex items-center gap-1"
+                        >
+                          <RefreshCw className="size-2.5" /> Regenerate
+                        </button>
+                      </div>
+                      <div className="relative">
+                        <KeyRound className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3 text-muted-foreground" />
+                        <Input
+                          value={partnerAccessCode}
+                          onChange={(e) => setPartnerAccessCode(e.target.value.toUpperCase())}
+                          placeholder="e.g. GDG-123456"
+                          className="h-8 pl-7 font-mono text-xs uppercase tracking-wider"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Anti-leak promo code visibility switch */}
+                  <div className="flex items-center justify-between rounded-md border bg-background/50 p-2.5">
+                    <div className="space-y-0.5">
+                      <div className="text-[11px] font-medium text-foreground">Show Full Promo Code on Report</div>
+                      <div className="text-[10px] text-muted-foreground">
+                        Keep disabled to mask code (e.g. {code.slice(0, 3)}****) so it is not leaked on screenshares
+                      </div>
+                    </div>
+                    <Switch checked={partnerShowVoucherCode} onCheckedChange={setPartnerShowVoucherCode} />
+                  </div>
+
+                  {/* Public link copy preview */}
+                  {partnerShareToken && (
+                    <div className="space-y-1.5 rounded-md border border-muted bg-background p-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                          Opaque Partner Share Link (Zero Voucher Leak)
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-[10px] gap-1"
+                            onClick={() => {
+                              const shareUrl = `${window.location.origin}/vouchers/report/${partnerShareToken}${
+                                partnerAccessCode ? `?code=${partnerAccessCode}` : ""
+                              }`;
+                              void navigator.clipboard.writeText(shareUrl);
+                              toast.success("Partner link with access code copied to clipboard!");
+                            }}
+                          >
+                            <Copy className="size-3" /> Copy Link
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-[10px] gap-1"
+                            onClick={() => {
+                              const shareUrl = `/vouchers/report/${partnerShareToken}${
+                                partnerAccessCode ? `?code=${partnerAccessCode}` : ""
+                              }`;
+                              window.open(shareUrl, "_blank");
+                            }}
+                          >
+                            <ExternalLink className="size-3" /> Preview
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="font-mono text-[11px] text-muted-foreground break-all select-all bg-muted/40 p-1.5 rounded border">
+                        {typeof window !== "undefined" ? window.location.origin : ""}/vouchers/report/
+                        {partnerShareToken}
+                      </div>
+                      <div className="text-[10px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1 mt-1">
+                        <ShieldCheck className="size-3 shrink-0" />
+                        Attendee emails and names are masked server-side to protect attendee privacy.
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 

@@ -10,6 +10,7 @@ import {
   Edit2,
   Eye,
   Gift,
+  Globe,
   Info,
   Layers,
   Loader2,
@@ -428,6 +429,25 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
     }
   }, [event.id, event.bundles, event.tickets, event.start_date, registrations, vouchers]);
 
+  // Auto-sync / provision partner share documents for any existing vouchers with partner sharing enabled
+  useEffect(() => {
+    if (!event.id || vouchers.length === 0) return;
+
+    const partnerVouchers = vouchers.filter((v) => v.partner_share_enabled && v.partner_share_token?.trim());
+    if (partnerVouchers.length === 0) return;
+
+    void (async () => {
+      try {
+        const { syncPartnerVoucherReport } = await import("@/lib/firestore/client");
+        for (const pv of partnerVouchers) {
+          await syncPartnerVoucherReport(String(event.id), pv, event, registrations);
+        }
+      } catch (err) {
+        console.warn("[VouchersTab] Auto-sync partner voucher reports error:", err);
+      }
+    })();
+  }, [event.id, event, vouchers, registrations]);
+
   // Matched registrations per voucher ID and Code
   const redeemedRegistrationsMap = useMemo(() => {
     const map = new Map<string, FirestoreRegistration[]>();
@@ -633,6 +653,14 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
       return [...prev, savedVoucher];
     });
     setIsDirty(true);
+
+    // If partner share is enabled, proactively sync partner report in the background
+    if (savedVoucher.partner_share_enabled && savedVoucher.partner_share_token?.trim()) {
+      void import("@/lib/firestore/client").then(({ syncPartnerVoucherReport }) => {
+        syncPartnerVoucherReport(String(event.id), savedVoucher, event, registrations);
+      });
+    }
+
     toast.success(editingVoucher ? `Updated voucher "${savedVoucher.code}"` : `Created voucher "${savedVoucher.code}"`);
   };
 
@@ -1190,6 +1218,16 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
                             <Gift className="size-2.5" /> Bundle Pass
                           </Badge>
                         )}
+
+                        {v.partner_share_enabled && (
+                          <Badge
+                            variant="outline"
+                            className="gap-1 border-primary/30 bg-primary/10 font-medium text-[10px] text-primary"
+                            title={v.partner_name ? `Shared with ${v.partner_name}` : "Partner report enabled"}
+                          >
+                            <Globe className="size-2.5" /> {v.partner_name || "Partner Report"}
+                          </Badge>
+                        )}
                       </div>
                     </div>
 
@@ -1212,6 +1250,24 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
                           <DropdownMenuItem onClick={() => handleViewRedemptions(v)} className="gap-2 text-xs">
                             <Users className="size-3.5" /> View Redemptions
                           </DropdownMenuItem>
+                          {v.partner_share_enabled && v.partner_share_token && (
+                            <DropdownMenuItem
+                              onClick={() => {
+                                const shareUrl = `${window.location.origin}/vouchers/report/${v.partner_share_token}${
+                                  v.partner_access_code ? `?code=${v.partner_access_code}` : ""
+                                }`;
+                                void navigator.clipboard.writeText(shareUrl);
+                                toast.success("Partner live report link copied to clipboard!");
+                                // Proactively ensure partner report is synced in background
+                                void import("@/lib/firestore/client").then(({ syncPartnerVoucherReport }) => {
+                                  syncPartnerVoucherReport(String(event.id), v, event, registrations);
+                                });
+                              }}
+                              className="gap-2 text-primary text-xs focus:text-primary"
+                            >
+                              <Globe className="size-3.5" /> Copy Partner Report Link
+                            </DropdownMenuItem>
+                          )}
                           <DropdownMenuItem
                             onClick={() => handleViewRedemptions(v)}
                             className="gap-2 text-amber-700 text-xs focus:text-amber-800 dark:text-amber-400 dark:focus:text-amber-300"

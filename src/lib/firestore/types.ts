@@ -215,6 +215,7 @@ export type VoucherStatus = "active" | "inactive" | "expired";
 
 export interface EventVoucher {
   id: string;
+  event_id?: string; // Event ID this voucher belongs to (stored on doc in event_vouchers)
   code: string; // e.g. "DEVFEST50", uppercase and trimmed
   description?: string; // e.g. "Early Bird 50% discount on tickets"
   discount_type: VoucherDiscountType; // "percentage" | "fixed"
@@ -248,6 +249,12 @@ export interface EventVoucher {
   last_reset_by_email?: string;
   last_reset_previous_times_used?: number;
   last_reset_reason?: string;
+  // Partner & Sponsor Sharing Configuration
+  partner_share_enabled?: boolean; // Whether public partner sharing is enabled
+  partner_share_token?: string; // Opaque 24-char lookup token (vshr_...)
+  partner_access_code?: string; // Secret partner access code e.g. "GDG-749281"
+  partner_name?: string; // Sponsor or Partner name e.g. "Google Cloud"
+  partner_show_voucher_code?: boolean; // When true, public report shows full promo code; otherwise masked
   created_at?: string;
   updated_at?: string;
 }
@@ -291,6 +298,39 @@ export interface BundleIssuedVoucher {
   redeemed_by_name?: string;
   redeemed_by_email?: string;
   redeemed_at?: string;
+}
+
+export interface MaskedVoucherRedemption {
+  id: string; // Obfuscated identifier e.g. "red-1", "red-2"
+  registered_at: string;
+  masked_name: string;
+  masked_email: string;
+  masked_phone?: string;
+  ticket_name?: string;
+  ticket_type?: string;
+  status: RegistrationStatus;
+  discount_amount?: number;
+}
+
+export interface PublicPartnerVoucherReport {
+  partner_name?: string;
+  event_id: string;
+  event_title: string;
+  event_start_date?: string | null;
+  event_end_date?: string | null;
+  event_banner_url?: string;
+  voucher_display_code: string; // Full code or masked code based on partner_show_voucher_code
+  is_code_masked: boolean;
+  discount_display: string;
+  discount_type: VoucherDiscountType;
+  discount_value: number;
+  applies_to: VoucherAppliesTo;
+  status: VoucherStatus;
+  usage_limit: number | null;
+  times_used: number;
+  percent_used: number;
+  total_discount_given: number;
+  redemptions: MaskedVoucherRedemption[];
 }
 
 export type EmailTemplateKey =

@@ -286,12 +286,36 @@ service cloud.firestore {
     //   - last_reset_by_email: string|null (optional, valid email, <= 150 chars) - Email of organizer who reset voucher
     //   - last_reset_previous_times_used: int|float|null (optional, >= 0) - Usage count before reset
     //   - last_reset_reason: string|null (optional, <= 500 chars) - Reason for resetting voucher
+    //   - partner_share_enabled: bool|null (optional) - Partner portal share link toggle
+    //   - partner_share_token: string|null (optional, <= 64 chars) - Secret token for public partner URL access
+    //   - partner_access_code: string|null (optional, <= 32 chars) - Passcode required to unlock partner claim portal
+    //   - partner_name: string|null (optional, <= 120 chars) - Sponsor or community partner name
+    //   - partner_show_voucher_code: bool|null (optional) - Whether partner portal reveals the raw promo code
     // Permissions:
     //   - get: Public / anyone (`if true;`) to allow single voucher validation by exact doc ID / code during checkout without exposing other codes.
     //   - list: Restricted strictly to team members (`hasTeamAccess()`) to prevent scraping secret promo & sponsor vouchers.
     //   - create: Team members (`hasTeamAccess()`) or authenticated bundle purchasers issuing single-use 100% friend ticket vouchers (`purchaser_member_id == request.auth.uid`).
     //   - delete: Team members only (`hasTeamAccess()`).
     //   - update: Team members (`hasTeamAccess()`) or authenticated users updating redemption fields (`times_used`, `redeemed_by_*`, `redeemed_at`, `updated_at`).
+    // Collection: partner_shares
+    // Document ID: shareToken (e.g. opaque 24-character token `vshr_...`)
+    // Fields:
+    //   - voucher_id: string|null (optional, <= 128 chars) - Associated voucher document identifier
+    //   - event_id: string|null (optional, <= 128 chars) - Associated event identifier
+    // Permissions:
+    //   - get: Public lookup by opaque share token (`if true;`).
+    //   - list: Forbidden (`if false;`).
+    //   - create, update, delete: Team members only (`hasTeamAccess()`).
+    //
+    // Collection: partner_voucher_reports
+    // Document ID: shareToken (e.g. opaque 24-character token `vshr_...`)
+    // Fields:
+    //   - Pre-computed masked report for public partner view
+    // Permissions:
+    //   - get: Public lookup by opaque share token (`if true;`).
+    //   - list: Forbidden (`if false;`).
+    //   - create, update, delete: Team members only (`hasTeamAccess()`).
+    //
     //
     // Collection: sync_metadata
     // Document ID: bevy
@@ -1112,7 +1136,9 @@ service cloud.firestore {
           'purchaser_member_id', 'purchaser_name', 'purchaser_email',
           'eligible_ticket_ids', 'eligible_bundle_ids', 'eligible_merchandise_ids',
           'last_reset_at', 'last_reset_by_id', 'last_reset_by_name',
-          'last_reset_by_email', 'last_reset_previous_times_used', 'last_reset_reason'
+          'last_reset_by_email', 'last_reset_previous_times_used', 'last_reset_reason',
+          'partner_share_enabled', 'partner_share_token', 'partner_access_code',
+          'partner_name', 'partner_show_voucher_code'
         ]) &&
         data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
         data.event_id is string && data.event_id.size() > 0 && data.event_id.size() <= 128 &&
@@ -1147,7 +1173,12 @@ service cloud.firestore {
         (!('last_reset_by_name' in data) || data.last_reset_by_name == null || (data.last_reset_by_name is string && data.last_reset_by_name.size() <= 150)) &&
         (!('last_reset_by_email' in data) || data.last_reset_by_email == null || (data.last_reset_by_email is string && isValidEmail(data.last_reset_by_email) && data.last_reset_by_email.size() <= 150)) &&
         (!('last_reset_previous_times_used' in data) || data.last_reset_previous_times_used == null || ((data.last_reset_previous_times_used is int || data.last_reset_previous_times_used is float) && data.last_reset_previous_times_used >= 0)) &&
-        (!('last_reset_reason' in data) || data.last_reset_reason == null || (data.last_reset_reason is string && data.last_reset_reason.size() <= 500));
+        (!('last_reset_reason' in data) || data.last_reset_reason == null || (data.last_reset_reason is string && data.last_reset_reason.size() <= 500)) &&
+        (!('partner_share_enabled' in data) || data.partner_share_enabled == null || data.partner_share_enabled is bool) &&
+        (!('partner_share_token' in data) || data.partner_share_token == null || (data.partner_share_token is string && data.partner_share_token.size() <= 64)) &&
+        (!('partner_access_code' in data) || data.partner_access_code == null || (data.partner_access_code is string && data.partner_access_code.size() <= 32)) &&
+        (!('partner_name' in data) || data.partner_name == null || (data.partner_name is string && data.partner_name.size() <= 120)) &&
+        (!('partner_show_voucher_code' in data) || data.partner_show_voucher_code == null || data.partner_show_voucher_code is bool);
     }
 
     // Validates system_settings document structure, data types, and bounds
@@ -1595,6 +1626,30 @@ service cloud.firestore {
         ) ||
         hasTeamAccess()
       );
+    }
+
+    // -------------------------------------------------------------
+    // Partner Shares Collection (Lookup mapping for public partner reports)
+    // -------------------------------------------------------------
+    match /partner_shares/{shareToken} {
+      // Individual lookup by opaque share token: public read allowed.
+      allow get: if true;
+      // List forbidden.
+      allow list: if false;
+      // Organizers / team members can create, update, delete when saving vouchers.
+      allow create, update, delete: if hasTeamAccess();
+    }
+
+    // -------------------------------------------------------------
+    // Partner Voucher Reports Collection (Pre-computed masked report for public partner view)
+    // -------------------------------------------------------------
+    match /partner_voucher_reports/{shareToken} {
+      // Individual lookup by opaque share token: public read allowed.
+      allow get: if true;
+      // List forbidden.
+      allow list: if false;
+      // Organizers / team members can create, update, delete.
+      allow create, update, delete: if hasTeamAccess();
     }
 
     // -------------------------------------------------------------

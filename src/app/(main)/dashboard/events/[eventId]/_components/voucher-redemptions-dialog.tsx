@@ -7,6 +7,8 @@ import {
   Check,
   Copy,
   Download,
+  ExternalLink,
+  Globe,
   Layers,
   Loader2,
   Mail,
@@ -458,8 +460,27 @@ export function VoucherRedemptionsDialog({
                 )}
               </div>
 
-              {/* Action Buttons: Reset Redemptions & CSV Export */}
+              {/* Action Buttons: Partner Share, Reset Redemptions & CSV Export */}
               <div className="flex flex-wrap items-center gap-2 self-start">
+                {currentVoucher.partner_share_enabled && currentVoucher.partner_share_token && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const shareUrl = `${window.location.origin}/vouchers/report/${currentVoucher.partner_share_token}${
+                        currentVoucher.partner_access_code ? `?code=${currentVoucher.partner_access_code}` : ""
+                      }`;
+                      void navigator.clipboard.writeText(shareUrl);
+                      toast.success("Partner live report link copied to clipboard!");
+                    }}
+                    className="h-8 shrink-0 gap-1.5 border-primary/40 bg-primary/5 text-primary hover:bg-primary/10 text-xs font-medium"
+                  >
+                    <Globe className="size-3.5" />
+                    Share with Partner
+                  </Button>
+                )}
+
                 <Button
                   type="button"
                   variant="outline"

@@ -3477,6 +3477,154 @@ export async function syncMissingBundleVouchers(
   }
 }
 
+/**
+ * Syncs partner share lookup mappings and pre-computes partner report document for a voucher.
+ * Automatically provisions partner_shares/{token} and partner_voucher_reports/{token}.
+ */
+export async function syncPartnerVoucherReport(
+  eventId: string,
+  voucher: import("./types").EventVoucher,
+  baseEvent?: Partial<FirestoreEvent>,
+  registrations?: FirestoreRegistration[],
+): Promise<void> {
+  if (typeof window === "undefined" || !eventId || !voucher.partner_share_token?.trim()) return;
+
+  const eventIdStr = String(eventId);
+  const token = voucher.partner_share_token.trim();
+  const cleanCode = voucher.code.trim().toUpperCase();
+  const docId = voucher.id?.includes("_") ? voucher.id : `${eventIdStr}_${cleanCode}`;
+  const now = new Date().toISOString();
+
+  try {
+    const shareRef = doc(db, "partner_shares", token);
+    const reportRef = doc(db, "partner_voucher_reports", token);
+
+    if (!voucher.partner_share_enabled) {
+      const batch = writeBatch(db);
+      batch.delete(shareRef);
+      batch.delete(reportRef);
+      await batch.commit();
+      return;
+    }
+
+    // 1. Maintain partner_shares lookup document
+    await setDoc(
+      shareRef,
+      sanitizeFirestoreData({
+        share_token: token,
+        voucher_doc_id: docId,
+        event_id: eventIdStr,
+        voucher_code: cleanCode,
+        updated_at: now,
+      }),
+      { merge: true },
+    );
+
+    // 2. Pre-compute and sync partner_voucher_reports
+    let activeRegs = registrations;
+    if (!activeRegs) {
+      try {
+        activeRegs = await getEventRegistrations(eventIdStr);
+      } catch {
+        activeRegs = [];
+      }
+    }
+
+    const { maskEmail, maskName, maskPhone, maskVoucherCode } = await import("@/lib/security/pii-mask");
+    const matchedRegs = (activeRegs || []).filter((reg) => {
+      const regCode = (reg.voucher_code || "").trim().toUpperCase();
+      const regVoucherId = reg.voucher_id;
+      return (regCode && regCode === cleanCode) || (regVoucherId && voucher.id && regVoucherId === voucher.id);
+    });
+
+    matchedRegs.sort((a, b) => {
+      const timeA = a.registered_at_millis || (a.registered_at ? new Date(a.registered_at).getTime() : 0);
+      const timeB = b.registered_at_millis || (b.registered_at ? new Date(b.registered_at).getTime() : 0);
+      return timeB - timeA;
+    });
+
+    const redemptions = matchedRegs.map((reg, index) => {
+      let discountAmount: number | undefined;
+      if (typeof reg.voucher_discount_amount === "number") {
+        discountAmount = reg.voucher_discount_amount;
+      } else if (voucher.discount_type === "fixed") {
+        discountAmount = voucher.discount_value;
+      }
+
+      return {
+        id: reg.id || `redemption-${index}`,
+        redeemed_at: reg.registered_at || new Date().toISOString(),
+        attendee_name_masked: maskName(reg.member_name || "Attendee"),
+        attendee_email_masked: maskEmail(reg.member_email || ""),
+        attendee_phone_masked: reg.member_phone ? maskPhone(reg.member_phone) : undefined,
+        ticket_name: reg.ticket_tier || reg.ticket_type,
+        ticket_type: reg.ticket_type,
+        status: reg.status,
+        discount_amount: discountAmount,
+      };
+    });
+
+    const totalRedeemed = Math.max(voucher.times_used || 0, redemptions.length);
+    const usageLimit = typeof voucher.usage_limit === "number" && voucher.usage_limit > 0 ? voucher.usage_limit : null;
+    const percentUsed = usageLimit ? Math.min(100, Math.round((totalRedeemed / usageLimit) * 100)) : 100;
+    const totalDiscountGiven = redemptions.reduce((acc, curr) => acc + (curr.discount_amount || 0), 0);
+
+    const isCodeMasked = !voucher.partner_show_voucher_code;
+    const voucherDisplayCode = isCodeMasked ? maskVoucherCode(voucher.code) : voucher.code.toUpperCase();
+    const discountDisplay =
+      voucher.discount_type === "percentage"
+        ? `${voucher.discount_value}% OFF`
+        : `Rp ${(voucher.discount_value || 0).toLocaleString("id-ID")} OFF`;
+
+    let eventTitle = baseEvent?.title || "GDG Jakarta Event";
+    let eventStartDate = baseEvent?.start_date || null;
+    let eventEndDate = baseEvent?.end_date || null;
+    let eventBannerUrl = baseEvent?.picture_url || baseEvent?.banner_url || null;
+
+    if (!baseEvent?.title) {
+      try {
+        const evSnap = await getDoc(doc(db, "events", eventIdStr));
+        if (evSnap.exists()) {
+          const evData = evSnap.data();
+          eventTitle = (evData.title as string) || eventTitle;
+          eventStartDate = (evData.start_date as string) ?? eventStartDate;
+          eventEndDate = (evData.end_date as string) ?? eventEndDate;
+          eventBannerUrl = (evData.picture_url as string) || (evData.banner_url as string) || eventBannerUrl;
+        }
+      } catch {
+        // Ignored
+      }
+    }
+
+    const reportData = sanitizeFirestoreData({
+      partner_name: voucher.partner_name || null,
+      partner_access_code: voucher.partner_access_code || null,
+      event_id: eventIdStr,
+      event_title: eventTitle,
+      event_start_date: eventStartDate,
+      event_end_date: eventEndDate,
+      event_banner_url: eventBannerUrl,
+      voucher_display_code: voucherDisplayCode,
+      is_code_masked: isCodeMasked,
+      discount_display: discountDisplay,
+      discount_type: voucher.discount_type,
+      discount_value: voucher.discount_value,
+      applies_to: voucher.applies_to,
+      status: voucher.status,
+      usage_limit: usageLimit,
+      times_used: totalRedeemed,
+      percent_used: percentUsed,
+      total_discount_given: totalDiscountGiven,
+      redemptions,
+      updated_at: now,
+    });
+
+    await setDoc(reportRef, reportData, { merge: true });
+  } catch (err) {
+    console.warn(`[Firestore] syncPartnerVoucherReport for ${token} warning:`, err);
+  }
+}
+
 export async function updateEventVouchers(
   eventId: string,
   vouchers: EventVoucher[],
@@ -3522,6 +3670,29 @@ export async function updateEventVouchers(
         created_at: v.created_at ?? now,
       });
       batch.set(docRef, voucherDocPayload, { merge: true });
+
+      // If partner sharing is configured with an opaque share token, maintain direct lookup mapping in partner_shares and pre-compute partner_voucher_reports
+      if (v.partner_share_token?.trim()) {
+        const shareTokenClean = v.partner_share_token.trim();
+        const shareRef = doc(db, "partner_shares", shareTokenClean);
+        const reportRef = doc(db, "partner_voucher_reports", shareTokenClean);
+        if (v.partner_share_enabled) {
+          batch.set(
+            shareRef,
+            {
+              share_token: shareTokenClean,
+              voucher_doc_id: docId,
+              event_id: eventIdStr,
+              voucher_code: cleanCode,
+              updated_at: now,
+            },
+            { merge: true },
+          );
+        } else {
+          batch.delete(shareRef);
+          batch.delete(reportRef);
+        }
+      }
     }
 
     await batch.commit();
@@ -3541,6 +3712,269 @@ export async function updateEventVouchers(
     await updateDoc(eventRef, updatePayload);
   } catch (evErr) {
     console.warn(`[Firestore] Note: Could not deleteField vouchers on events/${eventIdStr}:`, evErr);
+  }
+
+  // 3. Pre-compute and sync partner_voucher_reports documents for enabled share tokens
+  const enabledShareVouchers = vouchers.filter((v) => v.partner_share_enabled && v.partner_share_token?.trim());
+  if (enabledShareVouchers.length > 0) {
+    try {
+      const registrations = await getEventRegistrations(eventIdStr);
+      const { maskEmail, maskName, maskPhone, maskVoucherCode } = await import("@/lib/security/pii-mask");
+
+      const reportBatch = writeBatch(db);
+      for (const v of enabledShareVouchers) {
+        const token = v.partner_share_token!.trim();
+        const normCode = v.code.trim().toUpperCase();
+        const matchedRegs = registrations.filter((reg) => {
+          const regCode = (reg.voucher_code || "").trim().toUpperCase();
+          const regVoucherId = reg.voucher_id;
+          return (regCode && regCode === normCode) || (regVoucherId && v.id && regVoucherId === v.id);
+        });
+
+        matchedRegs.sort((a, b) => {
+          const timeA = a.registered_at_millis || (a.registered_at ? new Date(a.registered_at).getTime() : 0);
+          const timeB = b.registered_at_millis || (b.registered_at ? new Date(b.registered_at).getTime() : 0);
+          return timeB - timeA;
+        });
+
+        const redemptions = matchedRegs.map((reg, index) => {
+          let discountAmount: number | undefined;
+          if (typeof reg.voucher_discount_amount === "number") {
+            discountAmount = reg.voucher_discount_amount;
+          } else if (v.discount_type === "fixed") {
+            discountAmount = v.discount_value;
+          }
+
+          return {
+            id: reg.id || `redemption-${index}`,
+            redeemed_at: reg.registered_at || new Date().toISOString(),
+            attendee_name_masked: maskName(reg.member_name || "Attendee"),
+            attendee_email_masked: maskEmail(reg.member_email || ""),
+            attendee_phone_masked: reg.member_phone ? maskPhone(reg.member_phone) : undefined,
+            ticket_name: reg.ticket_tier || reg.ticket_type,
+            ticket_type: reg.ticket_type,
+            status: reg.status,
+            discount_amount: discountAmount,
+          };
+        });
+
+        const totalRedeemed = Math.max(v.times_used || 0, redemptions.length);
+        const usageLimit = typeof v.usage_limit === "number" && v.usage_limit > 0 ? v.usage_limit : null;
+        const percentUsed = usageLimit ? Math.min(100, Math.round((totalRedeemed / usageLimit) * 100)) : 100;
+        const totalDiscountGiven = redemptions.reduce((acc, curr) => acc + (curr.discount_amount || 0), 0);
+
+        const isCodeMasked = !v.partner_show_voucher_code;
+        const voucherDisplayCode = isCodeMasked ? maskVoucherCode(v.code) : v.code.toUpperCase();
+        const discountDisplay =
+          v.discount_type === "percentage"
+            ? `${v.discount_value}% OFF`
+            : `Rp ${v.discount_value.toLocaleString("id-ID")} OFF`;
+
+        const reportData = sanitizeFirestoreData({
+          partner_name: v.partner_name || null,
+          partner_access_code: v.partner_access_code || null,
+          event_id: eventIdStr,
+          event_title: baseEvent?.title || "GDG Jakarta Event",
+          event_start_date: baseEvent?.start_date || null,
+          event_end_date: baseEvent?.end_date || null,
+          event_banner_url: baseEvent?.picture_url || baseEvent?.banner_url || null,
+          voucher_display_code: voucherDisplayCode,
+          is_code_masked: isCodeMasked,
+          discount_display: discountDisplay,
+          discount_type: v.discount_type,
+          discount_value: v.discount_value,
+          applies_to: v.applies_to,
+          status: v.status,
+          usage_limit: usageLimit,
+          times_used: totalRedeemed,
+          percent_used: percentUsed,
+          total_discount_given: totalDiscountGiven,
+          redemptions,
+          updated_at: now,
+        });
+
+        reportBatch.set(doc(db, "partner_voucher_reports", token), reportData, { merge: true });
+      }
+      await reportBatch.commit();
+    } catch (reportErr) {
+      console.warn("[Firestore] Failed to sync partner_voucher_reports:", reportErr);
+    }
+  }
+}
+
+/**
+ * Loads a pre-computed public partner voucher report directly using Firebase Web SDK.
+ * Bypasses Node.js server DNS resolution failures (getaddrinfo ENOTFOUND) in local development.
+ * Note: partner_voucher_reports already has all PII masked server-side / upon saving.
+ */
+/**
+ * Loads a public partner voucher report directly using Firebase Web SDK.
+ * 1. Checks pre-computed partner_voucher_reports/{token}.
+ * 2. If missing, attempts direct lookup via partner_shares/{token} -> event_vouchers/{docId} & events/{eventId}.
+ */
+export async function getPublicPartnerVoucherReport(
+  shareToken: string,
+  accessCode?: string,
+): Promise<
+  | { success: true; report: import("./types").PublicPartnerVoucherReport }
+  | { success: false; error: string; requiresCode?: boolean }
+> {
+  const cleanToken = (shareToken || "").trim();
+  if (!cleanToken) {
+    return { success: false, error: "Invalid or missing share link." };
+  }
+
+  try {
+    // 1. Try reading pre-computed report
+    const reportRef = doc(db, "partner_voucher_reports", cleanToken);
+    const snap = await getDoc(reportRef);
+
+    if (snap.exists() && snap.data()) {
+      const docData = snap.data();
+      const storedAccessCode = String(docData.partner_access_code || "").trim();
+      const providedCode = (accessCode || "").trim();
+
+      if (storedAccessCode) {
+        if (!providedCode) {
+          return {
+            success: false,
+            error: "Access code is required to view this partner report.",
+            requiresCode: true,
+          };
+        }
+        if (providedCode.toUpperCase() !== storedAccessCode.toUpperCase()) {
+          return {
+            success: false,
+            error: "Incorrect access code. Please check with the organizer.",
+            requiresCode: true,
+          };
+        }
+      }
+
+      const report: import("./types").PublicPartnerVoucherReport = {
+        partner_name: (docData.partner_name as string) || undefined,
+        event_id: String(docData.event_id || ""),
+        event_title: String(docData.event_title || "GDG Jakarta Event"),
+        event_start_date: (docData.event_start_date as string) ?? null,
+        event_end_date: (docData.event_end_date as string) ?? null,
+        event_banner_url: (docData.event_banner_url as string) || undefined,
+        voucher_display_code: String(docData.voucher_display_code || "PROMO"),
+        is_code_masked: Boolean(docData.is_code_masked),
+        discount_display: String(docData.discount_display || ""),
+        discount_type: (docData.discount_type as "percentage" | "fixed") || "fixed",
+        discount_value: Number(docData.discount_value) || 0,
+        applies_to: (docData.applies_to as "all" | "ticket" | "bundle" | "merchandise") || "all",
+        status: (docData.status as "active" | "inactive" | "expired") || "active",
+        usage_limit: docData.usage_limit != null ? Number(docData.usage_limit) : null,
+        times_used: Number(docData.times_used) || 0,
+        percent_used: Number(docData.percent_used) || 0,
+        total_discount_given: Number(docData.total_discount_given) || 0,
+        redemptions: Array.isArray(docData.redemptions)
+          ? (docData.redemptions as import("./types").MaskedVoucherRedemption[])
+          : [],
+      };
+
+      return { success: true, report };
+    }
+
+    // 2. Direct fallback via partner_shares lookup doc
+    const shareRef = doc(db, "partner_shares", cleanToken);
+    const shareSnap = await getDoc(shareRef);
+    if (shareSnap.exists() && shareSnap.data()) {
+      const shareData = shareSnap.data();
+      const voucherDocId = String(shareData.voucher_doc_id || "").trim();
+      const eventIdStr = String(shareData.event_id || "").trim();
+
+      if (voucherDocId) {
+        const voucherRef = doc(db, "event_vouchers", voucherDocId);
+        const voucherSnap = await getDoc(voucherRef);
+
+        if (voucherSnap.exists() && voucherSnap.data()) {
+          const v = voucherSnap.data() as import("./types").EventVoucher;
+          if (v.partner_share_enabled && v.partner_share_token === cleanToken) {
+            const storedAccessCode = String(v.partner_access_code || "").trim();
+            const providedCode = (accessCode || "").trim();
+
+            if (storedAccessCode) {
+              if (!providedCode) {
+                return {
+                  success: false,
+                  error: "Access code is required to view this partner report.",
+                  requiresCode: true,
+                };
+              }
+              if (providedCode.toUpperCase() !== storedAccessCode.toUpperCase()) {
+                return {
+                  success: false,
+                  error: "Incorrect access code. Please check with the organizer.",
+                  requiresCode: true,
+                };
+              }
+            }
+
+            let eventTitle = "GDG Jakarta Event";
+            let eventStartDate: string | null = null;
+            let eventEndDate: string | null = null;
+            let eventBannerUrl: string | undefined;
+
+            if (eventIdStr) {
+              try {
+                const eventSnap = await getDoc(doc(db, "events", eventIdStr));
+                if (eventSnap.exists()) {
+                  const evData = eventSnap.data();
+                  eventTitle = (evData.title as string) || eventTitle;
+                  eventStartDate = (evData.start_date as string) ?? null;
+                  eventEndDate = (evData.end_date as string) ?? null;
+                  eventBannerUrl = (evData.picture_url as string) || (evData.banner_url as string) || undefined;
+                }
+              } catch {
+                // Non-critical fallback
+              }
+            }
+
+            const { maskVoucherCode } = await import("@/lib/security/pii-mask");
+            const isCodeMasked = !v.partner_show_voucher_code;
+            const voucherDisplayCode = isCodeMasked ? maskVoucherCode(v.code) : v.code.toUpperCase();
+            const discountDisplay =
+              v.discount_type === "percentage"
+                ? `${v.discount_value}% OFF`
+                : `Rp ${(v.discount_value || 0).toLocaleString("id-ID")} OFF`;
+
+            const usageLimit = typeof v.usage_limit === "number" && v.usage_limit > 0 ? v.usage_limit : null;
+            const timesUsed = Number(v.times_used) || 0;
+            const percentUsed = usageLimit ? Math.min(100, Math.round((timesUsed / usageLimit) * 100)) : 100;
+
+            const report: import("./types").PublicPartnerVoucherReport = {
+              partner_name: v.partner_name || undefined,
+              event_id: eventIdStr,
+              event_title: eventTitle,
+              event_start_date: eventStartDate,
+              event_end_date: eventEndDate,
+              event_banner_url: eventBannerUrl,
+              voucher_display_code: voucherDisplayCode,
+              is_code_masked: isCodeMasked,
+              discount_display: discountDisplay,
+              discount_type: v.discount_type,
+              discount_value: v.discount_value,
+              applies_to: v.applies_to,
+              status: v.status,
+              usage_limit: usageLimit,
+              times_used: timesUsed,
+              percent_used: percentUsed,
+              total_discount_given: 0,
+              redemptions: [],
+            };
+
+            return { success: true, report };
+          }
+        }
+      }
+    }
+
+    return { success: false, error: "Voucher report not found or link has expired." };
+  } catch (err) {
+    console.warn("[getPublicPartnerVoucherReport] error:", err);
+    return { success: false, error: "Failed to load partner report." };
   }
 }
 
