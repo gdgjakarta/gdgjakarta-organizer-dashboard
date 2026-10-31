@@ -11,8 +11,8 @@ export const LIVE_AGENDA_BACKGROUND_URL = "https://assets.gdgjakarta.org/devfest
 export const LIVE_AGENDA_LOGO_URL = "https://assets.gdgjakarta.org/devfest/devfest-logo.png";
 
 export const LIVE_AGENDA_VENUE_MAP_URL = "https://assets.gdgjakarta.org/devfest/instagram-post-21.png";
-/** Public event page with the full agenda, linked under the live highlights. */
-export const LIVE_AGENDA_FULL_AGENDA_PATH = "/events/132640";
+/** Full agenda page, linked under the live highlights. */
+export const LIVE_AGENDA_FULL_AGENDA_URL = "https://gdgjakarta.org/devfest26";
 export const LIVE_AGENDA_FEEDBACK_URL = "http://gdgjakarta.org/feedback";
 
 const DEFAULT_LAST_ITEM_MINUTES = 60;
@@ -31,8 +31,13 @@ export interface LiveAgendaStage {
   eventId: string;
   /** Display name without the "Track" suffix, e.g. "Conference". */
   name: string;
+  /** First and last event day (`YYYY-MM-DD`, WIB); agenda times only mean something on these days. */
+  startDay: string;
+  endDay: string;
   items: LiveAgendaItem[];
 }
+
+export type LiveAgendaEventPhase = "before" | "during" | "after";
 
 export type LiveAgendaStatus = "live" | "upcoming" | "finished";
 
@@ -119,12 +124,16 @@ function toStageName(title: string): string {
 export function buildLiveAgendaStages(params: {
   eventId: string;
   eventTitle: string;
+  startDate: string;
+  endDate?: string | null;
   agenda?: BevyAgenda | null;
   speakers?: BevySpeaker[] | null;
   sessions?: EventSession[] | null;
   presentationSlides?: EventPresentationSlide[] | null;
 }): LiveAgendaStage[] {
-  const { eventId, eventTitle, agenda, speakers, sessions, presentationSlides } = params;
+  const { eventId, eventTitle, startDate, endDate, agenda, speakers, sessions, presentationSlides } = params;
+  const startDay = getDateKeyInTimeZone(startDate);
+  const endDay = getDateKeyInTimeZone(endDate || startDate);
   const unified = buildUnifiedAgenda(agenda, speakers, sessions, presentationSlides);
 
   return unified.sessionGroups
@@ -135,16 +144,31 @@ export function buildLiveAgendaStages(params: {
         id: `${eventId}:${group.id}`,
         eventId,
         name: toStageName(isGeneric && !unified.hasMultipleSessions ? eventTitle : group.sessionTitle),
+        startDay,
+        endDay,
         items: group.items.map((item) => ({ id: item.id, activity: item.activity, time: item.time })),
       };
     });
+}
+
+export function getEventPhase(
+  stage: Pick<LiveAgendaStage, "startDay" | "endDay">,
+  todayKey: string,
+): LiveAgendaEventPhase {
+  if (todayKey < stage.startDay) return "before";
+  if (todayKey > stage.endDay) return "after";
+  return "during";
 }
 
 /**
  * Picks the agenda the audience should look at for a stage: the one running right now,
  * otherwise the next one to start, otherwise the last one (everything is finished).
  */
-export function getStageHighlight(items: LiveAgendaItem[], nowMinutes: number): LiveAgendaHighlight | null {
+export function getStageHighlight(
+  items: LiveAgendaItem[],
+  nowMinutes: number,
+  phase: LiveAgendaEventPhase = "during",
+): LiveAgendaHighlight | null {
   const timed = items
     .flatMap((item) => {
       const parsed = parseTimeLabel(item.time);
@@ -160,6 +184,11 @@ export function getStageHighlight(items: LiveAgendaItem[], nowMinutes: number): 
     // A missing end time runs until the next agenda starts.
     endMinutes: entry.end ?? timed[index + 1]?.start ?? entry.start + DEFAULT_LAST_ITEM_MINUTES,
   }));
+
+  // Agenda times are only compared with the clock on event days: before the event nothing has
+  // started yet, after it everything is over.
+  if (phase === "before") return { ...resolved[0], status: "upcoming" };
+  if (phase === "after") return { ...resolved[resolved.length - 1], status: "finished" };
 
   const live = resolved.find((r) => nowMinutes >= r.startMinutes && nowMinutes < r.endMinutes);
   if (live) return { ...live, status: "live" };
