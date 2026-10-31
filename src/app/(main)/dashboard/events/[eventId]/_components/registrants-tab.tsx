@@ -852,12 +852,27 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
       setSendingVenueTicketRegId(reg.id);
       try {
         let token =
-          existingToken || getCachedDriveAccessToken(user?.email) || (await requestDriveAccessToken(user?.email));
+          getCachedDriveAccessToken(user?.email) || existingToken || (await requestDriveAccessToken(user?.email));
 
-        await grantDriveReaderPermission(reg.venue_ticket_file_id, reg.member_email, token).catch(async () => {
-          token = await requestDriveAccessToken(user?.email, true);
-          await grantDriveReaderPermission(reg.venue_ticket_file_id!, reg.member_email, token);
-        });
+        // Only grant permission if not already marked shared
+        if (!reg.venue_ticket_shared_at) {
+          try {
+            await grantDriveReaderPermission(reg.venue_ticket_file_id, reg.member_email, token);
+          } catch (err) {
+            const isAuthError =
+              (err instanceof Error &&
+                (err.message.includes("401") ||
+                  err.message.toLowerCase().includes("unauthenticated") ||
+                  err.message.toLowerCase().includes("credentials"))) ||
+              !getCachedDriveAccessToken(user?.email);
+            if (isAuthError) {
+              token = await requestDriveAccessToken(user?.email, true);
+              await grantDriveReaderPermission(reg.venue_ticket_file_id, reg.member_email, token);
+            } else {
+              throw err;
+            }
+          }
+        }
 
         const sharedAt = new Date().toISOString();
         await recordVenueTicketGrantedShare(eventId, {

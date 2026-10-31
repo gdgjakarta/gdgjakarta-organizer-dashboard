@@ -306,6 +306,44 @@ export async function grantDriveReaderPermission(
   }
 }
 
+export async function checkDriveReaderPermission(
+  fileId: string,
+  emailAddress: string,
+  accessToken: string,
+): Promise<boolean> {
+  const cleanFileId = fileId.trim();
+  const cleanEmail = emailAddress.trim().toLowerCase();
+  if (!cleanFileId || !cleanEmail || !accessToken) return false;
+
+  const listParams = new URLSearchParams({
+    fields: "permissions(id,emailAddress,role,type)",
+    supportsAllDrives: "true",
+  });
+  const listRes = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(cleanFileId)}/permissions?${listParams}`,
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  );
+
+  if (!listRes.ok) {
+    if (listRes.status === 401) {
+      clearCachedDriveAccessToken();
+      throw new Error("Google Drive session expired (401).");
+    }
+    return false;
+  }
+
+  const data = (await listRes.json().catch(() => ({}))) as {
+    permissions?: Array<{ id?: string; emailAddress?: string; role?: string; type?: string }>;
+  };
+
+  return (data.permissions ?? []).some((p) => {
+    if (!p.emailAddress) return false;
+    return p.emailAddress.trim().toLowerCase() === cleanEmail;
+  });
+}
+
 export async function revokeDriveReaderPermission(
   fileId: string,
   emailAddress: string,
@@ -692,8 +730,60 @@ export async function saveEventVenueTicketConfig(
     vehicle_ticket_url: links?.vehicleTicketUrl?.trim() || undefined,
     updated_at: new Date().toISOString(),
   };
-  await setDoc(doc(db, "system_settings", docId), sanitizeFirestoreData(config), { merge: true });
+  await setDoc(
+    doc(db, "system_settings", docId),
+    {
+      ...sanitizeFirestoreData(config),
+      ...(config.vehicle_ticket_url ? {} : { vehicle_ticket_url: deleteField() }),
+    },
+    { merge: true },
+  );
   return config;
+}
+
+export async function saveEventVehicleTicketUrl(
+  eventId: string,
+  vehicleTicketUrl: string | undefined,
+): Promise<EventVenueTicketConfig> {
+  const docId = `venue_tickets_${eventId}`;
+  const existing = await getEventVenueTicketConfig(eventId);
+  const cleanUrl = vehicleTicketUrl?.trim() || undefined;
+  const now = new Date().toISOString();
+  const config: EventVenueTicketConfig = {
+    id: docId,
+    event_id: eventId,
+    folder_url: existing?.folder_url ?? "",
+    folder_id: existing?.folder_id ?? "",
+    files: existing?.files ?? [],
+    granted_shares: existing?.granted_shares ?? [],
+    venue_guide_url: existing?.venue_guide_url,
+    vehicle_ticket_url: cleanUrl,
+    updated_at: now,
+  };
+  await setDoc(
+    doc(db, "system_settings", docId),
+    {
+      id: docId,
+      event_id: eventId,
+      vehicle_ticket_url: cleanUrl || deleteField(),
+      updated_at: now,
+    },
+    { merge: true },
+  );
+  return config;
+}
+
+export async function updateRegistrationDriveShareStatus(
+  registrationId: string,
+  sharedAt: string | null,
+): Promise<Partial<FirestoreRegistration>> {
+  const ref = doc(db, "event_registrations", registrationId);
+  if (sharedAt) {
+    await updateDoc(ref, { venue_ticket_shared_at: sharedAt });
+    return { venue_ticket_shared_at: sharedAt };
+  }
+  await updateDoc(ref, { venue_ticket_shared_at: deleteField() });
+  return { venue_ticket_shared_at: undefined };
 }
 
 export async function saveRegistrationVenueTicketAssignments(

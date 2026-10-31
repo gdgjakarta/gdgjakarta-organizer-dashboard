@@ -10,7 +10,10 @@ import {
   Loader2,
   Mail,
   RefreshCw,
+  Save,
+  SearchCheck,
   Send,
+  ShieldAlert,
   ShieldCheck,
   Ticket,
   Users,
@@ -36,18 +39,23 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { formatFirestoreDate } from "@/lib/date-utils";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
 import {
+  checkDriveReaderPermission,
   computeSequencePdfAssignments,
   type EventVenueTicketConfig,
   extractDriveFolderId,
   findOrphanedVenueTicketShares,
   getCachedDriveAccessToken,
   getEventVenueTicketConfig,
+  grantDriveReaderPermission,
   listDriveFolderPdfs,
+  recordVenueTicketGrantedShare,
   requestDriveAccessToken,
   revokeVenueTicketAccessForItems,
+  saveEventVehicleTicketUrl,
   saveEventVenueTicketConfig,
   saveRegistrationVenueTicketAssignments,
   sortEligibleRegistrantsByTime,
+  updateRegistrationDriveShareStatus,
 } from "@/lib/google-drive/venue-tickets";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth/auth-provider";
@@ -79,14 +87,25 @@ export function VenueTicketDriveDialog({
   const user = useAuthStore((s) => s.user);
   const [folderUrl, setFolderUrl] = useState(config?.folder_url ?? "");
   const [vehicleTicketUrl, setVehicleTicketUrl] = useState(config?.vehicle_ticket_url ?? "");
+  const [isSavingVehicleUrl, setIsSavingVehicleUrl] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isRemapping, setIsRemapping] = useState(false);
   const [isBulkSending, setIsBulkSending] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number } | null>(null);
+  const [isCheckingAccess, setIsCheckingAccess] = useState(false);
+  const [checkAccessProgress, setCheckAccessProgress] = useState<{ current: number; total: number } | null>(null);
+  const [grantingAccessId, setGrantingAccessId] = useState<string | null>(null);
+  const [unverifiedAccessIds, setUnverifiedAccessIds] = useState<Set<string>>(new Set());
   const [deliveryFilter, setDeliveryFilter] = useState<
     "all" | "sent" | "not_sent" | "shared" | "not_shared" | "pending_send" | "unassigned"
   >("all");
+  const [seqRangeInput, setSeqRangeInput] = useState<string>("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const isVehicleUrlDirty = useMemo(
+    () => (vehicleTicketUrl ?? "").trim() !== (config?.vehicle_ticket_url ?? "").trim(),
+    [vehicleTicketUrl, config?.vehicle_ticket_url],
+  );
 
   // Clear selections when filter changes or registrations change significantly
   useEffect(() => {
@@ -105,10 +124,11 @@ export function VenueTicketDriveDialog({
     if (config?.folder_url && !folderUrl) {
       setFolderUrl(config.folder_url);
     }
-    if (config?.vehicle_ticket_url && !vehicleTicketUrl) {
-      setVehicleTicketUrl(config.vehicle_ticket_url);
-    }
-  }, [config?.folder_url, config?.vehicle_ticket_url, folderUrl, vehicleTicketUrl]);
+  }, [config?.folder_url, folderUrl]);
+
+  useEffect(() => {
+    setVehicleTicketUrl(config?.vehicle_ticket_url ?? "");
+  }, [config?.vehicle_ticket_url]);
 
   const eligibleRegistrants = useMemo(() => sortEligibleRegistrantsByTime(registrations), [registrations]);
 
@@ -137,10 +157,46 @@ export function VenueTicketDriveDialog({
     [eligibleRegistrants],
   );
 
+  const parsedSeqRange = useMemo(() => {
+    const raw = seqRangeInput.trim();
+    if (!raw) return null;
+
+    // Handles: "559 - End", "559-end", "559-", "559 - 700", "559..700", "559", etc.
+    const parts = raw.split(/[-–—]|(\.\.)/);
+    if (parts.length === 1 || !raw.match(/[-–—]|(\.\.)/)) {
+      const singleNum = Number.parseInt(raw, 10);
+      if (!Number.isNaN(singleNum)) {
+        return { start: singleNum, end: singleNum };
+      }
+      return null;
+    }
+
+    const segments = raw.split(/[-–—]|\.\./);
+    const startStr = segments[0]?.trim() || "";
+    const endStr = segments[1]?.trim() || "";
+
+    const startNum = startStr ? Number.parseInt(startStr, 10) : 1;
+    const isEndKeyword = !endStr || endStr.toLowerCase() === "end" || endStr.toLowerCase() === "max";
+    const endNum = isEndKeyword ? Number.POSITIVE_INFINITY : Number.parseInt(endStr, 10);
+
+    const safeStart = Number.isNaN(startNum) ? 1 : startNum;
+    const safeEnd = Number.isNaN(endNum) ? Number.POSITIVE_INFINITY : endNum;
+
+    return {
+      start: Math.min(safeStart, safeEnd),
+      end: Math.max(safeStart, safeEnd),
+    };
+  }, [seqRangeInput]);
+
   const filteredRegistrantsWithIndex = useMemo(() => {
     return eligibleRegistrants
       .map((reg, index) => ({ reg, sequenceNumber: index + 1 }))
-      .filter(({ reg }) => {
+      .filter(({ reg, sequenceNumber }) => {
+        if (parsedSeqRange) {
+          if (sequenceNumber < parsedSeqRange.start || sequenceNumber > parsedSeqRange.end) {
+            return false;
+          }
+        }
         if (deliveryFilter === "all") return true;
         if (deliveryFilter === "sent") return Boolean(reg.venue_ticket_sent_at);
         if (deliveryFilter === "not_sent") return !reg.venue_ticket_sent_at;
@@ -152,7 +208,7 @@ export function VenueTicketDriveDialog({
         if (deliveryFilter === "unassigned") return !reg.venue_ticket_file_id;
         return true;
       });
-  }, [eligibleRegistrants, deliveryFilter]);
+  }, [eligibleRegistrants, deliveryFilter, parsedSeqRange]);
 
   const handleSyncAndMap = async () => {
     const folderId = extractDriveFolderId(folderUrl);
@@ -335,13 +391,23 @@ export function VenueTicketDriveDialog({
       for (let i = 0; i < pendingSendRegistrants.length; i++) {
         const reg = pendingSendRegistrants[i];
         setBulkProgress({ current: i + 1, total: pendingSendRegistrants.length });
-        const ok = await onSendVenueTicketEmail(reg, token);
-        if (ok) successCount += 1;
+        const currentValidToken = getCachedDriveAccessToken(user?.email) || token;
+        const ok = await onSendVenueTicketEmail(reg, currentValidToken);
+        if (ok) {
+          successCount += 1;
+        } else {
+          toast.error(
+            `Bulk delivery stopped at ${reg.member_name} (${i + 1}/${pendingSendRegistrants.length}) due to an error.`,
+          );
+          break;
+        }
       }
 
-      toast.success(
-        `Sent Venue Ticket email and granted view access to ${successCount} of ${pendingSendRegistrants.length} registrant(s).`,
-      );
+      if (successCount > 0) {
+        toast.success(
+          `Sent Venue Ticket email and granted view access to ${successCount} of ${pendingSendRegistrants.length} registrant(s).`,
+        );
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to complete bulk venue ticket delivery.";
       toast.error(msg);
@@ -366,13 +432,23 @@ export function VenueTicketDriveDialog({
       for (let i = 0; i < selectedWithTicket.length; i++) {
         const reg = selectedWithTicket[i];
         setBulkProgress({ current: i + 1, total: selectedWithTicket.length });
-        const ok = await onSendVenueTicketEmail(reg, token);
-        if (ok) successCount += 1;
+        const currentValidToken = getCachedDriveAccessToken(user?.email) || token;
+        const ok = await onSendVenueTicketEmail(reg, currentValidToken);
+        if (ok) {
+          successCount += 1;
+        } else {
+          toast.error(
+            `Selected bulk delivery stopped at ${reg.member_name} (${i + 1}/${selectedWithTicket.length}) due to an error.`,
+          );
+          break;
+        }
       }
 
-      toast.success(
-        `Sent Venue Ticket email and granted view access to ${successCount} of ${selectedWithTicket.length} selected registrant(s).`,
-      );
+      if (successCount > 0) {
+        toast.success(
+          `Sent Venue Ticket email and granted view access to ${successCount} of ${selectedWithTicket.length} selected registrant(s).`,
+        );
+      }
       setSelectedIds(new Set());
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to complete selected venue ticket delivery.";
@@ -383,8 +459,161 @@ export function VenueTicketDriveDialog({
     }
   };
 
+  const handleSaveVehicleTicketUrl = async () => {
+    if (!isVehicleUrlDirty) return;
+    setIsSavingVehicleUrl(true);
+    try {
+      const savedConfig = await saveEventVehicleTicketUrl(eventId, vehicleTicketUrl.trim() || undefined);
+      onConfigUpdated(savedConfig);
+      toast.success(
+        savedConfig.vehicle_ticket_url
+          ? "Vehicle parking pass link saved to Firestore."
+          : "Vehicle parking pass link cleared from Firestore.",
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to save vehicle parking pass link.";
+      toast.error(msg);
+    } finally {
+      setIsSavingVehicleUrl(false);
+    }
+  };
+
+  const targetsToCheckAccess = useMemo(() => {
+    if (selectedIds.size > 0) {
+      return selectedWithTicket;
+    }
+    return filteredRegistrantsWithIndex
+      .map(({ reg }) => reg)
+      .filter((r) => Boolean(r.venue_ticket_file_id && r.venue_ticket_url));
+  }, [selectedIds.size, selectedWithTicket, filteredRegistrantsWithIndex]);
+
+  const handleBulkCheckDriveAccess = async () => {
+    if (targetsToCheckAccess.length === 0) {
+      toast.error("No registrants with assigned venue ticket files to check.");
+      return;
+    }
+
+    setIsCheckingAccess(true);
+    setCheckAccessProgress({ current: 0, total: targetsToCheckAccess.length });
+    try {
+      let token = getCachedDriveAccessToken(user?.email) || (await requestDriveAccessToken(user?.email));
+      const updatesByRegId = new Map<string, Partial<FirestoreRegistration>>();
+      const nextUnverified = new Set(unverifiedAccessIds);
+      let verifiedCount = 0;
+      let missingCount = 0;
+
+      for (let i = 0; i < targetsToCheckAccess.length; i++) {
+        const reg = targetsToCheckAccess[i];
+        setCheckAccessProgress({ current: i + 1, total: targetsToCheckAccess.length });
+        const fileId = reg.venue_ticket_file_id;
+        if (!fileId || !reg.member_email) continue;
+
+        let hasAccess = false;
+        try {
+          hasAccess = await checkDriveReaderPermission(fileId, reg.member_email, token);
+        } catch (err) {
+          if (err instanceof Error && err.message.includes("401")) {
+            token = await requestDriveAccessToken(user?.email, true);
+            hasAccess = await checkDriveReaderPermission(fileId, reg.member_email, token);
+          } else {
+            throw err;
+          }
+        }
+
+        if (hasAccess) {
+          verifiedCount += 1;
+          nextUnverified.delete(reg.id);
+          const sharedAt = reg.venue_ticket_shared_at || new Date().toISOString();
+          if (!reg.venue_ticket_shared_at) {
+            const patch = await updateRegistrationDriveShareStatus(reg.id, sharedAt);
+            updatesByRegId.set(reg.id, patch);
+          }
+        } else {
+          missingCount += 1;
+          nextUnverified.add(reg.id);
+          if (reg.venue_ticket_shared_at) {
+            const patch = await updateRegistrationDriveShareStatus(reg.id, null);
+            updatesByRegId.set(reg.id, patch);
+          }
+        }
+      }
+
+      setUnverifiedAccessIds(nextUnverified);
+      if (updatesByRegId.size > 0) {
+        onRegistrationsPatched(updatesByRegId);
+      }
+
+      if (missingCount > 0) {
+        toast.warning(
+          `Drive access checked: ${verifiedCount} shared, ${missingCount} missing access (switched to Grant Access).`,
+        );
+      } else {
+        toast.success(`Drive access verified: all ${verifiedCount} checked attendee(s) have active view access.`);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to check Google Drive access status.";
+      toast.error(msg);
+    } finally {
+      setIsCheckingAccess(false);
+      setCheckAccessProgress(null);
+    }
+  };
+
+  const handleGrantSingleAccess = async (reg: FirestoreRegistration) => {
+    const fileId = reg.venue_ticket_file_id;
+    if (!fileId || !reg.member_email) return;
+
+    setGrantingAccessId(reg.id);
+    try {
+      let token = getCachedDriveAccessToken(user?.email) || (await requestDriveAccessToken(user?.email));
+      try {
+        await grantDriveReaderPermission(fileId, reg.member_email, token);
+      } catch (err) {
+        if (err instanceof Error && err.message.includes("401")) {
+          token = await requestDriveAccessToken(user?.email, true);
+          await grantDriveReaderPermission(fileId, reg.member_email, token);
+        } else {
+          throw err;
+        }
+      }
+
+      const sharedAt = new Date().toISOString();
+      await recordVenueTicketGrantedShare(eventId, {
+        fileId,
+        email: reg.member_email,
+        registrationId: reg.id,
+        sharedAt,
+      });
+      const patch = await updateRegistrationDriveShareStatus(reg.id, sharedAt);
+      const updates = new Map<string, Partial<FirestoreRegistration>>();
+      updates.set(reg.id, patch);
+      onRegistrationsPatched(updates);
+
+      setUnverifiedAccessIds((prev) => {
+        const next = new Set(prev);
+        next.delete(reg.id);
+        return next;
+      });
+
+      const refreshedConfig = await getEventVenueTicketConfig(eventId);
+      if (refreshedConfig) {
+        onConfigUpdated(refreshedConfig);
+      }
+
+      toast.success(`Granted Google Drive view access to ${reg.member_email}.`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to grant Google Drive access.";
+      toast.error(msg);
+    } finally {
+      setGrantingAccessId(null);
+    }
+  };
+
   return (
-    <Dialog open={open} onOpenChange={(next) => !isSyncing && !isBulkSending && onOpenChange(next)}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => !isSyncing && !isBulkSending && !isCheckingAccess && onOpenChange(next)}
+    >
       <DialogContent className="flex max-h-[90vh] w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl md:max-w-4xl">
         <DialogHeader className="shrink-0 border-b bg-muted/20 px-6 py-4">
           <div className="flex items-center gap-2.5">
@@ -438,18 +667,27 @@ export function VenueTicketDriveDialog({
                 </Label>
                 <code className="text-[10px] text-sky-600 dark:text-sky-400">[[VehicleTicketUrl]]</code>
               </div>
-              <Input
-                id="vehicle-ticket-url"
-                value={vehicleTicketUrl}
-                onChange={(e) => {
-                  const next = e.target.value;
-                  setVehicleTicketUrl(next);
-                  if (config) onConfigUpdated({ ...config, vehicle_ticket_url: next.trim() || undefined });
-                }}
-                placeholder="https://drive.google.com/file/d/..."
-                disabled={isSyncing || isBulkSending}
-                className="h-8 text-xs"
-              />
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Input
+                  id="vehicle-ticket-url"
+                  value={vehicleTicketUrl}
+                  onChange={(e) => setVehicleTicketUrl(e.target.value)}
+                  placeholder="https://drive.google.com/file/d/..."
+                  disabled={isSyncing || isBulkSending || isSavingVehicleUrl}
+                  className="h-8 flex-1 text-xs"
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={handleSaveVehicleTicketUrl}
+                  disabled={!isVehicleUrlDirty || isSavingVehicleUrl || isSyncing || isBulkSending}
+                  className="h-8 gap-1.5 px-3 text-xs shrink-0"
+                >
+                  {isSavingVehicleUrl ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
+                  <span>{isSavingVehicleUrl ? "Saving..." : "Save Pass"}</span>
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -508,8 +746,26 @@ export function VenueTicketDriveDialog({
                     <SelectItem value="unassigned">Unassigned ({eligibleRegistrants.length - mappedCount})</SelectItem>
                   </SelectContent>
                 </Select>
+                <div className="relative flex items-center">
+                  <Input
+                    type="text"
+                    value={seqRangeInput}
+                    onChange={(e) => setSeqRangeInput(e.target.value)}
+                    placeholder="No. (e.g. 559 - End)"
+                    className="h-7 w-[150px] pr-6 text-xs tabular-nums"
+                  />
+                  {seqRangeInput && (
+                    <button
+                      type="button"
+                      onClick={() => setSeqRangeInput("")}
+                      className="absolute right-1.5 text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="size-3" />
+                    </button>
+                  )}
+                </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {config?.updated_at && (
                   <span className="text-[11px] text-muted-foreground">
                     Last synced: {formatFirestoreDate(config.updated_at, "dd MMM yyyy, HH:mm")}
@@ -519,9 +775,32 @@ export function VenueTicketDriveDialog({
                   type="button"
                   size="xs"
                   variant="outline"
+                  onClick={handleBulkCheckDriveAccess}
+                  disabled={
+                    isCheckingAccess || isRemapping || isSyncing || isBulkSending || targetsToCheckAccess.length === 0
+                  }
+                  className="h-7 gap-1.5 px-2.5 text-xs"
+                >
+                  {isCheckingAccess ? <Loader2 className="size-3 animate-spin" /> : <SearchCheck className="size-3" />}
+                  <span>
+                    {isCheckingAccess
+                      ? `Checking Access (${checkAccessProgress?.current ?? 0}/${checkAccessProgress?.total ?? 0})...`
+                      : selectedIds.size > 0
+                        ? `Check Selected Access (${targetsToCheckAccess.length})`
+                        : `Check Drive Access (${targetsToCheckAccess.length})`}
+                  </span>
+                </Button>
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="outline"
                   onClick={handleRemapRegistrants}
                   disabled={
-                    isRemapping || isSyncing || isBulkSending || (syncedFiles.length === 0 && !folderUrl.trim())
+                    isRemapping ||
+                    isCheckingAccess ||
+                    isSyncing ||
+                    isBulkSending ||
+                    (syncedFiles.length === 0 && !folderUrl.trim())
                   }
                   className="h-7 gap-1.5 px-2.5 text-xs"
                 >
@@ -673,7 +952,7 @@ export function VenueTicketDriveDialog({
                           </TableCell>
                           <TableCell>
                             <div className="flex flex-wrap items-center gap-1">
-                              {reg.venue_ticket_shared_at && (
+                              {reg.venue_ticket_shared_at ? (
                                 <Badge
                                   variant="outline"
                                   className="gap-1 border-blue-500/30 bg-blue-500/10 text-[10px] text-blue-600 dark:text-blue-400"
@@ -681,7 +960,15 @@ export function VenueTicketDriveDialog({
                                   <ShieldCheck className="size-2.5" />
                                   Shared
                                 </Badge>
-                              )}
+                              ) : unverifiedAccessIds.has(reg.id) ? (
+                                <Badge
+                                  variant="outline"
+                                  className="gap-1 border-destructive/30 bg-destructive/10 text-[10px] text-destructive"
+                                >
+                                  <ShieldAlert className="size-2.5" />
+                                  No Access
+                                </Badge>
+                              ) : null}
                               {reg.venue_ticket_sent_at ? (
                                 <Badge
                                   variant="outline"
@@ -702,24 +989,56 @@ export function VenueTicketDriveDialog({
                           </TableCell>
                           <TableCell className="text-right">
                             {reg.venue_ticket_file_id && reg.venue_ticket_url ? (
-                              <Button
-                                type="button"
-                                size="xs"
-                                variant={reg.venue_ticket_sent_at ? "ghost" : "outline"}
-                                disabled={isSendingThis || isBulkSending || isSyncing}
-                                onClick={() => void onSendVenueTicketEmail(reg)}
-                                className={cn(
-                                  "h-6 gap-1 px-2 text-[11px]",
-                                  !reg.venue_ticket_sent_at && "border-primary/30 text-primary hover:bg-primary/5",
+                              <div className="flex items-center justify-end gap-1">
+                                {(unverifiedAccessIds.has(reg.id) ||
+                                  (reg.venue_ticket_sent_at && !reg.venue_ticket_shared_at)) && (
+                                  <Button
+                                    type="button"
+                                    size="xs"
+                                    variant="outline"
+                                    disabled={
+                                      grantingAccessId === reg.id ||
+                                      isSendingThis ||
+                                      isBulkSending ||
+                                      isSyncing ||
+                                      isCheckingAccess
+                                    }
+                                    onClick={() => void handleGrantSingleAccess(reg)}
+                                    className="h-6 gap-1 border-blue-500/30 px-2 text-[11px] text-blue-600 hover:bg-blue-500/10 dark:text-blue-400"
+                                  >
+                                    {grantingAccessId === reg.id ? (
+                                      <Loader2 className="size-3 animate-spin" />
+                                    ) : (
+                                      <ShieldCheck className="size-3" />
+                                    )}
+                                    <span>Grant Access</span>
+                                  </Button>
                                 )}
-                              >
-                                {isSendingThis ? (
-                                  <Loader2 className="size-3 animate-spin" />
-                                ) : (
-                                  <Mail className="size-3" />
-                                )}
-                                <span>{reg.venue_ticket_sent_at ? "Resend" : "Grant & Send"}</span>
-                              </Button>
+                                <Button
+                                  type="button"
+                                  size="xs"
+                                  variant={reg.venue_ticket_sent_at ? "ghost" : "outline"}
+                                  disabled={
+                                    isSendingThis ||
+                                    grantingAccessId === reg.id ||
+                                    isBulkSending ||
+                                    isSyncing ||
+                                    isCheckingAccess
+                                  }
+                                  onClick={() => void onSendVenueTicketEmail(reg)}
+                                  className={cn(
+                                    "h-6 gap-1 px-2 text-[11px]",
+                                    !reg.venue_ticket_sent_at && "border-primary/30 text-primary hover:bg-primary/5",
+                                  )}
+                                >
+                                  {isSendingThis ? (
+                                    <Loader2 className="size-3 animate-spin" />
+                                  ) : (
+                                    <Mail className="size-3" />
+                                  )}
+                                  <span>{reg.venue_ticket_sent_at ? "Resend" : "Grant & Send"}</span>
+                                </Button>
+                              </div>
                             ) : (
                               <span className="text-[11px] text-muted-foreground">—</span>
                             )}
@@ -736,18 +1055,20 @@ export function VenueTicketDriveDialog({
 
         <DialogFooter className="m-0 shrink-0 flex-col-reverse gap-2 border-t bg-muted/20 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-[11px] text-muted-foreground">
-            {bulkProgress
-              ? `Sending ${bulkProgress.current} of ${bulkProgress.total}...`
-              : selectedIds.size > 0
-                ? `${selectedIds.size} selected (${selectedWithTicket.length} ready to send).`
-                : `${pendingSendRegistrants.length} mapped registrant(s) awaiting email delivery.`}
+            {checkAccessProgress
+              ? `Checking Drive access ${checkAccessProgress.current} of ${checkAccessProgress.total}...`
+              : bulkProgress
+                ? `Sending ${bulkProgress.current} of ${bulkProgress.total}...`
+                : selectedIds.size > 0
+                  ? `${selectedIds.size} selected (${selectedWithTicket.length} ready to send).`
+                  : `${pendingSendRegistrants.length} mapped registrant(s) awaiting email delivery.`}
           </div>
           <div className="flex items-center gap-2">
             <Button
               type="button"
               variant="outline"
               size="sm"
-              disabled={isSyncing || isBulkSending}
+              disabled={isSyncing || isBulkSending || isCheckingAccess}
               onClick={() => onOpenChange(false)}
               className="text-xs"
             >
@@ -757,7 +1078,7 @@ export function VenueTicketDriveDialog({
               <Button
                 type="button"
                 size="sm"
-                disabled={isSyncing || isBulkSending || selectedWithTicket.length === 0}
+                disabled={isSyncing || isBulkSending || isCheckingAccess || selectedWithTicket.length === 0}
                 onClick={handleBulkSendSelected}
                 className="gap-1.5 text-xs"
               >
@@ -772,7 +1093,7 @@ export function VenueTicketDriveDialog({
               <Button
                 type="button"
                 size="sm"
-                disabled={isSyncing || isBulkSending || pendingSendRegistrants.length === 0}
+                disabled={isSyncing || isBulkSending || isCheckingAccess || pendingSendRegistrants.length === 0}
                 onClick={handleBulkSendPending}
                 className="gap-1.5 text-xs"
               >
