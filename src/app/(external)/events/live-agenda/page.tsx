@@ -31,6 +31,8 @@ async function loadEvent(eventId: string): Promise<{ title: string; stages: Live
   const stages = buildLiveAgendaStages({
     eventId,
     eventTitle: event.title,
+    startDate: event.start_date,
+    endDate: event.end_date,
     agenda: event.agenda,
     speakers: event.speakers && event.speakers.length > 0 ? event.speakers : getAllEventSpeakers(event),
     sessions: firestoreData.sessions,

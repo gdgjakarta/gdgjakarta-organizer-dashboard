@@ -1,13 +1,14 @@
 import Image from "next/image";
-import Link from "next/link";
 
 import { CalendarX2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import {
+  getDateKeyInTimeZone,
+  getEventPhase,
   getMinutesInTimeZone,
   getStageHighlight,
-  LIVE_AGENDA_FULL_AGENDA_PATH,
+  LIVE_AGENDA_FULL_AGENDA_URL,
   LIVE_AGENDA_LOGO_URL,
   LIVE_AGENDA_TIME_ZONE,
   LIVE_AGENDA_TIME_ZONE_LABEL,
@@ -53,6 +54,7 @@ function stageTitle(name: string): string {
 
 export function CurrentTimeColumn({ now, stages }: CurrentTimeColumnProps) {
   const nowMinutes = now ? getMinutesInTimeZone(now) : null;
+  const todayKey = now ? getDateKeyInTimeZone(now) : null;
 
   return (
     <section
@@ -97,7 +99,10 @@ export function CurrentTimeColumn({ now, stages }: CurrentTimeColumnProps) {
       ) : (
         <div className="flex flex-col gap-6">
           {stages.map((stage) => {
-            const highlight = nowMinutes === null ? null : getStageHighlight(stage.items, nowMinutes);
+            const highlight =
+              nowMinutes === null || todayKey === null
+                ? null
+                : getStageHighlight(stage.items, nowMinutes, getEventPhase(stage, todayKey));
 
             return (
               <article
@@ -135,12 +140,14 @@ export function CurrentTimeColumn({ now, stages }: CurrentTimeColumnProps) {
 
       <div className="flex flex-col gap-1 text-center text-shadow-[0_2px_16px] text-shadow-black/50">
         <p className="font-medium text-sm text-white/90">See full agenda here</p>
-        <Link
-          href={LIVE_AGENDA_FULL_AGENDA_PATH}
+        <a
+          href={LIVE_AGENDA_FULL_AGENDA_URL}
+          target="_blank"
+          rel="noopener noreferrer"
           className="font-bold text-base underline underline-offset-4 outline-none focus-visible:ring-4 focus-visible:ring-white/60"
         >
-          gdgjakarta.org{LIVE_AGENDA_FULL_AGENDA_PATH}
-        </Link>
+          {LIVE_AGENDA_FULL_AGENDA_URL.replace(/^https?:\/\//, "")}
+        </a>
       </div>
     </section>
   );
