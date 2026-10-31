@@ -603,6 +603,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
   const [merchandiseFilter, setMerchandiseFilter] = useState<string>("all");
   const [merchandiseVariantFilter, setMerchandiseVariantFilter] = useState<string>("all");
   const [reviewerFilter, setReviewerFilter] = useState<string>("all");
+  const [venueTicketFilter, setVenueTicketFilter] = useState<string>("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [isStatusGuideOpen, setIsStatusGuideOpen] = useState(false);
@@ -1796,6 +1797,11 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
     setCurrentPage(1);
   }, []);
 
+  const handleVenueTicketFilterChange = (val: string) => {
+    setVenueTicketFilter(val);
+    setCurrentPage(1);
+  };
+
   const handleResetAllFilters = () => {
     setStatusFilter("all");
     setSessionFilter("all");
@@ -1805,6 +1811,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
     setMerchandiseFilter("all");
     setMerchandiseVariantFilter("all");
     setReviewerFilter("all");
+    setVenueTicketFilter("all");
     setSearch("");
     setQuestionFilters({});
     setCurrentPage(1);
@@ -1904,6 +1911,25 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
         });
       }
 
+      let matchesVenueTicket = true;
+      if (venueTicketFilter !== "all") {
+        if (venueTicketFilter === "shared") {
+          matchesVenueTicket = Boolean(reg.venue_ticket_shared_at);
+        } else if (venueTicketFilter === "not_shared") {
+          matchesVenueTicket = !reg.venue_ticket_shared_at;
+        } else if (venueTicketFilter === "sent") {
+          matchesVenueTicket = Boolean(reg.venue_ticket_sent_at);
+        } else if (venueTicketFilter === "not_sent") {
+          matchesVenueTicket = !reg.venue_ticket_sent_at;
+        } else if (venueTicketFilter === "pending_send") {
+          matchesVenueTicket = Boolean(reg.venue_ticket_file_id && reg.venue_ticket_url) && !reg.venue_ticket_sent_at;
+        } else if (venueTicketFilter === "assigned") {
+          matchesVenueTicket = Boolean(reg.venue_ticket_file_id);
+        } else if (venueTicketFilter === "unassigned") {
+          matchesVenueTicket = !reg.venue_ticket_file_id;
+        }
+      }
+
       if (
         !matchesSearch ||
         !matchesSession ||
@@ -1912,7 +1938,8 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
         !matchesReviewer ||
         !matchesPromoReferral ||
         !matchesMerchandise ||
-        !matchesMerchandiseVariant
+        !matchesMerchandiseVariant ||
+        !matchesVenueTicket
       ) {
         return false;
       }
@@ -1957,6 +1984,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
     selectedQuestionColumns,
     questionFilters,
     questionLabelMap,
+    venueTicketFilter,
     bevyAttendeesMap,
   ]);
 
@@ -4480,6 +4508,23 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                   />
                 )}
 
+                <FilterSelect
+                  value={venueTicketFilter}
+                  onValueChange={handleVenueTicketFilterChange}
+                  icon={<Ticket className="size-3 shrink-0 text-muted-foreground" />}
+                  prefix="Venue Ticket:"
+                  options={[
+                    { value: "all", label: "All Venue Ticket Statuses" },
+                    { value: "shared", label: "Drive Access Shared" },
+                    { value: "not_shared", label: "Drive Access Not Shared" },
+                    { value: "sent", label: "Ticket Email Sent" },
+                    { value: "not_sent", label: "Ticket Email Not Sent" },
+                    { value: "pending_send", label: "Pending Send (Mapped)" },
+                    { value: "assigned", label: "Ticket Assigned" },
+                    { value: "unassigned", label: "Unassigned" },
+                  ]}
+                />
+
                 {/* Dynamic Question Field Filters */}
                 {selectedQuestionColumns.map((qKey) => {
                   const meta = questionFilterOptionsByKey.get(qKey);
@@ -4889,6 +4934,35 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                     onClick={() => handleReviewerFilterChange("all")}
                     className="ml-0.5 rounded-full p-0.5 hover:bg-muted-foreground/20"
                     aria-label="Clear reviewer filter"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </Badge>
+              )}
+              {venueTicketFilter !== "all" && (
+                <Badge variant="secondary" className="gap-1 font-normal text-xs">
+                  <Ticket className="size-3 text-primary" />
+                  <span>
+                    Venue Ticket:{" "}
+                    {venueTicketFilter === "shared"
+                      ? "Drive Access Shared"
+                      : venueTicketFilter === "not_shared"
+                        ? "Drive Access Not Shared"
+                        : venueTicketFilter === "sent"
+                          ? "Ticket Email Sent"
+                          : venueTicketFilter === "not_sent"
+                            ? "Ticket Email Not Sent"
+                            : venueTicketFilter === "pending_send"
+                              ? "Pending Send"
+                              : venueTicketFilter === "assigned"
+                                ? "Ticket Assigned"
+                                : "Unassigned"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleVenueTicketFilterChange("all")}
+                    className="ml-0.5 rounded-full p-0.5 hover:bg-muted-foreground/20"
+                    aria-label="Clear venue ticket filter"
                   >
                     <X className="size-3" />
                   </button>

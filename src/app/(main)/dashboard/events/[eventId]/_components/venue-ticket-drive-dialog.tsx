@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2,
   ExternalLink,
+  Filter,
   FolderSync,
   Loader2,
   Mail,
@@ -28,6 +29,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatFirestoreDate } from "@/lib/date-utils";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
@@ -79,6 +81,9 @@ export function VenueTicketDriveDialog({
   const [isRemapping, setIsRemapping] = useState(false);
   const [isBulkSending, setIsBulkSending] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number } | null>(null);
+  const [deliveryFilter, setDeliveryFilter] = useState<
+    "all" | "sent" | "not_sent" | "shared" | "not_shared" | "pending_send" | "unassigned"
+  >("all");
 
   useEffect(() => {
     if (config?.folder_url && !folderUrl) {
@@ -111,6 +116,28 @@ export function VenueTicketDriveDialog({
     [eligibleRegistrants],
   );
 
+  const sharedCount = useMemo(
+    () => eligibleRegistrants.filter((r) => Boolean(r.venue_ticket_shared_at)).length,
+    [eligibleRegistrants],
+  );
+
+  const filteredRegistrantsWithIndex = useMemo(() => {
+    return eligibleRegistrants
+      .map((reg, index) => ({ reg, sequenceNumber: index + 1 }))
+      .filter(({ reg }) => {
+        if (deliveryFilter === "all") return true;
+        if (deliveryFilter === "sent") return Boolean(reg.venue_ticket_sent_at);
+        if (deliveryFilter === "not_sent") return !reg.venue_ticket_sent_at;
+        if (deliveryFilter === "shared") return Boolean(reg.venue_ticket_shared_at);
+        if (deliveryFilter === "not_shared") return !reg.venue_ticket_shared_at;
+        if (deliveryFilter === "pending_send") {
+          return Boolean(reg.venue_ticket_file_id && reg.venue_ticket_url) && !reg.venue_ticket_sent_at;
+        }
+        if (deliveryFilter === "unassigned") return !reg.venue_ticket_file_id;
+        return true;
+      });
+  }, [eligibleRegistrants, deliveryFilter]);
+
   const handleSyncAndMap = async () => {
     const folderId = extractDriveFolderId(folderUrl);
     if (!folderId) {
@@ -121,7 +148,7 @@ export function VenueTicketDriveDialog({
     setIsSyncing(true);
     try {
       let token = getCachedDriveAccessToken(user?.email) || (await requestDriveAccessToken(user?.email));
-      const files = await listDriveFolderPdfs(folderId, token).catch(async (err) => {
+      const files = await listDriveFolderPdfs(folderId, token).catch(async (_err) => {
         // Retry once with forced consent if token expired or lacks scope
         token = await requestDriveAccessToken(user?.email, true);
         return listDriveFolderPdfs(folderId, token);
@@ -369,9 +396,33 @@ export function VenueTicketDriveDialog({
           {/* Sequence Mapping Preview Table */}
           <div className="space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="font-semibold text-xs">
-                Confirmed Registrants Sequence (Sorted by Registration Time Ascending)
-              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-semibold text-xs">
+                  Confirmed Registrants Sequence (Sorted by Registration Time Ascending)
+                </span>
+                <Select
+                  value={deliveryFilter}
+                  onValueChange={(val) =>
+                    setDeliveryFilter(
+                      val as "all" | "sent" | "not_sent" | "shared" | "not_shared" | "pending_send" | "unassigned",
+                    )
+                  }
+                >
+                  <SelectTrigger className="h-7 w-[185px] text-xs">
+                    <Filter className="mr-1.5 size-3 shrink-0 text-muted-foreground" />
+                    <SelectValue placeholder="Filter delivery status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Registrants ({eligibleRegistrants.length})</SelectItem>
+                    <SelectItem value="shared">Drive Access Shared ({sharedCount})</SelectItem>
+                    <SelectItem value="not_shared">Not Shared ({eligibleRegistrants.length - sharedCount})</SelectItem>
+                    <SelectItem value="sent">Email Sent ({sentCount})</SelectItem>
+                    <SelectItem value="not_sent">Email Not Sent ({eligibleRegistrants.length - sentCount})</SelectItem>
+                    <SelectItem value="pending_send">Pending Send ({pendingSendRegistrants.length})</SelectItem>
+                    <SelectItem value="unassigned">Unassigned ({eligibleRegistrants.length - mappedCount})</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="flex items-center gap-2">
                 {config?.updated_at && (
                   <span className="text-[11px] text-muted-foreground">
@@ -398,7 +449,7 @@ export function VenueTicketDriveDialog({
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-14">#Seq</TableHead>
+                    <TableHead className="w-14">No.</TableHead>
                     <TableHead>Registrant</TableHead>
                     <TableHead className="whitespace-nowrap">Registered At</TableHead>
                     <TableHead>Assigned Venue Ticket</TableHead>
@@ -407,22 +458,26 @@ export function VenueTicketDriveDialog({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {eligibleRegistrants.length === 0 ? (
+                  {filteredRegistrantsWithIndex.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={6} className="h-28 text-center text-muted-foreground text-xs">
                         <div className="flex flex-col items-center justify-center gap-1.5">
                           <Users className="size-4 text-muted-foreground" />
-                          <span>No approved or paid &amp; registered participants yet.</span>
+                          <span>
+                            {eligibleRegistrants.length === 0
+                              ? "No approved or paid & registered participants yet."
+                              : "No registrants match the selected filter."}
+                          </span>
                         </div>
                       </TableCell>
                     </TableRow>
                   ) : (
-                    eligibleRegistrants.map((reg, index) => {
+                    filteredRegistrantsWithIndex.map(({ reg, sequenceNumber }) => {
                       const isSendingThis = sendingRegistrationId === reg.id;
                       return (
                         <TableRow key={reg.id}>
                           <TableCell className="font-mono font-semibold text-muted-foreground text-xs">
-                            #{index + 1}
+                            #{sequenceNumber}
                           </TableCell>
                           <TableCell>
                             <div className="font-medium text-foreground text-xs">{reg.member_name}</div>
