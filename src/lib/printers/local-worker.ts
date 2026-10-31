@@ -2,10 +2,9 @@
 // The dashboard talks to it over loopback HTTP so badges print with no browser print dialog.
 
 export const DEFAULT_PRINT_WORKER_URL = "http://127.0.0.1:17777";
-/** Object key of the uploaded archive inside the R2 bucket (as uploaded: note `-tar.gz`, not `.tar.gz`). */
-export const PRINT_WORKER_ARCHIVE_KEY = "gdg-jakarta/gdg-print-worker-macos-arm64-tar.gz";
-/** Public R2 domain used when NEXT_PUBLIC_R2_PUBLIC_URL is not set in the build (it is not part of wrangler vars). */
-const DEFAULT_ASSETS_BASE_URL = "https://assets.gdgjakarta.org";
+/** Where the packaged worker archive lives (Media page, `community-dashboard/app/`; note `-tar.gz`, not `.tar.gz`). */
+export const PRINT_WORKER_DOWNLOAD_URL =
+  "https://gdgjakarta.com/api/media/community-dashboard/app/gdg-print-worker-macos-arm64-tar.gz";
 /** Production dashboard address the worker is told to accept (`setup --origin`). */
 export const PRINT_WORKER_DASHBOARD_ORIGIN = "https://gdgjakarta.com";
 export const PRINT_WORKER_BINARY_NAME = "gdg-print-worker";
@@ -104,14 +103,11 @@ export async function printViaWorker(payload: PrintWorkerPayload): Promise<Print
 
 /**
  * Where the packaged worker (`npm run print-worker:build`) is downloaded from. It is ~42 MB, over Cloudflare's
- * 25 MiB static asset limit, so it is hosted on R2: `<NEXT_PUBLIC_R2_PUBLIC_URL, else https://assets.gdgjakarta.org>/<PRINT_WORKER_ARCHIVE_KEY>`.
+ * 25 MiB static asset limit, so it is hosted in the R2 media bucket and served through `/api/media/...`.
  * `NEXT_PUBLIC_PRINT_WORKER_DOWNLOAD_URL` overrides it (e.g. a GitHub Release).
  */
 export function getPrintWorkerDownloadUrl(): string {
-  const explicit = process.env.NEXT_PUBLIC_PRINT_WORKER_DOWNLOAD_URL;
-  if (explicit) return explicit;
-  const baseUrl = process.env.NEXT_PUBLIC_R2_PUBLIC_URL || DEFAULT_ASSETS_BASE_URL;
-  return `${baseUrl.replace(/\/+$/, "")}/${PRINT_WORKER_ARCHIVE_KEY}`;
+  return process.env.NEXT_PUBLIC_PRINT_WORKER_DOWNLOAD_URL || PRINT_WORKER_DOWNLOAD_URL;
 }
 
 /** File name the browser saves the download as (last path segment of the URL), used in the install commands. */
@@ -121,7 +117,7 @@ export function getPrintWorkerArchiveFileName(): string {
     const segment = new URL(url, "http://localhost").pathname.split("/").filter(Boolean).pop();
     if (segment) return decodeURIComponent(segment);
   } catch {
-    // fall through to the key's own name
+    // fall through to the default file name
   }
-  return PRINT_WORKER_ARCHIVE_KEY.split("/").pop() ?? PRINT_WORKER_ARCHIVE_KEY;
+  return PRINT_WORKER_DOWNLOAD_URL.split("/").pop() ?? "gdg-print-worker-macos-arm64-tar.gz";
 }
