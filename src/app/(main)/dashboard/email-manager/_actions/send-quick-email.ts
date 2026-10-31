@@ -74,14 +74,19 @@ export async function sendQuickEmail(input: QuickEmailInput) {
       data.customEventPlaceholders?.EventVenueUrl ||
       data.customEventPlaceholders?.VenueGuideUrl ||
       `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${eventVenue} ${eventAddress}`.trim())}`;
-    const vehicleTicketUrl =
-      data.vehicleTicketUrl ||
-      data.customEventPlaceholders?.VehicleTicketUrl ||
-      "https://drive.google.com/file/d/sample-vehicle-ticket/view";
+    const vehicleTicketUrl = (data.vehicleTicketUrl ?? data.customEventPlaceholders?.VehicleTicketUrl ?? "").trim();
 
     // 3. Convert any legacy n8n expressions in subject/body first
     let cleanSubject = convertTemplateToCleanTokens(data.subject);
     let cleanBody = convertTemplateToCleanTokens(data.body);
+
+    // Strip the Vehicle / Parking Pass row from template if vehicleTicketUrl is empty
+    if (!vehicleTicketUrl) {
+      cleanBody = cleanBody.replace(
+        /<div\s+class=["']detail-row["'][^>]*>\s*<span\s+class=["']detail-icon["'][^>]*>\s*🚗\s*<\/span>[\s\S]*?\[\[\s*VehicleTicketUrl\s*\]\][\s\S]*?<\/div>\s*<\/div>/gi,
+        "",
+      );
+    }
 
     // 4. Interpolate Event Placeholders
     const replaceToken = (input: string, key: string, value: string) => {

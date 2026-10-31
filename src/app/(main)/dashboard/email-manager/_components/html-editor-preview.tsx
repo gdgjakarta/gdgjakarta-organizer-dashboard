@@ -121,6 +121,12 @@ export function HtmlEditorPreview({
 
     // 1. Interpolate all event placeholders (standard + custom)
     if (eventPlaceholders) {
+      if (!eventPlaceholders.VehicleTicketUrl?.trim()) {
+        result = result.replace(
+          /<div\s+class=["']detail-row["'][^>]*>\s*<span\s+class=["']detail-icon["'][^>]*>\s*🚗\s*<\/span>[\s\S]*?\[\[\s*VehicleTicketUrl\s*\]\][\s\S]*?<\/div>\s*<\/div>/gi,
+          "",
+        );
+      }
       for (const [key, val] of Object.entries(eventPlaceholders)) {
         if (val !== undefined && val !== null) {
           const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
