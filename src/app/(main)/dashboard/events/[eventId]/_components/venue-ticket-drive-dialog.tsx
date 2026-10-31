@@ -14,11 +14,13 @@ import {
   ShieldCheck,
   Ticket,
   Users,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -84,6 +86,20 @@ export function VenueTicketDriveDialog({
   const [deliveryFilter, setDeliveryFilter] = useState<
     "all" | "sent" | "not_sent" | "shared" | "not_shared" | "pending_send" | "unassigned"
   >("all");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Clear selections when filter changes or registrations change significantly
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      if (prev.size === 0) return prev;
+      const validIds = new Set(registrations.map((r) => r.id));
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (validIds.has(id)) next.add(id);
+      }
+      return next.size === prev.size ? prev : next;
+    });
+  }, [registrations]);
 
   useEffect(() => {
     if (config?.folder_url && !folderUrl) {
@@ -269,6 +285,44 @@ export function VenueTicketDriveDialog({
     }
   };
 
+  const selectedRegistrants = useMemo(() => {
+    return eligibleRegistrants.filter((r) => selectedIds.has(r.id));
+  }, [eligibleRegistrants, selectedIds]);
+
+  const selectedWithTicket = useMemo(() => {
+    return selectedRegistrants.filter((r) => Boolean(r.venue_ticket_file_id && r.venue_ticket_url));
+  }, [selectedRegistrants]);
+
+  const toggleSelectRow = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    setSelectedIds(next);
+  };
+
+  const toggleSelectAllFiltered = () => {
+    if (filteredRegistrantsWithIndex.length === 0) return;
+    const allFilteredSelected = filteredRegistrantsWithIndex.every(({ reg }) => selectedIds.has(reg.id));
+    const next = new Set(selectedIds);
+    if (allFilteredSelected) {
+      for (const { reg } of filteredRegistrantsWithIndex) {
+        next.delete(reg.id);
+      }
+    } else {
+      for (const { reg } of filteredRegistrantsWithIndex) {
+        next.add(reg.id);
+      }
+    }
+    setSelectedIds(next);
+  };
+
+  const handleClearSelection = () => {
+    setSelectedIds(new Set());
+  };
+
   const handleBulkSendPending = async () => {
     if (pendingSendRegistrants.length === 0) return;
 
@@ -290,6 +344,38 @@ export function VenueTicketDriveDialog({
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to complete bulk venue ticket delivery.";
+      toast.error(msg);
+    } finally {
+      setIsBulkSending(false);
+      setBulkProgress(null);
+    }
+  };
+
+  const handleBulkSendSelected = async () => {
+    if (selectedWithTicket.length === 0) {
+      toast.error("None of the selected registrants have an assigned venue ticket file.");
+      return;
+    }
+
+    setIsBulkSending(true);
+    setBulkProgress({ current: 0, total: selectedWithTicket.length });
+    try {
+      const token = getCachedDriveAccessToken(user?.email) || (await requestDriveAccessToken(user?.email));
+      let successCount = 0;
+
+      for (let i = 0; i < selectedWithTicket.length; i++) {
+        const reg = selectedWithTicket[i];
+        setBulkProgress({ current: i + 1, total: selectedWithTicket.length });
+        const ok = await onSendVenueTicketEmail(reg, token);
+        if (ok) successCount += 1;
+      }
+
+      toast.success(
+        `Sent Venue Ticket email and granted view access to ${successCount} of ${selectedWithTicket.length} selected registrant(s).`,
+      );
+      setSelectedIds(new Set());
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to complete selected venue ticket delivery.";
       toast.error(msg);
     } finally {
       setIsBulkSending(false);
@@ -445,11 +531,85 @@ export function VenueTicketDriveDialog({
               </div>
             </div>
 
+            {/* Selection Toolbar when items selected */}
+            {selectedIds.size > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary" className="gap-1.5 bg-primary/10 text-primary text-xs">
+                    <span className="relative flex size-2">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+                      <span className="relative inline-flex size-2 rounded-full bg-primary" />
+                    </span>
+                    <span>
+                      {selectedIds.size} {selectedIds.size === 1 ? "attendee" : "attendees"} selected
+                    </span>
+                  </Badge>
+                  {selectedWithTicket.length < selectedIds.size && (
+                    <span className="text-[11px] text-muted-foreground">
+                      ({selectedWithTicket.length} with assigned ticket)
+                    </span>
+                  )}
+                  {selectedIds.size < filteredRegistrantsWithIndex.length && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        const next = new Set(selectedIds);
+                        for (const { reg } of filteredRegistrantsWithIndex) {
+                          next.add(reg.id);
+                        }
+                        setSelectedIds(next);
+                      }}
+                      className="h-6 text-muted-foreground text-[11px] hover:text-foreground"
+                    >
+                      Select all filtered ({filteredRegistrantsWithIndex.length})
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleClearSelection}
+                    className="h-6 gap-1 text-muted-foreground text-[11px] hover:text-foreground"
+                  >
+                    <X className="size-3" />
+                    Clear
+                  </Button>
+                </div>
+
+                <Button
+                  type="button"
+                  size="xs"
+                  disabled={isBulkSending || isSyncing || selectedWithTicket.length === 0}
+                  onClick={handleBulkSendSelected}
+                  className="h-7 gap-1.5 text-xs"
+                >
+                  {isBulkSending ? <Loader2 className="size-3 animate-spin" /> : <Send className="size-3" />}
+                  <span>
+                    {isBulkSending
+                      ? `Sending (${bulkProgress?.current ?? 0}/${bulkProgress?.total ?? 0})...`
+                      : `Send Venue Ticket to Selected (${selectedWithTicket.length})`}
+                  </span>
+                </Button>
+              </div>
+            )}
+
             <div className="max-h-[340px] overflow-y-auto rounded-md border">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-14">No.</TableHead>
+                    <TableHead className="w-10">
+                      <Checkbox
+                        checked={
+                          filteredRegistrantsWithIndex.length > 0 &&
+                          filteredRegistrantsWithIndex.every(({ reg }) => selectedIds.has(reg.id))
+                        }
+                        onCheckedChange={toggleSelectAllFiltered}
+                        aria-label="Select all"
+                      />
+                    </TableHead>
+                    <TableHead className="w-12">No.</TableHead>
                     <TableHead>Registrant</TableHead>
                     <TableHead className="whitespace-nowrap">Registered At</TableHead>
                     <TableHead>Assigned Venue Ticket</TableHead>
@@ -460,7 +620,7 @@ export function VenueTicketDriveDialog({
                 <TableBody>
                   {filteredRegistrantsWithIndex.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="h-28 text-center text-muted-foreground text-xs">
+                      <TableCell colSpan={7} className="h-28 text-center text-muted-foreground text-xs">
                         <div className="flex flex-col items-center justify-center gap-1.5">
                           <Users className="size-4 text-muted-foreground" />
                           <span>
@@ -474,8 +634,16 @@ export function VenueTicketDriveDialog({
                   ) : (
                     filteredRegistrantsWithIndex.map(({ reg, sequenceNumber }) => {
                       const isSendingThis = sendingRegistrationId === reg.id;
+                      const isSelected = selectedIds.has(reg.id);
                       return (
-                        <TableRow key={reg.id}>
+                        <TableRow key={reg.id} className={cn(isSelected && "bg-muted/40")}>
+                          <TableCell className="w-10" onClick={(e) => e.stopPropagation()}>
+                            <Checkbox
+                              checked={isSelected}
+                              onCheckedChange={() => toggleSelectRow(reg.id)}
+                              aria-label={`Select ${reg.member_name}`}
+                            />
+                          </TableCell>
                           <TableCell className="font-mono font-semibold text-muted-foreground text-xs">
                             #{sequenceNumber}
                           </TableCell>
@@ -570,7 +738,9 @@ export function VenueTicketDriveDialog({
           <div className="text-[11px] text-muted-foreground">
             {bulkProgress
               ? `Sending ${bulkProgress.current} of ${bulkProgress.total}...`
-              : `${pendingSendRegistrants.length} mapped registrant(s) awaiting email delivery.`}
+              : selectedIds.size > 0
+                ? `${selectedIds.size} selected (${selectedWithTicket.length} ready to send).`
+                : `${pendingSendRegistrants.length} mapped registrant(s) awaiting email delivery.`}
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -583,20 +753,37 @@ export function VenueTicketDriveDialog({
             >
               Close
             </Button>
-            <Button
-              type="button"
-              size="sm"
-              disabled={isSyncing || isBulkSending || pendingSendRegistrants.length === 0}
-              onClick={handleBulkSendPending}
-              className="gap-1.5 text-xs"
-            >
-              {isBulkSending ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
-              <span>
-                {isBulkSending
-                  ? `Sending (${bulkProgress?.current ?? 0}/${bulkProgress?.total ?? 0})...`
-                  : `Grant Access & Send Pending (${pendingSendRegistrants.length})`}
-              </span>
-            </Button>
+            {selectedIds.size > 0 ? (
+              <Button
+                type="button"
+                size="sm"
+                disabled={isSyncing || isBulkSending || selectedWithTicket.length === 0}
+                onClick={handleBulkSendSelected}
+                className="gap-1.5 text-xs"
+              >
+                {isBulkSending ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+                <span>
+                  {isBulkSending
+                    ? `Sending (${bulkProgress?.current ?? 0}/${bulkProgress?.total ?? 0})...`
+                    : `Send Venue Ticket to Selected (${selectedWithTicket.length})`}
+                </span>
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                size="sm"
+                disabled={isSyncing || isBulkSending || pendingSendRegistrants.length === 0}
+                onClick={handleBulkSendPending}
+                className="gap-1.5 text-xs"
+              >
+                {isBulkSending ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+                <span>
+                  {isBulkSending
+                    ? `Sending (${bulkProgress?.current ?? 0}/${bulkProgress?.total ?? 0})...`
+                    : `Grant Access & Send Pending (${pendingSendRegistrants.length})`}
+                </span>
+              </Button>
+            )}
           </div>
         </DialogFooter>
       </DialogContent>
