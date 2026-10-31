@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   ExternalLink,
   Filter,
   FolderSync,
@@ -101,6 +103,18 @@ export function VenueTicketDriveDialog({
   >("all");
   const [seqRangeOption, setSeqRangeOption] = useState<string>("all");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [page, setPage] = useState(1);
+  const pageSize = 50;
+
+  const handleDeliveryFilterChange = (val: typeof deliveryFilter) => {
+    setDeliveryFilter(val);
+    setPage(1);
+  };
+
+  const handleSeqRangeChange = (val: string) => {
+    setSeqRangeOption(val);
+    setPage(1);
+  };
 
   const isVehicleUrlDirty = useMemo(
     () => (vehicleTicketUrl ?? "").trim() !== (config?.vehicle_ticket_url ?? "").trim(),
@@ -353,6 +367,31 @@ export function VenueTicketDriveDialog({
       next.delete(id);
     } else {
       next.add(id);
+    }
+    setSelectedIds(next);
+  };
+
+  const totalPages = Math.max(1, Math.ceil(filteredRegistrantsWithIndex.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const paginatedRows = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    return filteredRegistrantsWithIndex.slice(startIndex, startIndex + pageSize);
+  }, [filteredRegistrantsWithIndex, currentPage]);
+
+  const isCurrentPageAllSelected =
+    paginatedRows.length > 0 && paginatedRows.every(({ reg }) => selectedIds.has(reg.id));
+
+  const toggleSelectPage = () => {
+    if (paginatedRows.length === 0) return;
+    const next = new Set(selectedIds);
+    if (isCurrentPageAllSelected) {
+      for (const { reg } of paginatedRows) {
+        next.delete(reg.id);
+      }
+    } else {
+      for (const { reg } of paginatedRows) {
+        next.add(reg.id);
+      }
     }
     setSelectedIds(next);
   };
@@ -725,7 +764,7 @@ export function VenueTicketDriveDialog({
                 <Select
                   value={deliveryFilter}
                   onValueChange={(val) =>
-                    setDeliveryFilter(
+                    handleDeliveryFilterChange(
                       val as "all" | "sent" | "not_sent" | "shared" | "not_shared" | "pending_send" | "unassigned",
                     )
                   }
@@ -745,7 +784,7 @@ export function VenueTicketDriveDialog({
                   </SelectContent>
                 </Select>
                 {seqRangeOptions.length > 1 && (
-                  <Select value={seqRangeOption} onValueChange={setSeqRangeOption}>
+                  <Select value={seqRangeOption} onValueChange={handleSeqRangeChange}>
                     <SelectTrigger className="h-7 w-[160px] text-xs tabular-nums">
                       <SelectValue placeholder="All Sequence No." />
                     </SelectTrigger>
@@ -828,13 +867,7 @@ export function VenueTicketDriveDialog({
                       type="button"
                       size="sm"
                       variant="ghost"
-                      onClick={() => {
-                        const next = new Set(selectedIds);
-                        for (const { reg } of filteredRegistrantsWithIndex) {
-                          next.add(reg.id);
-                        }
-                        setSelectedIds(next);
-                      }}
+                      onClick={toggleSelectAllFiltered}
                       className="h-6 text-muted-foreground text-[11px] hover:text-foreground"
                     >
                       Select all filtered ({filteredRegistrantsWithIndex.length})
@@ -875,12 +908,9 @@ export function VenueTicketDriveDialog({
                   <TableRow>
                     <TableHead className="w-10">
                       <Checkbox
-                        checked={
-                          filteredRegistrantsWithIndex.length > 0 &&
-                          filteredRegistrantsWithIndex.every(({ reg }) => selectedIds.has(reg.id))
-                        }
-                        onCheckedChange={toggleSelectAllFiltered}
-                        aria-label="Select all"
+                        checked={isCurrentPageAllSelected}
+                        onCheckedChange={toggleSelectPage}
+                        aria-label="Select page"
                       />
                     </TableHead>
                     <TableHead className="w-12">No.</TableHead>
@@ -906,7 +936,7 @@ export function VenueTicketDriveDialog({
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredRegistrantsWithIndex.map(({ reg, sequenceNumber }) => {
+                    paginatedRows.map(({ reg, sequenceNumber }) => {
                       const isSendingThis = sendingRegistrationId === reg.id;
                       const isSelected = selectedIds.has(reg.id);
                       return (
@@ -1045,6 +1075,42 @@ export function VenueTicketDriveDialog({
                 </TableBody>
               </Table>
             </div>
+
+            {/* Pagination Controls */}
+            {filteredRegistrantsWithIndex.length > pageSize && (
+              <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-xs">
+                <span className="text-muted-foreground text-[11px]">
+                  Showing {(currentPage - 1) * pageSize + 1}–
+                  {Math.min(currentPage * pageSize, filteredRegistrantsWithIndex.length)} of{" "}
+                  {filteredRegistrantsWithIndex.length}
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon-xs"
+                    disabled={currentPage <= 1}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    aria-label="Previous page"
+                  >
+                    <ChevronLeft className="size-3" />
+                  </Button>
+                  <span className="min-w-16 text-center font-medium text-[11px]">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon-xs"
+                    disabled={currentPage >= totalPages}
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    aria-label="Next page"
+                  >
+                    <ChevronRight className="size-3" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
