@@ -23,6 +23,7 @@ export interface DriveSpreadsheetItem {
   webViewLink: string;
   modifiedTime?: string;
   viewedByMeTime?: string;
+  ownerEmail?: string;
 }
 
 export interface DriveVenueTicketGrantedShare {

@@ -893,14 +893,14 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
         const venueName =
           firestoreEventDoc?.venue?.name ||
           event?.venue?.name ||
-          firestoreEventDoc?.venue_name ||
-          event?.venue_name ||
+          ((firestoreEventDoc as unknown as Record<string, unknown> | null)?.venue_name as string) ||
+          ((event as unknown as Record<string, unknown> | undefined)?.venue_name as string) ||
           "Event Venue";
         const venueAddress =
           firestoreEventDoc?.venue?.address ||
           event?.venue?.address ||
-          firestoreEventDoc?.venue_address ||
-          event?.venue_address ||
+          ((firestoreEventDoc as unknown as Record<string, unknown> | null)?.venue_address as string) ||
+          ((event as unknown as Record<string, unknown> | undefined)?.venue_address as string) ||
           "Jakarta, Indonesia";
         const eventVenueUrl =
           firestoreEventDoc?.google_maps_url ||
@@ -918,8 +918,8 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
           event?.banner_url ||
           (event as { banner?: { url?: string }; cropped_banner_url?: string } | undefined)?.banner?.url ||
           (event as { cropped_banner_url?: string } | undefined)?.cropped_banner_url ||
-          firestoreEventDoc?.image_url ||
-          event?.image_url;
+          ((firestoreEventDoc as unknown as Record<string, unknown> | null)?.image_url as string) ||
+          ((event as unknown as Record<string, unknown> | undefined)?.image_url as string);
         const eventTitle = firestoreEventDoc?.title || event?.title || "GDG Jakarta Event";
         const savedVenueTicketOverride = getFeatureTemplateOverrides().venue_ticket;
 

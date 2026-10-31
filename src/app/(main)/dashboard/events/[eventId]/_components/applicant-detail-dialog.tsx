@@ -1120,8 +1120,6 @@ export function ApplicantDetailDialog({
                     rawStatus === "confirmed" ||
                     rawStatus === "registered" ||
                     rawStatus === "attended") &&
-                    rawStatus !== "canceled" &&
-                    rawStatus !== "cancelled" &&
                     registration.status !== "canceled" &&
                     registration.status !== "cancelled" &&
                     registration.refund_request?.status !== "refund_completed" &&
