@@ -69,6 +69,7 @@ import type {
   RegistrationAuditActionStatus,
   RegistrationStatus,
 } from "@/lib/firestore/types";
+import { type DriveVenueTicketFile, isEligibleForVenueTicket } from "@/lib/google-drive/venue-tickets";
 import { cn, getInitials } from "@/lib/utils";
 
 import { CheckPaymentStatusDialog } from "./check-payment-status-dialog";
@@ -90,6 +91,7 @@ interface ApplicantDetailDialogProps {
   onResendInterestEmail?: (registration: FirestoreRegistration) => void;
   onResendWaitlistEmail?: (registration: FirestoreRegistration) => void;
   onResendPaidWaitlistEmail?: (registration: FirestoreRegistration) => void;
+  onResendAcceptedEmail?: (registration: FirestoreRegistration) => void;
   onToggleCheckIn?: (registration: FirestoreRegistration, isCheckedIn: boolean) => void;
   onToggleMerchandiseCollected?: (registration: FirestoreRegistration, isCollected: boolean) => void;
   onCancelRegistration?: (registration: FirestoreRegistration) => void;
@@ -103,7 +105,12 @@ interface ApplicantDetailDialogProps {
   isResendingInterest?: boolean;
   isResendingWaitlist?: boolean;
   isResendingPaidWaitlist?: boolean;
+  isResendingAccepted?: boolean;
   isCancelling?: boolean;
+  venueTicketFiles?: DriveVenueTicketFile[];
+  onAssignVenueTicket?: (registration: FirestoreRegistration, file: DriveVenueTicketFile | null) => Promise<void>;
+  onSendVenueTicketEmail?: (registration: FirestoreRegistration) => Promise<boolean>;
+  isSendingVenueTicket?: boolean;
 }
 
 const STATUS_VARIANTS: Record<RegistrationAuditActionStatus, { label: string; badgeClass: string; dotClass: string }> =
@@ -279,6 +286,7 @@ export function ApplicantDetailDialog({
   onResendInterestEmail,
   onResendWaitlistEmail,
   onResendPaidWaitlistEmail,
+  onResendAcceptedEmail,
   onToggleCheckIn,
   onToggleMerchandiseCollected,
   onDelete,
@@ -291,13 +299,19 @@ export function ApplicantDetailDialog({
   isResendingInterest = false,
   isResendingWaitlist = false,
   isResendingPaidWaitlist = false,
+  isResendingAccepted = false,
   onCancelRegistration,
   isCancelling = false,
   allRegistrations = [],
+  venueTicketFiles = [],
+  onAssignVenueTicket,
+  onSendVenueTicketEmail,
+  isSendingVenueTicket = false,
 }: ApplicantDetailDialogProps) {
   const isCuration = isCurationMode ?? isEventCurationMode(event);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [copiedProfile, setCopiedProfile] = useState(false);
+  const [isAssigningVenueTicket, setIsAssigningVenueTicket] = useState(false);
   const [loadedQuestions, setLoadedQuestions] = useState<CustomQuestion[]>([]);
   const [paymentLinkInfo, setPaymentLinkInfo] = useState<{ url: string; invoiceNumber: string } | null>(null);
   const [isResendPaymentOpen, setIsResendPaymentOpen] = useState(false);
@@ -1043,1175 +1057,1339 @@ export function ApplicantDetailDialog({
     <>
       <Dialog open={Boolean(registration)} onOpenChange={(open) => !open && onClose()}>
         <DialogContent className="flex max-h-[90vh] w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl md:max-w-4xl lg:max-w-5xl">
-          {/* Header Bar */}
-          <div className="shrink-0 border-b bg-muted/20 px-6 pt-5 pb-4">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:pr-8">
-              <div className="flex items-start gap-3.5 pr-8 sm:pr-0">
-                <Avatar className="size-12 shrink-0 rounded-full border border-border shadow-xs">
-                  <AvatarImage src={registration.member_avatar} alt={registration.member_name} />
-                  <AvatarFallback className="font-semibold text-sm">
-                    {getInitials(registration.member_name)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="space-y-1">
-                  <DialogTitle className="font-bold text-foreground text-lg tracking-tight">
-                    {registration.member_name}
-                  </DialogTitle>
-                  <div className="flex flex-wrap items-center gap-2 text-muted-foreground text-xs">
-                    <span className="flex items-center gap-1">
-                      <Mail className="size-3.5" />
-                      {registration.member_email}
-                    </span>
-                    <span>•</span>
-                    <span className="flex items-center gap-1">
-                      <Clock className="size-3.5" />
-                      {formattedDate}
-                    </span>
+          {/* Scrollable Dossier Body */}
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {/* Header Bar */}
+            <div className="border-b bg-muted/20 px-6 pt-5 pb-4">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:pr-8">
+                <div className="flex items-start gap-3.5 pr-8 sm:pr-0">
+                  <Avatar className="size-12 shrink-0 rounded-full border border-border shadow-xs">
+                    <AvatarImage src={registration.member_avatar} alt={registration.member_name} />
+                    <AvatarFallback className="font-semibold text-sm">
+                      {getInitials(registration.member_name)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="space-y-1">
+                    <DialogTitle className="font-bold text-foreground text-lg tracking-tight">
+                      {registration.member_name}
+                    </DialogTitle>
+                    <div className="flex flex-wrap items-center gap-2 text-muted-foreground text-xs">
+                      <span className="flex items-center gap-1">
+                        <Mail className="size-3.5" />
+                        {registration.member_email}
+                      </span>
+                      <span>•</span>
+                      <span className="flex items-center gap-1">
+                        <Clock className="size-3.5" />
+                        {formattedDate}
+                      </span>
+                    </div>
                   </div>
+                </div>
+
+                <div className="flex shrink-0 items-center gap-2">
+                  {Boolean(registration.refund_request) && (
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "gap-1 px-2.5 py-1 font-semibold text-xs",
+                        registration.refund_request?.status === "waiting_for_approval" &&
+                          "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+                        registration.refund_request?.status === "refund_completed" &&
+                          "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+                        registration.refund_request?.status === "rejected" &&
+                          "border-destructive/40 bg-destructive/10 text-destructive",
+                      )}
+                    >
+                      <RotateCcw className="size-3" />
+                      <span>{getRefundStatusShortLabel(registration.refund_request?.status)}</span>
+                    </Badge>
+                  )}
+
+                  <Badge
+                    variant="outline"
+                    className={cn("gap-1.5 border px-2.5 py-1 font-semibold text-xs", statusMeta.badgeClass)}
+                  >
+                    <span className={cn("size-1.5 rounded-full", statusMeta.dotClass)} />
+                    {statusMeta.label}
+                  </Badge>
+
+                  {(rawStatus === "approved" ||
+                    rawStatus === "paid_and_registered" ||
+                    rawStatus === "paid_registered" ||
+                    rawStatus === "confirmed" ||
+                    rawStatus === "registered" ||
+                    rawStatus === "attended") &&
+                    rawStatus !== "canceled" &&
+                    rawStatus !== "cancelled" &&
+                    registration.status !== "canceled" &&
+                    registration.status !== "cancelled" &&
+                    registration.refund_request?.status !== "refund_completed" &&
+                    registration.payment_status !== "refunded" &&
+                    onResendAcceptedEmail && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 gap-1.5 border-emerald-500/30 px-2.5 text-emerald-600 text-xs hover:bg-emerald-500/10 dark:text-emerald-400"
+                        disabled={isPending || isResendingAccepted}
+                        onClick={() => onResendAcceptedEmail(registration)}
+                        title="Resend Accepted / Ticket Confirmation email"
+                      >
+                        {isResendingAccepted ? (
+                          <Loader2 className="size-3 animate-spin" />
+                        ) : (
+                          <Mail className="size-3" />
+                        )}
+                        <span>{isResendingAccepted ? "Resending..." : "Resend Ticket Email"}</span>
+                      </Button>
+                    )}
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1.5 px-2.5 text-xs"
+                    onClick={handleCopyFullProfile}
+                    title="Copy attendee dossier"
+                  >
+                    {copiedProfile ? <Check className="size-3 text-emerald-600" /> : <Copy className="size-3" />}
+                    <span>{copiedProfile ? "Copied" : "Copy Profile"}</span>
+                  </Button>
                 </div>
               </div>
 
-              <div className="flex shrink-0 items-center gap-2">
+              <DialogDescription className="sr-only">
+                Detailed applicant dossier with submitted questions, track selection, and contact details.
+              </DialogDescription>
+
+              {/* Compact Metadata Attributes Strip */}
+              <div className="mt-3.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {/* Refund Request Overview Strip if present */}
                 {Boolean(registration.refund_request) && (
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "gap-1 px-2.5 py-1 font-semibold text-xs",
-                      registration.refund_request?.status === "waiting_for_approval" &&
-                        "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-                      registration.refund_request?.status === "refund_completed" &&
-                        "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-                      registration.refund_request?.status === "rejected" &&
-                        "border-destructive/40 bg-destructive/10 text-destructive",
-                    )}
-                  >
-                    <RotateCcw className="size-3" />
-                    <span>{getRefundStatusShortLabel(registration.refund_request?.status)}</span>
-                  </Badge>
+                  <div className="flex items-center justify-between rounded-lg border border-rose-500/30 bg-rose-500/5 px-3 py-2 text-xs">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <RotateCcw className="size-3.5 shrink-0 text-rose-600 dark:text-rose-400" />
+                      <span className="shrink-0 text-[11px] text-muted-foreground">Refund Claim:</span>
+                      <span className="truncate font-semibold text-rose-600 dark:text-rose-400">
+                        {formatRupiah(getRegistrationRefundAmount(registration, event))}
+                      </span>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "shrink-0 font-semibold text-[10px]",
+                        registration.refund_request?.status === "waiting_for_approval" &&
+                          "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+                        registration.refund_request?.status === "refund_completed" &&
+                          "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+                        registration.refund_request?.status === "rejected" &&
+                          "border-destructive/40 bg-destructive/10 text-destructive",
+                      )}
+                    >
+                      {getRefundStatusBadgeLabel(registration.refund_request?.status)}
+                    </Badge>
+                  </div>
+                )}
+                {/* Session Track Banner if present */}
+                {Boolean(
+                  registration.session_title ?? registration.session_id ?? registration.answers?.session_title,
+                ) && (
+                  <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Layers className="size-3.5 shrink-0 text-primary" />
+                      <span className="shrink-0 text-[11px] text-muted-foreground">Track:</span>
+                      <span className="truncate font-semibold text-primary">
+                        {registration.session_title ??
+                          String(registration.answers?.session_title ?? "") ??
+                          `Track ID: ${registration.session_id}`}
+                      </span>
+                    </div>
+                    <Badge variant="secondary" className="shrink-0 font-medium text-[10px]">
+                      Assigned
+                    </Badge>
+                  </div>
                 )}
 
-                <Badge
-                  variant="outline"
-                  className={cn("gap-1.5 border px-2.5 py-1 font-semibold text-xs", statusMeta.badgeClass)}
-                >
-                  <span className={cn("size-1.5 rounded-full", statusMeta.dotClass)} />
-                  {statusMeta.label}
-                </Badge>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 gap-1.5 px-2.5 text-xs"
-                  onClick={handleCopyFullProfile}
-                  title="Copy attendee dossier"
-                >
-                  {copiedProfile ? <Check className="size-3 text-emerald-600" /> : <Copy className="size-3" />}
-                  <span>{copiedProfile ? "Copied" : "Copy Profile"}</span>
-                </Button>
-              </div>
-            </div>
-
-            <DialogDescription className="sr-only">
-              Detailed applicant dossier with submitted questions, track selection, and contact details.
-            </DialogDescription>
-
-            {/* Compact Metadata Attributes Strip */}
-            <div className="mt-3.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {/* Refund Request Overview Strip if present */}
-              {Boolean(registration.refund_request) && (
-                <div className="flex items-center justify-between rounded-lg border border-rose-500/30 bg-rose-500/5 px-3 py-2 text-xs">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <RotateCcw className="size-3.5 shrink-0 text-rose-600 dark:text-rose-400" />
-                    <span className="shrink-0 text-[11px] text-muted-foreground">Refund Claim:</span>
-                    <span className="truncate font-semibold text-rose-600 dark:text-rose-400">
-                      {formatRupiah(getRegistrationRefundAmount(registration, event))}
-                    </span>
-                  </div>
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "shrink-0 font-semibold text-[10px]",
-                      registration.refund_request?.status === "waiting_for_approval" &&
-                        "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-                      registration.refund_request?.status === "refund_completed" &&
-                        "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-                      registration.refund_request?.status === "rejected" &&
-                        "border-destructive/40 bg-destructive/10 text-destructive",
-                    )}
-                  >
-                    {getRefundStatusBadgeLabel(registration.refund_request?.status)}
-                  </Badge>
-                </div>
-              )}
-              {/* Session Track Banner if present */}
-              {Boolean(
-                registration.session_title ?? registration.session_id ?? registration.answers?.session_title,
-              ) && (
-                <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <Layers className="size-3.5 shrink-0 text-primary" />
-                    <span className="shrink-0 text-[11px] text-muted-foreground">Track:</span>
-                    <span className="truncate font-semibold text-primary">
-                      {registration.session_title ??
-                        String(registration.answers?.session_title ?? "") ??
-                        `Track ID: ${registration.session_id}`}
-                    </span>
-                  </div>
-                  <Badge variant="secondary" className="shrink-0 font-medium text-[10px]">
-                    Assigned
-                  </Badge>
-                </div>
-              )}
-
-              {/* Ticket Pass Details if present */}
-              {Boolean(registration.ticket_name ?? registration.ticket_type) && (
-                <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <Ticket className="size-3.5 shrink-0 text-primary" />
-                    <span className="shrink-0 text-[11px] text-muted-foreground">Ticket:</span>
-                    <span className="truncate font-semibold text-foreground">
-                      {registration.ticket_name ?? "General Pass"}
-                    </span>
-                  </div>
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "shrink-0 px-1.5 py-0 font-semibold text-[10px]",
-                      registration.ticket_type === "free" &&
-                        "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
-                      registration.ticket_type === "paid" &&
-                        "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-400",
-                      registration.ticket_type === "commitment_fee" &&
-                        "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400",
-                    )}
-                  >
-                    {getTicketTierLabel(registration.ticket_type, registration.ticket_price)}
-                  </Badge>
-                </div>
-              )}
-
-              {/* Invoice Number Reference */}
-              {Boolean(invoiceNumber) && (
-                <div className="flex items-center justify-between rounded-lg border border-border/80 bg-muted/30 px-3 py-2 text-xs">
-                  <div className="flex min-w-0 items-center gap-1.5">
-                    <FileText className="size-3.5 shrink-0 text-primary" />
-                    <span className="shrink-0 text-[11px] text-muted-foreground">Invoice:</span>
-                    <span className="truncate font-mono font-semibold text-[11px] text-foreground">
-                      {invoiceNumber}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {(rawStatus === "waiting_for_payment" || rawStatus === "expired") && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="xs"
-                        className="h-6 gap-1 border-emerald-500/30 px-2 font-medium text-[11px] text-emerald-600 hover:bg-emerald-500/10 dark:text-emerald-400"
-                        title="Check live DOKU payment status"
-                        onClick={() => setIsCheckPaymentOpen(true)}
-                      >
-                        <CreditCard className="size-3" />
-                        <span>Check Status</span>
-                      </Button>
-                    )}
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-xs"
-                      className="size-6 shrink-0 text-muted-foreground hover:text-foreground"
-                      title="Copy invoice number"
-                      onClick={() => handleCopy(invoiceNumber ?? "", "Invoice number", "invoice_number")}
-                    >
-                      {copiedKey === "invoice_number" ? (
-                        <Check className="size-3 text-emerald-600" />
-                      ) : (
-                        <Copy className="size-3" />
-                      )}
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {/* Bevy Ticket Code & Attendee ID */}
-              {Boolean(registration.attendee_code ?? registration.bevy_attendee_id) && (
-                <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
-                  <div className="flex min-w-0 items-center gap-1.5">
-                    <QrCode className="size-3.5 shrink-0 text-primary" />
-                    <span className="shrink-0 text-[11px] text-muted-foreground">Ticket Code:</span>
-                    <span className="truncate font-mono font-semibold text-[11px] text-primary">
-                      {registration.attendee_code ?? `#${registration.bevy_attendee_id}`}
-                    </span>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    {registration.bevy_attendee_id && (
-                      <Badge variant="secondary" className="px-1.5 py-0 font-mono text-[10px]">
-                        Bevy #{registration.bevy_attendee_id}
-                      </Badge>
-                    )}
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-xs"
-                      className="size-6 text-muted-foreground hover:text-foreground"
-                      title="Copy ticket code"
-                      onClick={() =>
-                        handleCopy(
-                          registration.attendee_code ?? String(registration.bevy_attendee_id),
-                          "Ticket code",
-                          "ticket_code",
-                        )
-                      }
-                    >
-                      {copiedKey === "ticket_code" ? (
-                        <Check className="size-3 text-emerald-600" />
-                      ) : (
-                        <Copy className="size-3" />
-                      )}
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {/* Bevy On-Site Check-In Status & Action */}
-              <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-xs">
-                <div className="flex min-w-0 items-center gap-1.5">
-                  <span className="shrink-0 font-medium text-[11px] text-muted-foreground">Check-In:</span>
-                  {registration.is_checked_in ? (
-                    <Badge
-                      variant="outline"
-                      className="gap-1 border-emerald-500/30 bg-emerald-500/10 font-medium text-[10px] text-emerald-600 dark:text-emerald-400"
-                    >
-                      <UserCheck className="size-3" /> Checked In
-                      {registration.checked_in_at && ` • ${registration.checked_in_at}`}
-                    </Badge>
-                  ) : (
-                    <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                      Not Checked In
-                    </Badge>
-                  )}
-                </div>
-
-                {onToggleCheckIn &&
-                  (() => {
-                    const isEligibleForCheckIn =
-                      rawStatus === "paid_and_registered" ||
-                      rawStatus === "paid_registered" ||
-                      rawStatus === "approved" ||
-                      rawStatus === "registered" ||
-                      registration.status === "paid_and_registered" ||
-                      registration.status === "approved" ||
-                      registration.status === "registered" ||
-                      (registration.status as string) === "paid_registered";
-                    const canToggleCheckIn = Boolean(registration.is_checked_in) || isEligibleForCheckIn;
-                    return (
-                      <Button
-                        size="sm"
-                        variant={registration.is_checked_in ? "ghost" : "outline"}
-                        className={cn(
-                          "h-6 px-2 text-[11px]",
-                          registration.is_checked_in
-                            ? "text-muted-foreground hover:text-destructive"
-                            : "border-primary/30 text-primary hover:bg-primary/5",
-                        )}
-                        disabled={isPending || !canToggleCheckIn}
-                        title={
-                          !canToggleCheckIn
-                            ? "Check-in is only enabled when status is Paid & Registered, Approved, or Registered"
-                            : undefined
-                        }
-                        onClick={() => onToggleCheckIn(registration, !registration.is_checked_in)}
-                      >
-                        {registration.is_checked_in ? (
-                          <>
-                            <RotateCcw className="mr-1 size-2.5" />
-                            Undo
-                          </>
-                        ) : (
-                          <>
-                            <UserCheck className="mr-1 size-2.5" />
-                            Check In
-                          </>
-                        )}
-                      </Button>
-                    );
-                  })()}
-              </div>
-
-              {/* Bundling Package Details if registered via bundle */}
-              {Boolean(registration.bundle_name) && (
-                <div className="space-y-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-xs">
-                  <div className="flex items-center justify-between">
-                    <div className="flex min-w-0 items-center gap-1.5">
-                      <PackageCheck className="size-3.5 shrink-0 text-primary" />
-                      <span className="shrink-0 font-medium text-[11px] text-muted-foreground">Package:</span>
-                      <span className="truncate font-semibold text-[11px] text-foreground">
-                        {registration.bundle_name}
+                {/* Ticket Pass Details if present */}
+                {Boolean(registration.ticket_name ?? registration.ticket_type) && (
+                  <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Ticket className="size-3.5 shrink-0 text-primary" />
+                      <span className="shrink-0 text-[11px] text-muted-foreground">Ticket:</span>
+                      <span className="truncate font-semibold text-foreground">
+                        {registration.ticket_name ?? "General Pass"}
                       </span>
                     </div>
                     <Badge
                       variant="outline"
-                      className="shrink-0 border-primary/30 bg-primary/10 font-semibold text-[10px] text-primary"
+                      className={cn(
+                        "shrink-0 px-1.5 py-0 font-semibold text-[10px]",
+                        registration.ticket_type === "free" &&
+                          "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+                        registration.ticket_type === "paid" &&
+                          "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-400",
+                        registration.ticket_type === "commitment_fee" &&
+                          "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400",
+                      )}
                     >
-                      {(() => {
-                        if (registration.bundle_price === undefined || registration.bundle_price === null) {
-                          return "Combo Package";
-                        }
-                        if (registration.bundle_price === 0) {
-                          return "Free Bundle";
-                        }
-                        return `Rp ${registration.bundle_price.toLocaleString("id-ID")}`;
-                      })()}
+                      {getTicketTierLabel(registration.ticket_type, registration.ticket_price)}
                     </Badge>
                   </div>
+                )}
 
-                  {/* Generated Friend Vouchers from Bundle */}
-                  {resolvedBundleVouchers.length > 0 && (
-                    <div className="space-y-1.5 border-primary/20 border-t pt-2">
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span className="font-medium text-muted-foreground">
-                          Generated Friend Vouchers ({resolvedBundleVouchers.length}):
-                        </span>
-                        <span className="font-semibold text-[10px] text-primary">
-                          {resolvedBundleVouchers.filter((v) => v.status === "redeemed").length} /{" "}
-                          {resolvedBundleVouchers.length} claimed
-                        </span>
-                      </div>
-                      <div className="space-y-1">
-                        {resolvedBundleVouchers.map((bv, idx) => {
-                          const isRedeemed = bv.status === "redeemed";
-                          return (
-                            <div
-                              key={bv.code || idx}
-                              className="flex flex-wrap items-center justify-between gap-2 rounded border border-border/50 bg-background/70 px-2 py-1 text-[11px]"
-                            >
-                              <div className="flex items-center gap-1.5">
-                                <span className="font-bold font-mono text-foreground">{bv.code}</span>
-                                <Badge
-                                  variant="outline"
-                                  className={cn(
-                                    "px-1 py-0 text-[9px]",
-                                    isRedeemed
-                                      ? "border-purple-500/30 bg-purple-500/10 text-purple-700 dark:text-purple-300"
-                                      : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-                                  )}
-                                >
-                                  {isRedeemed ? "Claimed" : "Available"}
-                                </Badge>
-                              </div>
-                              <div className="text-[10px] text-muted-foreground">
-                                {isRedeemed ? (
-                                  <span className="font-medium text-foreground">
-                                    by {bv.redeemed_by_name || bv.redeemed_by_email || "Attendee"}
-                                  </span>
-                                ) : (
-                                  <span>Unclaimed</span>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Merchandise Add-on Details if present */}
-              {Boolean(registration.selected_merchandise && registration.selected_merchandise.length > 0) && (
-                <div className="space-y-2 rounded-lg border bg-muted/30 p-2.5 text-xs">
-                  <div className="flex items-center justify-between border-b pb-1.5 text-[11px] text-muted-foreground">
-                    <div className="flex items-center gap-1.5 font-medium text-foreground">
-                      <Package className="size-3.5 text-primary" />
-                      <span>Merchandise & Swag Orders</span>
-                    </div>
-                    <Badge variant="secondary" className="text-[10px]">
-                      {registration.selected_merchandise?.reduce((sum, it) => sum + (it.quantity || 1), 0)} items
-                    </Badge>
-                  </div>
-                  <div className="space-y-1.5">
-                    {registration.selected_merchandise?.map((item, idx) => {
-                      const variations = parseMerchandiseVariations(item, registration.answers);
-                      return (
-                        <div
-                          key={item.id || idx}
-                          className="flex flex-col justify-between gap-1.5 rounded-md border border-border/40 bg-background/60 p-2 sm:flex-row sm:items-center"
-                        >
-                          <div className="flex min-w-0 flex-col gap-1">
-                            <div className="flex items-center gap-1.5 font-medium text-[11px] text-foreground">
-                              <span className="font-semibold text-primary">{item.quantity || 1}x</span>
-                              <span className="truncate">{item.name}</span>
-                            </div>
-                            {variations.length > 0 && (
-                              <div className="flex flex-wrap items-center gap-1">
-                                {variations.map((v) => (
-                                  <Badge
-                                    key={v.key + v.value}
-                                    variant="outline"
-                                    className={cn(
-                                      "h-4.5 px-1.5 py-0 font-medium text-[10px]",
-                                      v.isSize
-                                        ? "border-primary/40 bg-primary/10 font-semibold text-primary"
-                                        : "border-muted-foreground/30 bg-muted/60 text-muted-foreground",
-                                    )}
-                                  >
-                                    {v.label ? `${v.label}: ` : ""}
-                                    {v.value}
-                                  </Badge>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                          <Badge
-                            variant="outline"
-                            className="w-fit shrink-0 self-start font-mono text-[10px] text-muted-foreground sm:self-auto"
-                          >
-                            {item.price
-                              ? `Rp ${(item.price * (item.quantity || 1)).toLocaleString("id-ID")}`
-                              : "Free Perk"}
-                          </Badge>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* Merchandise Collection Status & Action */}
-                  {(() => {
-                    const hasAttendeeMerch = Boolean(
-                      registration.selected_merchandise && registration.selected_merchandise.length > 0,
-                    );
-                    const isPaidAndRegistered =
-                      rawStatus === "paid_and_registered" ||
-                      rawStatus === "paid_registered" ||
-                      registration.status === "paid_and_registered" ||
-                      (registration.status as string) === "paid_registered";
-                    const canCollectMerch =
-                      Boolean(registration.is_merchandise_collected) || (hasAttendeeMerch && isPaidAndRegistered);
-
-                    return (
-                      <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 border-border/50 border-t pt-2.5">
-                        <div className="flex min-w-0 flex-col gap-0.5">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="shrink-0 font-medium text-[11px] text-muted-foreground">Collection:</span>
-                            {registration.is_merchandise_collected ? (
-                              <Badge
-                                variant="outline"
-                                className="gap-1 border-emerald-500/30 bg-emerald-500/10 font-medium text-[10px] text-emerald-600 dark:text-emerald-400"
-                              >
-                                <PackageCheck className="size-3" /> Collected
-                                {registration.merchandise_collected_at &&
-                                  ` • ${formatFirestoreDate(registration.merchandise_collected_at, "dd MMM yyyy, HH:mm")}`}
-                              </Badge>
-                            ) : (
-                              <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                                Not Collected
-                              </Badge>
-                            )}
-                          </div>
-                          {registration.is_merchandise_collected && registration.merchandise_collected_by_name && (
-                            <span className="text-[10px] text-muted-foreground">
-                              Marked by{" "}
-                              <span className="font-semibold text-foreground">
-                                {registration.merchandise_collected_by_name}
-                              </span>
-                            </span>
-                          )}
-                        </div>
-
-                        {onToggleMerchandiseCollected && (
-                          <Button
-                            size="sm"
-                            variant={registration.is_merchandise_collected ? "ghost" : "outline"}
-                            className={cn(
-                              "h-6 px-2 text-[11px]",
-                              registration.is_merchandise_collected
-                                ? "text-muted-foreground hover:text-destructive"
-                                : "border-primary/30 text-primary hover:bg-primary/5",
-                            )}
-                            disabled={isPending || isCollectingMerch || !canCollectMerch}
-                            title={
-                              !canCollectMerch
-                                ? "Collection is only enabled when attendee has merchandise and status is Paid & Registered"
-                                : undefined
-                            }
-                            onClick={() =>
-                              onToggleMerchandiseCollected(registration, !registration.is_merchandise_collected)
-                            }
-                          >
-                            {isCollectingMerch && <Loader2 className="mr-1 size-2.5 animate-spin" />}
-                            {!isCollectingMerch && registration.is_merchandise_collected && (
-                              <>
-                                <RotateCcw className="mr-1 size-2.5" />
-                                Undo
-                              </>
-                            )}
-                            {!isCollectingMerch && !registration.is_merchandise_collected && (
-                              <>
-                                <PackageCheck className="mr-1 size-2.5" />
-                                Collected
-                              </>
-                            )}
-                          </Button>
-                        )}
-                      </div>
-                    );
-                  })()}
-                </div>
-              )}
-
-              {/* Voucher Discount Details & Ownership if applied */}
-              {Boolean(registration.voucher_code) && (
-                <div className="flex flex-col gap-2 rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs">
-                  <div className="flex items-center justify-between">
+                {/* Invoice Number Reference */}
+                {Boolean(invoiceNumber) && (
+                  <div className="flex items-center justify-between rounded-lg border border-border/80 bg-muted/30 px-3 py-2 text-xs">
                     <div className="flex min-w-0 items-center gap-1.5">
-                      <Tag className="size-3.5 shrink-0 text-primary" />
-                      <span className="shrink-0 font-medium text-[11px] text-muted-foreground">Voucher:</span>
+                      <FileText className="size-3.5 shrink-0 text-primary" />
+                      <span className="shrink-0 text-[11px] text-muted-foreground">Invoice:</span>
                       <span className="truncate font-mono font-semibold text-[11px] text-foreground">
-                        {registration.voucher_code}
+                        {invoiceNumber}
                       </span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {(rawStatus === "waiting_for_payment" || rawStatus === "expired") && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="xs"
+                          className="h-6 gap-1 border-emerald-500/30 px-2 font-medium text-[11px] text-emerald-600 hover:bg-emerald-500/10 dark:text-emerald-400"
+                          title="Check live DOKU payment status"
+                          onClick={() => setIsCheckPaymentOpen(true)}
+                        >
+                          <CreditCard className="size-3" />
+                          <span>Check Status</span>
+                        </Button>
+                      )}
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon-xs"
-                        className="size-5 text-muted-foreground hover:text-foreground"
-                        title="Copy voucher code"
-                        onClick={() => handleCopy(registration.voucher_code ?? "", "Voucher code", "voucher_code")}
+                        className="size-6 shrink-0 text-muted-foreground hover:text-foreground"
+                        title="Copy invoice number"
+                        onClick={() => handleCopy(invoiceNumber ?? "", "Invoice number", "invoice_number")}
                       >
-                        {copiedKey === "voucher_code" ? (
+                        {copiedKey === "invoice_number" ? (
                           <Check className="size-3 text-emerald-600" />
                         ) : (
                           <Copy className="size-3" />
                         )}
                       </Button>
                     </div>
+                  </div>
+                )}
 
-                    <Badge
-                      variant="outline"
-                      className="shrink-0 border-primary/30 bg-primary/10 font-mono font-semibold text-[10px] text-primary"
-                    >
-                      -Rp {(registration.voucher_discount_amount ?? 0).toLocaleString("id-ID")}
-                    </Badge>
+                {/* Bevy Ticket Code & Attendee ID */}
+                {Boolean(registration.attendee_code ?? registration.bevy_attendee_id) && (
+                  <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <QrCode className="size-3.5 shrink-0 text-primary" />
+                      <span className="shrink-0 text-[11px] text-muted-foreground">Ticket Code:</span>
+                      <span className="truncate font-mono font-semibold text-[11px] text-primary">
+                        {registration.attendee_code ?? `#${registration.bevy_attendee_id}`}
+                      </span>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      {registration.bevy_attendee_id && (
+                        <Badge variant="secondary" className="px-1.5 py-0 font-mono text-[10px]">
+                          Bevy #{registration.bevy_attendee_id}
+                        </Badge>
+                      )}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        className="size-6 text-muted-foreground hover:text-foreground"
+                        title="Copy ticket code"
+                        onClick={() =>
+                          handleCopy(
+                            registration.attendee_code ?? String(registration.bevy_attendee_id),
+                            "Ticket code",
+                            "ticket_code",
+                          )
+                        }
+                      >
+                        {copiedKey === "ticket_code" ? (
+                          <Check className="size-3 text-emerald-600" />
+                        ) : (
+                          <Copy className="size-3" />
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Bevy On-Site Check-In Status & Action */}
+                <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-xs">
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <span className="shrink-0 font-medium text-[11px] text-muted-foreground">Check-In:</span>
+                    {registration.is_checked_in ? (
+                      <Badge
+                        variant="outline"
+                        className="gap-1 border-emerald-500/30 bg-emerald-500/10 font-medium text-[10px] text-emerald-600 dark:text-emerald-400"
+                      >
+                        <UserCheck className="size-3" /> Checked In
+                        {registration.checked_in_at && ` • ${registration.checked_in_at}`}
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                        Not Checked In
+                      </Badge>
+                    )}
                   </div>
 
-                  {/* Voucher Description */}
-                  {voucherDescription && (
-                    <p className="text-[11px] text-muted-foreground leading-relaxed">{voucherDescription}</p>
-                  )}
+                  {onToggleCheckIn &&
+                    (() => {
+                      const isEligibleForCheckIn =
+                        rawStatus === "paid_and_registered" ||
+                        rawStatus === "paid_registered" ||
+                        rawStatus === "approved" ||
+                        rawStatus === "registered" ||
+                        registration.status === "paid_and_registered" ||
+                        registration.status === "approved" ||
+                        registration.status === "registered" ||
+                        (registration.status as string) === "paid_registered";
+                      const canToggleCheckIn = Boolean(registration.is_checked_in) || isEligibleForCheckIn;
+                      return (
+                        <Button
+                          size="sm"
+                          variant={registration.is_checked_in ? "ghost" : "outline"}
+                          className={cn(
+                            "h-6 px-2 text-[11px]",
+                            registration.is_checked_in
+                              ? "text-muted-foreground hover:text-destructive"
+                              : "border-primary/30 text-primary hover:bg-primary/5",
+                          )}
+                          disabled={isPending || !canToggleCheckIn}
+                          title={
+                            !canToggleCheckIn
+                              ? "Check-in is only enabled when status is Paid & Registered, Approved, or Registered"
+                              : undefined
+                          }
+                          onClick={() => onToggleCheckIn(registration, !registration.is_checked_in)}
+                        >
+                          {registration.is_checked_in ? (
+                            <>
+                              <RotateCcw className="mr-1 size-2.5" />
+                              Undo
+                            </>
+                          ) : (
+                            <>
+                              <UserCheck className="mr-1 size-2.5" />
+                              Check In
+                            </>
+                          )}
+                        </Button>
+                      );
+                    })()}
+                </div>
 
-                  {/* Bundle Buyer ("Belongs to") */}
-                  {bundleBuyer && (
-                    <div className="flex items-center justify-between rounded-md border border-primary/20 bg-background/80 px-2.5 py-1.5 text-xs">
+                {/* Bundling Package Details if registered via bundle */}
+                {Boolean(registration.bundle_name) && (
+                  <div className="space-y-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-xs">
+                    <div className="flex items-center justify-between">
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <PackageCheck className="size-3.5 shrink-0 text-primary" />
+                        <span className="shrink-0 font-medium text-[11px] text-muted-foreground">Package:</span>
+                        <span className="truncate font-semibold text-[11px] text-foreground">
+                          {registration.bundle_name}
+                        </span>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className="shrink-0 border-primary/30 bg-primary/10 font-semibold text-[10px] text-primary"
+                      >
+                        {(() => {
+                          if (registration.bundle_price === undefined || registration.bundle_price === null) {
+                            return "Combo Package";
+                          }
+                          if (registration.bundle_price === 0) {
+                            return "Free Bundle";
+                          }
+                          return `Rp ${registration.bundle_price.toLocaleString("id-ID")}`;
+                        })()}
+                      </Badge>
+                    </div>
+
+                    {/* Generated Friend Vouchers from Bundle */}
+                    {resolvedBundleVouchers.length > 0 && (
+                      <div className="space-y-1.5 border-primary/20 border-t pt-2">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="font-medium text-muted-foreground">
+                            Generated Friend Vouchers ({resolvedBundleVouchers.length}):
+                          </span>
+                          <span className="font-semibold text-[10px] text-primary">
+                            {resolvedBundleVouchers.filter((v) => v.status === "redeemed").length} /{" "}
+                            {resolvedBundleVouchers.length} claimed
+                          </span>
+                        </div>
+                        <div className="space-y-1">
+                          {resolvedBundleVouchers.map((bv, idx) => {
+                            const isRedeemed = bv.status === "redeemed";
+                            return (
+                              <div
+                                key={bv.code || idx}
+                                className="flex flex-wrap items-center justify-between gap-2 rounded border border-border/50 bg-background/70 px-2 py-1 text-[11px]"
+                              >
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-bold font-mono text-foreground">{bv.code}</span>
+                                  <Badge
+                                    variant="outline"
+                                    className={cn(
+                                      "px-1 py-0 text-[9px]",
+                                      isRedeemed
+                                        ? "border-purple-500/30 bg-purple-500/10 text-purple-700 dark:text-purple-300"
+                                        : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+                                    )}
+                                  >
+                                    {isRedeemed ? "Claimed" : "Available"}
+                                  </Badge>
+                                </div>
+                                <div className="text-[10px] text-muted-foreground">
+                                  {isRedeemed ? (
+                                    <span className="font-medium text-foreground">
+                                      by {bv.redeemed_by_name || bv.redeemed_by_email || "Attendee"}
+                                    </span>
+                                  ) : (
+                                    <span>Unclaimed</span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Merchandise Add-on Details if present */}
+                {Boolean(registration.selected_merchandise && registration.selected_merchandise.length > 0) && (
+                  <div className="space-y-2 rounded-lg border bg-muted/30 p-2.5 text-xs">
+                    <div className="flex items-center justify-between border-b pb-1.5 text-[11px] text-muted-foreground">
+                      <div className="flex items-center gap-1.5 font-medium text-foreground">
+                        <Package className="size-3.5 text-primary" />
+                        <span>Merchandise & Swag Orders</span>
+                      </div>
+                      <Badge variant="secondary" className="text-[10px]">
+                        {registration.selected_merchandise?.reduce((sum, it) => sum + (it.quantity || 1), 0)} items
+                      </Badge>
+                    </div>
+                    <div className="space-y-1.5">
+                      {registration.selected_merchandise?.map((item, idx) => {
+                        const variations = parseMerchandiseVariations(item, registration.answers);
+                        return (
+                          <div
+                            key={item.id || idx}
+                            className="flex flex-col justify-between gap-1.5 rounded-md border border-border/40 bg-background/60 p-2 sm:flex-row sm:items-center"
+                          >
+                            <div className="flex min-w-0 flex-col gap-1">
+                              <div className="flex items-center gap-1.5 font-medium text-[11px] text-foreground">
+                                <span className="font-semibold text-primary">{item.quantity || 1}x</span>
+                                <span className="truncate">{item.name}</span>
+                              </div>
+                              {variations.length > 0 && (
+                                <div className="flex flex-wrap items-center gap-1">
+                                  {variations.map((v) => (
+                                    <Badge
+                                      key={v.key + v.value}
+                                      variant="outline"
+                                      className={cn(
+                                        "h-4.5 px-1.5 py-0 font-medium text-[10px]",
+                                        v.isSize
+                                          ? "border-primary/40 bg-primary/10 font-semibold text-primary"
+                                          : "border-muted-foreground/30 bg-muted/60 text-muted-foreground",
+                                      )}
+                                    >
+                                      {v.label ? `${v.label}: ` : ""}
+                                      {v.value}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            <Badge
+                              variant="outline"
+                              className="w-fit shrink-0 self-start font-mono text-[10px] text-muted-foreground sm:self-auto"
+                            >
+                              {item.price
+                                ? `Rp ${(item.price * (item.quantity || 1)).toLocaleString("id-ID")}`
+                                : "Free Perk"}
+                            </Badge>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Merchandise Collection Status & Action */}
+                    {(() => {
+                      const hasAttendeeMerch = Boolean(
+                        registration.selected_merchandise && registration.selected_merchandise.length > 0,
+                      );
+                      const isPaidAndRegistered =
+                        rawStatus === "paid_and_registered" ||
+                        rawStatus === "paid_registered" ||
+                        registration.status === "paid_and_registered" ||
+                        (registration.status as string) === "paid_registered";
+                      const canCollectMerch =
+                        Boolean(registration.is_merchandise_collected) || (hasAttendeeMerch && isPaidAndRegistered);
+
+                      return (
+                        <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 border-border/50 border-t pt-2.5">
+                          <div className="flex min-w-0 flex-col gap-0.5">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span className="shrink-0 font-medium text-[11px] text-muted-foreground">
+                                Collection:
+                              </span>
+                              {registration.is_merchandise_collected ? (
+                                <Badge
+                                  variant="outline"
+                                  className="gap-1 border-emerald-500/30 bg-emerald-500/10 font-medium text-[10px] text-emerald-600 dark:text-emerald-400"
+                                >
+                                  <PackageCheck className="size-3" /> Collected
+                                  {registration.merchandise_collected_at &&
+                                    ` • ${formatFirestoreDate(registration.merchandise_collected_at, "dd MMM yyyy, HH:mm")}`}
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                                  Not Collected
+                                </Badge>
+                              )}
+                            </div>
+                            {registration.is_merchandise_collected && registration.merchandise_collected_by_name && (
+                              <span className="text-[10px] text-muted-foreground">
+                                Marked by{" "}
+                                <span className="font-semibold text-foreground">
+                                  {registration.merchandise_collected_by_name}
+                                </span>
+                              </span>
+                            )}
+                          </div>
+
+                          {onToggleMerchandiseCollected && (
+                            <Button
+                              size="sm"
+                              variant={registration.is_merchandise_collected ? "ghost" : "outline"}
+                              className={cn(
+                                "h-6 px-2 text-[11px]",
+                                registration.is_merchandise_collected
+                                  ? "text-muted-foreground hover:text-destructive"
+                                  : "border-primary/30 text-primary hover:bg-primary/5",
+                              )}
+                              disabled={isPending || isCollectingMerch || !canCollectMerch}
+                              title={
+                                !canCollectMerch
+                                  ? "Collection is only enabled when attendee has merchandise and status is Paid & Registered"
+                                  : undefined
+                              }
+                              onClick={() =>
+                                onToggleMerchandiseCollected(registration, !registration.is_merchandise_collected)
+                              }
+                            >
+                              {isCollectingMerch && <Loader2 className="mr-1 size-2.5 animate-spin" />}
+                              {!isCollectingMerch && registration.is_merchandise_collected && (
+                                <>
+                                  <RotateCcw className="mr-1 size-2.5" />
+                                  Undo
+                                </>
+                              )}
+                              {!isCollectingMerch && !registration.is_merchandise_collected && (
+                                <>
+                                  <PackageCheck className="mr-1 size-2.5" />
+                                  Collected
+                                </>
+                              )}
+                            </Button>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+
+                {/* Voucher Discount Details & Ownership if applied */}
+                {Boolean(registration.voucher_code) && (
+                  <div className="flex flex-col gap-2 rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs">
+                    <div className="flex items-center justify-between">
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <Tag className="size-3.5 shrink-0 text-primary" />
+                        <span className="shrink-0 font-medium text-[11px] text-muted-foreground">Voucher:</span>
+                        <span className="truncate font-mono font-semibold text-[11px] text-foreground">
+                          {registration.voucher_code}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-xs"
+                          className="size-5 text-muted-foreground hover:text-foreground"
+                          title="Copy voucher code"
+                          onClick={() => handleCopy(registration.voucher_code ?? "", "Voucher code", "voucher_code")}
+                        >
+                          {copiedKey === "voucher_code" ? (
+                            <Check className="size-3 text-emerald-600" />
+                          ) : (
+                            <Copy className="size-3" />
+                          )}
+                        </Button>
+                      </div>
+
+                      <Badge
+                        variant="outline"
+                        className="shrink-0 border-primary/30 bg-primary/10 font-mono font-semibold text-[10px] text-primary"
+                      >
+                        -Rp {(registration.voucher_discount_amount ?? 0).toLocaleString("id-ID")}
+                      </Badge>
+                    </div>
+
+                    {/* Voucher Description */}
+                    {voucherDescription && (
+                      <p className="text-[11px] text-muted-foreground leading-relaxed">{voucherDescription}</p>
+                    )}
+
+                    {/* Bundle Buyer ("Belongs to") */}
+                    {bundleBuyer && (
+                      <div className="flex items-center justify-between rounded-md border border-primary/20 bg-background/80 px-2.5 py-1.5 text-xs">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <Avatar className="size-6 shrink-0 border border-border/60">
+                            <AvatarImage
+                              src={bundleBuyer.member_avatar ?? undefined}
+                              alt={bundleBuyer.member_name || "Bundle Buyer"}
+                            />
+                            <AvatarFallback className="font-semibold text-[9px]">
+                              {getInitials(bundleBuyer.member_name || "Buyer")}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex min-w-0 flex-col">
+                            <div className="flex items-center gap-1.5">
+                              <span className="shrink-0 text-[10px] text-muted-foreground">Belongs to:</span>
+                              <span className="truncate font-semibold text-[11px] text-foreground">
+                                {bundleBuyer.member_name}
+                              </span>
+                            </div>
+                            {Boolean(bundleBuyer.member_email) && (
+                              <span className="truncate text-[10px] text-muted-foreground">
+                                {bundleBuyer.member_email}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <Badge variant="secondary" className="shrink-0 px-1.5 py-0 text-[9px]">
+                          {bundleBuyer.bundle_name || "Bundle Buyer"}
+                        </Badge>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Referral Code & Ownership Details if applied */}
+                {Boolean(registration.referral_code) && (
+                  <div className="flex flex-col gap-2 rounded-lg border border-purple-500/30 bg-purple-500/5 p-3 text-xs">
+                    <div className="flex items-center justify-between">
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <Sparkles className="size-3.5 shrink-0 text-purple-600 dark:text-purple-400" />
+                        <span className="shrink-0 font-medium text-[11px] text-muted-foreground">Referral Code:</span>
+                        <span className="truncate font-mono font-semibold text-[11px] text-foreground">
+                          {registration.referral_code}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-xs"
+                          className="size-5 text-muted-foreground hover:text-foreground"
+                          title="Copy referral code"
+                          onClick={() => handleCopy(registration.referral_code ?? "", "Referral code", "referral_code")}
+                        >
+                          {copiedKey === "referral_code" ? (
+                            <Check className="size-3 text-emerald-600" />
+                          ) : (
+                            <Copy className="size-3" />
+                          )}
+                        </Button>
+                      </div>
+
+                      {(Boolean(registration.referral_discount_amount) ||
+                        Boolean(registration.referral_discount_percent)) && (
+                        <Badge
+                          variant="outline"
+                          className="shrink-0 border-purple-500/30 bg-purple-500/10 font-mono font-semibold text-[10px] text-purple-700 dark:text-purple-300"
+                        >
+                          {registration.referral_discount_type === "fixed" || registration.referral_discount_amount
+                            ? `-Rp ${(registration.referral_discount_amount ?? 0).toLocaleString("id-ID")}`
+                            : `-${registration.referral_discount_percent ?? 10}%`}
+                        </Badge>
+                      )}
+                    </div>
+
+                    {/* Referrer Details ("Who does the referral belong to") */}
+                    <div className="flex items-center justify-between rounded-md border border-purple-500/20 bg-background/80 px-2.5 py-1.5 text-xs">
                       <div className="flex min-w-0 items-center gap-2">
                         <Avatar className="size-6 shrink-0 border border-border/60">
                           <AvatarImage
-                            src={bundleBuyer.member_avatar ?? undefined}
-                            alt={bundleBuyer.member_name || "Bundle Buyer"}
+                            src={referrerInfo?.avatar_url ?? undefined}
+                            alt={referrerInfo?.name || "Referrer"}
                           />
                           <AvatarFallback className="font-semibold text-[9px]">
-                            {getInitials(bundleBuyer.member_name || "Buyer")}
+                            {getInitials(referrerInfo?.name || registration.referrer_name || "Ref")}
                           </AvatarFallback>
                         </Avatar>
                         <div className="flex min-w-0 flex-col">
                           <div className="flex items-center gap-1.5">
                             <span className="shrink-0 text-[10px] text-muted-foreground">Belongs to:</span>
                             <span className="truncate font-semibold text-[11px] text-foreground">
-                              {bundleBuyer.member_name}
+                              {referrerInfo?.name || registration.referrer_name || "Community Member"}
                             </span>
                           </div>
-                          {Boolean(bundleBuyer.member_email) && (
-                            <span className="truncate text-[10px] text-muted-foreground">
-                              {bundleBuyer.member_email}
-                            </span>
+                          {Boolean(referrerInfo?.email) && (
+                            <span className="truncate text-[10px] text-muted-foreground">{referrerInfo?.email}</span>
                           )}
                         </div>
                       </div>
-                      <Badge variant="secondary" className="shrink-0 px-1.5 py-0 text-[9px]">
-                        {bundleBuyer.bundle_name || "Bundle Buyer"}
-                      </Badge>
+                      {referrerInfo?.role && (
+                        <Badge variant="secondary" className="shrink-0 px-1.5 py-0 text-[9px] capitalize">
+                          {referrerInfo.role.replace(/_/g, " ")}
+                        </Badge>
+                      )}
                     </div>
-                  )}
-                </div>
-              )}
+                  </div>
+                )}
 
-              {/* Referral Code & Ownership Details if applied */}
-              {Boolean(registration.referral_code) && (
-                <div className="flex flex-col gap-2 rounded-lg border border-purple-500/30 bg-purple-500/5 p-3 text-xs">
-                  <div className="flex items-center justify-between">
+                {/* Reviewed By Decision Maker Banner if reviewed */}
+                {Boolean(registration.reviewed_by_name) && (
+                  <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-xs">
                     <div className="flex min-w-0 items-center gap-1.5">
-                      <Sparkles className="size-3.5 shrink-0 text-purple-600 dark:text-purple-400" />
-                      <span className="shrink-0 font-medium text-[11px] text-muted-foreground">Referral Code:</span>
-                      <span className="truncate font-mono font-semibold text-[11px] text-foreground">
-                        {registration.referral_code}
-                      </span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-xs"
-                        className="size-5 text-muted-foreground hover:text-foreground"
-                        title="Copy referral code"
-                        onClick={() => handleCopy(registration.referral_code ?? "", "Referral code", "referral_code")}
-                      >
-                        {copiedKey === "referral_code" ? (
-                          <Check className="size-3 text-emerald-600" />
-                        ) : (
-                          <Copy className="size-3" />
+                      <UserCheck className="size-3.5 shrink-0 text-primary" />
+                      <span className="shrink-0 font-medium text-[11px] text-muted-foreground">Reviewed By:</span>
+                      <span className="truncate font-semibold text-[11px] text-foreground">
+                        {registration.reviewed_by_name}
+                        {registration.reviewed_by_email && (
+                          <span className="ml-1 font-normal text-[10px] text-muted-foreground">
+                            ({registration.reviewed_by_email})
+                          </span>
                         )}
-                      </Button>
+                      </span>
                     </div>
-
-                    {(Boolean(registration.referral_discount_amount) ||
-                      Boolean(registration.referral_discount_percent)) && (
-                      <Badge
-                        variant="outline"
-                        className="shrink-0 border-purple-500/30 bg-purple-500/10 font-mono font-semibold text-[10px] text-purple-700 dark:text-purple-300"
-                      >
-                        {registration.referral_discount_type === "fixed" || registration.referral_discount_amount
-                          ? `-Rp ${(registration.referral_discount_amount ?? 0).toLocaleString("id-ID")}`
-                          : `-${registration.referral_discount_percent ?? 10}%`}
-                      </Badge>
+                    {registration.reviewed_at && (
+                      <span className="shrink-0 text-[10px] text-muted-foreground">
+                        {formatFirestoreDate(registration.reviewed_at, "dd MMM, HH:mm")}
+                      </span>
                     )}
                   </div>
+                )}
 
-                  {/* Referrer Details ("Who does the referral belong to") */}
-                  <div className="flex items-center justify-between rounded-md border border-purple-500/20 bg-background/80 px-2.5 py-1.5 text-xs">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <Avatar className="size-6 shrink-0 border border-border/60">
-                        <AvatarImage
-                          src={referrerInfo?.avatar_url ?? undefined}
-                          alt={referrerInfo?.name || "Referrer"}
-                        />
-                        <AvatarFallback className="font-semibold text-[9px]">
-                          {getInitials(referrerInfo?.name || registration.referrer_name || "Ref")}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex min-w-0 flex-col">
-                        <div className="flex items-center gap-1.5">
-                          <span className="shrink-0 text-[10px] text-muted-foreground">Belongs to:</span>
-                          <span className="truncate font-semibold text-[11px] text-foreground">
-                            {referrerInfo?.name || registration.referrer_name || "Community Member"}
-                          </span>
-                        </div>
-                        {Boolean(referrerInfo?.email) && (
-                          <span className="truncate text-[10px] text-muted-foreground">{referrerInfo?.email}</span>
+                {/* Google Drive Venue Ticket Assignment & Validation Card */}
+                {(Boolean(registration.venue_ticket_file_id) ||
+                  (isEligibleForVenueTicket(registration) && venueTicketFiles.length > 0)) && (
+                  <div className="sm:col-span-2 flex flex-col gap-2 rounded-lg border border-primary/25 bg-primary/5 p-3 text-xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <Ticket className="size-3.5 shrink-0 text-primary" />
+                        <span className="shrink-0 font-semibold text-foreground">Venue Ticket:</span>
+                        {registration.venue_ticket_sequence && (
+                          <Badge variant="secondary" className="px-1.5 py-0 font-mono text-[10px]">
+                            #{registration.venue_ticket_sequence}
+                          </Badge>
+                        )}
+                        {registration.venue_ticket_file_name && registration.venue_ticket_url ? (
+                          <a
+                            href={registration.venue_ticket_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 truncate font-medium text-primary hover:underline"
+                          >
+                            <span className="truncate">{registration.venue_ticket_file_name}</span>
+                            <ExternalLink className="size-3 shrink-0" />
+                          </a>
+                        ) : (
+                          <span className="text-muted-foreground italic">No venue ticket assigned yet</span>
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {registration.venue_ticket_shared_at ? (
+                          <Badge
+                            variant="outline"
+                            className="gap-1 border-blue-500/30 bg-blue-500/10 text-[10px] text-blue-600 dark:text-blue-400"
+                          >
+                            <ShieldCheck className="size-3" />
+                            Shared (View-Only)
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                            Not Shared
+                          </Badge>
+                        )}
+                        {registration.venue_ticket_sent_at ? (
+                          <Badge
+                            variant="outline"
+                            className="gap-1 border-emerald-500/30 bg-emerald-500/10 text-[10px] text-emerald-600 dark:text-emerald-400"
+                          >
+                            <CheckCircle className="size-3" />
+                            Sent ({formatFirestoreDate(registration.venue_ticket_sent_at, "dd MMM, HH:mm")})
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                            Not Sent
+                          </Badge>
                         )}
                       </div>
                     </div>
-                    {referrerInfo?.role && (
-                      <Badge variant="secondary" className="shrink-0 px-1.5 py-0 text-[9px] capitalize">
-                        {referrerInfo.role.replace(/_/g, " ")}
-                      </Badge>
-                    )}
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-primary/15 border-t pt-2">
+                      {onAssignVenueTicket && venueTicketFiles.length > 0 ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] text-muted-foreground">Assign File:</span>
+                          <select
+                            aria-label="Assign Venue Ticket File"
+                            value={registration.venue_ticket_file_id ?? ""}
+                            disabled={isAssigningVenueTicket || isSendingVenueTicket}
+                            onChange={async (e) => {
+                              const selectedId = e.target.value;
+                              const chosen = venueTicketFiles.find((f) => f.id === selectedId) ?? null;
+                              setIsAssigningVenueTicket(true);
+                              try {
+                                await onAssignVenueTicket(registration, chosen);
+                              } finally {
+                                setIsAssigningVenueTicket(false);
+                              }
+                            }}
+                            className="h-7 max-w-[240px] rounded-md border border-input bg-background px-2 text-[11px] text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                          >
+                            <option value="">— Unassigned —</option>
+                            {venueTicketFiles.map((file) => {
+                              const assignedOwner = allRegistrations.find(
+                                (r) => r.id !== registration.id && r.venue_ticket_file_id === file.id,
+                              );
+                              return (
+                                <option key={file.id} value={file.id}>
+                                  #{file.sequence} {file.name}
+                                  {assignedOwner ? ` (Used by ${assignedOwner.member_name})` : ""}
+                                </option>
+                              );
+                            })}
+                          </select>
+                        </div>
+                      ) : (
+                        <span className="text-[11px] text-muted-foreground">
+                          Grants view-only access to {registration.member_email} before sending.
+                        </span>
+                      )}
+
+                      {onSendVenueTicketEmail && registration.venue_ticket_file_id && registration.venue_ticket_url && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={registration.venue_ticket_sent_at ? "outline" : "default"}
+                          disabled={isSendingVenueTicket || isAssigningVenueTicket}
+                          onClick={() => void onSendVenueTicketEmail(registration)}
+                          className="h-7 gap-1.5 px-2.5 text-xs"
+                        >
+                          {isSendingVenueTicket ? (
+                            <Loader2 className="size-3 animate-spin" />
+                          ) : (
+                            <Mail className="size-3" />
+                          )}
+                          <span>
+                            {isSendingVenueTicket
+                              ? "Granting & Sending..."
+                              : registration.venue_ticket_sent_at
+                                ? "Resend Venue Ticket"
+                                : "Grant Access & Send Venue Ticket"}
+                          </span>
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Expired Payment Notice Banner */}
+              {(rawStatus === "expired" || deadlineInfo.isOverdue) && hasPayableItems && (
+                <div className="mt-3 flex items-center justify-between rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Clock className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                    <div>
+                      <span className="font-semibold text-amber-800 dark:text-amber-300">
+                        Payment Deadline Expired {deadlineInfo.timeStatusText ? `(${deadlineInfo.timeStatusText})` : ""}
+                      </span>
+                      <p className="text-[11px] text-amber-700/90 dark:text-amber-400/90">
+                        The payment link deadline has lapsed. You can regenerate a renewed checkout link.
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-7 shrink-0 border-amber-500/40 bg-background text-amber-700 text-xs hover:bg-amber-500/20 dark:text-amber-300"
+                    onClick={() => setIsResendPaymentOpen(true)}
+                  >
+                    <RefreshCw className="mr-1.5 size-3" />
+                    Regenerate Link
+                  </Button>
+                </div>
+              )}
+
+              {/* Active DOKU Payment Link Banner (Waiting for Payment) */}
+              {effectivePaymentUrl && rawStatus === "waiting_for_payment" && (
+                <div className="mt-3 flex items-center justify-between rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <QrCode className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                    <div className="min-w-0 truncate">
+                      <span className="font-semibold text-emerald-800 dark:text-emerald-300">Payment Link Ready</span>
+                      {invoiceNumber && (
+                        <span className="ml-1.5 font-mono text-[11px] text-emerald-700/80 dark:text-emerald-400/80">
+                          ({invoiceNumber})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-2 text-[11px] text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300"
+                      onClick={() => {
+                        void navigator.clipboard.writeText(effectivePaymentUrl);
+                        toast.success("Payment URL copied to clipboard!");
+                      }}
+                    >
+                      <Copy className="mr-1 size-3" />
+                      Copy
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-6 border-emerald-500/40 px-2 text-[11px] text-emerald-700 dark:text-emerald-300"
+                      asChild
+                    >
+                      <a href={effectivePaymentUrl} target="_blank" rel="noopener noreferrer">
+                        <ExternalLink className="mr-1 size-3" />
+                        Open
+                      </a>
+                    </Button>
                   </div>
                 </div>
               )}
 
-              {/* Reviewed By Decision Maker Banner if reviewed */}
-              {Boolean(registration.reviewed_by_name) && (
-                <div className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2 text-xs">
-                  <div className="flex min-w-0 items-center gap-1.5">
-                    <UserCheck className="size-3.5 shrink-0 text-primary" />
-                    <span className="shrink-0 font-medium text-[11px] text-muted-foreground">Reviewed By:</span>
-                    <span className="truncate font-semibold text-[11px] text-foreground">
-                      {registration.reviewed_by_name}
-                      {registration.reviewed_by_email && (
-                        <span className="ml-1 font-normal text-[10px] text-muted-foreground">
-                          ({registration.reviewed_by_email})
+              {/* Paid & Verified Banner */}
+              {(rawStatus === "paid_and_registered" || registration.payment_status === "paid") && (
+                <div className="mt-3 flex items-center justify-between rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <CheckCircle className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                    <div className="min-w-0 truncate">
+                      <span className="font-semibold text-emerald-800 dark:text-emerald-300">
+                        Payment Received & Verified
+                      </span>
+                      {registration.payment_amount !== undefined && (
+                        <span className="ml-1.5 font-medium text-[11px] text-emerald-700/90 dark:text-emerald-400/90">
+                          • Rp {Number(registration.payment_amount).toLocaleString("id-ID")}
                         </span>
                       )}
-                    </span>
+                      {Boolean(registration.payment_channel) && (
+                        <Badge
+                          variant="outline"
+                          className="ml-1.5 border-emerald-500/30 bg-background/50 text-[10px] text-emerald-700 dark:text-emerald-300"
+                        >
+                          {registration.payment_channel}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
-                  {registration.reviewed_at && (
-                    <span className="shrink-0 text-[10px] text-muted-foreground">
-                      {formatFirestoreDate(registration.reviewed_at, "dd MMM, HH:mm")}
-                    </span>
+                  {invoiceNumber && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-2 font-mono text-[11px] text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300"
+                      onClick={() => handleCopy(invoiceNumber, "Invoice number", "invoice_banner")}
+                    >
+                      <Copy className="mr-1 size-3" />
+                      {invoiceNumber}
+                    </Button>
                   )}
                 </div>
               )}
             </div>
 
-            {/* Expired Payment Notice Banner */}
-            {(rawStatus === "expired" || deadlineInfo.isOverdue) && hasPayableItems && (
-              <div className="mt-3 flex items-center justify-between rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">
-                <div className="flex min-w-0 items-center gap-2">
-                  <Clock className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
-                  <div>
-                    <span className="font-semibold text-amber-800 dark:text-amber-300">
-                      Payment Deadline Expired {deadlineInfo.timeStatusText ? `(${deadlineInfo.timeStatusText})` : ""}
-                    </span>
-                    <p className="text-[11px] text-amber-700/90 dark:text-amber-400/90">
-                      The payment link deadline has lapsed. You can regenerate a renewed checkout link.
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="h-7 shrink-0 border-amber-500/40 bg-background text-amber-700 text-xs hover:bg-amber-500/20 dark:text-amber-300"
-                  onClick={() => setIsResendPaymentOpen(true)}
-                >
-                  <RefreshCw className="mr-1.5 size-3" />
-                  Regenerate Link
-                </Button>
-              </div>
-            )}
-
-            {/* Active DOKU Payment Link Banner (Waiting for Payment) */}
-            {effectivePaymentUrl && rawStatus === "waiting_for_payment" && (
-              <div className="mt-3 flex items-center justify-between rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs">
-                <div className="flex min-w-0 items-center gap-2">
-                  <QrCode className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                  <div className="min-w-0 truncate">
-                    <span className="font-semibold text-emerald-800 dark:text-emerald-300">Payment Link Ready</span>
-                    {invoiceNumber && (
-                      <span className="ml-1.5 font-mono text-[11px] text-emerald-700/80 dark:text-emerald-400/80">
-                        ({invoiceNumber})
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="flex shrink-0 items-center gap-1.5">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    className="h-6 px-2 text-[11px] text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300"
-                    onClick={() => {
-                      void navigator.clipboard.writeText(effectivePaymentUrl);
-                      toast.success("Payment URL copied to clipboard!");
-                    }}
-                  >
-                    <Copy className="mr-1 size-3" />
-                    Copy
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    className="h-6 border-emerald-500/40 px-2 text-[11px] text-emerald-700 dark:text-emerald-300"
-                    asChild
-                  >
-                    <a href={effectivePaymentUrl} target="_blank" rel="noopener noreferrer">
-                      <ExternalLink className="mr-1 size-3" />
-                      Open
-                    </a>
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* Paid & Verified Banner */}
-            {(rawStatus === "paid_and_registered" || registration.payment_status === "paid") && (
-              <div className="mt-3 flex items-center justify-between rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs">
-                <div className="flex min-w-0 items-center gap-2">
-                  <CheckCircle className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                  <div className="min-w-0 truncate">
-                    <span className="font-semibold text-emerald-800 dark:text-emerald-300">
-                      Payment Received & Verified
-                    </span>
-                    {registration.payment_amount !== undefined && (
-                      <span className="ml-1.5 font-medium text-[11px] text-emerald-700/90 dark:text-emerald-400/90">
-                        • Rp {Number(registration.payment_amount).toLocaleString("id-ID")}
-                      </span>
-                    )}
-                    {Boolean(registration.payment_channel) && (
-                      <Badge
-                        variant="outline"
-                        className="ml-1.5 border-emerald-500/30 bg-background/50 text-[10px] text-emerald-700 dark:text-emerald-300"
-                      >
-                        {registration.payment_channel}
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-                {invoiceNumber && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    className="h-6 px-2 font-mono text-[11px] text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300"
-                    onClick={() => handleCopy(invoiceNumber, "Invoice number", "invoice_banner")}
-                  >
-                    <Copy className="mr-1 size-3" />
-                    {invoiceNumber}
-                  </Button>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Scrollable Questions and Responses */}
-          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-            <div className="space-y-6">
-              {/* Refund Request Dossier Section */}
-              {registration.refund_request && (
-                <div className="space-y-3 rounded-xl border border-rose-500/30 bg-rose-500/5 p-4 text-xs shadow-xs">
-                  {/* Header */}
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-rose-500/20 border-b pb-2.5">
-                    <div className="flex items-center gap-2">
-                      <div className="rounded-md bg-rose-500/10 p-1.5 text-rose-600 dark:text-rose-400">
-                        <RotateCcw className="size-4" />
+            {/* Questions and Responses */}
+            <div className="px-6 py-5">
+              <div className="space-y-6">
+                {/* Refund Request Dossier Section */}
+                {registration.refund_request && (
+                  <div className="space-y-3 rounded-xl border border-rose-500/30 bg-rose-500/5 p-4 text-xs shadow-xs">
+                    {/* Header */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-rose-500/20 border-b pb-2.5">
+                      <div className="flex items-center gap-2">
+                        <div className="rounded-md bg-rose-500/10 p-1.5 text-rose-600 dark:text-rose-400">
+                          <RotateCcw className="size-4" />
+                        </div>
+                        <div>
+                          <h4 className="font-semibold text-foreground text-sm">Refund Request Application</h4>
+                          <p className="text-[11px] text-muted-foreground">
+                            Attendee submitted cancellation and deposit refund details
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <h4 className="font-semibold text-foreground text-sm">Refund Request Application</h4>
-                        <p className="text-[11px] text-muted-foreground">
-                          Attendee submitted cancellation and deposit refund details
-                        </p>
-                      </div>
-                    </div>
 
-                    <div className="flex items-center gap-2">
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          "gap-1.5 px-2.5 py-1 font-semibold text-xs",
-                          registration.refund_request.status === "waiting_for_approval" &&
-                            "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-                          registration.refund_request.status === "refund_completed" &&
-                            "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-                          registration.refund_request.status === "rejected" &&
-                            "border-destructive/40 bg-destructive/10 text-destructive",
-                        )}
-                      >
-                        {registration.refund_request.status === "waiting_for_approval" && <Clock className="size-3" />}
-                        {registration.refund_request.status === "refund_completed" && (
-                          <CheckCircle className="size-3" />
-                        )}
-                        {registration.refund_request.status === "rejected" && <XCircle className="size-3" />}
-                        <span>{getRefundStatusBadgeLabel(registration.refund_request.status)}</span>
-                      </Badge>
-                    </div>
-                  </div>
-
-                  {/* Financial & Bank Account Grid */}
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    {/* Deposit Amount */}
-                    <div className="rounded-lg border border-border/60 bg-background/90 p-3 shadow-2xs">
-                      <span className="font-medium text-[11px] text-muted-foreground">Deposit / Refund Amount</span>
-                      <div className="mt-1 flex items-baseline justify-between">
-                        <span className="font-bold text-foreground text-lg sm:text-xl">
-                          {formatRupiah(getRegistrationRefundAmount(registration, event))}
-                        </span>
-                        <Badge variant="secondary" className="text-[10px]">
-                          {registration.ticket_name ?? registration.ticket_tier ?? "Commitment Fee"}
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "gap-1.5 px-2.5 py-1 font-semibold text-xs",
+                            registration.refund_request.status === "waiting_for_approval" &&
+                              "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+                            registration.refund_request.status === "refund_completed" &&
+                              "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+                            registration.refund_request.status === "rejected" &&
+                              "border-destructive/40 bg-destructive/10 text-destructive",
+                          )}
+                        >
+                          {registration.refund_request.status === "waiting_for_approval" && (
+                            <Clock className="size-3" />
+                          )}
+                          {registration.refund_request.status === "refund_completed" && (
+                            <CheckCircle className="size-3" />
+                          )}
+                          {registration.refund_request.status === "rejected" && <XCircle className="size-3" />}
+                          <span>{getRefundStatusBadgeLabel(registration.refund_request.status)}</span>
                         </Badge>
                       </div>
-                      {(() => {
-                        const discounts = getRegistrationDiscountBreakdown(registration, event);
-                        if (!discounts.hasDiscount) return null;
-                        return (
-                          <div className="mt-1.5 space-y-0.5 rounded bg-muted/40 p-1.5 text-[10px]">
-                            <div className="flex justify-between text-muted-foreground">
-                              <span>Ticket Nominal:</span>
-                              <span>{formatRupiah(discounts.baseTicketPrice)}</span>
+                    </div>
+
+                    {/* Financial & Bank Account Grid */}
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {/* Deposit Amount */}
+                      <div className="rounded-lg border border-border/60 bg-background/90 p-3 shadow-2xs">
+                        <span className="font-medium text-[11px] text-muted-foreground">Deposit / Refund Amount</span>
+                        <div className="mt-1 flex items-baseline justify-between">
+                          <span className="font-bold text-foreground text-lg sm:text-xl">
+                            {formatRupiah(getRegistrationRefundAmount(registration, event))}
+                          </span>
+                          <Badge variant="secondary" className="text-[10px]">
+                            {registration.ticket_name ?? registration.ticket_tier ?? "Commitment Fee"}
+                          </Badge>
+                        </div>
+                        {(() => {
+                          const discounts = getRegistrationDiscountBreakdown(registration, event);
+                          if (!discounts.hasDiscount) return null;
+                          return (
+                            <div className="mt-1.5 space-y-0.5 rounded bg-muted/40 p-1.5 text-[10px]">
+                              <div className="flex justify-between text-muted-foreground">
+                                <span>Ticket Nominal:</span>
+                                <span>{formatRupiah(discounts.baseTicketPrice)}</span>
+                              </div>
+                              <div className="flex justify-between font-mono text-emerald-600 dark:text-emerald-400">
+                                <span>Cut off Promo:</span>
+                                <span>-{formatRupiah(discounts.totalDiscount)}</span>
+                              </div>
                             </div>
-                            <div className="flex justify-between font-mono text-emerald-600 dark:text-emerald-400">
-                              <span>Cut off Promo:</span>
-                              <span>-{formatRupiah(discounts.totalDiscount)}</span>
+                          );
+                        })()}
+                        <p className="mt-1 text-[10px] text-muted-foreground">
+                          Requested on{" "}
+                          {formatFirestoreDate(registration.refund_request.requested_at, "dd MMMM yyyy, HH:mm", "—")}
+                        </p>
+                      </div>
+
+                      {/* Payee Bank Account Details */}
+                      <div className="rounded-lg border border-border/60 bg-background/90 p-3 shadow-2xs">
+                        <span className="font-medium text-[11px] text-muted-foreground">Payee Destination Bank</span>
+                        <div className="mt-1.5 space-y-1.5">
+                          <div className="flex items-center gap-1.5 font-semibold text-foreground text-xs">
+                            <Building2 className="size-3.5 shrink-0 text-primary" />
+                            <span>{registration.refund_request.bank_name}</span>
+                          </div>
+                          <div className="flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-1 font-mono text-muted-foreground">
+                              <span>{registration.refund_request.bank_account_number}</span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-xs"
+                                className="size-5 text-muted-foreground hover:text-foreground"
+                                title="Copy account number"
+                                onClick={() =>
+                                  handleCopy(
+                                    registration.refund_request?.bank_account_number ?? "",
+                                    "Account number",
+                                    "refund_bank_num",
+                                  )
+                                }
+                              >
+                                {copiedKey === "refund_bank_num" ? (
+                                  <Check className="size-2.5 text-emerald-600" />
+                                ) : (
+                                  <Copy className="size-2.5" />
+                                )}
+                              </Button>
+                            </div>
+                            <div className="flex items-center gap-1 text-muted-foreground">
+                              <span className="max-w-[130px] truncate">
+                                a/n {registration.refund_request.bank_account_name}
+                              </span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-xs"
+                                className="size-5 text-muted-foreground hover:text-foreground"
+                                title="Copy account holder name"
+                                onClick={() =>
+                                  handleCopy(
+                                    registration.refund_request?.bank_account_name ?? "",
+                                    "Account holder name",
+                                    "refund_bank_holder",
+                                  )
+                                }
+                              >
+                                {copiedKey === "refund_bank_holder" ? (
+                                  <Check className="size-2.5 text-emerald-600" />
+                                ) : (
+                                  <Copy className="size-2.5" />
+                                )}
+                              </Button>
                             </div>
                           </div>
-                        );
-                      })()}
-                      <p className="mt-1 text-[10px] text-muted-foreground">
-                        Requested on{" "}
-                        {formatFirestoreDate(registration.refund_request.requested_at, "dd MMMM yyyy, HH:mm", "—")}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Cancellation Reason & Proof */}
+                    <div className="rounded-lg border border-border/60 bg-background/90 p-3 shadow-2xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium text-[11px] text-muted-foreground">
+                          Cancellation Reason & Supporting Proof
+                        </span>
+                        {registration.refund_request.proof_media_url && (
+                          <a
+                            href={registration.refund_request.proof_media_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 font-medium text-[11px] text-primary hover:underline"
+                          >
+                            <FileText className="size-3" />
+                            <span>View Attendee Proof ↗</span>
+                          </a>
+                        )}
+                      </div>
+                      <p className="mt-1.5 whitespace-pre-wrap text-foreground text-xs leading-relaxed">
+                        {registration.refund_request.cancellation_reason || "No cancellation reason provided."}
                       </p>
                     </div>
 
-                    {/* Payee Bank Account Details */}
-                    <div className="rounded-lg border border-border/60 bg-background/90 p-3 shadow-2xs">
-                      <span className="font-medium text-[11px] text-muted-foreground">Payee Destination Bank</span>
-                      <div className="mt-1.5 space-y-1.5">
-                        <div className="flex items-center gap-1.5 font-semibold text-foreground text-xs">
-                          <Building2 className="size-3.5 shrink-0 text-primary" />
-                          <span>{registration.refund_request.bank_name}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-xs">
-                          <div className="flex items-center gap-1 font-mono text-muted-foreground">
-                            <span>{registration.refund_request.bank_account_number}</span>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon-xs"
-                              className="size-5 text-muted-foreground hover:text-foreground"
-                              title="Copy account number"
-                              onClick={() =>
-                                handleCopy(
-                                  registration.refund_request?.bank_account_number ?? "",
-                                  "Account number",
-                                  "refund_bank_num",
-                                )
-                              }
-                            >
-                              {copiedKey === "refund_bank_num" ? (
-                                <Check className="size-2.5 text-emerald-600" />
-                              ) : (
-                                <Copy className="size-2.5" />
-                              )}
-                            </Button>
+                    {/* Completed Outcome Details */}
+                    {registration.refund_request.status === "refund_completed" && (
+                      <div className="space-y-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs">
+                        <div className="flex items-center justify-between font-semibold text-emerald-800 dark:text-emerald-300">
+                          <div className="flex items-center gap-1.5">
+                            <CheckCircle className="size-3.5" />
+                            <span>Disbursement Completed</span>
                           </div>
-                          <div className="flex items-center gap-1 text-muted-foreground">
-                            <span className="max-w-[130px] truncate">
-                              a/n {registration.refund_request.bank_account_name}
+                          {registration.refund_request.completed_at && (
+                            <span className="font-normal text-[10px] opacity-80">
+                              {formatFirestoreDate(registration.refund_request.completed_at, "dd MMM yyyy, HH:mm")}
                             </span>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon-xs"
-                              className="size-5 text-muted-foreground hover:text-foreground"
-                              title="Copy account holder name"
-                              onClick={() =>
-                                handleCopy(
-                                  registration.refund_request?.bank_account_name ?? "",
-                                  "Account holder name",
-                                  "refund_bank_holder",
-                                )
-                              }
+                          )}
+                        </div>
+                        {registration.refund_request.completed_by_name && (
+                          <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                            Processed by:{" "}
+                            <span className="font-semibold">{registration.refund_request.completed_by_name}</span>
+                            {registration.refund_request.completed_by_email &&
+                              ` (${registration.refund_request.completed_by_email})`}
+                          </p>
+                        )}
+                        {registration.refund_request.completion_notes && (
+                          <p className="text-[11px] text-muted-foreground">
+                            <strong>Notes:</strong> {registration.refund_request.completion_notes}
+                          </p>
+                        )}
+                        {registration.refund_request.completion_proof_url && (
+                          <div className="pt-1">
+                            <a
+                              href={registration.refund_request.completion_proof_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 font-semibold text-[11px] text-emerald-700 hover:underline dark:text-emerald-300"
                             >
-                              {copiedKey === "refund_bank_holder" ? (
-                                <Check className="size-2.5 text-emerald-600" />
-                              ) : (
-                                <Copy className="size-2.5" />
-                              )}
-                            </Button>
+                              <FileText className="size-3" />
+                              <span>View Transfer Receipt Proof ↗</span>
+                            </a>
                           </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Cancellation Reason & Proof */}
-                  <div className="rounded-lg border border-border/60 bg-background/90 p-3 shadow-2xs">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium text-[11px] text-muted-foreground">
-                        Cancellation Reason & Supporting Proof
-                      </span>
-                      {registration.refund_request.proof_media_url && (
-                        <a
-                          href={registration.refund_request.proof_media_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 font-medium text-[11px] text-primary hover:underline"
-                        >
-                          <FileText className="size-3" />
-                          <span>View Attendee Proof ↗</span>
-                        </a>
-                      )}
-                    </div>
-                    <p className="mt-1.5 whitespace-pre-wrap text-foreground text-xs leading-relaxed">
-                      {registration.refund_request.cancellation_reason || "No cancellation reason provided."}
-                    </p>
-                  </div>
-
-                  {/* Completed Outcome Details */}
-                  {registration.refund_request.status === "refund_completed" && (
-                    <div className="space-y-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs">
-                      <div className="flex items-center justify-between font-semibold text-emerald-800 dark:text-emerald-300">
-                        <div className="flex items-center gap-1.5">
-                          <CheckCircle className="size-3.5" />
-                          <span>Disbursement Completed</span>
-                        </div>
-                        {registration.refund_request.completed_at && (
-                          <span className="font-normal text-[10px] opacity-80">
-                            {formatFirestoreDate(registration.refund_request.completed_at, "dd MMM yyyy, HH:mm")}
-                          </span>
-                        )}
-                      </div>
-                      {registration.refund_request.completed_by_name && (
-                        <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
-                          Processed by:{" "}
-                          <span className="font-semibold">{registration.refund_request.completed_by_name}</span>
-                          {registration.refund_request.completed_by_email &&
-                            ` (${registration.refund_request.completed_by_email})`}
-                        </p>
-                      )}
-                      {registration.refund_request.completion_notes && (
-                        <p className="text-[11px] text-muted-foreground">
-                          <strong>Notes:</strong> {registration.refund_request.completion_notes}
-                        </p>
-                      )}
-                      {registration.refund_request.completion_proof_url && (
-                        <div className="pt-1">
-                          <a
-                            href={registration.refund_request.completion_proof_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 font-semibold text-[11px] text-emerald-700 hover:underline dark:text-emerald-300"
-                          >
-                            <FileText className="size-3" />
-                            <span>View Transfer Receipt Proof ↗</span>
-                          </a>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Rejected Outcome Details */}
-                  {registration.refund_request.status === "rejected" && (
-                    <div className="space-y-1 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs">
-                      <div className="flex items-center justify-between font-semibold text-destructive">
-                        <div className="flex items-center gap-1.5">
-                          <XCircle className="size-3.5" />
-                          <span>Refund Request Rejected</span>
-                        </div>
-                        {registration.refund_request.rejected_at && (
-                          <span className="font-normal text-[10px] opacity-80">
-                            {formatFirestoreDate(registration.refund_request.rejected_at, "dd MMM yyyy, HH:mm")}
-                          </span>
-                        )}
-                      </div>
-                      {registration.refund_request.rejected_by_name && (
-                        <p className="text-[11px] text-muted-foreground">
-                          Reviewed by:{" "}
-                          <span className="font-semibold">{registration.refund_request.rejected_by_name}</span>
-                          {registration.refund_request.rejected_by_email &&
-                            ` (${registration.refund_request.rejected_by_email})`}
-                        </p>
-                      )}
-                      {registration.refund_request.rejection_reason && (
-                        <p className="text-[11px] text-destructive">
-                          <strong>Reason:</strong> {registration.refund_request.rejection_reason}
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Quick Action Buttons inside dossier */}
-                  {registration.refund_request.status === "waiting_for_approval" &&
-                    (onApproveRefund ?? onRejectRefund) && (
-                      <div className="flex items-center justify-end gap-2 border-rose-500/20 border-t pt-2">
-                        {onRejectRefund && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 gap-1 border-destructive/40 text-destructive text-xs hover:bg-destructive/10"
-                            onClick={() => onRejectRefund(registration)}
-                          >
-                            <XCircle className="size-3" />
-                            Reject Refund
-                          </Button>
-                        )}
-                        {onApproveRefund && (
-                          <Button
-                            size="sm"
-                            className="h-7 gap-1 bg-emerald-600 text-white text-xs hover:bg-emerald-700"
-                            onClick={() => onApproveRefund(registration)}
-                          >
-                            <CheckCircle className="size-3" />
-                            Approve Refund
-                          </Button>
                         )}
                       </div>
                     )}
-                </div>
-              )}
 
-              {groupedSections.length > 0 ? (
-                groupedSections.map(([sectionTitle, items]) => {
-                  const SectionIcon = SECTION_ICONS[sectionTitle] || HelpCircle;
-
-                  return (
-                    <div key={sectionTitle} className="space-y-3">
-                      <div className="flex items-center gap-2 border-border/40 border-b pb-1.5 font-semibold text-muted-foreground text-xs uppercase tracking-wider">
-                        <SectionIcon className="size-3.5 text-primary" />
-                        <span>{sectionTitle}</span>
-                        <span className="font-normal text-[11px] text-muted-foreground/70">
-                          ({items.length} {items.length === 1 ? "response" : "responses"})
-                        </span>
+                    {/* Rejected Outcome Details */}
+                    {registration.refund_request.status === "rejected" && (
+                      <div className="space-y-1 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs">
+                        <div className="flex items-center justify-between font-semibold text-destructive">
+                          <div className="flex items-center gap-1.5">
+                            <XCircle className="size-3.5" />
+                            <span>Refund Request Rejected</span>
+                          </div>
+                          {registration.refund_request.rejected_at && (
+                            <span className="font-normal text-[10px] opacity-80">
+                              {formatFirestoreDate(registration.refund_request.rejected_at, "dd MMM yyyy, HH:mm")}
+                            </span>
+                          )}
+                        </div>
+                        {registration.refund_request.rejected_by_name && (
+                          <p className="text-[11px] text-muted-foreground">
+                            Reviewed by:{" "}
+                            <span className="font-semibold">{registration.refund_request.rejected_by_name}</span>
+                            {registration.refund_request.rejected_by_email &&
+                              ` (${registration.refund_request.rejected_by_email})`}
+                          </p>
+                        )}
+                        {registration.refund_request.rejection_reason && (
+                          <p className="text-[11px] text-destructive">
+                            <strong>Reason:</strong> {registration.refund_request.rejection_reason}
+                          </p>
+                        )}
                       </div>
+                    )}
 
-                      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                        {items.map((item) => {
-                          const isWide =
-                            String(item.value).length > 60 ||
-                            String(item.value).includes("\n") ||
-                            Array.isArray(item.value) ||
-                            item.key.toLowerCase().includes("portfolio") ||
-                            item.key.toLowerCase().includes("linkedin") ||
-                            item.key.toLowerCase().includes("github");
-
-                          return (
-                            <div
-                              key={item.key}
-                              className={cn(
-                                "flex min-w-0 flex-col justify-between overflow-hidden rounded-lg border border-border/60 bg-card p-3 shadow-2xs transition-colors hover:border-border",
-                                isWide && "sm:col-span-2",
-                              )}
+                    {/* Quick Action Buttons inside dossier */}
+                    {registration.refund_request.status === "waiting_for_approval" &&
+                      (onApproveRefund ?? onRejectRefund) && (
+                        <div className="flex items-center justify-end gap-2 border-rose-500/20 border-t pt-2">
+                          {onRejectRefund && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 gap-1 border-destructive/40 text-destructive text-xs hover:bg-destructive/10"
+                              onClick={() => onRejectRefund(registration)}
                             >
-                              <div className="mb-1 font-medium text-muted-foreground text-xs">{item.label}</div>
-                              <div className="pt-0.5">{renderResponseValue(item.key, item.value)}</div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
-                  <FileText className="mb-2 size-8 opacity-40" />
-                  <p className="font-medium text-sm">No custom questionnaire responses recorded.</p>
-                  <p className="text-muted-foreground/80 text-xs">
-                    This attendee registered via Standard RSVP without additional custom questions.
-                  </p>
-                </div>
-              )}
-
-              {/* Audit & Review History Timeline */}
-              {effectiveStatusLogs.length > 0 && (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 border-border/40 border-b pb-1.5 font-semibold text-muted-foreground text-xs uppercase tracking-wider">
-                    <ShieldCheck className="size-3.5 text-primary" />
-                    <span>Review & Status Audit History</span>
-                    <span className="font-normal text-[11px] text-muted-foreground/70">
-                      ({effectiveStatusLogs.length} {effectiveStatusLogs.length === 1 ? "entry" : "entries"})
-                    </span>
+                              <XCircle className="size-3" />
+                              Reject Refund
+                            </Button>
+                          )}
+                          {onApproveRefund && (
+                            <Button
+                              size="sm"
+                              className="h-7 gap-1 bg-emerald-600 text-white text-xs hover:bg-emerald-700"
+                              onClick={() => onApproveRefund(registration)}
+                            >
+                              <CheckCircle className="size-3" />
+                              Approve Refund
+                            </Button>
+                          )}
+                        </div>
+                      )}
                   </div>
+                )}
 
-                  <div className="space-y-2 rounded-lg border border-border/60 bg-muted/20 p-3">
-                    {effectiveStatusLogs.map((log, idx) => {
-                      const logStatusMeta = STATUS_VARIANTS[log.status] || {
-                        label: log.status,
-                        badgeClass: "border-muted bg-muted",
-                        dotClass: "bg-muted-foreground",
-                      };
-                      const logTime = formatFirestoreDate(log.changed_at, "dd MMM yyyy, HH:mm");
+                {groupedSections.length > 0 ? (
+                  groupedSections.map(([sectionTitle, items]) => {
+                    const SectionIcon = SECTION_ICONS[sectionTitle] || HelpCircle;
 
-                      return (
-                        <div
-                          key={log.id || `log-${idx}`}
-                          className="flex flex-col gap-1 border-border/40 border-b pb-2 last:border-b-0 last:pb-0"
-                        >
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                              <Badge
-                                variant="outline"
+                    return (
+                      <div key={sectionTitle} className="space-y-3">
+                        <div className="flex items-center gap-2 border-border/40 border-b pb-1.5 font-semibold text-muted-foreground text-xs uppercase tracking-wider">
+                          <SectionIcon className="size-3.5 text-primary" />
+                          <span>{sectionTitle}</span>
+                          <span className="font-normal text-[11px] text-muted-foreground/70">
+                            ({items.length} {items.length === 1 ? "response" : "responses"})
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                          {items.map((item) => {
+                            const isWide =
+                              String(item.value).length > 60 ||
+                              String(item.value).includes("\n") ||
+                              Array.isArray(item.value) ||
+                              item.key.toLowerCase().includes("portfolio") ||
+                              item.key.toLowerCase().includes("linkedin") ||
+                              item.key.toLowerCase().includes("github");
+
+                            return (
+                              <div
+                                key={item.key}
                                 className={cn(
-                                  "gap-1 border px-2 py-0.5 font-medium text-[11px]",
-                                  logStatusMeta.badgeClass,
+                                  "flex min-w-0 flex-col justify-between overflow-hidden rounded-lg border border-border/60 bg-card p-3 shadow-2xs transition-colors hover:border-border",
+                                  isWide && "sm:col-span-2",
                                 )}
                               >
-                                <span className={cn("size-1.5 rounded-full", logStatusMeta.dotClass)} />
-                                {logStatusMeta.label}
-                              </Badge>
-                              <span className="text-muted-foreground text-xs">
-                                by <span className="font-semibold text-foreground">{log.changed_by_name}</span>
-                                {log.changed_by_email && (
-                                  <span className="text-[11px] text-muted-foreground"> ({log.changed_by_email})</span>
-                                )}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                              <Clock className="size-3" />
-                              <span>{logTime}</span>
-                            </div>
-                          </div>
-                          {log.notes && <p className="pl-1 text-[11px] text-muted-foreground/80 italic">{log.notes}</p>}
+                                <div className="mb-1 font-medium text-muted-foreground text-xs">{item.label}</div>
+                                <div className="pt-0.5">{renderResponseValue(item.key, item.value)}</div>
+                              </div>
+                            );
+                          })}
                         </div>
-                      );
-                    })}
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
+                    <FileText className="mb-2 size-8 opacity-40" />
+                    <p className="font-medium text-sm">No custom questionnaire responses recorded.</p>
+                    <p className="text-muted-foreground/80 text-xs">
+                      This attendee registered via Standard RSVP without additional custom questions.
+                    </p>
                   </div>
-                </div>
-              )}
+                )}
+
+                {/* Audit & Review History Timeline */}
+                {effectiveStatusLogs.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 border-border/40 border-b pb-1.5 font-semibold text-muted-foreground text-xs uppercase tracking-wider">
+                      <ShieldCheck className="size-3.5 text-primary" />
+                      <span>Review & Status Audit History</span>
+                      <span className="font-normal text-[11px] text-muted-foreground/70">
+                        ({effectiveStatusLogs.length} {effectiveStatusLogs.length === 1 ? "entry" : "entries"})
+                      </span>
+                    </div>
+
+                    <div className="space-y-2 rounded-lg border border-border/60 bg-muted/20 p-3">
+                      {effectiveStatusLogs.map((log, idx) => {
+                        const logStatusMeta = STATUS_VARIANTS[log.status] || {
+                          label: log.status,
+                          badgeClass: "border-muted bg-muted",
+                          dotClass: "bg-muted-foreground",
+                        };
+                        const logTime = formatFirestoreDate(log.changed_at, "dd MMM yyyy, HH:mm");
+
+                        return (
+                          <div
+                            key={log.id || `log-${idx}`}
+                            className="flex flex-col gap-1 border-border/40 border-b pb-2 last:border-b-0 last:pb-0"
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "gap-1 border px-2 py-0.5 font-medium text-[11px]",
+                                    logStatusMeta.badgeClass,
+                                  )}
+                                >
+                                  <span className={cn("size-1.5 rounded-full", logStatusMeta.dotClass)} />
+                                  {logStatusMeta.label}
+                                </Badge>
+                                <span className="text-muted-foreground text-xs">
+                                  by <span className="font-semibold text-foreground">{log.changed_by_name}</span>
+                                  {log.changed_by_email && (
+                                    <span className="text-[11px] text-muted-foreground"> ({log.changed_by_email})</span>
+                                  )}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                                <Clock className="size-3" />
+                                <span>{logTime}</span>
+                              </div>
+                            </div>
+                            {log.notes && (
+                              <p className="pl-1 text-[11px] text-muted-foreground/80 italic">{log.notes}</p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -2226,6 +2404,7 @@ export function ApplicantDetailDialog({
               isResendingInterest,
               isResendingWaitlist,
               isResendingPaidWaitlist,
+              isResendingAccepted,
               isCancelling,
             ].some(Boolean);
             const isWaitingPayment = rawStatus === "waiting_for_payment";
@@ -2235,8 +2414,10 @@ export function ApplicantDetailDialog({
             const isApproved =
               rawStatus === "approved" ||
               rawStatus === "paid_and_registered" ||
+              rawStatus === "paid_registered" ||
               rawStatus === "confirmed" ||
-              rawStatus === "registered";
+              rawStatus === "registered" ||
+              rawStatus === "attended";
             const isExpired = rawStatus === "expired";
             const isRejected = rawStatus === "rejected";
             const isDisbursementCompleted =
@@ -2331,7 +2512,7 @@ export function ApplicantDetailDialog({
                           <span>More</span>
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start" className="w-52">
+                      <DropdownMenuContent align="start" className="w-56">
                         {isCuration && isStatusPending && onResendInterestEmail && (
                           <DropdownMenuItem
                             disabled={isActionBlocked || isResendingInterest}
@@ -2362,7 +2543,10 @@ export function ApplicantDetailDialog({
                           </DropdownMenuItem>
                         )}
 
-                        {(onCancelRegistration ?? onDelete) && <DropdownMenuSeparator />}
+                        {((isCuration && isStatusPending && onResendInterestEmail) ||
+                          (isCuration && isWaitlisted && onResendWaitlistEmail) ||
+                          (isPaidWaitlisted && onResendPaidWaitlistEmail)) &&
+                          (onCancelRegistration ?? onDelete) && <DropdownMenuSeparator />}
 
                         {onCancelRegistration && !isCanceled && (
                           <DropdownMenuItem

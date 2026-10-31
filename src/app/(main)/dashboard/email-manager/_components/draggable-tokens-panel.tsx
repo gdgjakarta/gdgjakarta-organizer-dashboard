@@ -23,6 +23,12 @@ export const EVENT_DATA_TOKENS: DraggableTokenItem[] = [
   { id: "event_date", tag: "[[EventDate]]", label: "Event Date", description: "e.g. Friday, Oct 23, 2026" },
   { id: "event_time", tag: "[[EventTime]]", label: "Event Time", description: "e.g. 10:00 AM" },
   { id: "event_venue", tag: "[[EventVenue]]", label: "Venue Location", description: "Venue name and city" },
+  {
+    id: "event_venue_url",
+    tag: "[[EventVenueUrl]]",
+    label: "Venue URL",
+    description: "Google Maps or venue directions URL from event data",
+  },
   { id: "event_address", tag: "[[EventAddress]]", label: "Venue Address", description: "Full street address" },
   { id: "event_url", tag: "[[EventUrl]]", label: "Event Link", description: "URL to the event details page" },
   {
@@ -37,6 +43,12 @@ export const EVENT_DATA_TOKENS: DraggableTokenItem[] = [
     tag: "[[SessionTitle]]",
     label: "Session Title",
     description: "Speaker session topic or talk title",
+  },
+  {
+    id: "vehicle_ticket_url",
+    tag: "[[VehicleTicketUrl]]",
+    label: "Vehicle Ticket Link",
+    description: "Link for vehicle entry or parking pass ticket",
   },
 ];
 
@@ -68,6 +80,12 @@ export const ATTENDEE_DATA_TOKENS: DraggableTokenItem[] = [
     tag: "[[CheckinStatus]]",
     label: "Check-in Status",
     description: "Checked In or Not Checked In",
+  },
+  {
+    id: "venue_ticket_url",
+    tag: "[[VenueTicketUrl]]",
+    label: "Venue Ticket Link",
+    description: "Google Drive link to the participant's venue entry pass",
   },
 ];
 
@@ -337,7 +355,7 @@ export function DraggableTokensPanel({
                 className="flex items-center justify-center gap-1.5 rounded-md border border-dashed border-sky-500/40 bg-sky-500/5 px-2 py-1.5 text-xs text-sky-700 hover:bg-sky-500/10 dark:text-sky-300 transition-colors"
               >
                 <Plus className="size-3.5" />
-                <span className="text-[11px] font-medium">+ Add Event Token</span>
+                <span className="text-[11px] font-medium">Add Event Token</span>
               </button>
             )}
           </div>
@@ -404,7 +422,7 @@ export function DraggableTokensPanel({
                 className="flex items-center justify-center gap-1.5 rounded-md border border-dashed border-emerald-500/40 bg-emerald-500/5 px-2 py-1.5 text-xs text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300 transition-colors"
               >
                 <Plus className="size-3.5" />
-                <span className="text-[11px] font-medium">+ Add Attendee Token</span>
+                <span className="text-[11px] font-medium">Add Attendee Token</span>
               </button>
             )}
           </div>

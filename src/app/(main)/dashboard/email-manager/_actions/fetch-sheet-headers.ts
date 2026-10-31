@@ -41,6 +41,7 @@ export async function fetchSheetHeaders(
   spreadsheetUrl: string,
   sheetName: string,
   headerRow = 1,
+  accessToken?: string,
 ): Promise<FetchSheetHeadersResult> {
   try {
     const rowNumber = Math.max(1, Math.floor(Number(headerRow) || 1));
@@ -52,14 +53,73 @@ export async function fetchSheetHeaders(
     }
     const spreadsheetId = match[1];
 
+    const safeSheetRange =
+      sheetName.includes(" ") || /[^a-zA-Z0-9]/.test(sheetName) ? `'${sheetName.replace(/'/g, "''")}'` : sheetName;
+
+    // 1. If a Google Drive OAuth accessToken is provided, try authenticated Sheets API v4 first (supports private sheets)
+    if (accessToken?.trim()) {
+      try {
+        const oauthRes = await fetch(
+          `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(safeSheetRange)}`,
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken.trim()}`,
+              Accept: "application/json",
+            },
+            cache: "no-store",
+          },
+        );
+        if (oauthRes.ok) {
+          const data = (await oauthRes.json()) as { values?: string[][] };
+          const rows = data.values;
+          if (!rows || rows.length === 0) {
+            return {
+              success: true,
+              headers: [],
+              rowCount: 0,
+              sampleRow: {},
+              message: `No data found in sheet "${sheetName}".`,
+            };
+          }
+
+          const headerIndex = rowNumber - 1;
+          const rawHeaders = rows[headerIndex] || [];
+          const headers = rawHeaders.map((v) => String(v ?? "").trim()).filter((v) => v.length > 0);
+
+          const dataRows = rows.slice(rowNumber);
+          const nonEmptyDataRows = dataRows.filter((r) => r.some((cell) => String(cell ?? "").trim().length > 0));
+          const rowCount = nonEmptyDataRows.length;
+
+          const sampleRow: Record<string, string> = {};
+          if (nonEmptyDataRows.length > 0) {
+            const firstRow = nonEmptyDataRows[0];
+            rawHeaders.forEach((h, idx) => {
+              const hStr = String(h ?? "").trim();
+              if (hStr) {
+                sampleRow[hStr] = String(firstRow[idx] ?? "").trim();
+              }
+            });
+          }
+
+          return {
+            success: true,
+            headers,
+            rowCount,
+            sampleRow,
+            message: `Successfully loaded ${headers.length} tag${headers.length === 1 ? "" : "s"} and ${rowCount} recipient row${rowCount === 1 ? "" : "s"} from row ${rowNumber}.`,
+          };
+        }
+      } catch (oauthErr) {
+        console.warn("[fetchSheetHeaders] OAuth token Sheets API error, falling back:", oauthErr);
+      }
+    }
+
     const apiKey = process.env.GOOGLE_SHEETS_API_KEY;
 
     // If an API key is provided, try the official Google Sheets API first
     if (apiKey) {
       try {
         const sheets = google.sheets("v4");
-        const safeSheetRange =
-          sheetName.includes(" ") || /[^a-zA-Z0-9]/.test(sheetName) ? `'${sheetName.replace(/'/g, "''")}'` : sheetName;
 
         const response = await sheets.spreadsheets.values.get({
           spreadsheetId,

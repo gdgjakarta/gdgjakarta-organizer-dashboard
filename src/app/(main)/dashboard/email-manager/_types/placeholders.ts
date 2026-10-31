@@ -9,6 +9,7 @@ export interface PublishedEventOption {
   bannerUrl?: string;
   venueName?: string;
   venueAddress?: string;
+  venueUrl?: string;
   url?: string;
   descriptionShort?: string;
   isVirtual?: boolean;
@@ -19,11 +20,13 @@ export interface EventDynamicPlaceholders {
   EventDate: string;
   EventTime: string;
   EventVenue: string;
+  EventVenueUrl: string;
   EventAddress: string;
   EventUrl: string;
   EventBannerUrl: string;
   EventDescription: string;
   SessionTitle: string;
+  VehicleTicketUrl: string;
   [customKey: string]: string;
 }
 
@@ -32,11 +35,13 @@ export const STANDARD_EVENT_PLACEHOLDER_KEYS: readonly string[] = [
   "EventDate",
   "EventTime",
   "EventVenue",
+  "EventVenueUrl",
   "EventAddress",
   "EventUrl",
   "EventBannerUrl",
   "EventDescription",
   "SessionTitle",
+  "VehicleTicketUrl",
 ];
 
 export interface CustomPlaceholderDefinition {
@@ -143,22 +148,28 @@ export function buildDefaultEventPlaceholders(
         EventDate: "Date TBD",
         EventTime: "10:00 AM",
         EventVenue: "Jakarta Convention Center",
+        EventVenueUrl: "https://maps.google.com/?q=Jakarta+Convention+Center",
         EventAddress: "Jl. Jend. Gatot Subroto, Jakarta",
         EventUrl: "https://gdg.community.dev/gdg-jakarta/",
         EventBannerUrl: fallbackBanner,
         EventDescription: "Join the GDG Jakarta community event.",
         SessionTitle: "Keynote: Building Production AI Agents with Gemini",
+        VehicleTicketUrl: "https://drive.google.com/file/d/sample-vehicle-ticket/view",
       }
     : {
         EventName: event.title || "Untitled Event",
         EventDate: event.formattedDate,
         EventTime: event.formattedTime,
         EventVenue: event.venueName ?? (event.isVirtual ? "Virtual / Online" : "Jakarta, Indonesia"),
+        EventVenueUrl:
+          event.venueUrl ??
+          `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${event.venueName ?? "Jakarta"} ${event.venueAddress ?? ""}`.trim())}`,
         EventAddress: event.venueAddress ?? "",
         EventUrl: event.url ?? `https://gdg.community.dev/events/details/google-gdg-jakarta-${event.id}/`,
         EventBannerUrl: event.bannerUrl ?? fallbackBanner,
         EventDescription: event.descriptionShort ?? "",
         SessionTitle: "Keynote: Building Production AI Agents with Gemini",
+        VehicleTicketUrl: "https://drive.google.com/file/d/sample-vehicle-ticket/view",
       };
 
   if (customValues) {
@@ -174,6 +185,7 @@ export interface AttendeeDynamicPlaceholders {
   Email: string;
   TicketType: string;
   CheckinStatus: string;
+  VenueTicketUrl: string;
   [customKey: string]: string;
 }
 
@@ -184,6 +196,7 @@ export const STANDARD_ATTENDEE_PLACEHOLDER_KEYS: readonly string[] = [
   "Email",
   "TicketType",
   "CheckinStatus",
+  "VenueTicketUrl",
 ];
 
 export const defaultAttendeePlaceholders: AttendeeDynamicPlaceholders = {
@@ -193,4 +206,5 @@ export const defaultAttendeePlaceholders: AttendeeDynamicPlaceholders = {
   Email: "budi.santoso@example.com",
   TicketType: "In-Person Pass (Free)",
   CheckinStatus: "Checked In",
+  VenueTicketUrl: "https://drive.google.com/file/d/sample-venue-ticket/view",
 };

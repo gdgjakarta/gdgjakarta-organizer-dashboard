@@ -5,10 +5,14 @@ import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   Bookmark,
+  BookmarkCheck,
   BookmarkPlus,
   Check,
   ChevronDown,
+  ChevronsUpDown,
+  ChevronUp,
   FileSpreadsheet,
+  FolderOpen,
   Loader2,
   Mail,
   Plus,
@@ -28,6 +32,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -38,9 +43,17 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Field, FieldContent, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  clearCachedDriveAccessToken,
+  type DriveSpreadsheetItem,
+  getCachedDriveAccessToken,
+  listDriveSpreadsheets,
+  requestDriveAccessToken,
+} from "@/lib/google-drive/venue-tickets";
 import { cn, extractApiMessage } from "@/lib/utils";
 
 import { fetchBevyEventDetailAction, fetchPublishedEventsAction } from "../_actions/fetch-published-events";
@@ -73,11 +86,17 @@ import {
   deleteCustomEmailBlastTemplate,
   type EmailBlastTemplate,
   getAllEmailBlastTemplates,
+  saveEmailBlastAsTemplate,
+  saveFeatureTemplateOverride,
 } from "./default-html-template";
 import { HtmlEditorPreview } from "./html-editor-preview";
 import { PublishedEventSelector } from "./published-event-selector";
 import { SaveEmailTemplateDialog } from "./save-email-template-dialog";
-import { EMAIL_FEATURE_TEMPLATES, type EmailFeatureTemplateItem } from "./template-utils";
+import {
+  EMAIL_FEATURE_TEMPLATES,
+  type EmailFeatureTemplateItem,
+  resolveFeatureTemplateContent,
+} from "./template-utils";
 
 const formSchema = z
   .object({
@@ -149,6 +168,12 @@ const ATTENDEE_FIELDS: AttendeeFieldItem[] = [
   { key: "Email", label: "Email Address", tag: "[[Email]]", placeholder: "e.g. budi.santoso@example.com" },
   { key: "TicketType", label: "Ticket Tier", tag: "[[TicketType]]", placeholder: "e.g. In-Person Pass (Free)" },
   { key: "CheckinStatus", label: "Check-in Status", tag: "[[CheckinStatus]]", placeholder: "e.g. Checked In" },
+  {
+    key: "VenueTicketUrl",
+    label: "Venue Ticket URL",
+    tag: "[[VenueTicketUrl]]",
+    placeholder: "https://drive.google.com/file/d/.../view",
+  },
 ];
 
 export function EmailBlastForm({
@@ -185,22 +210,30 @@ export function EmailBlastForm({
   const [isPlaceholdersOpen, setIsPlaceholdersOpen] = useState(false);
   const [isAttendeePlaceholdersOpen, setIsAttendeePlaceholdersOpen] = useState(false);
 
-  // Dynamic custom placeholders state
-  const [customEventPlaceholders, setCustomEventPlaceholders] = useState<CustomPlaceholderDefinition[]>(() =>
-    getStoredCustomEventPlaceholders(),
-  );
-  const [customAttendeePlaceholders, setCustomAttendeePlaceholders] = useState<CustomPlaceholderDefinition[]>(() =>
-    getStoredCustomAttendeePlaceholders(),
-  );
+  // Dynamic custom placeholders state (loaded after mount to avoid SSR hydration mismatch)
+  const [customEventPlaceholders, setCustomEventPlaceholders] = useState<CustomPlaceholderDefinition[]>([]);
+  const [customAttendeePlaceholders, setCustomAttendeePlaceholders] = useState<CustomPlaceholderDefinition[]>([]);
   const [isAddPlaceholderOpen, setIsAddPlaceholderOpen] = useState(false);
   const [addPlaceholderCategory, setAddPlaceholderCategory] = useState<"event" | "attendee">("event");
 
   // Email blast templates state
-  const [templatesData, setTemplatesData] = useState(() => getAllEmailBlastTemplates());
+  const [templatesData, setTemplatesData] = useState<{
+    defaultTemplates: EmailBlastTemplate[];
+    customTemplates: EmailBlastTemplate[];
+  }>(() => ({
+    defaultTemplates: getAllEmailBlastTemplates().defaultTemplates,
+    customTemplates: [],
+  }));
   const [activeTemplate, setActiveTemplate] = useState<EmailBlastTemplate | null>(initialTemplate ?? null);
   const [isSaveTemplateOpen, setIsSaveTemplateOpen] = useState(false);
 
   const refreshTemplates = useCallback(() => {
+    setTemplatesData(getAllEmailBlastTemplates());
+  }, []);
+
+  useEffect(() => {
+    setCustomEventPlaceholders(getStoredCustomEventPlaceholders());
+    setCustomAttendeePlaceholders(getStoredCustomAttendeePlaceholders());
     setTemplatesData(getAllEmailBlastTemplates());
   }, []);
 
@@ -217,13 +250,17 @@ export function EmailBlastForm({
   const [recipientCount, setRecipientCount] = useState<number>(0);
   const [isResolvingAudience, setIsResolvingAudience] = useState(false);
 
-  // Google Sheets state (legacy fallback)
+  // Google Sheets state (legacy fallback + Drive picker)
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [availableSheets, setAvailableSheets] = useState<string[]>([]);
   const [sheetRowCount, setSheetRowCount] = useState<number>(0);
   const [sheetSampleRow, setSheetSampleRow] = useState<Record<string, string>>({});
   const [isLoadingSheets, setIsLoadingSheets] = useState(false);
   const [isLoadingTags, setIsLoadingTags] = useState(false);
+  const [driveSpreadsheets, setDriveSpreadsheets] = useState<DriveSpreadsheetItem[]>([]);
+  const [isLoadingDriveSpreadsheets, setIsLoadingDriveSpreadsheets] = useState(false);
+  const [isDrivePickerOpen, setIsDrivePickerOpen] = useState(false);
+  const [driveSearchQuery, setDriveSearchQuery] = useState("");
 
   const [, startTransition] = useTransition();
 
@@ -261,10 +298,18 @@ export function EmailBlastForm({
   const headerRow = watch("headerRow");
   const headerUrlValue = watch("headerUrl");
   const bodyValue = watch("body");
+  const subjectValue = watch("subject");
 
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
   const [pendingFormData, setPendingFormData] = useState<FormValues | null>(null);
   const [currentFeatureTemplateId, setCurrentFeatureTemplateId] = useState<string>("default");
+  const [templateBaseline, setTemplateBaseline] = useState<{ subject: string; body: string }>({
+    subject: "",
+    body: defaultHtmlTemplate,
+  });
+
+  const hasTemplateChanges =
+    (bodyValue || defaultHtmlTemplate) !== templateBaseline.body || (subjectValue || "") !== templateBaseline.subject;
 
   const currentTemplateName = useMemo(() => {
     if (activeTemplate) return activeTemplate.name;
@@ -287,6 +332,7 @@ export function EmailBlastForm({
         Email: recipientEmail,
         TicketType: "Confirmed Entry Pass",
         CheckinStatus: "Confirmed",
+        VenueTicketUrl: attendeePlaceholders.VenueTicketUrl,
       };
     }
     return attendeePlaceholders;
@@ -437,6 +483,26 @@ export function EmailBlastForm({
     }
   }, [eventPlaceholders?.EventBannerUrl, headerUrlValue, setValue]);
 
+  // Load default template override on mount if none was passed via initialTemplate
+  useEffect(() => {
+    if (initialTemplate) return;
+    const defaultTpl = EMAIL_FEATURE_TEMPLATES.find((t) => t.id === "default");
+    if (!defaultTpl) return;
+    const resolved = resolveFeatureTemplateContent(defaultTpl);
+    const nextSubject =
+      resolved.subject && resolved.subject !== defaultTpl.defaultSubject ? resolved.subject : watch("subject") || "";
+    if (resolved.body !== defaultTpl.getRawHtml()) {
+      setValue("body", resolved.body);
+    }
+    if (resolved.subject && resolved.subject !== defaultTpl.defaultSubject) {
+      setValue("subject", resolved.subject);
+    }
+    if (resolved.headerUrl) {
+      setValue("headerUrl", resolved.headerUrl);
+    }
+    setTemplateBaseline({ subject: nextSubject, body: resolved.body });
+  }, [initialTemplate, setValue, watch]);
+
   // Sync initialTemplate if supplied from parent tab
   useEffect(() => {
     if (initialTemplate) {
@@ -448,8 +514,12 @@ export function EmailBlastForm({
       if (initialTemplate.headerUrl) {
         setValue("headerUrl", initialTemplate.headerUrl);
       }
+      setTemplateBaseline({
+        subject: initialTemplate.subject || watch("subject") || "",
+        body: initialTemplate.body,
+      });
     }
-  }, [initialTemplate, setValue]);
+  }, [initialTemplate, setValue, watch]);
 
   const handleApplyTemplate = (tpl: EmailBlastTemplate) => {
     setActiveTemplate(tpl);
@@ -460,6 +530,10 @@ export function EmailBlastForm({
     if (tpl.headerUrl) {
       setValue("headerUrl", tpl.headerUrl);
     }
+    setTemplateBaseline({
+      subject: tpl.subject || watch("subject") || "",
+      body: tpl.body,
+    });
     if (onTemplateChange) {
       onTemplateChange(tpl);
     }
@@ -489,7 +563,9 @@ export function EmailBlastForm({
     // Pre-fill a helpful subject if empty
     const currentSubject = watch("subject");
     if (!currentSubject) {
-      setValue("subject", `Important Update: ${event.title}`, { shouldValidate: true });
+      const nextSubj = `Important Update: ${event.title}`;
+      setValue("subject", nextSubj, { shouldValidate: true });
+      setTemplateBaseline((prev) => ({ ...prev, subject: nextSubj }));
     }
   };
 
@@ -723,6 +799,65 @@ export function EmailBlastForm({
     [setValue],
   );
 
+  const handleLoadDriveSpreadsheets = useCallback(async (searchQuery = "", promptIfMissing = false) => {
+    let token = getCachedDriveAccessToken();
+    if (!token && promptIfMissing) {
+      try {
+        token = await requestDriveAccessToken();
+      } catch (err) {
+        toast.error("Google Drive Authorization Failed", { description: extractApiMessage(err) });
+        return;
+      }
+    }
+    if (!token) return;
+
+    setIsLoadingDriveSpreadsheets(true);
+    try {
+      const sheets = await listDriveSpreadsheets(token, searchQuery);
+      setDriveSpreadsheets(sheets);
+    } catch (err) {
+      const msg = extractApiMessage(err);
+      if (msg.includes("401") || msg.includes("403") || msg.toLowerCase().includes("expired")) {
+        clearCachedDriveAccessToken();
+        if (promptIfMissing) {
+          try {
+            const freshToken = await requestDriveAccessToken();
+            const retrySheets = await listDriveSpreadsheets(freshToken, searchQuery);
+            setDriveSpreadsheets(retrySheets);
+            return;
+          } catch (retryErr) {
+            toast.error("Failed to load Google Spreadsheets", { description: extractApiMessage(retryErr) });
+          }
+        }
+      } else if (promptIfMissing) {
+        toast.error("Failed to load Google Spreadsheets", { description: msg });
+      }
+    } finally {
+      setIsLoadingDriveSpreadsheets(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (recipientSource === "spreadsheet" && getCachedDriveAccessToken() && driveSpreadsheets.length === 0) {
+      void handleLoadDriveSpreadsheets("", false);
+    }
+  }, [recipientSource, driveSpreadsheets.length, handleLoadDriveSpreadsheets]);
+
+  useEffect(() => {
+    if (!isDrivePickerOpen || !getCachedDriveAccessToken()) return;
+    const timer = setTimeout(() => {
+      void handleLoadDriveSpreadsheets(driveSearchQuery, false);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [driveSearchQuery, isDrivePickerOpen, handleLoadDriveSpreadsheets]);
+
+  const selectedDriveSpreadsheet = useMemo(() => {
+    if (!spreadsheetUrl) return null;
+    const match = spreadsheetUrl.match(/\/d\/([a-zA-Z0-9-_]+)/);
+    const id = match?.[1];
+    return driveSpreadsheets.find((s) => s.id === id || s.webViewLink === spreadsheetUrl) ?? null;
+  }, [spreadsheetUrl, driveSpreadsheets]);
+
   const handleLoadSheets = useCallback(async () => {
     if (!spreadsheetUrl) return;
     setIsLoadingSheets(true);
@@ -733,7 +868,8 @@ export function EmailBlastForm({
     lastFetchedUrl.current = spreadsheetUrl;
 
     try {
-      const res = await fetchSheetsList(spreadsheetUrl);
+      const accessToken = getCachedDriveAccessToken() ?? undefined;
+      const res = await fetchSheetsList(spreadsheetUrl, accessToken);
       if (res.success && res.sheets) {
         setAvailableSheets(res.sheets);
         toast.success("Sheets Loaded", {
@@ -762,7 +898,8 @@ export function EmailBlastForm({
     setIsLoadingTags(true);
     startTransition(async () => {
       try {
-        const res = await fetchSheetHeaders(spreadsheetUrl, sheetName, rowNum);
+        const accessToken = getCachedDriveAccessToken() ?? undefined;
+        const res = await fetchSheetHeaders(spreadsheetUrl, sheetName, rowNum, accessToken);
         if (res.success && res.headers) {
           setAvailableTags(res.headers);
           setSheetRowCount(res.rowCount ?? 0);
@@ -833,14 +970,67 @@ export function EmailBlastForm({
   const handleSelectFeatureTemplate = (tpl: EmailFeatureTemplateItem) => {
     setCurrentFeatureTemplateId(tpl.id);
     setActiveTemplate(null);
-    const bodyContent = tpl.getRawHtml();
-    setValue("body", bodyContent, { shouldValidate: true });
-    if (tpl.defaultSubject) {
-      setValue("subject", tpl.defaultSubject, { shouldValidate: true });
+    const resolved = resolveFeatureTemplateContent(tpl);
+    setValue("body", resolved.body, { shouldValidate: true });
+    if (resolved.subject) {
+      setValue("subject", resolved.subject, { shouldValidate: true });
     }
+    if (resolved.headerUrl) {
+      setValue("headerUrl", resolved.headerUrl);
+    }
+    setTemplateBaseline({
+      subject: resolved.subject || watch("subject") || "",
+      body: resolved.body,
+    });
     toast.success("Email Template Loaded", {
       description: `Loaded "${tpl.name}". Subject and HTML body have been updated.`,
     });
+  };
+
+  const handleSaveCurrentTemplate = () => {
+    const currentSubj = watch("subject") || "Important Update: [[EventName]]";
+    const currentBody = bodyValue || defaultHtmlTemplate;
+    if (!currentBody.trim()) {
+      toast.error("Email HTML content cannot be empty.");
+      return;
+    }
+
+    if (activeTemplate?.isCustom) {
+      const saved = saveEmailBlastAsTemplate({
+        id: activeTemplate.id,
+        name: activeTemplate.name,
+        badge: activeTemplate.badge,
+        description: activeTemplate.description,
+        subject: currentSubj,
+        headerUrl: headerUrlValue?.trim() || undefined,
+        body: currentBody,
+      });
+      refreshTemplates();
+      setActiveTemplate(saved);
+      setTemplateBaseline({ subject: watch("subject") || "", body: currentBody });
+      onTemplateChange?.(saved);
+      toast.success("Template Updated", {
+        description: `Saved changes to "${saved.name}".`,
+      });
+      return;
+    }
+
+    const foundFeature = EMAIL_FEATURE_TEMPLATES.find((t) => t.id === currentFeatureTemplateId);
+    if (foundFeature) {
+      saveFeatureTemplateOverride({
+        id: foundFeature.id,
+        subject: currentSubj,
+        headerUrl: headerUrlValue?.trim() || undefined,
+        body: currentBody,
+      });
+      setTemplateBaseline({ subject: watch("subject") || "", body: currentBody });
+      toast.success("Template Updated", {
+        description: `Saved changes to "${foundFeature.name}".`,
+      });
+      return;
+    }
+
+    setIsSaveTemplateOpen(true);
   };
 
   async function onSubmit(data: FormValues) {
@@ -887,7 +1077,7 @@ export function EmailBlastForm({
         const customEventMap: Record<string, string> = {};
         if (eventPlaceholders) {
           for (const [k, v] of Object.entries(eventPlaceholders)) {
-            if (!STANDARD_EVENT_PLACEHOLDER_KEYS.includes(k) && v) {
+            if (v) {
               customEventMap[k] = v;
             }
           }
@@ -903,27 +1093,27 @@ export function EmailBlastForm({
 
         const result = await sendQuickEmail({
           eventId: data.eventId,
-          eventTitle,
+          eventTitle: eventPlaceholders?.EventName || eventTitle,
           recipientEmail: data.recipientEmail || "",
           recipientName: data.recipientName,
           subject: data.subject,
-          headerUrl: data.headerUrl,
+          headerUrl: data.headerUrl || eventPlaceholders?.EventBannerUrl,
           body: data.body,
           sessionTitle: eventPlaceholders?.SessionTitle,
+          venueGuideUrl: eventPlaceholders?.EventVenueUrl,
+          vehicleTicketUrl: eventPlaceholders?.VehicleTicketUrl,
           customEventPlaceholders: customEventMap,
           customAttendeePlaceholders: customAttendeeMap,
-          eventDetails: selectedEvent
-            ? {
-                formattedDate: selectedEvent.formattedDate,
-                formattedTime: selectedEvent.formattedTime,
-                venueName: selectedEvent.venueName,
-                venueAddress: selectedEvent.venueAddress,
-                url: selectedEvent.url,
-                bannerUrl: selectedEvent.bannerUrl,
-                descriptionShort: selectedEvent.descriptionShort,
-                isVirtual: selectedEvent.isVirtual,
-              }
-            : undefined,
+          eventDetails: {
+            formattedDate: eventPlaceholders?.EventDate || selectedEvent?.formattedDate,
+            formattedTime: eventPlaceholders?.EventTime || selectedEvent?.formattedTime,
+            venueName: eventPlaceholders?.EventVenue || selectedEvent?.venueName,
+            venueAddress: eventPlaceholders?.EventAddress || selectedEvent?.venueAddress,
+            url: eventPlaceholders?.EventUrl || selectedEvent?.url,
+            bannerUrl: data.headerUrl || eventPlaceholders?.EventBannerUrl || selectedEvent?.bannerUrl,
+            descriptionShort: eventPlaceholders?.EventDescription || selectedEvent?.descriptionShort,
+            isVirtual: selectedEvent?.isVirtual,
+          },
         });
 
         if (!result.success) {
@@ -944,17 +1134,25 @@ export function EmailBlastForm({
       // Bulk Email dispatch
       const isSheetSource = data.recipientSource === "spreadsheet";
 
-      // Pre-interpolate custom event-level placeholders into subject and body
+      // Pre-interpolate all event-level placeholders into subject and body so n8n receives resolved event tokens
       let blastSubject = data.subject;
       let blastBody = data.body;
       if (eventPlaceholders) {
         for (const [k, v] of Object.entries(eventPlaceholders)) {
-          if (!STANDARD_EVENT_PLACEHOLDER_KEYS.includes(k) && v) {
+          if (v !== undefined && v !== null && v !== "") {
             const escaped = k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
             blastSubject = blastSubject.replace(new RegExp(`\\[\\[\\s*${escaped}\\s*\\]\\]`, "gi"), String(v));
             blastBody = blastBody.replace(new RegExp(`\\[\\[\\s*${escaped}\\s*\\]\\]`, "gi"), String(v));
           }
         }
+        if (eventPlaceholders.EventVenueUrl) {
+          blastSubject = blastSubject.replace(/\[\[\s*VenueGuideUrl\s*\]\]/gi, String(eventPlaceholders.EventVenueUrl));
+          blastBody = blastBody.replace(/\[\[\s*VenueGuideUrl\s*\]\]/gi, String(eventPlaceholders.EventVenueUrl));
+        }
+      }
+      if (data.headerUrl) {
+        blastSubject = blastSubject.replace(/\[\[\s*EventBannerUrl\s*\]\]/gi, data.headerUrl);
+        blastBody = blastBody.replace(/\[\[\s*EventBannerUrl\s*\]\]/gi, data.headerUrl);
       }
 
       const result = await sendEmailBlast({
@@ -1410,12 +1608,147 @@ export function EmailBlastForm({
                   </FieldDescription>
                 </TabsContent>
 
-                {/* Google Sheets Option (Legacy Fallback) */}
+                {/* Google Sheets Option (Drive Picker + Manual URL) */}
                 <TabsContent value="spreadsheet" className="space-y-4 pt-1">
                   <div className="space-y-3 rounded-lg border p-3.5">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <FieldLabel className="text-xs">Select from Google Drive (Recent &amp; Searchable)</FieldLabel>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 gap-1 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+                          onClick={() => void handleLoadDriveSpreadsheets(driveSearchQuery, true)}
+                          disabled={isLoadingDriveSpreadsheets || isSubmitting}
+                        >
+                          {isLoadingDriveSpreadsheets ? (
+                            <Loader2 className="size-3 animate-spin" />
+                          ) : (
+                            <FolderOpen className="size-3 text-emerald-600 dark:text-emerald-400" />
+                          )}
+                          <span>{driveSpreadsheets.length > 0 ? "Refresh Drive List" : "Connect Google Drive"}</span>
+                        </Button>
+                      </div>
+
+                      <Popover
+                        open={isDrivePickerOpen}
+                        onOpenChange={(open) => {
+                          setIsDrivePickerOpen(open);
+                          if (open && driveSpreadsheets.length === 0) {
+                            void handleLoadDriveSpreadsheets(driveSearchQuery, true);
+                          }
+                        }}
+                      >
+                        <PopoverTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            role="combobox"
+                            aria-expanded={isDrivePickerOpen}
+                            disabled={isSubmitting}
+                            className="h-9 w-full justify-between px-3 font-normal text-xs"
+                          >
+                            <span className="flex items-center gap-2 truncate">
+                              <FileSpreadsheet className="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                              {selectedDriveSpreadsheet ? (
+                                <span className="truncate font-medium text-foreground">
+                                  {selectedDriveSpreadsheet.name}
+                                </span>
+                              ) : (
+                                <span className="truncate text-muted-foreground">
+                                  Search or pick a recent spreadsheet from your Google Drive...
+                                </span>
+                              )}
+                            </span>
+                            <ChevronsUpDown className="ml-2 size-3.5 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                          <Command shouldFilter={false}>
+                            <CommandInput
+                              placeholder="Search your Google Spreadsheets by name..."
+                              value={driveSearchQuery}
+                              onValueChange={setDriveSearchQuery}
+                              className="text-xs"
+                            />
+                            <CommandList>
+                              {isLoadingDriveSpreadsheets ? (
+                                <div className="flex items-center justify-center gap-2 py-6 text-muted-foreground text-xs">
+                                  <Loader2 className="size-3.5 animate-spin text-primary" />
+                                  <span>Loading spreadsheets from Google Drive...</span>
+                                </div>
+                              ) : driveSpreadsheets.length === 0 ? (
+                                <CommandEmpty className="py-4 text-center text-xs">
+                                  <div className="space-y-2 px-3">
+                                    <p className="text-muted-foreground">
+                                      No spreadsheets loaded yet or no matching files found.
+                                    </p>
+                                    <Button
+                                      type="button"
+                                      variant="secondary"
+                                      size="sm"
+                                      className="h-7 gap-1.5 text-xs"
+                                      onClick={() => void handleLoadDriveSpreadsheets(driveSearchQuery, true)}
+                                    >
+                                      <FolderOpen className="size-3.5" />
+                                      Authorize &amp; Load Recent Spreadsheets
+                                    </Button>
+                                  </div>
+                                </CommandEmpty>
+                              ) : (
+                                <CommandGroup
+                                  heading={driveSearchQuery.trim() ? "Matching Spreadsheets" : "Recent Spreadsheets"}
+                                >
+                                  {driveSpreadsheets.map((sheet) => {
+                                    const isSelected = selectedDriveSpreadsheet?.id === sheet.id;
+                                    const lastDate = sheet.viewedByMeTime || sheet.modifiedTime;
+                                    return (
+                                      <CommandItem
+                                        key={sheet.id}
+                                        value={sheet.id}
+                                        onSelect={() => {
+                                          setValue("spreadsheetUrl", sheet.webViewLink, { shouldValidate: true });
+                                          setIsDrivePickerOpen(false);
+                                        }}
+                                        className="flex cursor-pointer items-center justify-between gap-2 py-2 text-xs"
+                                      >
+                                        <div className="flex min-w-0 items-center gap-2">
+                                          <Check
+                                            className={cn(
+                                              "size-3.5 shrink-0 text-primary",
+                                              isSelected ? "opacity-100" : "opacity-0",
+                                            )}
+                                          />
+                                          <FileSpreadsheet className="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                                          <div className="flex min-w-0 flex-col">
+                                            <span className="truncate font-medium">{sheet.name}</span>
+                                            {sheet.ownerEmail && (
+                                              <span className="truncate text-[10px] text-muted-foreground">
+                                                Owner: {sheet.ownerEmail}
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+                                        {lastDate && (
+                                          <span className="shrink-0 text-[10px] text-muted-foreground">
+                                            {new Date(lastDate).toLocaleDateString()}
+                                          </span>
+                                        )}
+                                      </CommandItem>
+                                    );
+                                  })}
+                                </CommandGroup>
+                              )}
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+
                     <div className="space-y-1">
                       <FieldLabel htmlFor="spreadsheetUrl" className="text-xs">
-                        Spreadsheet URL
+                        Or Paste Spreadsheet URL Directly
                       </FieldLabel>
                       <div className="flex gap-2">
                         <Input
@@ -1811,6 +2144,42 @@ export function EmailBlastForm({
                   )}
                 </div>
 
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <FieldLabel className="text-xs">Venue URL</FieldLabel>
+                    <code className="text-[10px] text-sky-600 dark:text-sky-400">[[EventVenueUrl]]</code>
+                  </div>
+                  {isLoadingEventDetail ? (
+                    <Skeleton className="h-8 w-full animate-pulse rounded-md" />
+                  ) : (
+                    <Input
+                      value={eventPlaceholders?.EventVenueUrl || ""}
+                      onChange={(e) => handlePlaceholderChange("EventVenueUrl", e.target.value)}
+                      disabled={isSubmitting}
+                      placeholder="https://maps.google.com/..."
+                      className="h-8 text-xs"
+                    />
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <FieldLabel className="text-xs">Vehicle Ticket Link</FieldLabel>
+                    <code className="text-[10px] text-sky-600 dark:text-sky-400">[[VehicleTicketUrl]]</code>
+                  </div>
+                  {isLoadingEventDetail ? (
+                    <Skeleton className="h-8 w-full animate-pulse rounded-md" />
+                  ) : (
+                    <Input
+                      value={eventPlaceholders?.VehicleTicketUrl || ""}
+                      onChange={(e) => handlePlaceholderChange("VehicleTicketUrl", e.target.value)}
+                      disabled={isSubmitting}
+                      placeholder="https://drive.google.com/file/d/..."
+                      className="h-8 text-xs"
+                    />
+                  )}
+                </div>
+
                 <div className="space-y-1 sm:col-span-2">
                   <div className="flex items-center justify-between">
                     <FieldLabel className="text-xs">Short Description</FieldLabel>
@@ -2017,16 +2386,6 @@ export function EmailBlastForm({
           <div className="text-muted-foreground text-xs">{renderFooterRecipientStatus()}</div>
           <div className="flex items-center gap-2">
             <Button
-              type="button"
-              variant="outline"
-              size="lg"
-              className="gap-1.5 text-xs"
-              onClick={() => setIsSaveTemplateOpen(true)}
-            >
-              <BookmarkPlus className="size-4 text-emerald-600 dark:text-emerald-400" />
-              <span>Save as Template</span>
-            </Button>
-            <Button
               type="submit"
               disabled={
                 isSubmitting ||
@@ -2049,6 +2408,51 @@ export function EmailBlastForm({
         </CardFooter>
       </Card>
 
+      {/* Floating Action Button: Save as New Template or Save as Current Template */}
+      {hasTemplateChanges && (
+        <div className="fixed right-6 bottom-6 z-40 animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                size="lg"
+                variant="outline"
+                className="h-11 gap-2 rounded-full border-border/80 bg-background/95 px-5 text-xs font-medium shadow-lg backdrop-blur-md hover:bg-accent"
+              >
+                <BookmarkPlus className="size-4 text-emerald-600 dark:text-emerald-400" />
+                <span>Save as Template</span>
+                <ChevronUp className="size-3.5 opacity-60" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" side="top" sideOffset={8} className="w-64">
+              <DropdownMenuItem
+                onClick={handleSaveCurrentTemplate}
+                className="flex cursor-pointer items-start gap-2.5 py-2.5 text-xs"
+              >
+                <BookmarkCheck className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  <span className="font-semibold text-foreground">Save as Current Template</span>
+                  <span className="truncate text-[11px] text-muted-foreground">
+                    Overwrite &ldquo;{currentTemplateName}&rdquo;
+                  </span>
+                </div>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => setIsSaveTemplateOpen(true)}
+                className="flex cursor-pointer items-start gap-2.5 py-2.5 text-xs"
+              >
+                <BookmarkPlus className="mt-0.5 size-4 shrink-0 text-primary" />
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  <span className="font-semibold text-foreground">Save as New Template</span>
+                  <span className="text-[11px] text-muted-foreground">Create a new reusable custom template</span>
+                </div>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      )}
+
       <SaveEmailTemplateDialog
         open={isSaveTemplateOpen}
         onOpenChange={setIsSaveTemplateOpen}
@@ -2058,6 +2462,10 @@ export function EmailBlastForm({
         onSaved={(newTpl) => {
           refreshTemplates();
           setActiveTemplate(newTpl);
+          setTemplateBaseline({
+            subject: watch("subject") || "",
+            body: bodyValue || defaultHtmlTemplate,
+          });
           if (onTemplateChange) {
             onTemplateChange(newTpl);
           }

@@ -448,6 +448,7 @@ export function LabelHtmlEditorPreview({
               height="100%"
               defaultLanguage="html"
               value={normalizedValue}
+              keepCurrentModel
               onChange={(val) => onChange(val || "")}
               onMount={handleEditorDidMount}
               theme={theme === "dark" ? "vs-dark" : "light"}

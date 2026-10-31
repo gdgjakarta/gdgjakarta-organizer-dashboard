@@ -102,4 +102,8 @@ await updateRegistrationStatusAction(
    - When organizers cancel registrations (single or bulk from `registrants-tab.tsx`), an explanatory reason must be provided in the dialog.
    - The reason is forwarded to `sendCancelAttendeeEmailAction` and `deleteEventRegistrationAction`.
    - The reason is embedded into the cancellation notification email via the `{{ $('event-params').item.json.cancellationReason }}` placeholder (interpolated with HTML line breaks).
+5. **Google Drive Venue Ticket Distribution & View-Only Access Grant (`src/lib/google-drive/venue-tickets.ts`)**:
+   - Organizers link a private Google Drive folder via the **Venue Tickets** dialog (`venue-ticket-drive-dialog.tsx`) in `registrants-tab.tsx`.
+   - Using the signed-in organizer's Google OAuth token (`https://www.googleapis.com/auth/drive` scope), files are listed in natural filename order (`1.pdf`, `2.pdf`, …, `10.pdf`) and mapped 1-to-1 to confirmed registrants (`approved`, `paid_and_registered`, `registered`, `attended`) sorted ascending by `registered_at`, preserving existing assignments.
+   - Organizers can validate or override the assigned file inside `ApplicantDetailDialog` and click **Grant Access & Send Venue Ticket** (or bulk send pending from `VenueTicketDriveDialog`), which grants Drive `reader` permission to `registration.member_email` before dispatching the **Venue Ticket** email template (`id: "venue_ticket"`, `[[VenueTicketUrl]]`, `[[VenueGuideUrl]]`, `[[VehicleTicketUrl]]`).
 

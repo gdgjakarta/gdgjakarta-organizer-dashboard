@@ -14,9 +14,11 @@ import {
 
 import {
   defaultHtmlTemplate,
+  getFeatureTemplateOverrides,
   memberOnlineInvitationHtmlTemplate,
   memberRegisterInvitationHtmlTemplate,
   speakerInvitationHtmlTemplate,
+  venueTicketHtmlTemplate,
 } from "./default-html-template";
 
 export interface EmailFeatureTemplateItem {
@@ -92,8 +94,8 @@ export function convertTemplateToCleanTokens(raw: string): string {
   text = text.replaceAll("{ $('session-config').item.json.bevySessionTime }", "[[EventTime]]");
   text = text.replaceAll("{{ $('bevy-config').item.json.bevyEventLocation }}", "[[EventVenue]]");
   text = text.replaceAll("{ $('bevy-config').item.json.bevyEventLocation }", "[[EventVenue]]");
-  text = text.replaceAll("{{ $('bevy-config').item.json.bevyEventLocationUrl }}", "[[EventUrl]]");
-  text = text.replaceAll("{ $('bevy-config').item.json.bevyEventLocationUrl }", "[[EventUrl]]");
+  text = text.replaceAll("{{ $('bevy-config').item.json.bevyEventLocationUrl }}", "[[EventVenueUrl]]");
+  text = text.replaceAll("{ $('bevy-config').item.json.bevyEventLocationUrl }", "[[EventVenueUrl]]");
 
   // Attendee Reference Code & Attendee ID
   text = text.replaceAll("{{ $('Add Bevy Attendee API').item.json.attendee_code }}", "[[TicketCode]]");
@@ -117,6 +119,19 @@ export function convertTemplateToCleanTokens(raw: string): string {
   return text;
 }
 
+export function resolveFeatureTemplateContent(tpl: EmailFeatureTemplateItem): {
+  subject: string;
+  headerUrl?: string;
+  body: string;
+} {
+  const override = getFeatureTemplateOverrides()[tpl.id];
+  return {
+    subject: override?.subject || tpl.defaultSubject,
+    headerUrl: override?.headerUrl,
+    body: override?.body || tpl.getRawHtml(),
+  };
+}
+
 export const EMAIL_FEATURE_TEMPLATES: EmailFeatureTemplateItem[] = [
   {
     id: "default",
@@ -137,6 +152,16 @@ export const EMAIL_FEATURE_TEMPLATES: EmailFeatureTemplateItem[] = [
     description:
       "Includes official entry pass ticket card, date/time breakdown, venue link, and attendee check-in reminders.",
     getRawHtml: () => convertTemplateToCleanTokens(DEFAULT_ACCEPTED_EMAIL_HTML),
+  },
+  {
+    id: "venue_ticket",
+    name: "Venue Ticket",
+    category: "rsvp",
+    badge: "Venue Pass",
+    defaultSubject: "Your Venue Ticket: [[EventName]]",
+    description:
+      "Sends the participant's personal venue entry pass link with view-only access granted to their registered email.",
+    getRawHtml: () => venueTicketHtmlTemplate,
   },
   {
     id: "interest",

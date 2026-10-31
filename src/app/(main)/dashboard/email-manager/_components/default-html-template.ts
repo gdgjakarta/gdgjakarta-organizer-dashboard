@@ -979,6 +979,216 @@ export const memberOnlineInvitationHtmlTemplate = `<!DOCTYPE html>
   </body>
 </html>`;
 
+export const venueTicketHtmlTemplate = `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Your Venue Ticket: [[EventName]]</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet" />
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: 'Poppins', sans-serif;
+        background-color: #f1f3f4;
+        color: #3c4043;
+      }
+
+      .container {
+        max-width: 510px;
+        margin: 0 auto;
+        background-color: #ffffff;
+        padding: 30px;
+        border-radius: 8px;
+      }
+
+      .header-img {
+        width: 100%;
+        height: auto;
+        border-radius: 8px 8px 0 0;
+        background-color: #4285f4;
+        min-height: 100px;
+      }
+
+      .center {
+        text-align: center;
+      }
+
+      .start {
+        text-align: start;
+      }
+
+      .ticket-card {
+        background-color: #f8f9fa;
+        border: 2px dashed #4285f4;
+        border-radius: 12px;
+        padding: 25px;
+        margin: 25px 0;
+        text-align: center;
+      }
+
+      .ticket-title {
+        color: #4285f4;
+        font-weight: 600;
+        margin-bottom: 5px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        font-size: 0.9em;
+      }
+
+      .attendee-name {
+        font-size: 1.3em;
+        font-weight: 600;
+        color: #202124;
+        margin: 8px 0;
+      }
+
+      .attendee-id {
+        display: inline-block;
+        background-color: #e8f0fe;
+        color: #1967d2;
+        padding: 6px 14px;
+        border-radius: 4px;
+        font-family: 'Courier New', monospace;
+        font-size: 14px;
+        font-weight: 600;
+        margin-bottom: 18px;
+        line-height: 1.35;
+      }
+
+      .btn {
+        display: block;
+        background-color: #4285f4;
+        color: #ffffff !important;
+        text-align: center;
+        border-radius: 50px;
+        padding: 12px 24px;
+        text-decoration: none;
+        width: 75%;
+        margin: 18px auto 10px auto;
+        font-weight: 600;
+        font-size: 15px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      }
+
+      .details-box {
+        background-color: #ffffff;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 15px;
+        margin-top: 20px;
+        text-align: left;
+      }
+
+      .detail-row {
+        display: flex;
+        margin-bottom: 10px;
+      }
+
+      .detail-row:last-child {
+        margin-bottom: 0;
+      }
+
+      .detail-icon {
+        margin-right: 10px;
+        font-size: 1.1em;
+      }
+
+      .notice-box {
+        background-color: #e8f0fe;
+        border-left: 4px solid #4285f4;
+        border-radius: 6px;
+        padding: 14px 16px;
+        margin: 20px 0;
+        font-size: 0.9em;
+        color: #174ea6;
+      }
+
+      .footer {
+        margin-top: 24pt;
+        padding: 18pt;
+        background-color: #f8f9fa;
+        border-radius: 0 0 8px 8px;
+        text-align: center;
+      }
+
+      .content {
+        padding: 0 15px;
+      }
+
+      p {
+        line-height: 1.6;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="center">
+        <img src="[[EventBannerUrl]]" onerror="this.src='https://assets.gdgjakarta.org/gdg-jakarta/gdg-jakarta-emailheaders-1244x388-blue.png'" alt="Event Header" class="header-img" />
+      </div>
+      <div class="content">
+        <div class="start">
+          <h2>Hi [[Name]],</h2>
+          <p>Your personal <strong>Venue Ticket</strong> for <strong>[[EventName]]</strong> is ready! 🎟️</p>
+          <p>Please open and save your venue pass using the button below before arriving at the venue entrance.</p>
+
+          <div class="ticket-card">
+            <div class="ticket-title">Venue Entry Pass</div>
+            <div class="attendee-name">[[Name]]</div>
+            <div class="attendee-id">
+              <div>Ref: [[TicketCode]]</div>
+              <div style="margin-top: 2px;">ID: [[AttendeeId]]</div>
+            </div>
+
+            <a href="[[VenueTicketUrl]]" class="btn" target="_blank">Open Venue Ticket 🎟️</a>
+
+            <div class="details-box">
+              <div class="detail-row">
+                <span class="detail-icon">📅</span>
+                <div>
+                  <strong>Date &amp; Time</strong><br>
+                  [[EventDate]] &bull; [[EventTime]]
+                </div>
+              </div>
+              <div class="detail-row">
+                <span class="detail-icon">📍</span>
+                <div>
+                  <strong>Location</strong><br>
+                  [[EventVenue]]
+                  <div style="margin-top: 4px;">
+                    <a href="[[EventVenueUrl]]" style="color: #1a73e8; text-decoration: none; font-weight: 600; font-size: 0.9em;" target="_blank">🗺️ How to get to the venue &rarr;</a>
+                  </div>
+                </div>
+              </div>
+              <div class="detail-row">
+                <span class="detail-icon">🚗</span>
+                <div>
+                  <strong>Vehicle / Parking Pass</strong><br>
+                  <a href="[[VehicleTicketUrl]]" style="color: #1a73e8; text-decoration: none; font-weight: 600; font-size: 0.9em;" target="_blank">Download Vehicle Ticket &rarr;</a>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="notice-box">
+            <strong>🔒 Access Notice:</strong> View-only access to this ticket file has been granted exclusively to your registered email address (<strong>[[Email]]</strong>). Please make sure you are signed in with that Google account when opening the link.
+          </div>
+
+          <p style="margin-top: 25px; font-size: 0.9em; color: #5f6368; text-align: center;">
+            See you at the venue! 🚀
+          </p>
+        </div>
+      </div>
+      <div class="center">
+        <div class="footer">
+          <img alt="GDG Jakarta" src="https://assets.gdgjakarta.org/gdg-jakarta/gdg-sign-bubble-transparent.png" style="width: 113px; height: auto;" />
+        </div>
+      </div>
+    </div>
+  </body>
+</html>`;
+
 export interface EmailBlastTemplate {
   id: string;
   name: string;
@@ -1039,6 +1249,53 @@ export const DEFAULT_EMAIL_BLAST_TEMPLATES: EmailBlastTemplate[] = [
 ];
 
 export const CUSTOM_EMAIL_BLAST_TEMPLATES_KEY = "gdg_custom_email_blast_templates";
+export const FEATURE_TEMPLATE_OVERRIDES_KEY = "gdg_feature_email_template_overrides_v1";
+
+export interface FeatureTemplateOverride {
+  id: string;
+  subject?: string;
+  headerUrl?: string;
+  body: string;
+  updatedAt: string;
+}
+
+export function getFeatureTemplateOverrides(): Record<string, FeatureTemplateOverride> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(FEATURE_TEMPLATE_OVERRIDES_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (err) {
+    console.warn("[getFeatureTemplateOverrides] Failed to load overrides:", err);
+    return {};
+  }
+}
+
+export function saveFeatureTemplateOverride(input: {
+  id: string;
+  subject?: string;
+  headerUrl?: string;
+  body: string;
+}): FeatureTemplateOverride {
+  const current = getFeatureTemplateOverrides();
+  const entry: FeatureTemplateOverride = {
+    id: input.id,
+    subject: input.subject?.trim() || undefined,
+    headerUrl: input.headerUrl?.trim() || undefined,
+    body: input.body,
+    updatedAt: new Date().toISOString(),
+  };
+  const updated = { ...current, [input.id]: entry };
+  if (typeof window !== "undefined") {
+    try {
+      window.localStorage.setItem(FEATURE_TEMPLATE_OVERRIDES_KEY, JSON.stringify(updated));
+    } catch (err) {
+      console.warn("[saveFeatureTemplateOverride] Failed to persist override:", err);
+    }
+  }
+  return entry;
+}
 
 export function getCustomEmailBlastTemplates(): EmailBlastTemplate[] {
   if (typeof window === "undefined") return [];

@@ -17,6 +17,8 @@ const quickEmailSchema = z.object({
   headerUrl: z.string().optional(),
   body: z.string().min(1, "Email HTML body is required"),
   sessionTitle: z.string().optional(),
+  venueGuideUrl: z.string().optional(),
+  vehicleTicketUrl: z.string().optional(),
   customEventPlaceholders: z.record(z.string(), z.string()).optional(),
   customAttendeePlaceholders: z.record(z.string(), z.string()).optional(),
   eventDetails: z
@@ -67,50 +69,69 @@ export async function sendQuickEmail(input: QuickEmailInput) {
       "https://assets.gdgjakarta.org/gdg-jakarta/gdg-jakarta-emailheaders-1244x388-blue.png";
     const eventDesc = data.eventDetails?.descriptionShort || "";
     const sessionTitle = data.sessionTitle || "Keynote: Building Production AI Agents with Gemini";
+    const eventVenueUrl =
+      data.venueGuideUrl ||
+      data.customEventPlaceholders?.EventVenueUrl ||
+      data.customEventPlaceholders?.VenueGuideUrl ||
+      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${eventVenue} ${eventAddress}`.trim())}`;
+    const vehicleTicketUrl =
+      data.vehicleTicketUrl ||
+      data.customEventPlaceholders?.VehicleTicketUrl ||
+      "https://drive.google.com/file/d/sample-vehicle-ticket/view";
 
     // 3. Convert any legacy n8n expressions in subject/body first
     let cleanSubject = convertTemplateToCleanTokens(data.subject);
     let cleanBody = convertTemplateToCleanTokens(data.body);
 
     // 4. Interpolate Event Placeholders
-    const replaceEventPlaceholders = (text: string) => {
-      let t = text
-        .replaceAll("[[EventName]]", eventName)
-        .replaceAll("[[EventDate]]", eventDate)
-        .replaceAll("[[EventTime]]", eventTime)
-        .replaceAll("[[EventVenue]]", eventVenue)
-        .replaceAll("[[EventAddress]]", eventAddress)
-        .replaceAll("[[EventUrl]]", eventUrl)
-        .replaceAll("[[EventBannerUrl]]", headerBannerUrl)
-        .replaceAll("[[EventDescription]]", eventDesc)
-        .replaceAll("[[SessionTitle]]", sessionTitle);
+    const replaceToken = (input: string, key: string, value: string) => {
+      const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return input.replace(new RegExp(`\\[\\[\\s*${escaped}\\s*\\]\\]`, "gi"), value);
+    };
 
+    const replaceEventPlaceholders = (text: string) => {
+      let t = text;
       if (data.customEventPlaceholders) {
         for (const [key, val] of Object.entries(data.customEventPlaceholders)) {
-          if (val !== undefined && val !== null) {
-            t = t.replaceAll(`[[${key}]]`, String(val));
+          if (val !== undefined && val !== null && val !== "") {
+            t = replaceToken(t, key, String(val));
           }
         }
       }
+      t = replaceToken(t, "EventName", eventName);
+      t = replaceToken(t, "EventDate", eventDate);
+      t = replaceToken(t, "EventTime", eventTime);
+      t = replaceToken(t, "EventVenue", eventVenue);
+      t = replaceToken(t, "EventVenueUrl", eventVenueUrl);
+      t = replaceToken(t, "VenueGuideUrl", eventVenueUrl);
+      t = replaceToken(t, "EventAddress", eventAddress);
+      t = replaceToken(t, "EventUrl", eventUrl);
+      t = replaceToken(t, "EventBannerUrl", headerBannerUrl);
+      t = replaceToken(t, "EventDescription", eventDesc);
+      t = replaceToken(t, "SessionTitle", sessionTitle);
+      t = replaceToken(t, "VehicleTicketUrl", vehicleTicketUrl);
       return t;
     };
 
     // 5. Interpolate Recipient Placeholders
     const replaceRecipientPlaceholders = (text: string) => {
-      let t = text
-        .replaceAll("[[Name]]", displayName)
-        .replaceAll("[[FirstName]]", firstName)
-        .replaceAll("[[LastName]]", lastName)
-        .replaceAll("[[Email]]", data.recipientEmail)
-        .replaceAll("[[TicketType]]", "Confirmed Entry Pass")
-        .replaceAll("[[TicketCode]]", "GDG-JKT-89241")
-        .replaceAll("[[AttendeeId]]", "2793132")
-        .replaceAll("[[CheckinStatus]]", "Confirmed");
+      const venueTicketUrl =
+        data.customAttendeePlaceholders?.VenueTicketUrl || "https://drive.google.com/file/d/sample-venue-ticket/view";
+      let t = text;
+      t = replaceToken(t, "Name", displayName);
+      t = replaceToken(t, "FirstName", firstName);
+      t = replaceToken(t, "LastName", lastName);
+      t = replaceToken(t, "Email", data.recipientEmail);
+      t = replaceToken(t, "TicketType", data.customAttendeePlaceholders?.TicketType || "Confirmed Entry Pass");
+      t = replaceToken(t, "TicketCode", data.customAttendeePlaceholders?.TicketCode || "GDG-JKT-89241");
+      t = replaceToken(t, "AttendeeId", data.customAttendeePlaceholders?.AttendeeId || "2793132");
+      t = replaceToken(t, "CheckinStatus", data.customAttendeePlaceholders?.CheckinStatus || "Confirmed");
+      t = replaceToken(t, "VenueTicketUrl", venueTicketUrl);
 
       if (data.customAttendeePlaceholders) {
         for (const [key, val] of Object.entries(data.customAttendeePlaceholders)) {
           if (val !== undefined && val !== null) {
-            t = t.replaceAll(`[[${key}]]`, String(val));
+            t = replaceToken(t, key, String(val));
           }
         }
       }

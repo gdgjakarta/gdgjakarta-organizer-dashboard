@@ -31,6 +31,15 @@ export function normalizeRegistrationDoc(docData: Record<string, unknown>, id: s
   const merchCollectedAtStr =
     toISOStringSafe(docData.merchandise_collected_at) ??
     (typeof docData.merchandise_collected_at === "string" ? docData.merchandise_collected_at : null);
+  const venueTicketAssignedAtStr =
+    toISOStringSafe(docData.venue_ticket_assigned_at) ??
+    (typeof docData.venue_ticket_assigned_at === "string" ? docData.venue_ticket_assigned_at : null);
+  const venueTicketSharedAtStr =
+    toISOStringSafe(docData.venue_ticket_shared_at) ??
+    (typeof docData.venue_ticket_shared_at === "string" ? docData.venue_ticket_shared_at : null);
+  const venueTicketSentAtStr =
+    toISOStringSafe(docData.venue_ticket_sent_at) ??
+    (typeof docData.venue_ticket_sent_at === "string" ? docData.venue_ticket_sent_at : null);
 
   // Normalize status_logs
   let statusLogs: RegistrationStatusLog[] = [];
@@ -121,6 +130,9 @@ export function normalizeRegistrationDoc(docData: Record<string, unknown>, id: s
     payment_expired_datetime: paymentExpiredStr,
     checkin_date: checkinDateStr,
     merchandise_collected_at: merchCollectedAtStr,
+    venue_ticket_assigned_at: venueTicketAssignedAtStr,
+    venue_ticket_shared_at: venueTicketSharedAtStr,
+    venue_ticket_sent_at: venueTicketSentAtStr,
     status_logs: statusLogs,
     answers,
   } as FirestoreRegistration;

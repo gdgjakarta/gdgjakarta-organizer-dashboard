@@ -1088,6 +1088,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
                   height="100%"
                   defaultLanguage="html"
                   value={templates[activeKey]}
+                  keepCurrentModel
                   onChange={handleTextChange}
                   onMount={handleEditorDidMount}
                   theme={theme === "dark" ? "vs-dark" : "light"}

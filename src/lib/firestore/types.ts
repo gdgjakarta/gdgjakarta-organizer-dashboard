@@ -760,6 +760,15 @@ export interface FirestoreRegistration {
   // Past refund requests archived when the member re-registers after a canceled/refunded registration
   refund_history?: RefundRequest[];
 
+  // Google Drive Venue Ticket mapping & distribution
+  venue_ticket_file_id?: string | null;
+  venue_ticket_file_name?: string | null;
+  venue_ticket_url?: string | null;
+  venue_ticket_sequence?: number | null;
+  venue_ticket_assigned_at?: string | null;
+  venue_ticket_shared_at?: string | null;
+  venue_ticket_sent_at?: string | null;
+
   updated_at?: string;
 }
 

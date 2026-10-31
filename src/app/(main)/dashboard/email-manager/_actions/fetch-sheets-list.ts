@@ -4,7 +4,7 @@ import { google } from "googleapis";
 
 import { extractApiMessage } from "@/lib/utils";
 
-export async function fetchSheetsList(spreadsheetUrl: string) {
+export async function fetchSheetsList(spreadsheetUrl: string, accessToken?: string) {
   try {
     // Extract Spreadsheet ID from URL
     const match = spreadsheetUrl.match(/\/d\/([a-zA-Z0-9-_]+)/);
@@ -12,6 +12,39 @@ export async function fetchSheetsList(spreadsheetUrl: string) {
       return { success: false, error: "Invalid Spreadsheet URL. Please check the link and try again." };
     }
     const spreadsheetId = match[1];
+
+    // 1. If a Google Drive OAuth accessToken is provided, try authenticated Sheets API v4 first (supports private sheets)
+    if (accessToken?.trim()) {
+      try {
+        const oauthRes = await fetch(
+          `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}?fields=sheets.properties.title`,
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken.trim()}`,
+              Accept: "application/json",
+            },
+            cache: "no-store",
+          },
+        );
+        if (oauthRes.ok) {
+          const data = (await oauthRes.json()) as {
+            sheets?: Array<{ properties?: { title?: string } }>;
+          };
+          const sheetNames = (data.sheets || [])
+            .map((s) => s.properties?.title)
+            .filter((title): title is string => Boolean(title));
+          if (sheetNames.length > 0) {
+            return {
+              success: true,
+              sheets: sheetNames,
+              message: `Found ${sheetNames.length} sheet${sheetNames.length === 1 ? "" : "s"}.`,
+            };
+          }
+        }
+      } catch (oauthErr) {
+        console.warn("[fetchSheetsList] OAuth token Sheets API error, falling back:", oauthErr);
+      }
+    }
 
     const apiKey = process.env.GOOGLE_SHEETS_API_KEY;
 

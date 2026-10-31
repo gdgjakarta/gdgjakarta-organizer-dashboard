@@ -132,6 +132,7 @@ export function HtmlEditorPreview({
       const eventDate = selectedEvent?.formattedDate ?? "Friday, Oct 23, 2026";
       const eventTime = selectedEvent?.formattedTime ?? "10:00 AM - 05:00 PM";
       const eventVenue = selectedEvent?.venueName ?? "Jakarta Convention Center";
+      const eventVenueUrl = selectedEvent?.venueUrl ?? "https://maps.google.com/?q=Jakarta+Convention+Center";
       const eventAddress = selectedEvent?.venueAddress ?? "Jl. Gatot Subroto, Jakarta";
       const eventUrl = selectedEvent?.url ?? "https://gdg.community.dev/gdg-jakarta/";
       const eventBannerUrl =
@@ -141,17 +142,21 @@ export function HtmlEditorPreview({
       const eventDesc =
         selectedEvent?.descriptionShort ?? "Join the largest Google developer community conference in Jakarta!";
       const sessionTitle = "Keynote: Building Production AI Agents with Gemini";
+      const vehicleTicketUrl = "https://drive.google.com/file/d/sample-vehicle-ticket/view";
 
       result = result
         .replace(/\[\[EventName\]\]/g, eventName)
         .replace(/\[\[EventDate\]\]/g, eventDate)
         .replace(/\[\[EventTime\]\]/g, eventTime)
         .replace(/\[\[EventVenue\]\]/g, eventVenue)
+        .replace(/\[\[EventVenueUrl\]\]/g, eventVenueUrl)
+        .replace(/\[\[VenueGuideUrl\]\]/g, eventVenueUrl)
         .replace(/\[\[EventAddress\]\]/g, eventAddress)
         .replace(/\[\[EventUrl\]\]/g, eventUrl)
         .replace(/\[\[EventBannerUrl\]\]/g, eventBannerUrl)
         .replace(/\[\[EventDescription\]\]/g, eventDesc)
-        .replace(/\[\[SessionTitle\]\]/g, sessionTitle);
+        .replace(/\[\[SessionTitle\]\]/g, sessionTitle)
+        .replace(/\[\[VehicleTicketUrl\]\]/g, vehicleTicketUrl);
     }
 
     if (headerUrl) {
@@ -231,6 +236,7 @@ export function HtmlEditorPreview({
               height="100%"
               defaultLanguage="html"
               value={value}
+              keepCurrentModel
               onChange={(val) => onChange(val || "")}
               onMount={handleEditorDidMount}
               theme={theme === "dark" ? "vs-dark" : "light"}

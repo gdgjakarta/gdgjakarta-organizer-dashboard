@@ -35,6 +35,11 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { sendQuickEmail } from "@/app/(main)/dashboard/email-manager/_actions/send-quick-email";
+import {
+  getFeatureTemplateOverrides,
+  venueTicketHtmlTemplate,
+} from "@/app/(main)/dashboard/email-manager/_components/default-html-template";
 import { CapacityFullDialog } from "@/components/capacity-full-dialog";
 import { Shimmer } from "@/components/shimmer";
 import {
@@ -108,6 +113,19 @@ import type {
   RegistrationStatus,
   RegistrationStatusLog,
 } from "@/lib/firestore/types";
+import {
+  assignSingleRegistrationVenueTicket,
+  type DriveVenueTicketFile,
+  type EventVenueTicketConfig,
+  findOrphanedVenueTicketShares,
+  getCachedDriveAccessToken,
+  getEventVenueTicketConfig,
+  grantDriveReaderPermission,
+  markRegistrationVenueTicketDelivered,
+  recordVenueTicketGrantedShare,
+  requestDriveAccessToken,
+  revokeVenueTicketAccessForItems,
+} from "@/lib/google-drive/venue-tickets";
 import { cn, getInitials } from "@/lib/utils";
 import { checkInBevyAttendeeAction, fetchAllBevyEventAttendeesAction } from "@/server/bevy-actions";
 import {
@@ -135,6 +153,7 @@ import { QuestionColumnValueCell } from "./question-column-value-cell";
 import { QuestionResponsesCell } from "./question-responses-cell";
 import { RegistrantStatistics } from "./registrant-statistics";
 import { ResendPaymentLinkDialog } from "./resend-payment-link-dialog";
+import { VenueTicketDriveDialog } from "./venue-ticket-drive-dialog";
 
 interface RegistrantsTabProps {
   eventId: string;
@@ -653,10 +672,14 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
   const [isBatchResendingInterest, setIsBatchResendingInterest] = useState(false);
   const [isResendingWaitlistId, setIsResendingWaitlistId] = useState<string | null>(null);
   const [isResendingPaidWaitlistId, setIsResendingPaidWaitlistId] = useState<string | null>(null);
+  const [isResendingAcceptedId, setIsResendingAcceptedId] = useState<string | null>(null);
   const [resendPaymentRegistration, setResendPaymentRegistration] = useState<FirestoreRegistration | null>(null);
   const [checkingPaymentRegistration, setCheckingPaymentRegistration] = useState<FirestoreRegistration | null>(null);
   const [isCheckPaymentDialogOpen, setIsCheckPaymentDialogOpen] = useState(false);
   const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
+  const [isVenueTicketDialogOpen, setIsVenueTicketDialogOpen] = useState(false);
+  const [venueTicketConfig, setVenueTicketConfig] = useState<EventVenueTicketConfig | null>(null);
+  const [sendingVenueTicketRegId, setSendingVenueTicketRegId] = useState<string | null>(null);
   const [isBatchCheckingPayment, setIsBatchCheckingPayment] = useState(false);
   const [isBatchResendPaymentOpen, setIsBatchResendPaymentOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -761,6 +784,194 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
     })();
     return () => unsub();
   }, [eventId]);
+
+  useEffect(() => {
+    if (!eventId) return;
+    void getEventVenueTicketConfig(eventId).then((cfg) => {
+      if (cfg) setVenueTicketConfig(cfg);
+    });
+  }, [eventId]);
+
+  useEffect(() => {
+    if (isLoading || !venueTicketConfig?.granted_shares?.length) return;
+    const orphaned = findOrphanedVenueTicketShares(registrationsList, venueTicketConfig);
+    if (orphaned.length === 0) return;
+    const cachedToken = getCachedDriveAccessToken(user?.email);
+    if (!cachedToken) return;
+    void revokeVenueTicketAccessForItems(orphaned, {
+      eventId,
+      userEmail: user?.email,
+      accessToken: cachedToken,
+      promptIfNeeded: false,
+    }).then(({ revokedCount }) => {
+      if (revokedCount > 0) {
+        void getEventVenueTicketConfig(eventId).then((cfg) => {
+          if (cfg) setVenueTicketConfig(cfg);
+        });
+      }
+    });
+  }, [isLoading, registrationsList, venueTicketConfig, eventId, user?.email]);
+
+  const handleAssignSingleVenueTicket = useCallback(
+    async (reg: FirestoreRegistration, file: DriveVenueTicketFile | null) => {
+      try {
+        if (reg.venue_ticket_file_id && reg.venue_ticket_file_id !== file?.id && reg.member_email) {
+          await revokeVenueTicketAccessForItems(
+            [{ fileId: reg.venue_ticket_file_id, email: reg.member_email, registrationId: reg.id }],
+            { eventId, userEmail: user?.email },
+          );
+        }
+        const patch = await assignSingleRegistrationVenueTicket(reg.id, file);
+        setRegistrationsList((prev) => prev.map((r) => (r.id === reg.id ? { ...r, ...patch } : r)));
+        setInspectRegistration((prev) => (prev && prev.id === reg.id ? { ...prev, ...patch } : prev));
+        toast.success(
+          file
+            ? `Assigned Venue Ticket #${file.sequence} (${file.name}) to ${reg.member_name}.`
+            : "Cleared Venue Ticket assignment.",
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Failed to update venue ticket assignment.";
+        toast.error(msg);
+      }
+    },
+    [eventId, user?.email],
+  );
+
+  const handleSendVenueTicketEmail = useCallback(
+    async (reg: FirestoreRegistration, existingToken?: string): Promise<boolean> => {
+      if (!reg.venue_ticket_file_id || !reg.venue_ticket_url) {
+        toast.error("No Venue Ticket is assigned to this registrant.");
+        return false;
+      }
+      if (!reg.member_email) {
+        toast.error("Registrant does not have a valid email address.");
+        return false;
+      }
+
+      setSendingVenueTicketRegId(reg.id);
+      try {
+        let token =
+          existingToken || getCachedDriveAccessToken(user?.email) || (await requestDriveAccessToken(user?.email));
+
+        await grantDriveReaderPermission(reg.venue_ticket_file_id, reg.member_email, token).catch(async () => {
+          token = await requestDriveAccessToken(user?.email, true);
+          await grantDriveReaderPermission(reg.venue_ticket_file_id!, reg.member_email, token);
+        });
+
+        const sharedAt = new Date().toISOString();
+        await recordVenueTicketGrantedShare(eventId, {
+          fileId: reg.venue_ticket_file_id,
+          email: reg.member_email,
+          registrationId: reg.id,
+          sharedAt,
+        });
+        setVenueTicketConfig((prev) => {
+          if (!prev) return prev;
+          const cleanEmail = reg.member_email.trim().toLowerCase();
+          const filtered = (prev.granted_shares ?? []).filter(
+            (s) => !(s.fileId === reg.venue_ticket_file_id && s.email.toLowerCase() === cleanEmail),
+          );
+          return {
+            ...prev,
+            granted_shares: [
+              ...filtered,
+              {
+                fileId: reg.venue_ticket_file_id!,
+                email: cleanEmail,
+                registrationId: reg.id,
+                sharedAt,
+              },
+            ],
+          };
+        });
+        const startDate = firestoreEventDoc?.start_date || event?.start_date;
+        const endDate = firestoreEventDoc?.end_date || event?.end_date;
+        const eventDateStr = startDate ? formatFirestoreDate(startDate, "EEEE, MMM dd, yyyy") : "Upcoming Event";
+        const startTimeStr = startDate ? formatFirestoreDate(startDate, "hh:mm a") : "";
+        const endTimeStr = endDate ? formatFirestoreDate(endDate, "hh:mm a") : "";
+        const eventTimeStr = startTimeStr ? (endTimeStr ? `${startTimeStr} - ${endTimeStr}` : startTimeStr) : "TBA";
+        const venueName =
+          firestoreEventDoc?.venue?.name ||
+          event?.venue?.name ||
+          firestoreEventDoc?.venue_name ||
+          event?.venue_name ||
+          "Event Venue";
+        const venueAddress =
+          firestoreEventDoc?.venue?.address ||
+          event?.venue?.address ||
+          firestoreEventDoc?.venue_address ||
+          event?.venue_address ||
+          "Jakarta, Indonesia";
+        const eventVenueUrl =
+          firestoreEventDoc?.google_maps_url ||
+          event?.google_maps_url ||
+          firestoreEventDoc?.venue?.google_maps_url ||
+          event?.venue?.google_maps_url ||
+          firestoreEventDoc?.venue?.url ||
+          event?.venue?.url ||
+          firestoreEventDoc?.venue_map_url ||
+          event?.venue_map_url ||
+          venueTicketConfig?.venue_guide_url ||
+          `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${venueName} ${venueAddress}`.trim())}`;
+        const bannerUrl =
+          firestoreEventDoc?.banner_url ||
+          event?.banner_url ||
+          (event as { banner?: { url?: string }; cropped_banner_url?: string } | undefined)?.banner?.url ||
+          (event as { cropped_banner_url?: string } | undefined)?.cropped_banner_url ||
+          firestoreEventDoc?.image_url ||
+          event?.image_url;
+        const eventTitle = firestoreEventDoc?.title || event?.title || "GDG Jakarta Event";
+        const savedVenueTicketOverride = getFeatureTemplateOverrides().venue_ticket;
+
+        const emailRes = await sendQuickEmail({
+          eventId,
+          eventTitle,
+          subject: savedVenueTicketOverride?.subject || `Your Venue Ticket: ${eventTitle}`,
+          body: savedVenueTicketOverride?.body || venueTicketHtmlTemplate,
+          recipientEmail: reg.member_email,
+          recipientName: reg.member_name,
+          headerUrl: savedVenueTicketOverride?.headerUrl || bannerUrl,
+          venueGuideUrl: eventVenueUrl,
+          vehicleTicketUrl: venueTicketConfig?.vehicle_ticket_url,
+          eventDetails: {
+            formattedDate: eventDateStr,
+            formattedTime: eventTimeStr,
+            venueName,
+            venueAddress,
+            bannerUrl,
+          },
+          customAttendeePlaceholders: {
+            VenueTicketUrl: reg.venue_ticket_url,
+            TicketType: reg.ticket_name || "Confirmed Entry Pass",
+            TicketCode: reg.attendee_code || `#${reg.bevy_attendee_id || reg.id.slice(0, 8)}`,
+            AttendeeId: String(reg.bevy_attendee_id || reg.id),
+            CheckinStatus: reg.is_checked_in ? "Checked In" : "Not Checked In",
+          },
+        });
+
+        if (!emailRes.success) {
+          throw new Error(emailRes.error || "Failed to send Venue Ticket email.");
+        }
+
+        const sentAt = new Date().toISOString();
+        const patch = await markRegistrationVenueTicketDelivered(reg.id, { sharedAt, sentAt });
+        setRegistrationsList((prev) => prev.map((r) => (r.id === reg.id ? { ...r, ...patch } : r)));
+        setInspectRegistration((prev) => (prev && prev.id === reg.id ? { ...prev, ...patch } : prev));
+
+        if (!existingToken) {
+          toast.success(`Granted view access and sent Venue Ticket to ${reg.member_name} (${reg.member_email}).`);
+        }
+        return true;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Failed to grant access or send Venue Ticket email.";
+        toast.error(`${reg.member_name}: ${msg}`);
+        return false;
+      } finally {
+        setSendingVenueTicketRegId(null);
+      }
+    },
+    [user?.email, firestoreEventDoc, event, eventId, venueTicketConfig],
+  );
 
   const syncBevyAttendees = useCallback(
     async (showNotification = false) => {
@@ -2274,12 +2485,32 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
       // Persist status update in Firestore (client-side)
       await updateRegistrationStatusAction(registration.id, eventId, "rejected", reviewerPayload, rejectNote);
 
+      let clearedPatch: Partial<FirestoreRegistration> = {};
+      if (registration.venue_ticket_file_id) {
+        clearedPatch = await assignSingleRegistrationVenueTicket(registration.id, null);
+        if (registration.member_email) {
+          await revokeVenueTicketAccessForItems(
+            [
+              {
+                fileId: registration.venue_ticket_file_id,
+                email: registration.member_email,
+                registrationId: registration.id,
+              },
+            ],
+            { eventId, userEmail: user?.email },
+          );
+          const refreshedConfig = await getEventVenueTicketConfig(eventId);
+          if (refreshedConfig) setVenueTicketConfig(refreshedConfig);
+        }
+      }
+
       const now = new Date().toISOString();
       setRegistrationsList((prev) =>
         prev.map((r) =>
           r.id === registration.id
             ? {
                 ...r,
+                ...clearedPatch,
                 status: "rejected",
                 reviewed_at: now,
                 reviewed_by_id: user?.id ?? r.reviewed_by_id,
@@ -2294,6 +2525,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
         prev?.id === registration.id
           ? {
               ...prev,
+              ...clearedPatch,
               status: "rejected",
               reviewed_at: now,
               reviewed_by_id: user?.id ?? prev.reviewed_by_id,
@@ -2463,6 +2695,28 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
       toast.error(msg);
     } finally {
       setIsResendingInterestId(null);
+    }
+  };
+
+  const handleResendAcceptedEmail = async (registration: FirestoreRegistration) => {
+    setIsResendingAcceptedId(registration.id);
+    try {
+      const payload = buildApprovedAttendeePayload(registration, currentEvent);
+      const res = await approveAttendeeWebhookAction(payload);
+
+      if (res.success) {
+        toast.success(`Accepted / Ticket Confirmation email resent to ${registration.member_name}.`);
+      } else {
+        toast.error(res.error ?? "Failed to resend Accepted / Ticket Confirmation email.", {
+          description: typeof res.details === "string" ? res.details : undefined,
+        });
+      }
+    } catch (err) {
+      console.error("[RegistrantsTab] Error resending accepted email:", err);
+      const msg = err instanceof Error ? err.message : "Failed to resend Accepted / Ticket Confirmation email.";
+      toast.error(msg);
+    } finally {
+      setIsResendingAcceptedId(null);
     }
   };
 
@@ -2949,6 +3203,16 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
             rejectNote = "Batch rejected from Waitlist by organizer.";
           }
           await updateRegistrationStatusAction(reg.id, eventId, "rejected", reviewerPayload, rejectNote);
+          let clearedPatch: Partial<FirestoreRegistration> = {};
+          if (reg.venue_ticket_file_id) {
+            clearedPatch = await assignSingleRegistrationVenueTicket(reg.id, null);
+            if (reg.member_email) {
+              await revokeVenueTicketAccessForItems(
+                [{ fileId: reg.venue_ticket_file_id, email: reg.member_email, registrationId: reg.id }],
+                { eventId, userEmail: user?.email },
+              );
+            }
+          }
           successCount++;
           const now = new Date().toISOString();
           setRegistrationsList((prev) =>
@@ -2956,6 +3220,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
               r.id === reg.id
                 ? {
                     ...r,
+                    ...clearedPatch,
                     status: "rejected",
                     reviewed_at: now,
                     reviewed_by_id: user?.id ?? r.reviewed_by_id,
@@ -3194,6 +3459,20 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
         registration,
       );
       if (res.success) {
+        if (registration.venue_ticket_file_id && registration.member_email) {
+          await revokeVenueTicketAccessForItems(
+            [
+              {
+                fileId: registration.venue_ticket_file_id,
+                email: registration.member_email,
+                registrationId: registration.id,
+              },
+            ],
+            { eventId, userEmail: user?.email },
+          );
+          const refreshedConfig = await getEventVenueTicketConfig(eventId);
+          if (refreshedConfig) setVenueTicketConfig(refreshedConfig);
+        }
         if (email && bevyAttendeesMap.has(email)) {
           setBevyAttendeesMap((prev) => {
             const next = new Map(prev);
@@ -3247,6 +3526,21 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
     try {
       const res = await deleteBatchEventRegistrationsAction(idsToDelete, eventId, matchedBevyIds);
       if (res.success) {
+        const venueItemsToRevoke = regsToDelete
+          .filter((r) => Boolean(r.venue_ticket_file_id && r.member_email))
+          .map((r) => ({
+            fileId: r.venue_ticket_file_id,
+            email: r.member_email,
+            registrationId: r.id,
+          }));
+        if (venueItemsToRevoke.length > 0) {
+          await revokeVenueTicketAccessForItems(venueItemsToRevoke, {
+            eventId,
+            userEmail: user?.email,
+          });
+          const refreshedConfig = await getEventVenueTicketConfig(eventId);
+          if (refreshedConfig) setVenueTicketConfig(refreshedConfig);
+        }
         if (matchedBevyIds.length > 0) {
           setBevyAttendeesMap((prev) => {
             const next = new Map(prev);
@@ -3322,6 +3616,21 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
         return;
       }
 
+      if (registration.venue_ticket_file_id && registration.member_email) {
+        await revokeVenueTicketAccessForItems(
+          [
+            {
+              fileId: registration.venue_ticket_file_id,
+              email: registration.member_email,
+              registrationId: registration.id,
+            },
+          ],
+          { eventId, userEmail: user?.email },
+        );
+        const refreshedConfig = await getEventVenueTicketConfig(eventId);
+        if (refreshedConfig) setVenueTicketConfig(refreshedConfig);
+      }
+
       // 3. Update local state
       setRegistrationsList((prev) => prev.filter((r) => r.id !== registration.id));
       setSelectedIds((prev) => {
@@ -3364,6 +3673,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
     try {
       let successCount = 0;
       let failCount = 0;
+      const cancelledRegs: FirestoreRegistration[] = [];
       const reviewerPayload = user ? { id: user.id, name: user.name, email: user.email } : undefined;
 
       for (const reg of regsToCancel) {
@@ -3394,6 +3704,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
           });
           if (deleteRes.success) {
             successCount++;
+            cancelledRegs.push(reg);
             setRegistrationsList((prev) => prev.filter((r) => r.id !== reg.id));
             if (email && bevyAttendeesMap.has(email)) {
               setBevyAttendeesMap((prev) => {
@@ -3409,6 +3720,22 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
           console.error("[handleBatchCancel] item error:", err);
           failCount++;
         }
+      }
+
+      const venueItemsToRevoke = cancelledRegs
+        .filter((r) => Boolean(r.venue_ticket_file_id && r.member_email))
+        .map((r) => ({
+          fileId: r.venue_ticket_file_id,
+          email: r.member_email,
+          registrationId: r.id,
+        }));
+      if (venueItemsToRevoke.length > 0) {
+        await revokeVenueTicketAccessForItems(venueItemsToRevoke, {
+          eventId,
+          userEmail: user?.email,
+        });
+        const refreshedConfig = await getEventVenueTicketConfig(eventId);
+        if (refreshedConfig) setVenueTicketConfig(refreshedConfig);
       }
 
       setSelectedIds(new Set());
@@ -4205,6 +4532,22 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                 <Button
                   size="sm"
                   variant="outline"
+                  onClick={() => setIsVenueTicketDialogOpen(true)}
+                  className="h-8 gap-1.5 border-primary/30 text-primary text-xs hover:bg-primary/10"
+                  title="Sync Google Drive folder of Venue Tickets, map 1-to-1 by registration time, and grant view access before sending"
+                >
+                  <Ticket className="size-3.5" />
+                  <span>Venue Tickets</span>
+                  {venueTicketConfig && venueTicketConfig.files.length > 0 && (
+                    <Badge variant="secondary" className="px-1.5 py-0 font-mono text-[10px]">
+                      {venueTicketConfig.files.length}
+                    </Badge>
+                  )}
+                </Button>
+
+                <Button
+                  size="sm"
+                  variant="outline"
                   onClick={() => {
                     setCheckingPaymentRegistration(null);
                     setIsCheckPaymentDialogOpen(true);
@@ -4883,6 +5226,21 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                                       Bundle: {reg.bundle_name}
                                     </Badge>
                                   )}
+                                  {reg.venue_ticket_file_name && (
+                                    <Badge
+                                      variant="outline"
+                                      className={cn(
+                                        "w-fit px-1.5 py-0 font-mono font-semibold text-[9px]",
+                                        reg.venue_ticket_sent_at
+                                          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                                          : "border-primary/30 bg-primary/10 text-primary",
+                                      )}
+                                      title={reg.venue_ticket_file_name}
+                                    >
+                                      Venue Ticket #{reg.venue_ticket_sequence ?? "?"}{" "}
+                                      {reg.venue_ticket_sent_at ? "✓" : ""}
+                                    </Badge>
+                                  )}
                                 </div>
                               ) : (
                                 <div className="flex flex-col gap-0.5">
@@ -4909,6 +5267,21 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                                       className="w-fit border-primary/40 bg-primary/10 px-1.5 py-0 font-semibold text-[9px] text-primary"
                                     >
                                       Bundle: {reg.bundle_name}
+                                    </Badge>
+                                  )}
+                                  {reg.venue_ticket_file_name && (
+                                    <Badge
+                                      variant="outline"
+                                      className={cn(
+                                        "w-fit px-1.5 py-0 font-mono font-semibold text-[9px]",
+                                        reg.venue_ticket_sent_at
+                                          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                                          : "border-primary/30 bg-primary/10 text-primary",
+                                      )}
+                                      title={reg.venue_ticket_file_name}
+                                    >
+                                      Venue Ticket #{reg.venue_ticket_sequence ?? "?"}{" "}
+                                      {reg.venue_ticket_sent_at ? "✓" : ""}
                                     </Badge>
                                   )}
                                 </div>
@@ -5579,6 +5952,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
         onResendInterestEmail={handleResendInterestEmail}
         onResendWaitlistEmail={handleResendWaitlistEmail}
         onResendPaidWaitlistEmail={handleResendPaidWaitlistEmail}
+        onResendAcceptedEmail={handleResendAcceptedEmail}
         onToggleCheckIn={handleToggleCheckIn}
         onToggleMerchandiseCollected={handleToggleMerchandiseCollected}
         onCancelRegistration={(reg) => {
@@ -5598,7 +5972,38 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
         isResendingInterest={isResendingInterestId === inspectRegistration?.id}
         isResendingWaitlist={isResendingWaitlistId === inspectRegistration?.id}
         isResendingPaidWaitlist={isResendingPaidWaitlistId === inspectRegistration?.id}
+        isResendingAccepted={isResendingAcceptedId === inspectRegistration?.id}
         isCancelling={isCancelling}
+        venueTicketFiles={venueTicketConfig?.files ?? []}
+        onAssignVenueTicket={handleAssignSingleVenueTicket}
+        onSendVenueTicketEmail={handleSendVenueTicketEmail}
+        isSendingVenueTicket={sendingVenueTicketRegId === inspectRegistration?.id}
+      />
+
+      {/* Google Drive Venue Ticket Distribution Dialog */}
+      <VenueTicketDriveDialog
+        open={isVenueTicketDialogOpen}
+        onOpenChange={setIsVenueTicketDialogOpen}
+        eventId={eventId}
+        event={currentEvent}
+        registrations={registrationsList}
+        config={venueTicketConfig}
+        onConfigUpdated={setVenueTicketConfig}
+        onRegistrationsPatched={(updatesByRegId) => {
+          setRegistrationsList((prev) =>
+            prev.map((r) => {
+              const patch = updatesByRegId.get(r.id);
+              return patch ? { ...r, ...patch } : r;
+            }),
+          );
+          setInspectRegistration((prev) => {
+            if (!prev) return prev;
+            const patch = updatesByRegId.get(prev.id);
+            return patch ? { ...prev, ...patch } : prev;
+          });
+        }}
+        onSendVenueTicketEmail={handleSendVenueTicketEmail}
+        sendingRegistrationId={sendingVenueTicketRegId}
       />
 
       {/* Confirmation Dialog: Single Attendee Rejection */}

@@ -99,6 +99,10 @@ export async function fetchPublishedEventsAction(options?: { forceRefresh?: bool
 
         const venueName = bevy.venue_name || (bevy.is_virtual_event ? "Virtual / Online" : "Jakarta, Indonesia");
         const venueAddress = bevy.venue_address || "";
+        const venueUrl =
+          bevy.google_maps_url ||
+          bevy.venue_map_url ||
+          `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${venueName} ${venueAddress}`.trim())}`;
         const eventUrl =
           bevy.url || bevy.static_url || `https://gdg.community.dev/events/details/google-gdg-jakarta-${idStr}/`;
 
@@ -113,6 +117,7 @@ export async function fetchPublishedEventsAction(options?: { forceRefresh?: bool
           bannerUrl,
           venueName,
           venueAddress,
+          venueUrl,
           url: eventUrl,
           descriptionShort: bevy.description_short || "",
           isVirtual: Boolean(bevy.is_virtual_event),
@@ -240,6 +245,11 @@ export async function fetchBevyEventDetailAction(
     const venueAddress =
       detail.venue_address || [detail.venue_city, detail.venue_country].filter(Boolean).join(", ") || "";
 
+    const venueUrl =
+      detail.google_maps_url ||
+      detail.venue_map_url ||
+      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${venueName} ${venueAddress}`.trim())}`;
+
     const eventUrl =
       detail.url || detail.static_url || `https://gdg.community.dev/events/details/google-gdg-jakarta-${idStr}/`;
 
@@ -254,6 +264,7 @@ export async function fetchBevyEventDetailAction(
       bannerUrl,
       venueName,
       venueAddress,
+      venueUrl,
       url: eventUrl,
       descriptionShort: detail.description_short || "",
       isVirtual: Boolean(detail.is_virtual_event),
