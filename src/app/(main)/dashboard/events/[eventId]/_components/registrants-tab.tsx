@@ -1989,13 +1989,17 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
       let matchesMerchandiseVariant = true;
       if (merchandiseVariantFilter !== "all") {
         const regMerch = reg.selected_merchandise || [];
-        const targetVar = merchandiseVariantFilter.toLowerCase().trim();
+        const targetTokens = merchandiseVariantFilter
+          .toLowerCase()
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean);
         matchesMerchandiseVariant = regMerch.some((m) => {
           const variations = parseMerchandiseVariations(m, reg.answers);
           return variations.some((v) => {
             const vVal = v.value.toLowerCase().trim();
             const vCombined = `${v.label}: ${v.value}`.toLowerCase().trim();
-            return vVal === targetVar || vCombined === targetVar || targetVar.includes(vVal);
+            return targetTokens.includes(vVal) || targetTokens.includes(vCombined);
           });
         });
       }
