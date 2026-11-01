@@ -989,6 +989,9 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
     [user?.email, firestoreEventDoc, event, eventId, venueTicketConfig],
   );
 
+  const eventTitleRef = useRef(firestoreEventDoc?.title || event?.title || "GDG Jakarta Event");
+  eventTitleRef.current = firestoreEventDoc?.title || event?.title || "GDG Jakarta Event";
+
   const syncBevyAttendees = useCallback(
     async (showNotification = false) => {
       setIsSyncingBevy(true);
@@ -1012,12 +1015,23 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
         setBevyAttendeesMap(map);
 
         // Silently sync check-in states to registrationsList & update Firestore when there's new data
-        if (map.size > 0) {
-          setRegistrationsList((prev) =>
-            prev.map((reg) => {
+        if (attendees.length > 0) {
+          const eventTitle = eventTitleRef.current;
+
+          setRegistrationsList((prev) => {
+            const matchedBevyIds = new Set<number>();
+            const matchedEmails = new Set<string>();
+
+            const nextList = prev.map((reg) => {
               const email = (reg.member_email || "").toLowerCase().trim();
-              const bevyAtt = map.get(email);
+              const bevyAtt =
+                (email ? map.get(email) : undefined) ??
+                (reg.bevy_attendee_id
+                  ? attendees.find((a) => Number(a.id) === Number(reg.bevy_attendee_id))
+                  : undefined);
               if (bevyAtt) {
+                matchedBevyIds.add(Number(bevyAtt.id));
+                if (email) matchedEmails.add(email);
                 const isCheckedIn = Boolean(bevyAtt.is_checked_in);
                 const bevyId = bevyAtt.id;
                 const checkinDate = bevyAtt.checkin_date || (isCheckedIn ? new Date().toISOString() : null);
@@ -1040,8 +1054,68 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                 }
               }
               return reg;
-            }),
-          );
+            });
+
+            if (showNotification) {
+              const newRegs: FirestoreRegistration[] = [];
+              for (const att of attendees) {
+                const email = (att.email || "").toLowerCase().trim();
+                const docId = `bevy_${att.id}`;
+                if (
+                  matchedBevyIds.has(Number(att.id)) ||
+                  (email && matchedEmails.has(email)) ||
+                  nextList.some((r) => r.id === docId)
+                ) {
+                  continue;
+                }
+
+                const fullName =
+                  att.name ||
+                  [att.first_name, att.last_name].filter(Boolean).join(" ") ||
+                  att.email?.split("@")[0] ||
+                  `Bevy Attendee #${att.id}`;
+                const bevyPhone = (att.phone as string) || (att.mobile_phone as string) || (att.mobile as string) || "";
+                const isCheckedIn = Boolean(att.is_checked_in);
+                const checkinDate = att.checkin_date || (isCheckedIn ? new Date().toISOString() : null);
+                const attendeeCode = att.attendee_code || String(att.id);
+                const newReg: FirestoreRegistration = {
+                  id: docId,
+                  event_id: eventId,
+                  event_title: eventTitle,
+                  member_id: String(att.user_id || att.id),
+                  member_name: fullName,
+                  member_email: att.email || `bevy_${att.id}@gdgjakarta.org`,
+                  member_phone: bevyPhone,
+                  status: "approved",
+                  ticket_tier: att.ticket_title || "Bevy Ticket",
+                  bevy_attendee_id: att.id,
+                  attendee_code: attendeeCode,
+                  registered_at: att.created_date || new Date().toISOString(),
+                  is_checked_in: isCheckedIn,
+                  checkin_date: checkinDate,
+                  checked_in_at: isCheckedIn ? (checkinDate ?? new Date().toISOString()) : undefined,
+                };
+
+                newRegs.push(newReg);
+                if (email) matchedEmails.add(email);
+                matchedBevyIds.add(Number(att.id));
+                void updateRegistrationCheckInAction(
+                  docId,
+                  eventId,
+                  isCheckedIn,
+                  att.id,
+                  checkinDate,
+                  attendeeCode,
+                  newReg,
+                );
+              }
+              if (newRegs.length > 0) {
+                return [...newRegs, ...nextList];
+              }
+            }
+
+            return nextList;
+          });
         }
 
         if (showNotification) {
