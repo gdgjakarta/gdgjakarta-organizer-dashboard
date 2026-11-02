@@ -62,6 +62,18 @@ const ATTENDEE_TOKENS: TokenItem[] = [
   { id: "title", tag: "[[title]]", label: "Job Title / Role", description: "e.g. Game Engineer" },
   { id: "company", tag: "[[company]]", label: "Company / Org", description: "e.g. Harvest Moon" },
   {
+    id: "ticket_type",
+    tag: "[[ticketType]]",
+    label: "Ticket Type",
+    description: "Paid Pass, Free RSVP, or Commitment Fee",
+  },
+  {
+    id: "ticket_name",
+    tag: "[[ticketName]]",
+    label: "Ticket Name",
+    description: "Super Early Bird, Early Bird, Regular, VIP, etc.",
+  },
+  {
     id: "ticket_code",
     tag: "[[ticketCode]]",
     label: "Ticket / Ref Code",
@@ -82,60 +94,49 @@ const LABEL_HTML_BLOCKS: TokenItem[] = [
     id: "block_full_badge",
     tag: "Official Entry Pass Badge",
     label: "Official Entry Pass Badge",
-    description: "Complete GDG dashed badge layout with QR and attendee details",
+    description: "Modern Google Sans badge with attendee details and QR code",
     snippet: `<div class="ticket-badge">
-  <div class="ticket-header">
-    <div class="brand-row">
-      <span class="brand-title">GDG JAKARTA</span>
-      <span class="ticket-badge-pill">ENTRY PASS</span>
-    </div>
-    <div class="event-name">[[EventName]]</div>
-  </div>
+  <div class="attendee-name" data-fit-lines="1">[[Name]]</div>
+
   <div class="ticket-body">
     <div class="ticket-details">
-      <div class="attendee-name">[[Name]]</div>
-      <div class="attendee-title">[[title]]</div>
-      <div class="attendee-company">[[company]]</div>
-      <div class="ref-pill">
-        <span class="ref-label">REF:</span>
-        <span class="ref-code">[[ticketCode]]</span>
+      <div>
+        <div class="attendee-title">[[title]]</div>
+        <div class="attendee-company">[[company]]</div>
       </div>
-      <div class="ref-pill" style="margin-top: 0.4mm;">
-        <span class="ref-label">ID:</span>
-        <span class="ref-code">[[attendeeId]]</span>
+      <div class="ref-code">[[ticketCode]]</div>
+      <div class="ticket-footer">
+        <span class="ticket-badge-pill">[[ticketName]] - [[ticketType]]</span>
+        <div class="event-name">[[EventName]]</div>
       </div>
     </div>
+
     <div class="ticket-qr-section">
       <div class="qr-container">[[qr]]</div>
-      <div class="scan-hint">SCAN TO VERIFY</div>
     </div>
   </div>
 </div>`,
   },
   {
     id: "block_qr_box",
-    tag: "QR Verification Box",
-    label: "QR Verification Box",
-    description: "Framed QR code container with SCAN TO VERIFY caption",
+    tag: "QR Code Section",
+    label: "QR Code Section",
+    description: "Compact thermal QR code box",
     snippet: `<div class="ticket-qr-section">
   <div class="qr-container">
     [[qr]]
   </div>
-  <div class="scan-hint">SCAN TO VERIFY</div>
 </div>`,
   },
   {
     id: "block_ref_pill",
-    tag: "Ref & ID Pills",
-    label: "Ref & ID Pills",
-    description: "Monospace reference code and attendee ID pills",
-    snippet: `<div class="ref-pill">
-  <span class="ref-label">REF:</span>
-  <span class="ref-code">[[ticketCode]]</span>
-</div>
-<div class="ref-pill" style="margin-top: 0.4mm;">
-  <span class="ref-label">ID:</span>
-  <span class="ref-code">[[attendeeId]]</span>
+    tag: "Ref & Ticket Type Footer",
+    label: "Ref & Ticket Type Footer",
+    description: "Ticket code, Ticket Name - Ticket Type badge pill, and event name",
+    snippet: `<div class="ref-code">[[ticketCode]]</div>
+<div class="ticket-footer">
+  <span class="ticket-badge-pill">[[ticketName]] - [[ticketType]]</span>
+  <div class="event-name">[[EventName]]</div>
 </div>`,
   },
 ];

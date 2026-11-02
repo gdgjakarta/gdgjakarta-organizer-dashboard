@@ -119,6 +119,17 @@ export function ConfigurePrinterTemplateDataDialog({
       sampleData.sessionTrack ||
       "Full Session";
 
+    const resolvedTicketType =
+      reg.ticket_type === "free"
+        ? "Free RSVP"
+        : reg.ticket_type === "commitment_fee"
+          ? "Commitment Fee"
+          : reg.ticket_type === "paid" || reg.ticket_price
+            ? "Paid Pass"
+            : sampleData.ticketType || "Paid Pass";
+
+    const resolvedTicketName = reg.ticket_name || reg.ticket_tier || sampleData.ticketName || "Super Early Bird";
+
     const answersMap: Record<string, unknown> = {
       ...(sampleData.answers || {}),
       ...(reg.answers || {}),
@@ -129,6 +140,8 @@ export function ConfigurePrinterTemplateDataDialog({
       email: chosenEmail,
       title: resolvedTitle,
       company: resolvedCompany,
+      ticketType: resolvedTicketType,
+      ticketName: resolvedTicketName,
       sessionTrack: resolvedSessionTrack,
       ticketCode: resolvedTicketCode || sampleData.ticketCode,
       attendeeCode: resolvedTicketCode || sampleData.attendeeCode,
@@ -268,6 +281,26 @@ export function ConfigurePrinterTemplateDataDialog({
                   value={sampleData.company || ""}
                   onChange={(e) => onSampleDataChange({ company: e.target.value })}
                   placeholder="e.g. Google Developers Group"
+                  className="h-8 text-xs"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Ticket Type ([[ticketType]])</Label>
+                <Input
+                  value={sampleData.ticketType || ""}
+                  onChange={(e) => onSampleDataChange({ ticketType: e.target.value })}
+                  placeholder="e.g. Paid Pass, Free RSVP, Commitment Fee"
+                  className="h-8 text-xs"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Ticket Name ([[ticketName]])</Label>
+                <Input
+                  value={sampleData.ticketName || ""}
+                  onChange={(e) => onSampleDataChange({ ticketName: e.target.value })}
+                  placeholder="e.g. Super Early Bird, Early Bird, Regular"
                   className="h-8 text-xs"
                 />
               </div>

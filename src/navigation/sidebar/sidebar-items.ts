@@ -1,4 +1,5 @@
 import {
+  Activity,
   Calendar,
   CalendarCheck,
   CreditCard,
@@ -163,6 +164,13 @@ export const organizerSidebarItems: NavGroup[] = [
     id: 5,
     label: "Payment (DOKU)",
     items: [
+      {
+        id: "doku-status-dashboard",
+        title: "DOKU Status Dashboard",
+        url: "https://status.doku.com/posts/dashboard",
+        icon: Activity,
+        newTab: true,
+      },
       {
         id: "doku-qris-simulator",
         title: "DOKU QRIS Simulator",

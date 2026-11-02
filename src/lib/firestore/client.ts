@@ -793,7 +793,7 @@ export function getMemberRoleCategory(member?: Partial<FirestoreMember> | null):
   }
 
   // 2. Organizer
-  if (str.includes("organizer") || str.includes("lead") || str === "admin") {
+  if (str.includes("organizer") || str.includes("lead")) {
     return "organizer";
   }
 
@@ -3052,6 +3052,8 @@ export async function updateRegistrationMerchandiseCollection(
     email?: string;
     notes?: string;
   },
+  fallbackRegistration?: Partial<FirestoreRegistration>,
+  updatedSelectedMerchandise?: SelectedMerchandiseOrder[],
 ): Promise<{ statusLog: RegistrationStatusLog; collectedAt: string }> {
   if (typeof window === "undefined") {
     throw new Error("Client Firestore call not supported on server.");
@@ -3083,9 +3085,10 @@ export async function updateRegistrationMerchandiseCollection(
   const actorName = reviewer?.name || "GDG Organizer";
   const actorEmail = reviewer?.email;
 
+  const currentMerchList = updatedSelectedMerchandise ?? existingData?.selected_merchandise ?? fallbackRegistration?.selected_merchandise;
   const merchSummary =
-    existingData?.selected_merchandise && existingData.selected_merchandise.length > 0
-      ? existingData.selected_merchandise
+    currentMerchList && currentMerchList.length > 0
+      ? currentMerchList
           .map((m) => {
             const itemName = m.name || m.merchandise_title || "Merchandise";
             const varEntries = m.selected_variations ? Object.values(m.selected_variations).filter(Boolean) : [];
@@ -3122,10 +3125,34 @@ export async function updateRegistrationMerchandiseCollection(
     merchandise_collected_by_id: isCollected ? actorId : null,
     merchandise_collected_by_name: isCollected ? actorName : null,
     merchandise_collected_by_email: isCollected ? (actorEmail ?? null) : null,
+    ...(updatedSelectedMerchandise ? { selected_merchandise: updatedSelectedMerchandise } : {}),
     status_logs: updatedLogs,
   });
 
-  await updateDoc(docRef, updatePayload);
+  if (existingSnap.exists()) {
+    await updateDoc(docRef, updatePayload);
+  } else if (fallbackRegistration) {
+    const createPayload = sanitizeFirestoreData<FirestoreRegistration>({
+      id: registrationId,
+      event_id: eventId,
+      event_title: fallbackRegistration.event_title || "GDG Jakarta Event",
+      member_id: fallbackRegistration.member_id || String(fallbackRegistration.bevy_attendee_id || registrationId),
+      member_name: fallbackRegistration.member_name || "Community Attendee",
+      member_email: fallbackRegistration.member_email || "",
+      member_phone: fallbackRegistration.member_phone || "",
+      status: fallbackRegistration.status || "approved",
+      ticket_tier: fallbackRegistration.ticket_tier || "Bevy Ticket",
+      bevy_attendee_id: fallbackRegistration.bevy_attendee_id,
+      attendee_code: fallbackRegistration.attendee_code ?? null,
+      registered_at: fallbackRegistration.registered_at || now,
+      registered_at_millis: Date.now(),
+      ...fallbackRegistration,
+      ...updatePayload,
+    } as FirestoreRegistration);
+    await setDoc(docRef, createPayload, { merge: true });
+  } else {
+    await updateDoc(docRef, updatePayload);
+  }
 
   try {
     const auditEntry: AuditLogEntry = sanitizeFirestoreData({

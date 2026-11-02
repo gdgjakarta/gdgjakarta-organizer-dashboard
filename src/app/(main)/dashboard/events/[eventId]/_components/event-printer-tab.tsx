@@ -103,6 +103,18 @@ export function EventPrinterTab({ event, registrations = [] }: EventPrinterTabPr
       }
     }
 
+    const resolvedTicketType =
+      custom.ticketType ??
+      (firstReg?.ticket_type === "free"
+        ? "Free RSVP"
+        : firstReg?.ticket_type === "commitment_fee"
+          ? "Commitment Fee"
+          : firstReg?.ticket_type === "paid" || firstReg?.ticket_price
+            ? "Paid Pass"
+            : "Paid Pass");
+
+    const resolvedTicketName = custom.ticketName ?? firstReg?.ticket_name ?? firstReg?.ticket_tier ?? "Super Early Bird";
+
     return {
       name:
         custom.name ??
@@ -117,6 +129,8 @@ export function EventPrinterTab({ event, registrations = [] }: EventPrinterTabPr
         (firstReg?.answers?.company_or_institution as string) ??
         (firstReg?.answers?.company as string) ??
         "Harvest Moon",
+      ticketType: resolvedTicketType,
+      ticketName: resolvedTicketName,
       sessionTrack: custom.sessionTrack ?? firstReg?.session_title ?? "Full Session",
       techStack: custom.techStack ?? "Kotlin / Android",
       eventTitle: custom.eventTitle ?? event.title ?? "GDG Jakarta Event",

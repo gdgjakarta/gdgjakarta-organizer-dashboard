@@ -254,7 +254,8 @@ export function CreateOnTheSpotSaleDialog({
   }, [merchandise, event.merchandise]);
 
   const availableItems = useMemo(() => {
-    return merchandiseItems.filter((m) => m.status !== "hidden" && m.status !== "draft");
+    // For OTS sales, allow all items including hidden/draft items
+    return merchandiseItems;
   }, [merchandiseItems]);
 
   const liveOptionSoldMap = useMemo(() => {
@@ -278,9 +279,11 @@ export function CreateOnTheSpotSaleDialog({
   const [selectedVariations, setSelectedVariations] = useState<Record<string, string>>({});
   const [itemQuantity, setItemQuantity] = useState(1);
 
-  // Bundle selection state
+  // Bundle selection state (only show bundles that include merchandise)
   const availableBundles = useMemo(() => {
-    return (event.bundles ?? []).filter((b) => b.status !== "hidden");
+    return (event.bundles ?? []).filter(
+      (b) => b.status !== "hidden" && Array.isArray(b.merchandise_items) && b.merchandise_items.length > 0,
+    );
   }, [event.bundles]);
 
   const [selectedBundleId, setSelectedBundleId] = useState<string>(initialBundle?.id || availableBundles[0]?.id || "");
@@ -1217,6 +1220,8 @@ export function CreateOnTheSpotSaleDialog({
                               <span>
                                 {item.name} — Rp {(item.price || 0).toLocaleString("id-ID")}
                                 {item.is_ots_only ? " (OTS Only)" : ""}
+                                {item.status === "hidden" ? " (Hidden)" : ""}
+                                {item.status === "draft" ? " (Draft)" : ""}
                               </span>
                               <Badge
                                 variant="outline"

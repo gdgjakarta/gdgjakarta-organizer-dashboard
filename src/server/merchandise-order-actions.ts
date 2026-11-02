@@ -3,7 +3,7 @@
 import { z } from "zod";
 
 import { normalizeMerchandiseOrder } from "@/lib/firestore/normalization";
-import type { MerchandiseOrderStatusLog } from "@/lib/firestore/types";
+import type { EventMerchandiseOrder, MerchandiseOrderStatusLog } from "@/lib/firestore/types";
 import { getAuthenticatedSessionUser, isAuthorizedOrganizerSession } from "@/server/auth-guard";
 import {
   deleteFirestoreDoc,
@@ -419,6 +419,7 @@ export async function updateMerchandiseOrderCollectionStatusAction(
   notes?: string,
   actor?: { id?: string; name?: string },
   token?: string,
+  updatedItems?: EventMerchandiseOrder["items"],
 ) {
   const isOrganizer = await isAuthorizedOrganizerSession();
   if (!isOrganizer) {
@@ -461,7 +462,7 @@ export async function updateMerchandiseOrderCollectionStatusAction(
     });
   }
 
-  const patchPayload = {
+  const patchPayload: Record<string, unknown> = {
     collection_status: nextStatus,
     collected_at: isCollected ? now : null,
     collected_by_name: isCollected ? actorName : null,
@@ -469,6 +470,10 @@ export async function updateMerchandiseOrderCollectionStatusAction(
     status_logs: nextLogs,
     updated_at: now,
   };
+
+  if (updatedItems && Array.isArray(updatedItems)) {
+    patchPayload.items = updatedItems;
+  }
 
   const success = await patchFirestoreDoc("event_merchandise_orders", orderId, patchPayload, true, token);
   if (!success) {

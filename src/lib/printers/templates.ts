@@ -16,24 +16,18 @@ export function buildLabelCoreCss(
   const scale = Math.max(0.7, Math.min(1.5, Math.min(widthMm / baseW, heightMm / baseH)));
   const round1 = (n: number) => Math.round(n * 10) / 10;
 
-  const bodyPadMm = round1(1.0 * scale);
-  const badgePadVMm = round1(1.0 * scale);
-  const badgePadHMm = round1(1.5 * scale);
-  const brandPt = round1(6.0 * scale);
+  const padVMm = round1(2.0 * scale);
+  const padHMm = round1(2.5 * scale);
+  const namePt = round1(16.0 * scale);
+  const titlePt = round1(6.5 * scale);
+  const companyPt = round1(5.5 * scale);
+  const refCodePt = round1(5.0 * scale);
   const pillPt = round1(4.2 * scale);
   const eventPt = round1(5.0 * scale);
-  const namePt = round1(8.2 * scale);
-  const titlePt = round1(5.2 * scale);
-  const companyPt = round1(4.8 * scale);
-  const refLabelPt = round1(4.2 * scale);
-  const refCodePt = round1(4.6 * scale);
-  const qrImgMm = round1((isPortrait ? 13 : 11.5) * scale);
-  const qrSectionWidth = isPortrait ? "100%" : `${round1(qrImgMm + 1.8)}mm`;
-  const scanHintPt = round1(3.6 * scale);
+  const qrSizeMm = round1((isPortrait ? 20 : 17.5) * scale);
 
-  return `      /* Force the printer to use ${widthMm}x${heightMm}mm paper size (${orientation}) */
-      @page {
-        size: ${widthMm}mm ${heightMm}mm ${orientation};
+  return `      @page {
+        size: ${widthMm}mm ${heightMm}mm;
         margin: 0;
       }
 
@@ -47,181 +41,153 @@ export function buildLabelCoreCss(
 
       body {
         margin: 0;
-        padding: ${bodyPadMm}mm;
         width: ${widthMm}mm;
         height: ${heightMm}mm;
         overflow: hidden;
-        font-family: 'Poppins', sans-serif;
+        font-family: 'Google Sans', 'Google Sans Flex', Arial, sans-serif;
+        font-weight: 400;
         background-color: #ffffff;
-        color: #202124;
+        color: #000000;
       }
 
       .ticket-badge {
-        width: 100%;
-        height: 100%;
-        padding: ${badgePadVMm}mm ${badgePadHMm}mm;
+        width: ${widthMm}mm;
+        height: ${heightMm}mm;
+        padding: ${padVMm}mm ${padHMm}mm;
         display: flex;
         flex-direction: column;
         justify-content: space-between;
         overflow: hidden;
-        border: 1pt dashed #000000;
-        border-radius: 4px;
-        background-color: #ffffff;
-        color: #000000;
-      }
-
-      .ticket-header {
-        border-bottom: 0.75pt solid #000000;
-        padding-bottom: 0.7mm;
-        margin-bottom: 0.7mm;
-      }
-
-      .brand-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 1mm;
-      }
-
-      .brand-title {
-        font-size: ${brandPt}pt;
-        font-weight: 800;
-        letter-spacing: 0.5px;
-        color: #000000;
-      }
-
-      .ticket-badge-pill {
-        font-size: ${pillPt}pt;
-        font-weight: 700;
-        padding: 1px 4px;
-        background-color: #000000;
-        color: #ffffff;
-        border-radius: 3px;
-        letter-spacing: 0.5px;
-        text-transform: uppercase;
-        flex-shrink: 0;
-      }
-
-      .event-name {
-        font-size: ${eventPt}pt;
-        font-weight: 600;
-        line-height: 1.15;
-        color: #000000;
-        white-space: normal;
-        word-break: break-word;
-        overflow-wrap: anywhere;
-        margin-top: 0.4mm;
-      }
-
-      .ticket-body {
-        display: flex;
-        flex: 1;
-        flex-direction: ${isPortrait ? "column" : "row"};
-        justify-content: space-between;
-        align-items: ${isPortrait ? "stretch" : "center"};
-        gap: 1.5mm;
-        min-height: 0;
-      }
-
-      .ticket-details {
-        flex: 1;
-        min-width: 0;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
       }
 
       .attendee-name {
+        flex: 0 0 auto;
         font-size: ${namePt}pt;
-        font-weight: 800;
-        line-height: 1.1;
-        color: #000000;
-        white-space: normal;
-        word-break: break-word;
-        overflow-wrap: anywhere;
+        font-weight: 400;
+        line-height: 1.15;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
         text-transform: capitalize;
+      }
+
+      .ticket-body {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: ${isPortrait ? "column-reverse" : "row"};
+        align-items: ${isPortrait ? "center" : "flex-end"};
+        justify-content: space-between;
+        gap: 2mm;
+      }
+
+      .ticket-details {
+        flex: 1 1 0%;
+        min-width: 0;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        overflow: hidden;
       }
 
       .attendee-title {
         font-size: ${titlePt}pt;
-        font-weight: 600;
-        line-height: 1.15;
-        color: #000000;
-        margin-top: 0.5mm;
-        white-space: normal;
-        word-break: break-word;
-        overflow-wrap: anywhere;
+        font-family: 'Google Sans Flex', 'Google Sans', Arial, sans-serif;
+        font-weight: 300;
+        line-height: 1.2;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
 
       .attendee-company {
         font-size: ${companyPt}pt;
-        line-height: 1.15;
-        color: #000000;
-        margin-top: 0.2mm;
-        white-space: normal;
-        word-break: break-word;
-        overflow-wrap: anywhere;
+        font-family: 'Google Sans Flex', 'Google Sans', Arial, sans-serif;
+        font-weight: 300;
+        line-height: 1.2;
+        margin-top: 0.3mm;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
 
-      .ref-pill {
-        display: inline-flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 2.5px;
-        margin-top: 0.8mm;
-        background-color: #ffffff;
-        border: 0.5pt solid #000000;
-        padding: 1px 3.5px;
-        border-radius: 3px;
-        width: fit-content;
-        max-width: 100%;
+      .attendee-title:empty,
+      .attendee-company:empty {
+        display: none;
       }
 
-      .ref-label {
-        font-size: ${refLabelPt}pt;
-        font-weight: 700;
-        color: #000000;
+      .ticket-details > div:first-child {
+        flex: 0 0 auto;
+        min-width: 0;
       }
 
       .ref-code {
+        flex: 0 0 auto;
         font-size: ${refCodePt}pt;
-        font-family: 'Courier New', Courier, monospace;
+        font-weight: 400;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: 0.3px;
+        line-height: 1.1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        align-self: flex-start;
+      }
+
+      .ticket-footer {
+        flex: 0 0 auto;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.3mm;
+      }
+
+      .ticket-badge-pill {
+        align-self: flex-start;
+        font-size: ${pillPt}pt;
         font-weight: 700;
-        color: #000000;
-        word-break: break-all;
+        padding: 0.5mm 1.5mm;
+        background-color: #000000;
+        color: #ffffff;
+        border-radius: 2px;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        line-height: 1.1;
+      }
+
+      .event-name {
+        font-size: ${eventPt}pt;
+        font-family: 'Google Sans Flex', 'Google Sans', Arial, sans-serif;
+        font-weight: 300;
+        line-height: 1.15;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
 
       .ticket-qr-section {
-        width: ${qrSectionWidth};
+        flex: 0 0 ${qrSizeMm}mm;
+        width: ${qrSizeMm}mm;
+        height: ${qrSizeMm}mm;
         display: flex;
-        flex-direction: column;
         align-items: center;
         justify-content: center;
-        flex-shrink: 0;
       }
 
       .qr-container {
-        background-color: #ffffff;
-        padding: 1px;
-        border: 0.5pt solid #000000;
-        border-radius: 4px;
-        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
-      }
-
-      .qr-img {
-        width: ${qrImgMm}mm;
-        height: ${qrImgMm}mm;
+        width: 100%;
+        height: 100%;
         display: block;
-        image-rendering: pixelated;
       }
 
-      .scan-hint {
-        font-size: ${scanHintPt}pt;
-        font-weight: 700;
-        letter-spacing: 0.3px;
-        color: #000000;
-        margin-top: 0.5mm;
-        text-align: center;
+      .qr-container svg,
+      .qr-container img {
+        width: 100%;
+        height: 100%;
+        display: block;
+        shape-rendering: crispEdges;
+        image-rendering: pixelated;
       }`;
 }
 
@@ -238,42 +204,35 @@ export function buildDefaultLabelTemplate(
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Badge: [[EventName]]</title>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Google+Sans+Flex:wght@100..900&display=block"
+      rel="stylesheet"
+    />
     <style>
 ${buildLabelCoreCss(widthMm, heightMm, orientation)}
     </style>
   </head>
   <body>
     <div class="ticket-badge">
-      <div class="ticket-header">
-        <div class="brand-row">
-          <span class="brand-title">GDG JAKARTA</span>
-          <span class="ticket-badge-pill">ENTRY PASS</span>
-        </div>
-        <div class="event-name">[[EventName]]</div>
-      </div>
+      <div class="attendee-name" data-fit-lines="1">[[Name]]</div>
 
       <div class="ticket-body">
         <div class="ticket-details">
-          <div class="attendee-name">[[Name]]</div>
-          <div class="attendee-title">[[title]]</div>
-          <div class="attendee-company">[[company]]</div>
-
-          <div class="ref-pill">
-            <span class="ref-label">REF:</span>
-            <span class="ref-code">[[ticketCode]]</span>
+          <div>
+            <div class="attendee-title">[[title]]</div>
+            <div class="attendee-company">[[company]]</div>
           </div>
-          <div class="ref-pill" style="margin-top: 0.4mm;">
-            <span class="ref-label">ID:</span>
-            <span class="ref-code">[[attendeeId]]</span>
+          <div class="ref-code">[[ticketCode]]</div>
+          <div class="ticket-footer">
+            <span class="ticket-badge-pill">[[ticketName]] - [[ticketType]]</span>
+            <div class="event-name">[[EventName]]</div>
           </div>
         </div>
 
         <div class="ticket-qr-section">
-          <div class="qr-container">
-            [[qr]]
-          </div>
-          <div class="scan-hint">SCAN TO VERIFY</div>
+          <div class="qr-container">[[qr]]</div>
         </div>
       </div>
     </div>
@@ -302,7 +261,7 @@ export function syncTemplateDimensions(
 
 /**
  * Upgrades a legacy body-only or earlier default template into the current full HTML document
- * with Google Font (Poppins), [[attendeeCode]], and paper sizing support.
+ * with Google Font (Google Sans), [[ticketCode]], and paper sizing support.
  */
 export function ensureFullLabelHtml(
   html: string,
@@ -316,7 +275,6 @@ export function ensureFullLabelHtml(
     html.includes("border: 1.5pt dashed #1a73e8") ||
     html.includes("#[[attendeeId]]") ||
     html.includes('<span class="ref-code">[[attendeeCode]]</span>') ||
-    html.includes("text-overflow: ellipsis") ||
     (html.includes('<span class="ref-label">TICKET:</span>') && !html.includes("[[attendeeId]]"))
   ) {
     return buildDefaultLabelTemplate(widthMm, heightMm, orientation);
@@ -331,7 +289,12 @@ export function ensureFullLabelHtml(
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Badge: [[EventName]]</title>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Google+Sans+Flex:wght@100..900&display=block"
+      rel="stylesheet"
+    />
     <style>
 ${buildLabelCoreCss(widthMm, heightMm, orientation)}
     </style>
@@ -378,6 +341,8 @@ export function renderLabelTemplate(template: string, data: LabelTemplateData): 
   const eventTime = data.eventTime || "09:00 AM";
   const eventVenue = data.eventVenue || "Jakarta, Indonesia";
   const ticketCode = data.ticketCode || data.attendeeCode || `#${data.attendeeId}`;
+  const ticketType = data.ticketType || "Paid Pass";
+  const ticketName = data.ticketName || "Regular";
   const sessionTrack = data.sessionTrack || "Full Session";
   const techStack = data.techStack || "";
 
@@ -392,6 +357,8 @@ export function renderLabelTemplate(template: string, data: LabelTemplateData): 
     [["[[email]]", "[[Email]]"], attendeeEmail],
     [["[[title]]"], data.title || "Participant"],
     [["[[company]]"], data.company || "Community Member"],
+    [["[[ticketType]]", "[[TicketType]]"], ticketType],
+    [["[[ticketName]]", "[[TicketName]]"], ticketName],
     [["[[sessionTrack]]", "[[SessionTrack]]"], sessionTrack],
     [["[[techStack]]", "[[TechStack]]"], techStack],
     [["[[eventTitle]]", "[[EventName]]"], eventTitle],

@@ -68,11 +68,13 @@ import type {
   ReferralOwnerInfo,
   RegistrationAuditActionStatus,
   RegistrationStatus,
+  SelectedMerchandiseOrder,
 } from "@/lib/firestore/types";
 import { type DriveVenueTicketFile, isEligibleForVenueTicket } from "@/lib/google-drive/venue-tickets";
 import { cn, getInitials } from "@/lib/utils";
 
 import { CheckPaymentStatusDialog } from "./check-payment-status-dialog";
+import { ChangeMerchandiseVariantDialog } from "./change-merchandise-variant-dialog";
 import { parseMerchandiseVariations } from "./merchandise-helpers";
 import { ResendPaymentLinkDialog } from "./resend-payment-link-dialog";
 
@@ -93,7 +95,11 @@ interface ApplicantDetailDialogProps {
   onResendPaidWaitlistEmail?: (registration: FirestoreRegistration) => void;
   onResendAcceptedEmail?: (registration: FirestoreRegistration) => void;
   onToggleCheckIn?: (registration: FirestoreRegistration, isCheckedIn: boolean) => void;
-  onToggleMerchandiseCollected?: (registration: FirestoreRegistration, isCollected: boolean) => void;
+  onToggleMerchandiseCollected?: (
+    registration: FirestoreRegistration,
+    isCollected: boolean,
+    updatedSelectedMerchandise?: SelectedMerchandiseOrder[],
+  ) => void;
   onCancelRegistration?: (registration: FirestoreRegistration) => void;
   onDelete?: (registration: FirestoreRegistration) => void;
   customQuestions?: CustomQuestion[];
@@ -320,6 +326,12 @@ export function ApplicantDetailDialog({
   const [eventVouchersMap, setEventVouchersMap] = useState<Map<string, import("@/lib/firestore/types").EventVoucher>>(
     () => new Map(),
   );
+
+  // Variant change modal state
+  const [editingMerchItem, setEditingMerchItem] = useState<{
+    index: number;
+    item: import("@/lib/firestore/types").SelectedMerchandiseOrder;
+  } | null>(null);
 
   // Load private event_vouchers if this registration is a bundle purchaser or redeemed a voucher
   useEffect(() => {
@@ -1505,14 +1517,25 @@ export function ApplicantDetailDialog({
                                 </div>
                               )}
                             </div>
-                            <Badge
-                              variant="outline"
-                              className="w-fit shrink-0 self-start font-mono text-[10px] text-muted-foreground sm:self-auto"
-                            >
-                              {item.price
-                                ? `Rp ${(item.price * (item.quantity || 1)).toLocaleString("id-ID")}`
-                                : "Free Perk"}
-                            </Badge>
+                            <div className="flex items-center gap-1.5 self-start sm:self-auto shrink-0">
+                              <Badge
+                                variant="outline"
+                                className="w-fit font-mono text-[10px] text-muted-foreground"
+                              >
+                                {item.price
+                                  ? `Rp ${(item.price * (item.quantity || 1)).toLocaleString("id-ID")}`
+                                  : "Free Perk"}
+                              </Badge>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-6 px-2 text-[10px] gap-1 border-border/80 hover:bg-muted"
+                                onClick={() => setEditingMerchItem({ index: idx, item })}
+                              >
+                                Change Variant
+                              </Button>
+                            </div>
                           </div>
                         );
                       })}
@@ -1523,13 +1546,17 @@ export function ApplicantDetailDialog({
                       const hasAttendeeMerch = Boolean(
                         registration.selected_merchandise && registration.selected_merchandise.length > 0,
                       );
-                      const isPaidAndRegistered =
+                      const regStatusStr = ((registration.status as string) || "").toLowerCase().trim();
+                      const isEligibleStatus =
                         rawStatus === "paid_and_registered" ||
                         rawStatus === "paid_registered" ||
-                        registration.status === "paid_and_registered" ||
-                        (registration.status as string) === "paid_registered";
+                        regStatusStr === "paid_and_registered" ||
+                        regStatusStr === "paid_registered" ||
+                        regStatusStr === "approved" ||
+                        regStatusStr === "attended" ||
+                        regStatusStr === "registered";
                       const canCollectMerch =
-                        Boolean(registration.is_merchandise_collected) || (hasAttendeeMerch && isPaidAndRegistered);
+                        Boolean(registration.is_merchandise_collected) || (hasAttendeeMerch && isEligibleStatus);
 
                       return (
                         <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 border-border/50 border-t pt-2.5">
@@ -1576,7 +1603,7 @@ export function ApplicantDetailDialog({
                               disabled={isPending || isCollectingMerch || !canCollectMerch}
                               title={
                                 !canCollectMerch
-                                  ? "Collection is only enabled when attendee has merchandise and status is Paid & Registered"
+                                  ? "Collection is only enabled when attendee has merchandise and status is Confirmed or Paid & Registered"
                                   : undefined
                               }
                               onClick={() =>
@@ -2703,6 +2730,51 @@ export function ApplicantDetailDialog({
           }
         }}
       />
+
+      {editingMerchItem && registration && (
+        <ChangeMerchandiseVariantDialog
+          open={Boolean(editingMerchItem)}
+          onOpenChange={(op) => {
+            if (!op) setEditingMerchItem(null);
+          }}
+          itemName={editingMerchItem.item.name || editingMerchItem.item.merchandise_title || "Merchandise"}
+          itemId={editingMerchItem.item.merchandise_id || editingMerchItem.item.id}
+          currentVariations={editingMerchItem.item.selected_variations || {
+            ...(editingMerchItem.item.selected_size ? { Size: editingMerchItem.item.selected_size } : {}),
+            ...(editingMerchItem.item.selected_variant ? { Variant: editingMerchItem.item.selected_variant } : {}),
+          }}
+          eventMerchandise={event?.merchandise ?? []}
+          onSave={async (newVariations) => {
+            const currentList = registration.selected_merchandise ? [...registration.selected_merchandise] : [];
+            const targetIdx = editingMerchItem.index;
+            if (currentList[targetIdx]) {
+              const updatedItem = {
+                ...currentList[targetIdx],
+                selected_variations: newVariations,
+                selected_size: newVariations["Size"] || newVariations["size"] || currentList[targetIdx].selected_size,
+                selected_variant: newVariations["Variant"] || newVariations["variant"] || currentList[targetIdx].selected_variant,
+              };
+              currentList[targetIdx] = updatedItem;
+
+              // If already collected or if onToggleMerchandiseCollected exists, persist update
+              if (onToggleMerchandiseCollected) {
+                onToggleMerchandiseCollected(
+                  registration,
+                  registration.is_merchandise_collected ?? true,
+                  currentList,
+                );
+              } else if (onUpdateRegistration) {
+                onUpdateRegistration({
+                  ...registration,
+                  selected_merchandise: currentList,
+                });
+              }
+            }
+            setEditingMerchItem(null);
+            toast.success("Merchandise variant updated.");
+          }}
+        />
+      )}
     </>
   );
 }

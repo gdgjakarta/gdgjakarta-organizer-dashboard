@@ -289,20 +289,32 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
           </TabsTrigger>
 
           {hasTeamAccess && (
-            <TabsTrigger
-              id="tab-trigger-breakout-sessions"
-              data-value="breakout-sessions"
-              value="breakout-sessions"
-              className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm"
-            >
-              <Layers className="size-4" />
-              Breakout Session
-              {(activeEvent.sessions?.length ?? 0) > 0 && (
-                <Badge variant="secondary" className="ml-0.5 h-4 px-1.5 text-[10px]">
-                  {activeEvent.sessions?.length}
-                </Badge>
-              )}
-            </TabsTrigger>
+            <>
+              <TabsTrigger
+                id="tab-trigger-breakout-sessions"
+                data-value="breakout-sessions"
+                value="breakout-sessions"
+                className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm"
+              >
+                <Layers className="size-4" />
+                Breakout Session
+                {(activeEvent.sessions?.length ?? 0) > 0 && (
+                  <Badge variant="secondary" className="ml-0.5 h-4 px-1.5 text-[10px]">
+                    {activeEvent.sessions?.length}
+                  </Badge>
+                )}
+              </TabsTrigger>
+
+              <TabsTrigger
+                id="tab-trigger-ots-merch"
+                data-value="ots-merch"
+                value="ots-merch"
+                className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm"
+              >
+                <ShoppingBag className="size-4" />
+                OTS Merch
+              </TabsTrigger>
+            </>
           )}
 
           {isOrganizer && (
@@ -342,15 +354,6 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
               >
                 <PackageCheck className="size-4" />
                 Bundles
-              </TabsTrigger>
-              <TabsTrigger
-                id="tab-trigger-ots-merch"
-                data-value="ots-merch"
-                value="ots-merch"
-                className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm"
-              >
-                <ShoppingBag className="size-4" />
-                OTS Merch
               </TabsTrigger>
               {hasMerchandise && (
                 <TabsTrigger
@@ -454,6 +457,10 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
           <TabsContent value="breakout-sessions" className="space-y-4">
             <BreakoutSessionsTab eventId={eventId} event={activeEvent} registrations={activeRegistrations} />
           </TabsContent>
+
+          <TabsContent value="ots-merch" className="space-y-4">
+            <OnTheSpotMerchTab event={activeEvent} registrations={activeRegistrations} />
+          </TabsContent>
         </>
       )}
 
@@ -473,10 +480,6 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
 
           <TabsContent value="bundles" className="space-y-4">
             <BundlesTab event={activeEvent} />
-          </TabsContent>
-
-          <TabsContent value="ots-merch" className="space-y-4">
-            <OnTheSpotMerchTab event={activeEvent} registrations={activeRegistrations} />
           </TabsContent>
 
           {hasMerchandise && (

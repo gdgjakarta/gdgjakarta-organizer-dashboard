@@ -137,6 +137,8 @@ export interface LabelTemplateData {
   email?: string;
   title?: string;
   company?: string;
+  ticketType?: string;
+  ticketName?: string;
   sessionTrack?: string;
   techStack?: string;
   eventTitle?: string;

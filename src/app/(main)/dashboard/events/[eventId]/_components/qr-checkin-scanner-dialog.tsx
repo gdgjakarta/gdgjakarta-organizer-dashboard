@@ -48,6 +48,7 @@ import {
 import type { CustomQuestion, EventSession, FirestoreRegistration, RegistrationStatus } from "@/lib/firestore/types";
 import { DEFAULT_LABEL_TEMPLATE, renderLabelTemplate } from "@/lib/printers/templates";
 import { cn, getInitials } from "@/lib/utils";
+import { ChangeMerchandiseVariantDialog } from "./change-merchandise-variant-dialog";
 import { checkInBevyAttendeeAction, fetchAllBevyEventAttendeesAction } from "@/server/bevy-actions";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
@@ -146,6 +147,7 @@ interface QrCheckInScannerDialogProps {
   onRegistrationUpdated?: (updated: FirestoreRegistration) => void;
   onSelectForOtsSale?: (reg: FirestoreRegistration) => void;
   otsModeOnly?: boolean;
+  merchandise?: import("@/lib/firestore/types").EventMerchandiseItem[];
 }
 
 interface ScanHistoryEntry {
@@ -321,6 +323,7 @@ export function QrCheckInScannerDialog({
   onRegistrationUpdated,
   onSelectForOtsSale,
   otsModeOnly = false,
+  merchandise = [],
 }: QrCheckInScannerDialogProps) {
   const user = useAuthStore((s) => s.user);
 
@@ -358,6 +361,10 @@ export function QrCheckInScannerDialog({
   const [lastScannedAttendeeId, setLastScannedAttendeeId] = React.useState<number | null>(null);
   const [showFullAnswers, setShowFullAnswers] = React.useState(false);
   const [scanHistory, setScanHistory] = React.useState<ScanHistoryEntry[]>([]);
+  const [editingMerchItem, setEditingMerchItem] = React.useState<{
+    index: number;
+    item: import("@/lib/firestore/types").SelectedMerchandiseOrder;
+  } | null>(null);
 
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
   const streamRef = React.useRef<MediaStream | null>(null);
@@ -954,6 +961,15 @@ export function QrCheckInScannerDialog({
                   const resolvedRole = getRegistrantRole(reg, questions) || "Participant";
                   const resolvedCompany = getRegistrantOrg(reg, questions) || "GDG Community";
                   const resolvedTicketCode = reg.attendee_code || `#${finalAttendeeId}`;
+                  const resolvedTicketType =
+                    reg.ticket_type === "free"
+                      ? "Free RSVP"
+                      : reg.ticket_type === "commitment_fee"
+                        ? "Commitment Fee"
+                        : reg.ticket_type === "paid" || reg.ticket_price
+                          ? "Paid Pass"
+                          : "Paid Pass";
+                  const resolvedTicketName = reg.ticket_name || reg.ticket_tier || "Regular";
                   const qrPayload = `${eventId}:${finalAttendeeId}`;
                   const renderedHtml = renderLabelTemplate(templateToUse, {
                     name: String(
@@ -967,6 +983,8 @@ export function QrCheckInScannerDialog({
                     email: reg.member_email || undefined,
                     title: resolvedRole,
                     company: resolvedCompany,
+                    ticketType: resolvedTicketType,
+                    ticketName: resolvedTicketName,
                     sessionTrack:
                       (reg.answers?.session_title as string) ||
                       (reg.answers?.Session as string) ||
@@ -1102,7 +1120,13 @@ export function QrCheckInScannerDialog({
               }
             : undefined;
 
-          const merchRes = await updateRegistrationMerchandiseCollectionAction(reg.id, eventId, targetStatus, reviewer);
+          const merchRes = await updateRegistrationMerchandiseCollectionAction(
+            reg.id,
+            eventId,
+            targetStatus,
+            reviewer,
+            reg,
+          );
 
           if (!merchRes.success) {
             toast.error(merchRes.error || "Failed to update merchandise collection.");
@@ -1501,7 +1525,8 @@ export function QrCheckInScannerDialog({
   const yoeVal = activeReg ? getRegistrantYoe(activeReg, questions) : "";
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="inset-0 m-auto h-fit max-h-[92vh] translate-x-0 translate-y-0 overflow-y-auto sm:max-w-3xl [transform:none]">
         <DialogHeader>
           <div className="flex items-center gap-2.5">
@@ -2057,15 +2082,26 @@ export function QrCheckInScannerDialog({
                             return (
                               <li
                                 key={`${m.merchandise_id}-${idx}`}
-                                className="flex items-center justify-between rounded bg-background px-2 py-1"
+                                className="flex items-center justify-between rounded bg-background px-2 py-1 gap-2"
                               >
-                                <span>
+                                <span className="truncate">
                                   {m.name || m.merchandise_title || "Merchandise Item"}
                                   {variantLabel ? ` (${variantLabel})` : ""}
                                 </span>
-                                <Badge variant="secondary" className="text-[10px]">
-                                  x{m.quantity}
-                                </Badge>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <Badge variant="secondary" className="text-[10px]">
+                                    x{m.quantity}
+                                  </Badge>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-5 px-1.5 text-[10px] text-muted-foreground hover:text-foreground"
+                                    onClick={() => setEditingMerchItem({ index: idx, item: m })}
+                                  >
+                                    Swap Variant
+                                  </Button>
+                                </div>
                               </li>
                             );
                           })}
@@ -2181,5 +2217,64 @@ export function QrCheckInScannerDialog({
         </div>
       </DialogContent>
     </Dialog>
+
+    {editingMerchItem && activeReg && (
+      <ChangeMerchandiseVariantDialog
+        open={Boolean(editingMerchItem)}
+        onOpenChange={(op) => {
+          if (!op) setEditingMerchItem(null);
+        }}
+        itemName={editingMerchItem.item.name || editingMerchItem.item.merchandise_title || "Merchandise"}
+        itemId={editingMerchItem.item.merchandise_id || editingMerchItem.item.id}
+        currentVariations={editingMerchItem.item.selected_variations || {
+          ...(editingMerchItem.item.selected_size ? { Size: editingMerchItem.item.selected_size } : {}),
+          ...(editingMerchItem.item.selected_variant ? { Variant: editingMerchItem.item.selected_variant } : {}),
+        }}
+        eventMerchandise={merchandise}
+        onSave={async (newVariations) => {
+          const currentList = activeReg.selected_merchandise ? [...activeReg.selected_merchandise] : [];
+          const targetIdx = editingMerchItem.index;
+          if (currentList[targetIdx]) {
+            const updatedItem = {
+              ...currentList[targetIdx],
+              selected_variations: newVariations,
+              selected_size: newVariations["Size"] || newVariations["size"] || currentList[targetIdx].selected_size,
+              selected_variant: newVariations["Variant"] || newVariations["variant"] || currentList[targetIdx].selected_variant,
+            };
+            currentList[targetIdx] = updatedItem;
+
+            const updatedRegistration: FirestoreRegistration = {
+              ...activeReg,
+              selected_merchandise: currentList,
+            };
+
+            // Persist to Firestore if collection status is already active or in merchandise collection mode
+            const isCollected = Boolean(activeReg.is_merchandise_collected);
+            const reviewer = user
+              ? { id: user.id, name: user.name, email: user.email }
+              : { id: "system_organizer", name: "GDG Organizer" };
+
+            const merchRes = await updateRegistrationMerchandiseCollectionAction(
+              activeReg.id,
+              eventId,
+              isCollected,
+              reviewer,
+              activeReg,
+              currentList,
+            );
+
+            if (merchRes.success) {
+              setActiveReg(updatedRegistration);
+              onRegistrationUpdated?.(updatedRegistration);
+              toast.success("Merchandise variant updated.");
+            } else {
+              toast.error(merchRes.error || "Failed to update variant in database.");
+            }
+          }
+          setEditingMerchItem(null);
+        }}
+      />
+    )}
+  </>
   );
 }

@@ -9,6 +9,8 @@ import {
   Camera,
   Check,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Copy,
   CreditCard,
@@ -82,6 +84,8 @@ import {
   updateMerchandiseOrderCollectionStatusAction,
 } from "@/server/merchandise-order-actions";
 import { useAuthStore } from "@/stores/auth/auth-provider";
+
+import { ChangeMerchandiseVariantDialog } from "./change-merchandise-variant-dialog";
 
 import { CreateOnTheSpotSaleDialog } from "./create-on-the-spot-sale-dialog";
 import { MerchandiseItemDialog } from "./merchandise-item-dialog";
@@ -283,6 +287,10 @@ export function OnTheSpotMerchTab({ event, registrations: propRegistrations, onO
   const [merchandise, setMerchandise] = useState<EventMerchandiseItem[]>(event.merchandise ?? []);
   const [isStockOverviewOpen, setIsStockOverviewOpen] = useState(false);
   const [editingMerchItem, setEditingMerchItem] = useState<EventMerchandiseItem | null>(null);
+  const [editingOrderItem, setEditingOrderItem] = useState<{
+    index: number;
+    item: import("@/lib/firestore/types").MerchandiseOrderItem;
+  } | null>(null);
   const [, startTransition] = useTransition();
 
   useEffect(() => {
@@ -527,6 +535,8 @@ export function OnTheSpotMerchTab({ event, registrations: propRegistrations, onO
   const [isAddFromRegistrantsOpen, setIsAddFromRegistrantsOpen] = useState(false);
   const [addRegistrantSearch, setAddRegistrantSearch] = useState("");
   const [registrantStatusFilter, setRegistrantStatusFilter] = useState<string>("all");
+  const [addRegistrantPage, setAddRegistrantPage] = useState(1);
+  const ADD_REGISTRANTS_PER_PAGE = 50;
   const [attendeeForSale, setAttendeeForSale] = useState<FirestoreRegistration | null>(null);
 
   useEffect(() => {
@@ -721,6 +731,17 @@ export function OnTheSpotMerchTab({ event, registrations: propRegistrations, onO
       );
     });
   }, [registrations, addRegistrantSearch, registrantStatusFilter]);
+
+  // Reset to page 1 whenever search query or status filter changes
+  useEffect(() => {
+    setAddRegistrantPage(1);
+  }, [addRegistrantSearch, registrantStatusFilter]);
+
+  const totalRegistrantPages = Math.max(1, Math.ceil(availableRegistrants.length / ADD_REGISTRANTS_PER_PAGE));
+  const paginatedRegistrants = useMemo(() => {
+    const startIndex = (addRegistrantPage - 1) * ADD_REGISTRANTS_PER_PAGE;
+    return availableRegistrants.slice(startIndex, startIndex + ADD_REGISTRANTS_PER_PAGE);
+  }, [availableRegistrants, addRegistrantPage]);
 
   // Check Payment for an order row
   const handleCheckPayment = async (order: EventMerchandiseOrder) => {
@@ -1030,9 +1051,9 @@ export function OnTheSpotMerchTab({ event, registrations: propRegistrations, onO
               setRegistrantStatusFilter("all");
               setIsAddFromRegistrantsOpen(true);
             }}
-            className="h-8 gap-1.5 text-xs border-primary/30 text-primary hover:bg-primary/5"
+            className="h-8 gap-1.5 text-xs border-border/80 hover:bg-muted"
           >
-            <UserPlus className="size-3.5" />
+            <UserPlus className="size-3.5 text-emerald-500" />
             Add from Registrants
           </Button>
 
@@ -1043,9 +1064,9 @@ export function OnTheSpotMerchTab({ event, registrations: propRegistrations, onO
               setAttendeeForSale(null);
               setIsScannerOpen(true);
             }}
-            className="h-8 gap-1.5 text-xs"
+            className="h-8 gap-1.5 text-xs border-border/80 hover:bg-muted"
           >
-            <Camera className="size-3.5" />
+            <Camera className="size-3.5 text-purple-500" />
             Scan Attendee QR
           </Button>
 
@@ -1356,8 +1377,16 @@ export function OnTheSpotMerchTab({ event, registrations: propRegistrations, onO
 
             <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
               <span>
-                Showing <strong className="text-foreground">{availableRegistrants.length}</strong> of{" "}
-                {registrations.length} registrants
+                Showing{" "}
+                <strong className="text-foreground">
+                  {availableRegistrants.length === 0
+                    ? 0
+                    : `${(addRegistrantPage - 1) * ADD_REGISTRANTS_PER_PAGE + 1}–${Math.min(
+                        addRegistrantPage * ADD_REGISTRANTS_PER_PAGE,
+                        availableRegistrants.length,
+                      )}`}
+                </strong>{" "}
+                of {availableRegistrants.length} filtered ({registrations.length} total)
               </span>
               <Button
                 type="button"
@@ -1405,7 +1434,7 @@ export function OnTheSpotMerchTab({ event, registrations: propRegistrations, onO
                   No registrants found matching your search.
                 </div>
               ) : (
-                availableRegistrants.map((reg) => {
+                paginatedRegistrants.map((reg) => {
                   const statusMeta = getRegistrantStatusMeta(reg.status);
                   const ticketDisplay = reg.ticket_name || reg.bundle_name || reg.ticket_tier || "General Admission";
                   return (
@@ -1461,6 +1490,39 @@ export function OnTheSpotMerchTab({ event, registrations: propRegistrations, onO
                 })
               )}
             </div>
+
+            {/* Pagination Controls */}
+            {totalRegistrantPages > 1 && (
+              <div className="flex items-center justify-between border-t pt-2 text-xs">
+                <span className="text-muted-foreground text-[11px]">
+                  Page {addRegistrantPage} of {totalRegistrantPages}
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs px-2 gap-1"
+                    disabled={addRegistrantPage <= 1}
+                    onClick={() => setAddRegistrantPage((p) => Math.max(1, p - 1))}
+                  >
+                    <ChevronLeft className="size-3.5" />
+                    Previous
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs px-2 gap-1"
+                    disabled={addRegistrantPage >= totalRegistrantPages}
+                    onClick={() => setAddRegistrantPage((p) => Math.min(totalRegistrantPages, p + 1))}
+                  >
+                    Next
+                    <ChevronRight className="size-3.5" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
 
           <DialogFooter>
@@ -1662,6 +1724,7 @@ export function OnTheSpotMerchTab({ event, registrations: propRegistrations, onO
         eventTitle={event.title}
         registrations={registrations}
         otsModeOnly={true}
+        merchandise={merchandise}
         onSelectForOtsSale={(reg) => {
           setAttendeeForSale(reg);
           setIsScannerOpen(false);
@@ -1813,7 +1876,18 @@ export function OnTheSpotMerchTab({ event, registrations: propRegistrations, onO
                         </p>
                       )}
                     </div>
-                    <span className="font-semibold">Rp {(it.price * it.quantity).toLocaleString("id-ID")}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold">Rp {(it.price * it.quantity).toLocaleString("id-ID")}</span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 px-1.5 text-[10px] text-muted-foreground hover:text-foreground"
+                        onClick={() => setEditingOrderItem({ index: idx, item: it })}
+                      >
+                        Change Variant
+                      </Button>
+                    </div>
                   </div>
                 ))}
                 <div className="border-t border-border/60 pt-2 flex items-center justify-between font-bold text-sm">
@@ -2025,6 +2099,55 @@ export function OnTheSpotMerchTab({ event, registrations: propRegistrations, onO
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {editingOrderItem && viewingOrder && (
+        <ChangeMerchandiseVariantDialog
+          open={Boolean(editingOrderItem)}
+          onOpenChange={(op) => {
+            if (!op) setEditingOrderItem(null);
+          }}
+          itemName={editingOrderItem.item.name || "Merchandise Item"}
+          itemId={editingOrderItem.item.merchandise_id}
+          currentVariations={editingOrderItem.item.selected_variations || {}}
+          eventMerchandise={merchandise}
+          onSave={async (newVariations) => {
+            const currentList = viewingOrder.items ? [...viewingOrder.items] : [];
+            const targetIdx = editingOrderItem.index;
+            if (currentList[targetIdx]) {
+              currentList[targetIdx] = {
+                ...currentList[targetIdx],
+                selected_variations: newVariations,
+              };
+
+              try {
+                const { auth } = await import("@/config/firebase");
+                const freshToken = await auth.currentUser?.getIdToken().catch(() => undefined);
+                const isCollected = viewingOrder.collection_status === "collected";
+
+                const res = await updateMerchandiseOrderCollectionStatusAction(
+                  viewingOrder.id,
+                  isCollected,
+                  `Variant updated for ${editingOrderItem.item.name}`,
+                  user ? { name: user.name, id: user.id } : undefined,
+                  freshToken || undefined,
+                  currentList,
+                );
+
+                if (res.success) {
+                  setViewingOrder((prev) => (prev ? { ...prev, items: currentList } : null));
+                  toast.success("Order item variant updated.");
+                } else {
+                  toast.error(res.error || "Failed to update item variant.");
+                }
+              } catch (err) {
+                console.error("Error updating order item variant:", err);
+                toast.error("Failed to update item variant.");
+              }
+            }
+            setEditingOrderItem(null);
+          }}
+        />
+      )}
     </div>
   );
 }

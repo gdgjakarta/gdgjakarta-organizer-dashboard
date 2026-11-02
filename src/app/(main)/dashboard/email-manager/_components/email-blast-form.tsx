@@ -1183,9 +1183,16 @@ export function EmailBlastForm({
             : `recipients from sheet "${data.sheetName}"`;
       }
 
-      toast.success("Bulk Email Blast Sent", {
-        description: result.message ?? `Campaign successfully queued for ${countMsg}.`,
-      });
+      if (result.queued) {
+        toast.info("Bulk Email In Progress", {
+          description: result.message ?? "Emails are being sent in bulk. Check execution details on n8n.",
+          duration: 8000,
+        });
+      } else {
+        toast.success("Bulk Email Blast Sent", {
+          description: result.message ?? `Campaign successfully queued for ${countMsg}.`,
+        });
+      }
 
       setConfirmDialogOpen(false);
       setPendingFormData(null);

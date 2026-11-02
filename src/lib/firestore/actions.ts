@@ -3,7 +3,7 @@
 import { DEFAULT_PAYMENT_HEADER_EMAIL_URL } from "@/lib/events/doku-payment";
 import { revalidateDashboardPath } from "@/server/server-actions";
 
-import type { FirestoreEvent, FirestoreRegistration, ReferralProgramSettings, RegistrationStatus } from "./types";
+import type { FirestoreEvent, FirestoreRegistration, ReferralProgramSettings, RegistrationStatus, SelectedMerchandiseOrder } from "./types";
 
 /**
  * Triggers a full sync from Bevy into Firestore on the client.
@@ -516,10 +516,19 @@ export async function updateRegistrationMerchandiseCollectionAction(
     email?: string;
     notes?: string;
   },
+  fallbackRegistration?: Partial<FirestoreRegistration>,
+  updatedSelectedMerchandise?: SelectedMerchandiseOrder[],
 ) {
   try {
     const { updateRegistrationMerchandiseCollection } = await import("./client");
-    const res = await updateRegistrationMerchandiseCollection(registrationId, eventId, isCollected, reviewer);
+    const res = await updateRegistrationMerchandiseCollection(
+      registrationId,
+      eventId,
+      isCollected,
+      reviewer,
+      fallbackRegistration,
+      updatedSelectedMerchandise,
+    );
     await revalidateDashboardPath(`/dashboard/events/${eventId}`);
     return { success: true, statusLog: res.statusLog, collectedAt: res.collectedAt };
   } catch (err) {

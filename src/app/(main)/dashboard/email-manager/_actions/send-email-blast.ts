@@ -165,11 +165,19 @@ export async function sendEmailBlast(data: BulkEmailInput) {
     };
   } catch (error) {
     console.error("[sendEmailBlast] Exception:", error);
-    let defaultMsg = "An unexpected error occurred while dispatching bulk emails.";
     if (error instanceof Error && error.name === "AbortError") {
-      defaultMsg = "Request timed out after 30 seconds while connecting to the bulk email service.";
+      const defaultMsg = isSheet
+        ? `Request dispatched. Email campaign is queued and processing in bulk for sheet "${validData.sheetName}"${totalCount > 0 ? ` (${totalCount.toLocaleString()} recipients)` : ""}. Check execution progress in n8n.`
+        : `Request dispatched. Email campaign is queued and sending in bulk to ${totalCount.toLocaleString()} recipients. Check execution progress in n8n.`;
+
+      return {
+        success: true,
+        queued: true,
+        message: defaultMsg,
+        totalRecipients: totalCount,
+      };
     }
-    const cleanError = extractApiMessage(error, defaultMsg);
+    const cleanError = extractApiMessage(error, "An unexpected error occurred while dispatching bulk emails.");
     return { success: false, error: cleanError };
   }
 }

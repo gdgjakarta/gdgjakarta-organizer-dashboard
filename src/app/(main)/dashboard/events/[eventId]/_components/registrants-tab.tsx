@@ -112,6 +112,7 @@ import type {
   FirestoreRegistration,
   RegistrationStatus,
   RegistrationStatusLog,
+  SelectedMerchandiseOrder,
 } from "@/lib/firestore/types";
 import {
   assignSingleRegistrationVenueTicket,
@@ -2926,20 +2927,30 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
     }
   };
 
-  const handleToggleMerchandiseCollected = async (registration: FirestoreRegistration, isCollected: boolean) => {
-    const hasAttendeeMerch = Boolean(registration.selected_merchandise && registration.selected_merchandise.length > 0);
+  const handleToggleMerchandiseCollected = async (
+    registration: FirestoreRegistration,
+    isCollected: boolean,
+    updatedSelectedMerchandise?: SelectedMerchandiseOrder[],
+  ) => {
+    const hasAttendeeMerch = Boolean(
+      (updatedSelectedMerchandise && updatedSelectedMerchandise.length > 0) ||
+        (registration.selected_merchandise && registration.selected_merchandise.length > 0),
+    );
     const effectiveStatus = getEffectiveRegistrationStatus(registration, currentEvent);
     const rawStatus = ((effectiveStatus as string) || "").toLowerCase().trim();
     const regStatus = ((registration.status as string) || "").toLowerCase().trim();
-    const isPaidAndRegistered =
+    const isEligibleStatus =
       rawStatus === "paid_and_registered" ||
       rawStatus === "paid_registered" ||
       regStatus === "paid_and_registered" ||
-      regStatus === "paid_registered";
+      regStatus === "paid_registered" ||
+      regStatus === "approved" ||
+      regStatus === "attended" ||
+      regStatus === "registered";
 
-    if (!hasAttendeeMerch || !isPaidAndRegistered) {
+    if (!hasAttendeeMerch || !isEligibleStatus) {
       toast.error(
-        "Merchandise collection is only enabled when the attendee has merchandise and status is Paid & Registered.",
+        "Merchandise collection is only enabled when the attendee has merchandise and status is Confirmed or Paid & Registered.",
       );
       return;
     }
@@ -2955,6 +2966,8 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
         eventId,
         isCollected,
         reviewerPayload,
+        registration,
+        updatedSelectedMerchandise,
       );
 
       if (!res.success) {
@@ -2983,6 +2996,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
         merchandise_collected_by_id: isCollected ? reviewerPayload.id : null,
         merchandise_collected_by_name: isCollected ? reviewerPayload.name : null,
         merchandise_collected_by_email: isCollected ? (reviewerPayload.email ?? null) : null,
+        ...(updatedSelectedMerchandise ? { selected_merchandise: updatedSelectedMerchandise } : {}),
         status_logs: [...(r.status_logs ?? []), newStatusLog],
       });
 
@@ -5530,12 +5544,15 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                                 reg.selected_merchandise && reg.selected_merchandise.length > 0,
                               );
                               const regStatusStr = ((reg.status as string) || "").toLowerCase().trim();
-                              const isPaidAndRegistered =
+                              const isEligibleStatus =
                                 rawStatus === "paid_and_registered" ||
                                 rawStatus === "paid_registered" ||
                                 regStatusStr === "paid_and_registered" ||
-                                regStatusStr === "paid_registered";
-                              const canCollectMerch = hasAttendeeMerch && isPaidAndRegistered;
+                                regStatusStr === "paid_registered" ||
+                                regStatusStr === "approved" ||
+                                regStatusStr === "attended" ||
+                                regStatusStr === "registered";
+                              const canCollectMerch = hasAttendeeMerch && isEligibleStatus;
 
                               if (!hasAttendeeMerch) {
                                 return <span className="text-muted-foreground text-xs">—</span>;
@@ -5559,7 +5576,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                                         title={
                                           canCollectMerch
                                             ? "Undo merchandise collection"
-                                            : "Merchandise collection is only enabled when status is Paid & Registered"
+                                            : "Merchandise collection is only enabled when status is Confirmed or Paid & Registered"
                                         }
                                         onClick={() => handleToggleMerchandiseCollected(reg, false)}
                                         disabled={isCollectingMerchId === reg.id || !canCollectMerch}
@@ -5584,7 +5601,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                                   title={
                                     canCollectMerch
                                       ? "Mark merchandise as collected"
-                                      : "Only enabled when attendee has merchandise and status is Paid & Registered"
+                                      : "Only enabled when attendee has merchandise and status is Confirmed or Paid & Registered"
                                   }
                                   onClick={() => handleToggleMerchandiseCollected(reg, true)}
                                   disabled={isCollectingMerchId === reg.id || !canCollectMerch}
@@ -6597,6 +6614,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
         sessions={sessions}
         questions={customQuestions}
         initialMode="event_checkin"
+        merchandise={currentEvent?.merchandise ?? []}
         onRegistrationUpdated={(updatedReg) => {
           setRegistrationsList((prev) => prev.map((r) => (r.id === updatedReg.id ? updatedReg : r)));
         }}

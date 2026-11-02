@@ -68,7 +68,7 @@ export function isExecutiveOrganizer(userOrRole?: UserRoleLike | string | null):
     }
   }
 
-  return lower === "organizer" || lower === "googler" || lower === "admin";
+  return lower === "organizer" || lower === "googler";
 }
 
 /**
