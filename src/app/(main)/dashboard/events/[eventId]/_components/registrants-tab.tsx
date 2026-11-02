@@ -3951,7 +3951,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
       const sessionTitle =
         r.session_title ||
         (r.answers?.session_title as string) ||
-        (r.session_id ? `Session ID: ${r.session_id}` : "Standard RSVP");
+        (r.session_id ? `Session ID: ${r.session_id}` : currentEvent.default_session_name?.trim() || "Main Event");
 
       const questionColsData = selectedQuestionColumns.map((qKey) => {
         const val = resolveAnswerValue(r.answers, qKey, questionLabelMap);
@@ -5225,7 +5225,9 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                     const sessionTitle =
                       reg.session_title ||
                       (reg.answers?.session_title as string) ||
-                      (reg.session_id ? `Track: ${reg.session_id}` : null);
+                      (reg.session_id
+                        ? `Track: ${reg.session_id}`
+                        : currentEvent.default_session_name?.trim() || "Main Event");
 
                     const regDate = formatFirestoreDate(reg.registered_at, "dd MMM yyyy, h:mm a");
 
@@ -5360,9 +5362,12 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                                       typeof reg.bundle_price === "number" &&
                                       reg.bundle_price > 0);
 
-                              return reg.ticket_name ? (
+                              const resolvedTicketName =
+                                reg.ticket_name || (reg.bevy_attendee_id ? "Added from Bevy" : null);
+
+                              return resolvedTicketName ? (
                                 <div className="flex flex-col gap-0.5">
-                                  <span className="font-medium text-foreground text-xs">{reg.ticket_name}</span>
+                                  <span className="font-medium text-foreground text-xs">{resolvedTicketName}</span>
                                   <Badge
                                     variant="outline"
                                     className={cn(
@@ -5616,14 +5621,10 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
 
                         {hasSessions && visibleStandardColumns.session !== false && (
                           <TableCell onClick={() => setInspectRegistration(reg)}>
-                            {sessionTitle ? (
-                              <Badge variant="secondary" className="gap-1 font-normal text-xs">
-                                <Layers className="size-3 text-primary" />
-                                {sessionTitle}
-                              </Badge>
-                            ) : (
-                              <span className="text-muted-foreground text-xs">Main Event</span>
-                            )}
+                            <Badge variant="secondary" className="gap-1 font-normal text-xs">
+                              <Layers className="size-3 text-primary" />
+                              {sessionTitle || currentEvent.default_session_name?.trim() || "Main Event"}
+                            </Badge>
                           </TableCell>
                         )}
 

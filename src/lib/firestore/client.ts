@@ -1824,7 +1824,7 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
     registration.session_title ??
     (preEventSessionsForDefault.length > 0
       ? preEventSessionsForDefault[0].title
-      : eventData?.default_session_name?.trim() || "Full Session");
+      : eventData?.default_session_name?.trim() || "Main Event");
 
   // Include session_id, session_title and payment metadata inside answers for backward compatibility
   const updatedAnswers = {
@@ -4352,7 +4352,7 @@ export async function updateEventBreakoutSessions(
     sessions: cleanedSessions.length > 0 ? cleanedSessions : deleteField(),
     ...(defaultSessionName !== undefined
       ? {
-          default_session_name: defaultSessionName.trim() ? defaultSessionName.trim() : "Full Session",
+          default_session_name: defaultSessionName.trim() ? defaultSessionName.trim() : "Main Event",
         }
       : {}),
     ...(defaultSessionDetails?.default_session_time !== undefined

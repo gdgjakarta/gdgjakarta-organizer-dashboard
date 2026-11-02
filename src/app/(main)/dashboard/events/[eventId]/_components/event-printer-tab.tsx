@@ -132,7 +132,7 @@ export function EventPrinterTab({ event, registrations = [] }: EventPrinterTabPr
         "Harvest Moon",
       ticketType: resolvedTicketType,
       ticketName: resolvedTicketName,
-      sessionTrack: custom.sessionTrack ?? firstReg?.session_title ?? "Full Session",
+      sessionTrack: custom.sessionTrack ?? firstReg?.session_title ?? "Main Event",
       techStack: custom.techStack ?? "Kotlin / Android",
       eventTitle: custom.eventTitle ?? event.title ?? "GDG Jakarta Event",
       eventDate: custom.eventDate ?? event.start_date ?? "Sunday, Nov 01, 2026",

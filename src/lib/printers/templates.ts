@@ -343,7 +343,7 @@ export function renderLabelTemplate(template: string, data: LabelTemplateData): 
   const ticketCode = data.ticketCode || data.attendeeCode || `#${data.attendeeId}`;
   const ticketType = data.ticketType || "Paid Pass";
   const ticketName = data.ticketName || "Regular";
-  const sessionTrack = data.sessionTrack || "Full Session";
+  const sessionTrack = data.sessionTrack || "Main Event";
   const techStack = data.techStack || "";
 
   // Every value is HTML-escaped (and `[`/`]` too, so a value can never be re-read as a token).

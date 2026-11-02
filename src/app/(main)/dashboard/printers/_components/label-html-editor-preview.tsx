@@ -86,7 +86,7 @@ const ATTENDEE_TOKENS: TokenItem[] = [
     description: "Numeric Bevy Attendee ID (e.g. 263443955)",
   },
   { id: "qr", tag: "[[qr]]", label: "QR Code Image", description: "Rendered <img> tag for eventId:attendeeId" },
-  { id: "session_track", tag: "[[sessionTrack]]", label: "Session Track", description: "e.g. Full Session" },
+  { id: "session_track", tag: "[[sessionTrack]]", label: "Session Track", description: "e.g. Main Event" },
 ];
 
 const LABEL_HTML_BLOCKS: TokenItem[] = [

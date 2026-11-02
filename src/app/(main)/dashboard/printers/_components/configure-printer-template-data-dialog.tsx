@@ -117,7 +117,7 @@ export function ConfigurePrinterTemplateDataDialog({
       (reg.answers?.Session as string) ||
       (reg.answers?.session as string) ||
       sampleData.sessionTrack ||
-      "Full Session";
+      "Main Event";
 
     const resolvedTicketType =
       reg.ticket_type === "free"
@@ -335,7 +335,7 @@ export function ConfigurePrinterTemplateDataDialog({
                 <Input
                   value={sampleData.sessionTrack || ""}
                   onChange={(e) => onSampleDataChange({ sessionTrack: e.target.value })}
-                  placeholder="e.g. Full Session / AI Track"
+                  placeholder="e.g. Main Event / AI Track"
                   className="h-8 text-xs"
                 />
               </div>

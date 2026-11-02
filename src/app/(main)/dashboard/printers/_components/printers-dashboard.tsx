@@ -108,7 +108,7 @@ const DEFAULT_SAMPLE_ATTENDEE = {
   company: "Harvest Moon",
   ticketType: "Paid Pass",
   ticketName: "Super Early Bird",
-  sessionTrack: "Full Session",
+  sessionTrack: "Main Event",
   techStack: "Kotlin / Android",
   attendeeId: "263443955",
   ticketCode: "GOOGA263443955",

@@ -2348,7 +2348,7 @@ export function ApplicantDetailDialog({
                     <FileText className="mb-2 size-8 opacity-40" />
                     <p className="font-medium text-sm">No custom questionnaire responses recorded.</p>
                     <p className="text-muted-foreground/80 text-xs">
-                      This attendee registered via Standard RSVP without additional custom questions.
+                      This attendee registered via Added from Bevy without additional custom questions.
                     </p>
                   </div>
                 )}

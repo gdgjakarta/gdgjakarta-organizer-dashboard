@@ -149,7 +149,7 @@ export function QuestionResponsesCell({ answers, formatQuestionLabel }: Question
   }, [answers, formatQuestionLabel]);
 
   if (!answers || validEntries.length === 0) {
-    return <span className="font-normal text-muted-foreground/70 text-xs italic">Standard RSVP</span>;
+    return <span className="font-normal text-muted-foreground/70 text-xs italic">Added from Bevy</span>;
   }
 
   return (

@@ -281,7 +281,7 @@ export async function sendTemplateEmailRequestAction(
       headers["x-api-key"] = apiKey;
     }
 
-    const sessionName = parsed.data.sessionName || "Full Session";
+    const sessionName = parsed.data.sessionName || "Main Event";
     const sessionCapacity = parsed.data.sessionCapacity || 100;
     const bodyEmailToSend =
       parsed.data.templateKey === "accepted"

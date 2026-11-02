@@ -323,7 +323,7 @@ interface BreakoutConfigSnapshot {
 
 function serializeBreakoutConfig(cfg: BreakoutConfigSnapshot): string {
   return JSON.stringify({
-    defaultSessionName: cfg.defaultSessionName.trim() || "Full Session",
+    defaultSessionName: cfg.defaultSessionName.trim() || "Main Event",
     defaultSessionTime: cfg.defaultSessionTime ?? "",
     defaultSessionCheckinDeadline: cfg.defaultSessionCheckinDeadline ?? "",
     defaultSessionLocation: cfg.defaultSessionLocation ?? "",
@@ -381,7 +381,7 @@ export function BreakoutSessionsTab({
   const [sessions, setSessions] = React.useState<EventSession[]>(initialNormalizedSessions);
 
   const [defaultSessionName, setDefaultSessionName] = React.useState<string>(
-    event.default_session_name?.trim() || "Full Session",
+    event.default_session_name?.trim() || "Main Event",
   );
   const [defaultSessionTime, setDefaultSessionTime] = React.useState<string>(event.default_session_time ?? "");
   const [defaultSessionCheckinDeadline, setDefaultSessionCheckinDeadline] = React.useState<string>(
@@ -396,7 +396,7 @@ export function BreakoutSessionsTab({
 
   const [savedConfig, setSavedConfig] = React.useState<BreakoutConfigSnapshot>(() => ({
     sessions: initialNormalizedSessions,
-    defaultSessionName: event.default_session_name?.trim() || "Full Session",
+    defaultSessionName: event.default_session_name?.trim() || "Main Event",
     defaultSessionTime: event.default_session_time ?? "",
     defaultSessionCheckinDeadline: event.default_session_checkin_deadline ?? "",
     defaultSessionLocation: event.default_session_location ?? "",
@@ -551,8 +551,7 @@ export function BreakoutSessionsTab({
           setSessions(normalizedLoadedSessions);
         }
 
-        const nextDefaultName =
-          docData?.default_session_name || eventRef.current.default_session_name || "Full Session";
+        const nextDefaultName = docData?.default_session_name || eventRef.current.default_session_name || "Main Event";
         const nextDefaultTime =
           docData?.default_session_time !== undefined
             ? (docData.default_session_time ?? "")
@@ -838,7 +837,7 @@ export function BreakoutSessionsTab({
       const res = await updateEventBreakoutSessionsAction(
         eventId,
         sessions,
-        defaultSessionName.trim() || "Full Session",
+        defaultSessionName.trim() || "Main Event",
         event,
         {
           default_session_time: defaultSessionTime,
@@ -851,7 +850,7 @@ export function BreakoutSessionsTab({
       if (res.success) {
         setSavedConfig({
           sessions: structuredClone(sessions),
-          defaultSessionName: defaultSessionName.trim() || "Full Session",
+          defaultSessionName: defaultSessionName.trim() || "Main Event",
           defaultSessionTime,
           defaultSessionCheckinDeadline,
           defaultSessionLocation,
@@ -954,7 +953,7 @@ export function BreakoutSessionsTab({
     try {
       const shouldSyncBevy = activeRosterSession?.sync_check_in_to_bevy ?? false;
       const bevyId = reg.bevy_attendee_id ? Number(reg.bevy_attendee_id) : null;
-      const sessionTitle = activeRosterSession?.title || defaultSessionName || "Full Session";
+      const sessionTitle = activeRosterSession?.title || defaultSessionName || "Main Event";
 
       let syncedToBevy = false;
       if (shouldSyncBevy && bevyId) {
@@ -1077,7 +1076,7 @@ export function BreakoutSessionsTab({
     if (selectedRegIdsToAdd.length === 0) return;
     setIsAssigningRegistrants(true);
     try {
-      const sessionTitle = activeRosterSession?.title || defaultSessionName || "Full Session";
+      const sessionTitle = activeRosterSession?.title || defaultSessionName || "Main Event";
       const reviewer = user
         ? {
             id: user.id,
@@ -1281,7 +1280,7 @@ export function BreakoutSessionsTab({
               >
                 <h4 className="font-semibold text-sm">Default Main Session (Fallback)</h4>
                 <Badge variant="outline" className="text-[11px]">
-                  {defaultSessionName.trim() || "Full Session"}
+                  {defaultSessionName.trim() || "Main Event"}
                 </Badge>
                 {defaultSessionTime && (
                   <span className="hidden text-[11px] text-muted-foreground sm:inline">({defaultSessionTime})</span>
@@ -1326,7 +1325,7 @@ export function BreakoutSessionsTab({
                     <Input
                       value={defaultSessionName}
                       onChange={(e) => setDefaultSessionName(e.target.value)}
-                      placeholder="Full Session"
+                      placeholder="Main Event"
                       className="h-8 text-xs"
                     />
                   </div>

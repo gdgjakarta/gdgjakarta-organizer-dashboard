@@ -145,7 +145,7 @@ export function CustomFormTab({ event, onSwitchTab }: CustomFormTabProps) {
   // 3. Event Sessions (Split into Sessions with Limited Capacity or Single Session Defaults)
   const [sessions, setSessions] = useState<EventSession[]>(event.sessions ?? []);
   const [defaultSessionName, setDefaultSessionName] = useState<string>(
-    event.default_session_name?.trim() || "Full Session",
+    event.default_session_name?.trim() || "Main Event",
   );
   const [defaultSessionTime, setDefaultSessionTime] = useState<string>(event.default_session_time ?? "");
   const [defaultSessionCheckinDeadline, setDefaultSessionCheckinDeadline] = useState<string>(
@@ -393,7 +393,7 @@ export function CustomFormTab({ event, onSwitchTab }: CustomFormTabProps) {
         );
         const loadedEndDate = toDateTimeLocal(docData?.registration_end_date ?? currentEvent.registration_end_date);
         const loadedDefaultSessionName =
-          docData?.default_session_name?.trim() || currentEvent.default_session_name?.trim() || "Full Session";
+          docData?.default_session_name?.trim() || currentEvent.default_session_name?.trim() || "Main Event";
         const loadedDefaultSessionTime = docData?.default_session_time ?? currentEvent.default_session_time ?? "";
         const loadedDefaultSessionCheckinDeadline =
           docData?.default_session_checkin_deadline ?? currentEvent.default_session_checkin_deadline ?? "";
@@ -452,7 +452,7 @@ export function CustomFormTab({ event, onSwitchTab }: CustomFormTabProps) {
           allowWaitlist: currentEvent.allow_waitlist !== false,
           maxAttendees: currentEvent.max_attendees ? String(currentEvent.max_attendees) : "",
           sessions: currentEvent.sessions ?? [],
-          defaultSessionName: currentEvent.default_session_name?.trim() || "Full Session",
+          defaultSessionName: currentEvent.default_session_name?.trim() || "Main Event",
           defaultSessionTime: currentEvent.default_session_time ?? "",
           defaultSessionCheckinDeadline: currentEvent.default_session_checkin_deadline ?? "",
           defaultSessionLocation: currentEvent.default_session_location ?? "",
@@ -1009,7 +1009,7 @@ export function CustomFormTab({ event, onSwitchTab }: CustomFormTabProps) {
             max_attendees: resolvedMaxAttendees,
             webhook_url: event.webhook_url ? event.webhook_url : deleteField(),
             sessions: sessions.length > 0 ? sessions : deleteField(),
-            default_session_name: defaultSessionName.trim() ? defaultSessionName.trim() : "Full Session",
+            default_session_name: defaultSessionName.trim() ? defaultSessionName.trim() : "Main Event",
             default_session_time: defaultSessionTime.trim() ? defaultSessionTime.trim() : deleteField(),
             default_session_checkin_deadline: defaultSessionCheckinDeadline.trim()
               ? defaultSessionCheckinDeadline.trim()
@@ -1037,7 +1037,7 @@ export function CustomFormTab({ event, onSwitchTab }: CustomFormTabProps) {
             allowWaitlist,
             maxAttendees,
             sessions,
-            defaultSessionName: defaultSessionName.trim() || "Full Session",
+            defaultSessionName: defaultSessionName.trim() || "Main Event",
             defaultSessionTime,
             defaultSessionCheckinDeadline,
             defaultSessionLocation,
@@ -1717,7 +1717,7 @@ export function CustomFormTab({ event, onSwitchTab }: CustomFormTabProps) {
                     Single Session
                   </Badge>
                   <span className="font-semibold text-foreground text-xs">
-                    Default Session: {defaultSessionName || "Full Session"}
+                    Default Session: {defaultSessionName || "Main Event"}
                   </span>
                 </div>
                 <p className="text-[11px] text-muted-foreground">

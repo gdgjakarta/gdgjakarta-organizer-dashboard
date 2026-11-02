@@ -416,7 +416,7 @@ export function RegistrantStatistics({
             const match = sessions.find((s) => s.id === r.session_id);
             title = match ? match.title : `Track ${r.session_id}`;
           }
-          const val = title ?? "Standard RSVP";
+          const val = title ?? "Added from Bevy";
           counts.set(val, (counts.get(val) ?? 0) + 1);
           totalCounted += 1;
         }
