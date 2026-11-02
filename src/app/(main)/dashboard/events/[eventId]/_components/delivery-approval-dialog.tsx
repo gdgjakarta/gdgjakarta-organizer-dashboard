@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 
-import { CheckCircle2, Loader2, Search, Truck } from "lucide-react";
+import { CheckCircle2, ExternalLink, Loader2, Search, Truck } from "lucide-react";
 import { toast } from "sonner";
 
 import { DatePicker } from "@/components/date-picker";
@@ -163,6 +163,19 @@ export function DeliveryApprovalDialog({
                 {req.shipping_address}
                 <br />
                 {req.city}, {req.postal_code}
+                {req.maps_url && (
+                  <div className="mt-1.5 flex items-center gap-1.5">
+                    <a
+                      href={req.maps_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 rounded bg-primary/10 px-2 py-0.5 font-medium text-[11px] text-primary hover:bg-primary/20 hover:underline"
+                    >
+                      <ExternalLink className="size-3" />
+                      View on Google Maps
+                    </a>
+                  </div>
+                )}
               </div>
             </div>
           )}

@@ -2,9 +2,20 @@
 
 import { useState, useTransition } from "react";
 
-import { AlertCircle, CheckCircle2, ExternalLink, Loader2, Package, RefreshCw, ShoppingBag, Truck } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  ExternalLink,
+  Loader2,
+  MapPin,
+  Package,
+  RefreshCw,
+  ShoppingBag,
+  Truck,
+} from "lucide-react";
 import { toast } from "sonner";
 
+import { GoogleMapsPinpointDialog } from "@/components/maps/google-maps-pinpoint-dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -59,6 +70,10 @@ export function MerchandiseDeliveryRequestDialog({
   const [city, setCity] = useState(existingDelivery?.city ?? "");
   const [postalCode, setPostalCode] = useState(existingDelivery?.postal_code ?? "");
   const [notes, setNotes] = useState(existingDelivery?.notes ?? "");
+  const [mapsUrl, setMapsUrl] = useState(existingDelivery?.maps_url ?? "");
+  const [latitude, setLatitude] = useState<number | undefined>(existingDelivery?.latitude);
+  const [longitude, setLongitude] = useState<number | undefined>(existingDelivery?.longitude);
+  const [isPinpointOpen, setIsPinpointOpen] = useState(false);
 
   const [isSubmitting, startTransition] = useTransition();
   const [isConfirmingPayment, startPaymentTransition] = useTransition();
@@ -137,6 +152,9 @@ export function MerchandiseDeliveryRequestDialog({
         city: city.trim(),
         postalCode: postalCode.trim(),
         notes: notes.trim(),
+        mapsUrl: mapsUrl.trim(),
+        latitude,
+        longitude,
         customerEmail: registration.member_email,
         eventTitle: registration.event_title,
         eventPictureUrl: registration.event_picture_url ?? event?.picture_url,
@@ -409,6 +427,56 @@ export function MerchandiseDeliveryRequestDialog({
                   className="h-9 text-xs"
                 />
               </div>
+
+              {/* Google Maps Pinpoint & Link (Optional) */}
+              <div className="space-y-1.5 rounded-lg border border-border/70 bg-muted/20 p-2.5">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="mapsUrl" className="flex items-center gap-1.5 font-medium text-xs">
+                    <MapPin className="size-3.5 text-primary" />
+                    Google Maps Link or Pinpoint (Optional)
+                  </Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsPinpointOpen(true)}
+                    className="h-7 gap-1 border-primary/30 px-2 text-[11px] text-primary hover:bg-primary/10"
+                  >
+                    <MapPin className="size-3" />
+                    Pinpoint on Map
+                  </Button>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    id="mapsUrl"
+                    placeholder="e.g. https://maps.app.goo.gl/... or drop a pin"
+                    value={mapsUrl}
+                    onChange={(e) => setMapsUrl(e.target.value)}
+                    className="h-8 text-xs"
+                  />
+                  {mapsUrl && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-8 shrink-0 text-muted-foreground hover:text-foreground"
+                      asChild
+                    >
+                      <a href={mapsUrl} target="_blank" rel="noopener noreferrer" title="Test Google Maps Link">
+                        <ExternalLink className="size-3.5" />
+                      </a>
+                    </Button>
+                  )}
+                </div>
+                {latitude && longitude && (
+                  <div className="text-[10px] text-muted-foreground">
+                    Coordinates:{" "}
+                    <span className="font-mono text-foreground">
+                      {latitude.toFixed(5)}, {longitude.toFixed(5)}
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
 
             <DialogFooter className="mt-4 gap-2 pt-2">
@@ -540,6 +608,21 @@ export function MerchandiseDeliveryRequestDialog({
           </div>
         )}
       </DialogContent>
+
+      <GoogleMapsPinpointDialog
+        isOpen={isPinpointOpen}
+        onOpenChange={setIsPinpointOpen}
+        initialLat={latitude}
+        initialLng={longitude}
+        onSelectLocation={(loc) => {
+          setLatitude(loc.latitude);
+          setLongitude(loc.longitude);
+          if (loc.mapsUrl) setMapsUrl(loc.mapsUrl);
+          if (loc.suggestedAddress && !shippingAddress) setShippingAddress(loc.suggestedAddress);
+          if (loc.city && !city) setCity(loc.city);
+          if (loc.postalCode && !postalCode) setPostalCode(loc.postalCode);
+        }}
+      />
     </Dialog>
   );
 }

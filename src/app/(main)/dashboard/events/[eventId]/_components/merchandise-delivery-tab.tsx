@@ -619,6 +619,19 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
                             Note: {req.notes}
                           </div>
                         )}
+                        {req.maps_url && (
+                          <div className="pt-1">
+                            <a
+                              href={req.maps_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 rounded bg-primary/10 px-1.5 py-0.5 font-medium text-[10px] text-primary hover:bg-primary/20 hover:underline"
+                            >
+                              <ExternalLink className="size-2.5" />
+                              Open Maps
+                            </a>
+                          </div>
+                        )}
                       </div>
                     </TableCell>
 

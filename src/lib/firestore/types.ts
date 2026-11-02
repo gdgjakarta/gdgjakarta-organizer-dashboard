@@ -620,6 +620,11 @@ export interface MerchandiseDeliveryRequest {
   payment_request_id?: string;
   paid_at?: string;
 
+  // Delivery location & map pinpoint
+  maps_url?: string;
+  latitude?: number;
+  longitude?: number;
+
   // Courier fulfillment details (submitted by Organizer on approval)
   courier_type?: CourierType | string;
   tracking_number?: string; // Delivery ID / Resi

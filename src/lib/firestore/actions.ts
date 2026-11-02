@@ -748,6 +748,9 @@ export interface SubmitMerchandiseDeliveryInput {
   city: string;
   postalCode: string;
   notes?: string;
+  mapsUrl?: string;
+  latitude?: number;
+  longitude?: number;
   customerEmail: string;
   eventTitle?: string;
   eventPictureUrl?: string;
@@ -864,6 +867,9 @@ export async function submitMerchandiseDeliveryRequestAction(input: SubmitMercha
       city: input.city.trim(),
       postal_code: input.postalCode.trim(),
       notes: input.notes?.trim() ? input.notes.trim() : undefined,
+      maps_url: input.mapsUrl?.trim() ? input.mapsUrl.trim() : undefined,
+      latitude: typeof input.latitude === "number" && !Number.isNaN(input.latitude) ? input.latitude : undefined,
+      longitude: typeof input.longitude === "number" && !Number.isNaN(input.longitude) ? input.longitude : undefined,
       requested_at: now,
       fee_amount: effectiveFee,
       payment_status: effectiveFee === 0 ? "paid" : payResult.success && payResult.paymentUrl ? "pending" : "unpaid",

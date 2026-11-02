@@ -255,6 +255,19 @@ export function MerchandiseDeliveryStatusDialog({
               <br />
               {req.city}, {req.postal_code}
             </div>
+            {req.maps_url && (
+              <div className="mt-2 border-border/40 border-t pt-1.5 text-[11px]">
+                <a
+                  href={req.maps_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
+                >
+                  <ExternalLink className="size-3" />
+                  View Google Maps Pinpoint
+                </a>
+              </div>
+            )}
             {req.notes && (
               <div className="mt-2 border-border/40 border-t pt-1.5 text-[11px] text-muted-foreground">
                 <span className="font-medium text-foreground">Notes:</span> {req.notes}

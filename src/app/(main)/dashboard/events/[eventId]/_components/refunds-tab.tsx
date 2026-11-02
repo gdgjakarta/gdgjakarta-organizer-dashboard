@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { DatePicker } from "@/components/date-picker";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -518,14 +519,26 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
                 <Label htmlFor="cutoffDate" className="font-semibold text-xs">
                   Fixed Cutoff Date & Time (Optional)
                 </Label>
-                <Input
+                <DatePicker
                   id="cutoffDate"
-                  type="datetime-local"
-                  value={refundCutoffDate ? refundCutoffDate.slice(0, 16) : ""}
-                  onChange={(e) => setRefundCutoffDate(e.target.value ? new Date(e.target.value).toISOString() : "")}
-                  className="h-8 text-xs"
+                  withTime
+                  outputFormat="iso"
+                  value={refundCutoffDate}
+                  onChange={(val) => setRefundCutoffDate(val)}
+                  placeholder="Overrides days setting if specified"
                 />
-                <p className="text-[10px] text-muted-foreground">Overrides days setting if specified.</p>
+                <div className="flex flex-wrap items-center justify-between gap-1 pt-0.5">
+                  <p className="text-[10px] text-muted-foreground">Overrides days setting if specified.</p>
+                  {refundCutoffDate && (
+                    <button
+                      type="button"
+                      onClick={() => setRefundCutoffDate("")}
+                      className="text-[11px] text-destructive hover:underline font-medium"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
