@@ -86,7 +86,6 @@ import {
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
 import { ChangeMerchandiseVariantDialog } from "./change-merchandise-variant-dialog";
-
 import { CreateOnTheSpotSaleDialog } from "./create-on-the-spot-sale-dialog";
 import { MerchandiseItemDialog } from "./merchandise-item-dialog";
 import { QrCheckInScannerDialog } from "./qr-checkin-scanner-dialog";

@@ -424,7 +424,9 @@ export async function startWorker() {
 
   server.listen(config.port, "127.0.0.1", () => {
     console.log(`GDG Print Worker v${VERSION} listening on http://127.0.0.1:${config.port}`);
-    console.log(`Device: ${deviceInfo.computerName}${deviceInfo.model ? ` (${deviceInfo.model})` : ""}, ${deviceInfo.os}`);
+    console.log(
+      `Device: ${deviceInfo.computerName}${deviceInfo.model ? ` (${deviceInfo.model})` : ""}, ${deviceInfo.os}`,
+    );
     console.log(`Printers (${slots.length}): ${slots.map((s) => s.name || "(system default)").join(", ")}`);
     for (const shared of findSharedDevices(
       slots.map((s) => s.name),

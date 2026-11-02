@@ -3,7 +3,13 @@
 import { DEFAULT_PAYMENT_HEADER_EMAIL_URL } from "@/lib/events/doku-payment";
 import { revalidateDashboardPath } from "@/server/server-actions";
 
-import type { FirestoreEvent, FirestoreRegistration, ReferralProgramSettings, RegistrationStatus, SelectedMerchandiseOrder } from "./types";
+import type {
+  FirestoreEvent,
+  FirestoreRegistration,
+  ReferralProgramSettings,
+  RegistrationStatus,
+  SelectedMerchandiseOrder,
+} from "./types";
 
 /**
  * Triggers a full sync from Bevy into Firestore on the client.

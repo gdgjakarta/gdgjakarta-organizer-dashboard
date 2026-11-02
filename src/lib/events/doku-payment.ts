@@ -517,7 +517,7 @@ export function extractCustomerPhone(
 
   if (!raw) return "";
 
-  let clean = raw.replace(/[\s\-\(\)\.]/g, "");
+  let clean = raw.replace(/[\s\-().]/g, "");
   if (clean.startsWith("+")) {
     clean = clean.slice(1);
   }

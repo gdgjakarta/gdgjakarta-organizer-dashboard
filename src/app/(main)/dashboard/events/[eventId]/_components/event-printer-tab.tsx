@@ -113,7 +113,8 @@ export function EventPrinterTab({ event, registrations = [] }: EventPrinterTabPr
             ? "Paid Pass"
             : "Paid Pass");
 
-    const resolvedTicketName = custom.ticketName ?? firstReg?.ticket_name ?? firstReg?.ticket_tier ?? "Super Early Bird";
+    const resolvedTicketName =
+      custom.ticketName ?? firstReg?.ticket_name ?? firstReg?.ticket_tier ?? "Super Early Bird";
 
     return {
       name:

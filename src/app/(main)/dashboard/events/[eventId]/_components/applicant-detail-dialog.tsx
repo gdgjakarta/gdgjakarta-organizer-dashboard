@@ -73,8 +73,8 @@ import type {
 import { type DriveVenueTicketFile, isEligibleForVenueTicket } from "@/lib/google-drive/venue-tickets";
 import { cn, getInitials } from "@/lib/utils";
 
-import { CheckPaymentStatusDialog } from "./check-payment-status-dialog";
 import { ChangeMerchandiseVariantDialog } from "./change-merchandise-variant-dialog";
+import { CheckPaymentStatusDialog } from "./check-payment-status-dialog";
 import { parseMerchandiseVariations } from "./merchandise-helpers";
 import { ResendPaymentLinkDialog } from "./resend-payment-link-dialog";
 
@@ -1518,10 +1518,7 @@ export function ApplicantDetailDialog({
                               )}
                             </div>
                             <div className="flex items-center gap-1.5 self-start sm:self-auto shrink-0">
-                              <Badge
-                                variant="outline"
-                                className="w-fit font-mono text-[10px] text-muted-foreground"
-                              >
+                              <Badge variant="outline" className="w-fit font-mono text-[10px] text-muted-foreground">
                                 {item.price
                                   ? `Rp ${(item.price * (item.quantity || 1)).toLocaleString("id-ID")}`
                                   : "Free Perk"}
@@ -2739,10 +2736,12 @@ export function ApplicantDetailDialog({
           }}
           itemName={editingMerchItem.item.name || editingMerchItem.item.merchandise_title || "Merchandise"}
           itemId={editingMerchItem.item.merchandise_id || editingMerchItem.item.id}
-          currentVariations={editingMerchItem.item.selected_variations || {
-            ...(editingMerchItem.item.selected_size ? { Size: editingMerchItem.item.selected_size } : {}),
-            ...(editingMerchItem.item.selected_variant ? { Variant: editingMerchItem.item.selected_variant } : {}),
-          }}
+          currentVariations={
+            editingMerchItem.item.selected_variations || {
+              ...(editingMerchItem.item.selected_size ? { Size: editingMerchItem.item.selected_size } : {}),
+              ...(editingMerchItem.item.selected_variant ? { Variant: editingMerchItem.item.selected_variant } : {}),
+            }
+          }
           eventMerchandise={event?.merchandise ?? []}
           onSave={async (newVariations) => {
             const currentList = registration.selected_merchandise ? [...registration.selected_merchandise] : [];
@@ -2752,17 +2751,14 @@ export function ApplicantDetailDialog({
                 ...currentList[targetIdx],
                 selected_variations: newVariations,
                 selected_size: newVariations["Size"] || newVariations["size"] || currentList[targetIdx].selected_size,
-                selected_variant: newVariations["Variant"] || newVariations["variant"] || currentList[targetIdx].selected_variant,
+                selected_variant:
+                  newVariations["Variant"] || newVariations["variant"] || currentList[targetIdx].selected_variant,
               };
               currentList[targetIdx] = updatedItem;
 
               // If already collected or if onToggleMerchandiseCollected exists, persist update
               if (onToggleMerchandiseCollected) {
-                onToggleMerchandiseCollected(
-                  registration,
-                  registration.is_merchandise_collected ?? true,
-                  currentList,
-                );
+                onToggleMerchandiseCollected(registration, registration.is_merchandise_collected ?? true, currentList);
               } else if (onUpdateRegistration) {
                 onUpdateRegistration({
                   ...registration,

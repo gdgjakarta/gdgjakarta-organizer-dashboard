@@ -5,6 +5,7 @@
 // Run as the packaged executable it copies itself to ~/.gdg-print-worker/bin, so it can be started later
 // even if the downloaded file is moved or deleted.
 
+import { findSharedDevices, readPrinterUris } from "./worker.mjs";
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { chmod, copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -13,8 +14,6 @@ import { dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { isSea } from "node:sea";
 import { promisify } from "node:util";
-
-import { findSharedDevices, readPrinterUris } from "./worker.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -80,7 +79,7 @@ function warnSharedDevices(picked, uris) {
     console.log("Identical printers often share one USB serial, so CUPS prints on only one of them. To fix it:");
     console.log("  1. Find each printer's USB location:  ioreg -p IOUSB -l -w0 | grep -E 'CT221B|locationID'");
     console.log("     (locationID is decimal; convert it to 8 hex digits, e.g. 17825792 -> 01100000)");
-    console.log('  2. Point every queue to its own port, WITHOUT serial=:');
+    console.log("  2. Point every queue to its own port, WITHOUT serial=:");
     console.log('     lpadmin -p <queue name> -v "usb://<Make>/<Model>?location=<8 hex digits>"');
     console.log("  3. Print one label per queue and check each comes out of a different printer.");
     console.log("Keep each printer in the same USB port afterwards.\n");

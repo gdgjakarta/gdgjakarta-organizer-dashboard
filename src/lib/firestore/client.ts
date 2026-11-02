@@ -3085,7 +3085,8 @@ export async function updateRegistrationMerchandiseCollection(
   const actorName = reviewer?.name || "GDG Organizer";
   const actorEmail = reviewer?.email;
 
-  const currentMerchList = updatedSelectedMerchandise ?? existingData?.selected_merchandise ?? fallbackRegistration?.selected_merchandise;
+  const currentMerchList =
+    updatedSelectedMerchandise ?? existingData?.selected_merchandise ?? fallbackRegistration?.selected_merchandise;
   const merchSummary =
     currentMerchList && currentMerchList.length > 0
       ? currentMerchList
