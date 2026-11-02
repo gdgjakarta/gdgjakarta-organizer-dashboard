@@ -2375,7 +2375,7 @@ export function ApplicantDetailDialog({
 
                         return (
                           <div
-                            key={log.id || `log-${idx}`}
+                            key={log.id ? `${log.id}-${idx}` : `log-${idx}`}
                             className="flex flex-col gap-1 border-border/40 border-b pb-2 last:border-b-0 last:pb-0"
                           >
                             <div className="flex flex-wrap items-center justify-between gap-2">

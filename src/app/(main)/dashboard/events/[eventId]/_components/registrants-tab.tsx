@@ -2980,7 +2980,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
 
       const now = res.collectedAt ?? new Date().toISOString();
       const newStatusLog: RegistrationStatusLog = res.statusLog ?? {
-        id: `merch_${Date.now()}`,
+        id: `merch_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
         status: isCollected ? "merchandise_collected" : "merchandise_uncollected",
         previous_status: registration.is_merchandise_collected ? "merchandise_collected" : "merchandise_uncollected",
         changed_at: now,
