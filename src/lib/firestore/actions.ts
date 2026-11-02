@@ -1041,16 +1041,21 @@ export async function fetchEventMerchandiseDeliveryRequestsAction(eventId: strin
 }
 
 /**
- * Updates the event's merchandise delivery payment environment (production vs sandbox).
+ * Updates the event's merchandise delivery payment environment & fee configuration.
  */
 export async function updateEventMerchandiseDeliveryConfigAction(
   eventId: string,
-  environment: "production" | "sandbox",
+  config:
+    | {
+        environment?: "production" | "sandbox";
+        fee?: number;
+      }
+    | ("production" | "sandbox"),
   baseEvent?: Partial<FirestoreEvent>,
 ) {
   try {
     const { updateEventMerchandiseDeliveryConfig } = await import("./client");
-    await updateEventMerchandiseDeliveryConfig(eventId, environment, baseEvent);
+    await updateEventMerchandiseDeliveryConfig(eventId, config, baseEvent);
     await revalidateDashboardPath(`/dashboard/events/${eventId}`);
     await revalidateDashboardPath("/dashboard/events");
     await revalidateDashboardPath("/dashboard/member/my-events");

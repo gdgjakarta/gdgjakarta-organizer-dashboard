@@ -12,6 +12,7 @@ import {
   MapPin,
   RefreshCw,
   Search,
+  Settings,
   ShieldCheck,
   Truck,
   XCircle,
@@ -37,6 +38,7 @@ import { cn, getInitials } from "@/lib/utils";
 
 import { DeliveryApprovalDialog } from "./delivery-approval-dialog";
 import { DeliveryRejectDialog } from "./delivery-reject-dialog";
+import { MerchandiseDeliveryConfigDialog } from "./merchandise-delivery-config-dialog";
 
 const DELIVERY_SKELETON_KEYS = ["del-skel-1", "del-skel-2", "del-skel-3", "del-skel-4", "del-skel-5"];
 
@@ -89,7 +91,7 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
   const [deliveryFee, setDeliveryFee] = useState<number>(
     typeof event.merchandise_delivery_fee === "number" ? event.merchandise_delivery_fee : 50000,
   );
-  const [isSavingEnv, setIsSavingEnv] = useState(false);
+  const [isConfigDialogOpen, setIsConfigDialogOpen] = useState(false);
 
   // Sync if server event prop changes
   useEffect(() => {
@@ -177,51 +179,6 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
     });
   };
 
-  const handleUpdateEnvironment = async (newEnv: "production" | "sandbox") => {
-    try {
-      setIsSavingEnv(true);
-      setCurrentEnv(newEnv);
-
-      // Optimistically dispatch change to PaymentGatewayTab
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(
-          new CustomEvent("gdg:merchandise-delivery-env-change", {
-            detail: { eventId: String(eventId), environment: newEnv },
-          }),
-        );
-      }
-
-      const res = await updateEventMerchandiseDeliveryConfigAction(eventId, newEnv, event);
-      if (res.success) {
-        toast.success(
-          `Merchandise delivery environment updated to ${newEnv === "production" ? "Live Production" : "Sandbox / Dev"}.`,
-        );
-      } else {
-        toast.error(res.error ?? "Failed to update environment.");
-        setCurrentEnv(initialEnv);
-        if (typeof window !== "undefined") {
-          window.dispatchEvent(
-            new CustomEvent("gdg:merchandise-delivery-env-change", {
-              detail: { eventId: String(eventId), environment: initialEnv },
-            }),
-          );
-        }
-      }
-    } catch {
-      toast.error("Failed to update environment.");
-      setCurrentEnv(initialEnv);
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(
-          new CustomEvent("gdg:merchandise-delivery-env-change", {
-            detail: { eventId: String(eventId), environment: initialEnv },
-          }),
-        );
-      }
-    } finally {
-      setIsSavingEnv(false);
-    }
-  };
-
   const handleRegistrationUpdated = (updated: FirestoreRegistration) => {
     setRegistrations((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
   };
@@ -260,6 +217,13 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
   const deliveredCount = registrations.filter((r) => r.delivery_request?.status === "delivered").length;
   const rejectedCount = registrations.filter((r) => r.delivery_request?.status === "rejected").length;
   const eventDeliveryFee = deliveryFee;
+  const totalDeliveryAmount = registrations.reduce(
+    (sum, r) => sum + (r.delivery_request?.fee_amount || eventDeliveryFee),
+    0,
+  );
+  const pendingDeliveryAmount = registrations
+    .filter((r) => r.delivery_request?.status === "pending_review")
+    .reduce((sum, r) => sum + (r.delivery_request?.fee_amount || eventDeliveryFee), 0);
   const totalFeesCollected = registrations
     .filter((r) => r.delivery_request?.payment_status === "paid")
     .reduce((sum, r) => sum + (r.delivery_request?.fee_amount || eventDeliveryFee), 0);
@@ -291,7 +255,7 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
 
   return (
     <div className="space-y-6">
-      {/* ── Environment Configuration Banner ─────────────────────────────────── */}
+      {/* ── Environment & Pricing Configuration Banner ─────────────────────── */}
       <Card className="border border-border/70 bg-card/60 p-4 shadow-2xs backdrop-blur-xs">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
@@ -303,11 +267,11 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
                   : "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400",
               )}
             >
-              <ShieldCheck className="size-5" />
+              <Truck className="size-5" />
             </div>
             <div className="space-y-0.5">
-              <div className="flex items-center gap-2">
-                <span className="font-semibold text-foreground text-sm">Delivery Fee Payment Environment</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-semibold text-foreground text-sm">Merchandise Delivery Configuration</span>
                 <Badge
                   variant="outline"
                   className={cn(
@@ -319,39 +283,28 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
                 >
                   {currentEnv === "production" ? "Live Production" : "Sandbox / Dev"}
                 </Badge>
+                <Badge variant="secondary" className="font-semibold text-[10px]">
+                  Fee: Rp {deliveryFee.toLocaleString("id-ID")}
+                </Badge>
               </div>
               <p className="text-muted-foreground text-xs leading-relaxed">
                 {currentEnv === "production"
-                  ? `Real payments will be generated and processed via DOKU QRIS Production for Rp ${eventDeliveryFee.toLocaleString("id-ID")} delivery fee.`
-                  : "Test mode enabled. Delivery fee requests will generate DOKU Sandbox payment links with mock QRIS testing."}
+                  ? `Real payments will be generated and processed via DOKU QRIS Production for Rp ${deliveryFee.toLocaleString("id-ID")} delivery fee.`
+                  : `Test mode enabled. Delivery fee requests generate DOKU Sandbox payment links with mock QRIS testing (Rp ${deliveryFee.toLocaleString("id-ID")}).`}
               </p>
             </div>
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
-            <Select
-              value={currentEnv}
-              disabled={isSavingEnv}
-              onValueChange={(val: "production" | "sandbox") => void handleUpdateEnvironment(val)}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsConfigDialogOpen(true)}
+              className="h-8 gap-1.5 px-3 text-xs font-medium"
             >
-              <SelectTrigger className="h-8 w-[160px] text-xs">
-                <SelectValue placeholder="Select Environment" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="production" className="text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="size-2 rounded-full bg-emerald-500" />
-                    <span>Live Production</span>
-                  </div>
-                </SelectItem>
-                <SelectItem value="sandbox" className="text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="size-2 rounded-full bg-amber-500" />
-                    <span>Sandbox / Dev</span>
-                  </div>
-                </SelectItem>
-              </SelectContent>
-            </Select>
+              <Settings className="size-3.5" />
+              Configure
+            </Button>
 
             <Button
               variant="outline"
@@ -375,7 +328,12 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
             {isLoading ? (
               <Shimmer className="my-1 h-7 w-12" />
             ) : (
-              <CardTitle className="font-bold text-xl sm:text-2xl">{totalCount}</CardTitle>
+              <>
+                <CardTitle className="font-bold text-xl sm:text-2xl">{totalCount}</CardTitle>
+                <p className="text-[11px] text-muted-foreground">
+                  Rp {totalDeliveryAmount.toLocaleString("id-ID")} total
+                </p>
+              </>
             )}
           </CardHeader>
         </Card>
@@ -386,9 +344,14 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
             {isLoading ? (
               <Shimmer className="my-1 h-7 w-12" />
             ) : (
-              <CardTitle className="font-bold text-blue-700 text-xl sm:text-2xl dark:text-blue-300">
-                {pendingReviewCount}
-              </CardTitle>
+              <>
+                <CardTitle className="font-bold text-blue-700 text-xl sm:text-2xl dark:text-blue-300">
+                  {pendingReviewCount}
+                </CardTitle>
+                <p className="text-[11px] text-blue-800/80 dark:text-blue-200/80">
+                  Rp {pendingDeliveryAmount.toLocaleString("id-ID")} pending
+                </p>
+              </>
             )}
           </CardHeader>
         </Card>
@@ -882,6 +845,19 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
         courierType={activeTracking.courier}
         recipientName={activeTracking.recipient}
         allowManualSearch={activeTracking.allowManualSearch}
+      />
+
+      <MerchandiseDeliveryConfigDialog
+        isOpen={isConfigDialogOpen}
+        onOpenChange={setIsConfigDialogOpen}
+        event={event}
+        eventId={eventId}
+        currentEnv={currentEnv}
+        currentFee={deliveryFee}
+        onSuccess={(newEnv, newFee) => {
+          setCurrentEnv(newEnv);
+          setDeliveryFee(newFee);
+        }}
       />
     </div>
   );

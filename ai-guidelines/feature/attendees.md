@@ -110,4 +110,8 @@ await updateRegistrationStatusAction(
    - Organizers can validate or override the assigned file inside `ApplicantDetailDialog` and click **Grant Access & Send Venue Ticket** (or bulk send pending from `VenueTicketDriveDialog`), which grants Drive `reader` permission to `registration.member_email` before dispatching the **Venue Ticket** email template (`id: "venue_ticket"`, `[[VenueTicketUrl]]`, `[[VenueGuideUrl]]`, `[[VehicleTicketUrl]]`).
 6. **Syncing Manually Added Bevy Attendees (`syncBevyAttendees` in `registrants-tab.tsx`)**:
    - Clicking **Sync Bevy Check-Ins** fetches the complete Bevy attendee roster (`fetchAllBevyEventAttendeesAction`), updates check-in state and `bevy_attendee_id` / `attendee_code` on existing registrations, and automatically imports any Bevy-only attendees into `event_registrations` (`id: "bevy_<id>"`, `status: "approved"`, `ticket_tier: att.ticket_title || "Bevy Ticket"`) via `updateRegistrationCheckInAction` so they appear directly in the Registrants table.
+7. **Manual Registrant Creation via Bevy API & DOKU Payment Links (`AddManualRegistrantDialog`)**:
+   - Form inputs: Full Name, Email, and Ticket / Bundle dropdown (listing active tickets and bundles).
+   - "Add Directly" calls `POST /webhook/api/add-bevy-attendee`, mapping `data.bevy_attendee_id` and `data.bevy_attendee_code` directly into `event_registrations` as `approved` / `paid_and_registered`.
+   - "Generate Payment Link" (visible for paid items) creates a `waiting_for_payment` document in Firestore, generates a DOKU payment link, and emails the checkout invoice to the attendee.
 

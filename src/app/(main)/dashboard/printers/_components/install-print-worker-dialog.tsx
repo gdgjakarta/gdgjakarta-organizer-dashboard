@@ -48,7 +48,7 @@ function CommandBlock({ command }: { command: string }) {
 
   return (
     <div className="relative rounded-lg bg-zinc-950 p-3 pr-11 font-mono text-emerald-400 text-xs">
-      <pre className="overflow-x-auto whitespace-pre">{command}</pre>
+      <pre className="whitespace-pre-wrap break-all">{command}</pre>
       <Button
         type="button"
         size="icon"
@@ -77,7 +77,7 @@ function GuideImage({ file, alt, caption }: { file: string; alt: string; caption
           alt={alt}
           loading="lazy"
           onError={() => setFailed(true)}
-          className="w-full max-w-md rounded-lg border"
+          className="h-auto max-w-full rounded-lg border object-contain"
         />
       </a>
       {caption && <figcaption className="text-muted-foreground text-xs">{caption}</figcaption>}
@@ -146,7 +146,7 @@ export function InstallPrintWorkerDialog({ health, onRecheck }: InstallPrintWork
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl md:max-w-4xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Wrench className="size-5 text-primary" />
@@ -162,7 +162,7 @@ export function InstallPrintWorkerDialog({ health, onRecheck }: InstallPrintWork
           <ol className="space-y-4">
             <Step index={1} title="Install the printer driver">
               <p className="text-muted-foreground text-xs leading-relaxed">
-                Download and install the Clabel driver from{" "}
+                Download and install the Clabel 'Print Driver' from{" "}
                 <a
                   href={PRINTER_DRIVER_URL}
                   target="_blank"

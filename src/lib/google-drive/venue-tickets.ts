@@ -524,7 +524,7 @@ export function computeSequencePdfAssignments(
   driveFiles: DriveVenueTicketFile[],
   options?: { preserveUnsent?: boolean },
 ): VenueTicketAssignmentResult {
-  const preserveUnsent = options?.preserveUnsent ?? false;
+  const preserveUnsent = options?.preserveUnsent ?? true;
   const eligibleRegistrants = sortEligibleRegistrantsByTime(registrations);
   const eligibleIds = new Set(eligibleRegistrants.map((r) => r.id));
   const filesById = new Map(driveFiles.map((f) => [f.id, f]));

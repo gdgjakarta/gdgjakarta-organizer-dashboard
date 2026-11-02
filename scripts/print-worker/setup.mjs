@@ -90,7 +90,9 @@ function warnSharedDevices(picked, uris) {
 async function pickPrinters(ask, previous) {
   const printers = await listPrinters();
   if (printers.length === 0) {
-    console.log("No CUPS printers found. Install the Clabel driver first, or leave blank to use the system default.");
+    console.log(
+      "No CUPS printers found. Install the Clabel 'Print Driver' first, or leave blank to use the system default.",
+    );
     const name = await ask("Printer name", "");
     return [name];
   }

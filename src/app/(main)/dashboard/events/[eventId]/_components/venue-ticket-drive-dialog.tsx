@@ -694,8 +694,8 @@ export function VenueTicketDriveDialog({
               </Button>
             </div>
             <p className="text-[11px] text-muted-foreground">
-              Uses your signed-in Google account so the folder can remain private. Already-sent tickets stay locked to
-              their recipients, while unsent registrants are remapped in registration-time sequence.
+              Uses your signed-in Google account so the folder can remain private. Already assigned tickets remain
+              locked to their registrants, and only unassigned registrants take the remaining available tickets.
             </p>
             <div className="space-y-1 pt-2">
               <div className="flex items-center justify-between">

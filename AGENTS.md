@@ -152,6 +152,11 @@ Keep a component inside its route until it is reused by another feature. Do not 
 
 - **Total Registered Attendee card**: `registrant-statistics.tsx` overview shows approved + `paid_and_registered` (+ attended/confirmed/registered) as one card; clicking applies the `registered_attendees` status filter handled in `registrants-tab.tsx`. Documented in the Status & Metric Guide.
 
+- **Merchandise Delivery Configuration Dialog**:
+  - Moved delivery configuration (fee amount in IDR with quick presets and payment environment: Live Production vs Development / Sandbox) into a modal dialog (`MerchandiseDeliveryConfigDialog`).
+  - Accessible via a dedicated **Configure** button on the Merchandise Delivery tab (`merchandise-delivery-tab.tsx`).
+  - Synchronizes changes in real-time across the dashboard via `updateEventMerchandiseDeliveryConfigAction` and optimistic window events (`gdg:merchandise-delivery-env-change`, `gdg:merchandise-delivery-fee-change`).
+
 - **Email Templates & Thermal Printers Ref & ID Alignment**:
   - Accepted / Ticket Confirmation email templates (`DEFAULT_ACCEPTED_EMAIL_HTML`) render the Attendee ID (`ID: {{ $('Add Bevy Attendee API').item.json.id }}`) directly beneath the Attendee Ref Code (`Ref: {{ $('Add Bevy Attendee API').item.json.attendee_code }}`).
   - Dynamic n8n webhook payload sanitizers (`adjustBodyEmailForApprovedWebhook`) and template parsers (`interpolateTemplateHtml`, `ensureAttendeeIdInAcceptedHtml`) preserve both ID and Ref code tags.
@@ -202,6 +207,12 @@ Keep a component inside its route until it is reused by another feature. Do not 
   - **"Venue Ticket" Email Template (`/dashboard/email-manager`)**: Added `id: "venue_ticket"` (`name: "Venue Ticket"`, `category: "rsvp"`, `badge: "Venue Pass"`) under the **RSVP & Tickets** group with `[[VenueTicketUrl]]`, `[[VenueGuideUrl]]` (how to get to the venue link), and `[[VehicleTicketUrl]]` (vehicle / parking pass link) placeholder support (if `VehicleTicketUrl` is empty, the `🚗 Vehicle / Parking Pass` row is automatically stripped from the email). The Email Composer features a floating **Save as Template** action button (`fixed right-6 bottom-6`) with **Save as Current Template** (overwrites active custom or pre-built template via `saveFeatureTemplateOverride`) and **Save as New Template** options.
   - **Searchable Google Sheets Picker (`email-blast-form.tsx`)**: In **Emails → Google Sheets Import**, organizers can browse/search their **Recent Spreadsheets** via a searchable Drive dropdown (`listDriveSpreadsheets`) or paste a `Spreadsheet URL` manually; `fetchSheetsList` and `fetchSheetHeaders` accept the optional OAuth `accessToken` to read private sheets.
 - **Auto-Import Bevy-Only Attendees on Sync (`syncBevyAttendees` in `registrants-tab.tsx`)**: Clicking **Sync Bevy Check-Ins** now automatically imports attendees manually added on Bevy who aren't yet in Firestore (`event_registrations`) as `approved` (`id: "bevy_<id>"`) via `updateRegistrationCheckInAction`, alongside syncing check-in states and `bevy_attendee_id` / `attendee_code` for existing registrants.
+- **Manual Registrant Addition with Bevy & DOKU Payment Link Options (`add-manual-registrant-dialog.tsx`)**:
+  - Organizers can manually add an attendee from the **Registrants** tab via the **Add Registrant** button.
+  - Inputs are strictly configured for **Full Name**, **Email**, and a grouped **Ticket / Bundle Selection** dropdown listing active ticket tiers and active bundle packages.
+  - Features two smart action buttons:
+    - **Add Directly**: Always available. Directly invokes the n8n Add Attendee to Bevy API webhook (`/webhook/api/add-bevy-attendee`) with interpolated confirmation emails, issues Bevy attendee codes, and saves the attendee in Firestore (`event_registrations`) as confirmed (`approved` or `paid_and_registered`).
+    - **Generate Payment Link**: Automatically shown when a paid ticket or bundle is detected (`price > 0`). Creates a pending registration (`waiting_for_payment`), generates a DOKU payment invoice via `generatePaymentLinkAction`, and emails the payment checkout link to the attendee.
 
 
 ## Code conventions

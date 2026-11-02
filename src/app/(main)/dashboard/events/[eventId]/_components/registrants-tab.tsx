@@ -29,6 +29,7 @@ import {
   Trash2,
   Truck,
   UserCheck,
+  UserPlus,
   Users,
   UserX,
   X,
@@ -140,6 +141,7 @@ import { checkDokuPaymentStatusAction, generatePaymentLinkAction } from "@/serve
 import { approveAttendeeWebhookAction } from "@/server/registration-actions";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
+import { AddManualRegistrantDialog } from "./add-manual-registrant-dialog";
 import { ApplicantDetailDialog } from "./applicant-detail-dialog";
 import { AttendeeStatusGuideDialog } from "./attendee-status-guide-dialog";
 import { CheckPaymentStatusDialog } from "./check-payment-status-dialog";
@@ -678,6 +680,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
   const [resendPaymentRegistration, setResendPaymentRegistration] = useState<FirestoreRegistration | null>(null);
   const [checkingPaymentRegistration, setCheckingPaymentRegistration] = useState<FirestoreRegistration | null>(null);
   const [isCheckPaymentDialogOpen, setIsCheckPaymentDialogOpen] = useState(false);
+  const [isAddRegistrantOpen, setIsAddRegistrantOpen] = useState(false);
   const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
   const [isVenueTicketDialogOpen, setIsVenueTicketDialogOpen] = useState(false);
   const [venueTicketConfig, setVenueTicketConfig] = useState<EventVenueTicketConfig | null>(null);
@@ -4655,43 +4658,44 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <ColumnCustomizer
-                  availableQuestions={availableQuestionFields}
-                  selectedQuestionKeys={selectedQuestionColumns}
-                  onToggleQuestion={handleToggleQuestion}
-                  onSelectAllQuestions={handleSelectAllQuestions}
-                  onClearAllQuestions={handleClearAllQuestions}
-                  visibleStandardColumns={visibleStandardColumns}
-                  onToggleStandardColumn={handleToggleStandardColumn}
-                  hasSessions={hasSessions}
-                  hasTickets={hasTickets || hasBundles}
-                  hasMerchandise={hasMerchandise}
-                  isCurationMode={isCurationMode}
-                  onResetDefaults={handleResetColumnDefaults}
-                />
+                {/* Primary Action Buttons */}
+                <Button
+                  size="sm"
+                  variant="default"
+                  onClick={() => setIsAddRegistrantOpen(true)}
+                  className="h-8 gap-1.5 text-xs shadow-xs"
+                  title="Manually add an attendee directly to Bevy or generate a payment link"
+                >
+                  <UserPlus className="size-3.5" />
+                  <span>Add Registrant</span>
+                </Button>
 
                 <Button
                   size="sm"
                   variant="default"
                   onClick={() => setIsQrScannerOpen(true)}
-                  className="h-8 gap-1.5 text-xs"
+                  className="h-8 gap-1.5 text-xs shadow-xs"
                   title="Open Multi-Mode Bevy QR Scanner for Event Check-in, Breakout Session Check-in, or Merchandise Collection"
                 >
                   <QrCode className="size-3.5" />
                   <span>QR Scanner</span>
                 </Button>
 
+                {/* Secondary / Specialized Dialog Actions */}
                 <Button
                   size="sm"
                   variant="outline"
                   onClick={() => setIsVenueTicketDialogOpen(true)}
-                  className="h-8 gap-1.5 border-primary/30 text-primary text-xs hover:bg-primary/10"
+                  className="h-8 gap-1.5 border-emerald-500/30 text-emerald-600 text-xs hover:bg-emerald-500/10 dark:text-emerald-400"
                   title="Sync Google Drive folder of Venue Tickets, map 1-to-1 by registration time, and grant view access before sending"
                 >
                   <Ticket className="size-3.5" />
                   <span>Venue Tickets</span>
                   {venueTicketConfig && venueTicketConfig.files.length > 0 && (
-                    <Badge variant="secondary" className="px-1.5 py-0 font-mono text-[10px]">
+                    <Badge
+                      variant="secondary"
+                      className="px-1.5 py-0 font-mono text-[10px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                    >
                       {venueTicketConfig.files.length}
                     </Badge>
                   )}
@@ -4711,6 +4715,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                   <span>Check Payment</span>
                 </Button>
 
+                {/* Sync & Utility Actions */}
                 <Button
                   size="sm"
                   variant="outline"
@@ -4734,6 +4739,22 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                   <RefreshCw className={cn("size-3", isSyncingBevy && "animate-spin")} />
                   <span>{isSyncingBevy ? "Syncing Bevy..." : "Sync Bevy Check-Ins"}</span>
                 </Button>
+
+                {/* Table View Customizer & Export */}
+                <ColumnCustomizer
+                  availableQuestions={availableQuestionFields}
+                  selectedQuestionKeys={selectedQuestionColumns}
+                  onToggleQuestion={handleToggleQuestion}
+                  onSelectAllQuestions={handleSelectAllQuestions}
+                  onClearAllQuestions={handleClearAllQuestions}
+                  visibleStandardColumns={visibleStandardColumns}
+                  onToggleStandardColumn={handleToggleStandardColumn}
+                  hasSessions={hasSessions}
+                  hasTickets={hasTickets || hasBundles}
+                  hasMerchandise={hasMerchandise}
+                  isCurationMode={isCurationMode}
+                  onResetDefaults={handleResetColumnDefaults}
+                />
 
                 <Button size="sm" variant="outline" onClick={handleExportCsv} className="h-8 gap-1 text-xs">
                   <Download className="size-3" />
@@ -6620,6 +6641,18 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
           setRegistrationsList((prev) => prev.map((r) => (r.id === updatedReg.id ? updatedReg : r)));
         }}
       />
+
+      {/* Add Registrant Manually Dialog */}
+      {currentEvent && (
+        <AddManualRegistrantDialog
+          isOpen={isAddRegistrantOpen}
+          onClose={() => setIsAddRegistrantOpen(false)}
+          event={currentEvent}
+          onSuccess={(newReg) => {
+            setRegistrationsList((prev) => [newReg, ...prev.filter((r) => r.id !== newReg.id)]);
+          }}
+        />
+      )}
     </div>
   );
 }

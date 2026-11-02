@@ -305,13 +305,19 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
   // KPI Calculations
   const stats = useMemo(() => {
     const total = registrations.length;
-    const pending = registrations.filter((r) => r.refund_request?.status === "waiting_for_approval").length;
+    const totalDepositAmount = registrations.reduce(
+      (acc, curr) => acc + getRegistrationRefundAmount(curr, effectiveEvent),
+      0,
+    );
+    const pendingList = registrations.filter((r) => r.refund_request?.status === "waiting_for_approval");
+    const pending = pendingList.length;
+    const pendingAmount = pendingList.reduce((acc, curr) => acc + getRegistrationRefundAmount(curr, effectiveEvent), 0);
     const completed = registrations.filter((r) => r.refund_request?.status === "refund_completed");
     const completedCount = completed.length;
     const completedAmount = completed.reduce((acc, curr) => acc + getRegistrationRefundAmount(curr, effectiveEvent), 0);
     const rejected = registrations.filter((r) => r.refund_request?.status === "rejected").length;
 
-    return { total, pending, completedCount, completedAmount, rejected };
+    return { total, totalDepositAmount, pending, pendingAmount, completedCount, completedAmount, rejected };
   }, [registrations, effectiveEvent]);
 
   // Filtered List
@@ -359,7 +365,7 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
           </CardHeader>
           <CardContent>
             <div className="font-bold text-2xl">{stats.total}</div>
-            <p className="text-[11px] text-muted-foreground">Paid waitlist refund claims</p>
+            <p className="text-[11px] text-muted-foreground">{formatRupiah(stats.totalDepositAmount)} total deposit</p>
           </CardContent>
         </Card>
 
@@ -372,7 +378,9 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
           </CardHeader>
           <CardContent>
             <div className="font-bold text-2xl text-amber-700 dark:text-amber-300">{stats.pending}</div>
-            <p className="text-[11px] text-amber-800/80 dark:text-amber-200/80">Pending organizer disbursement</p>
+            <p className="text-[11px] text-amber-800/80 dark:text-amber-200/80">
+              {formatRupiah(stats.pendingAmount)} pending disbursement
+            </p>
           </CardContent>
         </Card>
 

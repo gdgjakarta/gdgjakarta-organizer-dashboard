@@ -18,7 +18,6 @@ import {
   QrCode,
   RotateCcw,
   ShieldCheck,
-  Truck,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -371,9 +370,27 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
         }
       }
     };
+    const handleFeeChange = (e: Event) => {
+      const customEvent = e as CustomEvent<{ eventId: string; fee: number }>;
+      if (customEvent.detail && String(customEvent.detail.eventId) === String(event.id)) {
+        const nextFee = customEvent.detail.fee;
+        setMerchandiseDeliveryFee(nextFee);
+        if (initialSnapshotRef.current) {
+          try {
+            const parsed = JSON.parse(initialSnapshotRef.current);
+            parsed.merchandiseDeliveryFee = nextFee;
+            initialSnapshotRef.current = JSON.stringify(parsed);
+          } catch {
+            // ignore
+          }
+        }
+      }
+    };
     window.addEventListener("gdg:merchandise-delivery-env-change", handleEnvChange);
+    window.addEventListener("gdg:merchandise-delivery-fee-change", handleFeeChange);
     return () => {
       window.removeEventListener("gdg:merchandise-delivery-env-change", handleEnvChange);
+      window.removeEventListener("gdg:merchandise-delivery-fee-change", handleFeeChange);
     };
   }, [event.id]);
 
@@ -508,43 +525,6 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
       unsubscribe?.();
     };
   }, [event.id]);
-
-  const handleMerchandiseDeliveryEnvChange = async (val: "production" | "sandbox") => {
-    setMerchandiseDeliveryEnv(val);
-
-    // Optimistically broadcast change to MerchandiseDeliveryTab
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(
-        new CustomEvent("gdg:merchandise-delivery-env-change", {
-          detail: { eventId: String(event.id), environment: val },
-        }),
-      );
-    }
-
-    // Keep baseline snapshot in sync so changing environment doesn't trigger dirty prompt
-    if (initialSnapshotRef.current) {
-      try {
-        const parsed = JSON.parse(initialSnapshotRef.current);
-        parsed.merchandiseDeliveryEnv = val;
-        initialSnapshotRef.current = JSON.stringify(parsed);
-      } catch {
-        // ignore
-      }
-    }
-
-    try {
-      const res = await updateEventMerchandiseDeliveryConfigAction(String(event.id), val, event);
-      if (res.success) {
-        toast.success(
-          `Delivery payment environment set to ${val === "production" ? "Live Production" : "Development / Sandbox"}.`,
-        );
-      } else {
-        toast.error(res.error || "Failed to update delivery payment environment.");
-      }
-    } catch {
-      toast.error("Failed to update delivery payment environment.");
-    }
-  };
 
   // Handle browser unload and navigation intercept when dirty
   useEffect(() => {
@@ -1027,103 +1007,6 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
               </p>
             </Label>
           </RadioGroup>
-
-          {/* ── Merchandise Delivery Pricing & Environment ── */}
-          <div className="space-y-4 border-t pt-4">
-            <div className="flex items-center gap-2">
-              <Truck className="size-4 text-primary" />
-              <div>
-                <h4 className="font-semibold text-foreground text-xs">Merchandise Delivery Pricing & Configuration</h4>
-                <p className="text-[11px] text-muted-foreground">
-                  Configure the handling and courier delivery fee charged to attendees who claim uncollected merchandise
-                  after missing event check-in.
-                </p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {/* Configurable Delivery Price (IDR) */}
-              <Field>
-                <FieldLabel htmlFor="merch-delivery-fee" className="font-semibold text-xs">
-                  Merchandise Delivery Fee (IDR)
-                </FieldLabel>
-                <div className="relative">
-                  <span className="absolute inset-y-0 left-0 flex items-center pl-3 font-semibold text-muted-foreground text-xs">
-                    Rp
-                  </span>
-                  <Input
-                    id="merch-delivery-fee"
-                    type="number"
-                    min={0}
-                    step={1000}
-                    value={merchandiseDeliveryFee}
-                    onChange={(e) => {
-                      const val = Number.parseInt(e.target.value, 10);
-                      setMerchandiseDeliveryFee(Number.isNaN(val) ? 0 : Math.max(0, val));
-                    }}
-                    className="pl-9 font-semibold text-xs"
-                    placeholder="50000"
-                  />
-                </div>
-                <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                  <span className="mr-1 text-[10px] text-muted-foreground">Quick presets:</span>
-                  {[25000, 35000, 50000, 75000, 100000].map((preset) => (
-                    <Button
-                      key={preset}
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setMerchandiseDeliveryFee(preset)}
-                      className={cn(
-                        "h-6 px-2 text-[10px]",
-                        merchandiseDeliveryFee === preset && "border-primary bg-primary/10 font-semibold text-primary",
-                      )}
-                    >
-                      Rp {preset.toLocaleString("id-ID")}
-                    </Button>
-                  ))}
-                </div>
-                <p className="text-[11px] text-muted-foreground">
-                  Current fee:{" "}
-                  <strong className="text-foreground">Rp {merchandiseDeliveryFee.toLocaleString("id-ID")}</strong>.
-                  Applied to each uncollected perk courier delivery invoice.
-                </p>
-              </Field>
-
-              {/* Delivery Fee Environment */}
-              <Field>
-                <FieldLabel htmlFor="merch-delivery-env" className="font-semibold text-xs">
-                  Delivery Payment Environment
-                </FieldLabel>
-                <Select
-                  value={merchandiseDeliveryEnv}
-                  onValueChange={(val: "production" | "sandbox") => void handleMerchandiseDeliveryEnvChange(val)}
-                >
-                  <SelectTrigger id="merch-delivery-env" className="text-xs">
-                    <SelectValue placeholder="Select Environment" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="production" className="text-xs">
-                      <div className="flex items-center gap-2">
-                        <span className="size-2 rounded-full bg-emerald-500" />
-                        <span>Live Production (Real QRIS Rp {merchandiseDeliveryFee.toLocaleString("id-ID")})</span>
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="sandbox" className="text-xs">
-                      <div className="flex items-center gap-2">
-                        <span className="size-2 rounded-full bg-amber-500" />
-                        <span>Development / Sandbox (Test Simulator)</span>
-                      </div>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-[11px] text-muted-foreground">
-                  Specifies whether attendees who missed on-site check-in are charged via DOKU Production or Sandbox
-                  invoices.
-                </p>
-              </Field>
-            </div>
-          </div>
         </CardContent>
       </Card>
 
@@ -2070,16 +1953,6 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
                 <strong>QRIS</strong> (GoPay, OVO, Dana, ShopeePay, LinkAja, and all Mobile Banking apps) via DOKU
                 Checkout Hosted Page. Attendees scan the generated QR code with any QRIS-compatible e-wallet or banking
                 app to complete payment.
-              </p>
-            </div>
-
-            <div className="rounded-lg border p-3">
-              <div className="flex items-center justify-between text-[11px]">
-                <span className="text-muted-foreground">Active Merchandise Delivery Fee:</span>
-                <strong className="text-foreground">Rp {merchandiseDeliveryFee.toLocaleString("id-ID")}</strong>
-              </div>
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                Billed when an approved attendee requests delivery for uncollected swag perks.
               </p>
             </div>
           </CardContent>

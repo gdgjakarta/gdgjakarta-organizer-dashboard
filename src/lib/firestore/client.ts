@@ -4943,17 +4943,26 @@ export async function getEventMerchandiseDeliveryRequests(eventId: string): Prom
 }
 
 /**
- * Updates the merchandise delivery payment environment configuration on the event document.
+ * Updates the merchandise delivery configuration on the event document.
  */
 export async function updateEventMerchandiseDeliveryConfig(
   eventId: string,
-  environment: "production" | "sandbox",
+  config:
+    | {
+        environment?: "production" | "sandbox";
+        fee?: number;
+      }
+    | ("production" | "sandbox"),
   baseEvent?: Partial<FirestoreEvent>,
 ): Promise<void> {
   if (typeof window === "undefined") return;
   const eventRef = doc(db, "events", String(eventId));
+  const envValue = typeof config === "string" ? config : config.environment;
+  const feeValue = typeof config === "object" ? config.fee : undefined;
+
   const updatePayload: Record<string, unknown> = {
-    merchandise_delivery_payment_environment: environment,
+    ...(envValue ? { merchandise_delivery_payment_environment: envValue } : {}),
+    ...(typeof feeValue === "number" ? { merchandise_delivery_fee: feeValue } : {}),
     updated_at: new Date().toISOString(),
   };
 
