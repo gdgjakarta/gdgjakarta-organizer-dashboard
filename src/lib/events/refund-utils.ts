@@ -110,24 +110,129 @@ export function getEventRefundCutoff(event?: FirestoreEvent): RefundCutoffInfo {
 }
 
 /**
+ * Checks whether an attendee has uncollected merchandise after the event has ended.
+ */
+export function hasUncollectedMerchandise(registration: FirestoreRegistration, event?: FirestoreEvent | null): boolean {
+  if (!registration.selected_merchandise || registration.selected_merchandise.length === 0) {
+    return false;
+  }
+  if (registration.is_merchandise_collected || registration.is_merchandise_refunded) {
+    return false;
+  }
+  // Check if event has ended
+  const targetDate = event?.end_date || event?.start_date;
+  const isPast = targetDate ? new Date(targetDate).getTime() < Date.now() : Boolean(event?.status === "Completed");
+  return isPast;
+}
+
+/**
+ * Calculates the refundable merchandise amount for a registration.
+ */
+export function getRegistrationMerchandiseRefundAmount(
+  registration: FirestoreRegistration,
+  event?: FirestoreEvent | null,
+): number {
+  if (
+    registration.refund_request?.status === "refund_completed" &&
+    registration.refund_request?.refund_type === "merchandise" &&
+    typeof registration.refund_request.refund_amount === "number" &&
+    registration.refund_request.refund_amount > 0
+  ) {
+    return registration.refund_request.refund_amount;
+  }
+
+  const items = registration.refund_request?.merchandise_items ?? registration.selected_merchandise ?? [];
+  let total = items.reduce((sum, item) => sum + (item.price ?? 0) * (item.quantity ?? 1), 0);
+
+  // If a merchandise voucher discount was applied, subtract it proportionally or directly
+  if (
+    registration.voucher_discount_amount &&
+    registration.voucher_discount_amount > 0 &&
+    registration.selected_merchandise &&
+    registration.selected_merchandise.length > 0
+  ) {
+    const isMerchVoucher =
+      registration.voucher_discount_type === "fixed" || registration.voucher_code?.toUpperCase().includes("MERCH");
+    if (isMerchVoucher) {
+      total = Math.max(0, total - registration.voucher_discount_amount);
+    }
+  }
+
+  // Cap at actual payment amount if available
+  if (typeof registration.payment_amount === "number" && registration.payment_amount > 0) {
+    total = Math.min(total, registration.payment_amount);
+  }
+
+  return Math.max(0, total);
+}
+
+/**
  * Checks whether an attendee's registration is eligible for refund request:
- * 1. Must be `paid_waitlisted` (or has existing refund_request).
- * 2. Has paid commitment fee or ticket amount (> 0).
+ * 1. Must be `paid_waitlisted` (or has existing refund_request), OR has uncollected merchandise post-event.
+ * 2. Has paid commitment fee or ticket amount (> 0) / purchased merchandise.
  * 3. Event refund_enabled must not be false.
- * 4. If creating a new request, current time must be before the cutoff.
+ * 4. If creating a new request, current time must be before the cutoff (unless rejected or merchandise refund).
  */
 export function isRegistrationEligibleForRefund(
   registration: FirestoreRegistration,
   event?: FirestoreEvent,
+  targetRefundType?: "ticket_deposit" | "merchandise",
 ): {
   isEligible: boolean;
   canSubmitNew: boolean;
   hasActiveRequest: boolean;
   reason?: string;
   cutoffInfo: RefundCutoffInfo;
+  isMerchandiseRefund?: boolean;
 } {
   const cutoffInfo = getEventRefundCutoff(event);
   const hasActiveRequest = Boolean(registration.refund_request);
+  const activeIsMerch = registration.refund_request?.refund_type === "merchandise";
+
+  if (targetRefundType === "merchandise" || activeIsMerch) {
+    const hasUncollected = hasUncollectedMerchandise(registration, event);
+    const merchAmount = getRegistrationMerchandiseRefundAmount(registration, event);
+
+    if (hasActiveRequest && activeIsMerch) {
+      return {
+        isEligible: true,
+        canSubmitNew: false,
+        hasActiveRequest: true,
+        cutoffInfo,
+        isMerchandiseRefund: true,
+      };
+    }
+
+    if (!hasUncollected && !hasActiveRequest) {
+      return {
+        isEligible: false,
+        canSubmitNew: false,
+        hasActiveRequest: false,
+        reason: "No uncollected merchandise available for refund.",
+        cutoffInfo,
+        isMerchandiseRefund: true,
+      };
+    }
+
+    if (merchAmount <= 0 && !hasActiveRequest) {
+      return {
+        isEligible: false,
+        canSubmitNew: false,
+        hasActiveRequest: false,
+        reason: "Merchandise has zero paid value to refund.",
+        cutoffInfo,
+        isMerchandiseRefund: true,
+      };
+    }
+
+    return {
+      isEligible: true,
+      canSubmitNew: true,
+      hasActiveRequest: false,
+      cutoffInfo,
+      isMerchandiseRefund: true,
+    };
+  }
 
   if (event?.refund_enabled === false) {
     return {
@@ -202,8 +307,9 @@ export function isRegistrationEligibleForRefund(
     };
   }
 
-  // Rejected paid waitlisted attendees can submit a refund request even if the refund cutoff date has passed
-  if (cutoffInfo.isExpired && !isRejectedStatus) {
+  // After event ends (cutoff expired), ticket/deposit refunds are strictly CLOSED.
+  // The only post-event refund allowed is for uncollected merchandise, or for existing active requests.
+  if (cutoffInfo.isExpired) {
     return {
       isEligible: false,
       canSubmitNew: false,

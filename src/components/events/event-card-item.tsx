@@ -625,18 +625,25 @@ export function EventCardItem({
               </div>
             )}
 
-            {/* Refund Status Callout Banner */}
+            {/* Refund Status Callout Banner (Pre-event for tickets, or for active requests) */}
             {(() => {
               if (!reg) return null;
-              const refundInfo = isRegistrationEligibleForRefund(reg, effectiveEvent);
+              const refundInfo = isRegistrationEligibleForRefund(
+                reg,
+                effectiveEvent,
+                isPast ? "merchandise" : "ticket_deposit",
+              );
               const refundReq = reg.refund_request;
 
+              // Don't show pre-event ticket refund banner once the event has ended unless there's an active request
+              if (isPast && !refundReq) return null;
               if (!refundInfo.isEligible && !refundReq) return null;
 
               if (refundReq) {
                 const isRefundPending = refundReq.status === "waiting_for_approval";
                 const isRefundCompleted = refundReq.status === "refund_completed";
                 const isRefundRejected = refundReq.status === "rejected";
+                const isMerch = refundReq.refund_type === "merchandise";
 
                 return (
                   <div
@@ -651,9 +658,11 @@ export function EventCardItem({
                     <div className="flex items-center gap-1.5 truncate">
                       <CreditCard className="size-3.5 shrink-0" />
                       <span className="truncate font-semibold text-[11px]">
-                        {isRefundPending && "Refund Request Under Review"}
-                        {isRefundCompleted && "Refund Completed • RSVP Canceled"}
-                        {isRefundRejected && "Refund Request Rejected"}
+                        {isRefundPending &&
+                          (isMerch ? "Merchandise Refund Under Review" : "Refund Request Under Review")}
+                        {isRefundCompleted &&
+                          (isMerch ? "Merchandise Refund Completed" : "Refund Completed • RSVP Canceled")}
+                        {isRefundRejected && (isMerch ? "Merchandise Refund Rejected" : "Refund Request Rejected")}
                       </span>
                     </div>
                     <Badge
@@ -673,7 +682,7 @@ export function EventCardItem({
                 );
               }
 
-              if (refundInfo.canSubmitNew) {
+              if (refundInfo.canSubmitNew && !isPast) {
                 return (
                   <div className="space-y-1.5 rounded-md border border-indigo-500/30 bg-indigo-500/5 p-2.5 text-xs">
                     <div className="flex items-center justify-between">
@@ -709,15 +718,17 @@ export function EventCardItem({
               </div>
             )}
 
-            {/* Merchandise Delivery Info (No-Show Attendee) */}
+            {/* Merchandise Delivery Info (Uncollected Merchandise) */}
             {(() => {
               if (!reg) return null;
               const hasPurchasedMerch = Boolean(reg.selected_merchandise && reg.selected_merchandise.length > 0);
-              const isNotCheckedIn = !reg.is_checked_in && reg.status !== "attended";
-              const isEligibleForDelivery = isPast && isNotCheckedIn && hasPurchasedMerch;
+              const isUncollected = !reg.is_merchandise_collected && !reg.is_merchandise_refunded;
+              const isEligibleForMerchActions = isPast && isUncollected && hasPurchasedMerch;
               const deliveryReq = reg.delivery_request;
+              const refundReq = reg.refund_request;
+              const isCheckedIn = Boolean(reg.is_checked_in) || reg.status === "attended";
 
-              if (isEligibleForDelivery && !deliveryReq) {
+              if (isEligibleForMerchActions && !deliveryReq && !refundReq) {
                 return (
                   <div className="rounded-md border border-primary/30 bg-primary/5 p-2.5 text-[11px]">
                     <div className="flex items-center justify-between">
@@ -726,12 +737,13 @@ export function EventCardItem({
                         Uncollected Merchandise
                       </span>
                       <Badge variant="outline" className="border-primary/30 text-[10px] text-primary">
-                        Delivery Available
+                        {isCheckedIn ? "Free Courier Available" : "Delivery / Refund Available"}
                       </Badge>
                     </div>
                     <p className="mt-1 text-[10px] text-muted-foreground leading-relaxed">
-                      Event concluded and check-in was missed. You can request courier delivery for your uncollected
-                      merchandise.
+                      {isCheckedIn
+                        ? "Missed picking up merchandise at the venue? Claim Free Courier Delivery or request a refund."
+                        : "Event concluded. You can request courier delivery or submit a merchandise refund."}
                     </p>
                   </div>
                 );
@@ -897,11 +909,17 @@ export function EventCardItem({
                 />
               )}
 
-              {/* Refund Request / Status Button */}
+              {/* Refund Request / Status Button (Pre-event for tickets, or for active requests) */}
               {(() => {
-                const refundInfo = isRegistrationEligibleForRefund(reg, effectiveEvent);
+                const refundInfo = isRegistrationEligibleForRefund(
+                  reg,
+                  effectiveEvent,
+                  isPast ? "merchandise" : "ticket_deposit",
+                );
                 const refundReq = reg.refund_request;
 
+                // After event ends, new refunds are only initiated via the Uncollected Merchandise section
+                if (isPast && !refundReq) return null;
                 if (!refundInfo.isEligible && !refundReq) return null;
 
                 if (refundReq) {
@@ -933,7 +951,7 @@ export function EventCardItem({
                   );
                 }
 
-                if (refundInfo.canSubmitNew) {
+                if (refundInfo.canSubmitNew && !isPast) {
                   return (
                     <Button
                       variant="outline"
@@ -953,11 +971,13 @@ export function EventCardItem({
               {/* Merchandise Delivery Request / Status Button */}
               {(() => {
                 const hasPurchasedMerch = Boolean(reg.selected_merchandise && reg.selected_merchandise.length > 0);
-                const isNotCheckedIn = !reg.is_checked_in && reg.status !== "attended";
-                const isEligibleForDelivery = isPast && isNotCheckedIn && hasPurchasedMerch;
+                const isUncollected = !reg.is_merchandise_collected && !reg.is_merchandise_refunded;
+                const isEligibleForMerchActions = isPast && isUncollected && hasPurchasedMerch;
                 const deliveryReq = reg.delivery_request;
+                const refundReq = reg.refund_request;
+                const isCheckedIn = Boolean(reg.is_checked_in) || reg.status === "attended";
 
-                if (isEligibleForDelivery && !deliveryReq) {
+                if (isEligibleForMerchActions && !deliveryReq && !refundReq) {
                   return (
                     <Button
                       variant="outline"
@@ -966,7 +986,7 @@ export function EventCardItem({
                       onClick={() => setIsDeliveryModalOpen(true)}
                     >
                       <Truck className="size-3.5" />
-                      Request Delivery 📦
+                      {isCheckedIn ? "Free Delivery 📦" : "Request Delivery 📦"}
                     </Button>
                   );
                 }

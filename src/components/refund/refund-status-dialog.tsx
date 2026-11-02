@@ -16,7 +16,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { formatFirestoreDate } from "@/lib/date-utils";
-import { formatRupiah, getRegistrationDiscountBreakdown, getRegistrationRefundAmount } from "@/lib/events/refund-utils";
+import {
+  formatRupiah,
+  getRegistrationDiscountBreakdown,
+  getRegistrationMerchandiseRefundAmount,
+  getRegistrationRefundAmount,
+} from "@/lib/events/refund-utils";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
@@ -43,7 +48,10 @@ export function RefundStatusDialog({
   const isApproved = status === "refund_completed";
   const isRejected = status === "rejected";
 
-  const refundAmount = getRegistrationRefundAmount(registration, event);
+  const isMerchRefund = refundReq.refund_type === "merchandise";
+  const refundAmount = isMerchRefund
+    ? refundReq.refund_amount || getRegistrationMerchandiseRefundAmount(registration, event)
+    : getRegistrationRefundAmount(registration, event);
   const discountBreakdown = getRegistrationDiscountBreakdown(registration, event);
 
   const formattedDate = formatFirestoreDate(refundReq.requested_at, "dd MMM yyyy, HH:mm", "—");

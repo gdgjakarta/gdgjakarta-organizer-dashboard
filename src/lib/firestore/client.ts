@@ -4885,6 +4885,7 @@ export function subscribePaymentPolicyContentDoc(
 export async function saveMerchandiseDeliveryRequest(
   registrationId: string,
   deliveryRequest: MerchandiseDeliveryRequest,
+  updatedItems?: SelectedMerchandiseOrder[],
 ): Promise<void> {
   if (typeof window === "undefined") return;
   const docRef = doc(db, "event_registrations", registrationId);
@@ -4894,6 +4895,7 @@ export async function saveMerchandiseDeliveryRequest(
       ...deliveryRequest,
       updated_at: now,
     },
+    ...(updatedItems && updatedItems.length > 0 ? { selected_merchandise: updatedItems } : {}),
     updated_at: now,
   });
   await updateDoc(docRef, sanitized);

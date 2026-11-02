@@ -751,12 +751,13 @@ export interface SubmitMerchandiseDeliveryInput {
   customerEmail: string;
   eventTitle?: string;
   eventPictureUrl?: string;
+  items?: import("./types").SelectedMerchandiseOrder[];
 }
 
 export async function submitMerchandiseDeliveryRequestAction(input: SubmitMerchandiseDeliveryInput) {
   try {
     const { generatePaymentLinkAction } = await import("@/server/payment-actions");
-    const { saveMerchandiseDeliveryRequest, getFirestoreEventById } = await import("./client");
+    const { saveMerchandiseDeliveryRequest, getFirestoreEventById, getRegistrationById } = await import("./client");
     const _typeModule = await import("./types");
 
     let isProduction: boolean | undefined;
@@ -764,9 +765,14 @@ export async function submitMerchandiseDeliveryRequestAction(input: SubmitMercha
     let deliveryPaymentEnv: "production" | "sandbox" = "production";
     let deliveryFee = 50000;
     let eventDoc: Awaited<ReturnType<typeof getFirestoreEventById>> = null;
+    let regDoc: Awaited<ReturnType<typeof getRegistrationById>> = null;
 
     try {
-      eventDoc = await getFirestoreEventById(String(input.eventId));
+      [eventDoc, regDoc] = await Promise.all([
+        getFirestoreEventById(String(input.eventId)),
+        getRegistrationById(input.registrationId),
+      ]);
+
       const configuredEnv = eventDoc?.merchandise_delivery_payment_environment ?? eventDoc?.payment_environment;
       if (configuredEnv === "sandbox" || (!configuredEnv && eventDoc?.is_test)) {
         deliveryPaymentEnv = "sandbox";
@@ -783,43 +789,10 @@ export async function submitMerchandiseDeliveryRequestAction(input: SubmitMercha
       // ignore fallback
     }
 
-    // 1. Generate payment link for distribution & commitment cutting fee
-    const paymentPayload = {
-      customer: {
-        name: input.recipientName.trim(),
-        email: input.customerEmail.trim(),
-        phone: input.recipientPhone.trim(),
-      },
-      event: {
-        id: String(input.eventId),
-        title: input.eventTitle ?? "GDG Jakarta Event",
-        headerEmailUrl:
-          eventDoc?.headerEmailUrl?.trim() || eventDoc?.header_email_url?.trim() || DEFAULT_PAYMENT_HEADER_EMAIL_URL,
-        paymentDeadlineMinutes:
-          eventDoc?.paymentDeadlinesInMinutes ??
-          eventDoc?.paymentDeadlineMinutes ??
-          eventDoc?.payment_deadline_minutes ??
-          1440,
-      },
-      items: [
-        {
-          name: "Merchandise Delivery Fee (No-Show Commitment Cutting Fee)",
-          quantity: 1,
-          price: deliveryFee,
-          type: "Fee",
-          description: "Distribution delivery cost & non-commitment cutting fee for uncollected event merchandise.",
-        },
-      ],
-      fees: [],
-      payment: {
-        paymentMethodTypes: ["QRIS"],
-        sendEmail: true,
-        emailTemplate: eventDoc?.payment_email_template ?? eventDoc?.paymentEmailTemplate ?? "Ticketing",
-      },
-      referenceId: `DELIV-${input.registrationId}-${Date.now().toString(36).toUpperCase()}`,
-      isProduction,
-      webhookUrl: paymentWebhookUrl,
-    };
+    // Check attendance: If attendee checked in or attended, delivery fee is waived (Rp 0)
+    // because uncollected merchandise is due to venue stock shortages/mismatches.
+    const isCheckedInAttendee = Boolean(regDoc?.is_checked_in) || regDoc?.status === "attended";
+    const effectiveFee = isCheckedInAttendee ? 0 : deliveryFee;
 
     let payResult: {
       success: boolean;
@@ -827,22 +800,64 @@ export async function submitMerchandiseDeliveryRequestAction(input: SubmitMercha
       invoiceNumber?: string;
       requestId?: string;
       error?: string;
-    };
+    } = { success: true };
 
-    try {
-      payResult = await generatePaymentLinkAction(paymentPayload);
-    } catch (payErr) {
-      console.warn("[submitMerchandiseDeliveryRequestAction] Payment generation error:", payErr);
-      payResult = {
-        success: false,
-        error: payErr instanceof Error ? payErr.message : "Payment generation failed",
+    // Generate payment link only if fee > 0 (no-show attendees)
+    if (effectiveFee > 0) {
+      const paymentPayload = {
+        customer: {
+          name: input.recipientName.trim(),
+          email: input.customerEmail.trim(),
+          phone: input.recipientPhone.trim(),
+        },
+        event: {
+          id: String(input.eventId),
+          title: input.eventTitle ?? "GDG Jakarta Event",
+          headerEmailUrl:
+            eventDoc?.headerEmailUrl?.trim() || eventDoc?.header_email_url?.trim() || DEFAULT_PAYMENT_HEADER_EMAIL_URL,
+          paymentDeadlineMinutes:
+            eventDoc?.paymentDeadlinesInMinutes ??
+            eventDoc?.paymentDeadlineMinutes ??
+            eventDoc?.payment_deadline_minutes ??
+            1440,
+        },
+        items: [
+          {
+            name: "Merchandise Delivery Fee (No-Show Commitment Cutting Fee)",
+            quantity: 1,
+            price: effectiveFee,
+            type: "Fee",
+            description: "Distribution delivery cost & non-commitment cutting fee for uncollected event merchandise.",
+          },
+        ],
+        fees: [],
+        payment: {
+          paymentMethodTypes: ["QRIS"],
+          sendEmail: true,
+          emailTemplate: eventDoc?.payment_email_template ?? eventDoc?.paymentEmailTemplate ?? "Ticketing",
+        },
+        referenceId: `DELIV-${input.registrationId}-${Date.now().toString(36).toUpperCase()}`,
+        isProduction,
+        webhookUrl: paymentWebhookUrl,
       };
+
+      try {
+        payResult = await generatePaymentLinkAction(paymentPayload);
+      } catch (payErr) {
+        console.warn("[submitMerchandiseDeliveryRequestAction] Payment generation error:", payErr);
+        payResult = {
+          success: false,
+          error: payErr instanceof Error ? payErr.message : "Payment generation failed",
+        };
+      }
     }
 
     const now = new Date().toISOString();
+    const finalItems = input.items && input.items.length > 0 ? input.items : regDoc?.selected_merchandise;
+
     const deliveryRequest: import("./types").MerchandiseDeliveryRequest = {
       id: `del_${input.registrationId}_${Date.now()}`,
-      status: "pending_payment",
+      status: effectiveFee === 0 ? "pending_review" : "pending_payment",
       recipient_name: input.recipientName.trim(),
       recipient_phone: input.recipientPhone.trim(),
       shipping_address: input.shippingAddress.trim(),
@@ -850,16 +865,17 @@ export async function submitMerchandiseDeliveryRequestAction(input: SubmitMercha
       postal_code: input.postalCode.trim(),
       notes: input.notes?.trim() ? input.notes.trim() : undefined,
       requested_at: now,
-      fee_amount: deliveryFee,
-      payment_status: payResult.success && payResult.paymentUrl ? "pending" : "unpaid",
+      fee_amount: effectiveFee,
+      payment_status: effectiveFee === 0 ? "paid" : payResult.success && payResult.paymentUrl ? "pending" : "unpaid",
       payment_environment: deliveryPaymentEnv,
       payment_url: payResult.paymentUrl,
       payment_invoice_number: payResult.invoiceNumber,
       payment_request_id: payResult.requestId,
+      items: finalItems,
       updated_at: now,
     };
 
-    await saveMerchandiseDeliveryRequest(input.registrationId, deliveryRequest);
+    await saveMerchandiseDeliveryRequest(input.registrationId, deliveryRequest, input.items);
 
     await revalidateDashboardPath("/dashboard/member/my-events");
     await revalidateDashboardPath("/dashboard/my-events");
@@ -1083,6 +1099,8 @@ export interface SubmitRefundRequestInput {
   isResubmission?: boolean;
   refundRequestId?: string;
   requestedAt?: string;
+  refundType?: import("./types").RefundType;
+  merchandiseItems?: import("./types").SelectedMerchandiseOrder[];
 }
 
 /**
@@ -1096,6 +1114,8 @@ export async function submitRefundRequestAction(input: SubmitRefundRequestInput)
     const refundRequest: import("./types").RefundRequest = {
       id: input.refundRequestId || `ref_${input.registrationId}_${Date.now()}`,
       status: "waiting_for_approval",
+      refund_type: input.refundType ?? "ticket_deposit",
+      merchandise_items: input.merchandiseItems,
       bank_name: input.bankName.trim(),
       bank_account_name: input.bankAccountName.trim(),
       bank_account_number: input.bankAccountNumber.trim(),

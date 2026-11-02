@@ -17,7 +17,12 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { formatRupiah, getRegistrationDiscountBreakdown, getRegistrationRefundAmount } from "@/lib/events/refund-utils";
+import {
+  formatRupiah,
+  getRegistrationDiscountBreakdown,
+  getRegistrationMerchandiseRefundAmount,
+  getRegistrationRefundAmount,
+} from "@/lib/events/refund-utils";
 import { approveAndCompleteRefundAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent, FirestoreRegistration } from "@/lib/firestore/types";
 import { useAuthStore } from "@/stores/auth/auth-provider";
@@ -43,7 +48,10 @@ export function RefundApprovalDialog({
 }: RefundApprovalDialogProps) {
   const user = useAuthStore((s) => s.user);
   const refundReq = registration.refund_request;
-  const refundAmount = getRegistrationRefundAmount(registration, event);
+  const isMerch = refundReq?.refund_type === "merchandise";
+  const refundAmount = isMerch
+    ? refundReq?.refund_amount || getRegistrationMerchandiseRefundAmount(registration, event)
+    : getRegistrationRefundAmount(registration, event);
   const discountBreakdown = getRegistrationDiscountBreakdown(registration, event);
 
   const [completionProofUrl, setCompletionProofUrl] = useState<string>("");

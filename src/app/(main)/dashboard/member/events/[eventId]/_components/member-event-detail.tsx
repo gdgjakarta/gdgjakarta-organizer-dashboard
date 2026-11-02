@@ -18,6 +18,7 @@ import {
   Layers,
   Lock,
   MapPin,
+  Package,
   PackageCheck,
   Radio,
   RotateCcw,
@@ -201,6 +202,7 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
   const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false);
   const [isDeliveryStatusOpen, setIsDeliveryStatusOpen] = useState(false);
   const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
+  const [refundModalType, setRefundModalType] = useState<"ticket_deposit" | "merchandise">("ticket_deposit");
   const [isRefundStatusOpen, setIsRefundStatusOpen] = useState(false);
   const [isCheckingPayment, setIsCheckingPayment] = useState(false);
   const [eventOtsOrders, setEventOtsOrders] = useState<EventMerchandiseOrder[]>([]);
@@ -782,72 +784,104 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
           />
         )}
 
-        {/* Refund Mechanism for Paid Waitlisted */}
-        {(() => {
-          const refundInfo = isRegistrationEligibleForRefund(registration, currentEvent);
-          const refundReq = registration.refund_request;
+        {/* Refund Mechanism for Paid Waitlisted (Pre-Event only) */}
+        {!isPast &&
+          (() => {
+            const refundInfo = isRegistrationEligibleForRefund(registration, currentEvent, "ticket_deposit");
+            const refundReq = registration.refund_request;
 
-          if (!refundInfo.isEligible && !refundReq) return null;
+            // If there's an existing ticket deposit refund request or eligible before event ends
+            if (!refundInfo.isEligible && !refundReq) return null;
+            if (refundReq && refundReq.refund_type === "merchandise") return null;
 
-          if (refundReq) {
-            let label = "View Refund Status 💰";
-            if (refundReq.status === "refund_completed") {
-              label = "View Refund Receipt 🧾";
-            } else if (refundReq.status === "rejected") {
-              label = "Refund Request Rejected ⚠️";
-            }
+            if (refundReq) {
+              let label = "View Refund Status 💰";
+              if (refundReq.status === "refund_completed") {
+                label = "View Refund Receipt 🧾";
+              } else if (refundReq.status === "rejected") {
+                label = "Refund Request Rejected ⚠️";
+              }
 
-            return (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setIsRefundStatusOpen(true)}
-                className={cn(
-                  "w-full gap-2 font-semibold text-xs shadow-xs",
-                  refundReq.status === "refund_completed" &&
-                    "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300",
-                  refundReq.status === "waiting_for_approval" &&
-                    "border-amber-500/40 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 dark:text-amber-300",
-                  refundReq.status === "rejected" &&
-                    "border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20",
-                )}
-              >
-                <CreditCard className="size-3.5" />
-                {label}
-              </Button>
-            );
-          }
-
-          if (refundInfo.canSubmitNew) {
-            return (
-              <div className="space-y-2">
+              return (
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => setIsRefundModalOpen(true)}
-                  className="w-full gap-2 border-indigo-500/40 bg-indigo-500/10 font-semibold text-indigo-700 text-xs shadow-xs hover:bg-indigo-500/20 dark:text-indigo-300"
+                  onClick={() => setIsRefundStatusOpen(true)}
+                  className={cn(
+                    "w-full gap-2 font-semibold text-xs shadow-xs",
+                    refundReq.status === "refund_completed" &&
+                      "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300",
+                    refundReq.status === "waiting_for_approval" &&
+                      "border-amber-500/40 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 dark:text-amber-300",
+                    refundReq.status === "rejected" &&
+                      "border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20",
+                  )}
                 >
                   <CreditCard className="size-3.5" />
-                  {registration.status === "paid_waitlisted"
-                    ? "Request Commitment Fee Refund 💸"
-                    : registration.status === "rejected"
-                      ? "Request Waitlist Refund 💸"
-                      : "Request Ticket Refund 💸"}
+                  {label}
                 </Button>
-                <div className="rounded-md border border-border/80 bg-muted/40 p-2.5 text-xs">
-                  <p className="font-semibold text-[11px] text-foreground">Refund Policy:</p>
-                  <p className="mt-0.5 text-[10px] text-muted-foreground leading-relaxed">
-                    {getEventRefundPolicyNotes(currentEvent ?? event)}
-                  </p>
-                </div>
-              </div>
-            );
-          }
+              );
+            }
 
-          return null;
-        })()}
+            if (refundInfo.canSubmitNew) {
+              return (
+                <div className="space-y-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setRefundModalType("ticket_deposit");
+                      setIsRefundModalOpen(true);
+                    }}
+                    className="w-full gap-2 border-indigo-500/40 bg-indigo-500/10 font-semibold text-indigo-700 text-xs shadow-xs hover:bg-indigo-500/20 dark:text-indigo-300"
+                  >
+                    <CreditCard className="size-3.5" />
+                    {registration.status === "paid_waitlisted"
+                      ? "Request Commitment Fee Refund 💸"
+                      : registration.status === "rejected"
+                        ? "Request Waitlist Refund 💸"
+                        : "Request Ticket Refund 💸"}
+                  </Button>
+                  <div className="rounded-md border border-border/80 bg-muted/40 p-2.5 text-xs">
+                    <p className="font-semibold text-[11px] text-foreground">Refund Policy:</p>
+                    <p className="mt-0.5 text-[10px] text-muted-foreground leading-relaxed">
+                      {getEventRefundPolicyNotes(currentEvent ?? event)}
+                    </p>
+                  </div>
+                </div>
+              );
+            }
+
+            return null;
+          })()}
+
+        {/* Existing ticket deposit refund status after event ends */}
+        {isPast && registration.refund_request && registration.refund_request.refund_type !== "merchandise" && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setIsRefundStatusOpen(true)}
+            className={cn(
+              "w-full gap-2 font-semibold text-xs shadow-xs",
+              registration.refund_request.status === "refund_completed" &&
+                "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300",
+              registration.refund_request.status === "waiting_for_approval" &&
+                "border-amber-500/40 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 dark:text-amber-300",
+              registration.refund_request.status === "rejected" &&
+                "border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20",
+            )}
+          >
+            <CreditCard className="size-3.5" />
+            {registration.refund_request.status === "refund_completed"
+              ? "View Refund Receipt 🧾"
+              : registration.refund_request.status === "rejected"
+                ? "Refund Request Rejected ⚠️"
+                : "View Refund Status 💰"}
+          </Button>
+        )}
 
         {/* Re-register for Event when registration is canceled or refunded */}
         {isCanceled && !isPast && (windowStatus.isOpen || windowStatus.isWaitlist) && (
@@ -908,51 +942,85 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
           </div>
         )}
 
-        {/* Merchandise Delivery Claim for No-Show Attendees */}
+        {/* Merchandise Delivery Claim or Refund for Uncollected Merchandise */}
         {isPast &&
-          !registration.is_checked_in &&
-          registration.status !== "attended" &&
-          Boolean(registration.selected_merchandise && registration.selected_merchandise.length > 0) && (
-            <div className="space-y-2 pt-1">
-              {!registration.delivery_request ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setIsDeliveryModalOpen(true)}
-                  className="w-full gap-2 border-primary/40 bg-primary/5 text-primary text-xs shadow-xs hover:bg-primary/10"
-                >
-                  <Truck className="size-3.5" />
-                  Request Merchandise Delivery (Rp 50.000)
-                </Button>
-              ) : (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setIsDeliveryStatusOpen(true)}
-                  className="w-full gap-2 text-xs shadow-xs"
-                >
-                  <Truck className="size-3.5" />
-                  View Delivery Status ({(() => {
-                    const st = registration.delivery_request.status;
-                    switch (st) {
-                      case "approved":
-                        return "In Transit";
-                      case "pending_review":
-                        return "Under Review";
-                      case "pending_payment":
-                        return "Pay Fee";
-                      case "delivered":
-                        return "Delivered";
-                      case "rejected":
-                        return "Rejected";
-                      default:
-                        return st;
-                    }
-                  })()})
-                </Button>
-              )}
+          Boolean(registration.selected_merchandise && registration.selected_merchandise.length > 0) &&
+          !registration.is_merchandise_collected &&
+          !registration.is_merchandise_refunded && (
+            <div className="space-y-2 pt-2">
+              <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 font-semibold text-primary">
+                    <Package className="size-4" />
+                    Uncollected Merchandise ({(registration.selected_merchandise ?? []).length} items)
+                  </span>
+                  <Badge variant="outline" className="border-primary/40 text-[10px] text-primary">
+                    {registration.is_checked_in || registration.status === "attended"
+                      ? "Free Courier Available"
+                      : "Delivery Available"}
+                  </Badge>
+                </div>
+                <p className="mt-1 text-[11px] text-muted-foreground leading-relaxed">
+                  {registration.is_checked_in || registration.status === "attended"
+                    ? "Missed picking up your items at the booth due to stock limitations? Request free delivery to your home (you can also adjust size/variants) or request a refund."
+                    : "You can request courier delivery to your address or submit a refund request for your uncollected merchandise."}
+                </p>
+
+                <div className="mt-2.5 flex flex-col gap-2 sm:flex-row">
+                  {!registration.delivery_request ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsDeliveryModalOpen(true)}
+                      className="flex-1 gap-1.5 border-primary/40 bg-primary/10 text-primary text-xs hover:bg-primary/20"
+                    >
+                      <Truck className="size-3.5" />
+                      {registration.is_checked_in || registration.status === "attended"
+                        ? "Request Free Delivery 📦"
+                        : "Request Delivery 📦"}
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsDeliveryStatusOpen(true)}
+                      className="flex-1 gap-1.5 text-xs shadow-xs"
+                    >
+                      <Truck className="size-3.5" />
+                      Delivery Status ({registration.delivery_request.status.replace("_", " ")})
+                    </Button>
+                  )}
+
+                  {!registration.refund_request ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setRefundModalType("merchandise");
+                        setIsRefundModalOpen(true);
+                      }}
+                      className="flex-1 gap-1.5 border-border text-xs hover:bg-muted"
+                    >
+                      <CreditCard className="size-3.5" />
+                      Refund Merchandise 💳
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsRefundStatusOpen(true)}
+                      className="flex-1 gap-1.5 text-xs shadow-xs"
+                    >
+                      <CreditCard className="size-3.5" />
+                      Refund Status ({registration.refund_request.status.replace("_", " ")})
+                    </Button>
+                  )}
+                </div>
+              </div>
             </div>
           )}
       </div>
@@ -1402,6 +1470,7 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
           onOpenChange={setIsRefundModalOpen}
           registration={registration}
           event={currentEvent}
+          refundType={refundModalType}
           onSuccess={(updatedRefund) => {
             setRegistration((prev) =>
               prev

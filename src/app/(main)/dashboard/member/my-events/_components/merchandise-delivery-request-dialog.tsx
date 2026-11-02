@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 
-import { AlertCircle, CheckCircle2, ExternalLink, Loader2, Package, ShoppingBag, Truck } from "lucide-react";
+import { AlertCircle, CheckCircle2, ExternalLink, Loader2, Package, RefreshCw, ShoppingBag, Truck } from "lucide-react";
 import { toast } from "sonner";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -18,12 +18,18 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
   confirmMerchandiseDeliveryPaymentAction,
   submitMerchandiseDeliveryRequestAction,
 } from "@/lib/firestore/actions";
-import type { FirestoreEvent, FirestoreRegistration, MerchandiseDeliveryRequest } from "@/lib/firestore/types";
+import type {
+  FirestoreEvent,
+  FirestoreRegistration,
+  MerchandiseDeliveryRequest,
+  SelectedMerchandiseOrder,
+} from "@/lib/firestore/types";
 
 interface MerchandiseDeliveryRequestDialogProps {
   isOpen: boolean;
@@ -65,12 +71,37 @@ export function MerchandiseDeliveryRequestDialog({
       (event?.is_test ? "sandbox" : "production"),
   );
 
-  const deliveryFee =
-    existingDelivery?.fee_amount ??
-    (typeof event?.merchandise_delivery_fee === "number" ? event.merchandise_delivery_fee : 50000);
-  const [step, setStep] = useState<"form" | "payment">(isPendingPayment ? "payment" : "form");
+  const isCheckedIn = Boolean(registration.is_checked_in) || registration.status === "attended";
+  const configuredFee = typeof event?.merchandise_delivery_fee === "number" ? event.merchandise_delivery_fee : 50000;
+  // If checked in, delivery fee is 0 (free because of venue stock shortage/mismatch)
+  const deliveryFee = isCheckedIn ? 0 : (existingDelivery?.fee_amount ?? configuredFee);
+  const [step, setStep] = useState<"form" | "payment">(isPendingPayment && deliveryFee > 0 ? "payment" : "form");
 
-  const merchandiseItems = registration.selected_merchandise ?? [];
+  // Editable items state allowing attendee to adjust variants (e.g. Size M -> L)
+  const [items, setItems] = useState<SelectedMerchandiseOrder[]>(() => {
+    return (existingDelivery?.items ?? registration.selected_merchandise ?? []).map((m) => ({
+      ...m,
+      selected_variations: { ...(m.selected_variations ?? {}) },
+    }));
+  });
+
+  const handleVariationChange = (itemIndex: number, varName: string, optValue: string) => {
+    setItems((prev) =>
+      prev.map((it, idx) => {
+        if (idx !== itemIndex) return it;
+        const updatedVars = { ...(it.selected_variations ?? {}), [varName]: optValue };
+        return {
+          ...it,
+          selected_variations: updatedVars,
+          // Compatibility updates if variation name corresponds to size or variant
+          ...(varName.toLowerCase().includes("size") ? { selected_size: optValue } : {}),
+          ...(varName.toLowerCase().includes("variant") || varName.toLowerCase().includes("color")
+            ? { selected_variant: optValue }
+            : {}),
+        };
+      }),
+    );
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,20 +140,34 @@ export function MerchandiseDeliveryRequestDialog({
         customerEmail: registration.member_email,
         eventTitle: registration.event_title,
         eventPictureUrl: registration.event_picture_url ?? event?.picture_url,
+        items,
       });
 
       if (res.success && res.deliveryRequest) {
-        setGeneratedPaymentUrl(res.paymentUrl ?? null);
-        setInvoiceNumber(res.invoiceNumber ?? null);
-        setPaymentEnvironment(res.paymentEnvironment);
-        setStep("payment");
-        toast.success("Delivery request created! Please complete payment to proceed.");
+        if (deliveryFee === 0) {
+          toast.success("Delivery request submitted successfully! Our team will prepare and dispatch your package.");
+          if (onSuccess) {
+            onSuccess({
+              ...registration,
+              selected_merchandise: items,
+              delivery_request: res.deliveryRequest,
+            });
+          }
+          onOpenChange(false);
+        } else {
+          setGeneratedPaymentUrl(res.paymentUrl ?? null);
+          setInvoiceNumber(res.invoiceNumber ?? null);
+          setPaymentEnvironment(res.paymentEnvironment);
+          setStep("payment");
+          toast.success("Delivery request created! Please complete payment to proceed.");
 
-        if (onSuccess) {
-          onSuccess({
-            ...registration,
-            delivery_request: res.deliveryRequest,
-          });
+          if (onSuccess) {
+            onSuccess({
+              ...registration,
+              selected_merchandise: items,
+              delivery_request: res.deliveryRequest,
+            });
+          }
         }
       } else {
         toast.error(res.error || "Failed to create delivery request.");
@@ -163,58 +208,115 @@ export function MerchandiseDeliveryRequestDialog({
             <DialogTitle className="text-xl">Request Merchandise Delivery</DialogTitle>
           </div>
           <DialogDescription className="text-xs sm:text-sm">
-            Couldn&apos;t attend the event? You can request to receive your purchased merchandise as a delivered
-            package.
+            {isCheckedIn
+              ? "Couldn't collect your merchandise at the venue due to stock limitations? Request courier delivery directly to your address."
+              : "Couldn't attend the event? You can request to receive your purchased merchandise as a delivered package."}
           </DialogDescription>
         </DialogHeader>
 
         {step === "form" ? (
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Prominent Fee & Non-Commitment Cutting Fee Notice */}
-            <Alert className="border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-200">
-              <AlertCircle className="size-4 text-amber-600 dark:text-amber-400" />
-              <AlertTitle className="font-semibold text-xs sm:text-sm">
-                Distribution Fee & Non-Commitment Charge: Rp {deliveryFee.toLocaleString("id-ID")}
-              </AlertTitle>
-              <AlertDescription className="mt-1 text-[11px] leading-relaxed sm:text-xs">
-                A fixed fee of <strong>Rp {deliveryFee.toLocaleString("id-ID")}</strong> applies for handling and
-                courier distribution. This includes delivery logistics and a cutting fee because you could not commit to
-                attending the event on-site.
-              </AlertDescription>
-            </Alert>
+            {/* Fee Notice: Free for checked-in attendees, Fee applies for no-shows */}
+            {isCheckedIn ? (
+              <Alert className="border-emerald-500/30 bg-emerald-500/10 text-emerald-900 dark:text-emerald-200">
+                <CheckCircle2 className="size-4 text-emerald-600 dark:text-emerald-400" />
+                <AlertTitle className="font-semibold text-xs sm:text-sm">
+                  Free Courier Delivery (Rp 0) — Check-in Verified
+                </AlertTitle>
+                <AlertDescription className="mt-1 text-[11px] leading-relaxed sm:text-xs">
+                  Because you checked in to the event, shipping is completely <strong>free</strong> to resolve any
+                  inventory shortages or variant mismatches at the booth. You can also adjust your size/variants below.
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <Alert className="border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-200">
+                <AlertCircle className="size-4 text-amber-600 dark:text-amber-400" />
+                <AlertTitle className="font-semibold text-xs sm:text-sm">
+                  Distribution Fee & Non-Commitment Charge: Rp {deliveryFee.toLocaleString("id-ID")}
+                </AlertTitle>
+                <AlertDescription className="mt-1 text-[11px] leading-relaxed sm:text-xs">
+                  A fixed fee of <strong>Rp {deliveryFee.toLocaleString("id-ID")}</strong> applies for handling and
+                  courier distribution because you could not commit to attending the event on-site.
+                </AlertDescription>
+              </Alert>
+            )}
 
-            {/* Merchandise Package Summary */}
+            {/* Merchandise Package Summary & Variant Selector */}
             <div className="rounded-lg border border-border/80 bg-muted/30 p-3">
               <div className="mb-2 flex items-center justify-between">
                 <span className="flex items-center gap-1.5 font-medium text-foreground text-xs">
                   <ShoppingBag className="size-3.5 text-primary" />
-                  Merchandise Included in Package ({merchandiseItems.length} items)
+                  Merchandise Included in Package ({items.length} items)
                 </span>
                 <Badge variant="outline" className="text-[10px]">
-                  Order Verified
+                  {isCheckedIn ? "Adjust Variants Available" : "Order Verified"}
                 </Badge>
               </div>
 
-              <div className="space-y-1.5 divide-y divide-border/40 text-xs">
-                {merchandiseItems.map((item, idx) => (
-                  <div key={item.id || idx} className="flex items-center justify-between pt-1.5 first:pt-0">
-                    <div className="flex flex-col">
-                      <span className="font-medium text-foreground">
-                        {item.quantity}x {item.name}
-                      </span>
-                      {item.selected_variations && Object.keys(item.selected_variations).length > 0 && (
-                        <span className="text-[10px] text-muted-foreground">
-                          {Object.entries(item.selected_variations)
-                            .map(([k, v]) => `${k}: ${v}`)
-                            .join(", ")}
-                        </span>
+              <div className="space-y-2.5 divide-y divide-border/40 text-xs">
+                {items.map((item, idx) => {
+                  const eventMerchDef = event?.merchandise?.find((m) => m.id === item.id);
+                  const variations = eventMerchDef?.variations ?? [];
+
+                  return (
+                    <div key={item.id || idx} className="space-y-2 pt-2 first:pt-0">
+                      <div className="flex items-center justify-between">
+                        <div className="flex flex-col">
+                          <span className="font-medium text-foreground">
+                            {item.quantity}x {item.name}
+                          </span>
+                        </div>
+                        <Badge variant="secondary" className="font-mono text-[10px]">
+                          {item.price ? `Rp ${(item.price * item.quantity).toLocaleString("id-ID")}` : "Perk"}
+                        </Badge>
+                      </div>
+
+                      {/* Interactive Variant Selectors */}
+                      {variations.length > 0 ? (
+                        <div className="flex flex-wrap items-center gap-3 rounded-md border border-border/50 bg-background/60 p-2">
+                          <span className="text-[11px] text-muted-foreground font-medium">Select Variant:</span>
+                          {variations.map((v) => {
+                            const currentVal =
+                              item.selected_variations?.[v.name] ??
+                              (v.name.toLowerCase().includes("size") ? item.selected_size : undefined) ??
+                              v.options[0] ??
+                              "";
+
+                            return (
+                              <div key={v.name} className="flex items-center gap-1.5">
+                                <span className="text-[10px] text-muted-foreground">{v.name}:</span>
+                                <Select
+                                  value={currentVal}
+                                  onValueChange={(val) => handleVariationChange(idx, v.name, val)}
+                                >
+                                  <SelectTrigger className="h-7 min-w-[70px] text-[11px]">
+                                    <SelectValue placeholder={`Select ${v.name}`} />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {v.options.map((opt) => (
+                                      <SelectItem key={opt} value={opt} className="text-xs">
+                                        {opt}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        item.selected_variations &&
+                        Object.keys(item.selected_variations).length > 0 && (
+                          <div className="text-[10px] text-muted-foreground">
+                            {Object.entries(item.selected_variations)
+                              .map(([k, v]) => `${k}: ${v}`)
+                              .join(", ")}
+                          </div>
+                        )
                       )}
                     </div>
-                    <Badge variant="secondary" className="font-mono text-[10px]">
-                      {item.price ? `Rp ${(item.price * item.quantity).toLocaleString("id-ID")}` : "Perk"}
-                    </Badge>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -323,7 +425,12 @@ export function MerchandiseDeliveryRequestDialog({
                 {isSubmitting ? (
                   <>
                     <Loader2 className="size-3.5 animate-spin" />
-                    Generating Payment Link...
+                    {deliveryFee === 0 ? "Submitting Request..." : "Generating Payment Link..."}
+                  </>
+                ) : deliveryFee === 0 ? (
+                  <>
+                    <Truck className="size-3.5" />
+                    Submit Delivery Request (Free)
                   </>
                 ) : (
                   <>

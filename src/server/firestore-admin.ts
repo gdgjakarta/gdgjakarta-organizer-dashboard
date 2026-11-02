@@ -1081,7 +1081,17 @@ export async function updateRefundStatusServer(
 
     if (status === "refund_completed") {
       updatePayload.payment_status = "refunded";
-      updatePayload.status = "canceled";
+
+      const isMerchRefund = mergedRequest.refund_type === "merchandise";
+      if (isMerchRefund) {
+        updatePayload.is_merchandise_refunded = true;
+        // If attendee actually attended, do NOT overwrite their status to canceled
+        if (existing.status !== "attended") {
+          updatePayload.status = "canceled";
+        }
+      } else {
+        updatePayload.status = "canceled";
+      }
 
       const vCode = existing.voucher_code?.trim().toUpperCase();
       const wasAlreadyVoid =
@@ -1102,16 +1112,25 @@ export async function updateRefundStatusServer(
     }
 
     const existingLogs = Array.isArray(existing.status_logs) ? existing.status_logs : [];
+    const logStatus =
+      status === "refund_completed"
+        ? mergedRequest.refund_type === "merchandise" && existing.status === "attended"
+          ? "attended"
+          : "canceled"
+        : existing.status;
+
     const logEntry: RegistrationStatusLog = {
       id: `log_${Date.now()}_refund_${status}`,
-      status: status === "refund_completed" ? "canceled" : existing.status,
+      status: logStatus,
       changed_at: now,
       changed_by_id: reviewer?.id ?? details?.completed_by_id ?? details?.rejected_by_id ?? "organizer",
       changed_by_name: reviewer?.name ?? details?.completed_by_name ?? details?.rejected_by_name ?? "Organizer",
       changed_by_email: reviewer?.email ?? details?.completed_by_email ?? details?.rejected_by_email,
       notes: (() => {
         if (status === "refund_completed") {
-          return `Refund completed. Proof uploaded by ${reviewer?.name ?? "organizer"}.`;
+          return mergedRequest.refund_type === "merchandise"
+            ? `Merchandise refund completed. Proof uploaded by ${reviewer?.name ?? "organizer"}.`
+            : `Refund completed. Proof uploaded by ${reviewer?.name ?? "organizer"}.`;
         }
         if (status === "rejected") {
           return `Refund rejected: ${details?.rejection_reason ?? "No reason specified"}`;

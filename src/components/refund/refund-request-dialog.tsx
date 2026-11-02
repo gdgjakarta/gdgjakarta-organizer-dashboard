@@ -25,17 +25,19 @@ import {
   getEventRefundCutoff,
   getEventRefundPolicyNotes,
   getRegistrationDiscountBreakdown,
+  getRegistrationMerchandiseRefundAmount,
   getRegistrationRefundAmount,
   POPULAR_INDONESIAN_BANKS,
 } from "@/lib/events/refund-utils";
 import { submitRefundRequestAction } from "@/lib/firestore/actions";
-import type { FirestoreEvent, FirestoreRegistration, RefundRequest } from "@/lib/firestore/types";
+import type { FirestoreEvent, FirestoreRegistration, RefundRequest, RefundType } from "@/lib/firestore/types";
 
 interface RefundRequestDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   registration: FirestoreRegistration;
   event?: FirestoreEvent;
+  refundType?: RefundType;
   onSuccess?: (updatedRefund: RefundRequest) => void;
 }
 
@@ -44,11 +46,15 @@ export function RefundRequestDialog({
   onOpenChange,
   registration,
   event,
+  refundType: propRefundType,
   onSuccess,
 }: RefundRequestDialogProps) {
   const existingRefund = registration.refund_request;
   const isRejected = existingRefund?.status === "rejected";
   const isEditing = Boolean(existingRefund);
+
+  const effectiveRefundType: RefundType = propRefundType ?? existingRefund?.refund_type ?? "ticket_deposit";
+  const isMerchRefund = effectiveRefundType === "merchandise";
 
   // Initial form values from existing request or defaults
   const [bankName, setBankName] = useState(existingRefund?.bank_name ?? "BCA");
@@ -70,17 +76,22 @@ export function RefundRequestDialog({
 
   const [isSubmitting, startTransition] = useTransition();
 
-  const refundAmount = getRegistrationRefundAmount(registration, event);
+  const refundAmount = isMerchRefund
+    ? getRegistrationMerchandiseRefundAmount(registration, event)
+    : getRegistrationRefundAmount(registration, event);
   const discountBreakdown = getRegistrationDiscountBreakdown(registration, event);
 
-  let statusExplanation =
-    "Please provide valid Indonesian bank account details to receive your refund transfer. Requesting this refund will forfeit your attendance spot.";
-  if (registration.status === "rejected") {
-    statusExplanation =
-      "Because your paid waitlist registration could not be accommodated due to venue capacity, your payment is eligible for a full refund (even after the standard refund cutoff date). Please provide valid bank account details below.";
-  } else if (registration.status === "paid_waitlisted") {
-    statusExplanation =
-      "Because this session was over capacity, your waitlist fee is refundable. Please provide valid bank account information to receive your transfer.";
+  let statusExplanation = isMerchRefund
+    ? "Please provide valid Indonesian bank account details to receive your merchandise refund transfer. This will cancel your merchandise collection or delivery request."
+    : "Please provide valid Indonesian bank account details to receive your refund transfer. Requesting this refund will forfeit your attendance spot.";
+  if (!isMerchRefund) {
+    if (registration.status === "rejected") {
+      statusExplanation =
+        "Because your paid waitlist registration could not be accommodated due to venue capacity, your payment is eligible for a full refund (even after the standard refund cutoff date). Please provide valid bank account details below.";
+    } else if (registration.status === "paid_waitlisted") {
+      statusExplanation =
+        "Because this session was over capacity, your waitlist fee is refundable. Please provide valid bank account information to receive your transfer.";
+    }
   }
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -150,9 +161,15 @@ export function RefundRequestDialog({
       return;
     }
     if (!hasAcknowledged) {
-      toast.error("Please acknowledge that requesting a refund will cancel your RSVP.");
+      toast.error(
+        isMerchRefund
+          ? "Please acknowledge that requesting a merchandise refund will cancel your collection."
+          : "Please acknowledge that requesting a refund will cancel your RSVP.",
+      );
       return;
     }
+
+    const merchItems = isMerchRefund ? registration.selected_merchandise : undefined;
 
     startTransition(async () => {
       const res = await submitRefundRequestAction({
@@ -168,6 +185,8 @@ export function RefundRequestDialog({
         isResubmission: isRejected,
         refundRequestId: existingRefund?.id,
         requestedAt: existingRefund?.requested_at,
+        refundType: effectiveRefundType,
+        merchandiseItems: merchItems,
       });
 
       if (res.success) {
@@ -181,17 +200,19 @@ export function RefundRequestDialog({
         onSuccess?.({
           id: existingRefund?.id ?? `ref_${registration.id}_${Date.now()}`,
           status: "waiting_for_approval",
+          refund_type: effectiveRefundType,
+          merchandise_items: merchItems,
           bank_name: effectiveBank,
           bank_account_name: bankAccountName.trim(),
           bank_account_number: bankAccountNumber.trim(),
           cancellation_reason: cancellationReason.trim(),
-          proof_media_url: proofMediaUrl ?? undefined,
-          proof_media_name: proofMediaName ?? undefined,
+          proofMediaUrl: proofMediaUrl ?? undefined,
+          proofMediaName: proofMediaName ?? undefined,
           refund_amount: refundAmount,
           requested_at: existingRefund?.requested_at ?? new Date().toISOString(),
           resubmitted_at: isRejected ? new Date().toISOString() : undefined,
           updated_at: new Date().toISOString(),
-        });
+        } as unknown as RefundRequest);
         onOpenChange(false);
       } else {
         toast.error(res.error || "Failed to submit refund request.");
@@ -199,7 +220,7 @@ export function RefundRequestDialog({
     });
   };
 
-  let dialogTitle = "Request Commitment Fee Refund 💸";
+  let dialogTitle = isMerchRefund ? "Request Merchandise Refund 💳" : "Request Commitment Fee Refund 💸";
   if (isRejected) {
     dialogTitle = "Resubmit Refund Request 💸";
   } else if (isEditing) {
@@ -241,27 +262,57 @@ export function RefundRequestDialog({
           </Alert>
         )}
 
-        {/* RSVP Cancellation Warning Alert */}
-        <Alert className="border-amber-500/40 bg-amber-500/10 text-amber-900 dark:text-amber-200">
-          <AlertTriangle className="size-4 text-amber-600 dark:text-amber-400" />
-          <AlertTitle className="font-semibold text-xs">RSVP Cancellation Warning</AlertTitle>
-          <AlertDescription className="mt-1 text-xs leading-relaxed text-amber-800 dark:text-amber-300">
-            Requesting a refund will <strong>cancel your RSVP and release your ticket/spot</strong>. Once processed, you
-            will <strong>no longer be able to attend or join the event</strong> with this registration.
-          </AlertDescription>
-        </Alert>
+        {/* Cancellation Warning Alert */}
+        {isMerchRefund ? (
+          <Alert className="border-amber-500/40 bg-amber-500/10 text-amber-900 dark:text-amber-200">
+            <AlertTriangle className="size-4 text-amber-600 dark:text-amber-400" />
+            <AlertTitle className="font-semibold text-xs">Merchandise Refund Notice</AlertTitle>
+            <AlertDescription className="mt-1 text-xs leading-relaxed text-amber-800 dark:text-amber-300">
+              Requesting a merchandise refund will cancel your item collection or courier delivery. Funds will be
+              disbursed to your Indonesian bank account upon organizer review.
+            </AlertDescription>
+          </Alert>
+        ) : (
+          <Alert className="border-amber-500/40 bg-amber-500/10 text-amber-900 dark:text-amber-200">
+            <AlertTriangle className="size-4 text-amber-600 dark:text-amber-400" />
+            <AlertTitle className="font-semibold text-xs">RSVP Cancellation Warning</AlertTitle>
+            <AlertDescription className="mt-1 text-xs leading-relaxed text-amber-800 dark:text-amber-300">
+              Requesting a refund will <strong>cancel your RSVP and release your ticket/spot</strong>. Once processed,
+              you will <strong>no longer be able to attend or join the event</strong> with this registration.
+            </AlertDescription>
+          </Alert>
+        )}
 
         <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs">
           <div className="flex items-center justify-between">
             <span className="font-medium text-foreground">
-              {registration.status === "paid_waitlisted" || registration.status === "rejected"
-                ? "Refundable Waitlist / Ticket Amount:"
-                : "Refundable Ticket Amount:"}
+              {isMerchRefund
+                ? "Refundable Merchandise Amount:"
+                : registration.status === "paid_waitlisted" || registration.status === "rejected"
+                  ? "Refundable Waitlist / Ticket Amount:"
+                  : "Refundable Ticket Amount:"}
             </span>
             <span className="font-bold text-primary">{formatRupiah(refundAmount)}</span>
           </div>
 
-          {discountBreakdown.hasDiscount && (
+          {isMerchRefund && registration.selected_merchandise && registration.selected_merchandise.length > 0 && (
+            <div className="mt-2 space-y-1 rounded border border-border/50 bg-background/70 p-2 text-[11px]">
+              <div className="font-medium text-foreground">Items to be refunded:</div>
+              {registration.selected_merchandise.map((item, i) => (
+                <div key={item.id || i} className="flex justify-between text-muted-foreground">
+                  <span>
+                    {item.quantity}x {item.name}
+                    {item.selected_variations && Object.keys(item.selected_variations).length > 0
+                      ? ` (${Object.values(item.selected_variations).join(", ")})`
+                      : ""}
+                  </span>
+                  <span>{formatRupiah((item.price ?? 0) * (item.quantity ?? 1))}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!isMerchRefund && discountBreakdown.hasDiscount && (
             <div className="mt-2 space-y-1 rounded border border-border/50 bg-background/70 p-2 text-[11px]">
               <div className="flex justify-between text-muted-foreground">
                 <span>Original Ticket Nominal:</span>
@@ -291,16 +342,17 @@ export function RefundRequestDialog({
           )}
 
           <p className="mt-1.5 text-[11px] text-muted-foreground leading-relaxed">
-            {discountBreakdown.hasDiscount && (
+            {!isMerchRefund && discountBreakdown.hasDiscount && (
               <span className="mb-1 block font-medium text-emerald-700 dark:text-emerald-300">
                 • Voucher/referral promo discount has been deducted so your refund reflects what you actually paid for
                 the ticket deposit.
               </span>
             )}
             {statusExplanation}{" "}
-            {event?.refund_include_fee
-              ? "Refund includes your ticket deposit and payment gateway fee."
-              : "Refund covers your ticket deposit nominal (payment gateway fee is non-refundable)."}
+            {!isMerchRefund &&
+              (event?.refund_include_fee
+                ? "Refund includes your ticket deposit and payment gateway fee."
+                : "Refund covers your ticket deposit nominal (payment gateway fee is non-refundable).")}
           </p>
         </div>
 
@@ -490,10 +542,21 @@ export function RefundRequestDialog({
               htmlFor="refund-acknowledge"
               className="block cursor-pointer select-none font-normal text-xs text-foreground leading-relaxed"
             >
-              I understand and agree that submitting this refund request will{" "}
-              <strong className="font-semibold text-destructive">cancel my RSVP</strong> and I will{" "}
-              <strong className="font-semibold text-foreground">forfeit my spot</strong> to join this event.{" "}
-              <span className="font-bold text-destructive">*</span>
+              {isMerchRefund ? (
+                <>
+                  I understand and agree that submitting this request will{" "}
+                  <strong className="font-semibold text-destructive">cancel my merchandise collection</strong> and
+                  disburse the merchandise amount to my bank account.{" "}
+                  <span className="font-bold text-destructive">*</span>
+                </>
+              ) : (
+                <>
+                  I understand and agree that submitting this refund request will{" "}
+                  <strong className="font-semibold text-destructive">cancel my RSVP</strong> and I will{" "}
+                  <strong className="font-semibold text-foreground">forfeit my spot</strong> to join this event.{" "}
+                  <span className="font-bold text-destructive">*</span>
+                </>
+              )}
             </Label>
           </div>
 

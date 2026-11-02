@@ -633,14 +633,19 @@ export interface MerchandiseDeliveryRequest {
   reviewed_by_id?: string;
   reviewed_by_name?: string;
   reviewed_at?: string;
+  items?: SelectedMerchandiseOrder[]; // Requested items and variants for delivery
   updated_at: string;
 }
+
+export type RefundType = "ticket_deposit" | "merchandise";
 
 export type RefundStatus = "waiting_for_approval" | "refund_completed" | "rejected";
 
 export interface RefundRequest {
   id: string; // e.g. `ref_${registrationId}_${Date.now()}`
   status: RefundStatus;
+  refund_type?: RefundType; // Defaults to "ticket_deposit"
+  merchandise_items?: SelectedMerchandiseOrder[]; // Snapshot of merchandise items being refunded
 
   // Attendee Submission
   bank_name: string; // e.g. "BCA", "Bank Mandiri"
@@ -749,6 +754,7 @@ export interface FirestoreRegistration {
   checkin_date?: string | null;
   attendee_code?: string | null;
   is_merchandise_collected?: boolean;
+  is_merchandise_refunded?: boolean;
   merchandise_collected_at?: string | null;
   merchandise_collected_by_id?: string | null;
   merchandise_collected_by_name?: string | null;

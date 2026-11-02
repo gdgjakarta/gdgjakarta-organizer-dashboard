@@ -54,6 +54,7 @@ import {
   formatRupiah,
   getEventRefundCutoff,
   getRegistrationDiscountBreakdown,
+  getRegistrationMerchandiseRefundAmount,
   getRegistrationRefundAmount,
 } from "@/lib/events/refund-utils";
 import { fetchEventRefundRequestsAction, updateEventRefundConfigAction } from "@/lib/firestore/actions";
@@ -778,20 +779,32 @@ export function RefundsTab({ event, eventId, registrations: initialRegistrations
                       {/* Deposit Amount */}
                       <TableCell className="py-3.5 align-top font-medium">
                         {(() => {
+                          const isMerch = req.refund_type === "merchandise";
                           const discountBreakdown = getRegistrationDiscountBreakdown(reg, effectiveEvent);
+                          const amount = isMerch
+                            ? req.refund_amount || getRegistrationMerchandiseRefundAmount(reg, effectiveEvent)
+                            : getRegistrationRefundAmount(reg, effectiveEvent);
+
                           return (
                             <div className="space-y-1">
-                              <p className="font-bold text-foreground text-xs tabular-nums">
-                                {formatRupiah(getRegistrationRefundAmount(reg, effectiveEvent))}
-                              </p>
+                              <p className="font-bold text-foreground text-xs tabular-nums">{formatRupiah(amount)}</p>
                               <div className="flex flex-wrap items-center gap-1">
-                                <Badge
-                                  variant="secondary"
-                                  className="px-1.5 py-0 font-normal text-[10px] text-muted-foreground"
-                                >
-                                  {reg.ticket_name || reg.ticket_tier || "Commitment Fee"}
-                                </Badge>
-                                {discountBreakdown.hasDiscount && (
+                                {isMerch ? (
+                                  <Badge
+                                    variant="secondary"
+                                    className="border-purple-500/30 bg-purple-500/10 px-1.5 py-0 font-medium text-[10px] text-purple-700 dark:text-purple-300"
+                                  >
+                                    Merchandise Refund
+                                  </Badge>
+                                ) : (
+                                  <Badge
+                                    variant="secondary"
+                                    className="px-1.5 py-0 font-normal text-[10px] text-muted-foreground"
+                                  >
+                                    {reg.ticket_name || reg.ticket_tier || "Commitment Fee"}
+                                  </Badge>
+                                )}
+                                {discountBreakdown.hasDiscount && !isMerch && (
                                   <Badge
                                     variant="outline"
                                     className="border-emerald-500/40 bg-emerald-500/10 px-1 py-0 font-mono text-[9px] text-emerald-600 dark:text-emerald-400"
