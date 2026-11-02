@@ -105,8 +105,8 @@ export function PrintWorkerStatus({ health, isChecking, onRecheck }: PrintWorker
               Looked for it at <span className="font-mono text-foreground">{workerUrl}</span>. On the check-in Mac run:
             </p>
             <p className="text-muted-foreground">
-              Not installed yet? Click <strong className="text-foreground">Install Worker</strong> at the top of this
-              page.
+              Not installed yet? Click <strong className="text-foreground">Preparation &amp; Config</strong> at the top
+              of this page.
             </p>
             <p className="text-muted-foreground">
               Already installed but stopped? Start it again in Terminal (keep that window open):

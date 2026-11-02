@@ -2,7 +2,7 @@
 
 import * as React from "react";
 
-import { CheckCircle2, Copy, Download, ExternalLink, Loader2 } from "lucide-react";
+import { CheckCircle2, Copy, Download, ExternalLink, Loader2, SlidersHorizontal, Wrench } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -122,9 +122,13 @@ export function InstallPrintWorkerDialog({ health, onRecheck }: InstallPrintWork
     return () => window.clearInterval(timer);
   }, [open, onRecheck]);
 
-  const handleInstallClick = () => {
-    startDownload(getPrintWorkerDownloadUrl());
+  const handleOpenClick = () => {
     setOpen(true);
+  };
+
+  const handleDownload = () => {
+    startDownload(getPrintWorkerDownloadUrl());
+    toast.success("Worker download started.");
   };
 
   const installCommand = [
@@ -136,22 +140,21 @@ export function InstallPrintWorkerDialog({ health, onRecheck }: InstallPrintWork
 
   return (
     <>
-      <Button size="sm" variant="outline" className="gap-1.5" onClick={handleInstallClick}>
-        <Download className="size-3.5" />
-        Install Worker
+      <Button size="sm" variant="outline" className="gap-1.5" onClick={handleOpenClick}>
+        <SlidersHorizontal className="size-3.5" />
+        Preparation &amp; Config
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Download className="size-5 text-primary" />
-              Install the Print Worker
+              <Wrench className="size-5 text-primary" />
+              Print Station Preparation &amp; Setup
             </DialogTitle>
             <DialogDescription>
-              A small background app for the check-in Mac (Apple Silicon). It prints badges straight to your label
-              printers, so the browser print dialog never appears. Set up the printers first (Part 1), then install the
-              worker (Part 2). Both parts are done once per laptop.
+              Follow these setup steps once per laptop. Set up the USB label printers first (Part 1), then download and
+              configure the print worker (Part 2) for automated, dialog-free badge printing.
             </DialogDescription>
           </DialogHeader>
 
@@ -232,17 +235,18 @@ export function InstallPrintWorkerDialog({ health, onRecheck }: InstallPrintWork
 
           <PartHeading>Part 2: Install the worker</PartHeading>
           <ol className="space-y-4">
-            <Step index={6} title="Worker download started">
+            <Step index={6} title="Download the print worker">
               <p className="text-muted-foreground text-xs leading-relaxed">
-                <span className="font-mono text-foreground">{archiveFileName}</span> is saving to your Downloads folder.{" "}
-                <button
-                  type="button"
-                  className="text-primary underline underline-offset-2"
-                  onClick={() => startDownload(getPrintWorkerDownloadUrl())}
-                >
-                  Download again
-                </button>
+                Download the print worker archive for macOS (Apple Silicon). It will be saved into your Downloads
+                folder.
               </p>
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <Button type="button" size="sm" className="gap-2" onClick={handleDownload}>
+                  <Download className="size-4" />
+                  Download Print Worker
+                </Button>
+                <span className="font-mono text-muted-foreground text-xs">{archiveFileName} (~42 MB)</span>
+              </div>
             </Step>
 
             <Step index={7} title="Open Terminal and run this once">

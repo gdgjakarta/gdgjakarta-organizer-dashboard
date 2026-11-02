@@ -1162,9 +1162,10 @@ export function PrintersDashboard({ initialConfig }: PrintersDashboardProps) {
                 </div>
                 <p className="text-muted-foreground text-xs leading-relaxed">
                   A tiny background app on the check-in Mac prints badges straight to your Clabel printers, so no
-                  browser print dialog ever appears. Click <strong>Install Worker</strong> at the top of this page: it
-                  downloads the app and shows the exact Terminal commands. The <strong>Worker</strong> indicator turns
-                  green once it is running. Keep this page open with <strong>Start Print Station</strong> on.
+                  browser print dialog ever appears. Click <strong>Preparation &amp; Config</strong> at the top of this
+                  page: follow the setup guide to configure the printers and run the worker. The <strong>Worker</strong>{" "}
+                  indicator turns green once it is running. Keep this page open with{" "}
+                  <strong>Start Print Station</strong> on.
                 </p>
                 <p className="text-muted-foreground text-xs leading-relaxed">
                   With several printers selected during setup, badges print in parallel: every queued label is assigned
