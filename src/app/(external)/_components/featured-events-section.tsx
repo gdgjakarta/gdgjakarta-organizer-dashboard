@@ -11,7 +11,13 @@ interface FeaturedEventsSectionProps {
 }
 
 export function FeaturedEventsSection({ events }: FeaturedEventsSectionProps) {
-  const visibleEvents = events.filter((e) => (e.status ? e.status.toLowerCase() === "published" : true));
+  const visibleEvents = events.filter(
+    (e) =>
+      (e.status ? e.status.toLowerCase() === "published" : true) &&
+      !e.is_hidden &&
+      !(e as { hidden?: boolean }).hidden &&
+      !e.is_test,
+  );
 
   return (
     <section className="container mx-auto px-4 py-16 sm:px-6 lg:px-8 lg:py-24">

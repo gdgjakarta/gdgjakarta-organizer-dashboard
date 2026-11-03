@@ -39,9 +39,13 @@ export default async function EventsDirectoryPage() {
   let totalCount = 0;
 
   try {
-    const eventsData = await getBevyChapterEvents(BEVY_CONFIG.chapterId, EVENTS_PER_PAGE, 1, true, "Published");
-    initialEvents = (eventsData?.results ?? []).filter((e) =>
-      e.status ? e.status.toLowerCase() === "published" : true,
+    const eventsData = await getBevyChapterEvents(BEVY_CONFIG.chapterId, EVENTS_PER_PAGE, 1, false, "Published");
+    initialEvents = (eventsData?.results ?? []).filter(
+      (e) =>
+        (e.status ? e.status.toLowerCase() === "published" : true) &&
+        !e.is_hidden &&
+        !(e as { hidden?: boolean }).hidden &&
+        !e.is_test,
     );
     totalCount = eventsData?.count ?? initialEvents.length;
   } catch (error) {

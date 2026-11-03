@@ -133,7 +133,7 @@ export async function getFirestoreEvents(maxResults = 250, includeHidden = true)
 
     return snapshot.docs
       .map((docSnap) => normalizeEventDoc(docSnap.data() as Record<string, unknown>, docSnap.id))
-      .filter((e) => includeHidden || (!e.is_hidden && !(e as { hidden?: boolean }).hidden));
+      .filter((e) => includeHidden || (!e.is_hidden && !(e as { hidden?: boolean }).hidden && !e.is_test));
   } catch (error) {
     console.error("[Firestore] getFirestoreEvents error:", error);
     return [];

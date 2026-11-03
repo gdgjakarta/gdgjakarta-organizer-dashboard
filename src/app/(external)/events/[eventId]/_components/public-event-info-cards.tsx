@@ -19,9 +19,22 @@ interface PublicEventInfoCardsProps {
   firestoreEvent?: FirestoreEvent | null;
 }
 
+function isEventPast(event: BevyEvent): boolean {
+  if (event.status === "Completed") return true;
+  const targetDate = event.end_date;
+  if (!targetDate) return false;
+  try {
+    return new Date(targetDate).getTime() < Date.now();
+  } catch {
+    return false;
+  }
+}
+
 export function PublicEventInfoCards({ event, firestoreEvent }: PublicEventInfoCardsProps) {
   const [addressCopied, setAddressCopied] = useState(false);
+  const [streamCopied, setStreamCopied] = useState(false);
   const { isVirtual, isHybrid } = resolveEventAudience(event.audience_type, event.is_virtual_event);
+  const isPast = isEventPast(event);
 
   let formattedDateRange = event.start_date;
   let formattedTime = "";
@@ -95,14 +108,23 @@ export function PublicEventInfoCards({ event, firestoreEvent }: PublicEventInfoC
   // Online virtual stream / meeting URL from Bevy API
   const onlineStreamUrl = event.attendee_virtual_venue_link?.trim() || event.video_url?.trim() || undefined;
 
-  let streamLabel = "Join Live Stream";
+  const handleCopyStreamUrl = () => {
+    if (onlineStreamUrl && typeof window !== "undefined") {
+      void navigator.clipboard.writeText(onlineStreamUrl);
+      setStreamCopied(true);
+      toast.success(isPast ? "Recording link copied to clipboard" : "Stream link copied to clipboard");
+      setTimeout(() => setStreamCopied(false), 2000);
+    }
+  };
+
+  let streamLabel = isPast ? "View Recording" : "Join Live Stream";
   if (onlineStreamUrl) {
     if (/youtube\.com|youtu\.be/i.test(onlineStreamUrl)) {
-      streamLabel = "Watch on YouTube";
+      streamLabel = isPast ? "View Recording" : "Watch on YouTube";
     } else if (/meet\.google\.com/i.test(onlineStreamUrl)) {
-      streamLabel = "Join Google Meet";
+      streamLabel = isPast ? "View Recording" : "Join Google Meet";
     } else if (/zoom\.us/i.test(onlineStreamUrl)) {
-      streamLabel = "Join Zoom Meeting";
+      streamLabel = isPast ? "View Recording" : "Join Zoom Meeting";
     }
   }
 
@@ -205,18 +227,29 @@ export function PublicEventInfoCards({ event, firestoreEvent }: PublicEventInfoC
           ) : null}
 
           {onlineStreamUrl && (
-            <a
-              href={onlineStreamUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={cn(
-                "inline-flex items-center gap-1 font-medium text-xs hover:underline",
-                isVirtual ? "text-primary" : "text-emerald-600 dark:text-emerald-400",
-              )}
-            >
-              <Video className="size-3" />
-              {streamLabel}
-            </a>
+            <div className="flex items-center gap-2">
+              <a
+                href={onlineStreamUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={cn(
+                  "inline-flex items-center gap-1 font-medium text-xs hover:underline",
+                  isVirtual ? "text-primary" : "text-emerald-600 dark:text-emerald-400",
+                )}
+              >
+                <Video className="size-3" />
+                {streamLabel}
+              </a>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                onClick={handleCopyStreamUrl}
+                title={isPast ? "Copy Recording Link" : "Copy Stream Link"}
+                className="size-6 text-muted-foreground hover:text-foreground"
+              >
+                <Copy className={cn("size-3", streamCopied && "text-emerald-500")} />
+              </Button>
+            </div>
           )}
 
           {!onlineStreamUrl && isVirtual && !googleMapsUrl && (

@@ -26,15 +26,20 @@ function getAudienceLabel(event: BevyEvent): string {
   return label;
 }
 
+function isPubliclyVisibleEvent(event: BevyEvent): boolean {
+  const isPublished = event.status ? event.status.toLowerCase() === "published" : true;
+  const isHidden = Boolean(event.is_hidden || (event as { hidden?: boolean }).hidden);
+  return isPublished && !isHidden && !event.is_test;
+}
+
 export function EventsDirectory({ initialEvents, totalCount, pageSize = 15 }: EventsDirectoryProps) {
-  const [events, setEvents] = useState<BevyEvent[]>(() =>
-    initialEvents.filter((e) => (e.status ? e.status.toLowerCase() === "published" : true)),
-  );
+  const [events, setEvents] = useState<BevyEvent[]>(() => initialEvents.filter(isPubliclyVisibleEvent));
+  const [total, setTotal] = useState<number>(totalCount);
   const [page, setPage] = useState<number>(1);
   const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  const hasMore = events.length < totalCount;
+  const hasMore = events.length < total;
 
   const handleLoadMore = async () => {
     if (isLoadingMore || !hasMore) return;
@@ -44,22 +49,29 @@ export function EventsDirectory({ initialEvents, totalCount, pageSize = 15 }: Ev
 
     try {
       const nextPage = page + 1;
-      const response = await fetchBevyChapterEventsAction(pageSize, nextPage, true, "Published");
+      const response = await fetchBevyChapterEventsAction(pageSize, nextPage, false, "Published");
 
       if (!response?.results) {
         setError("Failed to load more events. Please try again.");
         return;
       }
 
-      const newResults = response.results.filter((e) => (e.status ? e.status.toLowerCase() === "published" : true));
-      if (newResults.length === 0) {
+      const newResults = response.results.filter(isPubliclyVisibleEvent);
+      if (newResults.length === 0 && !response.next) {
+        setTotal(events.length);
         return;
       }
 
       setEvents((prev) => {
         const existingIds = new Set(prev.map((e) => String(e.id)));
         const uniqueNew = newResults.filter((e) => !existingIds.has(String(e.id)));
-        return [...prev, ...uniqueNew];
+        const nextEvents = [...prev, ...uniqueNew];
+        if (!response.next) {
+          setTotal(nextEvents.length);
+        } else if (typeof response.count === "number" && response.count < total) {
+          setTotal(response.count);
+        }
+        return nextEvents;
       });
 
       setPage(nextPage);
@@ -190,13 +202,13 @@ export function EventsDirectory({ initialEvents, totalCount, pageSize = 15 }: Ev
         <div className="flex flex-col items-center gap-2">
           <p className="font-medium text-muted-foreground text-sm">
             Showing <span className="font-semibold text-foreground">{events.length}</span> of{" "}
-            <span className="font-semibold text-foreground">{totalCount}</span> events
+            <span className="font-semibold text-foreground">{total}</span> events
           </p>
           <div className="h-1.5 w-48 overflow-hidden rounded-full bg-muted">
             <div
               className="h-full bg-primary transition-all duration-300"
               style={{
-                width: `${Math.min(100, Math.round((events.length / Math.max(totalCount, 1)) * 100))}%`,
+                width: `${Math.min(100, Math.round((events.length / Math.max(total, 1)) * 100))}%`,
               }}
             />
           </div>
@@ -229,12 +241,14 @@ export function EventsDirectory({ initialEvents, totalCount, pageSize = 15 }: Ev
             ) : (
               <>
                 <ChevronDown className="mr-2 size-5" />
-                Load More Events ({Math.min(pageSize, totalCount - events.length)} more)
+                Load More Events ({Math.min(pageSize, total - events.length)} more)
               </>
             )}
           </Button>
         ) : (
-          <p className="text-muted-foreground text-sm">You&apos;ve reached the end • All {totalCount} events loaded</p>
+          <p className="text-muted-foreground text-sm">
+            You&apos;ve reached the end • All {events.length} events loaded
+          </p>
         )}
       </div>
     </div>

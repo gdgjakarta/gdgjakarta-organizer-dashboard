@@ -17,7 +17,7 @@ The Events feature serves both community members and chapter organizers:
   - Select an active event for live on-site scanner operations.
 
 - **Member / User**:
-  - Browse published GDG Jakarta events with rich details, venue maps, and schedules.
+  - Browse published GDG Jakarta events with rich details, venue maps, and schedules (hidden `is_hidden` and test `is_test` events are excluded from public `/events`, homepage `/`, and `/dashboard/member` listings, while remaining accessible via direct `/events/[eventId]` link and in the Organizer Dashboard).
   - Filter events by type (In-Person, Virtual, Hybrid) and category (Workshop, Study Jam, etc.).
   - Register directly for events with modal questionnaires (`EventRegistrationModal`).
   - Track personal registration approval status (`pending`, `approved`, `waitlisted`).

@@ -49,65 +49,67 @@ export function MemberEventsList({ events, myRegistrations = [] }: MemberEventsL
 
       try {
         const { fetchBevyChapterEventsAction } = await import("@/server/bevy-actions");
-        const res = await fetchBevyChapterEventsAction(100, 1, true, "Published");
+        const res = await fetchBevyChapterEventsAction(100, 1, false, "Published");
         if (!isCancelled && res?.results && res.results.length > 0) {
           const { resolveEventAudience } = await import("@/lib/bevy/client");
-          const mapped: FirestoreEvent[] = res.results.map((e) => {
-            const { audienceType, isVirtual } = resolveEventAudience(e.audience_type, e.is_virtual_event);
-            return {
-              id: String(e.id),
-              title: e.title || "Untitled Event",
-              description: e.description,
-              description_short: e.description_short,
-              status: (e.status as FirestoreEvent["status"]) || "Published",
-              start_date: e.start_date || new Date().toISOString(),
-              end_date: e.end_date || e.start_date || new Date().toISOString(),
-              picture_url:
-                e.picture?.url ||
-                e.picture?.thumbnail_url ||
-                e.cropped_picture_url ||
-                e.banner?.url ||
-                e.banner?.thumbnail_url ||
-                e.cropped_banner_url ||
-                undefined,
-              banner_url:
-                e.banner?.url ||
-                e.banner?.thumbnail_url ||
-                e.cropped_banner_url ||
-                e.picture?.url ||
-                e.cropped_picture_url ||
-                undefined,
-              event_type_title: e.event_type_title || "Standard Event",
-              audience_type: audienceType,
-              is_virtual: isVirtual,
-              venue:
-                e.venue_name || e.venue_address || e.venue_city
-                  ? {
-                      name: e.venue_name,
-                      address: e.venue_address,
-                      city: e.venue_city,
-                    }
-                  : undefined,
-              url: e.url,
-              static_url: e.static_url,
-              tags: e.tags || [],
-              requires_approval: false,
-              total_registrations: e.total_attendees ?? 0,
-              total_approved: e.total_attendees ?? 0,
-              total_checked_in: e.checkin_count ?? 0,
-              is_hidden: Boolean(e.is_hidden || (e as { hidden?: boolean }).hidden),
-              is_test: Boolean(e.is_test),
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            };
-          });
+          const mapped: FirestoreEvent[] = res.results
+            .filter((e) => !e.is_hidden && !(e as { hidden?: boolean }).hidden && !e.is_test)
+            .map((e) => {
+              const { audienceType, isVirtual } = resolveEventAudience(e.audience_type, e.is_virtual_event);
+              return {
+                id: String(e.id),
+                title: e.title || "Untitled Event",
+                description: e.description,
+                description_short: e.description_short,
+                status: (e.status as FirestoreEvent["status"]) || "Published",
+                start_date: e.start_date || new Date().toISOString(),
+                end_date: e.end_date || e.start_date || new Date().toISOString(),
+                picture_url:
+                  e.picture?.url ||
+                  e.picture?.thumbnail_url ||
+                  e.cropped_picture_url ||
+                  e.banner?.url ||
+                  e.banner?.thumbnail_url ||
+                  e.cropped_banner_url ||
+                  undefined,
+                banner_url:
+                  e.banner?.url ||
+                  e.banner?.thumbnail_url ||
+                  e.cropped_banner_url ||
+                  e.picture?.url ||
+                  e.cropped_picture_url ||
+                  undefined,
+                event_type_title: e.event_type_title || "Standard Event",
+                audience_type: audienceType,
+                is_virtual: isVirtual,
+                venue:
+                  e.venue_name || e.venue_address || e.venue_city
+                    ? {
+                        name: e.venue_name,
+                        address: e.venue_address,
+                        city: e.venue_city,
+                      }
+                    : undefined,
+                url: e.url,
+                static_url: e.static_url,
+                tags: e.tags || [],
+                requires_approval: false,
+                total_registrations: e.total_attendees ?? 0,
+                total_approved: e.total_attendees ?? 0,
+                total_checked_in: e.checkin_count ?? 0,
+                is_hidden: Boolean(e.is_hidden || (e as { hidden?: boolean }).hidden),
+                is_test: Boolean(e.is_test),
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              };
+            });
           setResolvedEvents(mapped);
           return;
         }
 
         // Secondary fallback to Firestore events collection
         const { getFirestoreEvents } = await import("@/lib/firestore/client");
-        const fsEvents = await getFirestoreEvents(100);
+        const fsEvents = await getFirestoreEvents(100, false);
         if (!isCancelled && fsEvents.length > 0) {
           setResolvedEvents(fsEvents);
         }
@@ -144,8 +146,11 @@ export function MemberEventsList({ events, myRegistrations = [] }: MemberEventsL
     registrationMap.set(String(reg.event_id), reg);
   }
 
-  const visibleEvents = resolvedEvents.filter((e) =>
-    e.status ? e.status.toLowerCase() === "published" || e.status === "Completed" : true,
+  const visibleEvents = resolvedEvents.filter(
+    (e) =>
+      !e.is_hidden &&
+      !e.is_test &&
+      (e.status ? e.status.toLowerCase() === "published" || e.status === "Completed" : true),
   );
   const publishedEvents = visibleEvents.filter((e) => e.status === "Published" || e.status === "Completed");
   const upcomingEvents = publishedEvents.filter((e) => !isEventPast(e));

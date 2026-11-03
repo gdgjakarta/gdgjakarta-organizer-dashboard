@@ -840,9 +840,10 @@ export async function getBevyChapterEvents(
   );
 
   if (result && Array.isArray(result.results)) {
+    const rawCount = result.results.length;
     result.results = result.results.filter((e) => {
-      const isHidden = !includeHidden && (e.is_hidden || (e as { hidden?: boolean }).hidden);
-      if (isHidden) return false;
+      const isHiddenOrTest = !includeHidden && (e.is_hidden || (e as { hidden?: boolean }).hidden || e.is_test);
+      if (isHiddenOrTest) return false;
       if (!isAllStatus) {
         const eventStatus = e.status?.toLowerCase();
         if (eventStatus && eventStatus !== status.toLowerCase()) {
@@ -851,6 +852,10 @@ export async function getBevyChapterEvents(
       }
       return true;
     });
+    const removedCount = rawCount - result.results.length;
+    if (removedCount > 0 && typeof result.count === "number") {
+      result.count = Math.max(result.results.length, result.count - removedCount);
+    }
 
     // Store in Last-Known-Good cache
     eventsLkgCache.set(cacheKey, {

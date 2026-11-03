@@ -17,9 +17,15 @@ export default async function MemberDashboardPage() {
   let events: FirestoreEvent[] = [];
 
   try {
-    const bevy = await getBevyChapterEvents(undefined, 100, 1, true, "Published");
+    const bevy = await getBevyChapterEvents(undefined, 100, 1, false, "Published");
     events = (bevy?.results ?? [])
-      .filter((e) => (e.status ? e.status.toLowerCase() === "published" : true))
+      .filter(
+        (e) =>
+          (e.status ? e.status.toLowerCase() === "published" : true) &&
+          !e.is_hidden &&
+          !(e as { hidden?: boolean }).hidden &&
+          !e.is_test,
+      )
       .map((e) => {
         const { audienceType, isVirtual } = resolveEventAudience(e.audience_type, e.is_virtual_event);
         return {

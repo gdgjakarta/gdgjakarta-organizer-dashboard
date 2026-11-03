@@ -152,6 +152,8 @@ Keep a component inside its route until it is reused by another feature. Do not 
 
 - **Total Registered Attendee card**: `registrant-statistics.tsx` overview shows approved + `paid_and_registered` (+ attended/confirmed/registered) as one card; clicking applies the `registered_attendees` status filter handled in `registrants-tab.tsx`. Documented in the Status & Metric Guide.
 
+- **Public & Member Event Listings Exclude Hidden and Test Events**: `getBevyChapterEvents(..., includeHidden = false)` and `getFirestoreEvents(..., includeHidden = false)` filter out both `is_hidden` (`hidden`) and `is_test` events. Applied across `/events` (`events/page.tsx`, `events-directory.tsx`), `/` (`page.tsx`, `featured-events-section.tsx`), and `/dashboard/member` (`member/page.tsx`, `member-events-list.tsx`). Direct event links (`/events/[eventId]`) and organizer views remain accessible.
+
 - **Merchandise Delivery Configuration Dialog & Configurable Production/Shipping Timeline**:
   - Moved delivery configuration (fee amount in IDR with quick presets and payment environment: Live Production vs Development / Sandbox) into a modal dialog (`MerchandiseDeliveryConfigDialog`).
   - Added configurable **Production & Quality Check Duration** (weeks, default 3) and **Courier Delivery Duration** (weeks, default 1) alongside optional custom announcement notes (`merchandise_delivery_lead_time_weeks`, `merchandise_delivery_shipping_time_weeks`, `merchandise_delivery_notes`).
