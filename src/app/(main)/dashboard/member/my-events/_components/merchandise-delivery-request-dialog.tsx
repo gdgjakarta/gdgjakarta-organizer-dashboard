@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 
 import {
   AlertCircle,
+  CalendarClock,
   CheckCircle2,
   ExternalLink,
   Loader2,
@@ -31,6 +32,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  formatMerchandiseDeliveryNotice,
+  getMerchandiseDeliveryTimeline,
+} from "@/lib/events/merchandise-delivery-timeline";
 import {
   confirmMerchandiseDeliveryPaymentAction,
   submitMerchandiseDeliveryRequestAction,
@@ -217,6 +222,9 @@ export function MerchandiseDeliveryRequestDialog({
     });
   };
 
+  const timelineConfig = getMerchandiseDeliveryTimeline(event);
+  const timelineNotice = formatMerchandiseDeliveryNotice(timelineConfig);
+
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
@@ -234,6 +242,15 @@ export function MerchandiseDeliveryRequestDialog({
 
         {step === "form" ? (
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Production & Delivery Timeline Notice */}
+            <Alert className="border-primary/30 bg-primary/5 text-foreground">
+              <CalendarClock className="size-4 text-primary" />
+              <AlertTitle className="font-semibold text-xs sm:text-sm">Fulfillment & Delivery Timeline</AlertTitle>
+              <AlertDescription className="mt-1 text-[11px] leading-relaxed sm:text-xs text-muted-foreground">
+                {timelineNotice}
+              </AlertDescription>
+            </Alert>
+
             {/* Fee Notice: Free for checked-in attendees, Fee applies for no-shows */}
             {isCheckedIn ? (
               <Alert className="border-emerald-500/30 bg-emerald-500/10 text-emerald-900 dark:text-emerald-200">

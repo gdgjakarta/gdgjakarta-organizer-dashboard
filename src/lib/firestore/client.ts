@@ -3300,6 +3300,9 @@ const ALLOWED_EVENT_DOC_KEYS = new Set<string>([
   "payment_environment",
   "merchandise_delivery_payment_environment",
   "merchandise_delivery_fee",
+  "merchandise_delivery_lead_time_weeks",
+  "merchandise_delivery_shipping_time_weeks",
+  "merchandise_delivery_notes",
   "headerEmailUrl",
   "header_email_url",
   "paymentDeadlinesInMinutes",
@@ -4953,6 +4956,9 @@ export async function updateEventMerchandiseDeliveryConfig(
     | {
         environment?: "production" | "sandbox";
         fee?: number;
+        leadTimeWeeks?: number;
+        shippingTimeWeeks?: number;
+        notes?: string | null;
       }
     | ("production" | "sandbox"),
   baseEvent?: Partial<FirestoreEvent>,
@@ -4961,10 +4967,16 @@ export async function updateEventMerchandiseDeliveryConfig(
   const eventRef = doc(db, "events", String(eventId));
   const envValue = typeof config === "string" ? config : config.environment;
   const feeValue = typeof config === "object" ? config.fee : undefined;
+  const leadTimeWeeks = typeof config === "object" ? config.leadTimeWeeks : undefined;
+  const shippingTimeWeeks = typeof config === "object" ? config.shippingTimeWeeks : undefined;
+  const notesValue = typeof config === "object" ? config.notes : undefined;
 
   const updatePayload: Record<string, unknown> = {
     ...(envValue ? { merchandise_delivery_payment_environment: envValue } : {}),
     ...(typeof feeValue === "number" ? { merchandise_delivery_fee: feeValue } : {}),
+    ...(typeof leadTimeWeeks === "number" ? { merchandise_delivery_lead_time_weeks: leadTimeWeeks } : {}),
+    ...(typeof shippingTimeWeeks === "number" ? { merchandise_delivery_shipping_time_weeks: shippingTimeWeeks } : {}),
+    ...(notesValue !== undefined ? { merchandise_delivery_notes: notesValue ? notesValue.trim() : null } : {}),
     updated_at: new Date().toISOString(),
   };
 

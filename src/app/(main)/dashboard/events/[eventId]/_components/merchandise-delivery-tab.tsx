@@ -91,6 +91,15 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
   const [deliveryFee, setDeliveryFee] = useState<number>(
     typeof event.merchandise_delivery_fee === "number" ? event.merchandise_delivery_fee : 50000,
   );
+  const [leadTimeWeeks, setLeadTimeWeeks] = useState<number>(
+    typeof event.merchandise_delivery_lead_time_weeks === "number" ? event.merchandise_delivery_lead_time_weeks : 3,
+  );
+  const [shippingTimeWeeks, setShippingTimeWeeks] = useState<number>(
+    typeof event.merchandise_delivery_shipping_time_weeks === "number"
+      ? event.merchandise_delivery_shipping_time_weeks
+      : 1,
+  );
+  const [deliveryNotes, setDeliveryNotes] = useState<string | null>(event.merchandise_delivery_notes ?? null);
   const [isConfigDialogOpen, setIsConfigDialogOpen] = useState(false);
 
   // Sync if server event prop changes
@@ -101,7 +110,22 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
     if (typeof event.merchandise_delivery_fee === "number") {
       setDeliveryFee(event.merchandise_delivery_fee);
     }
-  }, [event.merchandise_delivery_payment_environment, event.merchandise_delivery_fee]);
+    if (typeof event.merchandise_delivery_lead_time_weeks === "number") {
+      setLeadTimeWeeks(event.merchandise_delivery_lead_time_weeks);
+    }
+    if (typeof event.merchandise_delivery_shipping_time_weeks === "number") {
+      setShippingTimeWeeks(event.merchandise_delivery_shipping_time_weeks);
+    }
+    if (event.merchandise_delivery_notes !== undefined) {
+      setDeliveryNotes(event.merchandise_delivery_notes ?? null);
+    }
+  }, [
+    event.merchandise_delivery_payment_environment,
+    event.merchandise_delivery_fee,
+    event.merchandise_delivery_lead_time_weeks,
+    event.merchandise_delivery_shipping_time_weeks,
+    event.merchandise_delivery_notes,
+  ]);
 
   // Real-time synchronization across tabs in the same window
   useEffect(() => {
@@ -111,9 +135,24 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
         setCurrentEnv(customEvent.detail.environment);
       }
     };
+    const handleTimelineChange = (e: Event) => {
+      const customEvent = e as CustomEvent<{
+        eventId: string;
+        leadTimeWeeks: number;
+        shippingTimeWeeks: number;
+        notes: string | null;
+      }>;
+      if (customEvent.detail && String(customEvent.detail.eventId) === String(eventId)) {
+        setLeadTimeWeeks(customEvent.detail.leadTimeWeeks);
+        setShippingTimeWeeks(customEvent.detail.shippingTimeWeeks);
+        setDeliveryNotes(customEvent.detail.notes);
+      }
+    };
     window.addEventListener("gdg:merchandise-delivery-env-change", handleEnvChange);
+    window.addEventListener("gdg:merchandise-delivery-timeline-change", handleTimelineChange);
     return () => {
       window.removeEventListener("gdg:merchandise-delivery-env-change", handleEnvChange);
+      window.removeEventListener("gdg:merchandise-delivery-timeline-change", handleTimelineChange);
     };
   }, [eventId]);
 
@@ -129,6 +168,15 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
           }
           if (typeof docData.merchandise_delivery_fee === "number") {
             setDeliveryFee(docData.merchandise_delivery_fee);
+          }
+          if (typeof docData.merchandise_delivery_lead_time_weeks === "number") {
+            setLeadTimeWeeks(docData.merchandise_delivery_lead_time_weeks);
+          }
+          if (typeof docData.merchandise_delivery_shipping_time_weeks === "number") {
+            setShippingTimeWeeks(docData.merchandise_delivery_shipping_time_weeks);
+          }
+          if (docData.merchandise_delivery_notes !== undefined) {
+            setDeliveryNotes(docData.merchandise_delivery_notes ?? null);
           }
         });
       } catch (err) {
@@ -286,11 +334,16 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
                 <Badge variant="secondary" className="font-semibold text-[10px]">
                   Fee: Rp {deliveryFee.toLocaleString("id-ID")}
                 </Badge>
+                <Badge variant="outline" className="border-border text-[10px] text-muted-foreground">
+                  QC/Prod: {leadTimeWeeks}w • Courier: {shippingTimeWeeks}w
+                </Badge>
               </div>
               <p className="text-muted-foreground text-xs leading-relaxed">
                 {currentEnv === "production"
                   ? `Real payments will be generated and processed via DOKU QRIS Production for Rp ${deliveryFee.toLocaleString("id-ID")} delivery fee.`
-                  : `Test mode enabled. Delivery fee requests generate DOKU Sandbox payment links with mock QRIS testing (Rp ${deliveryFee.toLocaleString("id-ID")}).`}
+                  : `Test mode enabled. Delivery fee requests generate DOKU Sandbox payment links with mock QRIS testing (Rp ${deliveryFee.toLocaleString("id-ID")}).`}{" "}
+                Estimated timeline for attendees: ~{leadTimeWeeks} weeks production/QC + ~{shippingTimeWeeks} week(s)
+                delivery.
               </p>
             </div>
           </div>
@@ -867,9 +920,12 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
         eventId={eventId}
         currentEnv={currentEnv}
         currentFee={deliveryFee}
-        onSuccess={(newEnv, newFee) => {
+        onSuccess={(newEnv, newFee, newLeadTime, newShippingTime, newNotes) => {
           setCurrentEnv(newEnv);
           setDeliveryFee(newFee);
+          setLeadTimeWeeks(newLeadTime);
+          setShippingTimeWeeks(newShippingTime);
+          setDeliveryNotes(newNotes ?? null);
         }}
       />
     </div>

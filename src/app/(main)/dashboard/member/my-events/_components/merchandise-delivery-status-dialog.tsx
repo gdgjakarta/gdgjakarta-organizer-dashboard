@@ -3,7 +3,18 @@
 import { useState } from "react";
 
 import { format, parseISO } from "date-fns";
-import { CheckCircle2, Clock, Copy, ExternalLink, FileImage, MapPin, ShoppingBag, Truck, XCircle } from "lucide-react";
+import {
+  CalendarClock,
+  CheckCircle2,
+  Clock,
+  Copy,
+  ExternalLink,
+  FileImage,
+  MapPin,
+  ShoppingBag,
+  Truck,
+  XCircle,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { PackageTrackingDialog } from "@/components/delivery/package-tracking-dialog";
@@ -17,13 +28,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { FirestoreRegistration, MerchandiseDeliveryStatus } from "@/lib/firestore/types";
+import {
+  formatMerchandiseDeliveryNotice,
+  getMerchandiseDeliveryTimeline,
+} from "@/lib/events/merchandise-delivery-timeline";
+import type { FirestoreEvent, FirestoreRegistration, MerchandiseDeliveryStatus } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
 interface MerchandiseDeliveryStatusDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   registration: FirestoreRegistration;
+  event?: FirestoreEvent;
   onOpenPayment?: () => void;
 }
 
@@ -62,6 +78,7 @@ export function MerchandiseDeliveryStatusDialog({
   isOpen,
   onOpenChange,
   registration,
+  event,
   onOpenPayment,
 }: MerchandiseDeliveryStatusDialogProps) {
   const req = registration.delivery_request;
@@ -72,6 +89,9 @@ export function MerchandiseDeliveryStatusDialog({
 
   const statusConfig = DELIVERY_STATUS_CONFIG[req.status] || DELIVERY_STATUS_CONFIG.pending_review;
   const StatusIcon = statusConfig.icon;
+
+  const timelineConfig = getMerchandiseDeliveryTimeline(event);
+  const timelineNotice = formatMerchandiseDeliveryNotice(timelineConfig);
 
   const handleCopyResi = () => {
     if (!req.tracking_number) return;
@@ -147,12 +167,16 @@ export function MerchandiseDeliveryStatusDialog({
           )}
 
           {req.status === "pending_review" && (
-            <div className="rounded-lg border border-blue-500/20 bg-blue-500/10 p-3 text-blue-900 dark:text-blue-200">
+            <div className="space-y-2 rounded-lg border border-blue-500/20 bg-blue-500/10 p-3 text-blue-900 dark:text-blue-200">
               <p className="font-medium">Payment Confirmed — Awaiting Organizer Processing</p>
-              <p className="mt-1 text-[11px] leading-relaxed">
+              <p className="text-[11px] leading-relaxed">
                 Your Rp {(req.fee_amount || 50000).toLocaleString("id-ID")} distribution fee has been verified. The
                 organizers are packing your merchandise and will assign a courier tracking number soon.
               </p>
+              <div className="flex items-start gap-1.5 rounded-md border border-blue-500/30 bg-blue-500/5 p-2 text-[11px] text-blue-900 dark:text-blue-100">
+                <CalendarClock className="size-3.5 shrink-0 text-blue-600 dark:text-blue-400 mt-0.5" />
+                <span className="leading-snug">{timelineNotice}</span>
+              </div>
             </div>
           )}
 

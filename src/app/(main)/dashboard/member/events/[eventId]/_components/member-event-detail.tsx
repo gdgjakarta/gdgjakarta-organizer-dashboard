@@ -1457,6 +1457,7 @@ export function MemberEventDetail({ event, initialRegistration = null, from }: M
           isOpen={isDeliveryStatusOpen}
           onOpenChange={setIsDeliveryStatusOpen}
           registration={registration}
+          event={currentEvent}
           onOpenPayment={() => {
             setIsDeliveryStatusOpen(false);
             setIsDeliveryModalOpen(true);

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 
-import { CheckCircle2, Loader2, ShieldCheck, Truck } from "lucide-react";
+import { CheckCircle2, Clock, Info, Loader2, ShieldCheck, Truck } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +18,12 @@ import {
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  DEFAULT_MERCHANDISE_LEAD_TIME_WEEKS,
+  DEFAULT_MERCHANDISE_SHIPPING_TIME_WEEKS,
+  formatMerchandiseDeliveryNotice,
+} from "@/lib/events/merchandise-delivery-timeline";
 import { updateEventMerchandiseDeliveryConfigAction } from "@/lib/firestore/actions";
 import type { FirestoreEvent } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
@@ -29,10 +35,18 @@ interface MerchandiseDeliveryConfigDialogProps {
   eventId: string;
   currentEnv: "production" | "sandbox";
   currentFee: number;
-  onSuccess?: (newEnv: "production" | "sandbox", newFee: number) => void;
+  onSuccess?: (
+    newEnv: "production" | "sandbox",
+    newFee: number,
+    newLeadTime: number,
+    newShippingTime: number,
+    newNotes?: string | null,
+  ) => void;
 }
 
 const PRESET_FEES = [25000, 35000, 50000, 75000, 100000];
+const PRESET_LEAD_WEEKS = [1, 2, 3, 4];
+const PRESET_SHIPPING_WEEKS = [1, 2, 3];
 
 export function MerchandiseDeliveryConfigDialog({
   isOpen,
@@ -45,14 +59,49 @@ export function MerchandiseDeliveryConfigDialog({
 }: MerchandiseDeliveryConfigDialogProps) {
   const [fee, setFee] = useState<number>(currentFee);
   const [env, setEnv] = useState<"production" | "sandbox">(currentEnv);
+  const [leadTimeWeeks, setLeadTimeWeeks] = useState<number>(
+    typeof event.merchandise_delivery_lead_time_weeks === "number"
+      ? event.merchandise_delivery_lead_time_weeks
+      : DEFAULT_MERCHANDISE_LEAD_TIME_WEEKS,
+  );
+  const [shippingTimeWeeks, setShippingTimeWeeks] = useState<number>(
+    typeof event.merchandise_delivery_shipping_time_weeks === "number"
+      ? event.merchandise_delivery_shipping_time_weeks
+      : DEFAULT_MERCHANDISE_SHIPPING_TIME_WEEKS,
+  );
+  const [deliveryNotes, setDeliveryNotes] = useState<string>(event.merchandise_delivery_notes ?? "");
   const [isSaving, startTransition] = useTransition();
 
   useEffect(() => {
     if (isOpen) {
       setFee(currentFee);
       setEnv(currentEnv);
+      setLeadTimeWeeks(
+        typeof event.merchandise_delivery_lead_time_weeks === "number"
+          ? event.merchandise_delivery_lead_time_weeks
+          : DEFAULT_MERCHANDISE_LEAD_TIME_WEEKS,
+      );
+      setShippingTimeWeeks(
+        typeof event.merchandise_delivery_shipping_time_weeks === "number"
+          ? event.merchandise_delivery_shipping_time_weeks
+          : DEFAULT_MERCHANDISE_SHIPPING_TIME_WEEKS,
+      );
+      setDeliveryNotes(event.merchandise_delivery_notes ?? "");
     }
-  }, [isOpen, currentFee, currentEnv]);
+  }, [
+    isOpen,
+    currentFee,
+    currentEnv,
+    event.merchandise_delivery_lead_time_weeks,
+    event.merchandise_delivery_shipping_time_weeks,
+    event.merchandise_delivery_notes,
+  ]);
+
+  const previewNotice = formatMerchandiseDeliveryNotice({
+    leadTimeWeeks,
+    shippingTimeWeeks,
+    customNotes: deliveryNotes.trim() || null,
+  });
 
   const handleSave = () => {
     startTransition(async () => {
@@ -62,6 +111,9 @@ export function MerchandiseDeliveryConfigDialog({
           {
             environment: env,
             fee: fee,
+            leadTimeWeeks,
+            shippingTimeWeeks,
+            notes: deliveryNotes.trim() || null,
           },
           event,
         );
@@ -81,9 +133,19 @@ export function MerchandiseDeliveryConfigDialog({
                 detail: { eventId: String(eventId), fee: fee },
               }),
             );
+            window.dispatchEvent(
+              new CustomEvent("gdg:merchandise-delivery-timeline-change", {
+                detail: {
+                  eventId: String(eventId),
+                  leadTimeWeeks,
+                  shippingTimeWeeks,
+                  notes: deliveryNotes.trim() || null,
+                },
+              }),
+            );
           }
 
-          onSuccess?.(env, fee);
+          onSuccess?.(env, fee, leadTimeWeeks, shippingTimeWeeks, deliveryNotes.trim() || null);
           onOpenChange(false);
         } else {
           toast.error(res.error || "Failed to update configuration.");
@@ -189,6 +251,109 @@ export function MerchandiseDeliveryConfigDialog({
               invoices.
             </p>
           </Field>
+
+          {/* Timeline & Production Window Configuration */}
+          <div className="space-y-3 rounded-lg border border-border/80 bg-muted/20 p-3">
+            <div className="flex items-center gap-1.5 font-semibold text-xs text-foreground">
+              <Clock className="size-3.5 text-primary" />
+              <span>Attendee Delivery & Production Timeline Window</span>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field className="space-y-1">
+                <FieldLabel htmlFor="dialog-merch-lead-time" className="font-medium text-xs">
+                  Creation & QC (Weeks)
+                </FieldLabel>
+                <Input
+                  id="dialog-merch-lead-time"
+                  type="number"
+                  min={0}
+                  max={20}
+                  value={leadTimeWeeks}
+                  onChange={(e) => {
+                    const val = Number.parseInt(e.target.value, 10);
+                    setLeadTimeWeeks(Number.isNaN(val) ? 0 : Math.max(0, val));
+                  }}
+                  className="h-8 text-xs font-semibold"
+                />
+                <div className="flex flex-wrap items-center gap-1 pt-1">
+                  {PRESET_LEAD_WEEKS.map((w) => (
+                    <Button
+                      key={w}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setLeadTimeWeeks(w)}
+                      className={cn(
+                        "h-5 px-1.5 text-[10px]",
+                        leadTimeWeeks === w && "border-primary bg-primary/10 font-semibold text-primary",
+                      )}
+                    >
+                      {w}w
+                    </Button>
+                  ))}
+                </div>
+              </Field>
+
+              <Field className="space-y-1">
+                <FieldLabel htmlFor="dialog-merch-shipping-time" className="font-medium text-xs">
+                  Courier Delivery (Weeks)
+                </FieldLabel>
+                <Input
+                  id="dialog-merch-shipping-time"
+                  type="number"
+                  min={0}
+                  max={10}
+                  value={shippingTimeWeeks}
+                  onChange={(e) => {
+                    const val = Number.parseInt(e.target.value, 10);
+                    setShippingTimeWeeks(Number.isNaN(val) ? 0 : Math.max(0, val));
+                  }}
+                  className="h-8 text-xs font-semibold"
+                />
+                <div className="flex flex-wrap items-center gap-1 pt-1">
+                  {PRESET_SHIPPING_WEEKS.map((w) => (
+                    <Button
+                      key={w}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShippingTimeWeeks(w)}
+                      className={cn(
+                        "h-5 px-1.5 text-[10px]",
+                        shippingTimeWeeks === w && "border-primary bg-primary/10 font-semibold text-primary",
+                      )}
+                    >
+                      {w}w
+                    </Button>
+                  ))}
+                </div>
+              </Field>
+            </div>
+
+            <Field className="space-y-1">
+              <FieldLabel htmlFor="dialog-merch-delivery-notes" className="font-medium text-xs">
+                Additional Delivery Notes / Announcement (Optional)
+              </FieldLabel>
+              <Textarea
+                id="dialog-merch-delivery-notes"
+                rows={2}
+                value={deliveryNotes}
+                onChange={(e) => setDeliveryNotes(e.target.value)}
+                placeholder="e.g. Backorders batch begins after registration cutoff. Special holiday couriers may have slight delays."
+                className="text-xs"
+              />
+            </Field>
+
+            {/* Live Attendee Notice Preview */}
+            <div className="rounded-md border border-primary/20 bg-primary/5 p-2.5">
+              <div className="flex items-center gap-1 font-medium text-[11px] text-primary">
+                <Info className="size-3" />
+                <span>Live Attendee Notice Preview</span>
+              </div>
+              <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{previewNotice}</p>
+            </div>
+          </div>
         </div>
 
         <DialogFooter className="gap-2 sm:gap-0">

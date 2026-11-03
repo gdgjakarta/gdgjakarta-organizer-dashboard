@@ -174,6 +174,8 @@ export function collectMerchandiseFilterOptions(
   variants: MerchandiseVariantOption[];
   totalWithMerch: number;
   totalWithoutMerch: number;
+  totalCollected: number;
+  totalUncollected: number;
 } {
   const itemCounts = new Map<string, { id: string; name: string; count: number }>();
   const sizeCounts = new Map<string, number>();
@@ -181,6 +183,8 @@ export function collectMerchandiseFilterOptions(
 
   let totalWithMerch = 0;
   let totalWithoutMerch = 0;
+  let totalCollected = 0;
+  let totalUncollected = 0;
 
   // Seed defined event merchandise
   if (eventMerchandise) {
@@ -199,6 +203,11 @@ export function collectMerchandiseFilterOptions(
     const orders = reg.selected_merchandise ?? [];
     if (orders.length > 0) {
       totalWithMerch += 1;
+      if (reg.is_merchandise_collected) {
+        totalCollected += 1;
+      } else {
+        totalUncollected += 1;
+      }
       const seenRegItems = new Set<string>();
       const seenRegSizes = new Set<string>();
       const seenRegVariants = new Set<string>();
@@ -273,6 +282,8 @@ export function collectMerchandiseFilterOptions(
     variants,
     totalWithMerch,
     totalWithoutMerch,
+    totalCollected,
+    totalUncollected,
   };
 }
 

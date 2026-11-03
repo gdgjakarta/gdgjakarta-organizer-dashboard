@@ -1094,6 +1094,7 @@ export function EventCardItem({
           isOpen={isDeliveryStatusOpen}
           onOpenChange={setIsDeliveryStatusOpen}
           registration={reg}
+          event={effectiveEvent}
           onOpenPayment={() => {
             setIsDeliveryStatusOpen(false);
             setIsDeliveryModalOpen(true);

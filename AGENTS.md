@@ -152,10 +152,12 @@ Keep a component inside its route until it is reused by another feature. Do not 
 
 - **Total Registered Attendee card**: `registrant-statistics.tsx` overview shows approved + `paid_and_registered` (+ attended/confirmed/registered) as one card; clicking applies the `registered_attendees` status filter handled in `registrants-tab.tsx`. Documented in the Status & Metric Guide.
 
-- **Merchandise Delivery Configuration Dialog**:
+- **Merchandise Delivery Configuration Dialog & Configurable Production/Shipping Timeline**:
   - Moved delivery configuration (fee amount in IDR with quick presets and payment environment: Live Production vs Development / Sandbox) into a modal dialog (`MerchandiseDeliveryConfigDialog`).
+  - Added configurable **Production & Quality Check Duration** (weeks, default 3) and **Courier Delivery Duration** (weeks, default 1) alongside optional custom announcement notes (`merchandise_delivery_lead_time_weeks`, `merchandise_delivery_shipping_time_weeks`, `merchandise_delivery_notes`).
   - Accessible via a dedicated **Configure** button on the Merchandise Delivery tab (`merchandise-delivery-tab.tsx`).
-  - Synchronizes changes in real-time across the dashboard via `updateEventMerchandiseDeliveryConfigAction` and optimistic window events (`gdg:merchandise-delivery-env-change`, `gdg:merchandise-delivery-fee-change`).
+  - Synchronizes changes in real-time across the dashboard via `updateEventMerchandiseDeliveryConfigAction` and optimistic window events (`gdg:merchandise-delivery-env-change`, `gdg:merchandise-delivery-fee-change`, `gdg:merchandise-delivery-timeline-change`).
+  - Transparently displays fulfillment timelines in `MerchandiseDeliveryRequestDialog`, `MerchandiseDeliveryStatusDialog`, and event card action panels so attendees know creation/QC takes ~3 weeks if stock is out of quota followed by ~1 week for courier delivery.
 
 - **Email Templates & Thermal Printers Ref & ID Alignment**:
   - Accepted / Ticket Confirmation email templates (`DEFAULT_ACCEPTED_EMAIL_HTML`) render the Attendee ID (`ID: {{ $('Add Bevy Attendee API').item.json.id }}`) directly beneath the Attendee Ref Code (`Ref: {{ $('Add Bevy Attendee API').item.json.attendee_code }}`).

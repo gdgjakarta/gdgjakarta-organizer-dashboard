@@ -471,6 +471,9 @@ export interface FirestoreEvent {
   payment_environment?: "production" | "sandbox";
   merchandise_delivery_payment_environment?: "production" | "sandbox";
   merchandise_delivery_fee?: number;
+  merchandise_delivery_lead_time_weeks?: number; // Production & QC duration in weeks (default: 3)
+  merchandise_delivery_shipping_time_weeks?: number; // Courier delivery duration in weeks (default: 1)
+  merchandise_delivery_notes?: string | null; // Optional organizer custom delivery notice
   payment_webhook_url?: string | null;
   headerEmailUrl?: string | null;
   header_email_url?: string | null;

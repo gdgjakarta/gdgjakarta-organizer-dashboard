@@ -1979,6 +1979,10 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
           matchesMerchandise = regMerch.length > 0;
         } else if (merchandiseFilter === "no_merchandise") {
           matchesMerchandise = regMerch.length === 0;
+        } else if (merchandiseFilter === "collected") {
+          matchesMerchandise = regMerch.length > 0 && Boolean(reg.is_merchandise_collected);
+        } else if (merchandiseFilter === "uncollected") {
+          matchesMerchandise = regMerch.length > 0 && !reg.is_merchandise_collected;
         } else {
           const filterLower = merchandiseFilter.toLowerCase().trim();
           matchesMerchandise = regMerch.some(
@@ -4557,6 +4561,14 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                           label: `Has Merchandise (${merchandiseFilterOptions.totalWithMerch})`,
                         },
                         {
+                          value: "collected",
+                          label: `Collected (${merchandiseFilterOptions.totalCollected})`,
+                        },
+                        {
+                          value: "uncollected",
+                          label: `Uncollected (${merchandiseFilterOptions.totalUncollected})`,
+                        },
+                        {
                           value: "no_merchandise",
                           label: `No Merchandise (${merchandiseFilterOptions.totalWithoutMerch})`,
                         },
@@ -5025,9 +5037,13 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                     Merchandise:{" "}
                     {merchandiseFilter === "has_merchandise"
                       ? "Has Merchandise"
-                      : merchandiseFilter === "no_merchandise"
-                        ? "No Merchandise"
-                        : merchandiseFilter}
+                      : merchandiseFilter === "collected"
+                        ? "Collected"
+                        : merchandiseFilter === "uncollected"
+                          ? "Uncollected"
+                          : merchandiseFilter === "no_merchandise"
+                            ? "No Merchandise"
+                            : merchandiseFilter}
                   </span>
                   <button
                     type="button"

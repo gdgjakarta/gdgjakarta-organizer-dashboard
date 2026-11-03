@@ -221,6 +221,9 @@ service cloud.firestore {
     //   - payment_environment: string|null (optional) - Payment environment ('production'|'sandbox')
     //   - merchandise_delivery_payment_environment: string|null (optional) - Delivery fee payment environment ('production'|'sandbox')
     //   - merchandise_delivery_fee: int|float|null (optional, >= 0) - Fixed shipping delivery fee override in IDR
+    //   - merchandise_delivery_lead_time_weeks: int|float|null (optional, >= 0) - Merchandise preparation lead time in weeks
+    //   - merchandise_delivery_shipping_time_weeks: int|float|null (optional, >= 0) - Merchandise shipping transit duration in weeks
+    //   - merchandise_delivery_notes: string|null (optional, <= 1000 chars) - Shipping terms, courier notes, or batch dispatch guidelines
     //   - registration_status: string|null (optional) - Registration window status ('Draft'|'Published'|'Closed')
     //   - registration_start_date: string|null (optional, <= 50 chars) - Registration start date ISO string
     //   - registration_end_date: string|null (optional, <= 50 chars) - Registration end date ISO string
@@ -894,7 +897,8 @@ service cloud.firestore {
           'max_attendees', 'total_registrations', 'total_approved', 'total_checked_in', 'total_waitlisted',
           'custom_questions', 'agenda', 'speakers', 'sessions', 'webhook_url',
           'payment_webhook_url', 'payment_environment', 'merchandise_delivery_payment_environment',
-          'merchandise_delivery_fee',
+          'merchandise_delivery_fee', 'merchandise_delivery_lead_time_weeks',
+          'merchandise_delivery_shipping_time_weeks', 'merchandise_delivery_notes',
           'registration_status', 'registration_start_date', 'registration_end_date',
           'tickets', 'max_tickets_per_person', 'merchandise', 'max_merchandise_per_person',
           'bundles',
@@ -940,6 +944,9 @@ service cloud.firestore {
         (!('payment_environment' in data) || data.payment_environment == null || (data.payment_environment is string && (data.payment_environment in ['production', 'sandbox']))) &&
         (!('merchandise_delivery_payment_environment' in data) || data.merchandise_delivery_payment_environment == null || (data.merchandise_delivery_payment_environment is string && (data.merchandise_delivery_payment_environment in ['production', 'sandbox']))) &&
         (!('merchandise_delivery_fee' in data) || data.merchandise_delivery_fee == null || ((data.merchandise_delivery_fee is int || data.merchandise_delivery_fee is float) && data.merchandise_delivery_fee >= 0)) &&
+        (!('merchandise_delivery_lead_time_weeks' in data) || data.merchandise_delivery_lead_time_weeks == null || ((data.merchandise_delivery_lead_time_weeks is int || data.merchandise_delivery_lead_time_weeks is float) && data.merchandise_delivery_lead_time_weeks >= 0)) &&
+        (!('merchandise_delivery_shipping_time_weeks' in data) || data.merchandise_delivery_shipping_time_weeks == null || ((data.merchandise_delivery_shipping_time_weeks is int || data.merchandise_delivery_shipping_time_weeks is float) && data.merchandise_delivery_shipping_time_weeks >= 0)) &&
+        (!('merchandise_delivery_notes' in data) || data.merchandise_delivery_notes == null || (data.merchandise_delivery_notes is string && data.merchandise_delivery_notes.size() <= 1000)) &&
         (!('max_attendees' in data) || data.max_attendees == null || ((data.max_attendees is int || data.max_attendees is float) && data.max_attendees >= 0)) &&
         (!('total_registrations' in data) || data.total_registrations == null || ((data.total_registrations is int || data.total_registrations is float) && data.total_registrations >= 0)) &&
         (!('total_approved' in data) || data.total_approved == null || ((data.total_approved is int || data.total_approved is float) && data.total_approved >= 0)) &&

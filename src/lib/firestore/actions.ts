@@ -1071,6 +1071,9 @@ export async function updateEventMerchandiseDeliveryConfigAction(
     | {
         environment?: "production" | "sandbox";
         fee?: number;
+        leadTimeWeeks?: number;
+        shippingTimeWeeks?: number;
+        notes?: string | null;
       }
     | ("production" | "sandbox"),
   baseEvent?: Partial<FirestoreEvent>,
