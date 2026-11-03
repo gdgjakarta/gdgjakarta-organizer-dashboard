@@ -354,7 +354,11 @@ export function expandRefundRecords(registrations: FirestoreRegistration[]): Fir
       });
     }
   }
-  return rows;
+  return rows.sort((a, b) => {
+    const timeA = a.refund_request?.requested_at ? new Date(a.refund_request.requested_at).getTime() : 0;
+    const timeB = b.refund_request?.requested_at ? new Date(b.refund_request.requested_at).getTime() : 0;
+    return timeB - timeA;
+  });
 }
 
 export interface RegistrationDiscountBreakdown {

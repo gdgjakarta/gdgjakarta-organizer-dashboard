@@ -11,6 +11,7 @@ import {
   ExternalLink,
   FileImage,
   MapPin,
+  ShieldCheck,
   ShoppingBag,
   Truck,
   XCircle,
@@ -101,6 +102,15 @@ export function MerchandiseDeliveryStatusDialog({
     setTimeout(() => setCopiedResi(false), 2000);
   };
 
+  let formattedRequestedDate: string | null = null;
+  if (req.requested_at) {
+    try {
+      formattedRequestedDate = format(parseISO(req.requested_at), "dd MMM yyyy • h:mm a");
+    } catch {
+      formattedRequestedDate = req.requested_at;
+    }
+  }
+
   let formattedDispatchedDate: string | null = null;
   if (req.dispatched_at) {
     try {
@@ -118,6 +128,128 @@ export function MerchandiseDeliveryStatusDialog({
       formattedDeliveredDate = req.delivered_at;
     }
   }
+
+  const rawLogs = Array.isArray(registration.status_logs) ? registration.status_logs : [];
+  const deliveryStatusLogs = rawLogs.filter((log) => {
+    const isDeliveryStatus =
+      log.id?.includes("delivery") ||
+      (typeof log.notes === "string" && /delivery|package|distribution fee|shipping|courier|resi/i.test(log.notes));
+    return isDeliveryStatus;
+  });
+
+  // Synthesize timeline entries from delivery request milestones if no explicit status log was recorded yet
+  interface TimelineItem {
+    id: string;
+    title: string;
+    actor: string;
+    timestamp: string;
+    badgeLabel: string;
+    badgeClass: string;
+    notes?: string;
+  }
+
+  const timelineItems: TimelineItem[] = [];
+
+  if (deliveryStatusLogs.length > 0) {
+    for (const log of deliveryStatusLogs) {
+      const isApproved = log.notes?.includes("approved") || log.notes?.includes("dispatched");
+      const isDelivered = log.notes?.includes("delivered");
+      const isRejected = log.notes?.includes("rejected");
+      const isFeePaid = log.notes?.includes("fee confirmed") || log.notes?.includes("Payment confirmed");
+
+      const badgeLabel = isDelivered
+        ? "Delivered"
+        : isApproved
+          ? "Dispatched"
+          : isRejected
+            ? "Rejected"
+            : isFeePaid
+              ? "Payment Confirmed"
+              : "Requested";
+
+      const badgeClass = isDelivered
+        ? "border-purple-500/30 bg-purple-500/10 text-purple-700 dark:text-purple-300"
+        : isApproved
+          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+          : isRejected
+            ? "border-destructive/30 bg-destructive/10 text-destructive"
+            : isFeePaid
+              ? "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300"
+              : "border-muted-foreground/30 bg-muted/30 text-muted-foreground";
+
+      timelineItems.push({
+        id: log.id,
+        title: badgeLabel,
+        actor: log.changed_by_name || "System",
+        timestamp: log.changed_at,
+        badgeLabel,
+        badgeClass,
+        notes: log.notes,
+      });
+    }
+  } else {
+    // Fallback: build from delivery_request timestamps
+    if (req.requested_at) {
+      timelineItems.push({
+        id: `tl_req_${req.id || "1"}`,
+        title: "Delivery Requested",
+        actor: req.recipient_name || registration.member_name || "Attendee",
+        timestamp: req.requested_at,
+        badgeLabel: "Requested",
+        badgeClass: "border-muted-foreground/30 bg-muted/30 text-muted-foreground",
+        notes: `Delivery request submitted for ${req.city}.`,
+      });
+    }
+    if (req.paid_at) {
+      timelineItems.push({
+        id: `tl_paid_${req.id || "2"}`,
+        title: "Fee Payment Confirmed",
+        actor: "Payment Gateway",
+        timestamp: req.paid_at,
+        badgeLabel: "Payment Confirmed",
+        badgeClass: "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300",
+        notes: `Rp ${(req.fee_amount || 50000).toLocaleString("id-ID")} distribution fee settled.`,
+      });
+    }
+    if (req.dispatched_at || (req.status === "approved" && req.reviewed_at)) {
+      timelineItems.push({
+        id: `tl_disp_${req.id || "3"}`,
+        title: "Approved & In Transit",
+        actor: req.reviewed_by_name || "Organizer",
+        timestamp: req.dispatched_at || req.reviewed_at || req.updated_at,
+        badgeLabel: "Dispatched",
+        badgeClass: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+        notes: req.tracking_number
+          ? `Dispatched via ${req.courier_type || "Courier"} (Resi: ${req.tracking_number}).`
+          : "Delivery request approved for dispatch.",
+      });
+    }
+    if (req.status === "delivered" && (req.delivered_at || req.updated_at)) {
+      timelineItems.push({
+        id: `tl_deliv_${req.id || "4"}`,
+        title: "Package Delivered",
+        actor: "Organizer",
+        timestamp: req.delivered_at || req.updated_at,
+        badgeLabel: "Delivered",
+        badgeClass: "border-purple-500/30 bg-purple-500/10 text-purple-700 dark:text-purple-300",
+        notes: "Package marked as successfully delivered to attendee.",
+      });
+    }
+    if (req.status === "rejected" && req.reviewed_at) {
+      timelineItems.push({
+        id: `tl_rej_${req.id || "5"}`,
+        title: "Delivery Request Rejected",
+        actor: req.reviewed_by_name || "Organizer",
+        timestamp: req.reviewed_at,
+        badgeLabel: "Rejected",
+        badgeClass: "border-destructive/30 bg-destructive/10 text-destructive",
+        notes: req.rejection_reason ? `Reason: ${req.rejection_reason}` : "Request rejected by organizer.",
+      });
+    }
+  }
+
+  // Sort timeline latest first
+  timelineItems.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -211,6 +343,13 @@ export function MerchandiseDeliveryStatusDialog({
                 </div>
               )}
 
+              {formattedRequestedDate && (
+                <div className="flex items-center justify-between border-border/40 border-b pb-2">
+                  <span className="text-muted-foreground">Requested On:</span>
+                  <span className="font-medium text-foreground">{formattedRequestedDate}</span>
+                </div>
+              )}
+
               {formattedDispatchedDate && (
                 <div className="flex items-center justify-between border-border/40 border-b pb-2">
                   <span className="text-muted-foreground">Dispatched On:</span>
@@ -269,9 +408,16 @@ export function MerchandiseDeliveryStatusDialog({
 
           {/* Destination Details */}
           <div className="rounded-lg border border-border/80 bg-muted/20 p-3">
-            <div className="flex items-center gap-1.5 font-medium text-foreground">
-              <MapPin className="size-3.5 text-primary" />
-              Delivery Address:
+            <div className="flex items-center justify-between font-medium text-foreground">
+              <div className="flex items-center gap-1.5">
+                <MapPin className="size-3.5 text-primary" />
+                Delivery Address:
+              </div>
+              {formattedRequestedDate && (
+                <span className="text-[10px] text-muted-foreground font-normal">
+                  Requested: {formattedRequestedDate}
+                </span>
+              )}
             </div>
             <div className="mt-1 text-muted-foreground leading-relaxed">
               <span className="font-medium text-foreground">{req.recipient_name}</span> ({req.recipient_phone})<br />
@@ -318,6 +464,60 @@ export function MerchandiseDeliveryStatusDialog({
               ))}
             </div>
           </div>
+
+          {/* Status Tracking & Audit Logs */}
+          {timelineItems.length > 0 && (
+            <div className="space-y-2.5 rounded-lg border border-border/80 bg-muted/20 p-3">
+              <div className="flex items-center justify-between border-border/40 border-b pb-1.5">
+                <div className="flex items-center gap-1.5 font-semibold text-foreground">
+                  <ShieldCheck className="size-3.5 text-primary" />
+                  Status Tracking & Audit Logs
+                </div>
+                <span className="text-[10px] text-muted-foreground">
+                  {timelineItems.length} {timelineItems.length === 1 ? "update" : "updates"}
+                </span>
+              </div>
+
+              <div className="space-y-2 pt-0.5">
+                {timelineItems.map((item) => {
+                  let formattedTime = item.timestamp;
+                  try {
+                    formattedTime = format(parseISO(item.timestamp), "dd MMM yyyy, HH:mm");
+                  } catch {
+                    // keep fallback
+                  }
+
+                  return (
+                    <div
+                      key={item.id}
+                      className="flex flex-col gap-1 border-border/30 border-b pb-2 text-[11px] last:border-b-0 last:pb-0"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <Badge
+                            variant="outline"
+                            className={cn("px-1.5 py-0 text-[10px] font-medium", item.badgeClass)}
+                          >
+                            {item.badgeLabel}
+                          </Badge>
+                          <span className="text-muted-foreground">
+                            by <span className="font-medium text-foreground">{item.actor}</span>
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                          <Clock className="size-3" />
+                          <span>{formattedTime}</span>
+                        </div>
+                      </div>
+                      {item.notes && (
+                        <p className="pl-0.5 text-muted-foreground italic leading-relaxed">{item.notes}</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         <DialogFooter>

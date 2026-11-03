@@ -930,10 +930,19 @@ export async function confirmMerchandiseDeliveryPaymentAction(registrationId: st
 
     const now = new Date().toISOString();
 
-    await updateMerchandiseDeliveryStatus(registrationId, "pending_review", {
-      payment_status: "paid",
-      paid_at: now,
-    });
+    await updateMerchandiseDeliveryStatus(
+      registrationId,
+      "pending_review",
+      {
+        payment_status: "paid",
+        paid_at: now,
+      },
+      {
+        id: reg.member_id || "attendee",
+        name: reg.member_name || reg.delivery_request.recipient_name,
+        email: reg.member_email,
+      },
+    );
 
     await revalidateDashboardPath("/dashboard/member/my-events");
     await revalidateDashboardPath("/dashboard/my-events");
@@ -967,17 +976,22 @@ export async function approveMerchandiseDeliveryAction(input: ApproveMerchandise
     const { updateMerchandiseDeliveryStatus } = await import("./client");
     const now = new Date().toISOString();
 
-    await updateMerchandiseDeliveryStatus(input.registrationId, "approved", {
-      courier_type: input.courierType.trim(),
-      tracking_number: input.trackingNumber.trim(),
-      tracking_url: input.trackingUrl?.trim() ? input.trackingUrl.trim() : undefined,
-      delivery_proof_url: input.deliveryProofUrl?.trim() ? input.deliveryProofUrl.trim() : undefined,
-      dispatched_at: input.dispatchedAt ?? now,
-      notes: input.notes?.trim() ? input.notes.trim() : undefined,
-      reviewed_by_id: input.reviewer.id,
-      reviewed_by_name: input.reviewer.name,
-      reviewed_at: now,
-    });
+    await updateMerchandiseDeliveryStatus(
+      input.registrationId,
+      "approved",
+      {
+        courier_type: input.courierType.trim(),
+        tracking_number: input.trackingNumber.trim(),
+        tracking_url: input.trackingUrl?.trim() ? input.trackingUrl.trim() : undefined,
+        delivery_proof_url: input.deliveryProofUrl?.trim() ? input.deliveryProofUrl.trim() : undefined,
+        dispatched_at: input.dispatchedAt ?? now,
+        notes: input.notes?.trim() ? input.notes.trim() : undefined,
+        reviewed_by_id: input.reviewer.id,
+        reviewed_by_name: input.reviewer.name,
+        reviewed_at: now,
+      },
+      input.reviewer,
+    );
 
     await revalidateDashboardPath(`/dashboard/events/${input.eventId}`);
     await revalidateDashboardPath("/dashboard/member/my-events");
@@ -1006,12 +1020,17 @@ export async function rejectMerchandiseDeliveryAction(input: RejectMerchandiseDe
     const { updateMerchandiseDeliveryStatus } = await import("./client");
     const now = new Date().toISOString();
 
-    await updateMerchandiseDeliveryStatus(input.registrationId, "rejected", {
-      rejection_reason: input.reason.trim(),
-      reviewed_by_id: input.reviewer.id,
-      reviewed_by_name: input.reviewer.name,
-      reviewed_at: now,
-    });
+    await updateMerchandiseDeliveryStatus(
+      input.registrationId,
+      "rejected",
+      {
+        rejection_reason: input.reason.trim(),
+        reviewed_by_id: input.reviewer.id,
+        reviewed_by_name: input.reviewer.name,
+        reviewed_at: now,
+      },
+      input.reviewer,
+    );
 
     await revalidateDashboardPath(`/dashboard/events/${input.eventId}`);
     await revalidateDashboardPath("/dashboard/member/my-events");
@@ -1028,14 +1047,23 @@ export async function rejectMerchandiseDeliveryAction(input: RejectMerchandiseDe
 /**
  * Organizer marks merchandise as successfully delivered.
  */
-export async function markMerchandiseDeliveredAction(registrationId: string, eventId: string) {
+export async function markMerchandiseDeliveredAction(
+  registrationId: string,
+  eventId: string,
+  reviewer?: { id: string; name: string; email?: string },
+) {
   try {
     const { updateMerchandiseDeliveryStatus } = await import("./client");
     const now = new Date().toISOString();
 
-    await updateMerchandiseDeliveryStatus(registrationId, "delivered", {
-      delivered_at: now,
-    });
+    await updateMerchandiseDeliveryStatus(
+      registrationId,
+      "delivered",
+      {
+        delivered_at: now,
+      },
+      reviewer,
+    );
 
     await revalidateDashboardPath(`/dashboard/events/${eventId}`);
     await revalidateDashboardPath("/dashboard/member/my-events");

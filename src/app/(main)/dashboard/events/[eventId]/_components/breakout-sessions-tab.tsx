@@ -5,12 +5,14 @@ import * as React from "react";
 import {
   Building2,
   Calendar,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronsDownUp,
   ChevronsUpDown,
   ClipboardList,
   Clock,
+  Copy,
   ExternalLink,
   Layers,
   Link2,
@@ -423,6 +425,16 @@ export function BreakoutSessionsTab({
     savedConfig,
   ]);
 
+  // Keep local state synced when `event.sessions` updates from parent live subscription (when not dirty)
+  React.useEffect(() => {
+    if (isDirty || initialNormalizedSessions.length === 0) return;
+    setSessions(initialNormalizedSessions);
+    setSavedConfig((prev) => ({
+      ...prev,
+      sessions: initialNormalizedSessions,
+    }));
+  }, [initialNormalizedSessions, isDirty]);
+
   const handleDiscardChanges = React.useCallback(() => {
     setSessions(savedConfig.sessions);
     setDefaultSessionName(savedConfig.defaultSessionName);
@@ -489,6 +501,14 @@ export function BreakoutSessionsTab({
 
   // Registration Form Answers Inspector modal state
   const [inspectReg, setInspectReg] = React.useState<FirestoreRegistration | null>(null);
+  const [copiedPhoneId, setCopiedPhoneId] = React.useState<string | null>(null);
+
+  const handleCopyPhone = React.useCallback((phone: string, regId: string) => {
+    void navigator.clipboard.writeText(phone);
+    setCopiedPhoneId(regId);
+    toast.success("Phone number copied to clipboard");
+    setTimeout(() => setCopiedPhoneId((prev) => (prev === regId ? null : prev)), 2000);
+  }, []);
 
   const questions: CustomQuestion[] = React.useMemo(() => event.custom_questions ?? [], [event.custom_questions]);
 
@@ -1932,12 +1952,39 @@ export function BreakoutSessionsTab({
                                     <Mail className="size-3" />
                                     {reg.member_email}
                                   </span>
-                                  {phone && (
-                                    <span className="inline-flex items-center gap-1">
-                                      <Phone className="size-3" />
-                                      {phone}
-                                    </span>
-                                  )}
+                                  {phone &&
+                                    (() => {
+                                      const cleanPhone = phone.replace(/[^0-9]/g, "");
+                                      return (
+                                        <span className="inline-flex items-center gap-1">
+                                          {cleanPhone.length >= 8 && (
+                                            <a
+                                              href={`https://wa.me/${cleanPhone}`}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="inline-flex items-center gap-1 rounded-md border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 font-medium text-[11px] text-emerald-600 hover:bg-emerald-500/20 dark:text-emerald-400"
+                                            >
+                                              <Phone className="size-3" />
+                                              Chat WhatsApp
+                                            </a>
+                                          )}
+                                          <Button
+                                            type="button"
+                                            variant="ghost"
+                                            size="icon-xs"
+                                            className="size-6 text-muted-foreground hover:text-foreground"
+                                            title="Copy phone"
+                                            onClick={() => handleCopyPhone(phone, reg.id)}
+                                          >
+                                            {copiedPhoneId === reg.id ? (
+                                              <Check className="size-3 text-emerald-600" />
+                                            ) : (
+                                              <Copy className="size-3" />
+                                            )}
+                                          </Button>
+                                        </span>
+                                      );
+                                    })()}
                                 </div>
                               </div>
                             </div>

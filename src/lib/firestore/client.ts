@@ -4260,20 +4260,6 @@ export async function updateEventHighlightsMedia(
     updatePayload.sessions = data.sessions.length > 0 ? data.sessions : deleteField();
   }
 
-  // If presentation_slides are being saved, automatically clean up any fake breakout sessions that were
-  // created by the old Highlights & Media tab (capacity === 0 or missing, and have agenda_activity_id,
-  // without being a real registration breakout session).
-  if (data.presentation_slides !== undefined && Array.isArray(baseEvent?.sessions)) {
-    const cleanedSessions = baseEvent.sessions.filter(
-      (s) =>
-        !s.agenda_activity_id &&
-        (Number(s.capacity) > 0 || s.include_in_registration === true || s.separate_check_in === true),
-    );
-    if (cleanedSessions.length !== baseEvent.sessions.length) {
-      updatePayload.sessions = cleanedSessions.length > 0 ? cleanedSessions : deleteField();
-    }
-  }
-
   const exists = await ensureEventDocInitialized(eventId, baseEvent, updatePayload);
   if (!exists) return;
 
@@ -4892,12 +4878,27 @@ export async function saveMerchandiseDeliveryRequest(
 ): Promise<void> {
   if (typeof window === "undefined") return;
   const docRef = doc(db, "event_registrations", registrationId);
+  const snap = await getDoc(docRef);
+  const existing = snap.exists() ? (snap.data() as FirestoreRegistration) : null;
+  const existingLogs = Array.isArray(existing?.status_logs) ? existing.status_logs : [];
+
   const now = new Date().toISOString();
+  const logEntry: RegistrationStatusLog = {
+    id: `log_${Date.now()}_delivery_request_submitted`,
+    status: existing?.status ?? "approved",
+    changed_at: now,
+    changed_by_id: existing?.member_id ?? "attendee",
+    changed_by_name: existing?.member_name ?? deliveryRequest.recipient_name,
+    changed_by_email: existing?.member_email,
+    notes: `Merchandise delivery requested to ${deliveryRequest.city} (${deliveryRequest.recipient_name}).`,
+  };
+
   const sanitized = sanitizeFirestoreData({
     delivery_request: {
       ...deliveryRequest,
       updated_at: now,
     },
+    status_logs: [...existingLogs, logEntry],
     ...(updatedItems && updatedItems.length > 0 ? { selected_merchandise: updatedItems } : {}),
     updated_at: now,
   });
@@ -4911,6 +4912,7 @@ export async function updateMerchandiseDeliveryStatus(
   registrationId: string,
   status: MerchandiseDeliveryStatus,
   details?: Partial<MerchandiseDeliveryRequest>,
+  reviewer?: { id?: string; name?: string; email?: string },
 ): Promise<void> {
   if (typeof window === "undefined") return;
   const docRef = doc(db, "event_registrations", registrationId);
@@ -4932,8 +4934,34 @@ export async function updateMerchandiseDeliveryStatus(
     updated_at: now,
   };
 
+  const existingLogs = Array.isArray(existing.status_logs) ? existing.status_logs : [];
+  const logEntry: RegistrationStatusLog = {
+    id: `log_${Date.now()}_delivery_${status}`,
+    status: existing.status,
+    changed_at: now,
+    changed_by_id: reviewer?.id ?? details?.reviewed_by_id ?? "organizer",
+    changed_by_name: reviewer?.name ?? details?.reviewed_by_name ?? "Organizer",
+    changed_by_email: reviewer?.email,
+    notes: (() => {
+      if (status === "approved") {
+        return `Delivery approved & dispatched. Courier: ${details?.courier_type ?? mergedRequest.courier_type ?? "Courier"} (Resi: ${details?.tracking_number ?? mergedRequest.tracking_number ?? "N/A"}).`;
+      }
+      if (status === "delivered") {
+        return "Package confirmed delivered to attendee.";
+      }
+      if (status === "rejected") {
+        return `Delivery request rejected: ${details?.rejection_reason ?? mergedRequest.rejection_reason ?? "No reason specified"}`;
+      }
+      if (status === "pending_review") {
+        return "Delivery distribution fee confirmed. Awaiting organizer review.";
+      }
+      return `Delivery status updated to ${status}.`;
+    })(),
+  };
+
   const sanitized = sanitizeFirestoreData({
     delivery_request: mergedRequest,
+    status_logs: [...existingLogs, logEntry],
     updated_at: now,
   });
   await updateDoc(docRef, sanitized);
@@ -4944,7 +4972,13 @@ export async function updateMerchandiseDeliveryStatus(
  */
 export async function getEventMerchandiseDeliveryRequests(eventId: string): Promise<FirestoreRegistration[]> {
   const registrations = await getEventRegistrations(eventId);
-  return registrations.filter((r) => Boolean(r.delivery_request));
+  return registrations
+    .filter((r) => Boolean(r.delivery_request))
+    .sort((a, b) => {
+      const timeA = a.delivery_request?.requested_at ? new Date(a.delivery_request.requested_at).getTime() : 0;
+      const timeB = b.delivery_request?.requested_at ? new Date(b.delivery_request.requested_at).getTime() : 0;
+      return timeB - timeA;
+    });
 }
 
 /**

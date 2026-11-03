@@ -20,6 +20,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { formatFirestoreDate } from "@/lib/date-utils";
 import { approveMerchandiseDeliveryAction } from "@/lib/firestore/actions";
 import type { CourierType, FirestoreRegistration } from "@/lib/firestore/types";
 import { useAuthStore } from "@/stores/auth/auth-provider";
@@ -154,9 +155,16 @@ export function DeliveryApprovalDialog({
             <div className="rounded-lg border border-border/80 bg-muted/30 p-3 text-xs">
               <div className="flex items-center justify-between font-medium text-foreground">
                 <span>Shipping Destination:</span>
-                <Badge variant="outline" className="text-[10px] text-emerald-600 dark:text-emerald-400">
-                  Fee Paid (Rp {(req.fee_amount || 50000).toLocaleString("id-ID")})
-                </Badge>
+                <div className="flex items-center gap-1.5">
+                  {req.requested_at && (
+                    <span className="text-[10px] text-muted-foreground font-normal">
+                      Requested: {formatFirestoreDate(req.requested_at, "dd MMM yyyy, HH:mm", "—")}
+                    </span>
+                  )}
+                  <Badge variant="outline" className="text-[10px] text-emerald-600 dark:text-emerald-400">
+                    Fee Paid (Rp {(req.fee_amount || 50000).toLocaleString("id-ID")})
+                  </Badge>
+                </div>
               </div>
               <div className="mt-1 text-muted-foreground leading-relaxed">
                 <span className="font-medium text-foreground">{req.recipient_name}</span> ({req.recipient_phone})<br />
