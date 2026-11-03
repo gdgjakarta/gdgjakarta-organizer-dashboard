@@ -15,7 +15,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import type { ShortLinkItem } from "@/lib/shortio/types";
 import { bulkDeleteShortLinksAction } from "@/server/shortio-actions";
 
@@ -70,11 +69,11 @@ export function BulkDeleteLinksDialog({ open, onOpenChange, links, onLinksDelete
           </AlertDialogDescription>
         </AlertDialogHeader>
 
-        <div className="grid gap-2 py-2">
+        <div className="grid min-w-0 gap-2 py-2">
           <span className="font-medium text-muted-foreground text-xs uppercase tracking-wider">
             Links to be deleted ({links.length})
           </span>
-          <ScrollArea className="max-h-56 rounded-md border bg-muted/20 p-2.5 [&>[data-slot=scroll-area-viewport]>div]:!block [&>[data-slot=scroll-area-viewport]>div]:min-w-0">
+          <div className="max-h-56 min-w-0 overflow-y-auto rounded-md border bg-muted/20 p-2.5">
             <div className="divide-y divide-border/40">
               {links.map((link) => (
                 <div key={link.id} className="flex min-w-0 flex-col gap-0.5 py-1.5 first:pt-0 last:pb-0">
@@ -86,7 +85,7 @@ export function BulkDeleteLinksDialog({ open, onOpenChange, links, onLinksDelete
                 </div>
               ))}
             </div>
-          </ScrollArea>
+          </div>
         </div>
 
         <AlertDialogFooter>

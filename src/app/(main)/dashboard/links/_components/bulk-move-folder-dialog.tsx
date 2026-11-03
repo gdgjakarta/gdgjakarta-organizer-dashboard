@@ -15,7 +15,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { ShortFolder, ShortLinkItem } from "@/lib/shortio/types";
 import { bulkMoveLinksToFolderAction } from "@/server/shortio-actions";
@@ -104,11 +103,11 @@ export function BulkMoveFolderDialog({ open, onOpenChange, links, folders, onLin
             </Select>
           </div>
 
-          <div className="grid gap-2">
+          <div className="grid min-w-0 gap-2">
             <span className="font-medium text-muted-foreground text-xs uppercase tracking-wider">
               Selected Links ({links.length})
             </span>
-            <ScrollArea className="max-h-56 rounded-md border bg-muted/20 p-2.5 [&>[data-slot=scroll-area-viewport]>div]:!block [&>[data-slot=scroll-area-viewport]>div]:min-w-0">
+            <div className="max-h-56 min-w-0 overflow-y-auto rounded-md border bg-muted/20 p-2.5">
               <div className="divide-y divide-border/40">
                 {links.map((link) => (
                   <div key={link.id} className="flex min-w-0 flex-col gap-0.5 py-1.5 first:pt-0 last:pb-0">
@@ -120,7 +119,7 @@ export function BulkMoveFolderDialog({ open, onOpenChange, links, folders, onLin
                   </div>
                 ))}
               </div>
-            </ScrollArea>
+            </div>
           </div>
         </div>
 
