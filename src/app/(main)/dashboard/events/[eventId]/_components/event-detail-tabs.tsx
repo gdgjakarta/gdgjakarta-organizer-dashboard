@@ -202,6 +202,16 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
     return activeRegistrations.filter((r) => r.refund_request?.status === "waiting_for_approval").length;
   }, [activeRegistrations]);
 
+  const pendingDeliveryCount = useMemo(() => {
+    return activeRegistrations.filter(
+      (r) => r.delivery_request?.status === "pending_review" || r.delivery_request?.status === "pending_payment",
+    ).length;
+  }, [activeRegistrations]);
+
+  const totalDeliveryCount = useMemo(() => {
+    return activeRegistrations.filter((r) => Boolean(r.delivery_request)).length;
+  }, [activeRegistrations]);
+
   // Financial & payment features check: paid registration, merchandise to purchase, or commitment fee
   const hasPaidFeatures = useMemo(() => {
     return (
@@ -364,6 +374,14 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
                 >
                   <Truck className="size-4" />
                   Merchandise Delivery
+                  {(pendingDeliveryCount > 0 || totalDeliveryCount > 0) && (
+                    <Badge
+                      variant="secondary"
+                      className="ml-1 h-4 bg-amber-500/20 px-1.5 text-[10px] text-amber-700 dark:text-amber-300"
+                    >
+                      {pendingDeliveryCount > 0 ? pendingDeliveryCount : totalDeliveryCount}
+                    </Badge>
+                  )}
                 </TabsTrigger>
               )}
               {hasPaidFeatures && (

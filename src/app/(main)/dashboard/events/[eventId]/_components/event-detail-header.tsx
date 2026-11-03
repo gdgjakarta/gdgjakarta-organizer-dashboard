@@ -26,6 +26,7 @@ import {
   RotateCcw,
   Ticket,
   TrendingDown,
+  Truck,
   UserCheck,
   Users,
   XCircle,
@@ -78,6 +79,7 @@ interface EventDetailHeaderProps {
   totalWaitlisted?: number;
   totalCheckedIn?: number;
   totalRefunds?: number;
+  totalDeliveries?: number;
   initialRole?: string;
 }
 
@@ -90,6 +92,7 @@ export function EventDetailHeader({
   totalWaitlisted = 0,
   totalCheckedIn: initialTotalCheckedIn = 0,
   totalRefunds: initialTotalRefunds = 0,
+  totalDeliveries: initialTotalDeliveries = 0,
   initialRole,
 }: EventDetailHeaderProps) {
   const router = useRouter();
@@ -141,6 +144,8 @@ export function EventDetailHeader({
     totalCheckedIn: initialTotalCheckedIn > 0 ? initialTotalCheckedIn : event.total_checked_in,
     totalRefunds: initialTotalRefunds,
     totalRefundsPending: 0,
+    totalDeliveries: initialTotalDeliveries,
+    totalDeliveriesPending: 0,
   });
   const [isLoadingTotals, setIsLoadingTotals] = useState(true);
 
@@ -155,6 +160,7 @@ export function EventDetailHeader({
       totalWaitlisted,
       totalCheckedIn: initialTotalCheckedIn > 0 ? initialTotalCheckedIn : event.total_checked_in,
       totalRefunds: initialTotalRefunds,
+      totalDeliveries: initialTotalDeliveries,
     }));
   }, [
     totalRegistrations,
@@ -164,6 +170,7 @@ export function EventDetailHeader({
     totalWaitlisted,
     initialTotalCheckedIn,
     initialTotalRefunds,
+    initialTotalDeliveries,
     event.total_checked_in,
   ]);
 
@@ -214,6 +221,10 @@ export function EventDetailHeader({
           const refundsPendingCount = directList.filter(
             (r) => r.refund_request?.status === "waiting_for_approval",
           ).length;
+          const deliveriesCount = directList.filter((r) => Boolean(r.delivery_request)).length;
+          const deliveriesPendingCount = directList.filter(
+            (r) => r.delivery_request?.status === "pending_review" || r.delivery_request?.status === "pending_payment",
+          ).length;
 
           setLiveTotals((prev) => ({
             ...prev,
@@ -226,6 +237,8 @@ export function EventDetailHeader({
             totalCheckedIn: directList.length > 0 ? checkedInCount : prev.totalCheckedIn,
             totalRefunds: refundsCount,
             totalRefundsPending: refundsPendingCount,
+            totalDeliveries: deliveriesCount,
+            totalDeliveriesPending: deliveriesPendingCount,
           }));
         }
         setIsLoadingTotals(false);
@@ -259,6 +272,11 @@ export function EventDetailHeader({
             }).length;
             const refundsCount = expandRefundRecords(list).length;
             const refundsPendingCount = list.filter((r) => r.refund_request?.status === "waiting_for_approval").length;
+            const deliveriesCount = list.filter((r) => Boolean(r.delivery_request)).length;
+            const deliveriesPendingCount = list.filter(
+              (r) =>
+                r.delivery_request?.status === "pending_review" || r.delivery_request?.status === "pending_payment",
+            ).length;
 
             setLiveTotals((prev) => ({
               ...prev,
@@ -271,6 +289,8 @@ export function EventDetailHeader({
               totalCheckedIn: list.length > 0 ? checkedInCount : prev.totalCheckedIn,
               totalRefunds: refundsCount,
               totalRefundsPending: refundsPendingCount,
+              totalDeliveries: deliveriesCount,
+              totalDeliveriesPending: deliveriesPendingCount,
             }));
             setIsLoadingTotals(false);
           }
@@ -657,6 +677,26 @@ export function EventDetailHeader({
                 </span>
                 <span>•</span>
                 <span
+                  className="flex items-center gap-1.5 text-sky-600 dark:text-sky-400"
+                  title={`${liveTotals.totalDeliveries} merchandise delivery request${liveTotals.totalDeliveries === 1 ? "" : "s"}${
+                    liveTotals.totalDeliveriesPending > 0 ? ` (${liveTotals.totalDeliveriesPending} pending)` : ""
+                  }`}
+                >
+                  <Truck className="size-4" />
+                  {isLoadingTotals ? (
+                    <Shimmer className="inline-block h-4 w-6 rounded-xs align-middle" />
+                  ) : (
+                    <strong>{liveTotals.totalDeliveries}</strong>
+                  )}{" "}
+                  Merchandise Delivery
+                  {!isLoadingTotals && liveTotals.totalDeliveriesPending > 0 && (
+                    <span className="font-normal text-muted-foreground text-xs">
+                      ({liveTotals.totalDeliveriesPending} pending)
+                    </span>
+                  )}
+                </span>
+                <span>•</span>
+                <span
                   className="flex items-center gap-1.5 text-rose-600 dark:text-rose-400"
                   title={`${liveTotals.totalRefunds} refund request${liveTotals.totalRefunds === 1 ? "" : "s"}${
                     liveTotals.totalRefundsPending > 0
@@ -674,6 +714,30 @@ export function EventDetailHeader({
                   {!isLoadingTotals && liveTotals.totalRefundsPending > 0 && (
                     <span className="font-normal text-muted-foreground text-xs">
                       ({liveTotals.totalRefundsPending} pending)
+                    </span>
+                  )}
+                </span>
+              </>
+            )}
+            {!isCurationMode && liveTotals.totalDeliveries > 0 && (
+              <>
+                <span>•</span>
+                <span
+                  className="flex items-center gap-1.5 text-sky-600 dark:text-sky-400"
+                  title={`${liveTotals.totalDeliveries} merchandise delivery request${liveTotals.totalDeliveries === 1 ? "" : "s"}${
+                    liveTotals.totalDeliveriesPending > 0 ? ` (${liveTotals.totalDeliveriesPending} pending)` : ""
+                  }`}
+                >
+                  <Truck className="size-4" />
+                  {isLoadingTotals ? (
+                    <Shimmer className="inline-block h-4 w-6 rounded-xs align-middle" />
+                  ) : (
+                    <strong>{liveTotals.totalDeliveries}</strong>
+                  )}{" "}
+                  Merchandise Delivery
+                  {!isLoadingTotals && liveTotals.totalDeliveriesPending > 0 && (
+                    <span className="font-normal text-muted-foreground text-xs">
+                      ({liveTotals.totalDeliveriesPending} pending)
                     </span>
                   )}
                 </span>

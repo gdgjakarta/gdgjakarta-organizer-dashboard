@@ -158,6 +158,7 @@ Keep a component inside its route until it is reused by another feature. Do not 
   - Accessible via a dedicated **Configure** button on the Merchandise Delivery tab (`merchandise-delivery-tab.tsx`).
   - Synchronizes changes in real-time across the dashboard via `updateEventMerchandiseDeliveryConfigAction` and optimistic window events (`gdg:merchandise-delivery-env-change`, `gdg:merchandise-delivery-fee-change`, `gdg:merchandise-delivery-timeline-change`).
   - Transparently displays fulfillment timelines in `MerchandiseDeliveryRequestDialog`, `MerchandiseDeliveryStatusDialog`, and event card action panels so attendees know creation/QC takes ~3 weeks if stock is out of quota followed by ~1 week for courier delivery.
+  - **Merchandise Delivery Counters**: `EventDetailHeader` (`event-detail-header.tsx`) displays live total and pending delivery counts (`<total> Merchandise Delivery (<pending> pending)`) alongside Refunds, and `EventDetailTabs` (`event-detail-tabs.tsx`) renders the amber counter badge on the **Merchandise Delivery** tab trigger.
 
 - **Email Templates & Thermal Printers Ref & ID Alignment**:
   - Accepted / Ticket Confirmation email templates (`DEFAULT_ACCEPTED_EMAIL_HTML`) render the Attendee ID (`ID: {{ $('Add Bevy Attendee API').item.json.id }}`) directly beneath the Attendee Ref Code (`Ref: {{ $('Add Bevy Attendee API').item.json.attendee_code }}`).
