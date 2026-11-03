@@ -490,403 +490,406 @@ export function EventDetailHeader({
         </Popover>
       </div>
 
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge
-              variant="outline"
-              className={cn(
-                "border px-2 py-0.5 font-medium text-xs",
-                event.status === "Published" &&
-                  "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-                event.status === "Draft" && "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400",
-                event.status === "Completed" && "border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400",
-                event.status === "Canceled" && "border-destructive/20 bg-destructive/10 text-destructive",
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0 space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge
+                variant="outline"
+                className={cn(
+                  "border px-2 py-0.5 font-medium text-xs",
+                  event.status === "Published" &&
+                    "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+                  event.status === "Draft" && "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400",
+                  event.status === "Completed" && "border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400",
+                  event.status === "Canceled" && "border-destructive/20 bg-destructive/10 text-destructive",
+                )}
+              >
+                {event.status}
+              </Badge>
+
+              {event.is_test ? (
+                <Badge
+                  variant="outline"
+                  className="border-purple-500/20 bg-purple-500/10 px-2 py-0.5 font-medium text-purple-600 text-xs dark:text-purple-400"
+                >
+                  Test
+                </Badge>
+              ) : null}
+
+              {isVirtual && (
+                <Badge
+                  variant="outline"
+                  className="gap-1 border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400"
+                >
+                  <Radio className="size-3" />
+                  Virtual
+                </Badge>
               )}
-            >
-              {event.status}
-            </Badge>
 
-            {event.is_test ? (
-              <Badge
-                variant="outline"
-                className="border-purple-500/20 bg-purple-500/10 px-2 py-0.5 font-medium text-purple-600 text-xs dark:text-purple-400"
-              >
-                Test
-              </Badge>
-            ) : null}
+              {isHybrid && (
+                <Badge
+                  variant="outline"
+                  className="gap-1 border-purple-500/20 bg-purple-500/10 text-purple-600 dark:text-purple-400"
+                >
+                  <Globe className="size-3" />
+                  Hybrid
+                </Badge>
+              )}
 
-            {isVirtual && (
-              <Badge
-                variant="outline"
-                className="gap-1 border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400"
-              >
-                <Radio className="size-3" />
-                Virtual
-              </Badge>
-            )}
+              {!isVirtual && !isHybrid && (
+                <Badge
+                  variant="outline"
+                  className="gap-1 border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                >
+                  <MapPin className="size-3" />
+                  In-Person
+                </Badge>
+              )}
 
-            {isHybrid && (
-              <Badge
-                variant="outline"
-                className="gap-1 border-purple-500/20 bg-purple-500/10 text-purple-600 dark:text-purple-400"
-              >
-                <Globe className="size-3" />
-                Hybrid
-              </Badge>
-            )}
+              {event.event_type_title && (
+                <Badge variant="secondary" className="font-normal text-xs">
+                  {event.event_type_title}
+                </Badge>
+              )}
+            </div>
 
-            {!isVirtual && !isHybrid && (
-              <Badge
-                variant="outline"
-                className="gap-1 border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-              >
-                <MapPin className="size-3" />
-                In-Person
-              </Badge>
-            )}
+            <h1 className="font-bold text-2xl tracking-tight sm:text-3xl">{event.title}</h1>
 
-            {event.event_type_title && (
-              <Badge variant="secondary" className="font-normal text-xs">
-                {event.event_type_title}
-              </Badge>
-            )}
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground text-sm">
+              <span className="inline-flex items-center gap-1.5">
+                <Calendar className="size-4 shrink-0" />
+                {formattedDate}
+              </span>
+              {event.venue?.name && (
+                <>
+                  <span className="select-none opacity-40">•</span>
+                  <a
+                    href={
+                      event.google_maps_url ??
+                      event.venue.google_maps_url ??
+                      event.venue.url ??
+                      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                        [event.venue.name, event.venue.address, event.venue.city].filter(Boolean).join(", "),
+                      )}`
+                    }
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground hover:underline"
+                    title={`Open in Google Maps: ${[event.venue.name, event.venue.address, event.venue.city].filter(Boolean).join(", ")}`}
+                  >
+                    <MapPin className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                    <span>
+                      {event.venue.name}
+                      {event.venue.city ? `, ${event.venue.city}` : ""}
+                    </span>
+                    <ExternalLink className="size-3 shrink-0 opacity-60" />
+                  </a>
+                </>
+              )}
+            </div>
           </div>
 
-          <h1 className="font-bold text-2xl tracking-tight sm:text-3xl">{event.title}</h1>
+          {/* Action Buttons */}
+          <div className="flex flex-wrap items-center gap-2 lg:shrink-0 lg:justify-end">
+            <Button variant="outline" size="sm" onClick={handleSync} disabled={isPending} className="gap-1.5">
+              <RefreshCw className={cn("size-3.5", isPending && "animate-spin")} />
+              Sync
+            </Button>
 
-          <div className="flex flex-wrap items-center gap-4 text-muted-foreground text-sm">
-            <span className="flex items-center gap-1.5">
-              <Calendar className="size-4" />
-              {formattedDate}
-            </span>
-            {event.venue?.name && (
-              <>
-                <span>•</span>
-                <a
-                  href={
-                    event.google_maps_url ??
-                    event.venue.google_maps_url ??
-                    event.venue.url ??
-                    `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                      [event.venue.name, event.venue.address, event.venue.city].filter(Boolean).join(", "),
-                    )}`
-                  }
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 transition-colors hover:text-foreground hover:underline"
-                  title={`Open in Google Maps: ${[event.venue.name, event.venue.address, event.venue.city].filter(Boolean).join(", ")}`}
-                >
-                  <MapPin className="size-4 text-emerald-600 dark:text-emerald-400" />
-                  <span>
-                    {event.venue.name}
-                    {event.venue.city ? `, ${event.venue.city}` : ""}
-                  </span>
-                  <ExternalLink className="size-3 opacity-60" />
-                </a>
-              </>
-            )}
-            <span>•</span>
-            <span className="flex items-center gap-1.5">
-              <Users className="size-4" />
-              {isLoadingTotals ? (
-                <Shimmer className="inline-block h-4 w-7 rounded-xs align-middle" />
-              ) : (
-                <strong className="text-foreground">{liveTotals.totalRegistrations}</strong>
-              )}{" "}
-              Registrants
-            </span>
-            <span>•</span>
-            <span className="flex items-center gap-1.5 text-teal-600 dark:text-teal-400">
-              <Ticket className="size-4" />
-              {isLoadingTotals ? (
-                <Shimmer className="inline-block h-4 w-6 rounded-xs align-middle" />
-              ) : (
-                <strong>{totalExpected}</strong>
-              )}{" "}
-              Registered Attendee
-            </span>
-            {isCurationMode && (
-              <>
-                <span>•</span>
-                <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
-                  <CheckCircle2 className="size-4" />
-                  {isLoadingTotals ? (
-                    <Shimmer className="inline-block h-4 w-6 rounded-xs align-middle" />
-                  ) : (
-                    <strong>{liveTotals.totalApproved}</strong>
-                  )}{" "}
-                  Approved
-                </span>
-              </>
-            )}
-            <span>•</span>
-            <span className="flex items-center gap-1.5 text-purple-600 dark:text-purple-400">
-              <UserCheck className="size-4" />
-              {isLoadingTotals ? (
-                <Shimmer className="inline-block h-4 w-6 rounded-xs align-middle" />
-              ) : (
-                <strong>{liveTotals.totalCheckedIn}</strong>
-              )}{" "}
-              Checked In
-            </span>
-            {isCurationMode && !isLoadingTotals && totalExpected > 0 && (
-              <>
-                <span>•</span>
-                <span
-                  className={cn("flex items-center gap-1.5", getDropRateColorClass(dropRateNumber))}
-                  title={`${droppedCount} confirmed attendee${droppedCount === 1 ? "" : "s"} not checked in`}
-                >
-                  <TrendingDown className="size-4" />
-                  <strong>{formattedDropRate}</strong> Drop Rate
-                  <span className="font-normal text-muted-foreground text-xs">({droppedCount} no-show)</span>
-                </span>
-              </>
-            )}
-            {isCurationMode && (
-              <>
-                <span>•</span>
-                <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
-                  <Clock className="size-4" />
-                  {isLoadingTotals ? (
-                    <Shimmer className="inline-block h-4 w-6 rounded-xs align-middle" />
-                  ) : (
-                    <strong>{liveTotals.totalPending}</strong>
-                  )}{" "}
-                  Pending
-                </span>
-                <span>•</span>
-                <span className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
-                  <Hourglass className="size-4" />
-                  {isLoadingTotals ? (
-                    <Shimmer className="inline-block h-4 w-6 rounded-xs align-middle" />
-                  ) : (
-                    <strong>{liveTotals.totalWaitlisted}</strong>
-                  )}{" "}
-                  Waitlisted
-                </span>
-                <span>•</span>
-                <span className="flex items-center gap-1.5 text-destructive">
-                  <XCircle className="size-4" />
-                  {isLoadingTotals ? (
-                    <Shimmer className="inline-block h-4 w-6 rounded-xs align-middle" />
-                  ) : (
-                    <strong>{liveTotals.totalRejected}</strong>
-                  )}{" "}
-                  Rejected
-                </span>
-                <span>•</span>
-                <span
-                  className="flex items-center gap-1.5 text-sky-600 dark:text-sky-400"
-                  title={`${liveTotals.totalDeliveries} merchandise delivery request${liveTotals.totalDeliveries === 1 ? "" : "s"}${
-                    liveTotals.totalDeliveriesPending > 0 ? ` (${liveTotals.totalDeliveriesPending} pending)` : ""
-                  }`}
-                >
-                  <Truck className="size-4" />
-                  {isLoadingTotals ? (
-                    <Shimmer className="inline-block h-4 w-6 rounded-xs align-middle" />
-                  ) : (
-                    <strong>{liveTotals.totalDeliveries}</strong>
-                  )}{" "}
-                  Merchandise Delivery
-                  {!isLoadingTotals && liveTotals.totalDeliveriesPending > 0 && (
-                    <span className="font-normal text-muted-foreground text-xs">
-                      ({liveTotals.totalDeliveriesPending} pending)
-                    </span>
+            <EventShortLinkButton event={event} isOrganizer={isOrganizer} />
+
+            {(event.id || liveBevyUrl) && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-1.5">
+                    <Eye className="size-3.5" />
+                    <span className="hidden sm:inline">Preview & Share</span>
+                    <span className="sm:hidden">Preview</span>
+                    <ChevronDown className="size-3 opacity-60" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  {event.id && (
+                    <>
+                      <DropdownMenuLabel className="font-normal text-muted-foreground text-xs">
+                        Community Live Page
+                      </DropdownMenuLabel>
+                      <DropdownMenuItem asChild>
+                        <Link href={`/events/${event.id}`} target="_blank" rel="noopener noreferrer">
+                          <Eye className="mr-2 size-3.5" />
+                          Open Live Page
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleCopyLivePage}>
+                        <Copy className="mr-2 size-3.5" />
+                        Copy Live Page Link
+                      </DropdownMenuItem>
+                    </>
                   )}
-                </span>
-                <span>•</span>
-                <span
-                  className="flex items-center gap-1.5 text-rose-600 dark:text-rose-400"
-                  title={`${liveTotals.totalRefunds} refund request${liveTotals.totalRefunds === 1 ? "" : "s"}${
-                    liveTotals.totalRefundsPending > 0
-                      ? ` (${liveTotals.totalRefundsPending} waiting for approval)`
-                      : ""
-                  }`}
-                >
-                  <RotateCcw className="size-4" />
-                  {isLoadingTotals ? (
-                    <Shimmer className="inline-block h-4 w-6 rounded-xs align-middle" />
-                  ) : (
-                    <strong>{liveTotals.totalRefunds}</strong>
-                  )}{" "}
-                  Refunds
-                  {!isLoadingTotals && liveTotals.totalRefundsPending > 0 && (
-                    <span className="font-normal text-muted-foreground text-xs">
-                      ({liveTotals.totalRefundsPending} pending)
-                    </span>
+
+                  {liveBevyUrl && (
+                    <>
+                      {event.id && <DropdownMenuSeparator />}
+                      <DropdownMenuLabel className="font-normal text-muted-foreground text-xs">
+                        Bevy Chapter Page
+                      </DropdownMenuLabel>
+                      <DropdownMenuItem asChild>
+                        <a href={liveBevyUrl} target="_blank" rel="noopener noreferrer">
+                          <Globe className="mr-2 size-3.5" />
+                          Open Bevy Page
+                        </a>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleCopyLiveBevyPage}>
+                        <Copy className="mr-2 size-3.5" />
+                        Copy Bevy Page Link
+                      </DropdownMenuItem>
+                    </>
                   )}
-                </span>
-              </>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
-            {!isCurationMode && liveTotals.totalDeliveries > 0 && (
-              <>
-                <span>•</span>
-                <span
-                  className="flex items-center gap-1.5 text-sky-600 dark:text-sky-400"
-                  title={`${liveTotals.totalDeliveries} merchandise delivery request${liveTotals.totalDeliveries === 1 ? "" : "s"}${
-                    liveTotals.totalDeliveriesPending > 0 ? ` (${liveTotals.totalDeliveriesPending} pending)` : ""
-                  }`}
-                >
-                  <Truck className="size-4" />
-                  {isLoadingTotals ? (
-                    <Shimmer className="inline-block h-4 w-6 rounded-xs align-middle" />
-                  ) : (
-                    <strong>{liveTotals.totalDeliveries}</strong>
-                  )}{" "}
-                  Merchandise Delivery
-                  {!isLoadingTotals && liveTotals.totalDeliveriesPending > 0 && (
-                    <span className="font-normal text-muted-foreground text-xs">
-                      ({liveTotals.totalDeliveriesPending} pending)
-                    </span>
-                  )}
-                </span>
-              </>
+
+            {isOrganizer && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-1.5">
+                    <CreditCard className="size-3.5" />
+                    <span className="hidden sm:inline">DOKU Portals</span>
+                    <span className="sm:hidden">DOKU</span>
+                    <ChevronDown className="size-3 opacity-60" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel className="font-normal text-muted-foreground text-xs">
+                    Simulator & Testing
+                  </DropdownMenuLabel>
+                  <DropdownMenuItem asChild>
+                    <a href="https://sandbox.doku.com/qris-simulator/" target="_blank" rel="noopener noreferrer">
+                      <QrCode className="mr-2 size-3.5 text-primary" />
+                      DOKU QRIS Simulator
+                    </a>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <a href="https://sandbox.doku.com/bo/dashboard" target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="mr-2 size-3.5 text-amber-500" />
+                      DOKU Sandbox Dashboard
+                    </a>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel className="font-normal text-muted-foreground text-xs">
+                    Live Back-Office
+                  </DropdownMenuLabel>
+                  <DropdownMenuItem asChild>
+                    <a href="https://dashboard.doku.com/bo/dashboard" target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="mr-2 size-3.5 text-emerald-600 dark:text-emerald-400" />
+                      DOKU Production Dashboard
+                    </a>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
-            {!isCurationMode && liveTotals.totalRefunds > 0 && (
-              <>
-                <span>•</span>
-                <span
-                  className="flex items-center gap-1.5 text-rose-600 dark:text-rose-400"
-                  title={`${liveTotals.totalRefunds} refund request${liveTotals.totalRefunds === 1 ? "" : "s"}`}
-                >
-                  <RotateCcw className="size-4" />
-                  {isLoadingTotals ? (
-                    <Shimmer className="inline-block h-4 w-6 rounded-xs align-middle" />
-                  ) : (
-                    <strong>{liveTotals.totalRefunds}</strong>
-                  )}{" "}
-                  Refunds
-                </span>
-              </>
-            )}
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" className="gap-1.5">
+                  <ExternalLink className="size-3.5" />
+                  <span className="hidden sm:inline">Manage in Bevy</span>
+                  <span className="sm:hidden">Bevy</span>
+                  <ChevronDown className="size-3 opacity-70" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem asChild>
+                  <a href={getBevyManageEventUrl(event.id)} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="mr-2 size-3.5" />
+                    New Dashboard
+                  </a>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <a href={getBevyOldManageEventUrl(event.id)} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="mr-2 size-3.5" />
+                    Old Dashboard
+                  </a>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex flex-wrap items-center gap-2 lg:shrink-0 lg:justify-end">
-          <Button variant="outline" size="sm" onClick={handleSync} disabled={isPending} className="gap-1.5">
-            <RefreshCw className={cn("size-3.5", isPending && "animate-spin")} />
-            Sync
-          </Button>
-
-          <EventShortLinkButton event={event} isOrganizer={isOrganizer} />
-
-          {(event.id || liveBevyUrl) && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-1.5">
-                  <Eye className="size-3.5" />
-                  <span className="hidden sm:inline">Preview & Share</span>
-                  <span className="sm:hidden">Preview</span>
-                  <ChevronDown className="size-3 opacity-60" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                {event.id && (
-                  <>
-                    <DropdownMenuLabel className="font-normal text-muted-foreground text-xs">
-                      Community Live Page
-                    </DropdownMenuLabel>
-                    <DropdownMenuItem asChild>
-                      <Link href={`/events/${event.id}`} target="_blank" rel="noopener noreferrer">
-                        <Eye className="mr-2 size-3.5" />
-                        Open Live Page
-                      </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleCopyLivePage}>
-                      <Copy className="mr-2 size-3.5" />
-                      Copy Live Page Link
-                    </DropdownMenuItem>
-                  </>
-                )}
-
-                {liveBevyUrl && (
-                  <>
-                    {event.id && <DropdownMenuSeparator />}
-                    <DropdownMenuLabel className="font-normal text-muted-foreground text-xs">
-                      Bevy Chapter Page
-                    </DropdownMenuLabel>
-                    <DropdownMenuItem asChild>
-                      <a href={liveBevyUrl} target="_blank" rel="noopener noreferrer">
-                        <Globe className="mr-2 size-3.5" />
-                        Open Bevy Page
-                      </a>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleCopyLiveBevyPage}>
-                      <Copy className="mr-2 size-3.5" />
-                      Copy Bevy Page Link
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+        {/* Counter Row: fillMaxWidth first, relative layout support on mobile */}
+        <div className="flex w-full flex-wrap items-center gap-x-3.5 gap-y-2 text-muted-foreground text-sm">
+          <span className="inline-flex items-center gap-1.5">
+            <Users className="size-4 shrink-0" />
+            {isLoadingTotals ? (
+              <Shimmer className="inline-block h-4 w-7 rounded-xs align-middle" />
+            ) : (
+              <strong className="text-foreground">{liveTotals.totalRegistrations}</strong>
+            )}{" "}
+            Registrants
+          </span>
+          <span className="select-none opacity-40">•</span>
+          <span className="inline-flex items-center gap-1.5 text-teal-600 dark:text-teal-400">
+            <Ticket className="size-4 shrink-0" />
+            {isLoadingTotals ? (
+              <Shimmer className="inline-block h-4 w-6 rounded-xs align-middle" />
+            ) : (
+              <strong>{totalExpected}</strong>
+            )}{" "}
+            Registered Attendee
+          </span>
+          {isCurationMode && (
+            <>
+              <span className="select-none opacity-40">•</span>
+              <span className="inline-flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                <CheckCircle2 className="size-4 shrink-0" />
+                {isLoadingTotals ? (
+                  <Shimmer className="inline-block h-4 w-6 rounded-xs align-middle" />
+                ) : (
+                  <strong>{liveTotals.totalApproved}</strong>
+                )}{" "}
+                Approved
+              </span>
+            </>
           )}
-
-          {isOrganizer && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-1.5">
-                  <CreditCard className="size-3.5" />
-                  <span className="hidden sm:inline">DOKU Portals</span>
-                  <span className="sm:hidden">DOKU</span>
-                  <ChevronDown className="size-3 opacity-60" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel className="font-normal text-muted-foreground text-xs">
-                  Simulator & Testing
-                </DropdownMenuLabel>
-                <DropdownMenuItem asChild>
-                  <a href="https://sandbox.doku.com/qris-simulator/" target="_blank" rel="noopener noreferrer">
-                    <QrCode className="mr-2 size-3.5 text-primary" />
-                    DOKU QRIS Simulator
-                  </a>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <a href="https://sandbox.doku.com/bo/dashboard" target="_blank" rel="noopener noreferrer">
-                    <ExternalLink className="mr-2 size-3.5 text-amber-500" />
-                    DOKU Sandbox Dashboard
-                  </a>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuLabel className="font-normal text-muted-foreground text-xs">
-                  Live Back-Office
-                </DropdownMenuLabel>
-                <DropdownMenuItem asChild>
-                  <a href="https://dashboard.doku.com/bo/dashboard" target="_blank" rel="noopener noreferrer">
-                    <ExternalLink className="mr-2 size-3.5 text-emerald-600 dark:text-emerald-400" />
-                    DOKU Production Dashboard
-                  </a>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+          <span className="select-none opacity-40">•</span>
+          <span className="inline-flex items-center gap-1.5 text-purple-600 dark:text-purple-400">
+            <UserCheck className="size-4 shrink-0" />
+            {isLoadingTotals ? (
+              <Shimmer className="inline-block h-4 w-6 rounded-xs align-middle" />
+            ) : (
+              <strong>{liveTotals.totalCheckedIn}</strong>
+            )}{" "}
+            Checked In
+          </span>
+          {isCurationMode && !isLoadingTotals && totalExpected > 0 && (
+            <>
+              <span className="select-none opacity-40">•</span>
+              <span
+                className={cn("inline-flex items-center gap-1.5", getDropRateColorClass(dropRateNumber))}
+                title={`${droppedCount} confirmed attendee${droppedCount === 1 ? "" : "s"} not checked in`}
+              >
+                <TrendingDown className="size-4 shrink-0" />
+                <strong>{formattedDropRate}</strong> Drop Rate
+                <span className="font-normal text-muted-foreground text-xs">({droppedCount} no-show)</span>
+              </span>
+            </>
           )}
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button size="sm" className="gap-1.5">
-                <ExternalLink className="size-3.5" />
-                <span className="hidden sm:inline">Manage in Bevy</span>
-                <span className="sm:hidden">Bevy</span>
-                <ChevronDown className="size-3 opacity-70" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem asChild>
-                <a href={getBevyManageEventUrl(event.id)} target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="mr-2 size-3.5" />
-                  New Dashboard
-                </a>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <a href={getBevyOldManageEventUrl(event.id)} target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="mr-2 size-3.5" />
-                  Old Dashboard
-                </a>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {isCurationMode && (
+            <>
+              <span className="select-none opacity-40">•</span>
+              <span className="inline-flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                <Clock className="size-4 shrink-0" />
+                {isLoadingTotals ? (
+                  <Shimmer className="inline-block h-4 w-6 rounded-xs align-middle" />
+                ) : (
+                  <strong>{liveTotals.totalPending}</strong>
+                )}{" "}
+                Pending
+              </span>
+              <span className="select-none opacity-40">•</span>
+              <span className="inline-flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
+                <Hourglass className="size-4 shrink-0" />
+                {isLoadingTotals ? (
+                  <Shimmer className="inline-block h-4 w-6 rounded-xs align-middle" />
+                ) : (
+                  <strong>{liveTotals.totalWaitlisted}</strong>
+                )}{" "}
+                Waitlisted
+              </span>
+              <span className="select-none opacity-40">•</span>
+              <span className="inline-flex items-center gap-1.5 text-destructive">
+                <XCircle className="size-4 shrink-0" />
+                {isLoadingTotals ? (
+                  <Shimmer className="inline-block h-4 w-6 rounded-xs align-middle" />
+                ) : (
+                  <strong>{liveTotals.totalRejected}</strong>
+                )}{" "}
+                Rejected
+              </span>
+              <span className="select-none opacity-40">•</span>
+              <span
+                className="inline-flex items-center gap-1.5 text-sky-600 dark:text-sky-400"
+                title={`${liveTotals.totalDeliveries} merchandise delivery request${liveTotals.totalDeliveries === 1 ? "" : "s"}${
+                  liveTotals.totalDeliveriesPending > 0 ? ` (${liveTotals.totalDeliveriesPending} pending)` : ""
+                }`}
+              >
+                <Truck className="size-4 shrink-0" />
+                {isLoadingTotals ? (
+                  <Shimmer className="inline-block h-4 w-6 rounded-xs align-middle" />
+                ) : (
+                  <strong>{liveTotals.totalDeliveries}</strong>
+                )}{" "}
+                Merchandise Delivery
+                {!isLoadingTotals && liveTotals.totalDeliveriesPending > 0 && (
+                  <span className="font-normal text-muted-foreground text-xs">
+                    ({liveTotals.totalDeliveriesPending} pending)
+                  </span>
+                )}
+              </span>
+              <span className="select-none opacity-40">•</span>
+              <span
+                className="inline-flex items-center gap-1.5 text-rose-600 dark:text-rose-400"
+                title={`${liveTotals.totalRefunds} refund request${liveTotals.totalRefunds === 1 ? "" : "s"}${
+                  liveTotals.totalRefundsPending > 0 ? ` (${liveTotals.totalRefundsPending} waiting for approval)` : ""
+                }`}
+              >
+                <RotateCcw className="size-4 shrink-0" />
+                {isLoadingTotals ? (
+                  <Shimmer className="inline-block h-4 w-6 rounded-xs align-middle" />
+                ) : (
+                  <strong>{liveTotals.totalRefunds}</strong>
+                )}{" "}
+                Refunds
+                {!isLoadingTotals && liveTotals.totalRefundsPending > 0 && (
+                  <span className="font-normal text-muted-foreground text-xs">
+                    ({liveTotals.totalRefundsPending} pending)
+                  </span>
+                )}
+              </span>
+            </>
+          )}
+          {!isCurationMode && liveTotals.totalDeliveries > 0 && (
+            <>
+              <span className="select-none opacity-40">•</span>
+              <span
+                className="inline-flex items-center gap-1.5 text-sky-600 dark:text-sky-400"
+                title={`${liveTotals.totalDeliveries} merchandise delivery request${liveTotals.totalDeliveries === 1 ? "" : "s"}${
+                  liveTotals.totalDeliveriesPending > 0 ? ` (${liveTotals.totalDeliveriesPending} pending)` : ""
+                }`}
+              >
+                <Truck className="size-4 shrink-0" />
+                {isLoadingTotals ? (
+                  <Shimmer className="inline-block h-4 w-6 rounded-xs align-middle" />
+                ) : (
+                  <strong>{liveTotals.totalDeliveries}</strong>
+                )}{" "}
+                Merchandise Delivery
+                {!isLoadingTotals && liveTotals.totalDeliveriesPending > 0 && (
+                  <span className="font-normal text-muted-foreground text-xs">
+                    ({liveTotals.totalDeliveriesPending} pending)
+                  </span>
+                )}
+              </span>
+            </>
+          )}
+          {!isCurationMode && liveTotals.totalRefunds > 0 && (
+            <>
+              <span className="select-none opacity-40">•</span>
+              <span
+                className="inline-flex items-center gap-1.5 text-rose-600 dark:text-rose-400"
+                title={`${liveTotals.totalRefunds} refund request${liveTotals.totalRefunds === 1 ? "" : "s"}`}
+              >
+                <RotateCcw className="size-4 shrink-0" />
+                {isLoadingTotals ? (
+                  <Shimmer className="inline-block h-4 w-6 rounded-xs align-middle" />
+                ) : (
+                  <strong>{liveTotals.totalRefunds}</strong>
+                )}{" "}
+                Refunds
+              </span>
+            </>
+          )}
         </div>
       </div>
     </div>

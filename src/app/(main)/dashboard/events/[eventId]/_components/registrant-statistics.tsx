@@ -1022,24 +1022,10 @@ export function RegistrantStatistics({
               </>
             ) : (
               <>
-                <div className="mt-2 flex items-baseline justify-between">
-                  <div className="font-bold text-2xl tracking-tight text-purple-600 dark:text-purple-400 sm:text-3xl">
-                    {totalCheckedIn}
-                  </div>
-                  {totalConfirmedAttendees > 0 && (
-                    <div
-                      className="flex items-center gap-0.5 text-xs"
-                      title={`${totalDropped} of ${totalConfirmedAttendees} confirmed attendees not checked in`}
-                    >
-                      <TrendingDown className={cn("size-3.5", dropRateClasses.icon)} />
-                      <span className={cn("font-semibold tabular-nums", dropRateClasses.text)}>
-                        {formattedDropRate}
-                      </span>
-                      <span className="text-muted-foreground text-[10px]">drop</span>
-                    </div>
-                  )}
+                <div className="mt-2 font-bold text-2xl tracking-tight text-purple-600 dark:text-purple-400 sm:text-3xl">
+                  {totalCheckedIn}
                 </div>
-                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
                   <Badge
                     variant="outline"
                     className="border-purple-500/20 bg-purple-500/10 px-1.5 py-0 font-semibold text-[10px] text-purple-600 dark:text-purple-400"
@@ -1048,10 +1034,17 @@ export function RegistrantStatistics({
                   </Badge>
                   <span>turnout</span>
                   {totalConfirmedAttendees > 0 && (
-                    <>
-                      <span>•</span>
-                      <span>{totalDropped} no-show</span>
-                    </>
+                    <span
+                      className="inline-flex items-center gap-1"
+                      title={`${totalDropped} of ${totalConfirmedAttendees} confirmed attendees not checked in`}
+                    >
+                      <span className={cn("inline-flex items-center gap-0.5 font-medium", dropRateClasses.text)}>
+                        <TrendingDown className={cn("size-3 shrink-0", dropRateClasses.icon)} />
+                        {formattedDropRate}
+                      </span>
+                      <span>drop</span>
+                      <span>({totalDropped} no-show)</span>
+                    </span>
                   )}
                 </div>
               </>
