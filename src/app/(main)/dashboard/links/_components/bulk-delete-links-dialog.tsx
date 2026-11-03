@@ -55,7 +55,7 @@ export function BulkDeleteLinksDialog({ open, onOpenChange, links, onLinksDelete
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="data-[size=default]:max-w-[calc(100%-2rem)] data-[size=default]:sm:max-w-lg sm:max-w-lg">
+      <AlertDialogContent className="data-[size=default]:max-w-[calc(100%-2rem)] data-[size=default]:sm:max-w-xl sm:max-w-xl">
         <AlertDialogHeader>
           <div className="flex items-center gap-2 text-destructive">
             <div className="flex size-8 items-center justify-center rounded-md bg-destructive/10">
@@ -74,7 +74,7 @@ export function BulkDeleteLinksDialog({ open, onOpenChange, links, onLinksDelete
           <span className="font-medium text-muted-foreground text-xs uppercase tracking-wider">
             Links to be deleted ({links.length})
           </span>
-          <ScrollArea className="max-h-40 rounded-md border bg-muted/20 p-2.5 [&>[data-slot=scroll-area-viewport]>div]:!block [&>[data-slot=scroll-area-viewport]>div]:min-w-0">
+          <ScrollArea className="max-h-56 rounded-md border bg-muted/20 p-2.5 [&>[data-slot=scroll-area-viewport]>div]:!block [&>[data-slot=scroll-area-viewport]>div]:min-w-0">
             <div className="divide-y divide-border/40">
               {links.map((link) => (
                 <div key={link.id} className="flex min-w-0 flex-col gap-0.5 py-1.5 first:pt-0 last:pb-0">
