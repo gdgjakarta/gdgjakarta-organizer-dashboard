@@ -36,6 +36,7 @@ import {
 import { toast } from "sonner";
 
 import { FloatingSaveBar } from "@/app/(main)/dashboard/_components/floating-save-bar";
+import { Shimmer } from "@/components/shimmer";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -156,6 +157,9 @@ function getStatusMeta(status?: string) {
     dotClass: "bg-slate-500",
   };
 }
+
+const SKELETON_ROSTER_IDS = ["roster-sk-1", "roster-sk-2", "roster-sk-3", "roster-sk-4", "roster-sk-5"];
+const SKELETON_MODAL_IDS = ["modal-sk-1", "modal-sk-2", "modal-sk-3", "modal-sk-4"];
 
 interface BreakoutSessionsTabProps {
   eventId: string;
@@ -360,10 +364,12 @@ export function BreakoutSessionsTab({
   const isAuthLoading = useAuthStore((s) => s.isLoading || s.isLoggingOut);
 
   const [localRegistrations, setLocalRegistrations] = React.useState<FirestoreRegistration[]>(initialRegistrations);
+  const [isLoadingRegistrants, setIsLoadingRegistrants] = React.useState(initialRegistrations.length === 0);
 
   React.useEffect(() => {
     if (initialRegistrations.length > 0) {
       setLocalRegistrations(initialRegistrations);
+      setIsLoadingRegistrants(false);
     }
   }, [initialRegistrations]);
 
@@ -490,6 +496,7 @@ export function BreakoutSessionsTab({
 
   // Add from Registrants modal state
   const [addRegistrantsOpen, setAddRegistrantsOpen] = React.useState(false);
+  const [isLoadingModalRegistrants, setIsLoadingModalRegistrants] = React.useState(false);
   const [addRegistrantSearch, setAddRegistrantSearch] = React.useState("");
   const [selectedRegIdsToAdd, setSelectedRegIdsToAdd] = React.useState<string[]>([]);
   const [markCheckedInOnAssign, setMarkCheckedInOnAssign] = React.useState(true);
@@ -542,12 +549,14 @@ export function BreakoutSessionsTab({
         if (liveRegs.length > 0) {
           setLocalRegistrations(liveRegs);
         }
+        setIsLoadingRegistrants(false);
 
         unsubscribeRegs = subscribeEventRegistrations(
           eventId,
           (liveList) => {
             if (active) {
               setLocalRegistrations(liveList);
+              setIsLoadingRegistrants(false);
             }
           },
           () => {
@@ -615,6 +624,10 @@ export function BreakoutSessionsTab({
         }));
       } catch (err) {
         console.warn("[BreakoutSessionsTab] Failed to refresh client data:", err);
+      } finally {
+        if (active) {
+          setIsLoadingRegistrants(false);
+        }
       }
     }
     void loadLatestConfig();
@@ -628,6 +641,9 @@ export function BreakoutSessionsTab({
   React.useEffect(() => {
     if (!addRegistrantsOpen && !qrScannerOpen) return;
     let active = true;
+    if (addRegistrantsOpen && localRegistrations.length === 0) {
+      setIsLoadingModalRegistrants(true);
+    }
     void (async () => {
       try {
         const { getEventRegistrations } = await import("@/lib/firestore/client");
@@ -637,12 +653,17 @@ export function BreakoutSessionsTab({
         }
       } catch {
         // Ignore
+      } finally {
+        if (active) {
+          setIsLoadingModalRegistrants(false);
+        }
       }
     })();
     return () => {
       active = false;
+      setIsLoadingModalRegistrants(false);
     };
-  }, [addRegistrantsOpen, qrScannerOpen, eventId]);
+  }, [addRegistrantsOpen, qrScannerOpen, eventId, localRegistrations.length]);
 
   // Flatten agenda activities from `event.agenda` for binding/importing
   const agendaActivities = React.useMemo(() => {
@@ -1306,7 +1327,12 @@ export function BreakoutSessionsTab({
                   <span className="hidden text-[11px] text-muted-foreground sm:inline">({defaultSessionTime})</span>
                 )}
                 <Badge variant="secondary" className="text-[10px]">
-                  Registered: {liveSessionStats.default.registered}
+                  Registered:{" "}
+                  {isLoadingRegistrants ? (
+                    <Shimmer className="inline-block h-2.5 w-4 rounded-xs align-middle" />
+                  ) : (
+                    liveSessionStats.default.registered
+                  )}
                 </Badge>
               </button>
 
@@ -1475,14 +1501,25 @@ export function BreakoutSessionsTab({
                           variant={currentRegistered >= (session.capacity || 1) ? "destructive" : "secondary"}
                           className="text-[11px]"
                         >
-                          Assigned: {currentRegistered} / {session.capacity}
+                          Assigned:{" "}
+                          {isLoadingRegistrants ? (
+                            <Shimmer className="inline-block h-2.5 w-4 rounded-xs align-middle" />
+                          ) : (
+                            currentRegistered
+                          )}{" "}
+                          / {session.capacity}
                         </Badge>
                         {session.separate_check_in !== false && (
                           <Badge
                             variant="outline"
                             className="border-emerald-500/30 bg-emerald-500/10 text-[11px] text-emerald-700 dark:text-emerald-300"
                           >
-                            Checked In: {currentCheckedIn}
+                            Checked In:{" "}
+                            {isLoadingRegistrants ? (
+                              <Shimmer className="inline-block h-2.5 w-4 rounded-xs align-middle" />
+                            ) : (
+                              currentCheckedIn
+                            )}
                           </Badge>
                         )}
                       </button>
@@ -1848,8 +1885,9 @@ export function BreakoutSessionsTab({
                   <SelectContent>
                     {sessions.map((s) => (
                       <SelectItem key={s.id} value={s.id} className="text-xs">
-                        {s.title || "Untitled Session"} ({liveSessionStats[s.id]?.registered ?? 0} assigned •{" "}
-                        {liveSessionStats[s.id]?.checkedIn ?? 0} checked in)
+                        {s.title || "Untitled Session"} (
+                        {isLoadingRegistrants ? "..." : (liveSessionStats[s.id]?.registered ?? 0)} assigned •{" "}
+                        {isLoadingRegistrants ? "..." : (liveSessionStats[s.id]?.checkedIn ?? 0)} checked in)
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1880,10 +1918,11 @@ export function BreakoutSessionsTab({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all" className="text-xs">
-                      All in Session ({sessionRosterRegistrations.length})
+                      All in Session ({isLoadingRegistrants ? "..." : sessionRosterRegistrations.length})
                     </SelectItem>
                     <SelectItem value="checked_in" className="text-xs">
-                      Checked In Only ({liveSessionStats[activeRosterSessionId]?.checkedIn ?? 0})
+                      Checked In Only (
+                      {isLoadingRegistrants ? "..." : (liveSessionStats[activeRosterSessionId]?.checkedIn ?? 0)})
                     </SelectItem>
                     <SelectItem value="not_checked_in" className="text-xs">
                       Not Checked In
@@ -1907,7 +1946,45 @@ export function BreakoutSessionsTab({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredRosterRegistrations.length === 0 ? (
+                  {isLoadingRegistrants ? (
+                    SKELETON_ROSTER_IDS.map((rowId) => (
+                      <TableRow key={rowId}>
+                        <TableCell>
+                          <div className="flex items-center gap-2.5">
+                            <Shimmer className="size-8 rounded-full" />
+                            <div className="space-y-1.5">
+                              <Shimmer className="h-3.5 w-28" />
+                              <Shimmer className="h-3 w-40" />
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="space-y-1.5">
+                            <Shimmer className="h-3.5 w-32" />
+                            <Shimmer className="h-3 w-24" />
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="space-y-1.5">
+                            <Shimmer className="h-5 w-20 rounded-full" />
+                            <Shimmer className="h-3 w-16" />
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Shimmer className="h-5 w-28 rounded-md" />
+                        </TableCell>
+                        <TableCell>
+                          <Shimmer className="h-5 w-24 rounded-md" />
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Shimmer className="h-7 w-16 rounded-md" />
+                            <Shimmer className="size-7 rounded-md" />
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : filteredRosterRegistrations.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={6} className="h-28 text-center text-muted-foreground text-xs">
                         No attendees found in this session matching your filters. Use &ldquo;Add from Registrants&rdquo;
@@ -2200,7 +2277,20 @@ export function BreakoutSessionsTab({
             </div>
 
             <div className="max-h-72 divide-y overflow-y-auto rounded-lg border">
-              {availableRegistrantsToAdd.length === 0 ? (
+              {isLoadingModalRegistrants ? (
+                SKELETON_MODAL_IDS.map((rowId) => (
+                  <div key={rowId} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                    <div className="flex items-center gap-2.5">
+                      <Shimmer className="size-4 rounded-xs" />
+                      <div className="space-y-1.5">
+                        <Shimmer className="h-3.5 w-28" />
+                        <Shimmer className="h-3 w-44" />
+                      </div>
+                    </div>
+                    <Shimmer className="h-5 w-20 rounded-full" />
+                  </div>
+                ))
+              ) : availableRegistrantsToAdd.length === 0 ? (
                 <div className="p-6 text-center text-muted-foreground text-xs">
                   No additional registrants available to add.
                 </div>

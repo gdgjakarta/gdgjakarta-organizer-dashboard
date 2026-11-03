@@ -892,6 +892,15 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
                                 <Button
                                   variant="ghost"
                                   size="icon-xs"
+                                  onClick={() => setViewingDetailReg(reg)}
+                                  title="View details & audit logs"
+                                  className="size-7 text-muted-foreground hover:bg-primary/10 hover:text-primary"
+                                >
+                                  <Eye className="size-3.5" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon-xs"
                                   onClick={() => setRejectingReg(reg)}
                                   title="Reject delivery request"
                                   className="size-7 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
