@@ -36,6 +36,7 @@ import {
   formatMerchandiseDeliveryNotice,
   getMerchandiseDeliveryTimeline,
 } from "@/lib/events/merchandise-delivery-timeline";
+import { parseMerchandiseVariations } from "@/lib/events/merchandise-helpers";
 import {
   confirmMerchandiseDeliveryPaymentAction,
   submitMerchandiseDeliveryRequestAction,
@@ -46,6 +47,7 @@ import type {
   MerchandiseDeliveryRequest,
   SelectedMerchandiseOrder,
 } from "@/lib/firestore/types";
+import { cn } from "@/lib/utils";
 
 interface MerchandiseDeliveryRequestDialogProps {
   isOpen: boolean;
@@ -99,10 +101,21 @@ export function MerchandiseDeliveryRequestDialog({
 
   // Editable items state allowing attendee to adjust variants (e.g. Size M -> L)
   const [items, setItems] = useState<SelectedMerchandiseOrder[]>(() => {
-    return (existingDelivery?.items ?? registration.selected_merchandise ?? []).map((m) => ({
-      ...m,
-      selected_variations: { ...(m.selected_variations ?? {}) },
-    }));
+    return (existingDelivery?.items ?? registration.selected_merchandise ?? []).map((m) => {
+      const vars = { ...(m.selected_variations ?? {}) };
+      if (!Object.keys(vars).some((k) => k.toLowerCase().includes("size"))) {
+        const parsed = parseMerchandiseVariations(m, registration.answers, event?.custom_questions);
+        for (const p of parsed) {
+          if (!vars[p.label]) {
+            vars[p.label] = p.value;
+          }
+        }
+      }
+      return {
+        ...m,
+        selected_variations: vars,
+      };
+    });
   });
 
   const handleVariationChange = (itemIndex: number, varName: string, optValue: string) => {
@@ -340,14 +353,33 @@ export function MerchandiseDeliveryRequestDialog({
                           })}
                         </div>
                       ) : (
-                        item.selected_variations &&
-                        Object.keys(item.selected_variations).length > 0 && (
-                          <div className="text-[10px] text-muted-foreground">
-                            {Object.entries(item.selected_variations)
-                              .map(([k, v]) => `${k}: ${v}`)
-                              .join(", ")}
-                          </div>
-                        )
+                        (() => {
+                          const parsedVars = parseMerchandiseVariations(
+                            item,
+                            registration.answers,
+                            event?.custom_questions,
+                          );
+                          if (parsedVars.length === 0) return null;
+                          return (
+                            <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                              {parsedVars.map((v) => (
+                                <Badge
+                                  key={v.key + v.value}
+                                  variant="outline"
+                                  className={cn(
+                                    "h-4 px-1.5 py-0 font-medium text-[9px] leading-none",
+                                    v.isSize
+                                      ? "border-primary/40 bg-primary/10 font-semibold text-primary"
+                                      : "border-muted-foreground/30 bg-muted/60 text-muted-foreground",
+                                  )}
+                                >
+                                  {v.label ? `${v.label}: ` : ""}
+                                  {v.value}
+                                </Badge>
+                              ))}
+                            </div>
+                          );
+                        })()
                       )}
                     </div>
                   );

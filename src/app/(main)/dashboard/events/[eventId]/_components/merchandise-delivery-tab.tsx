@@ -674,46 +674,53 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
 
                         {/* Merchandise Items Column */}
                         <TableCell className="align-top">
-                          {reg.selected_merchandise && reg.selected_merchandise.length > 0 ? (
-                            <div className="flex min-w-[140px] max-w-[260px] flex-col gap-1.5">
-                              {reg.selected_merchandise.map((m, mIdx) => {
-                                const variations = parseMerchandiseVariations(m, reg.answers);
-                                return (
-                                  <div
-                                    key={m.id || mIdx}
-                                    className="flex flex-col gap-1 rounded-md border border-border/50 bg-muted/40 p-1.5"
-                                  >
-                                    <div className="flex items-center gap-1.5 font-medium text-[11px] text-foreground leading-tight">
-                                      <Package className="size-3 shrink-0 text-primary" />
-                                      <span className="font-semibold text-primary">{m.quantity}x</span>
-                                      <span className="truncate">{m.name}</span>
-                                    </div>
-                                    {variations.length > 0 && (
-                                      <div className="flex flex-wrap items-center gap-1 pl-4.5">
-                                        {variations.map((v) => (
-                                          <Badge
-                                            key={v.key + v.value}
-                                            variant="outline"
-                                            className={cn(
-                                              "h-4 px-1 py-0 font-medium text-[9px] leading-none",
-                                              v.isSize
-                                                ? "border-primary/40 bg-primary/10 font-semibold text-primary"
-                                                : "border-muted-foreground/30 bg-muted/60 text-muted-foreground",
-                                            )}
-                                          >
-                                            {v.label ? `${v.label}: ` : ""}
-                                            {v.value}
-                                          </Badge>
-                                        ))}
+                          {(() => {
+                            const deliveryItems =
+                              reg.delivery_request?.items && reg.delivery_request.items.length > 0
+                                ? reg.delivery_request.items
+                                : (reg.selected_merchandise ?? []);
+
+                            return deliveryItems.length > 0 ? (
+                              <div className="flex min-w-[140px] max-w-[260px] flex-col gap-1.5">
+                                {deliveryItems.map((m, mIdx) => {
+                                  const variations = parseMerchandiseVariations(m, reg.answers, event.custom_questions);
+                                  return (
+                                    <div
+                                      key={m.id || mIdx}
+                                      className="flex flex-col gap-1 rounded-md border border-border/50 bg-muted/40 p-1.5"
+                                    >
+                                      <div className="flex items-center gap-1.5 font-medium text-[11px] text-foreground leading-tight">
+                                        <Package className="size-3 shrink-0 text-primary" />
+                                        <span className="font-semibold text-primary">{m.quantity}x</span>
+                                        <span className="truncate">{m.name}</span>
                                       </div>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">-</span>
-                          )}
+                                      {variations.length > 0 && (
+                                        <div className="flex flex-wrap items-center gap-1 pl-4.5">
+                                          {variations.map((v) => (
+                                            <Badge
+                                              key={v.key + v.value}
+                                              variant="outline"
+                                              className={cn(
+                                                "h-4 px-1 py-0 font-medium text-[9px] leading-none",
+                                                v.isSize
+                                                  ? "border-primary/40 bg-primary/10 font-semibold text-primary"
+                                                  : "border-muted-foreground/30 bg-muted/60 text-muted-foreground",
+                                              )}
+                                            >
+                                              {v.label ? `${v.label}: ` : ""}
+                                              {v.value}
+                                            </Badge>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">-</span>
+                            );
+                          })()}
                         </TableCell>
 
                         {/* Destination Address Column */}
@@ -767,19 +774,6 @@ export function MerchandiseDeliveryTab({ event, eventId }: MerchandiseDeliveryTa
                               >
                                 {req.payment_status === "paid" ? "Paid ✓" : "Unpaid"}
                               </Badge>
-                              {req.payment_environment && (
-                                <Badge
-                                  variant="outline"
-                                  className={cn(
-                                    "px-1 py-0 text-[9px]",
-                                    req.payment_environment === "sandbox"
-                                      ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
-                                      : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-                                  )}
-                                >
-                                  {req.payment_environment === "sandbox" ? "Sandbox" : "Live"}
-                                </Badge>
-                              )}
                             </div>
                           </div>
                         </TableCell>

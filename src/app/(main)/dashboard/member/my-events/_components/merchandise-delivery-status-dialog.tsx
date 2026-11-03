@@ -33,6 +33,7 @@ import {
   formatMerchandiseDeliveryNotice,
   getMerchandiseDeliveryTimeline,
 } from "@/lib/events/merchandise-delivery-timeline";
+import { parseMerchandiseVariations } from "@/lib/events/merchandise-helpers";
 import type { FirestoreEvent, FirestoreRegistration, MerchandiseDeliveryStatus } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
@@ -446,24 +447,60 @@ export function MerchandiseDeliveryStatusDialog({
           </div>
 
           {/* Items Summary */}
-          <div className="rounded-lg border border-border/80 bg-muted/20 p-3">
-            <div className="mb-1.5 flex items-center gap-1.5 font-medium text-foreground">
-              <ShoppingBag className="size-3.5 text-primary" />
-              Merchandise Package Contents:
-            </div>
-            <div className="space-y-1 divide-y divide-border/40">
-              {(registration.selected_merchandise ?? []).map((m, idx) => (
-                <div key={m.id || idx} className="flex items-center justify-between pt-1 first:pt-0">
-                  <span className="text-foreground">
-                    {m.quantity}x {m.name}
-                  </span>
-                  <Badge variant="outline" className="text-[10px]">
-                    Verified
-                  </Badge>
+          {(() => {
+            const packageItems =
+              req.items && req.items.length > 0 ? req.items : (registration.selected_merchandise ?? []);
+
+            return (
+              <div className="rounded-lg border border-border/80 bg-muted/20 p-3">
+                <div className="mb-2 flex items-center gap-1.5 font-medium text-foreground">
+                  <ShoppingBag className="size-3.5 text-primary" />
+                  Merchandise Package Contents:
                 </div>
-              ))}
-            </div>
-          </div>
+                {packageItems.length > 0 ? (
+                  <div className="space-y-2 divide-y divide-border/40">
+                    {packageItems.map((m, idx) => {
+                      const variations = parseMerchandiseVariations(m, registration.answers, event?.custom_questions);
+
+                      return (
+                        <div key={m.id || idx} className="flex items-start justify-between gap-3 pt-2 first:pt-0">
+                          <div className="flex flex-col gap-1 min-w-0">
+                            <span className="font-medium text-foreground leading-tight">
+                              {m.quantity}x {m.name}
+                            </span>
+                            {variations.length > 0 && (
+                              <div className="flex flex-wrap items-center gap-1 pt-0.5">
+                                {variations.map((v) => (
+                                  <Badge
+                                    key={v.key + v.value}
+                                    variant="outline"
+                                    className={cn(
+                                      "h-4 px-1.5 py-0 font-medium text-[9px] leading-none",
+                                      v.isSize
+                                        ? "border-primary/40 bg-primary/10 font-semibold text-primary"
+                                        : "border-muted-foreground/30 bg-muted/60 text-muted-foreground",
+                                    )}
+                                  >
+                                    {v.label ? `${v.label}: ` : ""}
+                                    {v.value}
+                                  </Badge>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <Badge variant="outline" className="shrink-0 text-[10px]">
+                            Verified
+                          </Badge>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">No merchandise items recorded.</p>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Status Tracking & Audit Logs */}
           {timelineItems.length > 0 && (

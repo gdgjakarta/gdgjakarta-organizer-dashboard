@@ -25,6 +25,8 @@ import { approveMerchandiseDeliveryAction } from "@/lib/firestore/actions";
 import type { CourierType, FirestoreRegistration } from "@/lib/firestore/types";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
+import { parseMerchandiseVariations } from "./merchandise-helpers";
+
 interface DeliveryApprovalDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
@@ -189,19 +191,31 @@ export function DeliveryApprovalDialog({
           )}
 
           {/* Items Summary */}
-          <div className="rounded-lg border border-border/80 bg-muted/20 p-2.5 text-xs">
-            <div className="mb-1 font-medium text-foreground">Items to Pack:</div>
-            <div className="flex flex-wrap gap-1.5">
-              {(registration.selected_merchandise ?? []).map((m, idx) => (
-                <Badge key={m.id || idx} variant="secondary" className="text-[11px]">
-                  {m.quantity}x {m.name}
-                  {m.selected_variations && Object.keys(m.selected_variations).length > 0
-                    ? ` (${Object.values(m.selected_variations).join(", ")})`
-                    : ""}
-                </Badge>
-              ))}
-            </div>
-          </div>
+          {(() => {
+            const itemsToPack =
+              registration.delivery_request?.items && registration.delivery_request.items.length > 0
+                ? registration.delivery_request.items
+                : (registration.selected_merchandise ?? []);
+
+            return (
+              <div className="rounded-lg border border-border/80 bg-muted/20 p-2.5 text-xs">
+                <div className="mb-1.5 font-medium text-foreground">Items to Pack:</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {itemsToPack.map((m, idx) => {
+                    const variations = parseMerchandiseVariations(m, registration.answers);
+                    const varText = variations.map((v) => (v.label ? `${v.label}: ${v.value}` : v.value)).join(", ");
+
+                    return (
+                      <Badge key={m.id || idx} variant="secondary" className="text-[11px]">
+                        {m.quantity}x {m.name}
+                        {varText ? ` (${varText})` : ""}
+                      </Badge>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Courier Selection */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
