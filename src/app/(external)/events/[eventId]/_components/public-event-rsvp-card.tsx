@@ -483,7 +483,7 @@ export function PublicEventRsvpCard({
             >
               <a href={event.attendee_virtual_venue_link} target="_blank" rel="noopener noreferrer">
                 <Video className="size-3.5" />
-                Join Virtual Live Stream
+                {isPast ? "View Recording" : "Join Virtual Live Stream"}
                 <ExternalLink className="ml-auto size-3 opacity-70" />
               </a>
             </Button>
