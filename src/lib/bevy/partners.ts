@@ -18,6 +18,7 @@ export function formatTierName(slug: string): string {
 
   // Handle special cases
   const lower = cleaned.toLowerCase();
+  if (lower === "list") return "Partner";
   if (lower === "media") return "Media Partner";
   if (lower === "community") return "Community Partner";
   if (lower === "partners" || lower === "partner") return "Partner";
@@ -178,6 +179,8 @@ export function extractEventPartners(event?: (Record<string, unknown> & Partial<
         key.startsWith("sponsors-") ||
         key.startsWith("partners_") ||
         key.startsWith("partners-")) &&
+      key !== "partners_list" &&
+      key !== "media_partners" &&
       Array.isArray(value)
     ) {
       const tierSlug = key.replace(/^(?:sponsors?|partners?)[-_]/i, "");
