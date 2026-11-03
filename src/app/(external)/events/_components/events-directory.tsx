@@ -56,8 +56,9 @@ export function EventsDirectory({ initialEvents, totalCount, pageSize = 15 }: Ev
         return;
       }
 
+      const hasNextPage = Boolean(response.pagination?.next_page);
       const newResults = response.results.filter(isPubliclyVisibleEvent);
-      if (newResults.length === 0 && !response.next) {
+      if (newResults.length === 0 && !hasNextPage) {
         setTotal(events.length);
         return;
       }
@@ -66,7 +67,7 @@ export function EventsDirectory({ initialEvents, totalCount, pageSize = 15 }: Ev
         const existingIds = new Set(prev.map((e) => String(e.id)));
         const uniqueNew = newResults.filter((e) => !existingIds.has(String(e.id)));
         const nextEvents = [...prev, ...uniqueNew];
-        if (!response.next) {
+        if (!hasNextPage) {
           setTotal(nextEvents.length);
         } else if (typeof response.count === "number" && response.count < total) {
           setTotal(response.count);
