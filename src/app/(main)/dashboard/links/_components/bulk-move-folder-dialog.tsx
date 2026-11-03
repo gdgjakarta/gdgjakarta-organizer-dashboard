@@ -63,7 +63,7 @@ export function BulkMoveFolderDialog({ open, onOpenChange, links, folders, onLin
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="overflow-hidden sm:max-w-[460px]">
+      <DialogContent className="overflow-hidden sm:max-w-lg">
         <DialogHeader className="w-full min-w-0 overflow-hidden">
           <div className="flex w-full min-w-0 items-center gap-2 pr-6">
             <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
@@ -108,7 +108,7 @@ export function BulkMoveFolderDialog({ open, onOpenChange, links, folders, onLin
             <span className="font-medium text-muted-foreground text-xs uppercase tracking-wider">
               Selected Links ({links.length})
             </span>
-            <ScrollArea className="max-h-40 rounded-md border bg-muted/20 p-2.5">
+            <ScrollArea className="max-h-40 rounded-md border bg-muted/20 p-2.5 [&>[data-slot=scroll-area-viewport]>div]:!block [&>[data-slot=scroll-area-viewport]>div]:min-w-0">
               <div className="divide-y divide-border/40">
                 {links.map((link) => (
                   <div key={link.id} className="flex min-w-0 flex-col gap-0.5 py-1.5 first:pt-0 last:pb-0">
