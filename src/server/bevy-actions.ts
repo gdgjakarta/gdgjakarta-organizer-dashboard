@@ -1,6 +1,11 @@
 "use server";
+import { revalidatePath } from "next/cache";
+
 import {
+  type AddBevyChapterTeamMemberParams,
+  addBevyChapterTeamMember,
   deleteBevyAttendee,
+  deleteBevyChapterTeamMember,
   findBevyAttendeeIdByEmail,
   getAllBevyChapterEvents,
   getAllBevyEventAttendees,
@@ -11,7 +16,11 @@ import {
   getMemberById,
   importMemberToBevy,
   putBevyAttendeeCheckIn,
+  searchBevyChapterMembers,
+  type UpdateBevyChapterTeamMemberParams,
+  updateBevyChapterTeamMember,
 } from "@/lib/bevy/client";
+import type { BevyChapterTeamMember, BevyUser } from "@/lib/bevy/types";
 
 /**
  * Server action to fetch Bevy chapter events safely on the server
@@ -51,6 +60,18 @@ export async function fetchBevyChapterMembersAction(pageSize = 200, page = 1, or
 }
 
 /**
+ * Server action to search across all Bevy chapter members using Bevy's Algolia index.
+ * Protected: requires an active organizer session.
+ */
+export async function searchBevyChapterMembersAction(query: string) {
+  if (!(await isAuthorizedOrganizerSession())) {
+    console.warn("[Security] Blocked unauthorized attempt to search Bevy chapter members");
+    return [];
+  }
+  return await searchBevyChapterMembers(query);
+}
+
+/**
  * Server action to fetch Bevy chapter teams safely on the server.
  * Protected: requires an active organizer session.
  */
@@ -60,6 +81,110 @@ export async function fetchBevyChapterTeamsAction() {
     return [];
   }
   return await getBevyChapterTeams();
+}
+
+/**
+ * Server action to look up a user on Bevy by email.
+ * Protected: requires an active organizer session.
+ */
+export async function findBevyUserByEmailAction(email: string): Promise<{
+  success: boolean;
+  data?: BevyUser | null;
+  error?: string;
+}> {
+  if (!(await isAuthorizedOrganizerSession())) {
+    return { success: false, error: "Unauthorized. Organizer session required." };
+  }
+
+  const cleanEmail = email?.trim().toLowerCase();
+  if (!cleanEmail || !cleanEmail.includes("@")) {
+    return { success: false, error: "Please enter a valid email address." };
+  }
+
+  try {
+    const result = await getMemberById(cleanEmail);
+    if (!result.ok || !result.data) {
+      return { success: false, error: "User not found on Bevy. They may need to create an account first." };
+    }
+    return { success: true, data: result.data };
+  } catch (error) {
+    console.error("[findBevyUserByEmailAction] Error:", error);
+    return { success: false, error: "Failed to find user on Bevy." };
+  }
+}
+
+/**
+ * Server action to add a member to the Bevy chapter team.
+ * Protected: requires an active organizer session.
+ */
+export async function addBevyChapterTeamMemberAction(params: AddBevyChapterTeamMemberParams): Promise<{
+  success: boolean;
+  data?: BevyChapterTeamMember | null;
+  error?: string;
+}> {
+  if (!(await isAuthorizedOrganizerSession())) {
+    return { success: false, error: "Unauthorized. Organizer session required." };
+  }
+
+  const result = await addBevyChapterTeamMember(params);
+  if (result.success) {
+    try {
+      revalidatePath("/dashboard/members");
+      revalidatePath("/dashboard/organizer");
+    } catch (e) {
+      console.debug("[revalidatePath] Cache revalidation skipped:", e);
+    }
+  }
+  return result;
+}
+
+/**
+ * Server action to remove a member from the Bevy chapter team.
+ * Protected: requires an active organizer session.
+ */
+export async function deleteBevyChapterTeamMemberAction(teamMemberId: string | number): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  if (!(await isAuthorizedOrganizerSession())) {
+    return { success: false, error: "Unauthorized. Organizer session required." };
+  }
+
+  const result = await deleteBevyChapterTeamMember(teamMemberId);
+  if (result.success) {
+    try {
+      revalidatePath("/dashboard/members");
+      revalidatePath("/dashboard/organizer");
+    } catch (e) {
+      console.debug("[revalidatePath] Cache revalidation skipped:", e);
+    }
+  }
+  return result;
+}
+
+/**
+ * Server action to update a member on the Bevy chapter team.
+ * Protected: requires an active organizer session.
+ */
+export async function updateBevyChapterTeamMemberAction(params: UpdateBevyChapterTeamMemberParams): Promise<{
+  success: boolean;
+  data?: BevyChapterTeamMember | null;
+  error?: string;
+}> {
+  if (!(await isAuthorizedOrganizerSession())) {
+    return { success: false, error: "Unauthorized. Organizer session required." };
+  }
+
+  const result = await updateBevyChapterTeamMember(params);
+  if (result.success) {
+    try {
+      revalidatePath("/dashboard/members");
+      revalidatePath("/dashboard/organizer");
+    } catch (e) {
+      console.debug("[revalidatePath] Cache revalidation skipped:", e);
+    }
+  }
+  return result;
 }
 
 /**

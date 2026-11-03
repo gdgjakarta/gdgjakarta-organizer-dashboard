@@ -70,6 +70,7 @@ export interface BevyChapterTeamMember {
   user_can_edit?: boolean;
   is_chapter_leader?: boolean;
   is_payment_lead?: boolean;
+  send_chapter_team_emails?: boolean;
 }
 
 export interface BevyChapterMember {
@@ -91,6 +92,8 @@ export interface BevyChapterMember {
 
 export interface BevyMembersResponse {
   count?: number;
+  chapter_member_key?: string;
+  user_key?: string;
   pagination?: {
     previous_page?: number | null;
     current_page?: number;

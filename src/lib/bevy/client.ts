@@ -24,6 +24,7 @@ import {
   type BevyAttendeeCheckInRequest,
   type BevyAttendeeCheckInResponse,
   type BevyAttendeesResponse,
+  type BevyChapterMember,
   type BevyChapterSlim,
   type BevyChapterTeamMember,
   type BevyChapterTeamRole,
@@ -105,7 +106,7 @@ export async function bevyFetchWithResponse<T>(
     "User-Agent": "GDGJakartaDashboard/2.2 (compatible; CloudflareWorkers/1.0)",
     ...(options.body ? { "Content-Type": "application/json" } : {}),
     ...(includeAuth && csrfToken ? { "X-Csrftoken": csrfToken } : {}),
-    ...(includeAuth && cookie ? { Cookie: cookie } : {}),
+    ...(includeAuth && cookie ? { Cookie: cookie, "Auth-Type": "AUTHORIZED" } : {}),
     ...(BEVY_CONFIG.apiToken ? { Authorization: `Token ${BEVY_CONFIG.apiToken}` } : {}),
     ...(options.headers as Record<string, string>),
   });
@@ -498,6 +499,187 @@ export async function getBevyChapterTeams(chapterId: string = BEVY_CONFIG.chapte
   return await getChapterTeam(chapterId);
 }
 
+export interface AddBevyChapterTeamMemberParams {
+  userId: string | number;
+  firstName: string;
+  lastName?: string;
+  role: number; // 1 (Organizer), 2 (Team Member), 3 (Check-in Staff), 4 (Regional Leader)
+  title: string;
+  visible?: boolean;
+  sendChapterTeamEmails?: boolean;
+}
+
+/**
+ * Add a member to the chapter team in Bevy.
+ * Endpoint: POST /chapter/{chapterId}/team/
+ * Referer: https://gdg.community.dev/dashboard/{chapterSlug}/settings/team
+ */
+export async function addBevyChapterTeamMember(
+  params: AddBevyChapterTeamMemberParams,
+  chapterId: string | number = BEVY_CONFIG.chapterId,
+): Promise<{ success: boolean; data?: BevyChapterTeamMember | null; error?: string }> {
+  try {
+    const chapterSlug = process.env.BEVY_CHAPTER_SLUG || BEVY_CONFIG.chapterSlug || "gdg-jakarta";
+    const referer = `https://gdg.community.dev/dashboard/${chapterSlug}/settings/team`;
+
+    const body = {
+      first_name: params.firstName.trim(),
+      last_name: (params.lastName || "").trim(),
+      role: Number(params.role),
+      visible: Boolean(params.visible),
+      send_chapter_team_emails: params.sendChapterTeamEmails ?? true,
+      title: params.title.trim(),
+      user: String(params.userId),
+    };
+
+    console.log(`[addBevyChapterTeamMember] Adding user ${params.userId} to chapter ${chapterId}...`);
+
+    const result = await bevyFetchWithResponse<BevyChapterTeamMember>(
+      `/chapter/${chapterId}/team/`,
+      {
+        method: "POST",
+        headers: {
+          Origin: "https://gdg.community.dev",
+          Referer: referer,
+          "Auth-Type": "AUTHORIZED",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify(body),
+        requireAuth: true,
+      },
+      chapterId,
+    );
+
+    if (!result.ok) {
+      const errorMsg = extractApiMessage(result.data, `Failed to add team member (HTTP ${result.status})`);
+      console.error(`[addBevyChapterTeamMember] Failed:`, errorMsg, result.data);
+      return { success: false, error: errorMsg };
+    }
+
+    return { success: true, data: result.data };
+  } catch (error) {
+    console.error(`[addBevyChapterTeamMember] Exception:`, error);
+    return { success: false, error: extractApiMessage(error, "Failed to connect to Bevy server") };
+  }
+}
+
+/**
+ * Delete / remove a team member from Bevy chapter team.
+ * Endpoint: DELETE /chapter/{chapterId}/team/{teamMemberId}/
+ * Referer: https://gdg.community.dev/dashboard/{chapterSlug}/settings/team
+ */
+export async function deleteBevyChapterTeamMember(
+  teamMemberId: string | number,
+  chapterId: string | number = BEVY_CONFIG.chapterId,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const cleanId = String(teamMemberId).trim();
+    if (!cleanId) return { success: false, error: "Team member ID is required" };
+
+    const chapterSlug = process.env.BEVY_CHAPTER_SLUG || BEVY_CONFIG.chapterSlug || "gdg-jakarta";
+    const referer = `https://gdg.community.dev/dashboard/${chapterSlug}/settings/team`;
+
+    console.log(`[deleteBevyChapterTeamMember] Removing team member ${cleanId} from chapter ${chapterId}...`);
+
+    const result = await bevyFetchWithResponse<unknown>(
+      `/chapter/${chapterId}/team/${cleanId}/`,
+      {
+        method: "DELETE",
+        headers: {
+          Origin: "https://gdg.community.dev",
+          Referer: referer,
+          "Auth-Type": "AUTHORIZED",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        requireAuth: true,
+      },
+      chapterId,
+    );
+
+    if (!result.ok && result.status !== 204 && result.status !== 200) {
+      const errorMsg = extractApiMessage(result.data, `Failed to remove team member (HTTP ${result.status})`);
+      console.error(`[deleteBevyChapterTeamMember] Failed:`, errorMsg, result.data);
+      return { success: false, error: errorMsg };
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error(`[deleteBevyChapterTeamMember] Exception:`, error);
+    return { success: false, error: extractApiMessage(error, "Failed to connect to Bevy server") };
+  }
+}
+
+export interface UpdateBevyChapterTeamMemberParams {
+  teamMemberId: string | number;
+  userId: string | number;
+  email?: string;
+  firstName: string;
+  lastName?: string;
+  role: number; // 1 = Organizer, 2 = Team Member, 3 = Check-in Staff, 4 = Regional Leader
+  title: string;
+  visible?: boolean;
+  sendChapterTeamEmails?: boolean;
+}
+
+/**
+ * Update a chapter team member in Bevy.
+ * Endpoint: PUT /chapter/{chapterId}/team/{teamMemberId}/
+ * Referer: https://gdg.community.dev/dashboard/{chapterSlug}/settings/team
+ */
+export async function updateBevyChapterTeamMember(
+  params: UpdateBevyChapterTeamMemberParams,
+  chapterId: string | number = BEVY_CONFIG.chapterId,
+): Promise<{ success: boolean; data?: BevyChapterTeamMember | null; error?: string }> {
+  try {
+    const cleanId = String(params.teamMemberId).trim();
+    if (!cleanId) return { success: false, error: "Team member ID is required" };
+
+    const chapterSlug = process.env.BEVY_CHAPTER_SLUG || BEVY_CONFIG.chapterSlug || "gdg-jakarta";
+    const referer = `https://gdg.community.dev/dashboard/${chapterSlug}/settings/team`;
+
+    const body = {
+      email: params.email?.trim() || "",
+      first_name: params.firstName.trim(),
+      last_name: (params.lastName || "").trim(),
+      role: Number(params.role),
+      visible: Boolean(params.visible),
+      send_chapter_team_emails: params.sendChapterTeamEmails ?? true,
+      title: params.title.trim(),
+      user: Number(params.userId) || params.userId,
+      chapter: Number(chapterId),
+    };
+
+    console.log(`[updateBevyChapterTeamMember] Updating team member ${cleanId} in chapter ${chapterId}...`);
+
+    const result = await bevyFetchWithResponse<BevyChapterTeamMember>(
+      `/chapter/${chapterId}/team/${cleanId}/`,
+      {
+        method: "PUT",
+        headers: {
+          Origin: "https://gdg.community.dev",
+          Referer: referer,
+          "Auth-Type": "AUTHORIZED",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify(body),
+        requireAuth: true,
+      },
+      chapterId,
+    );
+
+    if (!result.ok) {
+      const errorMsg = extractApiMessage(result.data, `Failed to update team member (HTTP ${result.status})`);
+      console.error(`[updateBevyChapterTeamMember] Failed:`, errorMsg, result.data);
+      return { success: false, error: errorMsg };
+    }
+
+    return { success: true, data: result.data };
+  } catch (error) {
+    console.error(`[updateBevyChapterTeamMember] Exception:`, error);
+    return { success: false, error: extractApiMessage(error, "Failed to connect to Bevy server") };
+  }
+}
+
 export interface UserChapterRoleResult {
   chapterRole: ChapterRole;
   roleId: number | null;
@@ -807,6 +989,136 @@ export async function getBevyChapterMembers(
     chapterId,
   );
   return result;
+}
+
+interface AlgoliaConfigCache {
+  applicationId: string;
+  indexPrefix: string;
+  indexSuffix: string;
+  chapterMemberKey: string;
+  fetchedAt: number;
+}
+
+let algoliaMemberCache: AlgoliaConfigCache | null = null;
+const ALGOLIA_CACHE_TTL_MS = 10 * 60 * 1000;
+
+interface AlgoliaMemberHit {
+  id: number | string;
+  chapter_id?: number | string;
+  user_id?: number | string | null;
+  user_full_name?: string;
+  user_email?: string;
+  masked_email?: string;
+  user_profile_url?: string;
+  is_email_verified?: boolean;
+  created_date?: string | number | null;
+  events_registered_count?: number;
+}
+
+/**
+ * Search across all chapter community members in Bevy using Bevy's Algolia `chapter_member_index`.
+ */
+export async function searchBevyChapterMembers(
+  query: string,
+  chapterId: string = BEVY_CONFIG.chapterId,
+  hitsPerPage = 100,
+): Promise<BevyChapterMember[]> {
+  const cleanQuery = query.trim();
+  if (!cleanQuery) return [];
+
+  const now = Date.now();
+  if (!algoliaMemberCache || now - algoliaMemberCache.fetchedAt > ALGOLIA_CACHE_TTL_MS) {
+    const chapterSlug = BEVY_CONFIG.chapterSlug || "gdg-jakarta";
+    const [algoliaConfig, memberPage] = await Promise.all([
+      bevyFetch<{
+        application_id?: string;
+        index_prefix?: string;
+        index_suffix?: string;
+      }>(
+        "/config/algolia/",
+        {
+          headers: {
+            Referer: `https://gdg.community.dev/dashboard/${chapterSlug}/members/`,
+            "X-Requested-With": "XMLHttpRequest",
+          },
+        },
+        chapterId,
+      ),
+      getBevyChapterMembers(chapterId, 1, 1, "-created_date"),
+    ]);
+
+    if (
+      algoliaConfig?.application_id &&
+      algoliaConfig.index_prefix &&
+      algoliaConfig.index_suffix &&
+      memberPage?.chapter_member_key
+    ) {
+      algoliaMemberCache = {
+        applicationId: algoliaConfig.application_id,
+        indexPrefix: algoliaConfig.index_prefix,
+        indexSuffix: algoliaConfig.index_suffix,
+        chapterMemberKey: memberPage.chapter_member_key,
+        fetchedAt: now,
+      };
+    }
+  }
+
+  if (!algoliaMemberCache) return [];
+
+  const { applicationId, indexPrefix, indexSuffix, chapterMemberKey } = algoliaMemberCache;
+  const indexName = `${indexPrefix}_chapter_member_index_${indexSuffix}`;
+
+  try {
+    const res = await fetch(
+      `https://${applicationId}-dsn.algolia.net/1/indexes/${encodeURIComponent(indexName)}/query`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Algolia-Application-Id": applicationId,
+          "X-Algolia-API-Key": chapterMemberKey,
+        },
+        body: JSON.stringify({
+          query: cleanQuery,
+          filters: `chapter_id=${chapterId}`,
+          page: 0,
+          hitsPerPage,
+        }),
+      },
+    );
+
+    if (!res.ok) {
+      algoliaMemberCache = null;
+      return [];
+    }
+
+    const data = (await res.json()) as { hits?: AlgoliaMemberHit[] };
+    return (data.hits ?? []).map((hit) => {
+      let createdDate: string | undefined;
+      if (hit.created_date != null) {
+        if (typeof hit.created_date === "number" || /^\d+$/.test(String(hit.created_date))) {
+          createdDate = new Date(Number(hit.created_date) * 1000).toISOString();
+        } else {
+          createdDate = String(hit.created_date);
+        }
+      }
+      return {
+        id: hit.id,
+        user: {
+          id: hit.user_id ?? hit.id,
+          full_name: hit.user_full_name || "",
+          email: hit.user_email || hit.masked_email,
+          profile_url: hit.user_profile_url,
+          is_email_verified: Boolean(hit.is_email_verified),
+        },
+        created_date: createdDate,
+        events_registered_count: hit.events_registered_count ?? 0,
+      };
+    });
+  } catch (err) {
+    console.warn("[searchBevyChapterMembers] Algolia search failed:", err);
+    return [];
+  }
 }
 
 /**

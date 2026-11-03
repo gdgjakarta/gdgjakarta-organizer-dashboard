@@ -130,6 +130,17 @@ Keep a component inside its route until it is reused by another feature. Do not 
 
 ## Feature Notes
 
+- **Full-Chapter Member Search (`/dashboard/members`)**:
+  - **Algolia Chapter Member Index (`searchBevyChapterMembers`)**: Bevy's `/chapter/{chapterId}/member/` endpoint does not filter by search query; instead, Bevy uses Algolia (`{index_prefix}_chapter_member_index_{index_suffix}` from `GET /api/config/algolia/` authenticated with `chapter_member_key`). `searchBevyChapterMembers` (`src/lib/bevy/client.ts`) and `searchBevyChapterMembersAction` (`src/server/bevy-actions.ts`) query this index across all chapter members (`filters: chapter_id={chapterId}`).
+  - **Uncapped Firestore Member Merge & Debounced Search (`members.tsx`)**: Loads all Firestore `members` (`getFirestoreMembers()`) and runs a debounced (300ms) server-side Bevy Algolia search when typing in the search bar, merging matched chapter members into the table in real time.
+
+- **Bevy Chapter Team Management (`/dashboard/members?tab=team` & `/dashboard/team`)**:
+  - **Find User by Email (`GET /api/user/{email}`)**: Server action `findBevyUserByEmailAction` resolves user profile, avatar, numerical Bevy user ID (`#3386524`), and display name with verified green checkmark preview before adding.
+  - **Add to Chapter Team (`POST /api/chapter/{chapterId}/team/`)**: Server action `addBevyChapterTeamMemberAction` enforces role selection (`Organizer` [role 1], `Team Member` [role 2], `Check-in Staff` [role 3]), custom title, `visible` on chapter page toggle, and `send_chapter_team_emails` toggle. Uses session spoofing with `Referer: https://gdg.community.dev/dashboard/{chapterSlug}/settings/team` and `Auth-Type: AUTHORIZED`.
+  - **Edit Team Member (`PUT /api/chapter/{chapterId}/team/{teamMemberId}/`)**: Server action `updateBevyChapterTeamMemberAction` and `EditTeamMemberDialog` trigger when clicking any member card or pencil action. Organizers can modify first name, last name, custom title, role (Organizer/Team Member/Check-in Staff), `visible` toggle, and `send_chapter_team_emails` toggle with live cache revalidation.
+  - **Delete with Confirmation (`DELETE /api/chapter/{chapterId}/team/{teamMemberId}/`)**: Server action `deleteBevyChapterTeamMemberAction` and `DeleteTeamMemberDialog` prompt organizers with destructive confirmation modal before revoking chapter team access.
+  - **Team Roster & UI Composition**: Dedicated `ChapterTeamTab` under `/dashboard/members?tab=team` (convenience redirect `/dashboard/team`) with member search, live refresh, role badges, hidden indicator (`EyeOff`), and masked emails (`d**********@gmail.com`). Linked directly from the Organizer home `CommunityOrganizersWidget`.
+
 - **Partner & Sponsor Voucher Redemption Reports (Zero-Leak Live Sharing)**:
   - **Opaque Share Token (`/vouchers/report/[shareToken]`)**: Generates an unguessable 24-character token (`vshr_...`) stored on `event_vouchers` (`partner_share_token`). Document ID (`{eventId}_{code}`) and promo code are NEVER exposed in the public URL to prevent attendee voucher code leaks.
   - **Access Code Enforcement**: Access to the report is gated behind an organizer-configurable access code (`partner_access_code`, e.g. `GDG-XXXXXX`). Partners can enter it in the access gate or organizers can share direct links with `?code=GDG-XXXXXX`.

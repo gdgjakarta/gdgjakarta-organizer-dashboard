@@ -162,11 +162,11 @@ export async function saveFirestoreEvent(event: Partial<FirestoreEvent> | Record
 
 // ── Members ─────────────────────────────────────────────────────────────────
 
-export async function getFirestoreMembers(maxResults = 200): Promise<FirestoreMember[]> {
+export async function getFirestoreMembers(maxResults?: number): Promise<FirestoreMember[]> {
   if (typeof window === "undefined") return [];
   try {
     const membersRef = collection(db, "members");
-    const q = query(membersRef, limit(maxResults));
+    const q = maxResults ? query(membersRef, limit(maxResults)) : query(membersRef);
     const snapshot = await getDocs(q);
 
     return snapshot.docs.map((docSnap) => ({

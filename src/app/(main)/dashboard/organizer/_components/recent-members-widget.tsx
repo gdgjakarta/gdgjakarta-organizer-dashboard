@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import Link from "next/link";
+
 import { ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
 
 import { RoleBadge } from "@/components/role-badge";
@@ -50,14 +52,21 @@ export function CommunityOrganizersWidget({ organizers, members }: RecentMembers
     <Card>
       <CardHeader>
         <CardTitle className="text-sm">Community Organizers</CardTitle>
-        <CardAction>
+        <CardAction className="flex items-center gap-2">
+          <Link
+            href="/dashboard/members?tab=team"
+            className="flex items-center gap-1 font-medium text-primary text-xs hover:underline"
+          >
+            Manage Team
+          </Link>
+          <span className="text-muted-foreground/40 text-xs">|</span>
           <a
             href={getBevyTeamSettingsUrl()}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-1 text-muted-foreground text-xs transition-colors hover:text-foreground"
           >
-            Manage Team on Bevy <ExternalLink className="size-3.5" />
+            Bevy <ExternalLink className="size-3" />
           </a>
         </CardAction>
       </CardHeader>

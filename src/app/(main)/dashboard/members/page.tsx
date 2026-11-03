@@ -2,6 +2,7 @@ import { format, parseISO } from "date-fns";
 import type { Metadata } from "next";
 
 import { getBevyChapterMembers, getBevyChapterTeams } from "@/lib/bevy/client";
+import type { BevyChapterTeamMember } from "@/lib/bevy/types";
 import { toTimezoneDate } from "@/lib/date-utils";
 import { splitFullName } from "@/lib/utils";
 
@@ -17,6 +18,7 @@ export const metadata: Metadata = {
 
 export default async function Page() {
   let memberRows: MemberRow[] = [];
+  let fetchedTeamMembers: BevyChapterTeamMember[] = [];
   let totalCount: number | undefined;
 
   try {
@@ -25,6 +27,7 @@ export default async function Page() {
       getBevyChapterMembers(undefined, 200, 1, "-created_date"),
     ]);
 
+    fetchedTeamMembers = teamMembers || [];
     totalCount = membersResponse?.count;
 
     interface TeamInfo {
@@ -109,5 +112,5 @@ export default async function Page() {
     memberRows = fallbackMembers;
   }
 
-  return <Members members={memberRows} totalCount={totalCount} />;
+  return <Members members={memberRows} totalCount={totalCount} teamMembers={fetchedTeamMembers} />;
 }

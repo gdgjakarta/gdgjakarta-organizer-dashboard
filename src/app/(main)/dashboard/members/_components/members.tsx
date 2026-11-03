@@ -1,6 +1,8 @@
 "use client";
 import * as React from "react";
 
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+
 import {
   type ColumnFiltersState,
   type ColumnVisibilityState,
@@ -9,9 +11,20 @@ import {
   useTable,
 } from "@tanstack/react-table";
 import { format, parseISO } from "date-fns";
-import { ChevronDown, Download, ExternalLink, FileJson, FileSpreadsheet, Search } from "lucide-react";
+import {
+  ChevronDown,
+  Download,
+  ExternalLink,
+  FileJson,
+  FileSpreadsheet,
+  Loader2,
+  Search,
+  Shield,
+  Users,
+} from "lucide-react";
 import { toast } from "sonner";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -23,17 +36,46 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Kbd } from "@/components/ui/kbd";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getBevyDashboardUrl } from "@/config/remote-config-utils";
+import type { BevyChapterTeamMember } from "@/lib/bevy/types";
 import { dataTableFeatures } from "@/lib/data-table-features";
 import { toTimezoneDate } from "@/lib/date-utils";
 import { splitFullName } from "@/lib/utils";
 
+import { ChapterTeamTab } from "./chapter-team-tab";
 import type { MemberRow, MemberStatus } from "./data";
 import { MembersBulkActions } from "./members-bulk-actions";
 import { getMembersColumns } from "./members-columns";
 import { MembersTable } from "./members-table";
 
-export function Members({ members, totalCount }: { members: MemberRow[]; totalCount?: number }) {
+export function Members({
+  members,
+  totalCount,
+  teamMembers = [],
+}: {
+  members: MemberRow[];
+  totalCount?: number;
+  teamMembers?: BevyChapterTeamMember[];
+}) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const tabParam = searchParams.get("tab");
+  const activeTab = tabParam === "team" ? "team" : "members";
+
+  const handleTabChange = (value: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (value === "team") {
+      params.set("tab", "team");
+    } else {
+      params.delete("tab");
+    }
+    const query = params.toString();
+    router.replace(`${pathname}${query ? `?${query}` : ""}`, { scroll: false });
+  };
+
   const [data, setData] = React.useState<MemberRow[]>(members);
   const [rowSelection, setRowSelection] = React.useState({});
   const [sorting, setSorting] = React.useState<SortingState>([{ id: "joinedDate", desc: true }]);
@@ -46,6 +88,7 @@ export function Members({ members, totalCount }: { members: MemberRow[]; totalCo
     pageSize: 10,
   });
   const [isBulkSyncing, setIsBulkSyncing] = React.useState(false);
+  const [isSearchingRemote, setIsSearchingRemote] = React.useState(false);
   const searchInputRef = React.useRef<HTMLInputElement>(null);
 
   // Sync state if initial props change
@@ -58,27 +101,46 @@ export function Members({ members, totalCount }: { members: MemberRow[]; totalCo
     async function loadFirestoreMembers() {
       try {
         const { getFirestoreMembers } = await import("@/lib/firestore/client");
-        const fsMembers = await getFirestoreMembers(200);
+        const fsMembers = await getFirestoreMembers();
         if (!fsMembers || fsMembers.length === 0) return;
 
         setData((prev) => {
           const existingMap = new Map<string, MemberRow>();
+          const existingById = new Map<string, MemberRow>();
           for (const m of prev) {
-            existingMap.set(m.email.toLowerCase(), m);
+            if (m.email) existingMap.set(m.email.toLowerCase(), m);
+            if (m.id != null) existingById.set(String(m.id), m);
+            if (m.bevyUserId != null) existingById.set(String(m.bevyUserId), m);
           }
 
           const merged = [...prev];
 
           for (const fs of fsMembers) {
-            const emailKey = fs.email.toLowerCase();
-            const existing = existingMap.get(emailKey);
+            const emailKey = (fs.email || "").trim().toLowerCase();
+            if (!emailKey && !fs.bevy_user_id && !fs.id) continue;
+            const existing =
+              (emailKey ? existingMap.get(emailKey) : undefined) ||
+              (fs.id ? existingById.get(String(fs.id)) : undefined) ||
+              (fs.bevy_user_id ? existingById.get(String(fs.bevy_user_id)) : undefined) ||
+              (fs.bevy_member_id ? existingById.get(String(fs.bevy_member_id)) : undefined);
             const isSynced = Boolean(fs.bevy_user_id || existing);
 
             if (existing) {
               existing.syncStatus = isSynced ? "synced" : "not_synced";
+              // Update email to unmasked email if current email is placeholder/masked
+              if (
+                fs.email &&
+                !fs.email.includes("*") &&
+                (!existing.email || existing.email.includes("*") || existing.email.startsWith("user_"))
+              ) {
+                existing.email = fs.email;
+              }
               if (fs.bevy_user_id) {
                 existing.bevyUserId = fs.bevy_user_id;
+                existingById.set(String(fs.bevy_user_id), existing);
               }
+              if (fs.id) existingById.set(String(fs.id), existing);
+              if (fs.bevy_member_id) existingById.set(String(fs.bevy_member_id), existing);
             } else {
               let joinedDateFormatted = "Recent";
               if (fs.joined_date) {
@@ -92,10 +154,10 @@ export function Members({ members, totalCount }: { members: MemberRow[]; totalCo
               const newRow: MemberRow = {
                 id: fs.id,
                 bevyUserId: fs.bevy_user_id ?? undefined,
-                name: fs.name || fs.email.split("@")[0] || "Community Member",
+                name: fs.name || (fs.email ? fs.email.split("@")[0] : "") || "Community Member",
                 firstName: fs.first_name ?? undefined,
                 lastName: fs.last_name ?? undefined,
-                email: fs.email,
+                email: fs.email || "",
                 role: fs.role || "Member",
                 status: (fs.status as MemberStatus) || "Active",
                 team: fs.team || "Community",
@@ -107,7 +169,10 @@ export function Members({ members, totalCount }: { members: MemberRow[]; totalCo
               };
 
               merged.push(newRow);
-              existingMap.set(emailKey, newRow);
+              if (emailKey) existingMap.set(emailKey, newRow);
+              if (newRow.id != null) existingById.set(String(newRow.id), newRow);
+              if (newRow.bevyUserId != null) existingById.set(String(newRow.bevyUserId), newRow);
+              if (fs.bevy_member_id != null) existingById.set(String(fs.bevy_member_id), newRow);
             }
           }
 
@@ -195,7 +260,128 @@ export function Members({ members, totalCount }: { members: MemberRow[]; totalCo
     onPaginationChange: setPagination,
   });
 
-  const searchQuery = (table.getColumn("search")?.getFilterValue() as string | undefined) ?? "";
+  const searchQuery = (columnFilters.find((f) => f.id === "search")?.value as string | undefined) ?? "";
+
+  // Debounced server-side search across all Bevy chapter members (via Algolia)
+  React.useEffect(() => {
+    const trimmed = searchQuery.trim();
+    if (trimmed.length < 2) {
+      setIsSearchingRemote(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsSearchingRemote(true);
+
+    const timer = setTimeout(async () => {
+      try {
+        const { searchBevyChapterMembersAction } = await import("@/server/bevy-actions");
+        const hits = await searchBevyChapterMembersAction(trimmed);
+        if (cancelled || !hits || hits.length === 0) return;
+
+        setData((prev) => {
+          const existingByEmail = new Map<string, MemberRow>();
+          const existingById = new Map<string, MemberRow>();
+          for (const m of prev) {
+            if (m.email) existingByEmail.set(m.email.toLowerCase(), m);
+            if (m.id != null) existingById.set(String(m.id), m);
+            if (m.bevyUserId != null) existingById.set(String(m.bevyUserId), m);
+          }
+
+          const merged = [...prev];
+
+          for (const hit of hits) {
+            const email = hit.user.email || `user_${hit.user.id}@community.dev`;
+            const hitId = String(hit.id);
+            const userId = String(hit.user.id);
+            const matchedExisting =
+              (email ? existingByEmail.get(email.toLowerCase()) : undefined) ||
+              existingById.get(hitId) ||
+              existingById.get(userId);
+
+            if (matchedExisting) {
+              // Ensure real unmasked email replaces placeholder/masked email if available
+              if (
+                email &&
+                !email.includes("*") &&
+                (!matchedExisting.email ||
+                  matchedExisting.email.includes("*") ||
+                  matchedExisting.email.startsWith("user_"))
+              ) {
+                matchedExisting.email = email;
+              }
+              continue;
+            }
+
+            const tm = teamMembers.find(
+              (t) =>
+                (t.user?.email && t.user.email.toLowerCase() === email.toLowerCase()) ||
+                String(t.user?.id || t.user_id || "") === userId,
+            );
+            let organizerRole: string | null = null;
+            if (tm) {
+              if (typeof tm.role === "object" && tm.role !== null && "name" in tm.role && tm.role.name) {
+                organizerRole = tm.role.name;
+              } else if (typeof tm.role === "string" && tm.role) {
+                organizerRole = tm.role;
+              } else {
+                organizerRole = tm.title || "Organizer";
+              }
+            }
+
+            const displayName = hit.user.full_name?.trim() || email.split("@")[0] || "Community Member";
+            const { firstName, lastName } = splitFullName(displayName);
+
+            let joinedDateFormatted = "Recent";
+            if (hit.created_date) {
+              try {
+                joinedDateFormatted = format(toTimezoneDate(parseISO(hit.created_date)), "dd MMM yyyy, h:mm a");
+              } catch {
+                joinedDateFormatted = hit.created_date;
+              }
+            }
+
+            const newRow: MemberRow = {
+              id: hit.id || hit.user.id,
+              bevyUserId: hit.user.id,
+              name: displayName,
+              firstName: firstName || undefined,
+              lastName: lastName || undefined,
+              email,
+              role: organizerRole || "Member",
+              status: "Active",
+              team: organizerRole ? "Core Team" : "Community",
+              joinedDate: joinedDateFormatted,
+              rawCreatedDate: hit.created_date,
+              avatarUrl: tm?.user?.avatar?.url || hit.user.avatar?.url,
+              eventsCount: hit.events_registered_count ?? 0,
+              profileUrl: hit.user.profile_url,
+              isEmailVerified: Boolean(hit.user.is_email_verified),
+              company: tm?.user?.company,
+              syncStatus: "synced",
+            };
+
+            merged.push(newRow);
+            existingByEmail.set(email.toLowerCase(), newRow);
+            existingById.set(hitId, newRow);
+            existingById.set(userId, newRow);
+          }
+
+          return merged;
+        });
+      } catch (err) {
+        console.warn("[Members] Error searching remote Bevy members:", err);
+      } finally {
+        if (!cancelled) setIsSearchingRemote(false);
+      }
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [searchQuery, teamMembers]);
+
   const filteredRows = table.getFilteredRowModel().rows;
   const selectedRows = table.getFilteredSelectedRowModel().rows;
   const selectedCount = selectedRows.length;
@@ -416,103 +602,147 @@ export function Members({ members, totalCount }: { members: MemberRow[]; totalCo
   }, []);
 
   return (
-    <Card>
-      <CardHeader className="has-data-[slot=card-action]:grid-cols-1 md:has-data-[slot=card-action]:grid-cols-[1fr_auto]">
-        <CardTitle className="text-xl leading-none">
-          Members <span className="font-normal text-muted-foreground">({countToDisplay.toLocaleString()})</span>
-        </CardTitle>
-        <CardDescription className="max-w-sm leading-snug">
-          Manage GDG Jakarta community members, attendees, and organizers.
-        </CardDescription>
-        <CardAction className="col-start-1 row-start-auto flex w-full flex-wrap justify-start gap-2 justify-self-stretch md:col-start-2 md:row-span-2 md:row-start-1 md:w-auto md:flex-nowrap md:justify-end md:justify-self-end">
-          <InputGroup className="h-7 w-full md:w-64">
-            <InputGroupAddon align="inline-start">
-              <Search className="size-3.5" />
-            </InputGroupAddon>
-            <InputGroupInput
-              ref={searchInputRef}
-              className="h-7"
-              placeholder="Search members..."
-              value={searchQuery}
-              onChange={(event) => {
-                table.getColumn("search")?.setFilterValue(event.target.value || undefined);
-                table.setPageIndex(0);
-              }}
-            />
-            <InputGroupAddon align="inline-end">
-              <Kbd className="h-4 text-[10px]">⌘K</Kbd>
-            </InputGroupAddon>
-          </InputGroup>
+    <div className="space-y-6">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
+        <div className="w-full rounded-xl border border-border/70 bg-white p-1 shadow-xs dark:bg-card">
+          <TabsList className="grid h-10 w-full grid-cols-2 rounded-lg bg-transparent p-0">
+            <TabsTrigger
+              value="members"
+              className="gap-2 rounded-md font-medium text-xs transition-all data-active:border-border/60 data-active:bg-background data-active:text-foreground data-active:shadow-xs dark:data-active:border-border dark:data-active:bg-muted sm:text-sm"
+            >
+              <Users className="size-4 shrink-0" />
+              <span className="truncate">Community Members</span>
+              <Badge variant="secondary" className="ml-1 h-5 rounded-md px-1.5 font-normal text-[11px]">
+                {countToDisplay.toLocaleString()}
+              </Badge>
+            </TabsTrigger>
+            <TabsTrigger
+              value="team"
+              className="gap-2 rounded-md font-medium text-xs transition-all data-active:border-border/60 data-active:bg-background data-active:text-foreground data-active:shadow-xs dark:data-active:border-border dark:data-active:bg-muted sm:text-sm"
+            >
+              <Shield className="size-4 shrink-0" />
+              <span className="truncate">Chapter Team</span>
+              <Badge variant="secondary" className="ml-1 h-5 rounded-md px-1.5 font-normal text-[11px]">
+                {teamMembers.length}
+              </Badge>
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
-          {/* Header Export Dropdown: dynamic based on selection */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-1.5">
-                <Download className="size-3.5" />
-                {selectedCount > 0 ? `Export (${selectedCount})` : "Export"}
-                <ChevronDown className="size-3 opacity-60" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {selectedCount > 0 ? (
-                <>
-                  <DropdownMenuItem onClick={() => handleExportCsv(true)} className="gap-2">
-                    <FileSpreadsheet className="size-3.5" />
-                    Export selected ({selectedCount}) as CSV
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleExportJson(true)} className="gap-2">
-                    <FileJson className="size-3.5" />
-                    Export selected ({selectedCount}) as JSON
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => handleExportCsv(false)} className="gap-2">
-                    <FileSpreadsheet className="size-3.5" />
-                    Export all ({filteredRows.length}) as CSV
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleExportJson(false)} className="gap-2">
-                    <FileJson className="size-3.5" />
-                    Export all ({filteredRows.length}) as JSON
-                  </DropdownMenuItem>
-                </>
-              ) : (
-                <>
-                  <DropdownMenuItem onClick={() => handleExportCsv(false)} className="gap-2">
-                    <FileSpreadsheet className="size-3.5" />
-                    Export all as CSV ({filteredRows.length})
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleExportJson(false)} className="gap-2">
-                    <FileJson className="size-3.5" />
-                    Export all as JSON ({filteredRows.length})
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+        <TabsContent value="members" className="space-y-4 focus-visible:outline-none">
+          <Card>
+            <CardHeader className="has-data-[slot=card-action]:grid-cols-1 md:has-data-[slot=card-action]:grid-cols-[1fr_auto]">
+              <CardTitle className="text-xl leading-none">
+                Members <span className="font-normal text-muted-foreground">({countToDisplay.toLocaleString()})</span>
+              </CardTitle>
+              <CardDescription className="max-w-sm leading-snug">
+                Manage GDG Jakarta community members, attendees, and organizers.
+              </CardDescription>
+              <CardAction className="col-start-1 row-start-auto flex w-full flex-wrap justify-start gap-2 justify-self-stretch md:col-start-2 md:row-span-2 md:row-start-1 md:w-auto md:flex-nowrap md:justify-end md:justify-self-end">
+                <InputGroup className="h-7 w-full md:w-64">
+                  <InputGroupAddon align="inline-start">
+                    {isSearchingRemote ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <Search className="size-3.5" />
+                    )}
+                  </InputGroupAddon>
+                  <InputGroupInput
+                    ref={searchInputRef}
+                    className="h-7"
+                    placeholder="Search members..."
+                    value={searchQuery}
+                    onChange={(event) => {
+                      table.getColumn("search")?.setFilterValue(event.target.value || undefined);
+                      table.setPageIndex(0);
+                    }}
+                  />
+                  <InputGroupAddon align="inline-end">
+                    <Kbd className="h-4 text-[10px]">⌘K</Kbd>
+                  </InputGroupAddon>
+                </InputGroup>
 
-          <Button variant="outline" size="sm" asChild>
-            <a href={getBevyDashboardUrl("members")} target="_blank" rel="noopener noreferrer" className="gap-1.5">
-              <ExternalLink className="size-3.5" />
-              Open in Bevy
-            </a>
-          </Button>
-        </CardAction>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4 px-0">
-        <MembersBulkActions
-          selectedCount={selectedCount}
-          totalFilteredCount={filteredRows.length}
-          onClearSelection={handleClearSelection}
-          onSelectAll={handleSelectAll}
-          onExportCsv={handleExportCsv}
-          onExportJson={handleExportJson}
-          onCopyEmails={handleCopySelectedEmails}
-          onBulkSyncBevy={handleBulkSyncBevy}
-          onEmailSelected={handleEmailSelected}
-          isBulkSyncing={isBulkSyncing}
-        />
+                {/* Header Export Dropdown: dynamic based on selection */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="gap-1.5">
+                      <Download className="size-3.5" />
+                      {selectedCount > 0 ? `Export (${selectedCount})` : "Export"}
+                      <ChevronDown className="size-3 opacity-60" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    {selectedCount > 0 ? (
+                      <>
+                        <DropdownMenuItem onClick={() => handleExportCsv(true)} className="gap-2">
+                          <FileSpreadsheet className="size-3.5" />
+                          Export selected ({selectedCount}) as CSV
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleExportJson(true)} className="gap-2">
+                          <FileJson className="size-3.5" />
+                          Export selected ({selectedCount}) as JSON
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => handleExportCsv(false)} className="gap-2">
+                          <FileSpreadsheet className="size-3.5" />
+                          Export all ({filteredRows.length}) as CSV
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleExportJson(false)} className="gap-2">
+                          <FileJson className="size-3.5" />
+                          Export all ({filteredRows.length}) as JSON
+                        </DropdownMenuItem>
+                      </>
+                    ) : (
+                      <>
+                        <DropdownMenuItem onClick={() => handleExportCsv(false)} className="gap-2">
+                          <FileSpreadsheet className="size-3.5" />
+                          Export all as CSV ({filteredRows.length})
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleExportJson(false)} className="gap-2">
+                          <FileJson className="size-3.5" />
+                          Export all as JSON ({filteredRows.length})
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
 
-        <MembersTable table={table} />
-      </CardContent>
-    </Card>
+                <Button variant="outline" size="sm" asChild>
+                  <a
+                    href={getBevyDashboardUrl("members")}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="gap-1.5"
+                  >
+                    <ExternalLink className="size-3.5" />
+                    Open in Bevy
+                  </a>
+                </Button>
+              </CardAction>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4 px-0">
+              <MembersBulkActions
+                selectedCount={selectedCount}
+                totalFilteredCount={filteredRows.length}
+                onClearSelection={handleClearSelection}
+                onSelectAll={handleSelectAll}
+                onExportCsv={handleExportCsv}
+                onExportJson={handleExportJson}
+                onCopyEmails={handleCopySelectedEmails}
+                onBulkSyncBevy={handleBulkSyncBevy}
+                onEmailSelected={handleEmailSelected}
+                isBulkSyncing={isBulkSyncing}
+              />
+
+              <MembersTable table={table} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="team" className="space-y-4 focus-visible:outline-none">
+          <ChapterTeamTab initialTeamMembers={teamMembers} />
+        </TabsContent>
+      </Tabs>
+    </div>
   );
 }
