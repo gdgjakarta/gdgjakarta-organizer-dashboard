@@ -509,6 +509,7 @@ export interface FirestoreEvent {
   refund_policy_notes?: string | null;
 
   // Post-Event Recap & Media Extensions
+  video_url?: string;
   highlight_video_url?: string;
   highlight_video_title?: string;
   photo_album_url?: string;

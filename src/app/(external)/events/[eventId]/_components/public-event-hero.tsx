@@ -13,7 +13,17 @@ export function PublicEventHero({ event }: PublicEventHeroProps) {
   const bannerImageUrl = event.cropped_banner_url ?? event.banner?.url ?? event.banner?.thumbnail_url;
 
   // Resolve event thumbnail (recommended Bevy size: 1080 x 1080 pixels)
-  const thumbnailImageUrl = event.cropped_picture_url ?? event.picture?.url ?? event.picture?.thumbnail_url;
+  const rawThumbnailUrl =
+    event.picture?.url ??
+    event.picture?.thumbnail_url ??
+    event.picture_url ??
+    event.cropped_picture_url ??
+    event.event_type_logo?.url ??
+    event.event_type_logo?.thumbnail_url;
+
+  const thumbnailImageUrl = rawThumbnailUrl && rawThumbnailUrl.includes("res.cloudinary.com")
+    ? rawThumbnailUrl.replace(/\/image\/upload\/(?:.+?\/)?v1\//, "/image/upload/c_fill,dpr_2.0,f_auto,g_center,q_auto:good/v1/")
+    : rawThumbnailUrl;
 
   let heroContent = (
     <div className="relative aspect-[2560/650] w-full">

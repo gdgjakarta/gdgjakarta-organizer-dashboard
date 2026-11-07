@@ -163,6 +163,12 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
               merchandise: docData.merchandise ?? prev.merchandise,
               agenda: hasActualAgendaActivities(docData.agenda) ? docData.agenda : prev.agenda,
               speakers: docData.speakers && docData.speakers.length > 0 ? docData.speakers : prev.speakers,
+              video_url: prev.video_url || docData.video_url,
+              highlight_video_url: docData.highlight_video_url ?? prev.highlight_video_url ?? prev.video_url,
+              highlight_video_title: docData.highlight_video_title ?? prev.highlight_video_title,
+              photo_album_url: docData.photo_album_url ?? prev.photo_album_url,
+              photo_album_title: docData.photo_album_title ?? prev.photo_album_title,
+              recap_description: docData.recap_description ?? prev.recap_description,
             }));
           }
         });

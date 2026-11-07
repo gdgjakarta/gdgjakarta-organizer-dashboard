@@ -490,6 +490,48 @@ export async function getVouchersByRegistrationIdServer(
 }
 
 /**
+ * Permanently deletes all bundle friend vouchers associated with a registration from event_vouchers collection.
+ */
+export async function deleteBundleVouchersForRegistrationServer(
+  registrationId: string,
+  eventId: string,
+  knownVoucherCodes?: string[],
+  token?: string,
+): Promise<void> {
+  const codesToDelete = new Set<string>();
+
+  if (Array.isArray(knownVoucherCodes)) {
+    for (const c of knownVoucherCodes) {
+      if (typeof c === "string" && c.trim()) {
+        codesToDelete.add(c.trim().toUpperCase());
+      }
+    }
+  }
+
+  // Also query event_vouchers by source_registration_id to catch all generated vouchers
+  try {
+    const vouchers = await getVouchersByRegistrationIdServer(registrationId, token);
+    for (const v of vouchers) {
+      if (v.code) {
+        codesToDelete.add(v.code.trim().toUpperCase());
+      }
+    }
+  } catch (err) {
+    console.warn(`[deleteBundleVouchersForRegistrationServer] Failed querying vouchers for reg ${registrationId}:`, err);
+  }
+
+  const eventIdStr = String(eventId);
+  for (const code of codesToDelete) {
+    try {
+      const voucherDocId = `${eventIdStr}_${code}`;
+      await deleteFirestoreDoc("event_vouchers", voucherDocId, token);
+    } catch (err) {
+      console.warn(`[deleteBundleVouchersForRegistrationServer] Failed deleting voucher ${code}:`, err);
+    }
+  }
+}
+
+/**
  * Executes a structured query against event_merchandise_orders collection.
  */
 async function queryMerchandiseOrderDoc(
@@ -680,6 +722,55 @@ export async function getAttendeeByInvoiceNumber(
       if (ev) eventData = ev;
     } catch (err) {
       console.warn(`[getAttendeeByInvoiceNumber] Could not fetch event ${regData.event_id}:`, err);
+    }
+  }
+
+  // If this attendee bought a bundle and vouchers haven't been generated yet, generate them now before constructing email
+  if (
+    (regData.bundle_id || regData.bundle_name) &&
+    eventData?.bundles &&
+    (!Array.isArray(regData.bundle_vouchers) || regData.bundle_vouchers.length === 0)
+  ) {
+    const matchingBundle = eventData.bundles.find(
+      (b) =>
+        (regData.bundle_id && b.id === regData.bundle_id) ||
+        (regData.bundle_name && b.name.toLowerCase() === regData.bundle_name.toLowerCase()),
+    );
+    if (matchingBundle && (matchingBundle.ticket_quantity ?? 1) > 1 && matchingBundle.generate_vouchers !== false) {
+      try {
+        const matchingTicketTier = eventData.tickets?.find((t) => t.id === matchingBundle.ticket_id);
+        const generated = generateBundleFriendVouchers({
+          bundle: matchingBundle,
+          buyerRegistrationId: targetDoc.id,
+          buyerMemberId: regData.member_id,
+          buyerName: regData.member_name || "Bundle Purchaser",
+          buyerEmail: regData.member_email,
+          ticketTier: matchingTicketTier,
+          eventStartDate: eventData.start_date,
+        });
+
+        regData.bundle_vouchers = generated.registrationVouchers;
+        const now = new Date().toISOString();
+
+        await patchFirestoreDoc(
+          "event_registrations",
+          targetDoc.id,
+          {
+            bundle_vouchers: generated.registrationVouchers,
+            updated_at: now,
+          },
+          true,
+          token,
+        );
+
+        for (const fv of generated.newEventVouchers) {
+          const cleanCode = fv.code.trim().toUpperCase();
+          const voucherDocId = `${String(regData.event_id)}_${cleanCode}`;
+          await patchFirestoreDoc("event_vouchers", voucherDocId, fv as unknown as Record<string, unknown>, true, token);
+        }
+      } catch (bundleErr) {
+        console.warn("[getAttendeeByInvoiceNumber] Error auto-generating bundle vouchers:", bundleErr);
+      }
     }
   }
 

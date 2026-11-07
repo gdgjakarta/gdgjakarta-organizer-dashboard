@@ -24,12 +24,19 @@ export async function generateMetadata({ params }: PublicEventDetailPageProps): 
     };
   }
 
-  const thumbnailImageUrl =
-    event.cropped_picture_url ??
+  const rawThumbnailUrl =
     event.picture?.url ??
     event.picture?.thumbnail_url ??
+    event.picture_url ??
+    event.cropped_picture_url ??
+    event.event_type_logo?.url ??
+    event.event_type_logo?.thumbnail_url ??
     event.cropped_banner_url ??
     event.banner?.url;
+
+  const thumbnailImageUrl = rawThumbnailUrl && rawThumbnailUrl.includes("res.cloudinary.com")
+    ? rawThumbnailUrl.replace(/\/image\/upload\/(?:.+?\/)?v1\//, "/image/upload/c_fill,dpr_2.0,f_auto,g_center,q_auto:good/v1/")
+    : rawThumbnailUrl;
   const bannerImageUrl = event.cropped_banner_url ?? event.banner?.url ?? event.banner?.thumbnail_url;
 
   const ogImages = [];

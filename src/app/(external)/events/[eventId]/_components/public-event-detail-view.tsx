@@ -27,6 +27,15 @@ export function PublicEventDetailView({ event, initialFirestoreEvent = null }: P
   const [firestoreEvent, setFirestoreEvent] = useState<FirestoreEvent | null>(initialFirestoreEvent);
   const [registration, setRegistration] = useState<FirestoreRegistration | null | undefined>(undefined);
   const [isCheckingRegistration, setIsCheckingRegistration] = useState<boolean>(true);
+  const [activeTab, setActiveTab] = useState<string>("about");
+
+  const handleSelectTab = (tab: string) => {
+    setActiveTab(tab);
+    setTimeout(() => {
+      const triggerEl = document.getElementById("tab-trigger-public-" + tab) ?? document.getElementById("public-event-tabs-container");
+      triggerEl?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
+  };
 
   const isHidden = Boolean(event.is_hidden ?? (event as { hidden?: boolean }).hidden);
   const isTest = Boolean(event.is_test);
@@ -125,11 +134,15 @@ export function PublicEventDetailView({ event, initialFirestoreEvent = null }: P
 
             <PublicEventInfoCards event={event} firestoreEvent={firestoreEvent} />
 
-            <PublicEventTabs
-              event={event}
-              firestoreSessions={firestoreEvent?.sessions}
-              firestoreEvent={firestoreEvent}
-            />
+            <div id="public-event-tabs-container">
+              <PublicEventTabs
+                event={event}
+                firestoreSessions={firestoreEvent?.sessions}
+                firestoreEvent={firestoreEvent}
+                activeTab={activeTab}
+                onActiveTabChange={setActiveTab}
+              />
+            </div>
           </div>
 
           {/* Sidebar RSVP Column (Desktop 4 cols) */}
@@ -139,6 +152,7 @@ export function PublicEventDetailView({ event, initialFirestoreEvent = null }: P
               firestoreEvent={firestoreEvent}
               existingRegistration={registration}
               isCheckingRegistration={isCheckingRegistration || (isAuthLoading && registration === undefined)}
+              onSelectTab={handleSelectTab}
             />
           </div>
         </div>

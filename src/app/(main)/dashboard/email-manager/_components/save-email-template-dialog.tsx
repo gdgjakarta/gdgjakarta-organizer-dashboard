@@ -17,6 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { useAuthStore } from "@/stores/auth/auth-provider";
 
 import { type EmailBlastTemplate, saveEmailBlastAsTemplate } from "./default-html-template";
 
@@ -43,6 +44,8 @@ export function SaveEmailTemplateDialog({
   const [badge, setBadge] = useState("Custom Template");
   const [description, setDescription] = useState("");
   const [isUpdatingExisting, setIsUpdatingExisting] = useState(false);
+
+  const user = useAuthStore((s) => s.user);
 
   useEffect(() => {
     if (!open) return;
@@ -80,10 +83,14 @@ export function SaveEmailTemplateDialog({
       subject: currentSubject || "Important Update: [[EventName]]",
       headerUrl: currentHeaderUrl?.trim() || undefined,
       body: currentBody,
+      updater: {
+        name: user?.name || "Organizer",
+        email: user?.email || undefined,
+      },
     });
 
     toast.success("Template Saved", {
-      description: `"${saved.name}" is now saved in your templates.`,
+      description: `"${saved.name}" is now saved and shared across all organizers.`,
     });
 
     onSaved(saved);

@@ -125,13 +125,17 @@ export async function registerForEventAction(registration: Omit<FirestoreRegistr
       };
     }
     const { registerMemberForEvent } = await import("./client");
-    const regId = await registerMemberForEvent(registration);
+    const regResult = await registerMemberForEvent(registration);
     await revalidateDashboardPath("/dashboard/events");
     await revalidateDashboardPath(`/dashboard/events/${registration.event_id}`);
     await revalidateDashboardPath("/dashboard/member");
     await revalidateDashboardPath("/dashboard/organizer");
     await revalidateDashboardPath("/dashboard/referrals");
-    return { success: true, registrationId: regId };
+    return {
+      success: true,
+      registrationId: regResult.registrationId,
+      bundleVouchers: regResult.bundleVouchers,
+    };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to register for event.";
     console.error("[registerForEventAction] error:", message);
@@ -656,7 +660,18 @@ export async function deleteEventRegistrationAction(
     const { deleteEventRegistration } = await import("./client");
     await deleteEventRegistration(registrationId, eventId);
 
-    // 3. Revalidate dashboard paths
+    // 4. Remove any bundle friend vouchers generated from this registration
+    try {
+      const { deleteBundleVouchersForRegistrationServer } = await import("@/server/firestore-admin");
+      const knownCodes = Array.isArray(registrationData?.bundle_vouchers)
+        ? registrationData.bundle_vouchers.map((bv) => bv.code)
+        : undefined;
+      await deleteBundleVouchersForRegistrationServer(registrationId, eventId, knownCodes);
+    } catch (voucherDelErr) {
+      console.warn("[deleteEventRegistrationAction] Failed to delete bundle friend vouchers:", voucherDelErr);
+    }
+
+    // 5. Revalidate dashboard paths
     await revalidateDashboardPath(`/dashboard/events/${eventId}`);
     await revalidateDashboardPath("/dashboard/events");
     await revalidateDashboardPath("/dashboard/organizer");
@@ -721,6 +736,16 @@ export async function deleteBatchEventRegistrationsAction(
     // 3. Remove registrations from Firestore (dashboard)
     const { deleteBatchEventRegistrations } = await import("./client");
     await deleteBatchEventRegistrations(registrationIds, eventId);
+
+    // 4. Remove any bundle friend vouchers generated from these deleted registrations
+    try {
+      const { deleteBundleVouchersForRegistrationServer } = await import("@/server/firestore-admin");
+      for (const regId of registrationIds) {
+        await deleteBundleVouchersForRegistrationServer(regId, eventId);
+      }
+    } catch (batchVoucherErr) {
+      console.warn("[deleteBatchEventRegistrationsAction] Error removing bundle vouchers in batch:", batchVoucherErr);
+    }
 
     await revalidateDashboardPath(`/dashboard/events/${eventId}`);
     await revalidateDashboardPath("/dashboard/events");

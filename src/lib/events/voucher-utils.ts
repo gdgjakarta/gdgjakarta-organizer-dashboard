@@ -234,23 +234,31 @@ export function validateVoucherForCart(voucher: EventVoucher, context: VoucherCa
   }
 
   const now = Date.now();
-  if (voucher.start_date) {
-    const startTime = new Date(voucher.start_date).getTime();
-    if (now < startTime) {
-      return {
-        ...zeroResult,
-        error: "This voucher is not active yet.",
-      };
-    }
-  }
+  // Bundle friend vouchers have no active period / expiration validation (remain valid unconditionally)
+  const isBundleFriendVoucher = Boolean(
+    voucher.source_bundle_id ||
+      (typeof voucher.code === "string" && voucher.code.trim().toUpperCase().startsWith("BNDL-")),
+  );
 
-  if (voucher.end_date) {
-    const endTime = new Date(voucher.end_date).getTime();
-    if (now > endTime) {
-      return {
-        ...zeroResult,
-        error: "This voucher has expired.",
-      };
+  if (!isBundleFriendVoucher) {
+    if (voucher.start_date) {
+      const startTime = new Date(voucher.start_date).getTime();
+      if (now < startTime) {
+        return {
+          ...zeroResult,
+          error: "This voucher is not active yet.",
+        };
+      }
+    }
+
+    if (voucher.end_date) {
+      const endTime = new Date(voucher.end_date).getTime();
+      if (now > endTime) {
+        return {
+          ...zeroResult,
+          error: "This voucher has expired.",
+        };
+      }
     }
   }
 

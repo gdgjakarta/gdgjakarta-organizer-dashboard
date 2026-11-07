@@ -2,7 +2,7 @@ import { format } from "date-fns";
 
 import { resolveEventAudience } from "@/lib/bevy/audience";
 import { toTimezoneDate } from "@/lib/date-utils";
-import type { EmailTemplateKey, FirestoreEvent } from "@/lib/firestore/types";
+import type { BundleIssuedVoucher, EmailTemplateKey, FirestoreEvent } from "@/lib/firestore/types";
 import { assertSafeWebhookUrl } from "@/lib/security/webhook-validator";
 
 export type { EmailTemplateKey };
@@ -168,6 +168,12 @@ export const EMAIL_TEMPLATE_VARIABLES: Record<EmailTemplateKey, TemplateVariable
       label: "Bevy Attendee ID",
       description: "Numeric attendee ID fallback from Add Bevy Attendee API response",
       sampleValue: "2793132",
+    },
+    {
+      tag: "{{ $('event-params').item.json.bundleVouchersBlock }}",
+      label: "Bundle Passes & Instructions",
+      description: "Step-by-step instructions and voucher codes for ticket bundle purchasers",
+      sampleValue: "<!-- Bundle Voucher Block -->",
     },
   ],
   rejected_hybrid: [
@@ -767,6 +773,8 @@ export interface TemplateSimulatedData {
   paidAmount?: string;
   sessionName?: string;
   cancellationReason?: string;
+  bundleName?: string;
+  bundleVouchers?: BundleIssuedVoucher[];
 }
 
 export const DEFAULT_INTEREST_CHECKLIST_ITEMS: string[] = [
@@ -964,6 +972,35 @@ export function ensureVenueButtonAndFooterInHtml(html: string): string {
 }
 
 /**
+ * Helper to accurately find the start and end boundary indices of an HTML <div>
+ * with a matching class name, respecting nested <div> tag depths.
+ */
+function findElementBoundaries(html: string, classKeyword: string): { startIdx: number; endIdx: number } | null {
+  const match = new RegExp(
+    "<div\\b[^>]*class=[\"\\']?[^\"\\'>]*\\b" + classKeyword + "\\b[^\"\\'>]*[\"\\']?[^>]*>",
+    "i",
+  ).exec(html);
+  if (!match) return null;
+  const startIdx = match.index;
+  const tagStart = match.index + match[0].length;
+  let depth = 1;
+  const tagRegex = /<\/?div\b[^>]*>/gi;
+  tagRegex.lastIndex = tagStart;
+  let m: RegExpExecArray | null;
+  while ((m = tagRegex.exec(html)) !== null) {
+    if (m[0].startsWith("</")) {
+      depth--;
+      if (depth === 0) {
+        return { startIdx, endIdx: tagRegex.lastIndex };
+      }
+    } else {
+      depth++;
+    }
+  }
+  return null;
+}
+
+/**
  * Ensures the attendee ID is displayed below Ref inside .attendee-id
  * in accepted / ticket confirmation emails.
  */
@@ -973,28 +1010,171 @@ export function ensureAttendeeIdInAcceptedHtml(html: string): string {
     return result;
   }
 
-  result = result.replace(
-    /(<div\b(?=[^>]*\bclass=["'][^"']*\battendee-id\b[^"']*["'])[^>]*>)([\s\S]*?)(<\/div>)/gi,
-    (match, prefix, content, suffix) => {
-      if (
-        content.includes("item.json.id") ||
-        content.includes("ID:") ||
-        content.includes("[[AttendeeId]]") ||
-        content.includes("{{ attendeeId }}") ||
-        content.includes("{{ $('Add Bevy Attendee API').item.json.id }}")
-      ) {
-        return match;
-      }
-      const quote = content.includes("\\'") ? "\\'" : "'";
-      const idTag = `{{ $(${quote}Add Bevy Attendee API${quote}).item.json.id }}`;
-      const trimmed = content.trim();
-      if (trimmed.includes("<div>")) {
-        return `${prefix}\n              ${trimmed}\n              <div style="margin-top: 2px;">ID: ${idTag}</div>\n            ${suffix}`;
-      }
-      return `${prefix}\n              <div>${trimmed}</div>\n              <div style="margin-top: 2px;">ID: ${idTag}</div>\n            ${suffix}`;
-    },
-  );
+  // First clean any malformed triple or quad braces like {{{ ... }}}
+  result = result.replace(/ID:\s*\{{3,}\s*([^}]+?)\s*\}{3,}/gi, "ID: {{ $1 }}");
 
+  const bounds = findElementBoundaries(result, "attendee-id");
+  if (!bounds) {
+    return result;
+  }
+
+  const blockContent = result.slice(bounds.startIdx, bounds.endIdx);
+  if (
+    blockContent.includes("item.json.id") ||
+    blockContent.includes("ID:") ||
+    blockContent.includes("[[AttendeeId]]") ||
+    blockContent.includes("{{ attendeeId }}") ||
+    blockContent.includes("{{ $('Add Bevy Attendee API').item.json.id }}")
+  ) {
+    // If an inner duplicate ID exists, collapse it
+    const dedupedBlock = blockContent.replace(
+      /(<div[^>]*>\s*ID:[\s\S]*?<\/div>)(\s*<div[^>]*>\s*ID:[\s\S]*?<\/div>)/gi,
+      "$1",
+    );
+    if (dedupedBlock !== blockContent) {
+      result = `${result.slice(0, bounds.startIdx)}${dedupedBlock}${result.slice(bounds.endIdx)}`;
+    }
+    return result;
+  }
+
+  const quote = blockContent.includes("\\'") ? "\\'" : "'";
+  const idTag = `{{ $(${quote}Add Bevy Attendee API${quote}).item.json.id }}`;
+  const closeDivIdx = blockContent.lastIndexOf("</div>");
+  if (closeDivIdx !== -1) {
+    const updatedBlock = `${blockContent.slice(0, closeDivIdx)}\n              <div style="margin-top: 2px;">ID: ${idTag}</div>\n            ${blockContent.slice(closeDivIdx)}`;
+    result = `${result.slice(0, bounds.startIdx)}${updatedBlock}${result.slice(bounds.endIdx)}`;
+  }
+
+  return result;
+}
+
+/**
+ * Renders the HTML block for ticket bundle friend vouchers and redemption instructions.
+ */
+export function renderBundleVouchersHtml(
+  bundleName?: string,
+  vouchers?: BundleIssuedVoucher[],
+  eventActionUrl?: string,
+  eventTitle?: string,
+): string {
+  if (!vouchers || vouchers.length === 0) return "";
+
+  const name = bundleName || "Ticket Bundle";
+  const voucherCount = vouchers.length;
+  const targetEventTitle = eventTitle || name;
+  const regUrl = eventActionUrl || "https://gdgjakarta.org/events";
+
+  const voucherRows = vouchers
+    .map((v, idx) => {
+      const code = v.code || `VOUCHER-${idx + 1}`;
+      const isClaimed = v.status === "redeemed";
+      const cleanUrl = regUrl.split("?")[0];
+      const directApplyUrl = `${cleanUrl}${cleanUrl.includes("?") ? "&" : "?"}voucher=${encodeURIComponent(code)}`;
+      const waShareText = `Hey! Here is your 100% FREE entrance pass to "${targetEventTitle}" from my ticket bundle.\n\n🎟️ Voucher Code: ${code}\n🔗 Claim & Register: ${directApplyUrl}\n\nHow to claim:\n1. Open the claim link above.\n2. Enter the Voucher Code at checkout (ticket price becomes Rp 0).\n3. Complete registration to receive your own entrance ticket and check-in QR code!`;
+      const waShareUrl = `https://wa.me/?text=${encodeURIComponent(waShareText)}`;
+
+      // Data URI PNG icons for bulletproof rendering in strict webmail clients (like Gmail web) that strip raw SVG tags
+      const copyIconPng = "https://assets.gdgjakarta.org/email-icons/copy-blue-16.png";
+      const waIconPng = "https://assets.gdgjakarta.org/email-icons/whatsapp-white-16.png";
+
+      // Inline SVG fallback with embedded PNG fallback for cross-client resilience
+      const copyIconHtml = `<img src="${copyIconPng}" width="14" height="14" alt="" style="width: 14px; height: 14px; display: inline-block; vertical-align: middle; border: 0;" onerror="this.style.display='none'" />`;
+      const waIconHtml = `<img src="${waIconPng}" width="14" height="14" alt="" style="width: 14px; height: 14px; display: inline-block; vertical-align: middle; border: 0;" onerror="this.style.display='none'" />`;
+
+      // HTML table based button row with inline-block, explicit margin, and solid fallback styles for Gmail / Outlook
+      const actionsRow = isClaimed
+        ? `<span style="background-color: #f1f3f4; color: #5f6368; padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 600; font-family: 'Google Sans', 'Google Sans Text', Roboto, Arial, sans-serif; white-space: nowrap; display: inline-block;">REDEEMED</span>`
+        : `
+          <table role="presentation" border="0" cellpadding="0" cellspacing="0" style="border-collapse: separate; border-spacing: 0; margin-left: auto;">
+            <tr>
+              <td style="padding-right: 8px; vertical-align: middle;">
+                <a href="${directApplyUrl}" target="_blank" title="Apply Voucher" style="display: inline-block; padding: 6px 12px; border: 1px solid #dadce0; border-radius: 6px; background-color: #ffffff; color: #1a73e8; text-decoration: none; font-size: 12px; font-weight: 600; font-family: 'Google Sans', 'Google Sans Text', Roboto, Arial, sans-serif; line-height: 14px; white-space: nowrap; text-align: center; vertical-align: middle;">
+                  <!--[if mso]><i style="letter-spacing: 4px; mso-font-width: -100%;">&#8202;</i><![endif]-->
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1a73e8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle; margin-right: 5px;"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                  <span style="display: inline-block; vertical-align: middle;">Apply</span>
+                </a>
+              </td>
+              <td style="vertical-align: middle;">
+                <a href="${waShareUrl}" target="_blank" title="Share via WhatsApp" style="display: inline-block; padding: 6px 12px; border: 1px solid #25d366; border-radius: 6px; background-color: #25d366; color: #ffffff !important; text-decoration: none; font-size: 12px; font-weight: 600; font-family: 'Google Sans', 'Google Sans Text', Roboto, Arial, sans-serif; line-height: 14px; white-space: nowrap; text-align: center; vertical-align: middle; box-shadow: 0 1px 2px rgba(0,0,0,0.1);">
+                  <!--[if mso]><i style="letter-spacing: 4px; mso-font-width: -100%;">&#8202;</i><![endif]-->
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="#ffffff" style="display: inline-block; vertical-align: middle; margin-right: 5px;"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>
+                  <span style="display: inline-block; vertical-align: middle;">Share</span>
+                </a>
+              </td>
+            </tr>
+          </table>`;
+
+      return `
+        <div style="background-color: #ffffff; border: 1px solid #dadce0; border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; font-family: 'Google Sans', 'Google Sans Text', Roboto, Arial, sans-serif;">
+          <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="width: 100%; border-collapse: collapse; border-spacing: 0;">
+            <tr>
+              <td style="vertical-align: middle; padding: 0; text-align: left;">
+                <div style="font-family: 'Google Sans', 'Google Sans Text', 'Courier New', monospace; font-size: 15px; font-weight: 700; color: #1a73e8; letter-spacing: 0.5px;">${code}</div>
+                <div style="font-size: 11px; color: #5f6368; margin-top: 3px; font-family: 'Google Sans', 'Google Sans Text', Roboto, Arial, sans-serif;">100% Free Pass &bull; ${v.ticket_name || "Event Ticket"}</div>
+              </td>
+              <td style="vertical-align: middle; padding: 0 0 0 12px; text-align: right; width: 1%;">
+                ${actionsRow}
+              </td>
+            </tr>
+          </table>
+        </div>`;
+    })
+    .join("");
+
+  return `
+    <div class="bundle-box" style="background-color: #f0f7ff; border: 1.5px solid #1a73e8; border-radius: 12px; padding: 22px; margin: 25px 0; font-family: 'Google Sans', 'Google Sans Text', Roboto, Arial, sans-serif;">
+      <div style="display: flex; align-items: center; margin-bottom: 12px;">
+        <span style="font-size: 1.4em; margin-right: 10px;">🎁</span>
+        <h3 style="margin: 0; color: #1a73e8; font-size: 17px; font-weight: 700; font-family: 'Google Sans', 'Google Sans Text', Roboto, Arial, sans-serif;">Ticket Bundle: ${name}</h3>
+      </div>
+      
+      <p style="margin: 0 0 14px 0; font-size: 13px; line-height: 1.55; color: #202124; font-family: 'Google Sans', 'Google Sans Text', Roboto, Arial, sans-serif;">
+        <strong>Important Notice for Bundle Purchasers:</strong><br>
+        The entrance pass and QR code above is exclusively for <strong>YOUR</strong> attendance. Your package includes <strong>1 personal pass</strong> plus <strong>${voucherCount} transferable voucher pass(es)</strong> for your friends or colleagues.
+      </p>
+
+      <div style="background-color: #ffffff; border: 1px solid #d2e3fc; border-radius: 8px; padding: 16px; margin-bottom: 16px; font-family: 'Google Sans', 'Google Sans Text', Roboto, Arial, sans-serif;">
+        <h4 style="margin: 0 0 10px 0; color: #185abc; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; font-family: 'Google Sans', 'Google Sans Text', Roboto, Arial, sans-serif;">📋 How Your Friends Must Redeem:</h4>
+        <ol style="margin: 0; padding-left: 20px; font-size: 12px; line-height: 1.65; color: #3c4043; font-family: 'Google Sans', 'Google Sans Text', Roboto, Arial, sans-serif;">
+          <li>Share one unique voucher code below with each friend or click <strong>Share</strong> to send directly via WhatsApp.</li>
+          <li>Your friend visits the event registration page at <a href="${regUrl}" style="color: #1a73e8; font-weight: 600; text-decoration: underline;" target="_blank">our website</a>.</li>
+          <li>At checkout, enter the voucher code into the <strong>Promo / Voucher Code</strong> box to make the ticket <strong>100% FREE (Rp 0)</strong>.</li>
+          <li>Each friend completes their registration to receive their <strong>own individual entrance ticket & check-in QR code</strong>.</li>
+        </ol>
+      </div>
+
+      <div style="margin-top: 14px;">
+        <div style="font-size: 12px; font-weight: 700; color: #185abc; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; font-family: 'Google Sans', 'Google Sans Text', Roboto, Arial, sans-serif;">Your Transferable Friend Passes (${voucherCount}):</div>
+        ${voucherRows}
+      </div>
+
+      <p style="margin: 14px 0 0 0; font-size: 11px; color: #5f6368; line-height: 1.45; text-align: center; font-family: 'Google Sans', 'Google Sans Text', Roboto, Arial, sans-serif;">
+        You can also manage and share these vouchers anytime from <strong>My Events</strong> on the dashboard.
+      </p>
+    </div>`;
+}
+
+/**
+ * Ensures the bundle voucher block is injected right after the ticket-card in accepted emails
+ * if the template does not explicitly contain the tag.
+ */
+export function ensureBundleVouchersBlockInAcceptedHtml(html: string): string {
+  let result = html;
+  if (!result.includes("bundleVouchersBlock") && !result.includes("bundle-box") && result.includes("ticket-card")) {
+    const quote = result.includes("\\'") ? "\\'" : "'";
+    const blockPlaceholder = `\n          {{ $(${quote}event-params${quote}).item.json.bundleVouchersBlock }}\n`;
+
+    const cardBounds = findElementBoundaries(result, "ticket-card");
+    if (cardBounds) {
+      result = `${result.slice(0, cardBounds.endIdx)}${blockPlaceholder}${result.slice(cardBounds.endIdx)}`;
+    } else {
+      // Fallback: inject right before the checklist box if ticket-card boundary couldn't be parsed
+      const checklistMatch = /(<div\b[^>]*class=["'][^"']*checklist-box[^"']*["'][^>]*>)/i.exec(result);
+      if (checklistMatch && checklistMatch.index !== undefined) {
+        result = `${result.slice(0, checklistMatch.index)}${blockPlaceholder}\n          ${result.slice(checklistMatch.index)}`;
+      }
+    }
+  }
   return result;
 }
 
@@ -1434,6 +1614,19 @@ export function interpolateTemplateHtml(
     rendered = ensureCancellationReasonInCancelledHtml(rendered);
   }
 
+  // Backwards-compatibility: Ensure bundle vouchers block is in accepted template if registrant has bundle vouchers
+  if (data.bundleVouchers && data.bundleVouchers.length > 0) {
+    rendered = ensureBundleVouchersBlockInAcceptedHtml(rendered);
+  }
+
+  const bundleVouchersHtml =
+    data.bundleVouchers && data.bundleVouchers.length > 0
+      ? renderBundleVouchersHtml(data.bundleName, data.bundleVouchers, event.eventCtaUrl, event.eventName)
+      : "";
+  rendered = rendered.replaceAll("{{ $('event-params').item.json.bundleVouchersBlock }}", bundleVouchersHtml);
+  rendered = rendered.replaceAll("{ $('event-params').item.json.bundleVouchersBlock }", bundleVouchersHtml);
+  rendered = rendered.replaceAll("{{ bundleVouchersBlock }}", bundleVouchersHtml);
+
   const sessionTime =
     data.overrideSessionTime && data.overrideSessionTime.trim() !== ""
       ? data.overrideSessionTime.trim()
@@ -1563,24 +1756,19 @@ export function adjustBodyEmailForApprovedWebhook(html: string): string {
   adjusted = adjusted.replaceAll("GDG-JKT-89241", "{{ $('Add Bevy Attendee API').item.json.attendee_code }}");
 
   // 5. Ensure any div with attendee-id class uses dynamic attendee_code (Ref) and id (ID)
-  adjusted = adjusted.replace(
-    /(<div\b(?=[^>]*\bclass=["'][^"']*\battendee-id\b[^"']*["'])[^>]*>)([\s\S]*?)(<\/div>)/gi,
-    (_match, prefix, content, suffix) => {
-      let updated = content;
-      if (!updated.includes("{{ $('Add Bevy Attendee API').item.json.attendee_code }}")) {
-        updated = `<div>Ref: {{ $('Add Bevy Attendee API').item.json.attendee_code }}</div>`;
-      }
-      if (!updated.includes("{{ $('Add Bevy Attendee API').item.json.id }}")) {
-        const trimmed = updated.trim();
-        if (trimmed.includes("<div>")) {
-          updated = `${trimmed}\n              <div style="margin-top: 2px;">ID: {{ $('Add Bevy Attendee API').item.json.id }}</div>`;
-        } else {
-          updated = `<div>${trimmed}</div>\n              <div style="margin-top: 2px;">ID: {{ $('Add Bevy Attendee API').item.json.id }}</div>`;
-        }
-      }
-      return `${prefix}\n              ${updated.trim()}\n            ${suffix}`;
-    },
-  );
+  // Clean any triple/quad braces and collapse any duplicate ID rows
+  adjusted = adjusted.replace(/ID:\s*\{{3,}\s*([^}]+?)\s*\}{3,}/gi, "ID: {{ $1 }}");
+  const bounds = findElementBoundaries(adjusted, "attendee-id");
+  if (bounds) {
+    const blockContent = adjusted.slice(bounds.startIdx, bounds.endIdx);
+    const dedupedBlock = blockContent.replace(
+      /(<div[^>]*>\s*ID:[\s\S]*?<\/div>)(\s*<div[^>]*>\s*ID:[\s\S]*?<\/div>)/gi,
+      "$1",
+    );
+    if (dedupedBlock !== blockContent) {
+      adjusted = `${adjusted.slice(0, bounds.startIdx)}${dedupedBlock}${adjusted.slice(bounds.endIdx)}`;
+    }
+  }
 
   // 6. Ensure "See you at the venue! 🚀" is rendered as a robust inline-styled button and footer is styled
   adjusted = ensureVenueButtonAndFooterInHtml(adjusted);
@@ -1677,6 +1865,8 @@ export function buildRenderedEmailForAttendee({
   paidAmount,
   sessionName,
   cancellationReason,
+  bundleName,
+  bundleVouchers,
 }: {
   templateKey: EmailTemplateKey;
   attendee: { name: string; email: string };
@@ -1685,6 +1875,8 @@ export function buildRenderedEmailForAttendee({
   paidAmount?: string;
   sessionName?: string;
   cancellationReason?: string;
+  bundleName?: string;
+  bundleVouchers?: BundleIssuedVoucher[];
 }): {
   firstName: string;
   lastName: string;
@@ -1733,6 +1925,8 @@ export function buildRenderedEmailForAttendee({
   if (paidAmount) simulatedData.paidAmount = paidAmount;
   if (sessionName) simulatedData.sessionName = sessionName;
   if (cancellationReason) simulatedData.cancellationReason = cancellationReason;
+  if (bundleName) simulatedData.bundleName = bundleName;
+  if (bundleVouchers) simulatedData.bundleVouchers = bundleVouchers;
 
   // Get raw template HTML
   const rawHtml =

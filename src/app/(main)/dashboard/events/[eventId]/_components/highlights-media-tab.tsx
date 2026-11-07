@@ -29,7 +29,8 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
-  const [highlightVideoUrl, setHighlightVideoUrl] = useState(event.highlight_video_url ?? "");
+  const initialHighlightVideoUrl = event.video_url || event.highlight_video_url || "";
+  const [highlightVideoUrl, setHighlightVideoUrl] = useState(initialHighlightVideoUrl);
   const [highlightVideoTitle, setHighlightVideoTitle] = useState(event.highlight_video_title ?? "");
   const [photoAlbumUrl, setPhotoAlbumUrl] = useState(event.photo_album_url ?? "");
   const [photoAlbumTitle, setPhotoAlbumTitle] = useState(event.photo_album_title ?? "");
@@ -49,7 +50,7 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
         const { getFirestoreEventById } = await import("@/lib/firestore/client");
         const docData = await getFirestoreEventById(String(event.id));
         if (isMounted && docData) {
-          const videoUrl = docData.highlight_video_url ?? event.highlight_video_url ?? "";
+          const videoUrl = docData.highlight_video_url ?? event.highlight_video_url ?? event.video_url ?? "";
           const videoTitle = docData.highlight_video_title ?? event.highlight_video_title ?? "";
           const albumUrl = docData.photo_album_url ?? event.photo_album_url ?? "";
           const albumTitle = docData.photo_album_title ?? event.photo_album_title ?? "";
@@ -75,7 +76,7 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
     }
 
     initialSnapshotRef.current = JSON.stringify({
-      highlightVideoUrl: event.highlight_video_url ?? "",
+      highlightVideoUrl: initialHighlightVideoUrl,
       highlightVideoTitle: event.highlight_video_title ?? "",
       photoAlbumUrl: event.photo_album_url ?? "",
       photoAlbumTitle: event.photo_album_title ?? "",
@@ -89,11 +90,13 @@ export function HighlightsMediaTab({ event }: HighlightsMediaTabProps) {
     };
   }, [
     event.id,
+    event.video_url,
     event.highlight_video_url,
     event.highlight_video_title,
     event.photo_album_url,
     event.photo_album_title,
     event.recap_description,
+    initialHighlightVideoUrl,
   ]);
 
   // Dirty state calculation

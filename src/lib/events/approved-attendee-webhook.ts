@@ -1,4 +1,5 @@
 import { BEVY_CONFIG } from "@/config/bevy-config";
+import { generateBundleFriendVouchers } from "@/lib/events/bundle-voucher-generator";
 import {
   getDefaultTemplateByKey,
   getDefaultTemplateData,
@@ -207,13 +208,52 @@ export function buildApprovedAttendeePayload(
     };
     simulatedData.event.eventName = eventName;
     simulatedData.event.headerEmailUrl = eventHeaderEmailUrl;
-    simulatedData.event.eventCtaUrl = actionButtonUrl;
+    // For bundle friend pass claim links, prefer direct internal site event URL if available
+    const appBaseUrl =
+      (process.env.NEXT_PUBLIC_APP_URL || (typeof window !== "undefined" ? window.location.origin : "") || "https://gdgjakarta.org").replace(/\/+$/, "");
+    const directEventClaimUrl = bevyEventId ? `${appBaseUrl}/events/${bevyEventId}` : actionButtonUrl;
+    simulatedData.event.eventCtaUrl = directEventClaimUrl || actionButtonUrl;
     simulatedData.venueLocation = bevyEventLocation;
     simulatedData.venueLocationUrl = bevyEventLocationUrl;
     simulatedData.eventDate = bevyEventDate;
     simulatedData.attendeeId = String(registration.bevy_attendee_id || registration.id);
     if (registration.attendee_code) {
       simulatedData.attendeeCode = registration.attendee_code;
+    }
+    if (registration.bundle_name) {
+      simulatedData.bundleName = registration.bundle_name;
+    }
+    if (Array.isArray(registration.bundle_vouchers) && registration.bundle_vouchers.length > 0) {
+      simulatedData.bundleVouchers = registration.bundle_vouchers;
+    } else if ((registration.bundle_id || registration.bundle_name) && event?.bundles) {
+      // Auto-fallback: If registrant bought a multi-ticket bundle but bundle_vouchers array hasn't been persisted yet
+      const matchingBundle = event.bundles.find(
+        (b) =>
+          (registration.bundle_id && b.id === registration.bundle_id) ||
+          (registration.bundle_name && b.name.toLowerCase() === registration.bundle_name.toLowerCase()),
+      );
+      if (matchingBundle && (matchingBundle.ticket_quantity ?? 1) > 1 && matchingBundle.generate_vouchers !== false) {
+        try {
+          const matchingTicketTier = event.tickets?.find((t) => t.id === matchingBundle.ticket_id);
+          const generated = generateBundleFriendVouchers({
+            bundle: matchingBundle,
+            buyerRegistrationId: registration.id,
+            buyerMemberId: registration.member_id || "",
+            buyerName: fullName,
+            buyerEmail: email,
+            ticketTier: matchingTicketTier,
+            eventStartDate: event.start_date,
+          });
+          if (generated.registrationVouchers.length > 0) {
+            simulatedData.bundleVouchers = generated.registrationVouchers;
+            if (!simulatedData.bundleName) {
+              simulatedData.bundleName = matchingBundle.name;
+            }
+          }
+        } catch (genErr) {
+          console.warn("[buildApprovedAttendeePayload] Failed auto-generating bundle vouchers for email:", genErr);
+        }
+      }
     }
 
     // If registrant is associated with a specific session that has a time slot, use it;

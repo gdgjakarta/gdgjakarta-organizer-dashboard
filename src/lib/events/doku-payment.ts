@@ -685,9 +685,15 @@ export function buildRegistrationPaymentPayload(
 
   const emailTemplate =
     options?.emailTemplate ??
-    event.payment_email_template ??
-    event.paymentEmailTemplate ??
-    (registration.ticket_type === "commitment_fee" ? "Commitment Fee" : "Ticketing");
+    (registration.ticket_type === "commitment_fee"
+      ? "Commitment Fee"
+      : registration.ticket_type === "paid"
+        ? "Ticketing"
+        : (event.payment_email_template ??
+          event.paymentEmailTemplate ??
+          (event.tickets?.some((t) => t.type === "commitment_fee") && !event.tickets?.some((t) => t.type === "paid")
+            ? "Commitment Fee"
+            : "Ticketing")));
 
   return {
     customer: {

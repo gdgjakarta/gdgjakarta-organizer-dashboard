@@ -2296,6 +2296,7 @@ export function EventRegistrationModal({
               {
                 ...registrationPayload,
                 id: createdRegistrationId,
+                bundle_vouchers: result.bundleVouchers ?? registrationPayload.bundle_vouchers,
               } as FirestoreRegistration,
               eventConfig,
             );
@@ -3239,6 +3240,23 @@ export function EventRegistrationModal({
                                       );
                                     })}
                                   </div>
+
+                                  {/* Clear explanation for multi-ticket bundles */}
+                                  {isSelected &&
+                                    b.ticket_id &&
+                                    b.ticket_quantity &&
+                                    b.ticket_quantity > 1 &&
+                                    b.generate_vouchers !== false && (
+                                      <div className="mt-2.5 rounded-lg border border-primary/25 bg-primary/5 p-2.5 text-[11px] text-muted-foreground leading-relaxed">
+                                        <strong className="text-foreground">ℹ️ How this bundle ticket works:</strong>
+                                        <p className="mt-0.5">
+                                          You will receive <strong>1 personal entrance ticket</strong> for yourself plus{" "}
+                                          <strong>{b.ticket_quantity - 1} transferable 100% free voucher codes</strong>{" "}
+                                          for your friends. Each friend must redeem their code on the registration page
+                                          to obtain their own entrance ticket &amp; check-in QR code.
+                                        </p>
+                                      </div>
+                                    )}
                                 </div>
 
                                 <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-border/40 border-t pt-2.5 text-xs">

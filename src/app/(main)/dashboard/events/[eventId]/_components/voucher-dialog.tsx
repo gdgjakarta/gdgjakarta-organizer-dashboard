@@ -46,6 +46,42 @@ import type {
 import { generateOpaqueShareToken, generatePartnerAccessCode } from "@/lib/security/pii-mask";
 import { cn } from "@/lib/utils";
 
+const TICKET_TYPE_CONFIG: Record<
+  string,
+  { label: string; badgeClass: string }
+> = {
+  free: {
+    label: "Free RSVP",
+    badgeClass: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+  },
+  paid: {
+    label: "Paid Pass",
+    badgeClass: "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-400",
+  },
+  commitment_fee: {
+    label: "Refundable Fee",
+    badgeClass: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400",
+  },
+};
+
+function getTicketTypeBadge(type?: string) {
+  if (!type) return null;
+  const config = TICKET_TYPE_CONFIG[type] ?? {
+    label: type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+    badgeClass: "border-muted-foreground/30 bg-muted text-muted-foreground",
+  };
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-sm border px-1.5 py-0.5 text-[9px] font-medium leading-none tracking-tight",
+        config.badgeClass,
+      )}
+    >
+      {config.label}
+    </span>
+  );
+}
+
 interface VoucherDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -644,8 +680,10 @@ export function VoucherDialog({
                             <Checkbox id={checkboxId} checked={isChecked} onCheckedChange={() => toggleTicket(t.id)} />
                             <label htmlFor={checkboxId} className="flex-1 min-w-0 cursor-pointer">
                               <span className="block truncate font-medium text-foreground">{t.name}</span>
-                              <span className="block text-[10px] text-muted-foreground">
-                                {t.price === 0 ? "Free" : `Rp ${t.price.toLocaleString("id-ID")}`} • {t.type}
+                              <span className="mt-0.5 flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                                <span>{t.price === 0 ? "Free" : `Rp ${t.price.toLocaleString("id-ID")}`}</span>
+                                <span className="text-muted-foreground/40">•</span>
+                                {getTicketTypeBadge(t.type)}
                               </span>
                             </label>
                           </div>

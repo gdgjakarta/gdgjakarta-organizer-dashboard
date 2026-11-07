@@ -1564,7 +1564,9 @@ export async function getRegistrationById(registrationId: string): Promise<Fires
   return null;
 }
 
-export async function registerMemberForEvent(registration: Omit<FirestoreRegistration, "id">): Promise<string> {
+export async function registerMemberForEvent(
+  registration: Omit<FirestoreRegistration, "id">,
+): Promise<{ registrationId: string; bundleVouchers?: BundleIssuedVoucher[] }> {
   if (typeof window === "undefined") throw new Error("Registration must be performed from client");
 
   // Ensure Firebase Auth state is fully restored on client before making Firestore calls
@@ -1678,6 +1680,10 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
     }
 
     // 3. Ticket sales window and capacity check
+    const isUsingBundleVoucher = Boolean(
+      registration.voucher_code && registration.voucher_code.trim().toUpperCase().startsWith("BNDL-"),
+    );
+
     if (!isWaitlisted && registration.ticket_id && eventData.tickets) {
       const matchingTicket = eventData.tickets.find((t) => t.id === registration.ticket_id);
       if (matchingTicket) {
@@ -1687,13 +1693,14 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
         if (matchingTicket.status === "sold_out") {
           throw new Error(`The ticket tier "${matchingTicket.name}" is sold out.`);
         }
-        if (matchingTicket.sales_start_date && matchingTicket.sales_start_date.trim() !== "") {
+        // Bundle friend vouchers are exempt from ticket sales window restrictions
+        if (!isUsingBundleVoucher && matchingTicket.sales_start_date && matchingTicket.sales_start_date.trim() !== "") {
           const startTime = new Date(matchingTicket.sales_start_date).getTime();
           if (!Number.isNaN(startTime) && authoritativeTimeMillis < startTime) {
             throw new Error(`Sales for ticket "${matchingTicket.name}" have not started yet.`);
           }
         }
-        if (matchingTicket.sales_end_date && matchingTicket.sales_end_date.trim() !== "") {
+        if (!isUsingBundleVoucher && matchingTicket.sales_end_date && matchingTicket.sales_end_date.trim() !== "") {
           const endTime = new Date(matchingTicket.sales_end_date).getTime();
           if (!Number.isNaN(endTime) && authoritativeTimeMillis > endTime) {
             throw new Error(`Sales for ticket "${matchingTicket.name}" have ended.`);
@@ -1970,11 +1977,18 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
           throw new Error(voucherData.status === "expired" ? "This voucher has expired." : "This voucher is inactive.");
         }
 
-        if (voucherData.start_date && authoritativeTimeMillis < new Date(voucherData.start_date).getTime()) {
-          throw new Error("This voucher is not active yet.");
-        }
-        if (voucherData.end_date && authoritativeTimeMillis > new Date(voucherData.end_date).getTime()) {
-          throw new Error("This voucher has expired.");
+        const isBundleFriendVoucher = Boolean(
+          voucherData.source_bundle_id ||
+            (typeof voucherData.code === "string" && voucherData.code.trim().toUpperCase().startsWith("BNDL-")),
+        );
+
+        if (!isBundleFriendVoucher) {
+          if (voucherData.start_date && authoritativeTimeMillis < new Date(voucherData.start_date).getTime()) {
+            throw new Error("This voucher is not active yet.");
+          }
+          if (voucherData.end_date && authoritativeTimeMillis > new Date(voucherData.end_date).getTime()) {
+            throw new Error("This voucher has expired.");
+          }
         }
 
         const currentTimesUsed = voucherData.times_used ?? 0;
@@ -2260,7 +2274,10 @@ export async function registerMemberForEvent(registration: Omit<FirestoreRegistr
     }
   }
 
-  return regId;
+  return {
+    registrationId: regId,
+    bundleVouchers: issuedBundleVouchers,
+  };
 }
 
 export function isRegistrationSeatOccupied(reg: FirestoreRegistration, isCurated: boolean): boolean {
@@ -2658,6 +2675,56 @@ export async function restoreVoucherUsage(
   }
 }
 
+/**
+ * Permanently deletes all bundle friend vouchers generated from a specific purchaser registration.
+ */
+export async function deleteBundleFriendVouchersForRegistration(
+  eventId: string,
+  registrationId: string,
+  bundleVouchers?: BundleIssuedVoucher[],
+): Promise<void> {
+  if (typeof window === "undefined" || !registrationId || !eventId) return;
+  if (typeof auth.authStateReady === "function") {
+    await auth.authStateReady();
+  }
+  const eventIdStr = String(eventId);
+  const codesToDelete = new Set<string>();
+
+  if (Array.isArray(bundleVouchers)) {
+    for (const bv of bundleVouchers) {
+      if (bv.code) {
+        codesToDelete.add(bv.code.trim().toUpperCase());
+      }
+    }
+  }
+
+  try {
+    const q = query(
+      collection(db, "event_vouchers"),
+      where("event_id", "==", eventIdStr),
+      where("source_registration_id", "==", registrationId),
+    );
+    const snap = await getDocs(q);
+    for (const d of snap.docs) {
+      const vData = d.data() as EventVoucher;
+      if (vData.code) {
+        codesToDelete.add(vData.code.trim().toUpperCase());
+      }
+    }
+  } catch (err) {
+    console.warn(`[deleteBundleFriendVouchersForRegistration] Query error for reg ${registrationId}:`, err);
+  }
+
+  for (const code of codesToDelete) {
+    try {
+      const vRef = doc(db, "event_vouchers", `${eventIdStr}_${code}`);
+      await deleteDoc(vRef);
+    } catch (err) {
+      console.warn(`[deleteBundleFriendVouchersForRegistration] Error deleting voucher ${code}:`, err);
+    }
+  }
+}
+
 export async function updateRegistrationStatus(
   registrationId: string,
   eventId: string,
@@ -2832,6 +2899,13 @@ export async function updateRegistrationStatus(
     } else if (wasVoid && !isNowVoid) {
       await restoreVoucherUsage(eventId, voucherCode, regData);
     }
+  }
+
+  // If this registration is cancelled or rejected, also remove any bundle friend vouchers it generated
+  const isCancelledOrRejected = status === "rejected" || status === "canceled" || status === "cancelled";
+  const wasCancelledOrRejected = previousStatus === "rejected" || previousStatus === "canceled" || previousStatus === "cancelled";
+  if (isCancelledOrRejected && !wasCancelledOrRejected) {
+    await deleteBundleFriendVouchersForRegistration(eventId, registrationId, regData?.bundle_vouchers);
   }
 
   // Dedicated audit_logs collection entry (skip if already in target status with duplicate log)
@@ -3208,7 +3282,10 @@ export async function deleteEventRegistration(registrationId: string, eventId: s
     await revertVoucherUsage(eventId, voucherCode, regData);
   }
 
-  // 3. Recalculate event counters and capacity
+  // 3. Remove any bundle friend vouchers generated from this purchaser registration
+  await deleteBundleFriendVouchersForRegistration(eventId, registrationId, regData.bundle_vouchers);
+
+  // 4. Recalculate event counters and capacity
   try {
     await recalculateEventCapacityCounters(eventId);
   } catch (err) {
@@ -3245,6 +3322,8 @@ export async function deleteBatchEventRegistrations(registrationIds: string[], e
     if (vCode && !wasAlreadyVoid) {
       await revertVoucherUsage(eventId, vCode, reg);
     }
+    // Remove bundle friend vouchers generated from this registration
+    await deleteBundleFriendVouchersForRegistration(eventId, reg.id, reg.bundle_vouchers);
   }
 
   // Recalculate event counters and capacity
@@ -3323,6 +3402,7 @@ const ALLOWED_EVENT_DOC_KEYS = new Set<string>([
   "referral_discount_type",
   "referral_discount_amount",
   "referral_enabled",
+  "video_url",
   "highlight_video_url",
   "highlight_video_title",
   "photo_album_url",
@@ -5448,6 +5528,76 @@ export function subscribePrinterConfigDoc(
           : "message" in err && (err as { message?: string }).message?.includes("permission"));
       if (!isPermission) {
         console.warn("[Firestore] subscribePrinterConfigDoc error:", err);
+      }
+      onError?.(err);
+    },
+  );
+}
+
+// ---- Shared Email Blast Templates (system_settings/email_blast_templates) -------------------------
+
+export async function getSharedEmailBlastTemplatesDoc(): Promise<import("@/app/(main)/dashboard/email-manager/_components/default-html-template").EmailBlastTemplate[]> {
+  if (typeof window === "undefined") return [];
+  try {
+    const docRef = doc(db, "system_settings", "email_blast_templates");
+    const snap = await getDoc(docRef);
+    if (!snap.exists()) return [];
+    const data = snap.data();
+    return Array.isArray(data?.templates) ? data.templates : [];
+  } catch (error) {
+    console.warn("[Firestore] getSharedEmailBlastTemplatesDoc error:", error);
+    return [];
+  }
+}
+
+export async function saveSharedEmailBlastTemplatesDoc(
+  templates: import("@/app/(main)/dashboard/email-manager/_components/default-html-template").EmailBlastTemplate[],
+  updater?: { name?: string; email?: string },
+): Promise<void> {
+  if (typeof window === "undefined") return;
+  if (typeof auth.authStateReady === "function") {
+    await auth.authStateReady();
+  }
+  const docRef = doc(db, "system_settings", "email_blast_templates");
+  const sanitized = sanitizeFirestoreData({
+    id: "email_blast_templates",
+    templates: templates.slice(0, 100),
+    updated_at: new Date().toISOString(),
+    ...(updater?.name ? { updated_by_name: updater.name } : {}),
+    ...(updater?.email ? { updated_by_email: updater.email } : {}),
+  });
+  await setDoc(docRef, sanitized, { merge: true });
+}
+
+export function subscribeSharedEmailBlastTemplatesDoc(
+  onUpdate: (templates: import("@/app/(main)/dashboard/email-manager/_components/default-html-template").EmailBlastTemplate[]) => void,
+  onError?: (error: Error) => void,
+): () => void {
+  if (typeof window === "undefined") {
+    return () => {
+      // No-op on server
+    };
+  }
+  const docRef = doc(db, "system_settings", "email_blast_templates");
+  return onSnapshot(
+    docRef,
+    (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        onUpdate(Array.isArray(data?.templates) ? data.templates : []);
+      } else {
+        onUpdate([]);
+      }
+    },
+    (err) => {
+      const isPermission =
+        err &&
+        typeof err === "object" &&
+        ("code" in err
+          ? (err as { code?: string }).code === "permission-denied"
+          : "message" in err && (err as { message?: string }).message?.includes("permission"));
+      if (!isPermission) {
+        console.warn("[Firestore] subscribeSharedEmailBlastTemplatesDoc error:", err);
       }
       onError?.(err);
     },

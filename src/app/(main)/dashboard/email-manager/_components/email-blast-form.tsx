@@ -82,10 +82,13 @@ import { AddPlaceholderDialog } from "./add-placeholder-dialog";
 import { AudienceSelector } from "./audience-selector";
 import { ConfirmEmailDialog } from "./confirm-email-dialog";
 import {
+  CUSTOM_EMAIL_BLAST_TEMPLATES_KEY,
+  DEFAULT_EMAIL_BLAST_TEMPLATES,
   defaultHtmlTemplate,
   deleteCustomEmailBlastTemplate,
   type EmailBlastTemplate,
   getAllEmailBlastTemplates,
+  getCustomEmailBlastTemplates,
   saveEmailBlastAsTemplate,
   saveFeatureTemplateOverride,
 } from "./default-html-template";
@@ -235,6 +238,41 @@ export function EmailBlastForm({
     setCustomEventPlaceholders(getStoredCustomEventPlaceholders());
     setCustomAttendeePlaceholders(getStoredCustomAttendeePlaceholders());
     setTemplatesData(getAllEmailBlastTemplates());
+
+    // Subscribe in real-time to shared email blast templates from Cloud Firestore
+    let unsubscribe: (() => void) | undefined;
+    import("@/lib/firestore/client")
+      .then(({ subscribeSharedEmailBlastTemplatesDoc, saveSharedEmailBlastTemplatesDoc }) => {
+        unsubscribe = subscribeSharedEmailBlastTemplatesDoc((remoteTemplates) => {
+          if (Array.isArray(remoteTemplates) && remoteTemplates.length > 0) {
+            // Merge remote templates with local, updating local storage cache
+            try {
+              window.localStorage.setItem(CUSTOM_EMAIL_BLAST_TEMPLATES_KEY, JSON.stringify(remoteTemplates));
+            } catch (err) {
+              console.warn("[EmailBlastForm] Failed caching remote templates locally:", err);
+            }
+            setTemplatesData({
+              defaultTemplates: DEFAULT_EMAIL_BLAST_TEMPLATES,
+              customTemplates: remoteTemplates,
+            });
+          } else {
+            // If remote is empty but local has existing custom templates, migrate local to remote
+            const local = getCustomEmailBlastTemplates();
+            if (local.length > 0) {
+              saveSharedEmailBlastTemplatesDoc(local).catch((err) => {
+                console.warn("[EmailBlastForm] Failed seeding local templates to Firestore:", err);
+              });
+            }
+          }
+        });
+      })
+      .catch((err) => {
+        console.warn("[EmailBlastForm] Failed to bind shared email templates subscription:", err);
+      });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, []);
 
   const publishedEvents = propEvents ?? internalEvents;

@@ -298,7 +298,7 @@ service cloud.firestore {
     //   - get: Public / anyone (`if true;`) to allow single voucher validation by exact doc ID / code during checkout without exposing other codes.
     //   - list: Restricted strictly to team members (`hasTeamAccess()`) to prevent scraping secret promo & sponsor vouchers.
     //   - create: Team members (`hasTeamAccess()`) or authenticated bundle purchasers issuing single-use 100% friend ticket vouchers (`purchaser_member_id == request.auth.uid`).
-    //   - delete: Team members only (`hasTeamAccess()`).
+    //   - delete: Team members (`hasTeamAccess()`) or authenticated bundle purchasers deleting their unredeemed vouchers (`purchaser_member_id == request.auth.uid && times_used == 0`).
     //   - update: Team members (`hasTeamAccess()`) or authenticated users updating redemption fields (`times_used`, `redeemed_by_*`, `redeemed_at`, `updated_at`).
     // Collection: partner_shares
     // Document ID: shareToken (e.g. opaque 24-character token `vshr_...`)
@@ -437,7 +437,7 @@ service cloud.firestore {
     //   - delete: Team access (Organizers & Staff).
     //
     // Collection: system_settings
-    // Document ID: settingId (e.g. 'referral', 'maintenance')
+    // Document ID: settingId (e.g. 'referral', 'maintenance', 'email_blast_templates')
     // Fields ('referral'):
     //   - id: string|null (optional, <= 128 chars) - Setting document identifier
     //   - default_discount_type: string|null (optional) - Master default discount type ('percentage'|'fixed')
@@ -465,6 +465,12 @@ service cloud.firestore {
     //   - updatedAt: string|null (optional, <= 100 chars) - Last update timestamp
     //   - updatedBy: string|null (optional, <= 128 chars) - Updater UID
     //   - updatedByName: string|null (optional, <= 200 chars) - Updater display name
+    // Fields ('email_blast_templates'):
+    //   - id: string|null (optional, <= 128 chars) - Setting document identifier ('email_blast_templates')
+    //   - templates: list|null (optional, <= 100 template maps)
+    //   - updated_at: string|null (optional, <= 100 chars) - Last update timestamp
+    //   - updated_by_name: string|null (optional, <= 200 chars) - Updater display name
+    //   - updated_by_email: string|null (optional, <= 200 chars) - Updater email address
     // Permissions:
     //   - read: Allowed for authenticated users and public visitors.
     //   - create, update, delete: Team access (Organizers & Staff / Core Team).
@@ -1228,6 +1234,18 @@ service cloud.firestore {
         (!('updatedByName' in data) || data.updatedByName == null || (data.updatedByName is string && data.updatedByName.size() <= 200));
     }
 
+    // Validates email blast templates system_settings document structure, data types, and bounds
+    function isValidEmailBlastTemplatesSetting(data) {
+      return hasOnlyAllowedFields(data, [
+        'id', 'templates', 'updated_at', 'updated_by_name', 'updated_by_email'
+      ]) &&
+        (!('id' in data) || data.id == null || (data.id is string && data.id.size() <= 128)) &&
+        (!('templates' in data) || data.templates == null || (data.templates is list && data.templates.size() <= 100)) &&
+        (!('updated_at' in data) || data.updated_at == null || (data.updated_at is string && data.updated_at.size() <= 100)) &&
+        (!('updated_by_name' in data) || data.updated_by_name == null || (data.updated_by_name is string && data.updated_by_name.size() <= 200)) &&
+        (!('updated_by_email' in data) || data.updated_by_email == null || (data.updated_by_email is string && data.updated_by_email.size() <= 200));
+    }
+
     // Validates event_merchandise_orders document structure, data types, and bounds
     function isValidEventMerchandiseOrder(data) {
       return hasRequiredFields(data, [
@@ -1614,8 +1632,15 @@ service cloud.firestore {
           request.resource.data.times_used == 0
         )
       );
-      // Delete: Team members only (Organizers & Staff).
-      allow delete: if hasTeamAccess();
+
+      // Delete: Team members (Organizers & Staff) or authenticated bundle purchasers deleting unredeemed friend vouchers.
+      allow delete: if hasTeamAccess() || (
+        isAuthenticated() &&
+        'purchaser_member_id' in resource.data &&
+        resource.data.purchaser_member_id == request.auth.uid &&
+        'times_used' in resource.data &&
+        resource.data.times_used == 0
+      );
 
       // Update: Team members (full voucher editing) or authenticated users redeeming a voucher upon registration checkout.
       // Regular users are strictly restricted to updating redemption tracking fields and incrementing times_used counter within usage limits.
@@ -1741,7 +1766,8 @@ service cloud.firestore {
       // Write: Team access (Organizers & Staff), validating settings structure and limits per settingId.
       allow create, update: if (hasTeamAccess() || isOrganizer()) && (
         (settingId == 'maintenance' && isValidMaintenanceSetting(request.resource.data)) ||
-        (settingId != 'maintenance' && isValidSystemSetting(request.resource.data))
+        (settingId == 'email_blast_templates' && isValidEmailBlastTemplatesSetting(request.resource.data)) ||
+        (settingId != 'maintenance' && settingId != 'email_blast_templates' && isValidSystemSetting(request.resource.data))
       );
       allow delete: if hasTeamAccess() || isOrganizer();
     }

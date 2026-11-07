@@ -225,6 +225,16 @@ export interface BevyEvent {
   };
   cropped_banner_url?: string;
   cropped_picture_url?: string;
+  picture_url?: string;
+  banner_url?: string;
+  event_type_logo?: {
+    url?: string;
+    thumbnail_url?: string;
+  };
+  event_type_banner?: {
+    url?: string;
+    thumbnail_url?: string;
+  };
   allows_cohosting?: boolean;
   cohosts?: BevyCohost[];
   cohost_chapters?: BevyCohostChapter[];

@@ -96,6 +96,12 @@ There is currently no automated test command. Run build, lint, check, or other v
 This project uses Firebase auth with Google Sign In provider.
 Login page is at `src/app/(main)/auth/login/page.tsx`. 
 
+## Firestore Security Rules & Specialist Subagent
+
+- **Mandatory Subagent Delegation**: Whenever modifying, authoring, or auditing `firestore.rules`, you MUST delegate the task to the `firestore-rules-author` subagent. Never write or overwrite `firestore.rules` directly from the main agent when the subagent is available.
+- **Rule Deployment**: The `firestore-rules-author` subagent is responsible for testing and deploying rules via `firebase deploy --only firestore:rules`.
+- **Bundle Voucher Deletion Invariant**: In `match /event_vouchers/{voucherDocId}`, `allow delete:` permits both team members (`hasTeamAccess()`) and authenticated bundle purchasers (`resource.data.purchaser_member_id == request.auth.uid && resource.data.times_used == 0`) so cancellations cleanly delete unredeemed friend vouchers. 
+
 ## Co-location-based structure
 
 Keep feature code close to the route that owns it.

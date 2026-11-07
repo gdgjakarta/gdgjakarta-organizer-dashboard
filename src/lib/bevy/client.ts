@@ -991,6 +991,52 @@ export async function getBevyChapterMembers(
   return result;
 }
 
+/**
+ * Fetch all registered chapter community members from Bevy, handling pagination.
+ * If maxMembers is specified, stops once that count is reached.
+ */
+export async function getAllBevyChapterMembers(
+  chapterId: string = BEVY_CONFIG.chapterId,
+  maxMembers?: number,
+): Promise<{ success: boolean; results: BevyChapterMember[]; count: number; error?: string }> {
+  const pageSize = 250;
+  const firstRes = await getBevyChapterMembers(chapterId, pageSize, 1, "-created_date");
+  if (!firstRes) {
+    return { success: false, results: [], count: 0, error: "Failed to fetch chapter members from Bevy." };
+  }
+
+  const results: BevyChapterMember[] = [...(firstRes.results ?? [])];
+  const count = firstRes.count ?? results.length;
+  const targetCount = maxMembers ? Math.min(maxMembers, count) : count;
+
+  if (targetCount > results.length) {
+    const totalPages = Math.ceil(targetCount / pageSize);
+    const BATCH_SIZE = 8;
+    for (let batchStart = 2; batchStart <= totalPages; batchStart += BATCH_SIZE) {
+      const batchEnd = Math.min(batchStart + BATCH_SIZE - 1, totalPages);
+      const promises: Promise<BevyMembersResponse | null>[] = [];
+      for (let p = batchStart; p <= batchEnd; p++) {
+        promises.push(getBevyChapterMembers(chapterId, pageSize, p, "-created_date"));
+      }
+      const pageResponses = await Promise.all(promises);
+      for (const res of pageResponses) {
+        if (res?.results) {
+          results.push(...res.results);
+        }
+      }
+      if (maxMembers && results.length >= maxMembers) {
+        break;
+      }
+    }
+  }
+
+  return {
+    success: true,
+    results: maxMembers ? results.slice(0, maxMembers) : results,
+    count,
+  };
+}
+
 interface AlgoliaConfigCache {
   applicationId: string;
   indexPrefix: string;
@@ -1142,7 +1188,7 @@ export async function getBevyChapterEvents(
 
   const isAllStatus = !status || status.toLowerCase() === "all";
   const fields =
-    "id,title,description_short,description,event_type_title,audience_type,is_virtual_event,virtual_event_type,attendee_virtual_venue_link,video_url,start_date,end_date,status,picture,banner,cropped_banner_url,cropped_picture_url,url,static_url,total_attendees,checkin_count,total_tickets,total_rsvps_sold,completed,tags,chapter,is_hidden,is_test,venue_name,venue_address,venue_city";
+    "id,title,description_short,description,event_type_title,audience_type,is_virtual_event,virtual_event_type,attendee_virtual_venue_link,video_url,start_date,end_date,status,picture,banner,cropped_banner_url,cropped_picture_url,event_type_logo,url,static_url,total_attendees,checkin_count,total_tickets,total_rsvps_sold,completed,tags,chapter,is_hidden,is_test,venue_name,venue_address,venue_city";
   const hiddenParam = includeHidden ? "" : "&is_hidden=false";
   const statusParam = !isAllStatus ? `&status=${encodeURIComponent(status)}` : "";
   const result = await bevyFetch<BevyEventsResponse>(
@@ -1270,6 +1316,33 @@ export async function getBevyEventById(
   const result = await bevyFetch<BevyEvent>(`/event/${eventId}/`, {}, chapterId);
   if (result) {
     result.partners = extractEventPartners(result);
+
+    // If picture is empty or missing a URL, populate from event_type_logo or cropped_picture_url so 1080x1080 thumbnail is available
+    const hasPictureUrl = Boolean(result.picture?.url || result.picture?.thumbnail_url);
+    if (!hasPictureUrl) {
+      const fallbackUrl =
+        result.event_type_logo?.url ??
+        result.event_type_logo?.thumbnail_url ??
+        result.cropped_picture_url;
+      if (fallbackUrl) {
+        const normalized1080Url = fallbackUrl.includes("res.cloudinary.com")
+          ? fallbackUrl.replace(/\/image\/upload\/(?:.+?\/)?v1\//, "/image/upload/c_fill,dpr_2.0,f_auto,g_center,q_auto:good/v1/")
+          : fallbackUrl;
+
+        result.picture = {
+          url: normalized1080Url,
+          thumbnail_url: normalized1080Url,
+        };
+        result.picture_url = normalized1080Url;
+      }
+    } else if (result.picture?.url && result.picture.url.includes("res.cloudinary.com")) {
+      result.picture_url = result.picture.url.replace(
+        /\/image\/upload\/(?:.+?\/)?v1\//,
+        "/image/upload/c_fill,dpr_2.0,f_auto,g_center,q_auto:good/v1/",
+      );
+    } else if (result.picture?.url) {
+      result.picture_url = result.picture.url;
+    }
 
     // Normalize Bevy agenda structure: Bevy API delivers day items under day.agenda, or as an array
     if (result.agenda) {

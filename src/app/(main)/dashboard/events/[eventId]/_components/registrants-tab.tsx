@@ -105,6 +105,7 @@ import {
   updateRegistrationMerchandiseCollectionAction,
   updateRegistrationStatusAction,
 } from "@/lib/firestore/actions";
+import { deleteBundleFriendVouchersForRegistration } from "@/lib/firestore/client";
 import { normalizeRegistrationDoc } from "@/lib/firestore/normalization";
 import type {
   CustomQuestion,
@@ -3615,6 +3616,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
           const refreshedConfig = await getEventVenueTicketConfig(eventId);
           if (refreshedConfig) setVenueTicketConfig(refreshedConfig);
         }
+        await deleteBundleFriendVouchersForRegistration(eventId, registration.id, registration.bundle_vouchers);
         if (email && bevyAttendeesMap.has(email)) {
           setBevyAttendeesMap((prev) => {
             const next = new Map(prev);
@@ -3682,6 +3684,9 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
           });
           const refreshedConfig = await getEventVenueTicketConfig(eventId);
           if (refreshedConfig) setVenueTicketConfig(refreshedConfig);
+        }
+        for (const r of regsToDelete) {
+          await deleteBundleFriendVouchersForRegistration(eventId, r.id, r.bundle_vouchers);
         }
         if (matchedBevyIds.length > 0) {
           setBevyAttendeesMap((prev) => {
@@ -3757,6 +3762,8 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
         toast.error(deleteRes.error ?? "Cancellation email sent, but failed to remove registration from database.");
         return;
       }
+
+      await deleteBundleFriendVouchersForRegistration(eventId, registration.id, registration.bundle_vouchers);
 
       if (registration.venue_ticket_file_id && registration.member_email) {
         await revokeVenueTicketAccessForItems(
@@ -3847,6 +3854,7 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
           if (deleteRes.success) {
             successCount++;
             cancelledRegs.push(reg);
+            await deleteBundleFriendVouchersForRegistration(eventId, reg.id, reg.bundle_vouchers);
             setRegistrationsList((prev) => prev.filter((r) => r.id !== reg.id));
             if (email && bevyAttendeesMap.has(email)) {
               setBevyAttendeesMap((prev) => {

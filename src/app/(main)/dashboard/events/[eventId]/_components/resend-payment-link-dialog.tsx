@@ -195,10 +195,14 @@ export function ResendPaymentLinkDialog({
   }, [registration, netSubtotal, gatewayFeeCalc]);
 
   const defaultTemplate = useMemo(() => {
+    if (registration?.ticket_type === "commitment_fee") return "Commitment Fee";
+    if (registration?.ticket_type === "paid") return "Ticketing";
     return (
       event?.payment_email_template ??
       event?.paymentEmailTemplate ??
-      (registration?.ticket_type === "commitment_fee" ? "Commitment Fee" : "Ticketing")
+      (event?.tickets?.some((t) => t.type === "commitment_fee") && !event?.tickets?.some((t) => t.type === "paid")
+        ? "Commitment Fee"
+        : "Ticketing")
     );
   }, [event, registration]);
 

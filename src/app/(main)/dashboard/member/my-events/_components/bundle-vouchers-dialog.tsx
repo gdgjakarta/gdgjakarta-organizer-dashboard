@@ -84,25 +84,25 @@ export function BundleVouchersDialog({ open, onOpenChange, registration, event }
     }
   };
 
-  const handleShareVoucher = (v: BundleIssuedVoucher) => {
+  const handleShareVoucher = async (v: BundleIssuedVoucher) => {
     const origin = typeof window !== "undefined" ? window.location.origin : "";
     const regUrl = `${origin}/events/${registration.event_id}?voucher=${encodeURIComponent(v.code)}`;
-    const shareText = `Hey! Here is your 100% FREE pass to "${event?.title ?? registration.event_title}" from my ticket bundle.\n\nVoucher Code: ${v.code}\nClaim link: ${regUrl}`;
+    const shareText = `Hey! Here is your 100% FREE entrance pass to "${event?.title ?? registration.event_title}" from my ticket bundle.\n\n🎟️ Voucher Code: ${v.code}\n🔗 Claim & Register: ${regUrl}\n\nHow to claim:\n1. Open the claim link above.\n2. Enter the Voucher Code at checkout (ticket price becomes Rp 0).\n3. Complete registration to receive your own entrance ticket and check-in QR code!`;
 
-    if (typeof navigator !== "undefined" && navigator.share) {
-      navigator
-        .share({
-          title: `Free Ticket Pass to ${registration.event_title}`,
-          text: shareText,
-        })
-        .catch(() => {
-          // Fallback to clipboard
-          void navigator.clipboard.writeText(shareText);
-          toast.success("Invitation message copied to clipboard!");
-        });
-    } else {
-      void navigator.clipboard.writeText(shareText);
-      toast.success("Invitation message copied to clipboard!");
+    // 1. Copy complete invitation message to clipboard as safeguard against desktop WhatsApp deep-link stripping
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard) {
+        await navigator.clipboard.writeText(shareText);
+      }
+    } catch {
+      // Ignore clipboard write errors
+    }
+
+    // 2. Open WhatsApp (wa.me)
+    const waUrl = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
+    if (typeof window !== "undefined") {
+      window.open(waUrl, "_blank", "noopener,noreferrer");
+      toast.success("Invitation copied to clipboard & opening WhatsApp! (If WhatsApp Desktop only shows the link, press Cmd+V to paste the full message)");
     }
   };
 
@@ -152,7 +152,9 @@ export function BundleVouchersDialog({ open, onOpenChange, registration, event }
               </div>
             </div>
             <p className="border-primary/10 border-t pt-1 text-[11px] text-muted-foreground leading-relaxed">
-              Each voucher code below grants <strong>100% free admission</strong> for 1 friend when entered at checkout.
+              <strong>Important:</strong> Your personal entrance pass only admits 1 person. Share each voucher code
+              below with your friends so each attendee registers to receive their own entrance ticket &amp; check-in QR
+              code. Each voucher grants <strong>100% free admission (Rp 0)</strong> at checkout.
             </p>
           </div>
 

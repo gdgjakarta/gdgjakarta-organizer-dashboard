@@ -49,6 +49,7 @@ interface PublicEventRsvpCardProps {
   firestoreEvent?: FirestoreEvent | null;
   existingRegistration?: FirestoreRegistration | null;
   isCheckingRegistration?: boolean;
+  onSelectTab?: (tab: string) => void;
 }
 
 function isEventPast(event: BevyEvent): boolean {
@@ -67,6 +68,7 @@ export function PublicEventRsvpCard({
   firestoreEvent,
   existingRegistration,
   isCheckingRegistration = false,
+  onSelectTab,
 }: PublicEventRsvpCardProps) {
   const user = useAuthStore((s) => s.user);
   const [copiedType, setCopiedType] = useState<"short" | "full" | "bevy" | null>(null);
@@ -121,15 +123,22 @@ export function PublicEventRsvpCard({
     }
   }, [voucherCodeFromUrl, isCheckingRegistration, currentRegistration, isPast]);
   const liveBevyUrl = getBevyLiveEventUrl(event);
-  const highlightVideoUrl = firestoreEvent?.highlight_video_url ?? event.highlight_video_url ?? event.video_url;
+  const highlightVideoUrl = event.video_url ?? event.highlight_video_url ?? firestoreEvent?.highlight_video_url;
   const photoAlbumUrl = firestoreEvent?.photo_album_url ?? event.photo_album_url;
   const parsedAlbum = parsePhotoAlbum(photoAlbumUrl);
-  const thumbnailImageUrl =
-    event.cropped_picture_url ??
+  const rawThumbnailUrl =
     event.picture?.url ??
     event.picture?.thumbnail_url ??
+    event.picture_url ??
+    event.cropped_picture_url ??
+    event.event_type_logo?.url ??
+    event.event_type_logo?.thumbnail_url ??
     event.cropped_banner_url ??
     event.banner?.url;
+
+  const thumbnailImageUrl = rawThumbnailUrl && rawThumbnailUrl.includes("res.cloudinary.com")
+    ? rawThumbnailUrl.replace(/\/image\/upload\/(?:.+?\/)?v1\//, "/image/upload/c_fill,dpr_2.0,f_auto,g_center,q_auto:good/v1/")
+    : rawThumbnailUrl;
 
   // Map to FirestoreEvent compatible structure for EventRegistrationModal
   const registrationEvent: FirestoreEvent = useMemo(
@@ -361,14 +370,13 @@ export function PublicEventRsvpCard({
                   variant="outline"
                   className="w-full gap-2 border-primary/30 text-primary text-xs hover:bg-primary/10"
                   size="sm"
-                  onClick={() => {
-                    const el = document.querySelector('[data-state][value="highlights"]') as HTMLButtonElement | null;
-                    el?.click();
-                    el?.scrollIntoView({ behavior: "smooth", block: "center" });
-                  }}
+                  asChild
                 >
-                  <Video className="size-3.5" />
-                  Watch Highlight Video
+                  <a href={highlightVideoUrl} target="_blank" rel="noopener noreferrer">
+                    <Video className="size-3.5" />
+                    Watch Highlight Video
+                    <ExternalLink className="ml-auto size-3 opacity-70" />
+                  </a>
                 </Button>
               )}
               {photoAlbumUrl && (
@@ -683,16 +691,12 @@ export function PublicEventRsvpCard({
                       size="sm"
                       variant="outline"
                       className="gap-1.5 border-primary/30 text-primary text-xs"
-                      onClick={() => {
-                        const el = document.querySelector(
-                          '[data-state][value="highlights"]',
-                        ) as HTMLButtonElement | null;
-                        el?.click();
-                        el?.scrollIntoView({ behavior: "smooth", block: "center" });
-                      }}
+                      asChild
                     >
-                      <Video className="size-3.5" />
-                      Recap
+                      <a href={highlightVideoUrl} target="_blank" rel="noopener noreferrer">
+                        <Video className="size-3.5" />
+                        Recap
+                      </a>
                     </Button>
                   );
                 }

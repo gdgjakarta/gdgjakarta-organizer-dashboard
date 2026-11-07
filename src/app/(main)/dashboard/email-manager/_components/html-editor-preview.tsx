@@ -63,6 +63,7 @@ export function HtmlEditorPreview({
     if (domNode) {
       domNode.addEventListener("dragover", (e: DragEvent) => {
         e.preventDefault();
+        e.stopPropagation();
         if (e.dataTransfer) {
           e.dataTransfer.dropEffect = "copy";
         }
@@ -70,6 +71,7 @@ export function HtmlEditorPreview({
 
       domNode.addEventListener("drop", (e: DragEvent) => {
         e.preventDefault();
+        e.stopPropagation();
         const text = e.dataTransfer?.getData("text/plain");
         if (!text) return;
 
@@ -257,7 +259,8 @@ export function HtmlEditorPreview({
                 fontSize: 13,
                 padding: { top: 16 },
                 scrollBeyondLastLine: false,
-                dragAndDrop: true,
+                dragAndDrop: false,
+                dropIntoEditor: { enabled: false },
               }}
             />
           </div>

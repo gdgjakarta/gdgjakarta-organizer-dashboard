@@ -205,6 +205,7 @@ export function LabelHtmlEditorPreview({
     if (domNode) {
       domNode.addEventListener("dragover", (e: DragEvent) => {
         e.preventDefault();
+        e.stopPropagation();
         if (e.dataTransfer) {
           e.dataTransfer.dropEffect = "copy";
         }
@@ -212,6 +213,7 @@ export function LabelHtmlEditorPreview({
 
       domNode.addEventListener("drop", (e: DragEvent) => {
         e.preventDefault();
+        e.stopPropagation();
         const text = e.dataTransfer?.getData("text/plain");
         if (!text) return;
 
@@ -464,7 +466,8 @@ export function LabelHtmlEditorPreview({
                 fontSize: 13,
                 padding: { top: 16 },
                 scrollBeyondLastLine: false,
-                dragAndDrop: true,
+                dragAndDrop: false,
+                dropIntoEditor: { enabled: false },
               }}
             />
           </div>

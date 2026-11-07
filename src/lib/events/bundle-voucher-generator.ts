@@ -40,8 +40,8 @@ export function generateBundleFriendVouchers(params: {
   };
 
   const now = new Date().toISOString();
-  // Safe expiry date: bundle sales end date, event start date, or 30 days ahead
-  const defaultEndDate = bundle.sales_end_date ?? eventStartDate ?? null;
+  // Bundle friend vouchers have no active period / expiration validation (open until event completion)
+  const defaultEndDate = null;
 
   const newEventVouchers: EventVoucher[] = [];
   const registrationVouchers: BundleIssuedVoucher[] = [];
@@ -66,8 +66,8 @@ export function generateBundleFriendVouchers(params: {
       times_used: 0,
       min_spend: null,
       max_discount: null,
-      start_date: now,
-      end_date: defaultEndDate,
+      start_date: null,
+      end_date: null,
       status: "active",
       source_bundle_id: bundle.id,
       source_registration_id: buyerRegistrationId,

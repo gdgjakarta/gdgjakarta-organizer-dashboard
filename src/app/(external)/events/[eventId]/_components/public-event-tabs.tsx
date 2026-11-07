@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import Image from "next/image";
 
@@ -78,9 +78,17 @@ interface PublicEventTabsProps {
   event: BevyEvent;
   firestoreSessions?: EventSession[];
   firestoreEvent?: FirestoreEvent | null;
+  activeTab?: string;
+  onActiveTabChange?: (tab: string) => void;
 }
 
-export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: PublicEventTabsProps) {
+export function PublicEventTabs({
+  event,
+  firestoreSessions,
+  firestoreEvent,
+  activeTab: controlledActiveTab,
+  onActiveTabChange,
+}: PublicEventTabsProps) {
   const speakerGroups = useMemo(() => extractEventSpeakerGroups(event), [event]);
   const totalSpeakersCount = useMemo(() => getTotalSpeakersCount(event), [event]);
   const allSpeakers = useMemo(() => getAllEventSpeakers(event), [event]);
@@ -99,7 +107,7 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
     unifiedAgenda.totalItemsCount > 0 ? unifiedAgenda.totalItemsCount : unifiedAgenda.sessionGroups.length;
 
   // Post-Event Recap & Media
-  const highlightVideoUrl = firestoreEvent?.highlight_video_url ?? event.highlight_video_url ?? event.video_url;
+  const highlightVideoUrl = event.video_url ?? event.highlight_video_url ?? firestoreEvent?.highlight_video_url;
   const highlightVideoTitle =
     firestoreEvent?.highlight_video_title ?? event.highlight_video_title ?? "Event Highlights & Recap";
   const photoAlbumUrl = firestoreEvent?.photo_album_url ?? event.photo_album_url;
@@ -132,8 +140,25 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
   const hasHighlights =
     Boolean(parsedVideo) || Boolean(parsedAlbum) || Boolean(recapDescription) || isEventPast || hasAnySlides;
 
-  const [activeTab, setActiveTab] = useState<string>("about");
+  const [internalActiveTab, setInternalActiveTab] = useState<string>("about");
+  const activeTab = controlledActiveTab ?? internalActiveTab;
+  const setActiveTab = (tab: string) => {
+    setInternalActiveTab(tab);
+    onActiveTabChange?.(tab);
+  };
   const venueMapUrl = firestoreEvent?.venue_map_url?.trim() || event.venue_map_url?.trim() || "";
+
+  useEffect(() => {
+    const handleSwitchTab = (e: Event) => {
+      const customEvent = e as CustomEvent<string | { tab: string }>;
+      const tab = typeof customEvent.detail === "string" ? customEvent.detail : customEvent.detail?.tab;
+      if (tab) {
+        setActiveTab(tab);
+      }
+    };
+    window.addEventListener("gdg:public-switch-tab", handleSwitchTab);
+    return () => window.removeEventListener("gdg:public-switch-tab", handleSwitchTab);
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -190,6 +215,7 @@ export function PublicEventTabs({ event, firestoreSessions, firestoreEvent }: Pu
 
             {hasHighlights && (
               <TabsTrigger
+                id="tab-trigger-public-highlights"
                 value="highlights"
                 className="group relative flex h-12 shrink-0 flex-none cursor-pointer items-center gap-2 rounded-t-lg border-0 bg-transparent px-3.5 pt-1 pb-1 font-medium text-muted-foreground text-xs shadow-none transition-colors after:hidden hover:bg-muted/30 hover:text-foreground focus-visible:ring-0 data-[state=active]:bg-transparent data-[state=active]:font-semibold data-[state=active]:text-foreground data-[state=active]:shadow-none sm:px-4.5 sm:text-sm"
               >

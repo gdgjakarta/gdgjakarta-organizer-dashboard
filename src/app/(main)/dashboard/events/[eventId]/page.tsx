@@ -80,6 +80,8 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
         total_checked_in: direct.checkin_count ?? 0,
         is_hidden: Boolean(direct.is_hidden ?? (direct as { hidden?: boolean }).hidden),
         is_test: Boolean(direct.is_test),
+        video_url: direct.video_url ?? undefined,
+        highlight_video_url: direct.highlight_video_url ?? direct.video_url ?? undefined,
         speakers: getAllEventSpeakers(direct),
         agenda: direct.agenda,
         created_at: new Date().toISOString(),
@@ -143,6 +145,8 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
           total_checked_in: matched.checkin_count ?? 0,
           is_hidden: Boolean(matched.is_hidden || (matched as { hidden?: boolean }).hidden),
           is_test: Boolean(matched.is_test),
+          video_url: matched.video_url ?? undefined,
+          highlight_video_url: matched.highlight_video_url ?? matched.video_url ?? undefined,
           speakers: getAllEventSpeakers(matched),
           agenda: matched.agenda,
           created_at: new Date().toISOString(),
@@ -199,6 +203,12 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
               printer_config: firestoreDoc.printer_config ?? event.printer_config,
               google_maps_url: firestoreDoc.google_maps_url ?? event.google_maps_url,
               venue_map_url: firestoreDoc.venue_map_url ?? event.venue_map_url,
+              video_url: event.video_url || firestoreDoc.video_url,
+              highlight_video_url: event.video_url ?? event.highlight_video_url ?? firestoreDoc.highlight_video_url,
+              highlight_video_title: firestoreDoc.highlight_video_title ?? event.highlight_video_title,
+              photo_album_url: firestoreDoc.photo_album_url ?? event.photo_album_url,
+              photo_album_title: firestoreDoc.photo_album_title ?? event.photo_album_title,
+              recap_description: firestoreDoc.recap_description ?? event.recap_description,
             }
           : firestoreDoc;
       }

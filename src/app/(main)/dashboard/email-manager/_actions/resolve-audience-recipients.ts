@@ -1,6 +1,6 @@
 "use server";
 
-import { getAllBevyEventAttendees, getBevyChapterMembers, getBevyChapterTeams } from "@/lib/bevy/client";
+import { getAllBevyChapterMembers, getAllBevyEventAttendees, getBevyChapterTeams } from "@/lib/bevy/client";
 
 import { AUDIENCE_OPTIONS, type AudienceOptionDefinition, type AudienceType } from "../_types/audience";
 
@@ -151,7 +151,7 @@ export async function resolveAudienceRecipientsAction(
       audienceType === "chapter_members_without_ticket" ||
       audienceType === "chapter_members_never_registered"
     ) {
-      const membersRes = await getBevyChapterMembers(undefined, 250);
+      const membersRes = await getAllBevyChapterMembers();
       const members = membersRes?.results ?? [];
 
       // If we need to filter out ticket holders, get current event attendee emails

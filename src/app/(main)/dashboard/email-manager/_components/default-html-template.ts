@@ -1319,6 +1319,7 @@ export function saveEmailBlastAsTemplate(input: {
   subject: string;
   headerUrl?: string;
   body: string;
+  updater?: { name?: string; email?: string };
 }): EmailBlastTemplate {
   const current = getCustomEmailBlastTemplates();
   const now = new Date().toISOString();
@@ -1343,24 +1344,45 @@ export function saveEmailBlastAsTemplate(input: {
 
   if (typeof window !== "undefined") {
     try {
-      window.localStorage.setItem(CUSTOM_EMAIL_BLAST_TEMPLATES_KEY, JSON.stringify(updated.slice(0, 30)));
+      window.localStorage.setItem(CUSTOM_EMAIL_BLAST_TEMPLATES_KEY, JSON.stringify(updated.slice(0, 100)));
     } catch (err) {
-      console.warn("[saveEmailBlastAsTemplate] Failed to persist custom template:", err);
+      console.warn("[saveEmailBlastAsTemplate] Failed to persist custom template locally:", err);
     }
+
+    // Persist asynchronously to Cloud Firestore system_settings/email_blast_templates for all organizers
+    import("@/lib/firestore/client")
+      .then(({ saveSharedEmailBlastTemplatesDoc }) => {
+        return saveSharedEmailBlastTemplatesDoc(updated.slice(0, 100), input.updater);
+      })
+      .catch((err) => {
+        console.warn("[saveEmailBlastAsTemplate] Failed to sync shared template to Firestore:", err);
+      });
   }
 
   return template;
 }
 
-export function deleteCustomEmailBlastTemplate(templateId: string): void {
+export function deleteCustomEmailBlastTemplate(
+  templateId: string,
+  updater?: { name?: string; email?: string },
+): void {
   if (typeof window === "undefined") return;
   const current = getCustomEmailBlastTemplates();
   const updated = current.filter((t) => t.id !== templateId);
   try {
     window.localStorage.setItem(CUSTOM_EMAIL_BLAST_TEMPLATES_KEY, JSON.stringify(updated));
   } catch (err) {
-    console.warn("[deleteCustomEmailBlastTemplate] Failed to delete template:", err);
+    console.warn("[deleteCustomEmailBlastTemplate] Failed to delete template locally:", err);
   }
+
+  // Sync deletion asynchronously to Cloud Firestore system_settings/email_blast_templates
+  import("@/lib/firestore/client")
+    .then(({ saveSharedEmailBlastTemplatesDoc }) => {
+      return saveSharedEmailBlastTemplatesDoc(updated, updater);
+    })
+    .catch((err) => {
+      console.warn("[deleteCustomEmailBlastTemplate] Failed to sync deletion to Firestore:", err);
+    });
 }
 
 export function getAllEmailBlastTemplates(): {

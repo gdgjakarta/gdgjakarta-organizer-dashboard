@@ -255,9 +255,18 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
 
   // Merge stored event_vouchers with bundle_vouchers issued on registrations
   const allVouchers = useMemo(() => {
+    const validRegIds = new Set(registrations.map((r) => r.id));
     const byCode = new Map<string, EventVoucher>();
     for (const v of vouchers) {
       if (!v.code) continue;
+      // Filter out orphaned bundle vouchers if their purchaser registration is no longer in registrations
+      if (
+        v.source_registration_id &&
+        !validRegIds.has(v.source_registration_id) &&
+        (!v.times_used || v.times_used === 0)
+      ) {
+        continue;
+      }
       const cleanCode = v.code.trim().toUpperCase();
       byCode.set(cleanCode, {
         ...v,
@@ -306,8 +315,8 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
             times_used: bv.status === "redeemed" ? 1 : 0,
             min_spend: null,
             max_discount: null,
-            start_date: reg.registered_at ?? null,
-            end_date: bundlePkg?.sales_end_date ?? event.start_date ?? null,
+            start_date: null,
+            end_date: null,
             status: "active",
             source_bundle_id: reg.bundle_id ?? bundlePkg?.id ?? "bundle",
             source_registration_id: reg.id,
@@ -364,8 +373,8 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
               times_used: bv.status === "redeemed" ? 1 : 0,
               min_spend: null,
               max_discount: null,
-              start_date: reg.registered_at ?? null,
-              end_date: bundlePkg?.sales_end_date ?? event.start_date ?? null,
+              start_date: null,
+              end_date: null,
               status: "active",
               source_bundle_id: reg.bundle_id ?? bundlePkg?.id ?? "bundle",
               source_registration_id: reg.id,
@@ -428,6 +437,41 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
       })();
     }
   }, [event.id, event.bundles, event.tickets, event.start_date, registrations, vouchers]);
+
+  // Clean up any orphaned bundle vouchers from Firestore whose purchaser registration was deleted
+  useEffect(() => {
+    if (!event.id || vouchers.length === 0) return;
+    const validRegIds = new Set(registrations.map((r) => r.id));
+    const orphanedVouchers = vouchers.filter(
+      (v) =>
+        v.source_registration_id &&
+        !validRegIds.has(v.source_registration_id) &&
+        (!v.times_used || v.times_used === 0),
+    );
+
+    if (orphanedVouchers.length === 0) return;
+
+    // Optimistically remove orphaned vouchers from local state
+    const orphanCodes = new Set(orphanedVouchers.map((v) => v.code.trim().toUpperCase()));
+    setVouchers((prev) => prev.filter((v) => !orphanCodes.has(v.code.trim().toUpperCase())));
+
+    void (async () => {
+      try {
+        const { deleteDoc, doc } = await import("firebase/firestore");
+        const { db } = await import("@/lib/firestore/client");
+        const { auth } = await import("@/config/firebase");
+        if (typeof auth.authStateReady === "function") {
+          await auth.authStateReady();
+        }
+        for (const v of orphanedVouchers) {
+          const docId = `${String(event.id)}_${v.code.trim().toUpperCase()}`;
+          await deleteDoc(doc(db, "event_vouchers", docId)).catch(() => {});
+        }
+      } catch (err) {
+        console.warn("[VouchersTab] Error deleting orphaned bundle vouchers:", err);
+      }
+    })();
+  }, [event.id, registrations, vouchers]);
 
   // Auto-sync / provision partner share documents for any existing vouchers with partner sharing enabled
   useEffect(() => {
@@ -671,33 +715,37 @@ export function VouchersTab({ event, registrations: initialRegistrations }: Vouc
     }
   };
 
-  const handleShareVoucher = (v: EventVoucher) => {
+  const handleShareVoucher = async (v: EventVoucher) => {
     const origin = typeof window !== "undefined" ? window.location.origin : "https://gdgjakarta.org";
     const claimUrl = `${origin}/events/${event.id}?voucher=${encodeURIComponent(v.code)}`;
-    let discountText: string;
-    if (v.discount_type === "percentage") {
-      discountText = v.discount_value === 100 ? "100% FREE pass" : `${v.discount_value}% discount`;
+    const isBundleVoucher = Boolean(v.source_bundle_id || v.code.toUpperCase().startsWith("BNDL-"));
+
+    let shareText: string;
+    if (isBundleVoucher) {
+      shareText = `Hey! Here is your 100% FREE entrance pass to "${event.title}" from my ticket bundle.\n\n🎟️ Voucher Code: ${v.code}\n🔗 Claim & Register: ${claimUrl}\n\nHow to claim:\n1. Open the claim link above.\n2. Enter the Voucher Code at checkout (ticket price becomes Rp 0).\n3. Complete registration to receive your own entrance ticket and check-in QR code!`;
     } else {
-      discountText = `Rp ${v.discount_value.toLocaleString("id-ID")} discount`;
+      let discountText: string;
+      if (v.discount_type === "percentage") {
+        discountText = v.discount_value === 100 ? "100% FREE pass" : `${v.discount_value}% discount`;
+      } else {
+        discountText = `Rp ${v.discount_value.toLocaleString("id-ID")} discount`;
+      }
+      shareText = `Hey! Here is your exclusive ${discountText} voucher for "${event.title}" from GDG Jakarta Organizer.\n\nVoucher Code: ${v.code}\nClaim link: ${claimUrl}`;
     }
 
-    const shareText = `Hey! Here is your exclusive ${discountText} voucher for "${event.title}" from GDG Jakarta Organizer.\n\nVoucher Code: ${v.code}\nClaim link: ${claimUrl}`;
+    // Always copy full message to clipboard to safeguard against WhatsApp Desktop deep link text-stripping
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard) {
+        await navigator.clipboard.writeText(shareText);
+      }
+    } catch {
+      // Ignore clipboard write failure
+    }
 
-    if (typeof navigator !== "undefined" && navigator.share) {
-      navigator
-        .share({
-          title: `Voucher for ${event.title}`,
-          text: shareText,
-        })
-        .catch(() => {
-          if (typeof window !== "undefined") {
-            void navigator.clipboard.writeText(shareText);
-            toast.success("Voucher invitation copied to clipboard!");
-          }
-        });
-    } else if (typeof window !== "undefined") {
-      void navigator.clipboard.writeText(shareText);
-      toast.success("Voucher invitation copied to clipboard!");
+    const waUrl = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
+    if (typeof window !== "undefined") {
+      window.open(waUrl, "_blank", "noopener,noreferrer");
+      toast.success("Invitation copied to clipboard & opening WhatsApp!");
     }
   };
 

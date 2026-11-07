@@ -81,7 +81,9 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
   const [emailTemplate, setEmailTemplate] = useState<string>(
     event.payment_email_template ??
       event.paymentEmailTemplate ??
-      (event.tickets?.some((t) => t.type === "commitment_fee") ? "Commitment Fee" : "Ticketing"),
+      (event.tickets?.some((t) => t.type === "commitment_fee") && !event.tickets?.some((t) => t.type === "paid")
+        ? "Commitment Fee"
+        : "Ticketing"),
   );
   const [memberPaymentCheckLimit, setMemberPaymentCheckLimit] = useState<number>(event.member_payment_check_limit ?? 3);
 
@@ -229,7 +231,10 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
           docData?.paymentEmailTemplate ??
           currentEvent.payment_email_template ??
           currentEvent.paymentEmailTemplate ??
-          (currentEvent.tickets?.some((t) => t.type === "commitment_fee") ? "Commitment Fee" : "Ticketing");
+          (currentEvent.tickets?.some((t) => t.type === "commitment_fee") &&
+          !currentEvent.tickets?.some((t) => t.type === "paid")
+            ? "Commitment Fee"
+            : "Ticketing");
 
         const loadedFeeEnabled = docData?.payment_fee_enabled ?? currentEvent.payment_fee_enabled ?? true;
         const loadedFeeBearer = (docData?.payment_fee_bearer ??
@@ -314,7 +319,10 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
         const fallbackEmailTemplate =
           currentEvent.payment_email_template ??
           currentEvent.paymentEmailTemplate ??
-          (currentEvent.tickets?.some((t) => t.type === "commitment_fee") ? "Commitment Fee" : "Ticketing");
+          (currentEvent.tickets?.some((t) => t.type === "commitment_fee") &&
+          !currentEvent.tickets?.some((t) => t.type === "paid")
+            ? "Commitment Fee"
+            : "Ticketing");
         const fallbackFeeEnabled = currentEvent.payment_fee_enabled ?? true;
         const fallbackFeeBearer = (currentEvent.payment_fee_bearer ?? "attendee") as PaymentFeeBearer;
         const fallbackFeeType = (currentEvent.payment_fee_type ?? "tiered") as PaymentFeeType;
@@ -731,7 +739,9 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
         parsed.emailTemplate ??
           event.payment_email_template ??
           event.paymentEmailTemplate ??
-          (event.tickets?.some((t) => t.type === "commitment_fee") ? "Commitment Fee" : "Ticketing"),
+          (event.tickets?.some((t) => t.type === "commitment_fee") && !event.tickets?.some((t) => t.type === "paid")
+            ? "Commitment Fee"
+            : "Ticketing"),
       );
       setPaymentFeeEnabled(parsed.paymentFeeEnabled ?? event.payment_fee_enabled ?? true);
       setPaymentFeeBearer(parsed.paymentFeeBearer ?? event.payment_fee_bearer ?? "attendee");
@@ -764,7 +774,9 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
       setEmailTemplate(
         event.payment_email_template ??
           event.paymentEmailTemplate ??
-          (event.tickets?.some((t) => t.type === "commitment_fee") ? "Commitment Fee" : "Ticketing"),
+          (event.tickets?.some((t) => t.type === "commitment_fee") && !event.tickets?.some((t) => t.type === "paid")
+            ? "Commitment Fee"
+            : "Ticketing"),
       );
       setPaymentFeeEnabled(event.payment_fee_enabled ?? true);
       setPaymentFeeBearer(event.payment_fee_bearer ?? "attendee");
@@ -928,14 +940,9 @@ export function PaymentGatewayTab({ event }: PaymentGatewayTabProps) {
                 </Badge>
               )}
               {isDirty && (
-                <>
-                  <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-600 text-xs">
-                    Unsaved Changes
-                  </Badge>
-                  <Button size="sm" onClick={handleSave} disabled={isSaving} className="h-7 px-2.5 text-xs">
-                    {isSaving ? "Saving..." : "Save Settings"}
-                  </Button>
-                </>
+                <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-600 text-xs">
+                  Unsaved Changes
+                </Badge>
               )}
             </div>
           </div>
