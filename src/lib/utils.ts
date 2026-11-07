@@ -177,5 +177,20 @@ export function sanitizeHtml(html: string | undefined | null): string {
   clean = clean.replace(/(href|src)\s*=\s*(['"])\s*(?:javascript|vbscript|data):[\s\S]*?\2/gi, '$1="#"');
   clean = clean.replace(/(href|src)\s*=\s*(?:javascript|vbscript|data):[^\s>]+/gi, '$1="#"');
 
+  // 5. Automatically convert plain URLs into clickable links if not already wrapped in <a>
+  clean = clean.replace(/(<a\b[^>]*>[\s\S]*?<\/a>)|((?:https?:\/\/|www\.)[^\s<"')]+)/gi, (_match, aTag, rawUrl) => {
+    if (aTag) return aTag;
+    const href = rawUrl.startsWith("http") ? rawUrl : `https://${rawUrl}`;
+    return `<a href="${href}" target="_blank" rel="noopener noreferrer">${rawUrl}</a>`;
+  });
+
+  // 6. Ensure ALL hyperlinks strictly open in a new tab with secure opener attributes
+  clean = clean.replace(/<a\b([^>]*)>/gi, (_match, attrs) => {
+    const cleanedAttrs = attrs
+      .replace(/\s*target\s*=\s*(?:'[^']*'|"[^"]*"|[^\s>]+)/gi, "")
+      .replace(/\s*rel\s*=\s*(?:'[^']*'|"[^"]*"|[^\s>]+)/gi, "");
+    return `<a target="_blank" rel="noopener noreferrer"${cleanedAttrs}>`;
+  });
+
   return clean;
 }

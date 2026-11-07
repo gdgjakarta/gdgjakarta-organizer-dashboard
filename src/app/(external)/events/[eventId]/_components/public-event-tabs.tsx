@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import Image from "next/image";
 
@@ -142,10 +142,13 @@ export function PublicEventTabs({
 
   const [internalActiveTab, setInternalActiveTab] = useState<string>("about");
   const activeTab = controlledActiveTab ?? internalActiveTab;
-  const setActiveTab = (tab: string) => {
-    setInternalActiveTab(tab);
-    onActiveTabChange?.(tab);
-  };
+  const setActiveTab = useCallback(
+    (tab: string) => {
+      setInternalActiveTab(tab);
+      onActiveTabChange?.(tab);
+    },
+    [onActiveTabChange],
+  );
   const venueMapUrl = firestoreEvent?.venue_map_url?.trim() || event.venue_map_url?.trim() || "";
 
   useEffect(() => {
@@ -158,7 +161,7 @@ export function PublicEventTabs({
     };
     window.addEventListener("gdg:public-switch-tab", handleSwitchTab);
     return () => window.removeEventListener("gdg:public-switch-tab", handleSwitchTab);
-  }, []);
+  }, [setActiveTab]);
 
   return (
     <div className="space-y-6">
@@ -244,7 +247,7 @@ export function PublicEventTabs({
           {/* Full HTML Description */}
           {event.description ? (
             <div
-              className="prose dark:prose-invert max-w-none prose-img:rounded-xl prose-headings:font-bold prose-a:text-primary text-foreground/90 text-sm leading-relaxed prose-headings:tracking-tight hover:prose-a:underline sm:text-base"
+              className="prose dark:prose-invert max-w-none prose-img:rounded-xl prose-headings:font-bold text-foreground/90 text-sm leading-relaxed prose-headings:tracking-tight sm:text-base [&_a]:font-medium [&_a]:text-blue-600 dark:[&_a]:text-blue-400 [&_a]:underline [&_a]:underline-offset-2 [&_a]:transition-colors hover:[&_a]:text-blue-700 dark:hover:[&_a]:text-blue-300 [&_a_*]:text-blue-600 dark:[&_a_*]:text-blue-400 hover:[&_a_*]:text-blue-700 dark:hover:[&_a_*]:text-blue-300"
               // biome-ignore lint/security/noDangerouslySetInnerHtml: Bevy trusted description
               dangerouslySetInnerHTML={{ __html: sanitizeHtml(event.description) }}
             />
@@ -476,7 +479,7 @@ export function PublicEventTabs({
                     <h3 className="font-bold text-base text-foreground tracking-tight">Event Recap & Notes</h3>
                   </div>
                   <div
-                    className="prose dark:prose-invert max-w-none text-foreground/90 text-sm leading-relaxed"
+                    className="prose dark:prose-invert max-w-none text-foreground/90 text-sm leading-relaxed [&_a]:font-medium [&_a]:text-blue-600 dark:[&_a]:text-blue-400 [&_a]:underline [&_a]:underline-offset-2 [&_a]:transition-colors hover:[&_a]:text-blue-700 dark:hover:[&_a]:text-blue-300 [&_a_*]:text-blue-600 dark:[&_a_*]:text-blue-400 hover:[&_a_*]:text-blue-700 dark:hover:[&_a_*]:text-blue-300"
                     // biome-ignore lint/security/noDangerouslySetInnerHtml: Event organizer recap
                     dangerouslySetInnerHTML={{ __html: sanitizeHtml(recapDescription) }}
                   />
