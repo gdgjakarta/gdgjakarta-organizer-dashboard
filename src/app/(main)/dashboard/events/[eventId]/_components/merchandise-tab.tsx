@@ -522,20 +522,21 @@ export function MerchandiseTab({ event }: MerchandiseTabProps) {
                     <div className="flex items-center gap-1.5 min-w-0">
                       <Badge
                         variant="outline"
+                        title={item.name}
                         className={cn(
-                          "font-semibold text-xs truncate max-w-[170px]",
+                          "font-semibold text-xs shrink min-w-0 max-w-full",
                           item.isFree
                             ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
                             : "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-400",
                         )}
                       >
-                        {item.name}
+                        <span className="truncate">{item.name}</span>
                       </Badge>
-                      <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                      <span className="text-[10px] text-muted-foreground whitespace-nowrap shrink-0">
                         {item.isFree ? "Free Perk" : `Rp ${item.price.toLocaleString("id-ID")}`}
                       </span>
                     </div>
-                    <span className="text-xs font-semibold text-foreground font-mono whitespace-nowrap">
+                    <span className="text-xs font-semibold text-foreground font-mono whitespace-nowrap shrink-0">
                       {item.stats.unitsSold} {item.isFree ? "claimed" : "sold"}
                     </span>
                   </div>

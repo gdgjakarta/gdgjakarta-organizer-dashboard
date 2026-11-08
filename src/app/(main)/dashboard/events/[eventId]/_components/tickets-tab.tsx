@@ -576,15 +576,16 @@ export function TicketsTab({ event }: TicketsTabProps) {
                       <div className="flex items-center gap-1.5 min-w-0">
                         <Badge
                           variant="outline"
-                          className={cn("font-semibold text-xs truncate max-w-[170px]", meta.color)}
+                          title={tier.name}
+                          className={cn("font-semibold text-xs shrink min-w-0 max-w-full", meta.color)}
                         >
-                          {tier.name}
+                          <span className="truncate">{tier.name}</span>
                         </Badge>
-                        <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                        <span className="text-[10px] text-muted-foreground whitespace-nowrap shrink-0">
                           {formatPriceDisplay(tier.type, tier.price)}
                         </span>
                       </div>
-                      <span className="text-xs font-semibold text-foreground font-mono whitespace-nowrap">
+                      <span className="text-xs font-semibold text-foreground font-mono whitespace-nowrap shrink-0">
                         {stats.ticketsSold} sold
                       </span>
                     </div>

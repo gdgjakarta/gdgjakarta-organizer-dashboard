@@ -986,8 +986,8 @@ function findElementBoundaries(html: string, classKeyword: string): { startIdx: 
   let depth = 1;
   const tagRegex = /<\/?div\b[^>]*>/gi;
   tagRegex.lastIndex = tagStart;
-  let m: RegExpExecArray | null;
-  while ((m = tagRegex.exec(html)) !== null) {
+  let m = tagRegex.exec(html);
+  while (m !== null) {
     if (m[0].startsWith("</")) {
       depth--;
       if (depth === 0) {
@@ -996,6 +996,7 @@ function findElementBoundaries(html: string, classKeyword: string): { startIdx: 
     } else {
       depth++;
     }
+    m = tagRegex.exec(html);
   }
   return null;
 }
@@ -1063,6 +1064,12 @@ export function renderBundleVouchersHtml(
   const voucherCount = vouchers.length;
   const targetEventTitle = eventTitle || name;
   const regUrl = eventActionUrl || "https://gdgjakarta.org/events";
+  const isDev = process.env.NODE_ENV === "development";
+  const myEventsDashboardUrl =
+    (process.env.NEXT_PUBLIC_APP_URL || (isDev ? "http://localhost:3000" : "https://gdgjakarta.com")).replace(
+      /\/+$/,
+      "",
+    ) + "/dashboard/my-events";
 
   const voucherRows = vouchers
     .map((v, idx) => {
@@ -1149,7 +1156,7 @@ export function renderBundleVouchersHtml(
       </div>
 
       <p style="margin: 14px 0 0 0; font-size: 11px; color: #5f6368; line-height: 1.45; text-align: center; font-family: 'Google Sans', 'Google Sans Text', Roboto, Arial, sans-serif;">
-        You can also manage and share these vouchers anytime from <strong>My Events</strong> on the dashboard.
+        You can also manage and share these vouchers anytime from <a href="${myEventsDashboardUrl}" style="color: #1a73e8; font-weight: 600; text-decoration: underline;" target="_blank"><strong>My Events</strong></a> on the dashboard.
       </p>
     </div>`;
 }
