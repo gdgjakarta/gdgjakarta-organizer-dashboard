@@ -136,6 +136,12 @@ Keep a component inside its route until it is reused by another feature. Do not 
 
 ## Feature Notes
 
+- **Beautified Changelog & "What's New" Dialog with Semantic Versioning (`CHANGELOG.md`)**:
+  - **Single Source of Truth (`CHANGELOG.md`) & Typed Configuration (`src/config/changelog.ts`)**: Structured changelog releases track version numbers (`v1.0.0` - `v1.0.6`), release dates, category pills (*Added*, *Fixed*, *Improved*), and commit milestones.
+  - **Automatic Diff Modal (`WhatsNewAutoTrigger`)**: Mounted in dashboard layout (`src/app/(main)/dashboard/layout.tsx`). On load, checks browser `localStorage` (`gdg_last_seen_app_version`). If never seen, displays updates since Nov 2, 2026; if previously viewed, shows diff entries (`> lastSeenVersion`). Automatically sets current version upon dismissal.
+  - **3-Dots Navigation Trigger (`nav-user.tsx`)**: Organizers and members can manually view the complete changelog history via the **Changelog** item in the sidebar footer user menu with interactive version filtering.
+  - **Milestone Git Tags**: Annotated git tags (`v1.0.0` through `v1.0.6`) mark milestone commits across the repository.
+
 - **System Health & Docker Operations (`/dashboard/health`)**:
   - **Routes & Actions**: `src/app/(main)/dashboard/health/page.tsx`, `src/app/(main)/dashboard/health/_components/system-health-dashboard.tsx`, `src/server/system-health-actions.ts`, and `src/app/api/system-health/backup/route.ts`.
   - **GCP Free Tier (`e2-micro`) + Cloudflare Tunnel + `gdg-ops-agent` Sidecar (`~/.zeabur-migration/gdg-jakarta/ops-agent.mjs`)**: Zero-dependency Node.js sidecar (~12 MB RAM) mounting `/var/run/docker.sock`, `/proc:/host/proc:ro`, and `/:/host/root:ro`. Authenticated via timing-safe `X-Ops-Secret` (`process.env.OPS_AGENT_SECRET`, never stored in Firestore).

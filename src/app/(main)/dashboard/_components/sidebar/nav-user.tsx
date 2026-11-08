@@ -12,9 +12,11 @@ import {
   MessageSquareHeart,
   MessageSquarePlus,
   RotateCcw,
+  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { ChangelogDialog } from "@/components/changelog/changelog-dialog";
 import { formatRoleTitle } from "@/components/role-badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -50,6 +52,7 @@ export function NavUser({
 } = {}) {
   const { isMobile } = useSidebar();
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
+  const [isChangelogOpen, setIsChangelogOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const authUser = useAuthStore((s) => s.user);
   const isLoading = useAuthStore((s) => s.isLoading);
@@ -172,6 +175,10 @@ export function NavUser({
                   <span>Account</span>
                 </Link>
               </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setIsChangelogOpen(true)} className="cursor-pointer">
+                <Sparkles className="size-4 text-primary" />
+                <span>Changelog</span>
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={handleRefreshCache} disabled={isRefreshing} className="cursor-pointer">
                 <RotateCcw className={`size-4 ${isRefreshing ? "animate-spin" : ""}`} />
                 <span>Clear Cache & Sync Role</span>
@@ -227,6 +234,8 @@ export function NavUser({
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        <ChangelogDialog open={isChangelogOpen} onOpenChange={setIsChangelogOpen} confirmText="Close" />
       </SidebarMenuItem>
     </SidebarMenu>
   );
