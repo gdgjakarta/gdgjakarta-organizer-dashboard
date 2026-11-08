@@ -8,6 +8,7 @@ import {
   deleteShortLink,
   findShortLinkByOriginalUrl,
   getEventShortLinks,
+  getShortLinkByPath,
   listAllShortLinks,
   listShortFolders,
   updateShortLink,
@@ -317,10 +318,16 @@ export async function generateEventShortLinkAction(params: {
 
     const linkTitle = params.type === "live" ? `${params.title} (Live Page)` : `${params.title} (Bevy Page)`;
 
+    // Always enforce canonical production domain for event live page to prevent localhost leakage
+    let canonicalOriginalURL = params.originalURL;
+    if (params.type === "live") {
+      canonicalOriginalURL = `https://gdgjakarta.org/events/${params.eventId}`;
+    }
+
     const defaultTags = ["Event", ...(params.tags ?? [])];
 
     const link = await createShortLink({
-      originalURL: params.originalURL,
+      originalURL: canonicalOriginalURL,
       path: params.customSlug,
       title: linkTitle,
       folderId: resolvedFolderId,
@@ -344,6 +351,21 @@ export async function generateEventShortLinkAction(params: {
       console.warn("[generateEventShortLinkAction] Failed to cache short link in Firestore:", saveErr);
     }
 
+    // If generating short link for live page, automatically sync Bevy's custom_tickets_url
+    if (params.type === "live" && link.shortURL) {
+      try {
+        const { updateBevyEvent } = await import("@/lib/bevy/client");
+        console.log(
+          `[generateEventShortLinkAction] Syncing custom_tickets_url to Bevy for event ${params.eventId}: ${link.shortURL}`,
+        );
+        await updateBevyEvent(params.eventId, {
+          custom_tickets_url: link.shortURL,
+        });
+      } catch (bevyErr) {
+        console.warn("[generateEventShortLinkAction] Failed to sync custom_tickets_url to Bevy:", bevyErr);
+      }
+    }
+
     revalidatePath("/dashboard/links");
     revalidatePath(`/dashboard/events/${params.eventId}`);
     revalidatePath("/dashboard/events");
@@ -352,6 +374,94 @@ export async function generateEventShortLinkAction(params: {
     return { success: true, data: link };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to generate event short link";
+    return { success: false, error: message };
+  }
+}
+
+export async function updateEventShortLinkAction(params: {
+  eventId: string;
+  type: "live" | "bevy";
+  linkId?: string;
+  currentPath?: string;
+  newSlug: string;
+}): Promise<{ success: boolean; data?: ShortLinkItem; error?: string }> {
+  if (!(await isAuthorizedOrganizerSession())) {
+    return { success: false, error: "Unauthorized: Organizer privileges required" };
+  }
+
+  try {
+    const cleanSlug = params.newSlug.trim().replace(/^\//, "");
+    if (!cleanSlug) {
+      return { success: false, error: "Custom slug cannot be empty." };
+    }
+
+    let linkId = params.linkId;
+
+    // If linkId is not provided or empty (e.g. cached without ID), resolve via current path or original URL
+    if (!linkId) {
+      if (params.currentPath) {
+        const found = await getShortLinkByPath(params.currentPath);
+        if (found?.idString) linkId = found.idString;
+      }
+      if (!linkId) {
+        const destination = params.type === "live" ? `https://gdgjakarta.org/events/${params.eventId}` : undefined;
+        if (destination) {
+          const found = await findShortLinkByOriginalUrl(destination);
+          if (found?.idString) linkId = found.idString;
+        }
+      }
+    }
+
+    if (!linkId) {
+      return { success: false, error: "Could not find existing short link to update on Short.io." };
+    }
+
+    // Always enforce production canonical URL on update as well
+    const updateInput: UpdateShortLinkInput = {
+      path: cleanSlug,
+    };
+    if (params.type === "live") {
+      updateInput.originalURL = `https://gdgjakarta.org/events/${params.eventId}`;
+    }
+
+    const updated = await updateShortLink(linkId, updateInput);
+    if (!updated) {
+      return { success: false, error: "Failed to update short link path on Short.io." };
+    }
+
+    // Cache updated path to Firestore
+    try {
+      const { updateFirestoreEventShortLinksServer } = await import("@/server/firestore-admin");
+      await updateFirestoreEventShortLinksServer(params.eventId, {
+        liveShortURL: params.type === "live" ? updated.shortURL : undefined,
+        liveShortPath: params.type === "live" ? updated.path : undefined,
+        bevyShortURL: params.type === "bevy" ? updated.shortURL : undefined,
+        bevyShortPath: params.type === "bevy" ? updated.path : undefined,
+      });
+    } catch (saveErr) {
+      console.warn("[updateEventShortLinkAction] Failed to cache short link in Firestore:", saveErr);
+    }
+
+    // Sync Bevy custom_tickets_url if live page link was updated
+    if (params.type === "live" && updated.shortURL) {
+      try {
+        const { updateBevyEvent } = await import("@/lib/bevy/client");
+        await updateBevyEvent(params.eventId, {
+          custom_tickets_url: updated.shortURL,
+        });
+      } catch (bevyErr) {
+        console.warn("[updateEventShortLinkAction] Failed to sync custom_tickets_url to Bevy:", bevyErr);
+      }
+    }
+
+    revalidatePath("/dashboard/links");
+    revalidatePath(`/dashboard/events/${params.eventId}`);
+    revalidatePath("/dashboard/events");
+    revalidatePath(`/events/${params.eventId}`);
+
+    return { success: true, data: updated };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to update event short link";
     return { success: false, error: message };
   }
 }

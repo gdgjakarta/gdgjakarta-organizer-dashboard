@@ -5,9 +5,9 @@ import * as React from "react";
 import { format } from "date-fns";
 import { Calendar as CalendarIcon, Clock, X } from "lucide-react";
 
+import { TimePicker } from "@/components/time-picker";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
-import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
@@ -269,12 +269,7 @@ export function DatePicker({
               </div>
 
               <div className="flex items-center gap-2">
-                <Input
-                  type="time"
-                  value={time}
-                  onChange={(e) => handleTimeChange(e.target.value)}
-                  className="h-8 flex-1 font-mono text-xs"
-                />
+                <TimePicker value={time} onChange={handleTimeChange} disabled={disabled} />
                 <Select value={timezone} onValueChange={handleTimezoneChange}>
                   <SelectTrigger className="h-8 w-24 font-medium text-xs">
                     <SelectValue placeholder="TZ" />

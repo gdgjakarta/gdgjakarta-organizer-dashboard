@@ -23,7 +23,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { hasTeamOperationalAccess, isExecutiveOrganizer } from "@/lib/auth-roles";
-import { hasActualAgendaActivities } from "@/lib/events/agenda-unification";
 import { hasPaidTicketOrMerchandise } from "@/lib/events/registration-defaults";
 import { ensureEventTickets } from "@/lib/events/ticket-templates";
 import type {
@@ -139,10 +138,32 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
       }
     };
 
+    const handleSessionsUpdated = (e: Event) => {
+      const customEvent = e as CustomEvent<{ eventId: string; sessions: FirestoreEvent["sessions"] }>;
+      if (customEvent.detail && String(customEvent.detail.eventId) === String(eventId)) {
+        setActiveEvent((prev) => ({
+          ...prev,
+          sessions: customEvent.detail.sessions,
+        }));
+      }
+    };
+
+    const handleAgendaUpdated = (e: Event) => {
+      const customEvent = e as CustomEvent<{ eventId: string; agenda: FirestoreEvent["agenda"] }>;
+      if (customEvent.detail && String(customEvent.detail.eventId) === String(eventId)) {
+        setActiveEvent((prev) => ({
+          ...prev,
+          agenda: customEvent.detail.agenda,
+        }));
+      }
+    };
+
     window.addEventListener("gdg:payment-env-change", handlePaymentEnvChange);
     window.addEventListener("gdg:tickets-updated", handleTicketsUpdated);
     window.addEventListener("gdg:merchandise-updated", handleMerchandiseUpdated);
     window.addEventListener("gdg:bundles-updated", handleBundlesUpdated);
+    window.addEventListener("gdg:sessions-updated", handleSessionsUpdated);
+    window.addEventListener("gdg:agenda-updated", handleAgendaUpdated);
 
     let unsubscribe: (() => void) | undefined;
     async function setupSub() {
@@ -160,8 +181,9 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
               google_maps_url: docData.google_maps_url ?? prev.google_maps_url,
               venue_map_url: docData.venue_map_url ?? prev.venue_map_url,
               tickets: ensureEventTickets(docData.tickets ?? prev.tickets),
+              sessions: docData.sessions ?? [],
               merchandise: docData.merchandise ?? prev.merchandise,
-              agenda: hasActualAgendaActivities(docData.agenda) ? docData.agenda : prev.agenda,
+              agenda: docData.agenda !== undefined ? docData.agenda : prev.agenda,
               speakers: docData.speakers && docData.speakers.length > 0 ? docData.speakers : prev.speakers,
               video_url: prev.video_url || docData.video_url,
               highlight_video_url: docData.highlight_video_url ?? prev.highlight_video_url ?? prev.video_url,
@@ -183,6 +205,8 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
       window.removeEventListener("gdg:tickets-updated", handleTicketsUpdated);
       window.removeEventListener("gdg:merchandise-updated", handleMerchandiseUpdated);
       window.removeEventListener("gdg:bundles-updated", handleBundlesUpdated);
+      window.removeEventListener("gdg:sessions-updated", handleSessionsUpdated);
+      window.removeEventListener("gdg:agenda-updated", handleAgendaUpdated);
       unsubscribe?.();
     };
   }, [eventId]);
@@ -258,6 +282,20 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
     return 0;
   }, [activeEvent.agenda, activeEvent.presentation_slides]);
 
+  const breakoutSessionsCount = useMemo(() => {
+    if (Array.isArray(activeEvent.sessions) && activeEvent.sessions.length > 0) {
+      return activeEvent.sessions.length;
+    }
+    const days = (activeEvent.agenda as { days?: Array<unknown> })?.days;
+    if (Array.isArray(days) && days.length > 1) {
+      return days.length;
+    }
+    if (Array.isArray(activeEvent.agenda) && activeEvent.agenda.length > 1) {
+      return activeEvent.agenda.length;
+    }
+    return 0;
+  }, [activeEvent.sessions, activeEvent.agenda]);
+
   const defaultTab = hasTeamAccess ? "registrants" : "agenda";
   const [activeTab, setActiveTab] = useState<string>(defaultTab);
 
@@ -314,9 +352,9 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
               >
                 <Layers className="size-4" />
                 Breakout Session
-                {(activeEvent.sessions?.length ?? 0) > 0 && (
+                {breakoutSessionsCount > 0 && (
                   <Badge variant="secondary" className="ml-0.5 h-4 px-1.5 text-[10px]">
-                    {activeEvent.sessions?.length}
+                    {breakoutSessionsCount}
                   </Badge>
                 )}
               </TabsTrigger>

@@ -1497,7 +1497,7 @@ export const DEFAULT_GDG_SESSIONS: EventSession[] = [
     time_slot: "08:15 WIB - 12:00 WIB (Morning Session)",
     checkin_deadline: "09:05 WIB",
     location: "Main Venue",
-    capacity: 105,
+    capacity: 100,
     total_registered: 0,
   },
   {

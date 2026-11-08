@@ -2903,7 +2903,8 @@ export async function updateRegistrationStatus(
 
   // If this registration is cancelled or rejected, also remove any bundle friend vouchers it generated
   const isCancelledOrRejected = status === "rejected" || status === "canceled" || status === "cancelled";
-  const wasCancelledOrRejected = previousStatus === "rejected" || previousStatus === "canceled" || previousStatus === "cancelled";
+  const wasCancelledOrRejected =
+    previousStatus === "rejected" || previousStatus === "canceled" || previousStatus === "cancelled";
   if (isCancelledOrRejected && !wasCancelledOrRejected) {
     await deleteBundleFriendVouchersForRegistration(eventId, registrationId, regData?.bundle_vouchers);
   }
@@ -5534,9 +5535,27 @@ export function subscribePrinterConfigDoc(
   );
 }
 
+export async function saveSystemHealthConfigDoc(
+  config: Partial<import("@/lib/system-health/types").SystemHealthConfig>,
+): Promise<void> {
+  if (typeof window === "undefined") return;
+  if (typeof auth.authStateReady === "function") {
+    await auth.authStateReady();
+  }
+  const docRef = doc(db, "system_settings", "system_health");
+  const sanitized = sanitizeFirestoreData({
+    ...config,
+    id: "system_health",
+    updated_at: new Date().toISOString(),
+  });
+  await setDoc(docRef, sanitized, { merge: true });
+}
+
 // ---- Shared Email Blast Templates (system_settings/email_blast_templates) -------------------------
 
-export async function getSharedEmailBlastTemplatesDoc(): Promise<import("@/app/(main)/dashboard/email-manager/_components/default-html-template").EmailBlastTemplate[]> {
+export async function getSharedEmailBlastTemplatesDoc(): Promise<
+  import("@/app/(main)/dashboard/email-manager/_components/default-html-template").EmailBlastTemplate[]
+> {
   if (typeof window === "undefined") return [];
   try {
     const docRef = doc(db, "system_settings", "email_blast_templates");
@@ -5570,7 +5589,9 @@ export async function saveSharedEmailBlastTemplatesDoc(
 }
 
 export function subscribeSharedEmailBlastTemplatesDoc(
-  onUpdate: (templates: import("@/app/(main)/dashboard/email-manager/_components/default-html-template").EmailBlastTemplate[]) => void,
+  onUpdate: (
+    templates: import("@/app/(main)/dashboard/email-manager/_components/default-html-template").EmailBlastTemplate[],
+  ) => void,
   onError?: (error: Error) => void,
 ): () => void {
   if (typeof window === "undefined") {

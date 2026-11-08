@@ -211,6 +211,7 @@ export interface BevyEvent {
   is_virtual_event?: boolean;
   virtual_event_type?: string | null;
   attendee_virtual_venue_link?: string | null;
+  join_virtual_event_url?: string | null;
   start_date: string;
   end_date: string;
   timezone?: string;
@@ -442,4 +443,110 @@ export interface BevyAttendeeCheckInResponse {
     id: number;
     is_checked_in: boolean;
   }>;
+}
+
+export interface BevyCreateEventInput {
+  title: string;
+  description: string;
+  description_short?: string | null;
+  start_date: string;
+  end_date: string;
+  timezone?: string;
+  audience_type: "IN_PERSON" | "VIRTUAL" | "HYBRID" | string;
+  total_capacity: number | string;
+  is_test?: boolean;
+  is_hidden?: boolean;
+  visible_on_parent_chapter_only?: boolean;
+  sharing_disabled?: boolean;
+  allow_automated_emails_when_hidden?: boolean;
+  status?: "Draft" | "Published" | string;
+  custom_tickets_url?: string;
+  venue_name?: string;
+  venue_address?: string;
+  venue_city?: string;
+  venue_zip_code?: string;
+  venue_country?: string;
+  venue_state?: string;
+  venue_latitude?: number;
+  venue_longitude?: number;
+  show_map?: boolean;
+  virtual_event_instructions?: string;
+  virtual_event_type?: "internal" | "external" | string;
+  virtual_venue_link?: string;
+  automatically_record_event?: boolean;
+  moderated_qa_enabled?: boolean;
+  chat_disabled?: boolean;
+  is_many_to_many_virtual_event?: boolean;
+  tags?: string[];
+}
+
+export const BEVY_PREDEFINED_TAGS: readonly string[] = [
+  "DevFest",
+  "Conference",
+  "Hackathon",
+  "Tech Talk / Meetup",
+  "Workshop / hands-on session",
+  "Accessibility",
+  "AI",
+  "AI - AI Studio",
+  "AI - Gemini",
+  "AI - Gemini Enterprise Agent Platform",
+  "AI - Gemma",
+  "Android",
+  "Angular",
+  "AR/VR",
+  "Build with AI",
+  "Career Development",
+  "Certification Study Group",
+  "Community Building",
+  "Earth Engine",
+  "Firebase",
+  "Flutter",
+  "Get Certified",
+  "Google Cloud",
+  "Google I/O Extended",
+  "Google Maps Platform",
+  "Google Play",
+  "Google Workspace",
+  "Networking",
+  "UX / UI Design",
+  "Web",
+] as const;
+
+export type BevyUpdateEventInput = Partial<BevyCreateEventInput> & {
+  custom_tickets_url?: string;
+  total_capacity?: number | string;
+  status?: "Draft" | "Published" | string;
+  agenda?: BevyAgenda | string;
+  hide_agenda_on_event_page?: boolean;
+  tags?: string[];
+  event_type?: number;
+  meetup_announce?: boolean;
+  chapter?: number | string;
+};
+
+export interface BevyAiEventGenerationResponse {
+  title?: string;
+  description?: string;
+  description_short?: string;
+  [key: string]: unknown;
+}
+
+export interface BevyAiContentModificationParams {
+  field: "title" | "description" | string;
+  change?: "regenerate" | "shorter" | "longer" | "rewrite" | string;
+  title: string;
+  description: string;
+  objectId?: string | number;
+  maxLength?: number;
+  minLength?: number;
+}
+
+export interface BevyAiContentModificationResponse {
+  result?: string;
+  modified_content?: string;
+  text?: string;
+  title?: string;
+  description?: string;
+  [key: string]: unknown;
 }

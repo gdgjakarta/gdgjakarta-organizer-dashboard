@@ -37,6 +37,16 @@ import { toast } from "sonner";
 
 import { FloatingSaveBar } from "@/app/(main)/dashboard/_components/floating-save-bar";
 import { Shimmer } from "@/components/shimmer";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -55,6 +65,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import type { BevyAgenda, BevyAgendaDay } from "@/lib/bevy/types";
 import { findMatchingSpeaker, normalizeRelatedLink, normalizeStr } from "@/lib/events/agenda-unification";
 import { isRegistrationInSession } from "@/lib/events/capacity-validator";
 import { DEFAULT_COMBINED_QUESTIONS, DEFAULT_GDG_SESSIONS } from "@/lib/events/registration-defaults";
@@ -72,7 +83,7 @@ import type {
   RegistrationStatus,
 } from "@/lib/firestore/types";
 import { cn, getInitials } from "@/lib/utils";
-import { checkInBevyAttendeeAction } from "@/server/bevy-actions";
+import { checkInBevyAttendeeAction, updateBevyEventAction } from "@/server/bevy-actions";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
 import { HtmlEditText } from "./html-edit-text";
@@ -378,13 +389,41 @@ export function BreakoutSessionsTab({
       return event.sessions.map((s) => ({
         ...s,
         capacity: Number(s.capacity) || 50,
-        include_in_registration: s.include_in_registration !== false,
+        include_in_registration: s.include_in_registration ?? false,
         separate_check_in: s.separate_check_in !== false,
         sync_check_in_to_bevy: s.sync_check_in_to_bevy ?? false,
       }));
     }
+
+    // If no breakout sessions are stored in event yet, but agenda has multiple (> 1) tracks/days,
+    // automatically generate breakout sessions from those tracks/days
+    const agendaDays: BevyAgendaDay[] = Array.isArray(event.agenda?.days)
+      ? event.agenda.days
+      : Array.isArray(event.agenda)
+        ? (event.agenda as BevyAgendaDay[])
+        : [];
+
+    if (agendaDays.length > 1) {
+      return agendaDays.map((day, idx) => {
+        const trackTitle = day.title?.trim() || `Track ${idx + 1}`;
+        const firstItem = (day.agenda ?? day.items ?? [])[0];
+        const startTimeSlot = firstItem?.time ? firstItem.time.split(/[-–]/)[0]?.trim() || firstItem.time : "";
+        return {
+          id: `sess_agenda_track_${idx}_${Date.now()}`,
+          title: trackTitle,
+          time_slot: startTimeSlot,
+          capacity: 50,
+          total_registered: 0,
+          total_checked_in: 0,
+          include_in_registration: false,
+          separate_check_in: true,
+          sync_check_in_to_bevy: false,
+        };
+      });
+    }
+
     return [];
-  }, [event.sessions]);
+  }, [event.sessions, event.agenda]);
 
   const [sessions, setSessions] = React.useState<EventSession[]>(initialNormalizedSessions);
 
@@ -433,7 +472,7 @@ export function BreakoutSessionsTab({
 
   // Keep local state synced when `event.sessions` updates from parent live subscription (when not dirty)
   React.useEffect(() => {
-    if (isDirty || initialNormalizedSessions.length === 0) return;
+    if (isDirty) return;
     setSessions(initialNormalizedSessions);
     setSavedConfig((prev) => ({
       ...prev,
@@ -564,21 +603,47 @@ export function BreakoutSessionsTab({
           },
         );
 
-        const loadedSessions = Array.isArray(docData?.sessions) ? docData.sessions : (eventRef.current.sessions ?? []);
+        let loadedSessions = Array.isArray(docData?.sessions) ? docData.sessions : [];
+
+        // If no breakout sessions are stored in Firestore yet, but the event agenda has multiple (> 1) tracks/days,
+        // automatically map them into breakout sessions based on day/track name and the first activity's start time.
+        const effectiveAgendaDays: BevyAgendaDay[] = Array.isArray(docData?.agenda?.days)
+          ? docData.agenda.days
+          : Array.isArray(eventRef.current.agenda?.days)
+            ? eventRef.current.agenda.days
+            : [];
+
+        if (loadedSessions.length === 0 && effectiveAgendaDays.length > 1) {
+          loadedSessions = effectiveAgendaDays.map((day, idx) => {
+            const trackTitle = day.title?.trim() || `Track ${idx + 1}`;
+            const firstItem = (day.agenda ?? day.items ?? [])[0];
+            const startTimeSlot = firstItem?.time ? firstItem.time.split(/[-–]/)[0]?.trim() || firstItem.time : "";
+            return {
+              id: `sess_agenda_track_${idx}_${Date.now()}`,
+              title: trackTitle,
+              time_slot: startTimeSlot,
+              capacity: 50,
+              total_registered: 0,
+              total_checked_in: 0,
+              include_in_registration: false,
+              separate_check_in: true,
+              sync_check_in_to_bevy: false,
+            };
+          });
+        }
+
         const normalizedLoadedSessions =
           loadedSessions.length > 0
             ? loadedSessions.map((sess) => ({
                 ...sess,
                 capacity: Number(sess.capacity) || 50,
                 total_registered: liveCounts[sess.id] ?? sess.total_registered ?? 0,
-                include_in_registration: sess.include_in_registration !== false,
+                include_in_registration: sess.include_in_registration ?? false,
                 separate_check_in: sess.separate_check_in !== false,
                 sync_check_in_to_bevy: sess.sync_check_in_to_bevy ?? false,
               }))
-            : null;
-        if (normalizedLoadedSessions) {
-          setSessions(normalizedLoadedSessions);
-        }
+            : [];
+        setSessions(normalizedLoadedSessions);
 
         const nextDefaultName = docData?.default_session_name || eventRef.current.default_session_name || "Main Event";
         const nextDefaultTime =
@@ -615,7 +680,7 @@ export function BreakoutSessionsTab({
         }
 
         setSavedConfig((prev) => ({
-          sessions: normalizedLoadedSessions ?? prev.sessions,
+          sessions: normalizedLoadedSessions,
           defaultSessionName: nextDefaultName,
           defaultSessionTime: nextDefaultTime,
           defaultSessionCheckinDeadline: nextDefaultDeadline,
@@ -678,7 +743,7 @@ export function BreakoutSessionsTab({
     }> = [];
 
     days.forEach((day, dIdx) => {
-      const dayLabel = day.title?.trim() || `Day ${dIdx + 1}`;
+      const dayLabel = day.title?.trim() || (days.length > 1 ? `Day ${dIdx + 1}` : "Main Session");
       const items = day.items ?? day.agenda ?? [];
       items.forEach((item, iIdx) => {
         if (!item.activity?.trim()) return;
@@ -740,27 +805,31 @@ export function BreakoutSessionsTab({
   }, [localRegistrations, sessions]);
 
   // Session CRUD handlers
-  const handleAddManualSession = () => {
+  const handleAddManualSession = async () => {
     const newId = `sess_${Date.now()}`;
-    setSessions((prev) => [
-      ...prev,
-      {
-        id: newId,
-        title: "",
-        description: "",
-        speaker_name: "",
-        time_slot: "",
-        checkin_deadline: "",
-        location: "",
-        location_url: "",
-        capacity: 50,
-        total_registered: 0,
-        total_checked_in: 0,
-        include_in_registration: true,
-        separate_check_in: true,
-        sync_check_in_to_bevy: false,
-      },
-    ]);
+    const nextSessionNumber = sessions.length + 1;
+    // Align default name with Bevy Agenda track / day architecture (e.g. "Track 1", "Track 2", or "Day 2")
+    const defaultTitle = `Track ${nextSessionNumber}`;
+
+    const newSession: EventSession = {
+      id: newId,
+      title: defaultTitle,
+      description: "",
+      speaker_name: "",
+      time_slot: "",
+      checkin_deadline: "",
+      location: "",
+      location_url: "",
+      capacity: 50,
+      total_registered: 0,
+      total_checked_in: 0,
+      include_in_registration: true,
+      separate_check_in: true,
+      sync_check_in_to_bevy: false,
+    };
+
+    const nextSessions = [...sessions, newSession];
+    setSessions(nextSessions);
     setExpandedSessionIds((prev) => new Set([...prev, newId]));
     setActiveRosterSessionId(newId);
   };
@@ -857,8 +926,25 @@ export function BreakoutSessionsTab({
     toast.success(`Bound session to Bevy Agenda: "${item.title}"`);
   };
 
-  const handleRemoveSession = (index: number) => {
-    setSessions((prev) => prev.filter((_, i) => i !== index));
+  // Delete Session Confirmation state
+  const [sessionIndexToDelete, setSessionIndexToDelete] = React.useState<number | null>(null);
+
+  const handleConfirmRemoveSession = () => {
+    if (sessionIndexToDelete === null) return;
+    const index = sessionIndexToDelete;
+    const sessionToRemove = sessions[index];
+    const updated = sessions.filter((_, i) => i !== index);
+    setSessions(updated);
+
+    if (sessionToRemove) {
+      setExpandedSessionIds((prev) => {
+        const next = new Set(prev);
+        next.delete(sessionToRemove.id);
+        return next;
+      });
+      toast.success(`Removed session "${sessionToRemove.title}".`);
+    }
+    setSessionIndexToDelete(null);
   };
 
   const handleSaveSessions = async () => {
@@ -897,6 +983,69 @@ export function BreakoutSessionsTab({
           defaultSessionLocation,
           defaultSessionLocationUrl,
         });
+
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent("gdg:sessions-updated", {
+              detail: { eventId, sessions },
+            }),
+          );
+        }
+
+        // Synchronize sessions with Bevy Agenda days/tracks:
+        // - If sessions remain (> 0): only keep the agenda tracks corresponding to active sessions (removing deleted session tracks, but preserving remaining tracks and their activities)
+        // - If 0 sessions remain: clear the multi-session agenda tracks (resetting to 0 tracks)
+        try {
+          const currentDays: BevyAgendaDay[] = Array.isArray(event.agenda?.days)
+            ? [...event.agenda.days]
+            : Array.isArray(event.agenda)
+              ? [...(event.agenda as BevyAgendaDay[])]
+              : [];
+
+          let updatedDays: BevyAgendaDay[] = [];
+          if (sessions.length > 0) {
+            updatedDays = sessions.map((sess, idx) => {
+              const existingTrack =
+                currentDays.find(
+                  (d) =>
+                    (d.title || "").trim().toLowerCase() === sess.title.trim().toLowerCase() ||
+                    normalizeStr(d.title) === normalizeStr(sess.title),
+                ) ?? currentDays[idx];
+              return {
+                title: sess.title.trim(),
+                agenda: existingTrack?.agenda ?? existingTrack?.items ?? [],
+              };
+            });
+          }
+
+          // If sessions were modified or cleared while current agenda has tracks, sync to Bevy Agenda
+          const needsSync = sessions.length > 0 || currentDays.length > 0;
+          if (needsSync) {
+            const payloadAgenda: BevyAgenda = {
+              multiday: updatedDays.length > 1,
+              empty: updatedDays.length === 0 || updatedDays.every((d) => (d.agenda ?? d.items ?? []).length === 0),
+              any_descriptions: updatedDays.some((d) =>
+                (d.agenda ?? d.items ?? []).some((i) => Boolean(i.description?.trim())),
+              ),
+              days: updatedDays.map((d) => ({
+                title: d.title ? d.title.trim() : "",
+                agenda: d.agenda ?? d.items ?? [],
+              })),
+            };
+
+            const bevyRes = await updateBevyEventAction(String(event.id), { agenda: payloadAgenda });
+            if (bevyRes.success && typeof window !== "undefined") {
+              window.dispatchEvent(
+                new CustomEvent("gdg:agenda-updated", {
+                  detail: { eventId: String(event.id), agenda: payloadAgenda },
+                }),
+              );
+            }
+          }
+        } catch (syncErr) {
+          console.warn("[BreakoutSessionsTab] Error syncing sessions to Bevy agenda:", syncErr);
+        }
+
         toast.success("Breakout sessions saved successfully.");
       } else {
         toast.error(res.error || "Failed to save breakout sessions.");
@@ -1302,7 +1451,7 @@ export function BreakoutSessionsTab({
               className="h-8 gap-1.5 text-xs"
             >
               <Plus className="size-3.5" />
-              Add Custom / Manual Session
+              Add Session
             </Button>
           </div>
 
@@ -1533,7 +1682,13 @@ export function BreakoutSessionsTab({
                           onClick={() => setActiveRosterSessionId(session.id)}
                         >
                           <Users className="size-3.5" />
-                          Roster & Check-in ({currentRegistered})
+                          Roster & Check-in (
+                          {isLoadingRegistrants ? (
+                            <Shimmer className="inline-block h-2.5 w-3 rounded-xs align-middle" />
+                          ) : (
+                            currentRegistered
+                          )}
+                          )
                         </Button>
                         <Button
                           type="button"
@@ -1554,7 +1709,7 @@ export function BreakoutSessionsTab({
                           variant="ghost"
                           size="icon"
                           className="size-7 text-destructive hover:text-destructive"
-                          onClick={() => handleRemoveSession(idx)}
+                          onClick={() => setSessionIndexToDelete(idx)}
                           title="Delete session"
                         >
                           <Trash2 className="size-4" />
@@ -1790,26 +1945,6 @@ export function BreakoutSessionsTab({
                                 handleUpdateSession(idx, {
                                   ...session,
                                   separate_check_in: checked,
-                                })
-                              }
-                            />
-                          </div>
-
-                          <div className="flex items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3">
-                            <div className="space-y-0.5">
-                              <Label className="font-medium text-xs">Sync Check-in to Bevy API</Label>
-                              <p className="text-[11px] text-muted-foreground">
-                                {session.sync_check_in_to_bevy
-                                  ? "Also marks attendee checked-in on Bevy"
-                                  : "Logs session check-in to Firestore only"}
-                              </p>
-                            </div>
-                            <Switch
-                              checked={Boolean(session.sync_check_in_to_bevy)}
-                              onCheckedChange={(checked) =>
-                                handleUpdateSession(idx, {
-                                  ...session,
-                                  sync_check_in_to_bevy: checked,
                                 })
                               }
                             />
@@ -2459,6 +2594,52 @@ export function BreakoutSessionsTab({
           setLocalRegistrations((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
         }}
       />
+
+      {/* DIALOG 4: CONFIRM REMOVE SESSION WARNING */}
+      <AlertDialog
+        open={sessionIndexToDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setSessionIndexToDelete(null);
+        }}
+      >
+        <AlertDialogContent className="data-[size=default]:max-w-md sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {sessionIndexToDelete !== null && sessions.length === 1
+                ? "Remove Last Breakout Session?"
+                : "Remove Breakout Session?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2 pt-1 text-left text-xs sm:text-sm">
+              <span className="block text-foreground font-medium">
+                {sessionIndexToDelete !== null && sessions[sessionIndexToDelete]?.title
+                  ? `"${sessions[sessionIndexToDelete].title}"`
+                  : "This session"}{" "}
+                is synchronized with your Bevy Event Agenda tracks.
+              </span>
+              {sessionIndexToDelete !== null && sessions.length === 1 ? (
+                <span className="block text-destructive">
+                  Removing all sessions will clear the corresponding schedule tracks from your Bevy Agenda upon saving.
+                  You can keep these sessions configured even if you do not require attendee breakout registration.
+                </span>
+              ) : (
+                <span className="block text-muted-foreground">
+                  Removing this session will remove its corresponding schedule track and activities from your Bevy
+                  Agenda upon saving. You can keep this session even if you do not require breakout check-in.
+                </span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <AlertDialogCancel className="text-xs">Keep Session</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmRemoveSession}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 text-xs"
+            >
+              Remove Session
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <FloatingSaveBar
         isDirty={isDirty}

@@ -7,6 +7,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { Subscribe } from "@tanstack/react-table";
 import { parse } from "date-fns";
 import {
+  Ban,
   Calendar,
   Copy,
   ExternalLink,
@@ -39,6 +40,7 @@ import { getBevyLiveEventUrl, getBevyManageEventUrl, getBevyOldManageEventUrl } 
 import type { DataTableFeatures } from "@/lib/data-table-features";
 import type { ShortLinkItem } from "@/lib/shortio/types";
 import { cn } from "@/lib/utils";
+import { cancelBevyEventAction } from "@/server/bevy-actions";
 import { generateEventShortLinkAction, getEventShortLinksAction } from "@/server/shortio-actions";
 
 import { type EventRow, eventStatusMeta } from "./data";
@@ -320,6 +322,34 @@ function EventActionsMenu({ row }: { row: { original: EventRow } }) {
               </DropdownMenuItem>
             </DropdownMenuSubContent>
           </DropdownMenuSub>
+
+          {row.original.status !== "Canceled" && row.original.status !== "Completed" && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-rose-600 focus:bg-rose-500/10 focus:text-rose-600 dark:text-rose-400"
+                onClick={async () => {
+                  if (!confirm(`Are you sure you want to cancel the event "${row.original.title}"?`)) {
+                    return;
+                  }
+                  const toastId = toast.loading("Cancelling event on Bevy...");
+                  try {
+                    const res = await cancelBevyEventAction(row.original.id);
+                    if (res.success) {
+                      toast.success("Event canceled successfully", { id: toastId });
+                    } else {
+                      toast.error(res.error || "Failed to cancel event", { id: toastId });
+                    }
+                  } catch (err) {
+                    toast.error(err instanceof Error ? err.message : "Failed to cancel event", { id: toastId });
+                  }
+                }}
+              >
+                <Ban className="mr-2 size-3.5" />
+                Cancel Event
+              </DropdownMenuItem>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

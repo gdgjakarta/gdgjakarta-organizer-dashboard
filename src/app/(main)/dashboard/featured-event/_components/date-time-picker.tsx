@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { Calendar as CalendarIcon, Clock, RotateCcw, X } from "lucide-react";
 
+import { TimePicker } from "@/components/time-picker";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
@@ -200,12 +201,7 @@ export function DateTimePicker({
             </div>
 
             <div className="flex items-center gap-2">
-              <Input
-                type="time"
-                value={time}
-                onChange={(e) => handleTimeChange(e.target.value)}
-                className="h-8 flex-1 font-mono text-xs"
-              />
+              <TimePicker value={time} onChange={handleTimeChange} disabled={disabled} />
               <Select value={timezone} onValueChange={handleTimezoneChange}>
                 <SelectTrigger className="h-8 w-24 text-xs">
                   <SelectValue placeholder="TZ" />

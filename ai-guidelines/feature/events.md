@@ -9,6 +9,8 @@ This guide outlines event management, Bevy-to-Firestore synchronization, event r
 The Events feature serves both community members and chapter organizers:
 
 - **Admin / Organizer**:
+  - Create new events directly on Bevy with external registration link (`event_type: 40`, default `custom_tickets_url: https://gdgjakarta.com/events/{eventId}`).
+  - Automatically synchronize Bevy's `custom_tickets_url` to Short.io short links when generating or changing event short links.
   - View all past, live, and upcoming chapter events.
   - Trigger one-click synchronization from Bevy API into Firestore.
   - Configure registration requirements (e.g. toggle `requires_approval`).

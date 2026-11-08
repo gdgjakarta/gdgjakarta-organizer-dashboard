@@ -34,6 +34,7 @@ import { updateEventHighlightsMediaAction } from "@/lib/firestore/actions";
 import type { EventPresentationSlide, EventPresentationSlideSpeaker, FirestoreEvent } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 
+import { BevyAgendaSection } from "./bevy-agenda-section";
 import { type AgendaActivityOption, SortableSlideDeckCard } from "./sortable-slide-deck-card";
 
 function normalizeSlides(
@@ -89,7 +90,7 @@ export function AgendaTab({ event }: AgendaTabProps) {
   const initialSnapshotRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (hasActualAgendaActivities(event.agenda)) {
+    if (event.agenda) {
       setInternalAgenda(event.agenda);
       setIsAgendaLoading(false);
     }
@@ -119,7 +120,7 @@ export function AgendaTab({ event }: AgendaTabProps) {
           );
           setSlides(slideList);
 
-          if (hasActualAgendaActivities(docData.agenda)) {
+          if (docData.agenda) {
             setInternalAgenda(docData.agenda);
             setIsAgendaLoading(false);
           }
@@ -169,46 +170,73 @@ export function AgendaTab({ event }: AgendaTabProps) {
 
   // Dirty state calculation
   const currentSnapshot = JSON.stringify(slides);
-  const isDirty = initialSnapshotRef.current !== null && initialSnapshotRef.current !== currentSnapshot;
+  const isSlidesDirty = initialSnapshotRef.current !== null && initialSnapshotRef.current !== currentSnapshot;
+
+  const [isBevyAgendaDirty, setIsBevyAgendaDirty] = useState(false);
+  const syncBevyAgendaRef = useRef<(() => Promise<boolean>) | null>(null);
+  const discardBevyAgendaRef = useRef<(() => void) | null>(null);
+
+  const isDirty = isSlidesDirty || isBevyAgendaDirty;
 
   const handleDiscardChanges = () => {
-    if (initialSnapshotRef.current !== null) {
+    if (isSlidesDirty && initialSnapshotRef.current !== null) {
       try {
         const snap = JSON.parse(initialSnapshotRef.current) as EventPresentationSlide[];
         setSlides(snap);
-        toast.info("Discarded unsaved agenda changes.");
       } catch {
         // ignore
       }
     }
+    if (isBevyAgendaDirty) {
+      discardBevyAgendaRef.current?.();
+    }
+    toast.info("Discarded unsaved changes.");
   };
 
   const handleSave = async () => {
     setIsSaving(true);
-    startTransition(async () => {
-      try {
-        const res = await updateEventHighlightsMediaAction(
-          String(event.id),
-          {
-            presentation_slides: slides,
-          },
-          event,
-        );
-
-        if (res.success) {
-          initialSnapshotRef.current = currentSnapshot;
-          toast.success("Agenda presentation slides saved successfully!");
-          router.refresh();
-        } else {
-          toast.error(res.error ?? "Failed to save agenda presentation slides.");
-        }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "Failed to save.";
-        toast.error(msg);
-      } finally {
-        setIsSaving(false);
+    try {
+      let bevySuccess = true;
+      if (isBevyAgendaDirty && syncBevyAgendaRef.current) {
+        bevySuccess = await syncBevyAgendaRef.current();
       }
-    });
+
+      if (!bevySuccess) {
+        setIsSaving(false);
+        return;
+      }
+
+      if (isSlidesDirty) {
+        await new Promise<void>((resolve) => {
+          startTransition(async () => {
+            try {
+              const res = await updateEventHighlightsMediaAction(
+                String(event.id),
+                {
+                  presentation_slides: slides,
+                },
+                event,
+              );
+
+              if (res.success) {
+                initialSnapshotRef.current = currentSnapshot;
+                toast.success("Agenda presentation slides saved successfully!");
+                router.refresh();
+              } else {
+                toast.error(res.error ?? "Failed to save agenda presentation slides.");
+              }
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : "Failed to save.";
+              toast.error(msg);
+            } finally {
+              resolve();
+            }
+          });
+        });
+      }
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // Helper to update a slide's fields
@@ -527,6 +555,20 @@ export function AgendaTab({ event }: AgendaTabProps) {
         </CardContent>
       </Card>
 
+      {/* ── Bevy Agenda Sessions Timeline Editor ───────────────────────── */}
+      <BevyAgendaSection
+        event={event}
+        agenda={internalAgenda}
+        onAgendaUpdated={(newAgenda) => setInternalAgenda(newAgenda)}
+        onDirtyChange={setIsBevyAgendaDirty}
+        registerSyncHandler={(handler) => {
+          syncBevyAgendaRef.current = handler;
+        }}
+        registerDiscardHandler={(handler) => {
+          discardBevyAgendaRef.current = handler;
+        }}
+      />
+
       {/* ── Slide Decks & Agenda Activities List ──────────────────────── */}
       <Card>
         <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -760,9 +802,9 @@ export function AgendaTab({ event }: AgendaTabProps) {
         onDiscard={handleDiscardChanges}
         discardLabel="Discard"
         saveLabel="Save Changes"
-        savingLabel="Saving Agenda..."
-        savedLabel="Agenda Saved"
-        helperText="Agenda presentations will immediately reflect on the public event page."
+        savingLabel="Saving Changes..."
+        savedLabel="Changes Saved"
+        helperText="Agenda sessions and presentation slides will immediately sync to Bevy & reflect publicly."
       />
     </div>
   );

@@ -4,9 +4,11 @@ import { revalidatePath } from "next/cache";
 import {
   type AddBevyChapterTeamMemberParams,
   addBevyChapterTeamMember,
+  createBevyExternalEvent,
   deleteBevyAttendee,
   deleteBevyChapterTeamMember,
   findBevyAttendeeIdByEmail,
+  generateBevyAiEventDetails,
   getAllBevyChapterEvents,
   getAllBevyEventAttendees,
   getBevyChapterEvents,
@@ -15,12 +17,20 @@ import {
   getBevyEventAttendees,
   getMemberById,
   importMemberToBevy,
+  modifyBevyAiEventContent,
   putBevyAttendeeCheckIn,
   searchBevyChapterMembers,
   type UpdateBevyChapterTeamMemberParams,
   updateBevyChapterTeamMember,
+  updateBevyEvent,
 } from "@/lib/bevy/client";
-import type { BevyChapterTeamMember, BevyUser } from "@/lib/bevy/types";
+import type {
+  BevyAiContentModificationParams,
+  BevyChapterTeamMember,
+  BevyCreateEventInput,
+  BevyUpdateEventInput,
+  BevyUser,
+} from "@/lib/bevy/types";
 
 /**
  * Server action to fetch Bevy chapter events safely on the server
@@ -97,7 +107,7 @@ export async function findBevyUserByEmailAction(email: string): Promise<{
   }
 
   const cleanEmail = email?.trim().toLowerCase();
-  if (!cleanEmail || !cleanEmail.includes("@")) {
+  if (!cleanEmail?.includes("@")) {
     return { success: false, error: "Please enter a valid email address." };
   }
 
@@ -347,4 +357,142 @@ export async function removeAttendeeFromBevyAction(params: {
 export async function fetchBevyEventDetailAction(eventId: string | number) {
   const { getBevyEventById } = await import("@/lib/bevy/client");
   return await getBevyEventById(eventId);
+}
+
+/**
+ * Server action to create a new Bevy event configured with external registration.
+ */
+export async function createBevyEventAction(input: BevyCreateEventInput) {
+  if (!(await isAuthorizedOrganizerSession())) {
+    return { success: false, error: "Unauthorized: Organizer privileges required" };
+  }
+
+  const result = await createBevyExternalEvent(input);
+  if (result.success && result.data?.id) {
+    revalidatePath("/dashboard/events");
+    revalidatePath("/events");
+    revalidatePath(`/dashboard/events/${result.data.id}`);
+  }
+  return result;
+}
+
+/**
+ * Server action to update an existing Bevy event (capacity, external ticket link, etc.).
+ */
+export async function updateBevyEventAction(eventId: string | number, payload: BevyUpdateEventInput) {
+  if (!(await isAuthorizedOrganizerSession())) {
+    return { success: false, error: "Unauthorized: Organizer privileges required" };
+  }
+
+  const result = await updateBevyEvent(eventId, payload);
+  if (result.success) {
+    const finalStatus = result.data?.status || payload.status;
+    const finalTitle = result.data?.title || payload.title;
+
+    // Sync patched fields to Firestore doc if available
+    try {
+      const { patchFirestoreDoc } = await import("@/server/firestore-admin");
+      const fsPatch: Record<string, unknown> = {};
+      if (finalTitle !== undefined) fsPatch.title = finalTitle;
+      if (payload.description !== undefined) fsPatch.description = payload.description;
+      if (payload.description_short !== undefined) fsPatch.description_short = payload.description_short;
+      if (payload.total_capacity !== undefined) fsPatch.total_capacity = Number(payload.total_capacity);
+      if (finalStatus !== undefined) fsPatch.status = finalStatus;
+      if (payload.tags !== undefined) fsPatch.tags = payload.tags;
+      if (payload.audience_type !== undefined) fsPatch.audience_type = payload.audience_type;
+      if (payload.virtual_event_type !== undefined) fsPatch.virtual_event_type = payload.virtual_event_type;
+      if (payload.virtual_venue_link !== undefined) fsPatch.attendee_virtual_venue_link = payload.virtual_venue_link;
+      if (result.data?.join_virtual_event_url) {
+        fsPatch.join_virtual_event_url = result.data.join_virtual_event_url;
+      }
+      if (payload.virtual_event_instructions !== undefined)
+        fsPatch.virtual_event_instructions = payload.virtual_event_instructions;
+      if (payload.automatically_record_event !== undefined)
+        fsPatch.automatically_record_event = payload.automatically_record_event;
+      if (payload.moderated_qa_enabled !== undefined) fsPatch.moderated_qa_enabled = payload.moderated_qa_enabled;
+      if (payload.chat_disabled !== undefined) fsPatch.chat_disabled = payload.chat_disabled;
+      if (payload.is_many_to_many_virtual_event !== undefined)
+        fsPatch.is_many_to_many_virtual_event = payload.is_many_to_many_virtual_event;
+      if (payload.start_date !== undefined) fsPatch.start_date = payload.start_date;
+      if (payload.end_date !== undefined) fsPatch.end_date = payload.end_date;
+      if (payload.is_test !== undefined) fsPatch.is_test = payload.is_test;
+      if (payload.is_hidden !== undefined) fsPatch.is_hidden = payload.is_hidden;
+      fsPatch.custom_tickets_url = payload.custom_tickets_url || `https://gdgjakarta.com/events/${eventId}`;
+      if (payload.agenda !== undefined) {
+        fsPatch.agenda = typeof payload.agenda === "string" ? JSON.parse(payload.agenda) : payload.agenda;
+      }
+      if (payload.venue_name || payload.venue_address || payload.venue_city || payload.venue_zip_code) {
+        fsPatch.venue = {
+          name: payload.venue_name || "",
+          address: payload.venue_address || "",
+          city: payload.venue_city || "",
+          zip_code: payload.venue_zip_code || "",
+          country: payload.venue_country || "ID",
+          state: payload.venue_state || "Daerah Khusus Ibukota Jakarta",
+          latitude: payload.venue_latitude,
+          longitude: payload.venue_longitude,
+        };
+      }
+
+      if (Object.keys(fsPatch).length > 0) {
+        await patchFirestoreDoc("events", String(eventId), fsPatch, true);
+      }
+    } catch (fsErr) {
+      console.warn("[updateBevyEventAction] Non-fatal: failed to patch firestore doc:", fsErr);
+    }
+
+    revalidatePath("/dashboard/events");
+    revalidatePath("/events");
+    revalidatePath(`/dashboard/events/${eventId}`);
+    revalidatePath(`/events/${eventId}`);
+  }
+  return result;
+}
+
+/**
+ * Server action to cancel an event on Bevy before it starts ({ status: "Canceled" }).
+ */
+export async function cancelBevyEventAction(eventId: string | number) {
+  if (!(await isAuthorizedOrganizerSession())) {
+    return { success: false, error: "Unauthorized: Organizer privileges required" };
+  }
+
+  const result = await updateBevyEvent(eventId, { status: "Canceled" });
+  if (result.success) {
+    // Also mark in Firestore if doc exists
+    try {
+      const { patchFirestoreDoc } = await import("@/server/firestore-admin");
+      await patchFirestoreDoc("events", String(eventId), { status: "Canceled" }, true);
+    } catch (fsErr) {
+      console.warn("[cancelBevyEventAction] Non-fatal: failed to patch firestore status:", fsErr);
+    }
+
+    revalidatePath("/dashboard/events");
+    revalidatePath("/events");
+    revalidatePath(`/dashboard/events/${eventId}`);
+    revalidatePath(`/events/${eventId}`);
+  }
+  return result;
+}
+
+/**
+ * Server action to generate event title and description using Bevy's AI endpoint.
+ */
+export async function generateBevyAiEventAction(topic: string) {
+  if (!(await isAuthorizedOrganizerSession())) {
+    return { success: false, error: "Unauthorized: Organizer privileges required" };
+  }
+
+  return await generateBevyAiEventDetails(topic);
+}
+
+/**
+ * Server action to modify (regenerate, shorten, rewrite) event title or description via Bevy AI.
+ */
+export async function modifyBevyAiEventContentAction(params: BevyAiContentModificationParams) {
+  if (!(await isAuthorizedOrganizerSession())) {
+    return { success: false, error: "Unauthorized: Organizer privileges required" };
+  }
+
+  return await modifyBevyAiEventContent(params);
 }

@@ -128,10 +128,11 @@ export function hasActualAgendaActivities(agenda: unknown): boolean {
   if (rec.empty === true) return false;
 
   if (Array.isArray(agenda)) {
+    if (agenda.length === 0) return false;
     return agenda.some((item) => {
       if (!item || typeof item !== "object") return false;
-      const it = item as { activity?: string; items?: unknown[]; agenda?: unknown[] };
-      if (it.activity?.trim()) return true;
+      const it = item as { title?: string; activity?: string; items?: unknown[]; agenda?: unknown[] };
+      if (it.activity?.trim() || it.title?.trim()) return true;
       const subItems = it.items ?? it.agenda;
       return (
         Array.isArray(subItems) &&
@@ -141,9 +142,13 @@ export function hasActualAgendaActivities(agenda: unknown): boolean {
   }
 
   if ("days" in rec && Array.isArray(rec.days)) {
+    if (rec.days.length === 0) return false;
+    // If tracks/days are defined (e.g. tracks added from breakout sessions or manual tracks),
+    // they represent configured agenda tracks even before activities are added inside them.
     return rec.days.some((day: unknown) => {
       if (!day || typeof day !== "object") return false;
-      const d = day as { items?: unknown[]; agenda?: unknown[] };
+      const d = day as { title?: string; items?: unknown[]; agenda?: unknown[] };
+      if (d.title?.trim()) return true;
       const items = d.items ?? d.agenda;
       return (
         Array.isArray(items) &&

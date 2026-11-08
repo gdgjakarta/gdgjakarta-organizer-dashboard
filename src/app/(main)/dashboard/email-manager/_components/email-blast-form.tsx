@@ -1165,6 +1165,13 @@ export function EmailBlastForm({
         setConfirmDialogOpen(false);
         setPendingFormData(null);
         reset();
+        setActiveTemplate(null);
+        setCurrentFeatureTemplateId("default");
+        setTemplateBaseline({
+          subject: "",
+          body: defaultHtmlTemplate,
+        });
+        onTemplateChange?.(null);
         onSuccess?.();
         return;
       }
@@ -1235,6 +1242,13 @@ export function EmailBlastForm({
       setConfirmDialogOpen(false);
       setPendingFormData(null);
       reset();
+      setActiveTemplate(null);
+      setCurrentFeatureTemplateId("default");
+      setTemplateBaseline({
+        subject: "",
+        body: defaultHtmlTemplate,
+      });
+      onTemplateChange?.(null);
       onSuccess?.();
     } catch (error: unknown) {
       console.error(error);

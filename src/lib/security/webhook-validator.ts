@@ -3,7 +3,7 @@
  * Prevents Server-Side Request Forgery (SSRF) and credential exfiltration.
  */
 
-const DEFAULT_ALLOWED_DOMAINS = ["gdgjakarta.com"];
+const DEFAULT_ALLOWED_DOMAINS = ["gdgjakarta.com", "gdgjakarta.org"];
 
 function parseHost(urlString: string): string | null {
   try {

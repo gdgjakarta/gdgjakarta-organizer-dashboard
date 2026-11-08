@@ -145,6 +145,61 @@ export function extractApiMessage(input: unknown, fallback = "An unexpected erro
     if (typeof obj.data === "object" && obj.data !== null) {
       return extractApiMessage(obj.data, fallback);
     }
+
+    // Handle dictionary-based validation errors from Django/Bevy REST APIs
+    // e.g. { status: ['Published events cannot be changed to Draft.'] }
+    // or { virtual_venue_link: ['This field is required.'], venue_zip_code: ['This field is required.'] }
+    const FIELD_LABEL_MAP: Record<string, string> = {
+      virtual_venue_link: "Virtual Venue Link",
+      virtual_event_type: "Virtual Event Platform",
+      virtual_event_instructions: "Virtual Instructions",
+      venue_zip_code: "Postal Code",
+      venue_name: "Venue Name",
+      venue_address: "Street Address",
+      venue_city: "City",
+      venue_country: "Country",
+      start_date: "Start Date",
+      end_date: "End Date",
+      total_capacity: "Capacity",
+      custom_tickets_url: "Ticket Registration Link",
+      status: "Status",
+    };
+
+    const fieldErrors = Object.entries(obj)
+      .map(([field, errVal]) => {
+        let msg = "";
+        if (Array.isArray(errVal)) {
+          msg = errVal
+            .map((v) => extractApiMessage(v, ""))
+            .filter(Boolean)
+            .join(", ");
+        } else if (typeof errVal === "string") {
+          msg = errVal.trim();
+        } else if (typeof errVal === "object" && errVal !== null) {
+          msg = extractApiMessage(errVal, "");
+        }
+        if (!msg) return null;
+
+        // Skip field prefix for non-field errors or details
+        if (field === "non_field_errors" || field === "detail" || field === "errors") {
+          return msg;
+        }
+
+        // If the error message is already a complete, self-explanatory sentence (e.g. "Published events cannot be changed to Draft.")
+        // and does NOT start with generic phrases like "This field is required", omit redundant field prefix
+        const isGenericMsg = /^(this field|enter a valid|is required|cannot be blank)/i.test(msg);
+        if (!isGenericMsg && /^[A-Z].*\.$/.test(msg)) {
+          return msg;
+        }
+
+        const label = FIELD_LABEL_MAP[field] || field.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+        return `${label}: ${msg}`;
+      })
+      .filter((line): line is string => Boolean(line));
+
+    if (fieldErrors.length > 0) {
+      return fieldErrors.join(" • ");
+    }
   }
 
   return String(input) || fallback;

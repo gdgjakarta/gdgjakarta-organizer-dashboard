@@ -136,6 +136,11 @@ Keep a component inside its route until it is reused by another feature. Do not 
 
 ## Feature Notes
 
+- **System Health & Docker Operations (`/dashboard/health`)**:
+  - **Routes & Actions**: `src/app/(main)/dashboard/health/page.tsx`, `src/app/(main)/dashboard/health/_components/system-health-dashboard.tsx`, `src/server/system-health-actions.ts`, and `src/app/api/system-health/backup/route.ts`.
+  - **GCP Free Tier (`e2-micro`) + Cloudflare Tunnel + `gdg-ops-agent` Sidecar (`~/.zeabur-migration/gdg-jakarta/ops-agent.mjs`)**: Zero-dependency Node.js sidecar (~12 MB RAM) mounting `/var/run/docker.sock`, `/proc:/host/proc:ro`, and `/:/host/root:ro`. Authenticated via timing-safe `X-Ops-Secret` (`process.env.OPS_AGENT_SECRET`, never stored in Firestore).
+  - **Container Lifecycle & Telemetry**: Provides 1-click container **Restart**, **Update Image** (pulls target/latest tag, recreates container preserving volumes/aliases, and prunes dangling images), **Start/Stop**, **Live Logs**, host **1 GB RAM / 2 GB Swap / 30 GB Disk / Docker Volume** meters, live HTTP/DB health probes, and **1-Click PostgreSQL Backup (`pg_dump -Fc`)** streaming.
+
 - **Full-Chapter Member Search (`/dashboard/members`)**:
   - **Algolia Chapter Member Index (`searchBevyChapterMembers`)**: Bevy's `/chapter/{chapterId}/member/` endpoint does not filter by search query; instead, Bevy uses Algolia (`{index_prefix}_chapter_member_index_{index_suffix}` from `GET /api/config/algolia/` authenticated with `chapter_member_key`). `searchBevyChapterMembers` (`src/lib/bevy/client.ts`) and `searchBevyChapterMembersAction` (`src/server/bevy-actions.ts`) query this index across all chapter members (`filters: chapter_id={chapterId}`).
   - **Uncapped Firestore Member Merge & Debounced Search (`members.tsx`)**: Loads all Firestore `members` (`getFirestoreMembers()`) and runs a debounced (300ms) server-side Bevy Algolia search when typing in the search bar, merging matched chapter members into the table in real time.
@@ -233,6 +238,12 @@ Keep a component inside its route until it is reused by another feature. Do not 
   - Organizers can manually add an attendee from the **Registrants** tab via the **Add Registrant** button.
   - Inputs are strictly configured for **Full Name**, **Email**, and a grouped **Ticket / Bundle Selection** dropdown listing active ticket tiers and active bundle packages.
   - Features two smart action buttons:
+
+- **Create Bevy Event with External Registration & Short Link Sync**:
+  - **Create Event Dialog (`create-event-dialog.tsx`)**: Added in `/dashboard/events` header next to "Open in Bevy". Allows organizers to create events directly on Bevy configured with `event_type: 40` (External registration).
+  - **Initial URL Mapping**: Upon creation, `custom_tickets_url` defaults to `https://gdgjakarta.com/events/{eventId}`, ensuring tickets and attendees are managed inside the dashboard.
+  - **Automatic Short Link Sync (`generateEventShortLinkAction`)**: When an organizer generates a Short.io short link for an event's Live Page (`https://s.gdgjakarta.org/...`), Bevy's `custom_tickets_url` is automatically updated via `PATCH /api/event/{eventId}/` so attendees clicking RSVP or Get Tickets on Bevy are routed directly through the short link.
+  - **Event Mutations (`src/lib/bevy/client.ts` & `src/server/bevy-actions.ts`)**: `createBevyExternalEvent`, `updateBevyEvent`, `createBevyEventAction`, and `updateBevyEventAction` with session spoofing, automatic cache invalidation (`eventsLkgCache.clear()`), and path revalidation.
     - **Add Directly**: Always available. Directly invokes the n8n Add Attendee to Bevy API webhook (`/webhook/api/add-bevy-attendee`) with interpolated confirmation emails, issues Bevy attendee codes, and saves the attendee in Firestore (`event_registrations`) as confirmed (`approved` or `paid_and_registered`).
     - **Generate Payment Link**: Automatically shown when a paid ticket or bundle is detected (`price > 0`). Creates a pending registration (`waiting_for_payment`), generates a DOKU payment invoice via `generatePaymentLinkAction`, and emails the payment checkout link to the attendee.
 

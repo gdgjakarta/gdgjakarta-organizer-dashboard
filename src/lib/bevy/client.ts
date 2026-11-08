@@ -20,6 +20,9 @@ import { extractEventPartners } from "./partners";
 import {
   type BevyAgendaDay,
   type BevyAgendaItem,
+  type BevyAiContentModificationParams,
+  type BevyAiContentModificationResponse,
+  type BevyAiEventGenerationResponse,
   type BevyAttendee,
   type BevyAttendeeCheckInRequest,
   type BevyAttendeeCheckInResponse,
@@ -28,10 +31,12 @@ import {
   type BevyChapterSlim,
   type BevyChapterTeamMember,
   type BevyChapterTeamRole,
+  type BevyCreateEventInput,
   type BevyEvent,
   type BevyEventsResponse,
   type BevyMembersResponse,
   type BevySponsor,
+  type BevyUpdateEventInput,
   type BevyUser,
   ChapterRole,
   getChapterRoleById,
@@ -1188,7 +1193,7 @@ export async function getBevyChapterEvents(
 
   const isAllStatus = !status || status.toLowerCase() === "all";
   const fields =
-    "id,title,description_short,description,event_type_title,audience_type,is_virtual_event,virtual_event_type,attendee_virtual_venue_link,video_url,start_date,end_date,status,picture,banner,cropped_banner_url,cropped_picture_url,event_type_logo,url,static_url,total_attendees,checkin_count,total_tickets,total_rsvps_sold,completed,tags,chapter,is_hidden,is_test,venue_name,venue_address,venue_city";
+    "id,title,description_short,description,event_type_title,audience_type,is_virtual_event,virtual_event_type,attendee_virtual_venue_link,join_virtual_event_url,video_url,start_date,end_date,status,picture,banner,cropped_banner_url,cropped_picture_url,event_type_logo,url,static_url,total_attendees,checkin_count,total_tickets,total_rsvps_sold,completed,tags,chapter,is_hidden,is_test,venue_name,venue_address,venue_city,venue_state,venue_zip_code,venue_country,venue_latitude,venue_longitude";
   const hiddenParam = includeHidden ? "" : "&is_hidden=false";
   const statusParam = !isAllStatus ? `&status=${encodeURIComponent(status)}` : "";
   const result = await bevyFetch<BevyEventsResponse>(
@@ -1321,12 +1326,13 @@ export async function getBevyEventById(
     const hasPictureUrl = Boolean(result.picture?.url || result.picture?.thumbnail_url);
     if (!hasPictureUrl) {
       const fallbackUrl =
-        result.event_type_logo?.url ??
-        result.event_type_logo?.thumbnail_url ??
-        result.cropped_picture_url;
+        result.event_type_logo?.url ?? result.event_type_logo?.thumbnail_url ?? result.cropped_picture_url;
       if (fallbackUrl) {
         const normalized1080Url = fallbackUrl.includes("res.cloudinary.com")
-          ? fallbackUrl.replace(/\/image\/upload\/(?:.+?\/)?v1\//, "/image/upload/c_fill,dpr_2.0,f_auto,g_center,q_auto:good/v1/")
+          ? fallbackUrl.replace(
+              /\/image\/upload\/(?:.+?\/)?v1\//,
+              "/image/upload/c_fill,dpr_2.0,f_auto,g_center,q_auto:good/v1/",
+            )
           : fallbackUrl;
 
         result.picture = {
@@ -1335,7 +1341,7 @@ export async function getBevyEventById(
         };
         result.picture_url = normalized1080Url;
       }
-    } else if (result.picture?.url && result.picture.url.includes("res.cloudinary.com")) {
+    } else if (result.picture?.url?.includes("res.cloudinary.com")) {
       result.picture_url = result.picture.url.replace(
         /\/image\/upload\/(?:.+?\/)?v1\//,
         "/image/upload/c_fill,dpr_2.0,f_auto,g_center,q_auto:good/v1/",
@@ -1741,4 +1747,330 @@ export async function findBevyAttendeeIdByEmail(
   }
 
   return null;
+}
+
+/**
+ * Creates a new event in Bevy with external registration link (event_type: 40).
+ * Defaults custom_tickets_url to the dashboard registration page if not explicitly set.
+ */
+export async function createBevyExternalEvent(
+  input: BevyCreateEventInput,
+  chapterId: string | number = BEVY_CONFIG.chapterId,
+): Promise<{ success: boolean; data?: BevyEvent | null; error?: string }> {
+  try {
+    const chapterSlug = process.env.BEVY_CHAPTER_SLUG || BEVY_CONFIG.chapterSlug || "gdg-jakarta";
+    const numericChapterId = Number(chapterId) || 642;
+
+    const basePayload: Record<string, unknown> = {
+      title: input.title.trim(),
+      description: input.description.trim(),
+      description_short: input.description_short?.trim() || null,
+      show_short_description_on_event_banner: false,
+      tickets: [],
+      recurring_event: null,
+      start_date: input.start_date,
+      end_date: input.end_date,
+      _timezone: input.timezone || "Asia/Jakarta",
+      picture: "",
+      banner: "",
+      banner_crop_vertical: 0,
+      total_capacity: String(input.total_capacity ?? 100),
+      audience_type: input.audience_type || "IN_PERSON",
+      is_test: input.is_test ?? false,
+      is_hidden: input.is_hidden ?? false,
+      visible_on_parent_chapter_only: input.visible_on_parent_chapter_only ?? false,
+      sharing_disabled: input.sharing_disabled ?? false,
+      allow_automated_emails_when_hidden: input.allow_automated_emails_when_hidden ?? false,
+      virtual_event_instructions: input.virtual_event_instructions || "",
+      moderated_qa_enabled: input.moderated_qa_enabled ?? false,
+      chat_disabled: input.chat_disabled ?? false,
+      is_many_to_many_virtual_event: input.is_many_to_many_virtual_event ?? false,
+      allows_cohosting: false,
+      event_type: 40, // External registration
+      meetup_announce: false,
+      custom_tickets_url: input.custom_tickets_url || "",
+      speakers: [],
+      mentors: [],
+      facilitators: [],
+      panelists: [],
+      judges: [],
+      moderators: [],
+      hosts: [],
+      "sponsors_platinum-4": [],
+      "sponsors_gold-5": [],
+      "sponsors_silver-4": [],
+      "sponsors_bronze-4": [],
+      "sponsors_community-4": [],
+      partners_list: [],
+      companies: [],
+      automatically_record_event:
+        input.automatically_record_event ?? (input.audience_type === "VIRTUAL" || input.audience_type === "HYBRID"),
+      tags: [],
+      virtual_event_type:
+        input.audience_type === "VIRTUAL" || input.audience_type === "HYBRID"
+          ? input.virtual_event_type || "internal"
+          : null,
+      virtual_venue_link: input.virtual_venue_link || "",
+      venue_name: input.venue_name || "",
+      venue_address: input.venue_address || "",
+      venue_city: input.venue_city || "",
+      venue_zip_code: input.venue_zip_code || "",
+      show_map: input.show_map ?? true,
+      venue_country: input.venue_country || "ID",
+      venue_state: input.venue_state || "Daerah Khusus Ibukota Jakarta",
+      venue_latitude: input.venue_latitude ?? -6.1932775,
+      venue_longitude: input.venue_longitude ?? 106.8396981,
+      status: input.status || "Published",
+      chapter: numericChapterId,
+    };
+
+    console.log(`[createBevyExternalEvent] Creating event for chapter ${chapterId}...`);
+
+    // 1. Send POST /event/ to create the event entity
+    const postRes = await bevyFetchWithResponse<BevyEvent>(
+      `/event/`,
+      {
+        method: "POST",
+        headers: {
+          Origin: "https://gdg.community.dev",
+          Referer: `https://gdg.community.dev/dashboard/${chapterSlug}/events/`,
+          "Auth-Type": "AUTHORIZED",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify(basePayload),
+        requireAuth: true,
+      },
+      chapterId,
+    );
+
+    let createdEvent = postRes.data;
+
+    // If initial creation failed, return the error
+    if (!postRes.ok || !createdEvent?.id) {
+      const errorMsg = extractApiMessage(postRes.data, `Failed to create event (HTTP ${postRes.status})`);
+      console.error(`[createBevyExternalEvent] Failed to create event:`, errorMsg, postRes.data);
+      return { success: false, error: errorMsg };
+    }
+
+    const eventId = String(createdEvent.id);
+
+    // 2. Ensure custom_tickets_url is set to https://gdgjakarta.com/events/{eventId} if not set
+    const finalTicketsUrl = input.custom_tickets_url || `https://gdgjakarta.com/events/${eventId}`;
+    if (!input.custom_tickets_url || input.custom_tickets_url !== finalTicketsUrl) {
+      console.log(`[createBevyExternalEvent] Updating custom_tickets_url to ${finalTicketsUrl} on event ${eventId}`);
+      const patchRes = await updateBevyEvent(
+        eventId,
+        {
+          custom_tickets_url: finalTicketsUrl,
+        },
+        chapterId,
+      );
+      if (patchRes.success && patchRes.data) {
+        createdEvent = patchRes.data;
+      }
+    }
+
+    // Invalidate cached event list
+    eventsLkgCache.clear();
+
+    return { success: true, data: createdEvent };
+  } catch (err) {
+    console.error(`[createBevyExternalEvent] Exception:`, err);
+    return { success: false, error: extractApiMessage(err, "Failed to connect to Bevy server") };
+  }
+}
+
+/**
+ * Updates an existing Bevy event via PATCH /api/event/{eventId}/.
+ * Used for syncing custom_tickets_url (Short links), capacity, venue, etc.
+ */
+export async function updateBevyEvent(
+  eventId: string | number,
+  payload: BevyUpdateEventInput,
+  chapterId: string | number = BEVY_CONFIG.chapterId,
+): Promise<{ success: boolean; data?: BevyEvent | null; error?: string }> {
+  try {
+    const chapterSlug = process.env.BEVY_CHAPTER_SLUG || BEVY_CONFIG.chapterSlug || "gdg-jakarta";
+    const cleanId = String(eventId).trim();
+    const numericChapterId = Number(chapterId) || 642;
+
+    const patchPayload: Record<string, unknown> = {
+      ...payload,
+      id: cleanId,
+      chapter: numericChapterId,
+      event_type: payload.event_type ?? 40,
+      custom_tickets_url: payload.custom_tickets_url || `https://gdgjakarta.com/events/${cleanId}`,
+      meetup_announce: payload.meetup_announce ?? false,
+    };
+
+    if (payload.total_capacity !== undefined) {
+      patchPayload.total_capacity = String(payload.total_capacity);
+    }
+
+    if (payload.agenda !== undefined && typeof payload.agenda !== "string") {
+      patchPayload.agenda = JSON.stringify(payload.agenda);
+    }
+
+    // Sanitize virtual/venue fields depending on audience type so Bevy doesn't fail on missing required subfields
+    if (payload.audience_type === "VIRTUAL") {
+      delete patchPayload.venue_name;
+      delete patchPayload.venue_address;
+      delete patchPayload.venue_city;
+      delete patchPayload.venue_zip_code;
+      delete patchPayload.venue_country;
+      delete patchPayload.venue_state;
+      delete patchPayload.venue_latitude;
+      delete patchPayload.venue_longitude;
+    } else if (payload.audience_type === "IN_PERSON") {
+      delete patchPayload.virtual_venue_link;
+      delete patchPayload.virtual_event_instructions;
+      delete patchPayload.virtual_event_type;
+    }
+
+    if (patchPayload.virtual_event_type === "internal") {
+      // Internal Bevy virtual does not require or allow external link
+      delete patchPayload.virtual_venue_link;
+    }
+
+    const referer = `https://gdg.community.dev/dashboard/${chapterSlug}/events/${cleanId}/details/?mode=create`;
+
+    console.log(`[updateBevyEvent] Patching event ${cleanId} with payload:`, Object.keys(patchPayload));
+
+    const response = await bevyFetchWithResponse<BevyEvent>(
+      `/event/${cleanId}/`,
+      {
+        method: "PATCH",
+        headers: {
+          Origin: "https://gdg.community.dev",
+          Referer: referer,
+          "Auth-Type": "AUTHORIZED",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify(patchPayload),
+        requireAuth: true,
+      },
+      chapterId,
+    );
+
+    if (!response.ok) {
+      const errorMsg = extractApiMessage(response.data, `Failed to update event (HTTP ${response.status})`);
+      console.error(`[updateBevyEvent] Failed:`, errorMsg, response.data);
+      return { success: false, error: errorMsg };
+    }
+
+    // Invalidate cached event list
+    eventsLkgCache.clear();
+
+    return { success: true, data: response.data };
+  } catch (err) {
+    console.error(`[updateBevyEvent] Exception:`, err);
+    return { success: false, error: extractApiMessage(err, "Failed to connect to Bevy server") };
+  }
+}
+
+/**
+ * Calls Bevy's AI Event Generation endpoint to draft an event title, description, and short summary.
+ * Endpoint: POST /api/ai/event_generation/generate/
+ */
+export async function generateBevyAiEventDetails(
+  topic: string,
+  chapterId: string | number = BEVY_CONFIG.chapterId,
+): Promise<{ success: boolean; data?: BevyAiEventGenerationResponse | null; error?: string }> {
+  try {
+    const chapterSlug = process.env.BEVY_CHAPTER_SLUG || BEVY_CONFIG.chapterSlug || "gdg-jakarta";
+    const numericChapterId = Number(chapterId) || 642;
+
+    const payload = {
+      chapter_id: numericChapterId,
+      topic: topic.trim(),
+    };
+
+    console.log(
+      `[generateBevyAiEventDetails] Requesting AI generation for topic "${topic}" in chapter ${chapterId}...`,
+    );
+
+    const response = await bevyFetchWithResponse<BevyAiEventGenerationResponse>(
+      `/ai/event_generation/generate/`,
+      {
+        method: "POST",
+        headers: {
+          Origin: "https://gdg.community.dev",
+          Referer: `https://gdg.community.dev/dashboard/${chapterSlug}/events/`,
+          "Auth-Type": "AUTHORIZED",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify(payload),
+        requireAuth: true,
+      },
+      chapterId,
+    );
+
+    if (!response.ok || !response.data) {
+      const errorMsg = extractApiMessage(response.data, `Failed to generate event with AI (HTTP ${response.status})`);
+      console.error(`[generateBevyAiEventDetails] Failed:`, errorMsg, response.data);
+      return { success: false, error: errorMsg };
+    }
+
+    return { success: true, data: response.data };
+  } catch (err) {
+    console.error(`[generateBevyAiEventDetails] Exception:`, err);
+    return { success: false, error: extractApiMessage(err, "Failed to connect to Bevy server") };
+  }
+}
+
+/**
+ * Calls Bevy's AI Content Modification endpoint to regenerate, shorten, or rewrite event title or description.
+ * Endpoint: POST /api/ai/content_modification/
+ */
+export async function modifyBevyAiEventContent(
+  params: BevyAiContentModificationParams,
+  chapterId: string | number = BEVY_CONFIG.chapterId,
+): Promise<{ success: boolean; data?: BevyAiContentModificationResponse | null; error?: string }> {
+  try {
+    const chapterSlug = process.env.BEVY_CHAPTER_SLUG || BEVY_CONFIG.chapterSlug || "gdg-jakarta";
+
+    const payload = {
+      field: params.field,
+      change: params.change || "regenerate",
+      logging_context: {
+        object_id: String(params.objectId || ""),
+        object_type: "event",
+      },
+      object_representation: {
+        title: params.title,
+        description: params.description,
+      },
+      max_length: params.maxLength ?? 10000,
+      min_length: params.minLength ?? 11,
+    };
+
+    console.log(`[modifyBevyAiEventContent] Modifying ${params.field} with change="${payload.change}"...`);
+
+    const response = await bevyFetchWithResponse<BevyAiContentModificationResponse>(
+      `/ai/content_modification/`,
+      {
+        method: "POST",
+        headers: {
+          Origin: "https://gdg.community.dev",
+          Referer: `https://gdg.community.dev/dashboard/${chapterSlug}/events/`,
+          "Auth-Type": "AUTHORIZED",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify(payload),
+        requireAuth: true,
+      },
+      chapterId,
+    );
+
+    if (!response.ok || !response.data) {
+      const errorMsg = extractApiMessage(response.data, `Failed to modify content with AI (HTTP ${response.status})`);
+      console.error(`[modifyBevyAiEventContent] Failed:`, errorMsg, response.data);
+      return { success: false, error: errorMsg };
+    }
+
+    return { success: true, data: response.data };
+  } catch (err) {
+    console.error(`[modifyBevyAiEventContent] Exception:`, err);
+    return { success: false, error: extractApiMessage(err, "Failed to connect to Bevy server") };
+  }
 }

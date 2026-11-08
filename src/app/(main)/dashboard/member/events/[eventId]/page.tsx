@@ -60,11 +60,16 @@ export default async function MemberEventDetailPage({ params, searchParams }: Me
         audience_type: audienceType,
         is_virtual: isVirtual,
         venue:
-          direct.venue_name || direct.venue_address || direct.venue_city
+          direct.venue_name || direct.venue_address || direct.venue_city || direct.venue_zip_code
             ? {
                 name: direct.venue_name,
                 address: direct.venue_address,
                 city: direct.venue_city,
+                state: direct.venue_state,
+                zip_code: direct.venue_zip_code,
+                country: direct.venue_country,
+                latitude: direct.venue_latitude,
+                longitude: direct.venue_longitude,
               }
             : undefined,
         url: direct.url ?? undefined,
@@ -121,11 +126,16 @@ export default async function MemberEventDetailPage({ params, searchParams }: Me
           audience_type: audienceType,
           is_virtual: isVirtual,
           venue:
-            matched.venue_name || matched.venue_address || matched.venue_city
+            matched.venue_name || matched.venue_address || matched.venue_city || matched.venue_zip_code
               ? {
                   name: matched.venue_name,
                   address: matched.venue_address,
                   city: matched.venue_city,
+                  state: matched.venue_state,
+                  zip_code: matched.venue_zip_code,
+                  country: matched.venue_country,
+                  latitude: matched.venue_latitude,
+                  longitude: matched.venue_longitude,
                 }
               : undefined,
           url: matched.url ?? undefined,
@@ -157,7 +167,21 @@ export default async function MemberEventDetailPage({ params, searchParams }: Me
               ...event,
               id: String(event.id || firestoreDoc.id),
               title: event.title || firestoreDoc.title,
-              venue: event.venue ?? firestoreDoc.venue,
+              venue:
+                event.venue || firestoreDoc.venue
+                  ? {
+                      ...(firestoreDoc.venue ?? {}),
+                      ...(event.venue ?? {}),
+                      name: event.venue?.name ?? firestoreDoc.venue?.name,
+                      address: event.venue?.address ?? firestoreDoc.venue?.address,
+                      city: event.venue?.city ?? firestoreDoc.venue?.city,
+                      state: event.venue?.state ?? firestoreDoc.venue?.state,
+                      zip_code: event.venue?.zip_code ?? firestoreDoc.venue?.zip_code,
+                      country: event.venue?.country ?? firestoreDoc.venue?.country,
+                      latitude: event.venue?.latitude ?? firestoreDoc.venue?.latitude,
+                      longitude: event.venue?.longitude ?? firestoreDoc.venue?.longitude,
+                    }
+                  : undefined,
               start_date: event.start_date || firestoreDoc.start_date,
               end_date: event.end_date || firestoreDoc.end_date,
               picture_url: event.picture_url || firestoreDoc.picture_url || firestoreDoc.banner_url,

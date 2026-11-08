@@ -2,6 +2,7 @@ import {
   createFolder,
   createLink,
   deleteLink,
+  expandLink,
   getLinkByOriginalUrl,
   listFolders,
   listLinks,
@@ -205,6 +206,32 @@ export async function deleteShortLink(linkId: string): Promise<boolean> {
   } catch (error) {
     console.error("[Short.io] deleteShortLink exception:", error);
     return false;
+  }
+}
+
+/**
+ * Expand/lookup a short link by path/slug
+ */
+export async function getShortLinkByPath(path: string): Promise<ShortLinkItem | null> {
+  ensureClientAuth();
+  try {
+    const cleanPath = path.trim().replace(/^\//, "");
+    if (!cleanPath) return null;
+
+    const res = await expandLink({
+      query: {
+        domain: SHORTIO_CONFIG.domain,
+        path: cleanPath,
+      },
+    });
+
+    if (res.error || !res.data) {
+      return null;
+    }
+
+    return res.data as ShortLinkItem;
+  } catch {
+    return null;
   }
 }
 

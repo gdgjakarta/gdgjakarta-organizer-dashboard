@@ -153,6 +153,12 @@ export const organizerSidebarItems: NavGroup[] = [
         icon: Printer,
       },
       {
+        id: "system-health",
+        title: "System Health",
+        url: "/dashboard/health",
+        icon: Activity,
+      },
+      {
         id: "maintenance",
         title: "Maintenance Mode",
         url: "/dashboard/maintenance",

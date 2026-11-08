@@ -19,6 +19,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { getBevyDashboardUrl } from "@/config/remote-config-utils";
 import { dataTableFeatures } from "@/lib/data-table-features";
 
+import { CreateEventDialog } from "./create-event-dialog";
 import { type EventRow, eventFilters } from "./data";
 import { EventsBulkActions } from "./events-bulk-actions";
 import { eventsColumns } from "./events-columns";
@@ -243,6 +244,7 @@ export function Events({ events, totalCount }: { events: EventRow[]; totalCount?
               <Kbd className="h-4 text-[10px]">⌘K</Kbd>
             </InputGroupAddon>
           </InputGroup>
+          <CreateEventDialog />
           <Button size="sm" variant="outline" asChild>
             <a href={getBevyDashboardUrl("events")} target="_blank" rel="noopener noreferrer" className="gap-1.5">
               <ExternalLink className="size-3.5" />

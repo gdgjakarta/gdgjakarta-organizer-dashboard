@@ -62,6 +62,7 @@ import type { FirestoreEvent } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
+import { EditEventDialog } from "./edit-event-dialog";
 import { EventShortLinkButton } from "./event-short-link-button";
 
 function getDropRateColorClass(rate: number): string {
@@ -116,7 +117,16 @@ export function EventDetailHeader({
         const { subscribeFirestoreEventDoc } = await import("@/lib/firestore/client");
         unsubEvent = subscribeFirestoreEventDoc(targetEventId, (doc) => {
           if (doc) {
-            setEventData((prev) => ({ ...prev, ...doc }));
+            setEventData((prev) => ({
+              ...prev,
+              ...doc,
+              venue: doc.venue
+                ? {
+                    ...(prev.venue ?? {}),
+                    ...doc.venue,
+                  }
+                : prev.venue,
+            }));
           }
         });
       } catch (err) {
@@ -498,17 +508,19 @@ export function EventDetailHeader({
                 variant="outline"
                 className={cn(
                   "border px-2 py-0.5 font-medium text-xs",
-                  event.status === "Published" &&
+                  eventData.status === "Published" &&
                     "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-                  event.status === "Draft" && "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400",
-                  event.status === "Completed" && "border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400",
-                  event.status === "Canceled" && "border-destructive/20 bg-destructive/10 text-destructive",
+                  eventData.status === "Draft" &&
+                    "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400",
+                  eventData.status === "Completed" &&
+                    "border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400",
+                  eventData.status === "Canceled" && "border-destructive/20 bg-destructive/10 text-destructive",
                 )}
               >
-                {event.status}
+                {eventData.status}
               </Badge>
 
-              {event.is_test ? (
+              {eventData.is_test ? (
                 <Badge
                   variant="outline"
                   className="border-purple-500/20 bg-purple-500/10 px-2 py-0.5 font-medium text-purple-600 text-xs dark:text-purple-400"
@@ -547,14 +559,14 @@ export function EventDetailHeader({
                 </Badge>
               )}
 
-              {event.event_type_title && (
+              {eventData.event_type_title && (
                 <Badge variant="secondary" className="font-normal text-xs">
-                  {event.event_type_title}
+                  {eventData.event_type_title}
                 </Badge>
               )}
             </div>
 
-            <h1 className="font-bold text-2xl tracking-tight sm:text-3xl">{event.title}</h1>
+            <h1 className="font-bold text-2xl tracking-tight sm:text-3xl">{eventData.title}</h1>
 
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground text-sm">
               <span className="inline-flex items-center gap-1.5">
@@ -592,6 +604,15 @@ export function EventDetailHeader({
 
           {/* Action Buttons */}
           <div className="flex flex-wrap items-center gap-2 lg:shrink-0 lg:justify-end">
+            {isOrganizer && (
+              <EditEventDialog
+                event={eventData}
+                onEventUpdated={(updated) => {
+                  setEventData(updated);
+                }}
+              />
+            )}
+
             <Button variant="outline" size="sm" onClick={handleSync} disabled={isPending} className="gap-1.5">
               <RefreshCw className={cn("size-3.5", isPending && "animate-spin")} />
               Sync

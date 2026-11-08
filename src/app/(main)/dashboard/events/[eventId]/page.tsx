@@ -61,12 +61,22 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
         event_type_title: direct.event_type_title ?? "Standard Event",
         audience_type: audienceType,
         is_virtual: isVirtual,
+        virtual_event_type: direct.virtual_event_type ?? undefined,
+        attendee_virtual_venue_link: direct.attendee_virtual_venue_link ?? undefined,
+        join_virtual_event_url: direct.join_virtual_event_url ?? undefined,
+        virtual_event_instructions:
+          typeof direct.virtual_event_instructions === "string" ? direct.virtual_event_instructions : undefined,
         venue:
-          direct.venue_name || direct.venue_address || direct.venue_city
+          direct.venue_name || direct.venue_address || direct.venue_city || direct.venue_zip_code
             ? {
                 name: direct.venue_name,
                 address: direct.venue_address,
                 city: direct.venue_city,
+                state: direct.venue_state,
+                zip_code: direct.venue_zip_code,
+                country: direct.venue_country,
+                latitude: direct.venue_latitude,
+                longitude: direct.venue_longitude,
               }
             : undefined,
         url: direct.url ?? undefined,
@@ -127,11 +137,16 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
           audience_type: audienceType,
           is_virtual: isVirtual,
           venue:
-            matched.venue_name || matched.venue_address || matched.venue_city
+            matched.venue_name || matched.venue_address || matched.venue_city || matched.venue_zip_code
               ? {
                   name: matched.venue_name,
                   address: matched.venue_address,
                   city: matched.venue_city,
+                  state: matched.venue_state,
+                  zip_code: matched.venue_zip_code,
+                  country: matched.venue_country,
+                  latitude: matched.venue_latitude,
+                  longitude: matched.venue_longitude,
                 }
               : undefined,
           url: matched.url ?? undefined,
@@ -180,8 +195,29 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
               ...event,
               id: String(event.id || firestoreDoc.id),
               // Ensure core Bevy upstream fields always take precedence over stale cached Firestore data
+              status: event.status || firestoreDoc.status,
               title: event.title || firestoreDoc.title,
-              venue: event.venue ?? firestoreDoc.venue,
+              venue:
+                event.venue || firestoreDoc.venue
+                  ? {
+                      ...(firestoreDoc.venue ?? {}),
+                      ...(event.venue ?? {}),
+                      name: event.venue?.name ?? firestoreDoc.venue?.name,
+                      address: event.venue?.address ?? firestoreDoc.venue?.address,
+                      city: event.venue?.city ?? firestoreDoc.venue?.city,
+                      state: event.venue?.state ?? firestoreDoc.venue?.state,
+                      zip_code: event.venue?.zip_code ?? firestoreDoc.venue?.zip_code,
+                      country: event.venue?.country ?? firestoreDoc.venue?.country,
+                      latitude: event.venue?.latitude ?? firestoreDoc.venue?.latitude,
+                      longitude: event.venue?.longitude ?? firestoreDoc.venue?.longitude,
+                    }
+                  : undefined,
+              audience_type: event.audience_type || firestoreDoc.audience_type,
+              virtual_event_type: event.virtual_event_type ?? firestoreDoc.virtual_event_type,
+              attendee_virtual_venue_link:
+                event.attendee_virtual_venue_link ?? firestoreDoc.attendee_virtual_venue_link,
+              join_virtual_event_url: event.join_virtual_event_url ?? firestoreDoc.join_virtual_event_url,
+              virtual_event_instructions: event.virtual_event_instructions ?? firestoreDoc.virtual_event_instructions,
               start_date: event.start_date || firestoreDoc.start_date,
               end_date: event.end_date || firestoreDoc.end_date,
               picture_url: event.picture_url || firestoreDoc.picture_url || firestoreDoc.banner_url,
