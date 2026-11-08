@@ -489,7 +489,7 @@ export const DEFAULT_PARTNERSHIP_CONTENT: PartnershipContent = {
       id: "sp-faq-4",
       question: "How do we receive the full DevFest 2026 sponsorship proposal deck?",
       answer:
-        "Simply send an email to hello@gdgjakarta.org, message our partnership team via (+62) 821-2488-5424 (Anggi Maisa H.), or submit the quick inquiry form on this page. Our partnership team will respond within 24–48 hours with our complete deck, floor plan, and activation details.",
+        "Simply send an email to hello@gdgjakarta.org or submit the quick inquiry form on this page. Our partnership team will respond within 24–48 hours with our complete deck, floor plan, and activation details.",
     },
     {
       id: "sp-faq-5",
@@ -510,8 +510,6 @@ export const DEFAULT_PARTNERSHIP_CONTENT: PartnershipContent = {
       "Let’s elevate the community together. Connect with our partnership team to explore tailored opportunities for DevFest Jakarta 2026.",
     contactEmail: "hello@gdgjakarta.org",
     instagramUrl: "https://instagram.com/gdgjakarta",
-    contactPerson: "Anggi Maisa H.",
-    phoneOrWhatsapp: "(+62) 821-2488-5424",
     interestOptions: [
       "DevFest Jakarta 2026 - Diamond",
       "DevFest Jakarta 2026 - Platinum",

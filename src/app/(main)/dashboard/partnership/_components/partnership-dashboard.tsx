@@ -986,7 +986,7 @@ export function PartnershipDashboard() {
                       onChange={(e) =>
                         setContent({ ...content, contact: { ...content.contact, contactPerson: e.target.value } })
                       }
-                      placeholder="e.g. Anggi Maisa H."
+                      placeholder="e.g. Partnership Lead"
                     />
                   </div>
 
@@ -1000,7 +1000,7 @@ export function PartnershipDashboard() {
                       onChange={(e) =>
                         setContent({ ...content, contact: { ...content.contact, phoneOrWhatsapp: e.target.value } })
                       }
-                      placeholder="e.g. (+62) 821-2488-5424"
+                      placeholder="e.g. (+62) 812-3456-7890"
                     />
                   </div>
                 </div>
