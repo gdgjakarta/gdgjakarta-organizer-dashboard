@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.11] - 2026-11-09
+
+### Fixed
+- Fixed in-person event creation failure by omitting `virtual_event_type`, `virtual_venue_link`, and `virtual_event_instructions` from the Bevy payload for `IN_PERSON` events.
+
+---
+
 ## [1.0.10] - 2026-11-09
 
 ### Fixed

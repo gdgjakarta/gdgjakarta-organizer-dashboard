@@ -16,10 +16,22 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.11",
+    releaseDate: "2026-11-09",
+    title: "In-Person Event Creation Fix",
+    badge: "Latest",
+    items: [
+      {
+        category: "Fixed",
+        text: "Fixed in-person event creation failure by omitting virtual event fields from the Bevy payload for IN_PERSON events.",
+      },
+    ],
+  },
+  {
     version: "1.0.10",
     releaseDate: "2026-11-09",
     title: "Event Creation & Feedback Dialog Polish",
-    badge: "Latest",
+    badge: "Update",
     items: [
       {
         category: "Fixed",

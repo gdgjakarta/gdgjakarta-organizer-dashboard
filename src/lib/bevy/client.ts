@@ -1781,7 +1781,6 @@ export async function createBevyExternalEvent(
       visible_on_parent_chapter_only: input.visible_on_parent_chapter_only ?? false,
       sharing_disabled: input.sharing_disabled ?? false,
       allow_automated_emails_when_hidden: input.allow_automated_emails_when_hidden ?? false,
-      virtual_event_instructions: input.virtual_event_instructions || "",
       moderated_qa_enabled: input.moderated_qa_enabled ?? false,
       chat_disabled: input.chat_disabled ?? false,
       is_many_to_many_virtual_event: input.is_many_to_many_virtual_event ?? false,
@@ -1806,11 +1805,15 @@ export async function createBevyExternalEvent(
       automatically_record_event:
         input.automatically_record_event ?? (input.audience_type === "VIRTUAL" || input.audience_type === "HYBRID"),
       tags: [],
-      virtual_event_type:
-        input.audience_type === "VIRTUAL" || input.audience_type === "HYBRID"
-          ? input.virtual_event_type || "internal"
-          : null,
-      virtual_venue_link: input.virtual_venue_link || "",
+      ...(input.audience_type === "VIRTUAL" || input.audience_type === "HYBRID"
+        ? {
+            virtual_event_type: input.virtual_event_type || "internal",
+            ...(input.virtual_venue_link ? { virtual_venue_link: input.virtual_venue_link } : {}),
+            ...(input.virtual_event_instructions
+              ? { virtual_event_instructions: input.virtual_event_instructions }
+              : {}),
+          }
+        : {}),
       venue_name: input.venue_name || "",
       venue_address: input.venue_address || "",
       venue_city: input.venue_city || "",
