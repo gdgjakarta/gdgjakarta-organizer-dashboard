@@ -15,6 +15,7 @@ import {
   ExternalLink,
   FileText,
   HardDrive,
+  Loader2,
   Play,
   RefreshCw,
   RotateCw,
@@ -653,8 +654,12 @@ export function SystemHealthDashboard({ initialConfig, initialSnapshot }: System
                             });
                           }}
                         >
-                          <ArrowUpCircle className="mr-1.5 size-3.5" />
-                          Update Image
+                          {runningContainerOp === `${c.name}:update` ? (
+                            <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                          ) : (
+                            <ArrowUpCircle className="mr-1.5 size-3.5" />
+                          )}
+                          {runningContainerOp === `${c.name}:update` ? "Updating Image..." : "Update Image"}
                         </Button>
 
                         {isRunning ? (

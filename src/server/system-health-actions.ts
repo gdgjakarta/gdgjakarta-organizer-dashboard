@@ -15,7 +15,14 @@ import {
 import { isAuthorizedOrganizerSession } from "@/server/auth-guard";
 import { getFirestoreDoc } from "@/server/firestore-admin";
 
-const ALLOWED_CONTAINERS = new Set(["gdg-n8n", "gdg-postgresql", "gdg-gowa", "gdg-cloudflared", "gdg-ops-agent"]);
+const ALLOWED_CONTAINERS = new Set([
+  "gdg-n8n",
+  "gdg-postgresql",
+  "gdg-gowa",
+  "gdg-cloudflared",
+  "gdg-gateway",
+  "gdg-ops-agent",
+]);
 
 function normalizeUrl(raw: string | undefined, fallback: string): string {
   const safe = assertSafeWebhookUrl(raw, fallback);
@@ -251,6 +258,12 @@ export async function executeContainerAction(
     };
 
     if (!res.ok || payload.ok === false) {
+      if (action === "update" && (res.status === 504 || res.status === 524)) {
+        return {
+          ok: true,
+          message: `Image pull for ${containerName} is still running in the background and will finish shortly.`,
+        };
+      }
       return {
         ok: false,
         message: `Failed to ${action} ${containerName}`,
