@@ -2,18 +2,10 @@
 
 import { useMemo, useState } from "react";
 
-import { Calendar, CheckCircle2, Filter, Sparkles, Tag, Wrench, Zap } from "lucide-react";
+import { Calendar, Filter, Sparkles, Tag, Wrench, Zap } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { CHANGELOG_RELEASES, type ChangelogRelease, CURRENT_APP_VERSION } from "@/config/changelog";
 
 interface ChangelogDialogProps {
@@ -40,7 +32,7 @@ export function ChangelogDialog({
   onOpenChange,
   releases,
   title,
-  confirmText = "Got it, explore",
+  confirmText: _confirmText,
   onConfirm,
 }: ChangelogDialogProps) {
   const isDiffMode = Boolean(releases && releases.length > 0);
@@ -55,9 +47,11 @@ export function ChangelogDialog({
     return displayReleases.filter((r) => r.version === selectedVersionFilter);
   }, [displayReleases, selectedVersionFilter]);
 
-  const handleClose = () => {
-    onConfirm?.();
-    onOpenChange(false);
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      onConfirm?.();
+    }
+    onOpenChange(nextOpen);
   };
 
   const getCategoryBadge = (category: string) => {
@@ -104,7 +98,7 @@ export function ChangelogDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="flex max-h-[88vh] max-w-[calc(100%-2rem)] flex-col overflow-hidden p-0 sm:max-h-[85vh] sm:max-w-2xl md:max-w-3xl lg:max-w-4xl">
         {/* Header with decorative banner */}
         <div className="relative border-b bg-gradient-to-r from-primary/10 via-primary/5 to-transparent px-6 pt-6 pb-4">
@@ -170,7 +164,7 @@ export function ChangelogDialog({
 
         {/* Content list with native smooth scroll */}
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
-          <div className="relative space-y-6 pb-6">
+          <div className="relative space-y-6">
             {filteredReleases.map((release, releaseIdx) => {
               const isLatestRelease = releaseIdx === 0;
 
@@ -223,19 +217,6 @@ export function ChangelogDialog({
             )}
           </div>
         </div>
-
-        {/* Footer (only in diff/welcome mode or when explicit confirm action exists) */}
-        {isDiffMode && (
-          <DialogFooter className="items-center border-t bg-muted/30 px-6 pt-4 pb-6 sm:pb-5 sm:justify-between">
-            <div className="hidden items-center gap-1.5 text-muted-foreground text-xs sm:flex">
-              <CheckCircle2 className="size-3.5 text-primary" />
-              <span>GDG Jakarta Community Dashboard</span>
-            </div>
-            <Button onClick={handleClose} className="w-full sm:w-auto">
-              {confirmText}
-            </Button>
-          </DialogFooter>
-        )}
       </DialogContent>
     </Dialog>
   );

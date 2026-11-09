@@ -16,10 +16,22 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.8",
+    releaseDate: "2026-11-09",
+    title: "Changelog Dialog Polish",
+    badge: "Latest",
+    items: [
+      {
+        category: "Improved",
+        text: "Cleaned up What's New / Changelog dialog UI by removing bottom action bar to maximize content view.",
+      },
+    ],
+  },
+  {
     version: "1.0.7",
     releaseDate: "2026-11-09",
     title: "System Health Redesign & HTML Error Inspection",
-    badge: "Latest",
+    badge: "Update",
     items: [
       {
         category: "Added",

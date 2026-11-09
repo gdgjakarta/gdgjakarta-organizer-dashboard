@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.8] - 2026-11-09
+
+### Improved
+- Cleaned up What's New / Changelog dialog UI by removing bottom action bar to maximize content view.
+
+---
+
 ## [1.0.7] - 2026-11-09
 
 ### Added
