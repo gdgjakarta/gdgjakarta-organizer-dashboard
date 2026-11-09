@@ -206,7 +206,7 @@ export function GoogleMapsPinpointDialog({
   const mapInstanceRef = useRef<GoogleMapInstance | null>(null);
   const markerInstanceRef = useRef<GoogleMarkerInstance | null>(null);
 
-  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "";
+  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "AIzaSyAHrt1-lGCA0x-SgRCUY0nP5-jcjujhlmM";
 
   // Default to Monas / Central Jakarta if none provided
   const [currentLat, setCurrentLat] = useState<number>(initialLat ?? -6.175392);
