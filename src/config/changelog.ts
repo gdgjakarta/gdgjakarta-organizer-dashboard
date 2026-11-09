@@ -16,10 +16,22 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.13",
+    releaseDate: "2026-11-09",
+    title: "Cloudflare Workers SSR Stream Hang Fix",
+    badge: "Latest",
+    items: [
+      {
+        category: "Fixed",
+        text: "Resolved Cloudflare Workers request cancellation by inlining NEXT_PUBLIC_FIREBASE_API_KEY into Next.js env and restoring resilient server-side resolution.",
+      },
+    ],
+  },
+  {
     version: "1.0.12",
     releaseDate: "2026-11-09",
     title: "Observability Issues & Config Hardening",
-    badge: "Latest",
+    badge: "Update",
     items: [
       {
         category: "Added",

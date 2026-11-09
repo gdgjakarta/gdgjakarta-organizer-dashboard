@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.13] - 2026-11-09
+
+### Fixed
+- Fixed Cloudflare Workers request hang and SSR stream deadlock by baking `NEXT_PUBLIC_FIREBASE_API_KEY` into `next.config.mjs` env and restoring resilient fallback resolution across server actions.
+
+---
+
 ## [1.0.12] - 2026-11-09
 
 ### Added
