@@ -37,7 +37,11 @@
     "DOKU_BASE_URL": "https://api.doku.com",
     // SHORTIO_API_KEY must be configured as a secret via `wrangler secret put SHORTIO_API_KEY`
     "SHORTIO_DOMAIN": "gdgjakarta.org",
-    "SHORTIO_DOMAIN_ID": "1516440"
+    "SHORTIO_DOMAIN_ID": "1516440",
+    "NEXT_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyAHrt1-lGCA0x-SgRCUY0nP5-jcjujhlmM",
+    "OPS_AGENT_URL": "https://ops.gdgjakarta.com",
+    // OPS_AGENT_SECRET must be configured as a secret via `wrangler secret put OPS_AGENT_SECRET`
+    "OPS_AGENT_SECRET": "71254a9e6a94ff33b807c7940270c1d34ef7616c01af3365bb1c54a84efa78b9"
   },
   "services": [
     {
@@ -93,7 +97,11 @@
       "DOKU_BASE_URL": "https://api.doku.com",
       // SHORTIO_API_KEY must be configured as a secret via `wrangler secret put SHORTIO_API_KEY`
       "SHORTIO_DOMAIN": "gdgjakarta.org",
-      "SHORTIO_DOMAIN_ID": "1516440"
+      "SHORTIO_DOMAIN_ID": "1516440",
+      "NEXT_PUBLIC_GOOGLE_MAPS_API_KEY": "AIzaSyAHrt1-lGCA0x-SgRCUY0nP5-jcjujhlmM",
+      "OPS_AGENT_URL": "https://ops.gdgjakarta.com",
+      // OPS_AGENT_SECRET must be configured as a secret via `wrangler secret put OPS_AGENT_SECRET`
+      "OPS_AGENT_SECRET": "71254a9e6a94ff33b807c7940270c1d34ef7616c01af3365bb1c54a84efa78b9"
     },
     "r2_buckets": [
       {
