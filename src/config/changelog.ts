@@ -16,10 +16,26 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.10",
+    releaseDate: "2026-11-09",
+    title: "Event Creation & Feedback Dialog Polish",
+    badge: "Latest",
+    items: [
+      {
+        category: "Fixed",
+        text: "Unchecked 'Show event on chapter page', 'Disable social sharing', and 'Allow automated emails' options by default during event creation.",
+      },
+      {
+        category: "Fixed",
+        text: "Added responsive spacing between Cancel and Give Feedback actions in the feedback modal.",
+      },
+    ],
+  },
+  {
     version: "1.0.9",
     releaseDate: "2026-11-09",
     title: "Jakarta e2-medium Migration & Container Logs Dialog Fix",
-    badge: "Latest",
+    badge: "Update",
     items: [
       {
         category: "Improved",

@@ -50,9 +50,9 @@ export function CreateEventDialog() {
   const [totalCapacity, setTotalCapacity] = React.useState("50");
   const [isTest, setIsTest] = React.useState(false);
   const [isHidden, setIsHidden] = React.useState(true);
-  const [visibleOnParentChapterOnly, setVisibleOnParentChapterOnly] = React.useState(true);
-  const [sharingDisabled, setSharingDisabled] = React.useState(true);
-  const [allowAutomatedEmailsWhenHidden, setAllowAutomatedEmailsWhenHidden] = React.useState(true);
+  const [visibleOnParentChapterOnly, setVisibleOnParentChapterOnly] = React.useState(false);
+  const [sharingDisabled, setSharingDisabled] = React.useState(false);
+  const [allowAutomatedEmailsWhenHidden, setAllowAutomatedEmailsWhenHidden] = React.useState(false);
   const [status, setStatus] = React.useState<"Draft" | "Published">("Draft");
   const [tags, setTags] = React.useState<string[]>([]);
 

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.10] - 2026-11-09
+
+### Fixed
+- Unchecked "Show event on chapter page", "Disable social sharing", and "Allow automated emails" by default when creating new events.
+- Added responsive spacing between Cancel and Give Feedback buttons in the user feedback dialog.
+
+---
+
 ## [1.0.9] - 2026-11-09
 
 ### Improved
