@@ -11,7 +11,6 @@ import {
   Info,
   Monitor,
   RotateCcw,
-  Save,
   Shield,
   Smartphone,
   Sparkles,
@@ -172,20 +171,6 @@ export function MaintenanceDashboard({ initialConfig }: MaintenanceDashboardProp
           <p className="mt-1 text-muted-foreground text-sm">
             Control platform-wide maintenance interception and customize the visitor announcement page.
           </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {isDirty && (
-            <Badge variant="secondary" className="gap-1 px-2.5 py-1 text-xs">
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-              Unsaved changes
-            </Badge>
-          )}
-
-          <Button onClick={handleSave} disabled={isSaving || !isDirty} className="gap-1.5 shadow-xs">
-            <Save className={`h-4 w-4 ${isSaving ? "animate-spin" : ""}`} />
-            {isSaving ? "Saving..." : "Save Changes"}
-          </Button>
         </div>
       </div>
 

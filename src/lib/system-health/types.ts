@@ -12,7 +12,7 @@ export const DEFAULT_SYSTEM_HEALTH_CONFIG: SystemHealthConfig = {
   id: "system_health",
   opsAgentUrl: process.env.OPS_AGENT_URL || "https://ops.gdgjakarta.com",
   n8nPublicUrl: "https://n8n.gdgjakarta.com",
-  gowaPublicUrl: "https://gowa.gdgjakarta.org",
+  gowaPublicUrl: "https://gowa.gdgjakarta.com",
   autoRefreshSeconds: 30,
 };
 
@@ -64,6 +64,7 @@ export interface EndpointProbeResult {
   latencyMs: number;
   message: string;
   checkedAt: string;
+  htmlError?: string;
 }
 
 export interface SystemHealthSnapshot {
@@ -72,6 +73,7 @@ export interface SystemHealthSnapshot {
   opsAgentSecretConfigured: boolean;
   opsAgentConnected: boolean;
   opsAgentError?: string;
+  opsAgentHtmlError?: string;
   probes: EndpointProbeResult[];
   host: HostMetrics | null;
   containers: ContainerTelemetry[];

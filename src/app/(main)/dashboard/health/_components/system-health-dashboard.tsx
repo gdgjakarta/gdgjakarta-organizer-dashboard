@@ -52,7 +52,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { ContainerTelemetry, SystemHealthConfig, SystemHealthSnapshot } from "@/lib/system-health/types";
 import { cn } from "@/lib/utils";
 import {
@@ -122,6 +121,16 @@ export function SystemHealthDashboard({ initialConfig, initialSnapshot }: System
 
   // Backup state
   const [isDownloadingBackup, setIsDownloadingBackup] = useState(false);
+
+  // Settings dialog state (clean popover/dialog for endpoint config)
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  const handleOpenHtmlError = (html: string, title = "Error Page") => {
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank");
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  };
 
   const isDirty = useMemo(() => JSON.stringify(config) !== JSON.stringify(savedConfig), [config, savedConfig]);
 
@@ -298,12 +307,27 @@ export function SystemHealthDashboard({ initialConfig, initialSnapshot }: System
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
-          <div className="flex items-center gap-2 rounded-lg border bg-card px-3 py-1.5 text-xs">
-            <Switch id="auto-refresh-toggle" checked={autoRefresh} onCheckedChange={setAutoRefresh} />
-            <Label htmlFor="auto-refresh-toggle" className="cursor-pointer">
-              Auto-refresh ({savedConfig.autoRefreshSeconds}s)
-            </Label>
-          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setAutoRefresh((prev) => !prev)}
+            className={cn(
+              "h-8 gap-2 rounded-md border text-xs font-medium transition-colors",
+              autoRefresh
+                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <span
+              className={cn(
+                "size-2 rounded-full transition-all",
+                autoRefresh ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground/40",
+              )}
+            />
+            <span>Auto-refresh</span>
+            <span className="font-mono text-[11px] opacity-75">{savedConfig.autoRefreshSeconds}s</span>
+          </Button>
 
           <Button variant="outline" size="sm" onClick={() => void handleRefresh(false)} disabled={isRefreshing}>
             <RefreshCw className={cn("mr-1.5 size-3.5", isRefreshing && "animate-spin")} />
@@ -319,529 +343,499 @@ export function SystemHealthDashboard({ initialConfig, initialSnapshot }: System
             <Download className="mr-1.5 size-3.5" />
             {isDownloadingBackup ? "Dumping DB..." : "Backup PostgreSQL"}
           </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => setIsSettingsOpen(true)}
+          >
+            <Settings className="size-3.5" />
+            <span>Settings</span>
+          </Button>
         </div>
       </div>
 
-      <Tabs defaultValue="overview" className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="overview" className="gap-1.5">
-            <Activity className="size-4" />
-            Overview &amp; Containers
-          </TabsTrigger>
-          <TabsTrigger value="settings" className="gap-1.5">
-            <Settings className="size-4" />
-            Endpoints &amp; GCP Setup
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="overview" className="space-y-6">
-          {/* 1. Live Endpoint Health Probes */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {snapshot.probes.map((probe) => (
-              <Card key={probe.id} className="border-border/70">
-                <CardHeader className="pb-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <CardTitle className="font-semibold text-sm">{probe.label}</CardTitle>
-                    {probe.healthy ? (
-                      <Badge
-                        variant="outline"
-                        className="gap-1 border-emerald-500/30 bg-emerald-500/10 text-emerald-700 text-xs dark:text-emerald-300"
-                      >
-                        <CheckCircle2 className="size-3" />
-                        Healthy
-                      </Badge>
-                    ) : (
-                      <Badge
-                        variant="outline"
-                        className="gap-1 border-destructive/40 bg-destructive/10 text-destructive text-xs"
-                      >
-                        <XCircle className="size-3" />
-                        Offline
-                      </Badge>
-                    )}
-                  </div>
-                  <CardDescription className="truncate font-mono text-xs">{probe.url}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">{probe.message}</span>
-                    <span className="font-medium font-mono">{probe.latencyMs > 0 ? `${probe.latencyMs} ms` : "—"}</span>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-
-          {/* 2. Host VM & Volume Resource Meters */}
-          {host ? (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-              {/* Physical RAM */}
-              <Card>
-                <CardHeader className="pb-2">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="flex items-center gap-1.5 font-semibold text-sm">
-                      <Cpu className="size-4 text-primary" />
-                      Physical RAM
-                    </CardTitle>
-                    <span className="font-mono font-semibold text-xs">{ramPercent}%</span>
-                  </div>
-                  <CardDescription className="text-xs">
-                    {formatBytes(host.memUsedBytes)} / {formatBytes(host.memTotalBytes)} used
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                    <div
-                      className={cn("h-full transition-all", meterColorClass(ramPercent))}
-                      style={{ width: `${ramPercent}%` }}
-                    />
-                  </div>
-                  <p className="text-[11px] text-muted-foreground">
-                    Load avg: {host.loadAvg.map((n) => n.toFixed(2)).join(", ")} ({host.cpuCount} vCPU) • Up{" "}
-                    {formatUptime(host.uptimeSeconds)}
-                  </p>
-                </CardContent>
-              </Card>
-
-              {/* Swap Memory */}
-              <Card>
-                <CardHeader className="pb-2">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="flex items-center gap-1.5 font-semibold text-sm">
-                      <Activity className="size-4 text-primary" />
-                      Swap Buffer
-                    </CardTitle>
-                    <span className="font-mono font-semibold text-xs">
-                      {host.swapTotalBytes > 0 ? `${swapPercent}%` : "Off"}
-                    </span>
-                  </div>
-                  <CardDescription className="text-xs">
-                    {host.swapTotalBytes > 0
-                      ? `${formatBytes(host.swapUsedBytes)} / ${formatBytes(host.swapTotalBytes)} used`
-                      : "No /swapfile active"}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                    <div
-                      className={cn("h-full transition-all", meterColorClass(swapPercent))}
-                      style={{ width: `${swapPercent}%` }}
-                    />
-                  </div>
-                  <p className="text-[11px] text-muted-foreground">
-                    Prevents OOM crashes during npm ci &amp; n8n updates
-                  </p>
-                </CardContent>
-              </Card>
-
-              {/* Boot Disk (30 GB) */}
-              <Card>
-                <CardHeader className="pb-2">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="flex items-center gap-1.5 font-semibold text-sm">
-                      <HardDrive className="size-4 text-primary" />
-                      Boot Disk
-                    </CardTitle>
-                    <span className="font-mono font-semibold text-xs">{diskPercent}%</span>
-                  </div>
-                  <CardDescription className="text-xs">
-                    {formatBytes(host.diskUsedBytes)} / {formatBytes(host.diskTotalBytes)} used
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                    <div
-                      className={cn("h-full transition-all", meterColorClass(diskPercent))}
-                      style={{ width: `${diskPercent}%` }}
-                    />
-                  </div>
-                  <p className="text-[11px] text-muted-foreground">
-                    Free: {formatBytes(host.diskAvailableBytes)} • Images: {formatBytes(host.dockerImagesBytes || 0)}
-                  </p>
-                </CardContent>
-              </Card>
-
-              {/* Docker Volumes Breakdown */}
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-1.5 font-semibold text-sm">
-                    <Database className="size-4 text-primary" />
-                    Docker Volumes
-                  </CardTitle>
-                  <CardDescription className="text-xs">Persistent data across container updates</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-1.5">
-                  {snapshot.volumes.length > 0 ? (
-                    snapshot.volumes.map((v) => (
-                      <div key={v.name} className="flex items-center justify-between text-xs">
-                        <span className="truncate font-mono text-muted-foreground">
-                          {v.name.replace(/^gdg-jakarta_/, "")}
-                        </span>
-                        <span className="font-mono font-semibold">{formatBytes(v.sizeBytes)}</span>
-                      </div>
-                    ))
+      {/* Main Single-View Health & Telemetry Content */}
+      <div className="space-y-6">
+        {/* 1. Live Endpoint Health Probes */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {snapshot.probes.map((probe) => (
+            <Card key={probe.id} className="border-border/70">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between gap-2">
+                  <CardTitle className="font-semibold text-sm">{probe.label}</CardTitle>
+                  {probe.healthy ? (
+                    <Badge
+                      variant="outline"
+                      className="gap-1 border-emerald-500/30 bg-emerald-500/10 text-emerald-700 text-xs dark:text-emerald-300"
+                    >
+                      <CheckCircle2 className="size-3" />
+                      Healthy
+                    </Badge>
                   ) : (
-                    <p className="text-muted-foreground text-xs">
-                      Volume sizes reported when docker system df finishes
-                    </p>
+                    <Badge
+                      variant="outline"
+                      className="gap-1 border-destructive/40 bg-destructive/10 text-destructive text-xs"
+                    >
+                      <XCircle className="size-3" />
+                      Offline
+                    </Badge>
                   )}
-                </CardContent>
-              </Card>
-            </div>
-          ) : (
-            <Card className="border-amber-500/30 bg-amber-500/5">
-              <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-start gap-3">
-                  <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-600 dark:text-amber-400" />
-                  <div className="space-y-1 text-sm">
-                    <p className="font-semibold">Docker Ops Agent is not connected yet</p>
-                    <p className="text-muted-foreground text-xs">
-                      {!snapshot.opsAgentSecretConfigured
-                        ? "Set OPS_AGENT_SECRET in your Next.js environment variables (.env.local) matching ~/.zeabur-migration/gdg-jakarta/.env to unlock container restart/update controls, live logs, and RAM/Volume telemetry."
-                        : `Could not reach ${config.opsAgentUrl} (${snapshot.opsAgentError || "offline"}). Public HTTP health probes for n8n and GoWA are still active above.`}
-                    </p>
+                </div>
+                <CardDescription className="truncate font-mono text-xs">{probe.url}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <span className="truncate text-muted-foreground">{probe.message}</span>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {probe.htmlError && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenHtmlError(probe.htmlError!, `${probe.label} Error`)}
+                        className="inline-flex items-center gap-1 rounded-md border border-destructive/30 bg-destructive/10 px-1.5 py-0.5 font-medium text-[11px] text-destructive transition-colors hover:bg-destructive/20 hover:text-destructive active:scale-95"
+                        title="View error page in new tab"
+                      >
+                        <span>Error Page</span>
+                        <ExternalLink className="size-2.5 opacity-70" />
+                      </button>
+                    )}
+                    <span className="font-medium font-mono">{probe.latencyMs > 0 ? `${probe.latencyMs} ms` : "—"}</span>
                   </div>
                 </div>
               </CardContent>
             </Card>
-          )}
+          ))}
+        </div>
 
-          {/* 3. Container Lifecycle Management Cards */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-base tracking-tight">Managed Containers</h2>
-              <span className="text-muted-foreground text-xs">
-                Last checked: {new Date(snapshot.checkedAt).toLocaleTimeString()}
-              </span>
-            </div>
+        {/* 2. Host VM & Volume Resource Meters */}
+        {host ? (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+            {/* Physical RAM */}
+            <Card>
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-1.5 font-semibold text-sm">
+                    <Cpu className="size-4 text-primary" />
+                    Physical RAM
+                  </CardTitle>
+                  <span className="font-mono font-semibold text-xs">{ramPercent}%</span>
+                </div>
+                <CardDescription className="text-xs">
+                  {formatBytes(host.memUsedBytes)} / {formatBytes(host.memTotalBytes)} used
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                  <div
+                    className={cn("h-full transition-all", meterColorClass(ramPercent))}
+                    style={{ width: `${ramPercent}%` }}
+                  />
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Load avg: {host.loadAvg.map((n) => n.toFixed(2)).join(", ")} ({host.cpuCount} vCPU) • Up{" "}
+                  {formatUptime(host.uptimeSeconds)}
+                </p>
+              </CardContent>
+            </Card>
 
-            {snapshot.containers.length > 0 ? (
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                {snapshot.containers.map((c: ContainerTelemetry) => {
-                  const isRunning = c.state === "running";
-                  const isMutable = c.name !== "gdg-ops-agent";
-                  const isBusy = runningContainerOp?.startsWith(`${c.name}:`) ?? false;
+            {/* Swap Memory */}
+            <Card>
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-1.5 font-semibold text-sm">
+                    <Activity className="size-4 text-primary" />
+                    Swap Buffer
+                  </CardTitle>
+                  <span className="font-mono font-semibold text-xs">
+                    {host.swapTotalBytes > 0 ? `${swapPercent}%` : "Off"}
+                  </span>
+                </div>
+                <CardDescription className="text-xs">
+                  {host.swapTotalBytes > 0
+                    ? `${formatBytes(host.swapUsedBytes)} / ${formatBytes(host.swapTotalBytes)} used`
+                    : "No /swapfile active"}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                  <div
+                    className={cn("h-full transition-all", meterColorClass(swapPercent))}
+                    style={{ width: `${swapPercent}%` }}
+                  />
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Prevents OOM crashes during npm ci &amp; n8n updates
+                </p>
+              </CardContent>
+            </Card>
 
-                  return (
-                    <Card key={c.name} className="border-border/80">
-                      <CardHeader className="pb-3">
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <Server className="size-4 text-primary" />
-                              <CardTitle className="font-mono text-base">{c.name}</CardTitle>
-                              <Badge
-                                variant="outline"
-                                className={cn(
-                                  "text-xs capitalize",
-                                  isRunning
-                                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                                    : "border-destructive/40 bg-destructive/10 text-destructive",
-                                )}
-                              >
-                                {c.state}
-                              </Badge>
-                              {c.health && c.health !== "none" && (
-                                <Badge variant="secondary" className="text-[11px]">
-                                  {c.health}
-                                </Badge>
+            {/* Boot Disk (30 GB) */}
+            <Card>
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-1.5 font-semibold text-sm">
+                    <HardDrive className="size-4 text-primary" />
+                    Boot Disk
+                  </CardTitle>
+                  <span className="font-mono font-semibold text-xs">{diskPercent}%</span>
+                </div>
+                <CardDescription className="text-xs">
+                  {formatBytes(host.diskUsedBytes)} / {formatBytes(host.diskTotalBytes)} used
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                  <div
+                    className={cn("h-full transition-all", meterColorClass(diskPercent))}
+                    style={{ width: `${diskPercent}%` }}
+                  />
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Free: {formatBytes(host.diskAvailableBytes)} • Images: {formatBytes(host.dockerImagesBytes || 0)}
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Docker Volumes Breakdown */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="flex items-center gap-1.5 font-semibold text-sm">
+                  <Database className="size-4 text-primary" />
+                  Docker Volumes
+                </CardTitle>
+                <CardDescription className="text-xs">Persistent data across container updates</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-1.5">
+                {snapshot.volumes.length > 0 ? (
+                  snapshot.volumes.map((v) => (
+                    <div key={v.name} className="flex items-center justify-between text-xs">
+                      <span className="truncate font-mono text-muted-foreground">
+                        {v.name.replace(/^gdg-jakarta_/, "")}
+                      </span>
+                      <span className="font-mono font-semibold">{formatBytes(v.sizeBytes)}</span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-muted-foreground text-xs">Volume sizes reported when docker system df finishes</p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        ) : (
+          <Card className="border-amber-500/30 bg-amber-500/5">
+            <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-600 dark:text-amber-400" />
+                <div className="space-y-1 text-sm">
+                  <p className="font-semibold">Docker Ops Agent is not connected yet</p>
+                  <p className="text-muted-foreground text-xs">
+                    {!snapshot.opsAgentSecretConfigured
+                      ? "Set OPS_AGENT_SECRET in your Next.js environment variables (.env.local) matching ~/.zeabur-migration/gdg-jakarta/.env to unlock container restart/update controls, live logs, and RAM/Volume telemetry."
+                      : `Could not reach ${config.opsAgentUrl} (${snapshot.opsAgentError || "offline"}). Public HTTP health probes for n8n and GoWA are still active above.`}
+                  </p>
+                  {snapshot.opsAgentHtmlError && (
+                    <div className="pt-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 gap-1.5 border-destructive/40 text-destructive text-xs hover:bg-destructive/10"
+                        onClick={() => handleOpenHtmlError(snapshot.opsAgentHtmlError!, "Ops Agent Error Page")}
+                      >
+                        <ExternalLink className="size-3" />
+                        Open Cloudflare / Origin Error in New Tab
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* 3. Container Lifecycle Management Cards */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold text-base tracking-tight">Managed Containers</h2>
+            <span className="text-muted-foreground text-xs" suppressHydrationWarning>
+              Last checked: {new Date(snapshot.checkedAt).toLocaleTimeString()}
+            </span>
+          </div>
+
+          {snapshot.containers.length > 0 ? (
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              {snapshot.containers.map((c: ContainerTelemetry) => {
+                const isRunning = c.state === "running";
+                const isMutable = c.name !== "gdg-ops-agent";
+                const isBusy = runningContainerOp?.startsWith(`${c.name}:`) ?? false;
+
+                return (
+                  <Card key={c.name} className="border-border/80">
+                    <CardHeader className="pb-3">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <Server className="size-4 text-primary" />
+                            <CardTitle className="font-mono text-base">{c.name}</CardTitle>
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "text-xs capitalize",
+                                isRunning
+                                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                                  : "border-destructive/40 bg-destructive/10 text-destructive",
                               )}
-                            </div>
-                            <CardDescription className="break-all font-mono text-xs">{c.image}</CardDescription>
+                            >
+                              {c.state}
+                            </Badge>
+                            {c.health && c.health !== "none" && (
+                              <Badge variant="secondary" className="text-[11px]">
+                                {c.health}
+                              </Badge>
+                            )}
                           </div>
-
-                          <div className="text-right font-mono text-xs">
-                            <div>
-                              RAM: <span className="font-semibold">{formatBytes(c.memUsageBytes)}</span>
-                            </div>
-                            <div className="text-muted-foreground">CPU: {c.cpuPercent.toFixed(1)}%</div>
-                          </div>
-                        </div>
-                      </CardHeader>
-
-                      <CardContent className="space-y-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/50 px-3 py-2 text-xs">
-                          <span className="flex items-center gap-1.5 text-muted-foreground">
-                            <Clock className="size-3.5" />
-                            {c.status || "—"}
-                          </span>
-                          <span className="font-mono text-muted-foreground">Restarts: {c.restartCount}</span>
+                          <CardDescription className="break-all font-mono text-xs">{c.image}</CardDescription>
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="text-right font-mono text-xs">
+                          <div>
+                            RAM: <span className="font-semibold">{formatBytes(c.memUsageBytes)}</span>
+                          </div>
+                          <div className="text-muted-foreground">CPU: {c.cpuPercent.toFixed(1)}%</div>
+                        </div>
+                      </div>
+                    </CardHeader>
+
+                    <CardContent className="space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-muted/50 px-3 py-2 text-xs">
+                        <span className="flex items-center gap-1.5 text-muted-foreground">
+                          <Clock className="size-3.5" />
+                          {c.status || "—"}
+                        </span>
+                        <span className="font-mono text-muted-foreground">Restarts: {c.restartCount}</span>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 text-xs"
+                          disabled={!isMutable || isBusy}
+                          onClick={() =>
+                            setPendingAction({
+                              containerName: c.name,
+                              action: "restart",
+                              currentImage: c.image,
+                            })
+                          }
+                        >
+                          <RotateCw
+                            className={cn(
+                              "mr-1.5 size-3.5",
+                              runningContainerOp === `${c.name}:restart` && "animate-spin",
+                            )}
+                          />
+                          Restart
+                        </Button>
+
+                        <Button
+                          size="sm"
+                          variant="default"
+                          className="h-8 text-xs"
+                          disabled={!isMutable || isBusy}
+                          onClick={() => {
+                            const defaultTag = c.name === "gdg-postgresql" ? "17.11" : "latest";
+                            setTargetImageTag(defaultTag);
+                            setPendingAction({
+                              containerName: c.name,
+                              action: "update",
+                              currentImage: c.image,
+                            });
+                          }}
+                        >
+                          <ArrowUpCircle className="mr-1.5 size-3.5" />
+                          Update Image
+                        </Button>
+
+                        {isRunning ? (
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-8 text-xs"
+                            className="h-8 text-destructive text-xs hover:text-destructive"
                             disabled={!isMutable || isBusy}
                             onClick={() =>
                               setPendingAction({
                                 containerName: c.name,
-                                action: "restart",
+                                action: "stop",
                                 currentImage: c.image,
                               })
                             }
                           >
-                            <RotateCw
-                              className={cn(
-                                "mr-1.5 size-3.5",
-                                runningContainerOp === `${c.name}:restart` && "animate-spin",
-                              )}
-                            />
-                            Restart
+                            <Square className="mr-1.5 size-3.5" />
+                            Stop
                           </Button>
-
+                        ) : (
                           <Button
                             size="sm"
-                            variant="default"
-                            className="h-8 text-xs"
+                            variant="outline"
+                            className="h-8 text-emerald-600 text-xs"
                             disabled={!isMutable || isBusy}
-                            onClick={() => {
-                              const defaultTag = c.name === "gdg-postgresql" ? "17.11" : "latest";
-                              setTargetImageTag(defaultTag);
+                            onClick={() =>
                               setPendingAction({
                                 containerName: c.name,
-                                action: "update",
+                                action: "start",
                                 currentImage: c.image,
-                              });
-                            }}
+                              })
+                            }
                           >
-                            <ArrowUpCircle className="mr-1.5 size-3.5" />
-                            Update Image
+                            <Play className="mr-1.5 size-3.5" />
+                            Start
                           </Button>
+                        )}
 
-                          {isRunning ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-8 text-destructive text-xs hover:text-destructive"
-                              disabled={!isMutable || isBusy}
-                              onClick={() =>
-                                setPendingAction({
-                                  containerName: c.name,
-                                  action: "stop",
-                                  currentImage: c.image,
-                                })
-                              }
-                            >
-                              <Square className="mr-1.5 size-3.5" />
-                              Stop
-                            </Button>
-                          ) : (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-8 text-emerald-600 text-xs"
-                              disabled={!isMutable || isBusy}
-                              onClick={() =>
-                                setPendingAction({
-                                  containerName: c.name,
-                                  action: "start",
-                                  currentImage: c.image,
-                                })
-                              }
-                            >
-                              <Play className="mr-1.5 size-3.5" />
-                              Start
-                            </Button>
-                          )}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="ml-auto h-8 text-xs"
+                          onClick={() => void handleOpenLogs(c.name)}
+                        >
+                          <FileText className="mr-1.5 size-3.5" />
+                          Logs
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          ) : (
+            <Card>
+              <CardContent className="py-8 text-center text-muted-foreground text-sm">
+                Container cards (`gdg-n8n`, `gdg-postgresql`, `gdg-gowa`, `gdg-cloudflared`) will appear automatically
+                once the Ops Agent is reachable.
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
 
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="ml-auto h-8 text-xs"
-                            onClick={() => void handleOpenLogs(c.name)}
-                          >
-                            <FileText className="mr-1.5 size-3.5" />
-                            Logs
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
+      {/* Endpoint Configuration Dialog */}
+      <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings className="size-4 text-primary" />
+              Service &amp; Ops Agent Endpoints
+            </DialogTitle>
+            <DialogDescription>
+              Configure the public service URLs and your Cloudflare Tunnel hostname for gdg-ops-agent.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="ops-agent-url">Ops Agent Tunnel URL</Label>
+              <Input
+                id="ops-agent-url"
+                value={config.opsAgentUrl}
+                onChange={(e) =>
+                  setConfig((prev) => ({
+                    ...prev,
+                    opsAgentUrl: e.target.value,
+                  }))
+                }
+                placeholder="https://ops.gdgjakarta.com"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="n8n-url">n8n Public Base URL</Label>
+              <Input
+                id="n8n-url"
+                value={config.n8nPublicUrl}
+                onChange={(e) =>
+                  setConfig((prev) => ({
+                    ...prev,
+                    n8nPublicUrl: e.target.value,
+                  }))
+                }
+                placeholder="https://n8n.gdgjakarta.com"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="gowa-url">GoWA Public Base URL</Label>
+              <Input
+                id="gowa-url"
+                value={config.gowaPublicUrl}
+                onChange={(e) =>
+                  setConfig((prev) => ({
+                    ...prev,
+                    gowaPublicUrl: e.target.value,
+                  }))
+                }
+                placeholder="https://gowa.gdgjakarta.com"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="refresh-seconds">Auto-Refresh Interval (seconds)</Label>
+              <Input
+                id="refresh-seconds"
+                type="number"
+                min={10}
+                max={300}
+                value={config.autoRefreshSeconds}
+                onChange={(e) =>
+                  setConfig((prev) => ({
+                    ...prev,
+                    autoRefreshSeconds: Number(e.target.value || 30),
+                  }))
+                }
+              />
+            </div>
+
+            <div className="rounded-lg border bg-muted/40 p-3 text-xs">
+              <div className="flex items-center justify-between font-medium">
+                <span className="flex items-center gap-1.5">
+                  <ShieldCheck className="size-4 text-primary" />
+                  Server Secret (`OPS_AGENT_SECRET`)
+                </span>
+                {snapshot.opsAgentSecretConfigured ? (
+                  <Badge
+                    variant="outline"
+                    className="border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                  >
+                    Configured
+                  </Badge>
+                ) : (
+                  <Badge
+                    variant="outline"
+                    className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                  >
+                    Not Set
+                  </Badge>
+                )}
               </div>
-            ) : (
-              <Card>
-                <CardContent className="py-8 text-center text-muted-foreground text-sm">
-                  Container cards (`gdg-n8n`, `gdg-postgresql`, `gdg-gowa`, `gdg-cloudflared`) will appear automatically
-                  once the Ops Agent is reachable.
-                </CardContent>
-              </Card>
-            )}
+            </div>
           </div>
-        </TabsContent>
 
-        {/* Tab 2: Endpoints & GCP Free Tier Setup */}
-        <TabsContent value="settings" className="space-y-6">
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Service &amp; Ops Agent Endpoints</CardTitle>
-                <CardDescription>
-                  Configure public health probe URLs and your Cloudflare Tunnel hostname for `gdg-ops-agent`.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="ops-agent-url">Ops Agent Tunnel URL (`ops-agent:4000`)</Label>
-                  <Input
-                    id="ops-agent-url"
-                    value={config.opsAgentUrl}
-                    onChange={(e) =>
-                      setConfig((prev) => ({
-                        ...prev,
-                        opsAgentUrl: e.target.value,
-                      }))
-                    }
-                    placeholder="https://ops.gdgjakarta.com"
-                  />
-                  <p className="text-muted-foreground text-xs">
-                    Must be an `https://` subdomain under `gdgjakarta.com` or `gdgjakarta.org` routed via Cloudflare
-                    Tunnel to `http://ops-agent:4000`.
-                  </p>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="n8n-url">n8n Public Base URL</Label>
-                  <Input
-                    id="n8n-url"
-                    value={config.n8nPublicUrl}
-                    onChange={(e) =>
-                      setConfig((prev) => ({
-                        ...prev,
-                        n8nPublicUrl: e.target.value,
-                      }))
-                    }
-                    placeholder="https://n8n.gdgjakarta.com"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="gowa-url">GoWA Public Base URL</Label>
-                  <Input
-                    id="gowa-url"
-                    value={config.gowaPublicUrl}
-                    onChange={(e) =>
-                      setConfig((prev) => ({
-                        ...prev,
-                        gowaPublicUrl: e.target.value,
-                      }))
-                    }
-                    placeholder="https://gowa.gdgjakarta.org"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="refresh-seconds">Auto-Refresh Interval (seconds)</Label>
-                  <Input
-                    id="refresh-seconds"
-                    type="number"
-                    min={10}
-                    max={300}
-                    value={config.autoRefreshSeconds}
-                    onChange={(e) =>
-                      setConfig((prev) => ({
-                        ...prev,
-                        autoRefreshSeconds: Number(e.target.value || 30),
-                      }))
-                    }
-                  />
-                </div>
-
-                <div className="rounded-lg border bg-muted/40 p-3 text-xs">
-                  <div className="flex items-center justify-between font-medium">
-                    <span className="flex items-center gap-1.5">
-                      <ShieldCheck className="size-4 text-primary" />
-                      Server Environment Secret (`OPS_AGENT_SECRET`)
-                    </span>
-                    {snapshot.opsAgentSecretConfigured ? (
-                      <Badge
-                        variant="outline"
-                        className="border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                      >
-                        Configured
-                      </Badge>
-                    ) : (
-                      <Badge
-                        variant="outline"
-                        className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
-                      >
-                        Not Set
-                      </Badge>
-                    )}
-                  </div>
-                  <p className="mt-1.5 text-muted-foreground">
-                    For security, `OPS_AGENT_SECRET` is never stored in Firestore. Add the generated `OPS_AGENT_SECRET`
-                    from `~/.zeabur-migration/gdg-jakarta/.env` to your Next.js server environment variables.
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Terminal className="size-4 text-primary" />
-                  GCP Free Tier (`e2-micro`) + Cloudflare Tunnel Quickstart
-                </CardTitle>
-                <CardDescription>
-                  100% Free Tier setup in `us-west1` with 30 GB `pd-standard` disk and 2 GB Swap.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4 text-xs">
-                <div className="space-y-1.5">
-                  <p className="font-semibold">1. Create Free Tier `e2-micro` VM on GCP:</p>
-                  <pre className="overflow-x-auto rounded-lg border bg-muted p-2.5 font-mono text-[11px]">
-                    {`gcloud compute instances create gdg-jakarta-automation \\
-  --zone=us-west1-b \\
-  --machine-type=e2-micro \\
-  --boot-disk-type=pd-standard \\
-  --boot-disk-size=30GB \\
-  --image-family=debian-12 \\
-  --image-project=debian-cloud`}
-                  </pre>
-                </div>
-
-                <div className="space-y-1.5">
-                  <p className="font-semibold">2. Copy Bundle &amp; Run Restore (auto-creates 2 GB swap):</p>
-                  <pre className="overflow-x-auto rounded-lg border bg-muted p-2.5 font-mono text-[11px]">
-                    {`gcloud compute scp --recurse ~/.zeabur-migration/gdg-jakarta \\
-  gdg-jakarta-automation:~/gdg-jakarta --zone=us-west1-b
-gcloud compute ssh gdg-jakarta-automation --zone=us-west1-b \\
-  --command="cd ~/gdg-jakarta && sudo ./restore.sh"`}
-                  </pre>
-                </div>
-
-                <div className="space-y-1.5">
-                  <p className="font-semibold">3. Cloudflare Zero Trust Tunnel Public Hostnames:</p>
-                  <div className="space-y-1 rounded-lg border bg-muted/50 p-2.5 font-mono text-[11px]">
-                    <div>n8n.gdgjakarta.com → http://n8n:5678</div>
-                    <div>n8n.gdgjakarta.org → http://n8n:5678</div>
-                    <div>gowa.gdgjakarta.org → http://gowa:3000</div>
-                    <div>ops.gdgjakarta.com → http://ops-agent:4000</div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 pt-1">
-                  <Button variant="outline" size="sm" asChild className="text-xs">
-                    <a href="https://one.dash.cloudflare.com/" target="_blank" rel="noreferrer">
-                      Open Cloudflare Zero Trust
-                      <ExternalLink className="ml-1.5 size-3" />
-                    </a>
-                  </Button>
-                  <Button variant="outline" size="sm" asChild className="text-xs">
-                    <a href="https://console.cloud.google.com/compute/instances" target="_blank" rel="noreferrer">
-                      Open GCP VM Instances
-                      <ExternalLink className="ml-1.5 size-3" />
-                    </a>
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-      </Tabs>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsSettingsOpen(false)}>
+              Close
+            </Button>
+            <Button
+              disabled={!isDirty || isSavingConfig}
+              onClick={async () => {
+                await handleSaveConfig();
+                setIsSettingsOpen(false);
+              }}
+            >
+              {isSavingConfig ? "Saving..." : "Save Settings"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Container Action / Update Confirmation Modal */}
       <AlertDialog open={Boolean(pendingAction)} onOpenChange={(open) => !open && setPendingAction(null)}>

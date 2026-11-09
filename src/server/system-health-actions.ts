@@ -56,6 +56,13 @@ async function probePublicUrl(id: EndpointProbeResult["id"], label: string, url:
     const latencyMs = Date.now() - start;
     // 401 on gowa means Basic Auth challenge is active and service is healthy
     const healthy = res.status >= 200 && res.status < 500;
+    let htmlError: string | undefined;
+    if (!healthy) {
+      const text = await res.text().catch(() => "");
+      if (text.trim().startsWith("<!DOCTYPE") || text.trim().startsWith("<html") || text.includes("<body")) {
+        htmlError = text;
+      }
+    }
     return {
       id,
       label,
@@ -65,6 +72,7 @@ async function probePublicUrl(id: EndpointProbeResult["id"], label: string, url:
       latencyMs,
       message: res.status === 401 ? "HTTP 401 (Basic Auth Active)" : `HTTP ${res.status}`,
       checkedAt,
+      htmlError,
     };
   } catch (err) {
     return {
@@ -112,11 +120,14 @@ export async function getSystemHealthSnapshotAction(): Promise<SystemHealthSnaps
             const latencyMs = Date.now() - start;
             if (!res.ok) {
               const text = await res.text().catch(() => "");
+              const isHtml =
+                text.trim().startsWith("<!DOCTYPE") || text.trim().startsWith("<html") || text.includes("<body");
               return {
                 ok: false as const,
                 statusCode: res.status,
                 latencyMs,
-                error: text || `HTTP ${res.status}`,
+                error: isHtml ? `HTTP ${res.status} error page` : text || `HTTP ${res.status}`,
+                htmlError: isHtml ? text : undefined,
               };
             }
             const data = (await res.json()) as {
@@ -182,6 +193,7 @@ export async function getSystemHealthSnapshotAction(): Promise<SystemHealthSnaps
         ? "OPS_AGENT_SECRET env not set"
         : agentRes?.error || "Not connected",
     checkedAt,
+    htmlError: agentRes && !agentRes.ok ? agentRes.htmlError : undefined,
   };
 
   return {
@@ -190,6 +202,7 @@ export async function getSystemHealthSnapshotAction(): Promise<SystemHealthSnaps
     opsAgentSecretConfigured,
     opsAgentConnected: Boolean(agentRes?.ok),
     opsAgentError: agentRes && !agentRes.ok ? agentRes.error : undefined,
+    opsAgentHtmlError: agentRes && !agentRes.ok ? agentRes.htmlError : undefined,
     probes: [n8nProbe, gowaProbe, pgProbe, agentProbe],
     host: agentRes?.ok ? (agentRes.data.host ?? null) : null,
     containers: agentRes?.ok ? (agentRes.data.containers ?? []) : [],
