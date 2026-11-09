@@ -16,10 +16,26 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.12",
+    releaseDate: "2026-11-09",
+    title: "Observability Issues & Config Hardening",
+    badge: "Latest",
+    items: [
+      {
+        category: "Added",
+        text: "Enabled real-time Issues tracking under Cloudflare Workers observability in wrangler.jsonc.",
+      },
+      {
+        category: "Improved",
+        text: "Enforced strict environment variable loading for Firebase configuration and synchronized wrangler variables.",
+      },
+    ],
+  },
+  {
     version: "1.0.11",
     releaseDate: "2026-11-09",
     title: "In-Person Event Creation Fix",
-    badge: "Latest",
+    badge: "Update",
     items: [
       {
         category: "Fixed",

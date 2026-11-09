@@ -70,6 +70,9 @@
     },
     "traces": {
       "enabled": true
+    },
+    "issues": {
+      "enabled": true
     }
   },
   "r2_buckets": [

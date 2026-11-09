@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.12] - 2026-11-09
+
+### Added
+- Enabled real-time error and issue tracking (`observability.issues: { enabled: true }`) in `wrangler.jsonc` for Cloudflare Workers.
+
+### Improved
+- Enforced strict environment variable validation for Firebase configuration across server actions and remote config.
+- Synchronized missing environment variables and documented secret bindings (`wrangler secret put`) for deployment.
+
+---
+
 ## [1.0.11] - 2026-11-09
 
 ### Fixed
