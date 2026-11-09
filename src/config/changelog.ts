@@ -18,9 +18,13 @@ export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
     version: "1.0.9",
     releaseDate: "2026-11-09",
-    title: "Container Logs Dialog Layout Fix",
+    title: "Jakarta e2-medium Migration & Container Logs Dialog Fix",
     badge: "Latest",
     items: [
+      {
+        category: "Improved",
+        text: "Migrated gdg-jakarta-automation stack to a 4 GB RAM (e2-medium) GCP instance in asia-southeast2-a (Jakarta) with gdg-gateway edge reverse proxy support.",
+      },
       {
         category: "Fixed",
         text: "Fixed Docker container logs popup dialog width constraint on screens above 640px to ensure wide terminal display.",

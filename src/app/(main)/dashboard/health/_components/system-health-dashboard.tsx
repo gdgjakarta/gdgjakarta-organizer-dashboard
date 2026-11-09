@@ -711,8 +711,8 @@ export function SystemHealthDashboard({ initialConfig, initialSnapshot }: System
           ) : (
             <Card>
               <CardContent className="py-8 text-center text-muted-foreground text-sm">
-                Container cards (`gdg-n8n`, `gdg-postgresql`, `gdg-gowa`, `gdg-cloudflared`) will appear automatically
-                once the Ops Agent is reachable.
+                Container cards (`gdg-n8n`, `gdg-postgresql`, `gdg-gowa`, `gdg-gateway`, `gdg-cloudflared`,{" "}
+                `gdg-ops-agent`) will appear automatically once the Ops Agent is reachable.
               </CardContent>
             </Card>
           )}
