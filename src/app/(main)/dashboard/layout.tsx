@@ -15,6 +15,8 @@ import { getPreference } from "@/server/server-actions";
 // import { SearchDialog } from "./_components/header/search-dialog";
 import { ThemeSwitcher } from "./_components/header/theme-switcher";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Dashboard",
   description: "GDG Jakarta Organizer and Member Community Dashboard.",
