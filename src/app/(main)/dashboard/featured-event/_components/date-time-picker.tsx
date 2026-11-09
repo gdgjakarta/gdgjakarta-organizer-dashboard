@@ -23,7 +23,7 @@ interface DateTimePickerProps {
 }
 
 const COMMON_TIMEZONES = ["WIB", "WITA", "WIT", "UTC"] as const;
-const QUICK_TIME_PRESETS = ["09:00", "10:00", "13:00", "18:30", "19:00"] as const;
+const QUICK_TIME_PRESETS = ["09:00", "10:00", "13:00", "17:00", "19:00"] as const;
 
 function parseDatePart(dateStr: string): Date | undefined {
   if (!dateStr) return undefined;

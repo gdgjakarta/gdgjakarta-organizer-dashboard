@@ -207,7 +207,7 @@ export async function verifyFirebaseIdToken(
   idToken: string,
 ): Promise<{ valid: boolean; email?: string; uid?: string }> {
   if (!idToken) return { valid: false };
-  const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "";
+  const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
   if (!apiKey) {
     console.error(
       "[Auth Token Verification] Configuration error: Missing NEXT_PUBLIC_FIREBASE_API_KEY environment variable.",

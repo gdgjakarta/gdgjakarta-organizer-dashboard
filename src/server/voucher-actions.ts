@@ -18,7 +18,7 @@ import {
 
 const FIREBASE_PROJECT_ID = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "gdgjakarta-app";
 function getFirebaseApiKey(): string {
-  const key = process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "";
+  const key = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
   if (!key) {
     throw new Error("Configuration error: Missing NEXT_PUBLIC_FIREBASE_API_KEY environment variable.");
   }

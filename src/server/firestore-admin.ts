@@ -24,7 +24,11 @@ import type {
  */
 const FIREBASE_PROJECT_ID = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "gdgjakarta-app";
 function getFirebaseApiKey(): string {
-  return process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyCVk8ECyA8Lqd7KNqdnItxYUu9jdFzoohU";
+  const key = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
+  if (!key) {
+    throw new Error("Configuration error: Missing NEXT_PUBLIC_FIREBASE_API_KEY environment variable.");
+  }
+  return key;
 }
 const FIRESTORE_BASE_URL = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
 
@@ -517,7 +521,10 @@ export async function deleteBundleVouchersForRegistrationServer(
       }
     }
   } catch (err) {
-    console.warn(`[deleteBundleVouchersForRegistrationServer] Failed querying vouchers for reg ${registrationId}:`, err);
+    console.warn(
+      `[deleteBundleVouchersForRegistrationServer] Failed querying vouchers for reg ${registrationId}:`,
+      err,
+    );
   }
 
   const eventIdStr = String(eventId);
@@ -766,7 +773,13 @@ export async function getAttendeeByInvoiceNumber(
         for (const fv of generated.newEventVouchers) {
           const cleanCode = fv.code.trim().toUpperCase();
           const voucherDocId = `${String(regData.event_id)}_${cleanCode}`;
-          await patchFirestoreDoc("event_vouchers", voucherDocId, fv as unknown as Record<string, unknown>, true, token);
+          await patchFirestoreDoc(
+            "event_vouchers",
+            voucherDocId,
+            fv as unknown as Record<string, unknown>,
+            true,
+            token,
+          );
         }
       } catch (bundleErr) {
         console.warn("[getAttendeeByInvoiceNumber] Error auto-generating bundle vouchers:", bundleErr);
