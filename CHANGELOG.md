@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.9] - 2026-11-09
+
+### Fixed
+- Fixed Docker container logs popup dialog width constraint on screens above 640px to ensure wide terminal display.
+
+---
+
 ## [1.0.8] - 2026-11-09
 
 ### Improved

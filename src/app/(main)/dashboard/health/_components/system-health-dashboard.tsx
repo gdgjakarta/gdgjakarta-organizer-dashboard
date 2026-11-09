@@ -878,7 +878,7 @@ export function SystemHealthDashboard({ initialConfig, initialSnapshot }: System
 
       {/* Live Container Logs Modal */}
       <Dialog open={Boolean(logsTarget)} onOpenChange={(open) => !open && setLogsTarget(null)}>
-        <DialogContent className="max-w-4xl">
+        <DialogContent className="max-w-4xl sm:max-w-4xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 font-mono">
               <Terminal className="size-4 text-primary" />

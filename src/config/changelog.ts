@@ -16,10 +16,22 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.9",
+    releaseDate: "2026-11-09",
+    title: "Container Logs Dialog Layout Fix",
+    badge: "Latest",
+    items: [
+      {
+        category: "Fixed",
+        text: "Fixed Docker container logs popup dialog width constraint on screens above 640px to ensure wide terminal display.",
+      },
+    ],
+  },
+  {
     version: "1.0.8",
     releaseDate: "2026-11-09",
     title: "Changelog Dialog Polish",
-    badge: "Latest",
+    badge: "Update",
     items: [
       {
         category: "Improved",
