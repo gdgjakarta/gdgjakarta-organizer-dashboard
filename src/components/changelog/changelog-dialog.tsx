@@ -226,7 +226,7 @@ export function ChangelogDialog({
 
         {/* Footer (only in diff/welcome mode or when explicit confirm action exists) */}
         {isDiffMode && (
-          <DialogFooter className="items-center border-t bg-muted/30 px-6 py-4 sm:justify-between">
+          <DialogFooter className="items-center border-t bg-muted/30 px-6 pt-4 pb-6 sm:pb-5 sm:justify-between">
             <div className="hidden items-center gap-1.5 text-muted-foreground text-xs sm:flex">
               <CheckCircle2 className="size-3.5 text-primary" />
               <span>GDG Jakarta Community Dashboard</span>

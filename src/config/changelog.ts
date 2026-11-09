@@ -16,10 +16,34 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.7",
+    releaseDate: "2026-11-09",
+    title: "System Health Redesign & HTML Error Inspection",
+    badge: "Latest",
+    items: [
+      {
+        category: "Added",
+        text: "One-click HTML Error Page inspection for public service health probes and Docker Ops Agent.",
+      },
+      {
+        category: "Added",
+        text: "Streamlined organizer System Health dashboard with real-time status chips and modal settings configuration.",
+      },
+      {
+        category: "Improved",
+        text: "Redesigned Auto-refresh toggle button with live pulsing status indicator and mono interval badge.",
+      },
+      {
+        category: "Improved",
+        text: "Added explicit Settings trigger action to manage public service URLs and probe parameters.",
+      },
+    ],
+  },
+  {
     version: "1.0.6",
     releaseDate: "2026-11-09",
     title: "Agenda Sync, Copy Agenda & System Health",
-    badge: "Latest",
+    badge: "Update",
     items: [
       {
         category: "Added",

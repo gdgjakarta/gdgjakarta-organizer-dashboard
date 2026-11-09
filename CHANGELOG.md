@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.7] - 2026-11-09
+
+### Added
+- One-click HTML Error Page inspection for public service health probes and Docker Ops Agent.
+- Streamlined organizer System Health dashboard with real-time status chips and modal settings configuration.
+
+### Improved
+- Redesigned Auto-refresh toggle button with live pulsing status indicator and mono interval badge.
+- Added explicit Settings trigger action to manage public service URLs and probe parameters.
+
+---
+
 ## [1.0.6] - 2026-11-09
 
 ### Added
