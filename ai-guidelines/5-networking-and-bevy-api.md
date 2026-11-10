@@ -104,6 +104,12 @@ if (csrfToken) headers["X-Csrftoken"] = csrfToken;
 if (cookie) headers["Cookie"] = cookie;
 ```
 
+### 4.5 Cloudflare Environment Variables (Build vs. Runtime)
+- **Build-Time Inlining (`NEXT_PUBLIC_*`)**: Variables prefixed with `NEXT_PUBLIC_` (Firebase config, Google Maps API key, R2 public URL) are statically inlined by `next build`. On Cloudflare Workers Builds, they MUST be configured under **Settings → Build → Variables and secrets** (Build variables). `wrangler.jsonc` `vars` and dashboard runtime "Variables and Secrets" are NOT visible during `next build`.
+- **Production Build Guard**: `next.config.mjs` enforces `REQUIRED_PUBLIC_ENV` during `PHASE_PRODUCTION_BUILD` and throws immediately if any required `NEXT_PUBLIC_*` variable is missing from the build environment.
+- **No Hardcoded Fallbacks**: Never hardcode API keys or project credentials as fallback literals (`|| "AIza..."`) in source files or `next.config.mjs`. Real secrets must be uploaded via `wrangler secret put`.
+
+
 ---
 
 ## 5. Complete Bevy API Endpoint Catalog

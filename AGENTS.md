@@ -90,6 +90,8 @@ npm run generate:presets
 
 There is currently no automated test command. Run build, lint, check, or other validation commands only when the user explicitly requests that validation.
 
+**Cloudflare env vars**: `NEXT_PUBLIC_*` are inlined at build time and must be set as Workers Builds **Build variables** (Settings → Build → Variables and secrets), not only in `wrangler.jsonc` `vars` / runtime variables. Never hardcode credential fallbacks. See `.agents/rules/cloudflare-env.md`.
+
 
 ## User authentication
 

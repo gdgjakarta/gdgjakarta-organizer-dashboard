@@ -1,19 +1,24 @@
+import { PHASE_PRODUCTION_BUILD } from "next/constants.js";
+
 import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
 
 void initOpenNextCloudflareForDev();
 
+// NEXT_PUBLIC_* are inlined by `next build`; on Cloudflare they must be Workers Builds "Build variables", not runtime vars.
+const REQUIRED_PUBLIC_ENV = [
+  "NEXT_PUBLIC_FIREBASE_API_KEY",
+  "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN",
+  "NEXT_PUBLIC_FIREBASE_PROJECT_ID",
+  "NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET",
+  "NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID",
+  "NEXT_PUBLIC_FIREBASE_APP_ID",
+  "NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID",
+  "NEXT_PUBLIC_GOOGLE_MAPS_API_KEY",
+  "NEXT_PUBLIC_R2_PUBLIC_URL",
+];
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  env: {
-    NEXT_PUBLIC_FIREBASE_API_KEY:
-      process.env.NEXT_PUBLIC_FIREBASE_API_KEY ||
-      process.env.FIREBASE_API_KEY ||
-      "AIzaSyCVk8ECyA8Lqd7KNqdnItxYUu9jdFzoohU",
-    NEXT_PUBLIC_GOOGLE_MAPS_API_KEY:
-      process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ||
-      process.env.GOOGLE_MAPS_API_KEY ||
-      "AIzaSyAHrt1-lGCA0x-SgRCUY0nP5-jcjujhlmM",
-  },
   reactCompiler: true,
   experimental: {
     turbopackFileSystemCacheForDev: false,
@@ -128,4 +133,14 @@ const nextConfig = {
   },
 };
 
-export default nextConfig;
+export default function config(phase) {
+  if (phase === PHASE_PRODUCTION_BUILD) {
+    const missing = REQUIRED_PUBLIC_ENV.filter((key) => !process.env[key]);
+    if (missing.length > 0) {
+      throw new Error(
+        `Missing build-time env: ${missing.join(", ")}. On Cloudflare set them in Settings → Build → Variables and secrets (runtime vars / wrangler.jsonc are not visible to next build).`,
+      );
+    }
+  }
+  return nextConfig;
+}

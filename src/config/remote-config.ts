@@ -92,9 +92,9 @@ async function fetchServerRemoteConfigEntries(): Promise<Record<string, string>>
     return cachedEntries.entries;
   }
 
-  const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyCVk8ECyA8Lqd7KNqdnItxYUu9jdFzoohU";
-  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "gdgjakarta-app";
-  const appId = process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:883556294048:web:364631a561bd411a0ed8c5";
+  const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY ?? "";
+  const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ?? "";
+  const appId = process.env.NEXT_PUBLIC_FIREBASE_APP_ID ?? "";
 
   try {
     const auth = await getInstallationAuth(apiKey, projectId, appId);
