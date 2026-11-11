@@ -100,10 +100,31 @@ There is currently no automated test command. Run build, lint, check, or other v
 This project uses Firebase auth with Google Sign In provider.
 Login page is at `src/app/(main)/auth/login/page.tsx`. 
 
-## Firestore Security Rules & Specialist Subagent
+## Scrum Master & Multi-Agent Teamwork Orchestration
+
+Whenever creating a new feature or complex plan, the main agent serves as the **Scrum Master**, breaking down requirements into sprint tasks and orchestrating cross-functional agent teamwork:
+- **Pre-Analysis & Grilling (`senior-product-owner`)**:
+  - Before the Scrum Master analyzes and breaks down user requests, `senior-product-owner` leverages complete domain knowledge of the GDG Jakarta Dashboard to grill the user with probing questions.
+  - Aligns where the feature will be displayed (route, tab, dialog), who has access (RBAC), and refines edge cases.
+- **Phasing & Coordination**:
+  - `senior-software-engineer` must **wait** to develop the frontend until `senior-ux-designer` finishes the UX design and layout specifications.
+  - Meanwhile, `senior-software-engineer` develops the **backend (data & domain layer)** in parallel, collaborating with `firestore-rules-author` and `firestore-rules-optimizer` if Firestore data models or rules changes are required.
+  - Once the UX design is complete, `senior-software-engineer` implements the frontend components, consulting `devx-reviewer` for reuse, variants, and blast-radius impact analysis.
+- **`senior-product-owner`**: Domain authority who interrogates requirements, clarifies UI placement, defines RBAC boundaries, and aligns stakeholder outcomes with `senior-ux-designer`.
+- **`senior-ux-designer`**: Researches and audits existing system design/tokens, collaborates with `senior-product-owner` on user personas and stakeholder understanding, crafts user journeys, interaction states, responsive layouts, and design token compliance (radix-nova + Tailwind v4).
+- **`senior-software-engineer`**: Delivers backend data models, server actions, repository methods, and production Next.js 16/React 19/TypeScript frontend code.
+- **`devx-reviewer`**: Component Guardian checking newly generated UI against existing components (Adjust vs Variant vs New Component) with feature impact calculations.
+- **`firestore-rules-author`**: Mandatory specialist for writing and modifying `firestore.rules`.
+- **`firestore-rules-optimizer`**: Analyzes diffs of `firestore.rules` to check whether existing features and queries are impacted.
+- **`qa-tester` & `penetration-tester`**: `qa-tester` executes functional/regression test suites while `penetration-tester` tests security boundaries (RBAC, IDOR, injection) and performance/load limits.
+- **`qa-tester-lead`**: Synthesizes QA regression findings and penetration testing results into comprehensive Markdown test reports before deployment.
+
+## Firestore Security Rules & Multi-Agent Collaboration Workflow
 
 - **Mandatory Subagent Delegation**: Whenever modifying, authoring, or auditing `firestore.rules`, you MUST delegate the task to the `firestore-rules-author` subagent. Never write or overwrite `firestore.rules` directly from the main agent when the subagent is available.
-- **Rule Deployment**: The `firestore-rules-author` subagent is responsible for testing and deploying rules via `firebase deploy --only firestore:rules`.
+- **Collaborative Optimization & Impact Assessment (`firestore-rules-optimizer`)**: Whenever `firestore-rules-author` modifies `firestore.rules`, `firestore-rules-optimizer` reviews the diff to verify whether existing queries, collections, or features are impacted.
+- **Regression Testing & Lead Reporting (`qa-tester` & `qa-tester-lead`)**: If `firestore-rules-optimizer` detects impacted features, it triggers `qa-tester` to execute regression testing. `qa-tester` reports granular steps and outputs to `qa-tester-lead`, which produces a detailed markdown report (test matrix, steps, expected vs actual, regression log, and go/no-go recommendation).
+- **Rule Deployment**: The `firestore-rules-author` subagent is responsible for testing and deploying rules via `firebase deploy --only firestore:rules` only after sign-off.
 - **Bundle Voucher Deletion Invariant**: In `match /event_vouchers/{voucherDocId}`, `allow delete:` permits both team members (`hasTeamAccess()`) and authenticated bundle purchasers (`resource.data.purchaser_member_id == request.auth.uid && resource.data.times_used == 0`) so cancellations cleanly delete unredeemed friend vouchers. 
 
 ## Co-location-based structure
