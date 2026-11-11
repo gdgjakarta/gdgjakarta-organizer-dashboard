@@ -16,10 +16,34 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.14",
+    releaseDate: "2026-11-11",
+    title: "Agenda Slide Autofill & Domain Standard",
+    badge: "Latest",
+    items: [
+      {
+        category: "Fixed",
+        text: "Autofill presentation slides URL from confirmed speaker data with manual override support.",
+      },
+      {
+        category: "Fixed",
+        text: "Synchronize speaker confirmation session slot and slides URL when binding agenda activities.",
+      },
+      {
+        category: "Fixed",
+        text: "Updated speaker handbook links across invitation emails and templates to canonical gdgjakarta.com.",
+      },
+      {
+        category: "Added",
+        text: "Enforced domain usage standard reserving gdgjakarta.org strictly for Short.io redirects and gdgjakarta.com for web applications.",
+      },
+    ],
+  },
+  {
     version: "1.0.13",
     releaseDate: "2026-11-09",
     title: "Cloudflare Workers SSR Stream Hang Fix",
-    badge: "Latest",
+    badge: "Update",
     items: [
       {
         category: "Fixed",

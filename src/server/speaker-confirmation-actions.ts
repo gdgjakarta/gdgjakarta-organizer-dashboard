@@ -11,7 +11,12 @@ import {
   splitFullName,
 } from "@/lib/events/email-templates";
 import { DEFAULT_SPEAKER_CUSTOM_SWAGS, DEFAULT_SPEAKER_HANDBOOK_MARKDOWN } from "@/lib/events/speaker-handbook";
-import type { EventSpeakerConfig, EventSpeakerConfirmation, FirestoreEvent } from "@/lib/firestore/types";
+import type {
+  EventPresentationSlide,
+  EventSpeakerConfig,
+  EventSpeakerConfirmation,
+  FirestoreEvent,
+} from "@/lib/firestore/types";
 import { SPEAKER_SLIDE_TEMPLATE_PRESETS } from "@/lib/firestore/types";
 import { assertSafeWebhookUrl } from "@/lib/security/webhook-validator";
 import { extractApiMessage } from "@/lib/utils";
@@ -277,6 +282,34 @@ export async function getEventSpeakerConfirmationsAction(
 
     // Also merge any existing confirmed event.speakers from the event roster
     const event = await getFirestoreEventByIdServer(String(eventId));
+
+    // Dynamic session slot & slide URL lookup map from event's presentation slides and agenda
+    const slidesMap = new Map<string, { sessionSlot?: string; slidesUrl?: string }>();
+    if (event?.presentation_slides && Array.isArray(event.presentation_slides)) {
+      for (const slide of event.presentation_slides) {
+        if (!slide) continue;
+        const slot = slide.time_slot
+          ? `${slide.time_slot}${slide.title ? ` • ${slide.title}` : ""}`
+          : slide.title || undefined;
+        const slideUrl = slide.slides_url?.trim() || undefined;
+
+        // Index by speaker name
+        if (slide.speaker_name) {
+          const names = slide.speaker_name.split(",").map((s) => s.trim().toLowerCase());
+          for (const n of names) {
+            if (n) slidesMap.set(n, { sessionSlot: slot, slidesUrl: slideUrl });
+          }
+        }
+        if (slide.speakers && Array.isArray(slide.speakers)) {
+          for (const spk of slide.speakers) {
+            if (spk.name) {
+              slidesMap.set(spk.name.trim().toLowerCase(), { sessionSlot: slot, slidesUrl: slideUrl });
+            }
+          }
+        }
+      }
+    }
+
     if (event?.speakers && Array.isArray(event.speakers)) {
       for (const rawSpk of event.speakers) {
         if (!rawSpk) continue;
@@ -324,6 +357,19 @@ export async function getEventSpeakerConfirmationsAction(
             created_at: event.created_at || new Date().toISOString(),
             updated_at: event.updated_at || new Date().toISOString(),
           });
+        }
+      }
+    }
+
+    // Resolve session_slot and presentation_slides_url for all deduped records if not yet set
+    for (const item of deduped) {
+      const match = slidesMap.get(item.full_name.trim().toLowerCase());
+      if (match) {
+        if (!item.session_slot && match.sessionSlot) {
+          item.session_slot = match.sessionSlot;
+        }
+        if (!item.presentation_slides_url && match.slidesUrl) {
+          item.presentation_slides_url = match.slidesUrl;
         }
       }
     }
@@ -423,7 +469,7 @@ async function triggerN8nSpeakerCalendarWebhook(
       (event as unknown as Record<string, string>).virtual_venue_link ||
       `https://gdgjakarta.com/events/${event.id}`;
 
-    const handbookUrl = `https://gdgjakarta.org/events/${event.id}/speaker-handbook?token=${event.speaker_config?.share_token || ""}`;
+    const handbookUrl = `https://gdgjakarta.com/events/${event.id}/speaker-handbook?token=${event.speaker_config?.share_token || ""}`;
 
     // Compute calendar invites to send
     const invites: CalendarInviteItem[] = [];
@@ -680,7 +726,7 @@ async function dispatchSpeakerInvitationEmail(
     const templateHtml = event.email_templates?.speaker_invitation || getDefaultTemplateByKey("speaker_invitation");
     const baseData = getCleanDefaultTemplateDataForType("speaker_invitation", event);
 
-    const handbookUrl = `https://gdgjakarta.org/events/${event.id}/speaker-handbook?token=${event.speaker_config?.share_token || ""}`;
+    const handbookUrl = `https://gdgjakarta.com/events/${event.id}/speaker-handbook?token=${event.speaker_config?.share_token || ""}`;
 
     const ROLE_MAP: Record<string, string> = {
       speakers: "Speaker",
@@ -1642,6 +1688,87 @@ export async function getExistingEventSlideTemplateOptionsAction(currentEventId:
     console.error("[getExistingEventSlideTemplateOptionsAction] Error:", err);
   }
   return { success: true, options, presets };
+}
+
+/**
+ * Synchronizes session slots from saved presentation slides to speaker confirmations in Firestore.
+ */
+export async function syncSpeakerSessionSlotsFromSlidesAction(
+  eventId: string | number,
+  slides: EventPresentationSlide[],
+): Promise<{ success: boolean; updatedCount?: number; error?: string }> {
+  if (!(await isAuthorizedOrganizerSession())) {
+    return { success: false, error: "Unauthorized: Organizer privileges required" };
+  }
+
+  try {
+    const existingConfirmations = await queryFirestoreDocs<EventSpeakerConfirmation>("event_speaker_confirmations", [
+      {
+        fieldFilter: {
+          field: { fieldPath: "event_id" },
+          op: "EQUAL",
+          value: { stringValue: String(eventId) },
+        },
+      },
+    ]);
+
+    if (!existingConfirmations || existingConfirmations.length === 0) {
+      return { success: true, updatedCount: 0 };
+    }
+
+    // Map speaker names to assigned slot string and slides URL
+    const speakerMap = new Map<string, { sessionSlot: string; slidesUrl?: string }>();
+    for (const slide of slides) {
+      if (!slide) continue;
+      const slot = slide.time_slot ? `${slide.time_slot}${slide.title ? ` • ${slide.title}` : ""}` : slide.title || "";
+
+      if (!slot) continue;
+
+      if (slide.speaker_name) {
+        const names = slide.speaker_name.split(",").map((s: string) => s.trim().toLowerCase());
+        for (const n of names) {
+          if (n) speakerMap.set(n, { sessionSlot: slot, slidesUrl: slide.slides_url?.trim() });
+        }
+      }
+      if (slide.speakers && Array.isArray(slide.speakers)) {
+        for (const spk of slide.speakers) {
+          if (spk.name) {
+            speakerMap.set(spk.name.trim().toLowerCase(), { sessionSlot: slot, slidesUrl: slide.slides_url?.trim() });
+          }
+        }
+      }
+    }
+
+    let updatedCount = 0;
+    for (const conf of existingConfirmations) {
+      if (!conf.id || conf.id.startsWith("roster_")) continue;
+      const match = speakerMap.get(conf.full_name?.trim().toLowerCase());
+      if (match) {
+        const patches: Record<string, unknown> = {};
+        if (conf.session_slot !== match.sessionSlot) {
+          patches.session_slot = match.sessionSlot;
+        }
+        if (!conf.presentation_slides_url && match.slidesUrl) {
+          patches.presentation_slides_url = match.slidesUrl;
+        }
+
+        if (Object.keys(patches).length > 0) {
+          patches.updated_at = new Date().toISOString();
+          await patchFirestoreDoc("event_speaker_confirmations", conf.id, patches, true);
+          updatedCount++;
+        }
+      }
+    }
+
+    if (updatedCount > 0) {
+      revalidatePath(`/dashboard/events/${eventId}`);
+    }
+
+    return { success: true, updatedCount };
+  } catch (err) {
+    console.error("[syncSpeakerSessionSlotsFromSlidesAction] Error:", err);
+    return { success: false, error: extractApiMessage(err, "Failed to sync speaker session slots.") };
+  }
 }
 
 /**

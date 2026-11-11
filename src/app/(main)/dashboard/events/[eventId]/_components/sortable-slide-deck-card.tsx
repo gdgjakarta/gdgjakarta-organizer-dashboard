@@ -18,6 +18,7 @@ import {
   Plus,
   Presentation,
   Search,
+  Sparkles,
   Trash2,
   User,
   UserCheck,
@@ -46,7 +47,11 @@ import {
   getSpeakerRole,
   normalizeStr,
 } from "@/lib/events/agenda-unification";
-import type { EventPresentationSlide, EventPresentationSlideSpeaker } from "@/lib/firestore/types";
+import type {
+  EventPresentationSlide,
+  EventPresentationSlideSpeaker,
+  EventSpeakerConfirmation,
+} from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
 import { searchBevyPersonsAction } from "@/server/bevy-actions";
 
@@ -66,6 +71,7 @@ interface SortableSlideDeckCardProps {
   totalSlides: number;
   agendaActivities?: AgendaActivityOption[];
   speakers?: BevySpeaker[];
+  speakerConfirmations?: EventSpeakerConfirmation[];
   onUpdate: (id: string, updates: Partial<EventPresentationSlide>) => void;
   onRemove: (id: string) => void;
   onMoveUp: (index: number) => void;
@@ -81,6 +87,7 @@ export function SortableSlideDeckCard({
   totalSlides,
   agendaActivities,
   speakers,
+  speakerConfirmations,
   onUpdate,
   onRemove,
   onMoveUp,
@@ -167,10 +174,23 @@ export function SortableSlideDeckCard({
     const exists = effectiveSpeakers.some((sp) => normalizeStr(sp.name) === normalizeStr(newPresenter.name));
     if (exists) return;
     const updated = [...effectiveSpeakers, newPresenter];
-    onUpdate(slide.id, {
+    const updates: Partial<EventPresentationSlide> = {
       speakers: updated,
       speaker_name: updated.map((sp) => sp.name).join(", "),
-    });
+    };
+
+    // Autofill slides_url from speaker confirmation if empty
+    if (!slide.slides_url && speakerConfirmations) {
+      const cleanNew = newPresenter.name.trim().toLowerCase();
+      const matchedConf = speakerConfirmations.find(
+        (c) => c.full_name?.trim().toLowerCase() === cleanNew && Boolean(c.presentation_slides_url?.trim()),
+      );
+      if (matchedConf?.presentation_slides_url?.trim()) {
+        updates.slides_url = matchedConf.presentation_slides_url.trim();
+      }
+    }
+
+    onUpdate(slide.id, updates);
   };
 
   const handleRemovePresenter = (presenterName: string) => {
@@ -182,6 +202,30 @@ export function SortableSlideDeckCard({
   };
 
   const isFullySynchronized = Boolean(matchedActivity && effectiveSpeakers.length > 0);
+
+  // Check if any attached presenter has a confirmed slides URL that can be used or synced
+  const availableConfirmationSlide = useMemo(() => {
+    if (!speakerConfirmations || speakerConfirmations.length === 0) return null;
+    const candidateNames = [
+      ...effectiveSpeakers.map((s) => s.name),
+      ...(matchedActivity?.speakerName ? [matchedActivity.speakerName] : []),
+      ...(slide.speaker_name ? slide.speaker_name.split(",").map((s) => s.trim()) : []),
+    ];
+    for (const name of candidateNames) {
+      if (!name) continue;
+      const clean = name.trim().toLowerCase();
+      const conf = speakerConfirmations.find(
+        (c) => c.full_name?.trim().toLowerCase() === clean && Boolean(c.presentation_slides_url?.trim()),
+      );
+      if (conf?.presentation_slides_url?.trim()) {
+        return {
+          speakerName: conf.full_name,
+          url: conf.presentation_slides_url.trim(),
+        };
+      }
+    }
+    return null;
+  }, [speakerConfirmations, effectiveSpeakers, matchedActivity?.speakerName, slide.speaker_name]);
 
   return (
     <Card
@@ -253,12 +297,32 @@ export function SortableSlideDeckCard({
                         <DropdownMenuItem
                           key={act.id}
                           onClick={() => {
-                            onUpdate(slide.id, {
+                            const updates: Partial<EventPresentationSlide> = {
                               title: act.activity,
                               time_slot: act.time,
                               speaker_name: act.speakerName || slide.speaker_name,
                               agenda_activity_id: act.id,
-                            });
+                            };
+                            // If slide URL is currently empty, try autofilling from matching speaker confirmation
+                            if (!slide.slides_url && speakerConfirmations) {
+                              const candidateNames = [
+                                ...effectiveSpeakers.map((s) => s.name),
+                                ...(act.speakerName ? [act.speakerName] : []),
+                              ];
+                              for (const name of candidateNames) {
+                                const clean = name.trim().toLowerCase();
+                                const conf = speakerConfirmations.find(
+                                  (c) =>
+                                    c.full_name?.trim().toLowerCase() === clean &&
+                                    Boolean(c.presentation_slides_url?.trim()),
+                                );
+                                if (conf?.presentation_slides_url?.trim()) {
+                                  updates.slides_url = conf.presentation_slides_url.trim();
+                                  break;
+                                }
+                              }
+                            }
+                            onUpdate(slide.id, updates);
                           }}
                           className={cn(
                             "flex flex-col items-start gap-0.5 py-1.5 cursor-pointer",
@@ -446,7 +510,9 @@ export function SortableSlideDeckCard({
                         </div>
                         {bevyDirectoryResults.map((person) => {
                           const pName = `${person.first_name || ""} ${person.last_name || ""}`.trim();
-                          const isSelected = effectiveSpeakers.some((s) => normalizeStr(s.name) === normalizeStr(pName));
+                          const isSelected = effectiveSpeakers.some(
+                            (s) => normalizeStr(s.name) === normalizeStr(pName),
+                          );
                           return (
                             <button
                               key={person.id}
@@ -457,7 +523,9 @@ export function SortableSlideDeckCard({
                                 } else {
                                   handleAddPresenter({
                                     name: pName,
-                                    role: person.title ? `${person.title}${person.company ? ` • ${person.company}` : ""}` : undefined,
+                                    role: person.title
+                                      ? `${person.title}${person.company ? ` • ${person.company}` : ""}`
+                                      : undefined,
                                     avatar_url: person.picture_url,
                                     type: "Speaker",
                                   });
@@ -484,7 +552,10 @@ export function SortableSlideDeckCard({
                                 </div>
                               </div>
                               {isSelected ? (
-                                <Badge variant="secondary" className="text-[9px] h-4 px-1 bg-emerald-500/15 text-emerald-600">
+                                <Badge
+                                  variant="secondary"
+                                  className="text-[9px] h-4 px-1 bg-emerald-500/15 text-emerald-600"
+                                >
                                   ✓ Added
                                 </Badge>
                               ) : (
@@ -688,7 +759,33 @@ export function SortableSlideDeckCard({
           </Field>
 
           <Field className="sm:col-span-2">
-            <FieldLabel className="text-xs">Presentation Slides URL</FieldLabel>
+            <div className="flex items-center justify-between">
+              <FieldLabel className="text-xs">Presentation Slides URL</FieldLabel>
+              {availableConfirmationSlide && (
+                <button
+                  type="button"
+                  onClick={() => onUpdate(slide.id, { slides_url: availableConfirmationSlide.url })}
+                  className={cn(
+                    "text-[11px] hover:underline cursor-pointer inline-flex items-center gap-1 font-medium transition-colors",
+                    slide.slides_url === availableConfirmationSlide.url
+                      ? "text-emerald-600 dark:text-emerald-400"
+                      : "text-primary hover:text-primary/80",
+                  )}
+                  title={
+                    slide.slides_url === availableConfirmationSlide.url
+                      ? "Current URL matches confirmed speaker slides"
+                      : `Click to fill URL from ${availableConfirmationSlide.speakerName}'s confirmation`
+                  }
+                >
+                  <Sparkles className="size-3" />
+                  <span>
+                    {slide.slides_url === availableConfirmationSlide.url
+                      ? "Matches confirmed slides"
+                      : `Autofill from ${availableConfirmationSlide.speakerName}'s confirmed slides`}
+                  </span>
+                </button>
+              )}
+            </div>
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <Presentation className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />

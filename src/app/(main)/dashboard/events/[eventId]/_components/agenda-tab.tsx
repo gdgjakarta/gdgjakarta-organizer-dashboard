@@ -31,8 +31,17 @@ import {
   normalizeStr,
 } from "@/lib/events/agenda-unification";
 import { updateEventHighlightsMediaAction } from "@/lib/firestore/actions";
-import type { EventPresentationSlide, EventPresentationSlideSpeaker, FirestoreEvent } from "@/lib/firestore/types";
+import type {
+  EventPresentationSlide,
+  EventPresentationSlideSpeaker,
+  EventSpeakerConfirmation,
+  FirestoreEvent,
+} from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
+import {
+  getEventSpeakerConfirmationsAction,
+  syncSpeakerSessionSlotsFromSlidesAction,
+} from "@/server/speaker-confirmation-actions";
 
 import { BevyAgendaSection } from "./bevy-agenda-section";
 import { type AgendaActivityOption, SortableSlideDeckCard } from "./sortable-slide-deck-card";
@@ -85,6 +94,7 @@ export function AgendaTab({ event }: AgendaTabProps) {
   );
   const [internalAgenda, setInternalAgenda] = useState(event.agenda);
   const [internalSpeakers, setInternalSpeakers] = useState(event.speakers);
+  const [speakerConfirmations, setSpeakerConfirmations] = useState<EventSpeakerConfirmation[]>([]);
   const [isAgendaLoading, setIsAgendaLoading] = useState(() => !hasActualAgendaActivities(event.agenda));
   const [isSaving, setIsSaving] = useState(false);
   const initialSnapshotRef = useRef<string | null>(null);
@@ -132,6 +142,16 @@ export function AgendaTab({ event }: AgendaTabProps) {
         }
       } catch (err) {
         console.warn("[AgendaTab] Failed to fetch latest event data:", err);
+      }
+
+      // Fetch confirmed speakers to autofill presentation slides URL if available
+      try {
+        const confRes = await getEventSpeakerConfirmationsAction(String(event.id));
+        if (isMounted && confRes.success && confRes.confirmations) {
+          setSpeakerConfirmations(confRes.confirmations);
+        }
+      } catch (confErr) {
+        console.warn("[AgendaTab] Failed to fetch speaker confirmations:", confErr);
       }
 
       // If agenda is still missing or has 0 actual activities, attempt fallback fetch directly from Bevy
@@ -220,6 +240,12 @@ export function AgendaTab({ event }: AgendaTabProps) {
 
               if (res.success) {
                 initialSnapshotRef.current = currentSnapshot;
+                // Sync session slots to confirmed speakers
+                try {
+                  await syncSpeakerSessionSlotsFromSlidesAction(String(event.id), slides);
+                } catch (slotErr) {
+                  console.warn("[AgendaTab] Failed syncing session slots to speakers:", slotErr);
+                }
                 toast.success("Agenda presentation slides saved successfully!");
                 router.refresh();
               } else {
@@ -348,6 +374,21 @@ export function AgendaTab({ event }: AgendaTabProps) {
     return list;
   }, [internalAgenda, internalSpeakers, event.agenda, event.speakers]);
 
+  // Helper to find confirmed slide URL for speaker names
+  const findSpeakerSlideUrl = (speakerNames: string[]) => {
+    for (const name of speakerNames) {
+      if (!name) continue;
+      const clean = name.trim().toLowerCase();
+      const matched = speakerConfirmations.find(
+        (c) => c.full_name?.trim().toLowerCase() === clean && Boolean(c.presentation_slides_url?.trim()),
+      );
+      if (matched?.presentation_slides_url?.trim()) {
+        return matched.presentation_slides_url.trim();
+      }
+    }
+    return "";
+  };
+
   const isActivityAdded = (activityTitle: string) => {
     const norm = normalizeStr(activityTitle);
     return slides.some((s) => normalizeStr(s.title) === norm);
@@ -381,6 +422,9 @@ export function AgendaTab({ event }: AgendaTabProps) {
       }
     }
 
+    const detectedNames = boundSpeakers.length > 0 ? boundSpeakers.map((s) => s.name) : [act.speakerName];
+    const autoSlidesUrl = findSpeakerSlideUrl(detectedNames);
+
     const newSlide: EventPresentationSlide = {
       id: `slide-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       agenda_activity_id: act.id,
@@ -388,7 +432,7 @@ export function AgendaTab({ event }: AgendaTabProps) {
       time_slot: act.time,
       speaker_name: boundSpeakers.length > 0 ? boundSpeakers.map((s) => s.name).join(", ") : act.speakerName,
       speakers: boundSpeakers.length > 0 ? boundSpeakers : undefined,
-      slides_url: "",
+      slides_url: autoSlidesUrl,
       slides_title: "Open Slides",
       related_links: [],
     };
@@ -425,6 +469,9 @@ export function AgendaTab({ event }: AgendaTabProps) {
         }
       }
 
+      const detectedNames = boundSpeakers.length > 0 ? boundSpeakers.map((s) => s.name) : [act.speakerName];
+      const autoSlidesUrl = findSpeakerSlideUrl(detectedNames);
+
       return {
         id: `slide-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
         agenda_activity_id: act.id,
@@ -432,7 +479,7 @@ export function AgendaTab({ event }: AgendaTabProps) {
         time_slot: act.time,
         speaker_name: boundSpeakers.length > 0 ? boundSpeakers.map((s) => s.name).join(", ") : act.speakerName,
         speakers: boundSpeakers.length > 0 ? boundSpeakers : undefined,
-        slides_url: "",
+        slides_url: autoSlidesUrl,
         slides_title: "Open Slides",
         related_links: [],
       };
@@ -779,6 +826,7 @@ export function AgendaTab({ event }: AgendaTabProps) {
                     totalSlides={slides.length}
                     agendaActivities={agendaActivities}
                     speakers={internalSpeakers ?? event.speakers}
+                    speakerConfirmations={speakerConfirmations}
                     onUpdate={handleUpdateSlide}
                     onRemove={handleRemoveSlide}
                     onMoveUp={handleMoveSlideUp}

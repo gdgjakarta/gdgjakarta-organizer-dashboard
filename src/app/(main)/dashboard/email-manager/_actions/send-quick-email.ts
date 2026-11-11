@@ -113,7 +113,11 @@ export async function sendQuickEmail(input: QuickEmailInput) {
       t = replaceToken(t, "EventDescription", eventDesc);
       t = replaceToken(t, "SessionTitle", sessionTitle);
       t = replaceToken(t, "VehicleTicketUrl", vehicleTicketUrl);
-      t = replaceToken(t, "SpeakerHandbookUrl", data.customEventPlaceholders?.SpeakerHandbookUrl || "https://gdgjakarta.org/speaker-handbook");
+      t = replaceToken(
+        t,
+        "SpeakerHandbookUrl",
+        data.customEventPlaceholders?.SpeakerHandbookUrl || "https://gdgjakarta.com/speaker-handbook",
+      );
       t = replaceToken(t, "PresenterRole", data.customEventPlaceholders?.PresenterRole || "Speaker");
       return t;
     };

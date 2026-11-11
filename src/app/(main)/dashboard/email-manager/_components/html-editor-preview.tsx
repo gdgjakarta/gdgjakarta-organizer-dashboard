@@ -174,8 +174,8 @@ export function HtmlEditorPreview({
       const sessionTitle = "Keynote: Building Production AI Agents with Gemini";
       const vehicleTicketUrl = "https://drive.google.com/file/d/sample-vehicle-ticket/view";
       const speakerHandbookUrl = selectedEvent?.id
-        ? `https://gdgjakarta.org/events/${selectedEvent.id}/speaker-handbook`
-        : "https://gdgjakarta.org/speaker-handbook";
+        ? `https://gdgjakarta.com/events/${selectedEvent.id}/speaker-handbook`
+        : "https://gdgjakarta.com/speaker-handbook";
 
       result = result
         .replace(/\[\[EventName\]\]/g, eventName)

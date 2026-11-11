@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.14] - 2026-11-11
+
+### Fixed
+- Fixed presentation slides URL autofill in Agenda slide deck builder to populate from confirmed speaker data with manual override support.
+- Fixed speaker confirmation `session_slot` and presentation slides URL auto-synchronization when agenda activities are bound to speakers.
+- Fixed speaker handbook links in invitation emails and templates to use canonical `gdgjakarta.com` instead of `gdgjakarta.org`.
+
+### Added
+- Codified domain usage standards rule (`.agents/rules/domain-usage.md`) requiring `gdgjakarta.com` for web applications and reserving `gdgjakarta.org` strictly for Short.io URL redirects and email identities.
+
+---
+
 ## [1.0.13] - 2026-11-09
 
 ### Fixed

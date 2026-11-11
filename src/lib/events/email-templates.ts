@@ -649,7 +649,7 @@ export const EMAIL_TEMPLATE_VARIABLES: Record<EmailTemplateKey, TemplateVariable
       tag: "{{ $('event-params').item.json.speakerHandbookUrl }}",
       label: "Speaker Handbook Link",
       description: "URL to the event's interactive Speaker Handbook & Slide Templates",
-      sampleValue: "https://gdgjakarta.org/events/135487/speaker-handbook?token=spk_live",
+      sampleValue: "https://gdgjakarta.com/events/135487/speaker-handbook?token=spk_live",
     },
     {
       tag: "{{ $('bevy-config').item.json.bevyEventDate }}",
@@ -1543,10 +1543,9 @@ export function getCleanDefaultTemplateDataForType(
       ? customData.event.eventChecklistItems
       : (DEFAULT_CHECKLIST_ITEMS_BY_TYPE[key] ?? DEFAULT_ACCEPTED_CHECKLIST_ITEMS);
 
-  const defaultHandbookUrl =
-    event.id
-      ? `https://gdgjakarta.org/events/${event.id}/speaker-handbook${event.speaker_config?.share_token ? `?token=${event.speaker_config.share_token}` : ""}`
-      : "https://gdgjakarta.org/speaker-handbook";
+  const defaultHandbookUrl = event.id
+    ? `https://gdgjakarta.com/events/${event.id}/speaker-handbook${event.speaker_config?.share_token ? `?token=${event.speaker_config.share_token}` : ""}`
+    : "https://gdgjakarta.com/speaker-handbook";
 
   const bevySessionTime = formatBevySessionTime(event.start_date, event.end_date);
   const bevyCheckinDeadline = formatBevyCheckinDeadline(event.start_date, 30);
@@ -1590,8 +1589,7 @@ export function getCleanDefaultTemplateDataForType(
       customData?.cancellationReason ??
       (key === "cancelled" ? "Incomplete registration profile or duplicate submission." : undefined),
     talkType: customData?.talkType ?? "Technical Talk (45 mins)",
-    talkTitle:
-      customData?.talkTitle ?? "Building Scalable Cloud Native Applications with Gemini & Google Cloud",
+    talkTitle: customData?.talkTitle ?? "Building Scalable Cloud Native Applications with Gemini & Google Cloud",
     speakerHandbookUrl: customData?.speakerHandbookUrl ?? defaultHandbookUrl,
     presenterRole: customData?.presenterRole ?? "Speaker",
   };
@@ -1945,7 +1943,9 @@ export function interpolateTemplateHtml(
   // Speaker variables
   const talkType = data.talkType || "Speaker Session";
   const talkTitle = data.talkTitle || "Building Next-Gen Web Apps with Google Cloud";
-  const speakerHandbookUrl = data.speakerHandbookUrl || (event.eventCtaUrl ? `${event.eventCtaUrl}/speaker-handbook` : "https://gdgjakarta.org/speaker-handbook");
+  const speakerHandbookUrl =
+    data.speakerHandbookUrl ||
+    (event.eventCtaUrl ? `${event.eventCtaUrl}/speaker-handbook` : "https://gdgjakarta.com/speaker-handbook");
   const presenterRole = data.presenterRole || "Speaker";
   rendered = rendered.replaceAll("{{ $('event-params').item.json.talkType }}", talkType);
   rendered = rendered.replaceAll("{ $('event-params').item.json.talkType }", talkType);

@@ -503,7 +503,7 @@ export const speakerInvitationHtmlTemplate = `<!DOCTYPE html>
             <div class="checklist-item">
               <div class="icon">📖</div>
               <div class="text">
-                <strong>Read the Speaker Handbook:</strong> Review our comprehensive <a href="https://gdgjakarta.org/speaker-handbook" target="_blank" style="color: #1a73e8; font-weight: 600; text-decoration: underline;">GDG Jakarta Speaker Handbook</a> for presentation guidelines, code of conduct, AV setup recommendations, and community best practices.
+                <strong>Read the Speaker Handbook:</strong> Review our comprehensive <a href="https://gdgjakarta.com/speaker-handbook" target="_blank" style="color: #1a73e8; font-weight: 600; text-decoration: underline;">GDG Jakarta Speaker Handbook</a> for presentation guidelines, code of conduct, AV setup recommendations, and community best practices.
               </div>
             </div>
             <div class="checklist-item">
@@ -1362,10 +1362,7 @@ export function saveEmailBlastAsTemplate(input: {
   return template;
 }
 
-export function deleteCustomEmailBlastTemplate(
-  templateId: string,
-  updater?: { name?: string; email?: string },
-): void {
+export function deleteCustomEmailBlastTemplate(templateId: string, updater?: { name?: string; email?: string }): void {
   if (typeof window === "undefined") return;
   const current = getCustomEmailBlastTemplates();
   const updated = current.filter((t) => t.id !== templateId);

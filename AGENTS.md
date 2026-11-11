@@ -40,6 +40,8 @@ Member/user dashboard:
 
 This repository uses the shadcn `radix-nova` style. The shadcn CLI reports `base: "radix"`, which refers to Radix UI. Always inspect the local components in `src/components/ui/` because individual wrappers may use different primitives.
 
+- **Domain Usage Standard**: `gdgjakarta.com` is the primary production web application domain for all application routes, event pages, speaker handbooks, and email link targets. `gdgjakarta.org` is strictly reserved for Short.io URL shortening redirects (and verified email sender addresses); never construct deep application links using `gdgjakarta.org`. See `.agents/rules/domain-usage.md`.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 ## This is NOT the Next.js you know
