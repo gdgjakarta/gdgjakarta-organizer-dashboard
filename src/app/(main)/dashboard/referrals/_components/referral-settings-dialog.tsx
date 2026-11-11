@@ -542,7 +542,7 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
             </div>
 
             {/* Event Selector Popover */}
-            <Popover open={eventSelectorOpen} onOpenChange={setEventSelectorOpen}>
+            <Popover open={eventSelectorOpen} onOpenChange={setEventSelectorOpen} modal={true}>
               <PopoverTrigger asChild>
                 <Button
                   type="button"
@@ -567,10 +567,14 @@ export function ReferralSettingsDialog({ initialSettings, onSettingsUpdated }: R
                   <ChevronsUpDown className="size-3.5 opacity-50" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+              <PopoverContent
+                className="w-[--radix-popover-trigger-width] p-0"
+                align="start"
+                onWheel={(e) => e.stopPropagation()}
+              >
                 <Command>
                   <CommandInput placeholder="Search event by name or date..." className="text-xs" />
-                  <CommandList className="max-h-60">
+                  <CommandList className="max-h-60 overflow-y-auto overscroll-contain">
                     <CommandEmpty>No events found.</CommandEmpty>
                     <CommandGroup heading={`All Events (${availableEvents.length})`}>
                       {availableEvents.map((ev) => {

@@ -14,8 +14,10 @@ import {
   ExternalLink,
   GripVertical,
   Link2,
+  Loader2,
   Plus,
   Presentation,
+  Search,
   Trash2,
   User,
   UserCheck,
@@ -46,6 +48,7 @@ import {
 } from "@/lib/events/agenda-unification";
 import type { EventPresentationSlide, EventPresentationSlideSpeaker } from "@/lib/firestore/types";
 import { cn } from "@/lib/utils";
+import { searchBevyPersonsAction } from "@/server/bevy-actions";
 
 export interface AgendaActivityOption {
   id: string;
@@ -105,6 +108,38 @@ export function SortableSlideDeckCard({
   });
 
   const [customPresenterName, setCustomPresenterName] = useState("");
+  const [bevyDirectoryQuery, setBevyDirectoryQuery] = useState("");
+  const [bevyDirectoryResults, setBevyDirectoryResults] = useState<
+    Array<{
+      id: number;
+      first_name?: string;
+      last_name?: string;
+      title?: string;
+      company?: string;
+      picture_url?: string;
+    }>
+  >([]);
+  const [isSearchingBevyDirectory, setIsSearchingBevyDirectory] = useState(false);
+
+  const handleSearchBevyDirectory = async (q: string) => {
+    setBevyDirectoryQuery(q);
+    const trimmed = q.trim();
+    if (trimmed.length < 2) {
+      setBevyDirectoryResults([]);
+      return;
+    }
+    setIsSearchingBevyDirectory(true);
+    try {
+      const res = await searchBevyPersonsAction(trimmed, 8);
+      if (res.success && res.hits) {
+        setBevyDirectoryResults(res.hits);
+      }
+    } catch (err) {
+      console.warn("Failed searching Bevy persons for agenda", err);
+    } finally {
+      setIsSearchingBevyDirectory(false);
+    }
+  };
 
   const effectiveSpeakers = useMemo<EventPresentationSlideSpeaker[]>(() => {
     if (slide.speakers && slide.speakers.length > 0) {
@@ -385,10 +420,86 @@ export function SortableSlideDeckCard({
                     <ChevronDown className="size-2.5 opacity-60" />
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-80 max-h-80 overflow-y-auto">
+                <DropdownMenuContent align="end" className="w-88 max-h-96 overflow-y-auto">
                   <DropdownMenuLabel className="text-xs">
-                    Attach Presenter ({speakers?.length ?? 0} Bevy)
+                    Attach Presenter ({speakers?.length ?? 0} Event Speakers)
                   </DropdownMenuLabel>
+
+                  {/* Search Bevy Directory Index */}
+                  <div className="p-2 border-b border-border/50 space-y-1.5 bg-muted/20">
+                    <div className="relative">
+                      <Search className="absolute left-2 top-2 size-3 text-muted-foreground" />
+                      <Input
+                        value={bevyDirectoryQuery}
+                        onChange={(e) => handleSearchBevyDirectory(e.target.value)}
+                        placeholder="Search Bevy global speaker directory..."
+                        className="h-7 text-xs pl-7 pr-7"
+                      />
+                      {isSearchingBevyDirectory && (
+                        <Loader2 className="absolute right-2 top-2 size-3 animate-spin text-muted-foreground" />
+                      )}
+                    </div>
+                    {bevyDirectoryResults.length > 0 && (
+                      <div className="space-y-1 pt-1 max-h-40 overflow-y-auto">
+                        <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                          Bevy Directory Matches ({bevyDirectoryResults.length})
+                        </div>
+                        {bevyDirectoryResults.map((person) => {
+                          const pName = `${person.first_name || ""} ${person.last_name || ""}`.trim();
+                          const isSelected = effectiveSpeakers.some((s) => normalizeStr(s.name) === normalizeStr(pName));
+                          return (
+                            <button
+                              key={person.id}
+                              type="button"
+                              onClick={() => {
+                                if (isSelected) {
+                                  handleRemovePresenter(pName);
+                                } else {
+                                  handleAddPresenter({
+                                    name: pName,
+                                    role: person.title ? `${person.title}${person.company ? ` • ${person.company}` : ""}` : undefined,
+                                    avatar_url: person.picture_url,
+                                    type: "Speaker",
+                                  });
+                                }
+                              }}
+                              className={cn(
+                                "w-full text-left p-1.5 rounded flex items-center gap-2 hover:bg-muted text-xs cursor-pointer transition-colors",
+                                isSelected && "bg-muted font-medium",
+                              )}
+                            >
+                              <Avatar className="size-6 rounded-full shrink-0 border border-border/60">
+                                {person.picture_url && <AvatarImage src={person.picture_url} alt={pName} />}
+                                <AvatarFallback className="rounded-full bg-primary/10 text-[9px] font-bold text-primary">
+                                  {(pName || "SP").slice(0, 2).toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="min-w-0 flex-1">
+                                <div className="font-semibold text-xs text-foreground truncate flex items-center justify-between">
+                                  <span>{pName}</span>
+                                  <span className="text-[9px] text-muted-foreground font-mono">#{person.id}</span>
+                                </div>
+                                <div className="text-[10px] text-muted-foreground truncate">
+                                  {person.title || "Speaker"} {person.company ? `• ${person.company}` : ""}
+                                </div>
+                              </div>
+                              {isSelected ? (
+                                <Badge variant="secondary" className="text-[9px] h-4 px-1 bg-emerald-500/15 text-emerald-600">
+                                  ✓ Added
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="text-[9px] h-4 px-1">
+                                  + Select
+                                </Badge>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Quick Custom Presenter Input */}
                   <div className="p-2 border-b border-border/50">
                     <div className="flex items-center gap-1.5">
                       <Input
@@ -404,7 +515,7 @@ export function SortableSlideDeckCard({
                             setCustomPresenterName("");
                           }
                         }}
-                        placeholder="Type custom name..."
+                        placeholder="Or type custom presenter name..."
                         className="h-7 text-xs"
                       />
                       <Button
@@ -426,6 +537,10 @@ export function SortableSlideDeckCard({
                         Add
                       </Button>
                     </div>
+                  </div>
+
+                  <div className="px-2 pt-2 pb-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                    Event Roster Presenters
                   </div>
                   {speakers && speakers.length > 0 ? (
                     speakers.map((spk) => {

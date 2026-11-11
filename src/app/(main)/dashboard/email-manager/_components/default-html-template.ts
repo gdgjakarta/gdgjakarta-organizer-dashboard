@@ -458,7 +458,7 @@ export const speakerInvitationHtmlTemplate = `<!DOCTYPE html>
         </div>
         
         <div class="start">
-          <p>On behalf of Google Developer Groups (GDG) Jakarta, we are excited to invite you as a <strong>Featured Speaker</strong> at <strong>[[EventName]]</strong>!</p>
+          <p>On behalf of Google Developer Groups (GDG) Jakarta, we are excited to invite you as a <strong>[[PresenterRole]]</strong> at <strong>[[EventName]]</strong>!</p>
           
           <p>Our community of engineers, builders, and tech enthusiasts in Jakarta is eager to learn from your expertise, real-world experience, and technical leadership.</p>
 
@@ -519,7 +519,7 @@ export const speakerInvitationHtmlTemplate = `<!DOCTYPE html>
           <!-- Speaker Handbook Quick Link Card -->
           <div style="background-color: #e8f0fe; border-left: 4px solid #4285f4; border-radius: 4px; padding: 14px 18px; margin: 20px 0;">
             <p style="margin: 0; font-size: 0.9em; color: #1a73e8; line-height: 1.5;">
-              📘 <strong>Speaker Resource:</strong> Access the full <a href="https://gdgjakarta.org/speaker-handbook" target="_blank" style="color: #1a73e8; font-weight: 600; text-decoration: underline;">Speaker Handbook &amp; Deck Templates</a> anytime for slide templates, brand assets, and stage guidance.
+              📘 <strong>Speaker Resource:</strong> Access the full <a href="[[SpeakerHandbookUrl]]" target="_blank" style="color: #1a73e8; font-weight: 600; text-decoration: underline;">Speaker Handbook &amp; Deck Templates</a> anytime for slide templates, brand assets, and stage guidance.
             </p>
           </div>
 

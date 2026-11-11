@@ -344,7 +344,8 @@ export type EmailTemplateKey =
   | "cancelled"
   | "cancelled_attendee"
   | "waitlisted"
-  | "paid_waitlisted";
+  | "paid_waitlisted"
+  | "speaker_invitation";
 
 export interface EventEmailTemplateData {
   headerEmailUrl?: string;
@@ -364,6 +365,212 @@ export interface EventEmailTemplateData {
   attendeeId?: string;
   qrCode?: string;
   cancellationReason?: string;
+  talkType?: string;
+  talkTitle?: string;
+  speakerHandbookUrl?: string;
+  presenterRole?: string;
+}
+
+export interface SpeakerSlideTemplate {
+  id: string;
+  label: string; // e.g. "GDG Slide Template"
+  url: string; // Template URL
+  is_default?: boolean;
+}
+
+export const SPEAKER_SLIDE_TEMPLATE_PRESETS: Record<string, SpeakerSlideTemplate> = {
+  gdg_default: {
+    id: "gdg-default",
+    label: "GDG24 - PRO - Speaker Presentation Template",
+    url: "https://gdgjakarta.org/gdg-slide-template",
+    is_default: true,
+  },
+  devfest26: {
+    id: "devfest26",
+    label: "DevFest Jakarta 2026 - Speaker Presentation Template",
+    url: "https://gdgjakarta.org/devfest26-slide-template",
+  },
+};
+
+export type SpeakerEcosystemType = "GDG" | "GDE" | "WTM" | "Googler" | "None above" | string;
+
+export interface GdeExpertiseItem {
+  pillar: "Cloud" | "AI" | "Web" | "Mobile";
+  technologyArea: string;
+  subcategories: string[];
+}
+
+export const GDE_EXPERTISE_MAPPING: GdeExpertiseItem[] = [
+  // Cloud Pillar
+  {
+    pillar: "Cloud",
+    technologyArea: "Google Cloud",
+    subcategories: ["Cloud AI", "Data Cloud", "Modern and Enterprise", "Infrastructure", "Security and Operations"],
+  },
+  {
+    pillar: "Cloud",
+    technologyArea: "Workspace",
+    subcategories: [],
+  },
+  {
+    pillar: "Cloud",
+    technologyArea: "AppSheet",
+    subcategories: [],
+  },
+  {
+    pillar: "Cloud",
+    technologyArea: "Firebase",
+    subcategories: [],
+  },
+  {
+    pillar: "Cloud",
+    technologyArea: "Go",
+    subcategories: [],
+  },
+  // AI Pillar
+  {
+    pillar: "AI",
+    technologyArea: "AI",
+    subcategories: ["JAX", "Keras", "TorchTPU", "vLLM", "TPU"],
+  },
+  // Web Pillar
+  {
+    pillar: "Web",
+    technologyArea: "Web Technologies",
+    subcategories: [],
+  },
+  {
+    pillar: "Web",
+    technologyArea: "Angular",
+    subcategories: [],
+  },
+  // Mobile Pillar
+  {
+    pillar: "Mobile",
+    technologyArea: "Android",
+    subcategories: [],
+  },
+  {
+    pillar: "Mobile",
+    technologyArea: "Dart-Flutter",
+    subcategories: [],
+  },
+];
+export type SpeakerTalkType =
+  | "Keynotes"
+  | "Tech Talk"
+  | "Product Talk (Non-Tech)"
+  | "Workshop"
+  | "Panel Discussion (WTM)"
+  | string;
+
+export interface EventSpeakerCalendarConfig {
+  // 1. Main Event Invite
+  invite_main_event?: boolean; // default true
+  main_event_notes?: string; // Optional description notes appended to calendar description
+
+  // 2. Agenda Session Slot Invite
+  invite_agenda_session?: boolean; // default true
+  agenda_session_notes?: string;
+
+  // 3. Dinner / After Party Invite
+  invite_dinner?: boolean; // default false
+  dinner_title?: string; // e.g. "Speaker & Organizer Appreciation Dinner"
+  dinner_start_time?: string; // ISO datetime
+  dinner_end_time?: string; // ISO datetime
+  dinner_venue_name?: string; // e.g. "Plataran Menteng"
+  dinner_venue_address?: string; // Full address
+  dinner_maps_url?: string; // Google Maps URL
+  dinner_latitude?: number;
+  dinner_longitude?: number;
+  dinner_notes?: string;
+}
+
+export interface SpeakerCustomSwagOption {
+  id: string; // e.g. "default_tshirt", "jacket_bomber" or "swag_custom_1"
+  label: string; // e.g. "Exclusive Speaker Bomber Jacket"
+  description?: string; // e.g. "Unisex Black GDG Jakarta Windbreaker"
+  options?: string[]; // e.g. ["S", "M", "L", "XL", "2XL"]
+  is_default?: boolean; // If true, cannot be removed (only hidden/disabled or edited)
+  hidden?: boolean; // If true, hidden from speaker confirmation form
+}
+
+export interface EventSpeakerConfig {
+  enabled: boolean;
+  share_token: string; // e.g. "spk_..." (24 chars)
+  auto_send_invitation: boolean; // default true
+  calendar_webhook_url?: string | null;
+  calendar_email?: string | null; // Default "info@gdgjakarta.org"
+  auto_create_calendar_event?: boolean; // Default true
+  calendar_invites?: EventSpeakerCalendarConfig;
+  auto_sync_to_bevy?: boolean; // Default false
+  handbook_enabled?: boolean; // default true
+  handbook_title?: string | null;
+  handbook_format?: "markdown" | "html"; // default "markdown"
+  handbook_content?: string | null;
+  handbook_external_url?: string | null;
+  slide_templates?: SpeakerSlideTemplate[];
+  max_photo_size_mb?: number; // Configurable max upload size in MB (default 5)
+  active_slide_preset?: string;
+  custom_slide_template_url?: string;
+  require_presentation_slides?: boolean;
+  allow_session_co_speakers?: boolean;
+  // Swag & merchandise configuration for speaker confirmation form
+  show_swag_section?: boolean; // default true
+  selected_merchandise_ids?: string[]; // IDs of EventMerchandiseItem to display (if empty or undefined, uses all active apparel/swag or defaults)
+  custom_swags?: SpeakerCustomSwagOption[]; // Additional swag not in merchandise catalog
+  updated_at?: string;
+}
+
+export interface EventSpeakerConfirmation {
+  id: string; // `${event_id}_${sanitizedEmail}`
+  event_id: string;
+  event_title?: string;
+  share_token?: string;
+  email?: string;
+  display_name?: string; // Name (Displayed on Poster)
+  full_name: string; // Full Name (Displayed on Poster)
+  job_title: string; // Role / Job Title (Displayed on Poster)
+  company_institution: string; // Institution/Company (Displayed on Poster)
+  speaker_email: string;
+  whatsapp_number?: string;
+  contact_channels?: string[]; // e.g. ["Whatsapp", "Telegram", "Email only"]
+  talk_description?: string; // Max 300 characters (Displayed on Caption)
+  biography?: string; // Max 3000 characters (Displayed on Event Page)
+  instagram_username?: string; // Instagram tag
+  company_twitter_username?: string; // Company X/Twitter
+  can_share_slides?: "Yes" | "No"; // Permission to share slides with participants
+  dietary_restrictions_list?: string[]; // ["Vegetarian", "Vegan", "Halal", "Gluten-free", "None", ...]
+  additional_inquiry?: string;
+  linkedin_url?: string;
+  twitter_url?: string;
+  portfolio_url?: string;
+  linkedin_or_social_url?: string; // legacy fallback
+  speaker_profile_url?: string; // Photo / Avatar (Displayed on Poster)
+  google_ecosystem_or_technology?: string;
+  is_from_google_ecosystem?: "GDG" | "GDE" | "WTM" | "Googler" | "None above" | string;
+  ecosystem_details?: string; // Chapter [GDG/WTM] or Expertise [GDE/Googler] (Displayed on Poster)
+  talk_type: SpeakerTalkType;
+  talk_title: string;
+  session_slot?: string;
+  presenter_role?: "speakers" | "mentors" | "facilitators" | "panelists" | "judges" | "moderators" | "hosts";
+  presentation_slides_url?: string;
+  tshirt_size?: string;
+  swag_selections?: Record<string, string>; // e.g. { "merch_123": "XL", "jacket_bomber": "L" }
+  dietary_restrictions?: string;
+  created_at: string;
+  updated_at: string;
+  invitation_email_sent?: boolean;
+  invitation_email_sent_at?: string;
+  invitation_email_error?: string;
+  calendar_invite_sent?: boolean;
+  calendar_invite_sent_at?: string;
+  calendar_invite_error?: string;
+  calendar_event_id?: string;
+  calendar_event_url?: string;
+  bevy_synced?: boolean;
+  bevy_person_id?: number | null;
+  bevy_synced_at?: string;
 }
 
 export interface EventEmailTemplates {
@@ -379,6 +586,7 @@ export interface EventEmailTemplates {
   cancelled_attendee?: string;
   waitlisted?: string;
   paid_waitlisted?: string;
+  speaker_invitation?: string;
 
   // Custom subject lines
   interest_subject?: string;
@@ -392,6 +600,7 @@ export interface EventEmailTemplates {
   cancelled_attendee_subject?: string;
   waitlisted_subject?: string;
   paid_waitlisted_subject?: string;
+  speaker_invitation_subject?: string;
 
   // Saved event template data configuration (legacy fallback)
   template_data?: EventEmailTemplateData;
@@ -469,6 +678,12 @@ export interface FirestoreEvent {
   custom_questions?: CustomQuestion[];
   agenda?: BevyAgenda;
   speakers?: BevySpeaker[];
+  mentors?: BevySpeaker[];
+  facilitators?: BevySpeaker[];
+  panelists?: BevySpeaker[];
+  judges?: BevySpeaker[];
+  moderators?: BevySpeaker[];
+  hosts?: BevySpeaker[];
   sessions?: EventSession[];
   default_session_name?: string;
   default_session_time?: string;
@@ -537,6 +752,9 @@ export interface FirestoreEvent {
 
   // Email Automation Templates (n8n workflows)
   email_templates?: EventEmailTemplates;
+
+  // Speaker Confirmation & Handbook Configuration
+  speaker_config?: EventSpeakerConfig;
 
   // Event Thermal Printer & Label Template Configuration
   printer_config?: Partial<import("@/lib/printers/types").PrinterConfig>;

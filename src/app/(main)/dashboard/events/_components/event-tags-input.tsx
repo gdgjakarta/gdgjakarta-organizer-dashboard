@@ -91,7 +91,7 @@ export function EventTagsInput({ tags, onChange, className }: EventTagsInputProp
       )}
 
       {/* Dropdown Combobox */}
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover open={open} onOpenChange={setOpen} modal={true}>
         <PopoverTrigger asChild>
           <Button
             type="button"
@@ -108,7 +108,11 @@ export function EventTagsInput({ tags, onChange, className }: EventTagsInputProp
             <ChevronsUpDown className="ml-2 size-3.5 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+        <PopoverContent
+          className="w-[--radix-popover-trigger-width] p-0"
+          align="start"
+          onWheel={(e) => e.stopPropagation()}
+        >
           <Command shouldFilter={true}>
             <CommandInput
               placeholder="Search or enter custom tag..."
@@ -122,7 +126,7 @@ export function EventTagsInput({ tags, onChange, className }: EventTagsInputProp
                 }
               }}
             />
-            <CommandList className="max-h-60">
+            <CommandList className="max-h-60 overflow-y-auto overscroll-contain">
               <CommandEmpty className="py-2 text-center text-muted-foreground text-xs">
                 {canAddCustom ? (
                   <button

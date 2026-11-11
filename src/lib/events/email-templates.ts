@@ -28,6 +28,9 @@ export const DEFAULT_REJECTED_VIRTUAL_EMAIL_HTML =
 export const DEFAULT_CANCELLED_EMAIL_HTML =
   '<!DOCTYPE html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n    <title>Registration Cancelled: {{ $(\'event-params\').item.json.eventName }}</title>\n    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet" />\n    <style>\n      body {\n        margin: 0;\n        padding: 0;\n        font-family: \'Poppins\', sans-serif;\n        background-color: #f1f3f4;\n        color: #3c4043;\n      }\n\n      .container {\n        max-width: 510px;\n        margin: 0 auto;\n        background-color: #ffffff;\n        padding: 30px;\n        border-radius: 8px;\n      }\n\n      .header-img {\n        width: 100%;\n        height: auto;\n        border-radius: 8px 8px 0 0;\n        background-color: #ea4335;\n        min-height: 100px;\n      }\n\n      .center {\n        text-align: center;\n      }\n\n      .start {\n        text-align: start;\n      }\n\n      .btn {\n        display: block;\n        background-color: #ea4335;\n        color: #ffffff !important;\n        text-align: center;\n        border-radius: 50px;\n        padding: 12px 24px;\n        text-decoration: none;\n        width: 70%;\n        margin: 30px auto;\n        font-weight: 600;\n        font-size: 15px;\n        box-shadow: 0 4px 6px rgba(0,0,0,0.1);\n      }\n      \n      .btn:hover {\n        background-color: #d93025;\n      }\n\n      .checklist-box {\n        background-color: #f8f9fa;\n        border: 1px solid #e0e0e0;\n        border-radius: 8px;\n        padding: 20px;\n        margin: 20px 0;\n      }\n\n      .checklist-item {\n        margin-bottom: 15px;\n        display: flex;\n        align-items: flex-start;\n      }\n\n      .checklist-item:last-child {\n        margin-bottom: 0;\n      }\n\n      .icon {\n        margin-right: 12px;\n        font-size: 1.2em;\n        min-width: 25px;\n      }\n\n      .text {\n        font-size: 0.95em;\n        line-height: 1.5;\n      }\n\n      .footer {\n        margin-top: 24pt;\n        padding: 18pt;\n        background-color: #f8f9fa;\n        border-radius: 0 0 8px 8px;\n        text-align: center;\n      }\n\n      .content {\n        padding: 0 15px;\n      }\n\n      .alert-box {\n        background-color: #fce8e6;\n        border: 1px solid #ea4335;\n        border-radius: 8px;\n        padding: 16px;\n        margin: 24px 0;\n        color: #b31412;\n      }\n\n      .alert-box p {\n        margin-top: 0;\n        margin-bottom: 12px;\n        line-height: 1.6;\n      }\n\n      .alert-box p:last-child {\n        margin-bottom: 0;\n      }\n\n      p {\n        line-height: 1.6;\n        margin-bottom: 15px;\n      }\n\n      strong {\n        color: #202124;\n      }\n    </style>\n  </head>\n  <body>\n    <div class="container">\n      <div class="center">\n        <!-- Header Image -->\n        <img src="{{ $(\'event-params\').item.json.eventHeaderUrl }}" onerror="this.src=\'https://placehold.co/600x300?text=Registration+Cancelled\'" alt="Event Header" class="header-img" />\n      </div>\n      \n      <div class="content">\n        <div class="start">\n          <h2>Hi {{ $(\'loop-send-email\').item.json[\'Full Name\'] }},</h2>\n        </div>\n        \n        <div class="start">\n          <p>We are writing to notify you regarding your registration for <strong>{{ $(\'event-params\').item.json.eventName }}</strong>.</p>\n          \n          <div class="alert-box">\n            <p><strong>Notice of Registration Cancellation:</strong></p>\n            <p>Your registration has been cancelled by the organizer and you have been removed from the event. If you change your mind, you need to re-register again.</p>\n            <p><strong>Reason for Cancellation:</strong><br>{{ $(\'event-params\').item.json.cancellationReason }}</p>\n          </div>\n\n          <!-- Cancellation Checklist / Notes -->\n          <div class="checklist-box">\n            <h3 style="margin-top: 0; color: #ea4335;">📋 Important Information</h3>\n            {{ $(\'event-params\').item.json.eventChecklistItems }}\n          </div>\n\n          <p>If you have any questions or believe this was done in error, please feel free to reach out to our organizing team.</p>\n          \n          <a href="{{ $(\'event-params\').item.json.eventActionUrl }}" class="btn">View Event &amp; Re-Register</a>\n\n          <p style="margin-top: 30px; font-size: 0.9em; color: #5f6368; text-align: center;">\n            Thank you for your understanding.\n          </p>\n        </div>\n      </div>\n      \n      <div class="center">\n        <div class="footer">\n          <img alt="GDG Jakarta" src="https://assets.gdgjakarta.org/gdg-jakarta/gdg-sign-bubble-transparent.png" style="width: 113px; height: auto;" />\n        </div>\n      </div>\n    </div>\n  </body>\n</html>';
 
+export const DEFAULT_SPEAKER_INVITATION_EMAIL_HTML =
+  '<!DOCTYPE html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n    <title>Speaker Invitation: {{ $(\'event-params\').item.json.eventName }}</title>\n    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet" />\n    <style>\n      body {\n        margin: 0;\n        padding: 0;\n        font-family: \'Poppins\', sans-serif;\n        background-color: #f1f3f4;\n        color: #3c4043;\n      }\n\n      .container {\n        max-width: 510px;\n        margin: 0 auto;\n        background-color: #ffffff;\n        padding: 30px;\n        border-radius: 8px;\n      }\n\n      .header-img {\n        width: 100%;\n        height: auto;\n        border-radius: 8px 8px 0 0;\n        background-color: #4285f4;\n        min-height: 100px;\n      }\n\n      .center {\n        text-align: center;\n      }\n\n      .start {\n        text-align: start;\n      }\n\n      /* Session Card Styles */\n      .ticket-card {\n        background-color: #f8f9fa;\n        border: 2px dashed #4285f4;\n        border-radius: 12px;\n        padding: 25px;\n        margin: 25px 0;\n        text-align: center;\n        position: relative;\n      }\n\n      .ticket-title {\n        color: #4285f4;\n        font-weight: 600;\n        margin-bottom: 15px;\n        text-transform: uppercase;\n        letter-spacing: 1px;\n        font-size: 0.9em;\n      }\n\n      .attendee-name {\n        font-size: 1.3em;\n        font-weight: 600;\n        color: #202124;\n        margin: 5px 0;\n      }\n\n      .attendee-id {\n        display: inline-block;\n        background-color: #e8f0fe;\n        color: #1967d2;\n        padding: 4px 12px;\n        border-radius: 4px;\n        font-family: \'Courier New\', monospace;\n        font-size: 14px;\n        font-weight: 600;\n        margin-bottom: 20px;\n      }\n\n      .talk-title-box {\n        background-color: #e8f0fe;\n        border-radius: 8px;\n        padding: 15px;\n        margin: 15px 0;\n        color: #174ea6;\n        text-align: left;\n      }\n\n      .talk-title-label {\n        font-size: 0.85em;\n        font-weight: 600;\n        text-transform: uppercase;\n        letter-spacing: 0.5px;\n        color: #1967d2;\n        margin-bottom: 5px;\n      }\n\n      .talk-title-text {\n        font-size: 1.1em;\n        font-weight: 600;\n        line-height: 1.4;\n        color: #202124;\n      }\n\n      .details-box {\n        background-color: #ffffff;\n        border: 1px solid #e0e0e0;\n        border-radius: 8px;\n        padding: 15px;\n        margin-top: 20px;\n        text-align: left;\n      }\n\n      .detail-row {\n        display: flex;\n        margin-bottom: 10px;\n      }\n\n      .detail-row:last-child {\n        margin-bottom: 0;\n      }\n\n      .detail-icon {\n        margin-right: 10px;\n        font-size: 1.1em;\n      }\n\n      /* Reminder Checklist Styles */\n      .checklist-box {\n        background-color: #f8f9fa;\n        border: 1px solid #e0e0e0;\n        border-radius: 8px;\n        padding: 20px;\n        margin: 25px 0;\n      }\n\n      .checklist-item {\n        margin-bottom: 15px;\n        display: flex;\n        align-items: flex-start;\n      }\n\n      .checklist-item:last-child {\n        margin-bottom: 0;\n      }\n\n      .icon {\n        margin-right: 12px;\n        font-size: 1.2em;\n        min-width: 25px;\n      }\n\n      .text {\n        font-size: 0.95em;\n        line-height: 1.5;\n      }\n\n      /* Button Styles */\n      .btn {\n        display: block;\n        background-color: #4285f4;\n        color: #ffffff !important;\n        text-align: center;\n        border-radius: 50px;\n        padding: 12px 24px;\n        text-decoration: none;\n        width: 70%;\n        margin: 20px auto;\n        font-weight: 600;\n        font-size: 15px;\n        box-shadow: 0 4px 6px rgba(0,0,0,0.1);\n      }\n      \n      .btn:hover {\n        background-color: #3367d6;\n      }\n\n      /* Global Content Elements */\n      .footer {\n        margin-top: 24pt;\n        padding: 18pt;\n        background-color: #f8f9fa;\n        border-radius: 0 0 8px 8px;\n        text-align: center;\n      }\n\n      .content {\n        padding: 0 15px;\n      }\n\n      p {\n        line-height: 1.6;\n      }\n\n      strong {\n        color: #202124;\n      }\n\n      a.location-link {\n        color: #1a73e8;\n        text-decoration: none;\n        font-weight: 600;\n      }\n\n      a.location-link:hover {\n        text-decoration: underline;\n      }\n    </style>\n  </head>\n  <body>\n    <div class="container">\n      <div class="center">\n        <img src="{{ $(\'event-params\').item.json.headerEmailUrl }}" onerror="this.src=\'https://placehold.co/600x300?text=GDG+Jakarta+Speaker\'" alt="Event Header" class="header-img" />\n      </div>\n      <div class="content">\n        <div class="start">\n          <h2>Hi {{ $(\'loop-send-email\').item.json[\'Full Name\'] }},</h2>\n        </div>\n        <div class="start">\n          <p>You\'re confirmed as an official {{ $(\'event-params\').item.json.presenterRole }}! \ud83c\udfa4</p>\n          <p>We are absolutely thrilled to welcome you as a {{ $(\'event-params\').item.json.presenterRole }} at <strong>{{ $(\'event-params\').item.json.eventName }}</strong>. Thank you for sharing your expertise with our developer community. Below are your session details, speaker handbook, and guidelines.</p>\n          \n          <div class="ticket-card">\n            <div class="ticket-title">{{ $(\'event-params\').item.json.presenterRole }} Session Details</div>\n            <div class="attendee-name">{{ $(\'loop-send-email\').item.json[\'Full Name\'] }}</div>\n            <div class="attendee-id">{{ $(\'event-params\').item.json.talkType }}</div>\n            \n            <div class="talk-title-box">\n              <div class="talk-title-label">Your Talk Title</div>\n              <div class="talk-title-text">{{ $(\'event-params\').item.json.talkTitle }}</div>\n            </div>\n            \n            <div class="details-box">\n              <div class="detail-row">\n                <span class="detail-icon">\ud83d\udcc5</span>\n                <div>\n                  <strong>Date</strong>\n                  <br>\n                  {{ $(\'bevy-config\').item.json.bevyEventDate }}\n                </div>\n              </div>\n              <div class="detail-row">\n                <span class="detail-icon">\u23f0</span>\n                <div>\n                  <strong>Estimated Session / Stage Time</strong>\n                  <br>\n                  {{ $(\'session-config\').item.json.bevySessionTime }}\n                </div>\n              </div>\n              <div class="detail-row">\n                <span class="detail-icon">\ud83d\udccd</span>\n                <div>\n                  <strong>Venue Location</strong>\n                  <br>\n                  <a href="{{ $(\'bevy-config\').item.json.bevyEventLocationUrl }}" class="location-link" target="_blank">\n                    {{ $(\'bevy-config\').item.json.bevyEventLocation }}\n                  </a>\n                </div>\n              </div>\n            </div>\n          </div>\n\n          <!-- Speaker Handbook Button -->\n          <div style="text-align: center; margin: 25px 0;">\n            <a href="{{ $(\'event-params\').item.json.speakerHandbookUrl }}" class="btn" target="_blank">\n              📖 Open Speaker Handbook &amp; Slide Template\n            </a>\n          </div>\n\n          <div class="checklist-box">\n            <h3 style="margin-top: 0; color: #4285f4;">\ud83d\udcdd Speaker Checklist &amp; Reminders</h3>\n            {{ $(\'event-params\').item.json.eventChecklistItems }}\n          </div>\n          \n          <p>Please review the speaker handbook for slide dimensions, stage equipment setup, and presentation tips. Feel free to reach out to our team if you need any assistance.</p>\n\n          <p style="margin-top: 30px; font-size: 0.9em; color: #555;">Thank you again for inspiring our community. See you on stage! \ud83d\ude80</p>\n        </div>\n      </div>\n      <div class="center">\n        <div class="footer">\n          <img alt="GDG Jakarta" src="https://assets.gdgjakarta.org/gdg-jakarta/gdg-sign-bubble-transparent.png" style="width: 113px; height: auto;" />\n        </div>\n      </div>\n    </div>\n  </body>\n</html>';
+
 export const DEFAULT_CANCELLED_ATTENDEE_EMAIL_HTML =
   '<!DOCTYPE html>\n<html lang="en">\n  <head>\n    <meta charset="UTF-8" />\n    <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n    <title>Registration Cancelled: {{ $(\'event-params\').item.json.eventName }}</title>\n    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet" />\n    <style>\n      body {\n        margin: 0;\n        padding: 0;\n        font-family: \'Poppins\', sans-serif;\n        background-color: #f1f3f4;\n        color: #3c4043;\n      }\n\n      .container {\n        max-width: 510px;\n        margin: 0 auto;\n        background-color: #ffffff;\n        padding: 30px;\n        border-radius: 8px;\n      }\n\n      .header-img {\n        width: 100%;\n        height: auto;\n        border-radius: 8px 8px 0 0;\n        background-color: #ea4335;\n        min-height: 100px;\n      }\n\n      .center {\n        text-align: center;\n      }\n\n      .start {\n        text-align: start;\n      }\n\n      .btn {\n        display: block;\n        background-color: #ea4335;\n        color: #ffffff !important;\n        text-align: center;\n        border-radius: 50px;\n        padding: 12px 24px;\n        text-decoration: none;\n        width: 70%;\n        margin: 30px auto;\n        font-weight: 600;\n        font-size: 15px;\n        box-shadow: 0 4px 6px rgba(0,0,0,0.1);\n      }\n      \n      .btn:hover {\n        background-color: #d93025;\n      }\n\n      .checklist-box {\n        background-color: #f8f9fa;\n        border: 1px solid #e0e0e0;\n        border-radius: 8px;\n        padding: 20px;\n        margin: 20px 0;\n      }\n\n      .checklist-item {\n        margin-bottom: 15px;\n        display: flex;\n        align-items: flex-start;\n      }\n\n      .checklist-item:last-child {\n        margin-bottom: 0;\n      }\n\n      .icon {\n        margin-right: 12px;\n        font-size: 1.2em;\n        min-width: 25px;\n      }\n\n      .text {\n        font-size: 0.95em;\n        line-height: 1.5;\n      }\n\n      .footer {\n        margin-top: 24pt;\n        padding: 18pt;\n        background-color: #f8f9fa;\n        border-radius: 0 0 8px 8px;\n        text-align: center;\n      }\n\n      .content {\n        padding: 0 15px;\n      }\n\n      .alert-box {\n        background-color: #fce8e6;\n        border: 1px solid #ea4335;\n        border-radius: 8px;\n        padding: 16px;\n        margin: 24px 0;\n        color: #b31412;\n      }\n\n      .alert-box p {\n        margin-top: 0;\n        margin-bottom: 12px;\n        line-height: 1.6;\n      }\n\n      .alert-box p:last-child {\n        margin-bottom: 0;\n      }\n\n      p {\n        line-height: 1.6;\n        margin-bottom: 15px;\n      }\n\n      strong {\n        color: #202124;\n      }\n    </style>\n  </head>\n  <body>\n    <div class="container">\n      <div class="center">\n        <!-- Header Image -->\n        <img src="{{ $(\'event-params\').item.json.eventHeaderUrl }}" onerror="this.src=\'https://placehold.co/600x300?text=Registration+Cancelled\'" alt="Event Header" class="header-img" />\n      </div>\n      \n      <div class="content">\n        <div class="start">\n          <h2>Hi {{ $(\'loop-send-email\').item.json[\'Full Name\'] }},</h2>\n        </div>\n        \n        <div class="start">\n          <p>We are writing to confirm that your registration for <strong>{{ $(\'event-params\').item.json.eventName }}</strong> has been cancelled.</p>\n          \n          <div class="alert-box">\n            <p><strong>Notice of Registration Cancellation:</strong></p>\n            <p>Your registration has been canceled and your registration will be removed from the event. If you change your mind, you need to re-register again.</p>\n          </div>\n\n          <!-- Cancellation Checklist / Notes -->\n          <div class="checklist-box">\n            <h3 style="margin-top: 0; color: #ea4335;">\ud83d\udccb Important Information</h3>\n            {{ $(\'event-params\').item.json.eventChecklistItems }}\n          </div>\n\n          <p>If you have any questions or cancelled this by mistake, you can return to the event page anytime while registration remains open.</p>\n          \n          <a href="{{ $(\'event-params\').item.json.eventActionUrl }}" class="btn">View Event &amp; Re-Register</a>\n\n          <p style="margin-top: 30px; font-size: 0.9em; color: #5f6368; text-align: center;">\n            Thank you for being part of the GDG Jakarta community.\n          </p>\n        </div>\n      </div>\n      \n      <div class="center" style="text-align: center;">\n        <div class="footer" style="margin-top: 24pt; padding: 18pt; background-color: #f8f9fa; border-radius: 0 0 8px 8px; text-align: center;">\n          <img alt="GDG Jakarta" src="https://assets.gdgjakarta.org/gdg-jakarta/gdg-sign-bubble-transparent.png" width="113" style="width: 113px; height: auto; display: inline-block; border: 0;" />\n        </div>\n      </div>\n    </div>\n  </body>\n</html>';
 
@@ -48,6 +51,105 @@ export interface TemplateVariableInfo {
   label: string;
   description: string;
   sampleValue: string;
+}
+
+/**
+ * Normalizes legacy n8n expressions inside template HTML and subjects to clean dashboard tokens
+ * like [[EventName]], [[EventDate]], [[Name]], [[Email]], [[EventBannerUrl]], etc.
+ */
+export function convertTemplateToCleanTokens(raw: string): string {
+  let text = raw;
+
+  // Event Name
+  text = text.replaceAll("{{ $('event-params').item.json.eventName }}", "[[EventName]]");
+  text = text.replaceAll("{ $('event-params').item.json.eventName }", "[[EventName]]");
+  text = text.replaceAll("{{ $('bevy-config').item.json.bevyEventName }}", "[[EventName]]");
+  text = text.replaceAll("{ $('bevy-config').item.json.bevyEventName }", "[[EventName]]");
+  text = text.replaceAll("{{ $('email-config').item.json.eventName }}", "[[EventName]]");
+  text = text.replaceAll("{ $('email-config').item.json.eventName }", "[[EventName]]");
+  text = text.replaceAll("{{ eventName }}", "[[EventName]]");
+
+  // Header Banner URL
+  text = text.replaceAll("{{ $('event-params').item.json.eventHeaderUrl }}", "[[EventBannerUrl]]");
+  text = text.replaceAll("{ $('event-params').item.json.eventHeaderUrl }", "[[EventBannerUrl]]");
+  text = text.replaceAll("{{ $('event-params').item.json.headerEmailUrl }}", "[[EventBannerUrl]]");
+  text = text.replaceAll("{ $('event-params').item.json.headerEmailUrl }", "[[EventBannerUrl]]");
+  text = text.replaceAll("{{ $('bevy-config').item.json.bevyEventHeaderEmailUrl }}", "[[EventBannerUrl]]");
+  text = text.replaceAll("{ $('bevy-config').item.json.bevyEventHeaderEmailUrl }", "[[EventBannerUrl]]");
+  text = text.replaceAll("{{ $('email-config').item.json.eventHeaderEmailUrl }}", "[[EventBannerUrl]]");
+  text = text.replaceAll("{ $('email-config').item.json.eventHeaderEmailUrl }", "[[EventBannerUrl]]");
+  text = text.replaceAll("{{ headerEmailUrl }}", "[[EventBannerUrl]]");
+
+  // Action / CTA URL
+  text = text.replaceAll("{{ $('event-params').item.json.eventActionUrl }}", "[[EventUrl]]");
+  text = text.replaceAll("{ $('event-params').item.json.eventActionUrl }", "[[EventUrl]]");
+  text = text.replaceAll("{{ $('event-params').item.json.eventCtaUrl }}", "[[EventUrl]]");
+  text = text.replaceAll("{ $('event-params').item.json.eventCtaUrl }", "[[EventUrl]]");
+  text = text.replaceAll("{{ $('email-config').item.json.actionButtonUrl }}", "[[EventUrl]]");
+  text = text.replaceAll("{ $('email-config').item.json.actionButtonUrl }", "[[EventUrl]]");
+  text = text.replaceAll("{{ eventCtaUrl }}", "[[EventUrl]]");
+
+  // Recipient / Attendee Name
+  text = text.replaceAll("{{ $('loop-send-email').item.json['Full Name'] }}", "[[Name]]");
+  text = text.replaceAll("{ $('loop-send-email').item.json['Full Name'] }", "[[Name]]");
+  text = text.replaceAll("{{ $('loop-send-rejected-email').item.json['Full Name'] }}", "[[Name]]");
+  text = text.replaceAll("{ $('loop-send-rejected-email').item.json['Full Name'] }", "[[Name]]");
+  text = text.replaceAll("{{ $('bevy-config').item.json.bevyUserName }}", "[[Name]]");
+  text = text.replaceAll("{ $('bevy-config').item.json.bevyUserName }", "[[Name]]");
+  text = text.replaceAll("{{ $('attendee-data').item.json.name }}", "[[Name]]");
+  text = text.replaceAll("{ $('attendee-data').item.json.name }", "[[Name]]");
+  text = text.replaceAll("{{ name }}", "[[Name]]");
+
+  // Recipient / Attendee Email
+  text = text.replaceAll("{{ $('loop-send-email').item.json['Email'] }}", "[[Email]]");
+  text = text.replaceAll("{ $('loop-send-email').item.json['Email'] }", "[[Email]]");
+  text = text.replaceAll("{{ $('bevy-config').item.json.bevyUserEmail }}", "[[Email]]");
+  text = text.replaceAll("{ $('bevy-config').item.json.bevyUserEmail }", "[[Email]]");
+  text = text.replaceAll("{{ $('attendee-data').item.json.email }}", "[[Email]]");
+  text = text.replaceAll("{ $('attendee-data').item.json.email }", "[[Email]]");
+  text = text.replaceAll("{{ email }}", "[[Email]]");
+
+  // Date, Session Time, Location
+  text = text.replaceAll("{{ $('bevy-config').item.json.bevyEventDate }}", "[[EventDate]]");
+  text = text.replaceAll("{ $('bevy-config').item.json.bevyEventDate }", "[[EventDate]]");
+  text = text.replaceAll("{{ $('session-config').item.json.bevySessionTime }}", "[[EventTime]]");
+  text = text.replaceAll("{ $('session-config').item.json.bevySessionTime }", "[[EventTime]]");
+  text = text.replaceAll("{{ $('bevy-config').item.json.bevyEventLocation }}", "[[EventVenue]]");
+  text = text.replaceAll("{ $('bevy-config').item.json.bevyEventLocation }", "[[EventVenue]]");
+  text = text.replaceAll("{{ $('bevy-config').item.json.bevyEventLocationUrl }}", "[[EventVenueUrl]]");
+  text = text.replaceAll("{ $('bevy-config').item.json.bevyEventLocationUrl }", "[[EventVenueUrl]]");
+
+  // Attendee Reference Code & Attendee ID
+  text = text.replaceAll("{{ $('Add Bevy Attendee API').item.json.attendee_code }}", "[[TicketCode]]");
+  text = text.replaceAll("{ $('Add Bevy Attendee API').item.json.attendee_code }", "[[TicketCode]]");
+  text = text.replaceAll("{{ $('add-bevy-attendee-api').item.json.attendee_code }}", "[[TicketCode]]");
+  text = text.replaceAll("{ $('add-bevy-attendee-api').item.json.attendee_code }", "[[TicketCode]]");
+  text = text.replaceAll("{{ $('Add Bevy Attendee API').item.json.id }}", "[[AttendeeId]]");
+  text = text.replaceAll("{ $('Add Bevy Attendee API').item.json.id }", "[[AttendeeId]]");
+  text = text.replaceAll("{{ $('add-bevy-attendee-api').item.json.id }}", "[[AttendeeId]]");
+  text = text.replaceAll("{ $('add-bevy-attendee-api').item.json.id }", "[[AttendeeId]]");
+  text = text.replaceAll("{{ attendeeId }}", "[[AttendeeId]]");
+
+  // Cancellation Reason
+  text = text.replaceAll("{{ $('event-params').item.json.cancellationReason }}", "[[CancellationReason]]");
+  text = text.replaceAll("{ $('event-params').item.json.cancellationReason }", "[[CancellationReason]]");
+  text = text.replaceAll("{{ cancellation_reason }}", "[[CancellationReason]]");
+  text = text.replaceAll("{ cancellation_reason }", "[[CancellationReason]]");
+  text = text.replaceAll("{{ cancellationReason }}", "[[CancellationReason]]");
+  text = text.replaceAll("{ cancellationReason }", "[[CancellationReason]]");
+
+  // Speaker & Presenter Tokens
+  text = text.replaceAll("{{ $('event-params').item.json.talkTitle }}", "[[SessionTitle]]");
+  text = text.replaceAll("{ $('event-params').item.json.talkTitle }", "[[SessionTitle]]");
+  text = text.replaceAll("{{ talkTitle }}", "[[SessionTitle]]");
+  text = text.replaceAll("{{ $('event-params').item.json.speakerHandbookUrl }}", "[[SpeakerHandbookUrl]]");
+  text = text.replaceAll("{ $('event-params').item.json.speakerHandbookUrl }", "[[SpeakerHandbookUrl]]");
+  text = text.replaceAll("{{ speakerHandbookUrl }}", "[[SpeakerHandbookUrl]]");
+  text = text.replaceAll("{{ $('event-params').item.json.presenterRole }}", "[[PresenterRole]]");
+  text = text.replaceAll("{ $('event-params').item.json.presenterRole }", "[[PresenterRole]]");
+  text = text.replaceAll("{{ presenterRole }}", "[[PresenterRole]]");
+
+  return text;
 }
 
 export interface EmailTemplateMeta {
@@ -506,6 +608,80 @@ export const EMAIL_TEMPLATE_VARIABLES: Record<EmailTemplateKey, TemplateVariable
       sampleValue: "Refund Guidelines",
     },
   ],
+  speaker_invitation: [
+    {
+      tag: "{{ $('event-params').item.json.eventName }}",
+      label: "Event Name",
+      description: "Name of the GDG event",
+      sampleValue: "Cloud Community Day Jakarta 2026",
+    },
+    {
+      tag: "{{ $('event-params').item.json.headerEmailUrl }}",
+      label: "Header Banner URL",
+      description: "Banner image URL for the email header",
+      sampleValue: "https://assets.gdgjakarta.org/gdg-jakarta/gdg-jakarta-emailheaders-1244x388-blue.png",
+    },
+    {
+      tag: "{{ $('loop-send-email').item.json['Full Name'] }}",
+      label: "Speaker Full Name",
+      description: "Recipient speaker full name",
+      sampleValue: "Alex Pratama",
+    },
+    {
+      tag: "{{ $('event-params').item.json.presenterRole }}",
+      label: "Presenter / Session Role",
+      description: "Speaker, Panelist, Facilitator, Mentor, Judge, Moderator, or Host",
+      sampleValue: "Speaker",
+    },
+    {
+      tag: "{{ $('event-params').item.json.talkType }}",
+      label: "Talk / Session Type",
+      description: "Keynote, Lightning Talk, Panel, Workshop, or Technical Talk",
+      sampleValue: "Technical Deep-Dive (45m)",
+    },
+    {
+      tag: "{{ $('event-params').item.json.talkTitle }}",
+      label: "Talk Title",
+      description: "Confirmed presentation or workshop title",
+      sampleValue: "Architecting Real-time GenAI Agents with Gemini 2.5",
+    },
+    {
+      tag: "{{ $('event-params').item.json.speakerHandbookUrl }}",
+      label: "Speaker Handbook Link",
+      description: "URL to the event's interactive Speaker Handbook & Slide Templates",
+      sampleValue: "https://gdgjakarta.org/events/135487/speaker-handbook?token=spk_live",
+    },
+    {
+      tag: "{{ $('bevy-config').item.json.bevyEventDate }}",
+      label: "Event Date",
+      description: "Formatted date of the event",
+      sampleValue: "Saturday, 25 October 2026",
+    },
+    {
+      tag: "{{ $('session-config').item.json.bevySessionTime }}",
+      label: "Session Time / Stage Slot",
+      description: "Time range of the event or speaker's session slot",
+      sampleValue: "13:30 - 14:15 WIB",
+    },
+    {
+      tag: "{{ $('bevy-config').item.json.bevyEventLocation }}",
+      label: "Venue Location Name",
+      description: "Name of the venue",
+      sampleValue: "Google Indonesia, Pacific Century Place Level 45, SCBD",
+    },
+    {
+      tag: "{{ $('bevy-config').item.json.bevyEventLocationUrl }}",
+      label: "Venue Location Maps URL",
+      description: "Google Maps link for the venue",
+      sampleValue: "https://maps.google.com/?q=Pacific+Century+Place+SCBD",
+    },
+    {
+      tag: "{{ $('event-params').item.json.eventChecklistItems }}",
+      label: "Checklist Items",
+      description: "Rendered HTML speaker guidelines, slide formats, and technical requirements",
+      sampleValue: "Speaker Guidelines & Stage Checklists",
+    },
+  ],
 };
 
 export const EMAIL_TEMPLATES_CONFIG: EmailTemplateMeta[] = [
@@ -651,6 +827,19 @@ export const EMAIL_TEMPLATES_CONFIG: EmailTemplateMeta[] = [
     isCuratedOnly: false,
     variables: EMAIL_TEMPLATE_VARIABLES.cancelled_attendee,
   },
+  {
+    key: "speaker_invitation",
+    name: "Speaker Invitation & Session Confirmation",
+    badge: "Speaker Workflow",
+    subjectDefault: "Speaker Invitation: {{ $('event-params').item.json.eventName }}",
+    description:
+      "Sent immediately to a speaker upon submitting the Speaker Confirmation form (or resent by organizers). Includes session details, venue, talk title, checklists, and direct link to the event Speaker Handbook.",
+    n8nNode: "loop-send-email",
+    triggerDescription: "Triggered on Speaker Confirmation form submission or manual resend in Speakers tab",
+    defaultHtml: DEFAULT_SPEAKER_INVITATION_EMAIL_HTML,
+    isCuratedOnly: false,
+    variables: EMAIL_TEMPLATE_VARIABLES.speaker_invitation,
+  },
 ];
 
 export const CUSTOM_DEFAULT_TEMPLATES_KEY = "gdg_custom_default_email_templates";
@@ -730,6 +919,8 @@ export function getFactoryDefaultTemplateByKey(key: EmailTemplateKey): string {
       return DEFAULT_REJECTED_WAITLISTED_EMAIL_HTML;
     case "rejected_paid_waitlisted":
       return DEFAULT_REJECTED_PAID_WAITLISTED_EMAIL_HTML;
+    case "speaker_invitation":
+      return DEFAULT_SPEAKER_INVITATION_EMAIL_HTML;
     default:
       return "";
   }
@@ -775,6 +966,10 @@ export interface TemplateSimulatedData {
   cancellationReason?: string;
   bundleName?: string;
   bundleVouchers?: BundleIssuedVoucher[];
+  talkType?: string;
+  talkTitle?: string;
+  speakerHandbookUrl?: string;
+  presenterRole?: string;
 }
 
 export const DEFAULT_INTEREST_CHECKLIST_ITEMS: string[] = [
@@ -848,6 +1043,14 @@ export const DEFAULT_REJECTED_PAID_WAITLISTED_CHECKLIST_ITEMS: string[] = [
   "Dashboard Submission: Sign in to your GDG Jakarta dashboard, go to My Events, and click Request Refund to provide your bank/e-wallet details.",
 ];
 
+export const DEFAULT_SPEAKER_INVITATION_CHECKLIST_ITEMS: string[] = [
+  "Speaker Presentation Template: Please use the official 16:9 Google / GDG slide deck template linked in the speaker handbook.",
+  "Slide Submission & Review: Share your final presentation slides (in 16:9 widescreen) at least 3 days prior to the event.",
+  "Arrival & Technical Check: Please arrive at the venue at least 45 minutes before your scheduled stage time for audio and clicker testing.",
+  "Stage Equipment: HDMI connections, presenter clickers, and lapel / wireless microphones are provided by the organizing committee.",
+  "Q&A & Community Networking: We encourage you to allocate the last 5-10 minutes of your session for audience questions and networking.",
+];
+
 export const DEFAULT_CHECKLIST_ITEMS_BY_TYPE: Record<EmailTemplateKey, string[]> = {
   interest: DEFAULT_INTEREST_CHECKLIST_ITEMS,
   accepted: DEFAULT_ACCEPTED_CHECKLIST_ITEMS,
@@ -860,6 +1063,7 @@ export const DEFAULT_CHECKLIST_ITEMS_BY_TYPE: Record<EmailTemplateKey, string[]>
   paid_waitlisted: DEFAULT_PAID_WAITLISTED_CHECKLIST_ITEMS,
   rejected_waitlisted: DEFAULT_REJECTED_WAITLISTED_CHECKLIST_ITEMS,
   rejected_paid_waitlisted: DEFAULT_REJECTED_PAID_WAITLISTED_CHECKLIST_ITEMS,
+  speaker_invitation: DEFAULT_SPEAKER_INVITATION_CHECKLIST_ITEMS,
 };
 
 export const DEFAULT_CHECKLIST_ITEMS: string[] = DEFAULT_ACCEPTED_CHECKLIST_ITEMS;
@@ -1002,12 +1206,26 @@ function findElementBoundaries(html: string, classKeyword: string): { startIdx: 
 }
 
 /**
+ * Returns true when the HTML belongs to a Speaker Invitation template rather than an attendee ticket.
+ */
+function isSpeakerInvitationHtml(html: string): boolean {
+  return (
+    html.includes("talk-title-box") ||
+    html.includes("speakerHandbookUrl") ||
+    html.includes("presenterRole") ||
+    html.includes("Session Details</div>") ||
+    html.includes("Open Speaker Handbook") ||
+    html.includes("[[SpeakerHandbookUrl]]")
+  );
+}
+
+/**
  * Ensures the attendee ID is displayed below Ref inside .attendee-id
  * in accepted / ticket confirmation emails.
  */
 export function ensureAttendeeIdInAcceptedHtml(html: string): string {
   let result = html;
-  if (!result.includes("ticket-card") && !result.includes("attendee-id")) {
+  if ((!result.includes("ticket-card") && !result.includes("attendee-id")) || isSpeakerInvitationHtml(result)) {
     return result;
   }
 
@@ -1214,6 +1432,9 @@ export function ensureCancellationReasonInCancelledHtml(html: string): string {
  * venue button and footer styling are properly applied.
  */
 export function ensureCheckinDeadlineInAcceptedHtml(html: string): string {
+  if (isSpeakerInvitationHtml(html)) {
+    return ensureVenueButtonAndFooterInHtml(html);
+  }
   let result = html;
   if (
     !result.includes("bevyCheckinDeadline") &&
@@ -1322,6 +1543,11 @@ export function getCleanDefaultTemplateDataForType(
       ? customData.event.eventChecklistItems
       : (DEFAULT_CHECKLIST_ITEMS_BY_TYPE[key] ?? DEFAULT_ACCEPTED_CHECKLIST_ITEMS);
 
+  const defaultHandbookUrl =
+    event.id
+      ? `https://gdgjakarta.org/events/${event.id}/speaker-handbook${event.speaker_config?.share_token ? `?token=${event.speaker_config.share_token}` : ""}`
+      : "https://gdgjakarta.org/speaker-handbook";
+
   const bevySessionTime = formatBevySessionTime(event.start_date, event.end_date);
   const bevyCheckinDeadline = formatBevyCheckinDeadline(event.start_date, 30);
   const overrideSessionTime = customData?.overrideSessionTime?.trim();
@@ -1363,6 +1589,11 @@ export function getCleanDefaultTemplateDataForType(
     cancellationReason:
       customData?.cancellationReason ??
       (key === "cancelled" ? "Incomplete registration profile or duplicate submission." : undefined),
+    talkType: customData?.talkType ?? "Technical Talk (45 mins)",
+    talkTitle:
+      customData?.talkTitle ?? "Building Scalable Cloud Native Applications with Gemini & Google Cloud",
+    speakerHandbookUrl: customData?.speakerHandbookUrl ?? defaultHandbookUrl,
+    presenterRole: customData?.presenterRole ?? "Speaker",
   };
 }
 
@@ -1381,6 +1612,7 @@ export function getAllCleanDefaultTemplatesData(
     rejected_virtual: getCleanDefaultTemplateDataForType("rejected_virtual", event),
     cancelled: getCleanDefaultTemplateDataForType("cancelled", event),
     cancelled_attendee: getCleanDefaultTemplateDataForType("cancelled_attendee", event),
+    speaker_invitation: getCleanDefaultTemplateDataForType("speaker_invitation", event),
   };
 }
 
@@ -1469,6 +1701,10 @@ export function getDefaultTemplateDataForType(key: EmailTemplateKey, event: Fire
     attendeeCode: savedData.attendeeCode ?? cleanDefaults.attendeeCode,
     attendeeId: savedData.attendeeId ?? cleanDefaults.attendeeId,
     cancellationReason: savedData.cancellationReason ?? cleanDefaults.cancellationReason,
+    talkType: savedData.talkType ?? cleanDefaults.talkType,
+    talkTitle: savedData.talkTitle ?? cleanDefaults.talkTitle,
+    speakerHandbookUrl: savedData.speakerHandbookUrl ?? cleanDefaults.speakerHandbookUrl,
+    presenterRole: savedData.presenterRole ?? cleanDefaults.presenterRole,
   };
 }
 
@@ -1485,6 +1721,7 @@ export function getAllDefaultTemplatesData(event: FirestoreEvent): Record<EmailT
     rejected_virtual: getDefaultTemplateDataForType("rejected_virtual", event),
     cancelled: getDefaultTemplateDataForType("cancelled", event),
     cancelled_attendee: getDefaultTemplateDataForType("cancelled_attendee", event),
+    speaker_invitation: getDefaultTemplateDataForType("speaker_invitation", event),
   };
 }
 
@@ -1601,9 +1838,10 @@ export function interpolateTemplateHtml(
   rendered = rendered.replaceAll("{{ $('bevy-config').item.json.bevyEventDate }}", eventDate);
   rendered = rendered.replaceAll("{ $('bevy-config').item.json.bevyEventDate }", eventDate);
 
-  // Backwards-compatibility: Ensure checkin deadline row is in details-box if template omitted it
+  // Backwards-compatibility: Ensure checkin deadline row is in details-box if accepted ticket template omitted it
   if (
     rendered.includes("details-box") &&
+    !isSpeakerInvitationHtml(rendered) &&
     !rendered.includes("bevyCheckinDeadline") &&
     !rendered.includes("Check-in Deadline")
   ) {
@@ -1703,6 +1941,39 @@ export function interpolateTemplateHtml(
     "{{ session_name }}",
     data.sessionName ?? (data.sessionTime ? "Super Early Bird" : "General Track"),
   );
+
+  // Speaker variables
+  const talkType = data.talkType || "Speaker Session";
+  const talkTitle = data.talkTitle || "Building Next-Gen Web Apps with Google Cloud";
+  const speakerHandbookUrl = data.speakerHandbookUrl || (event.eventCtaUrl ? `${event.eventCtaUrl}/speaker-handbook` : "https://gdgjakarta.org/speaker-handbook");
+  const presenterRole = data.presenterRole || "Speaker";
+  rendered = rendered.replaceAll("{{ $('event-params').item.json.talkType }}", talkType);
+  rendered = rendered.replaceAll("{ $('event-params').item.json.talkType }", talkType);
+  rendered = rendered.replaceAll("{{ talkType }}", talkType);
+  rendered = rendered.replaceAll("{{ $('event-params').item.json.talkTitle }}", talkTitle);
+  rendered = rendered.replaceAll("{ $('event-params').item.json.talkTitle }", talkTitle);
+  rendered = rendered.replaceAll("{{ talkTitle }}", talkTitle);
+  rendered = rendered.replaceAll("{{ $('event-params').item.json.speakerHandbookUrl }}", speakerHandbookUrl);
+  rendered = rendered.replaceAll("{ $('event-params').item.json.speakerHandbookUrl }", speakerHandbookUrl);
+  rendered = rendered.replaceAll("{{ speakerHandbookUrl }}", speakerHandbookUrl);
+  rendered = rendered.replaceAll("{{ $('event-params').item.json.presenterRole }}", presenterRole);
+  rendered = rendered.replaceAll("{ $('event-params').item.json.presenterRole }", presenterRole);
+  rendered = rendered.replaceAll("{{ presenterRole }}", presenterRole);
+  rendered = rendered.replaceAll("{ presenterRole }", presenterRole);
+
+  // Clean bracketed tokens support (used in Email Manager and direct templates)
+  rendered = rendered.replaceAll("[[EventName]]", event.eventName);
+  rendered = rendered.replaceAll("[[EventDate]]", data.eventDate || "");
+  rendered = rendered.replaceAll("[[EventTime]]", sessionTime);
+  rendered = rendered.replaceAll("[[EventVenue]]", venueLoc);
+  rendered = rendered.replaceAll("[[EventVenueUrl]]", venueLocUrl);
+  rendered = rendered.replaceAll("[[EventUrl]]", event.eventCtaUrl);
+  rendered = rendered.replaceAll("[[EventBannerUrl]]", event.headerEmailUrl);
+  rendered = rendered.replaceAll("[[SessionTitle]]", talkTitle);
+  rendered = rendered.replaceAll("[[SpeakerHandbookUrl]]", speakerHandbookUrl);
+  rendered = rendered.replaceAll("[[PresenterRole]]", presenterRole);
+  rendered = rendered.replaceAll("[[Name]]", attendee.name);
+  rendered = rendered.replaceAll("[[Email]]", attendee.email);
 
   if (rendered.includes("details-box") || rendered.includes("ticket-card")) {
     rendered = ensureVenueButtonAndFooterInHtml(rendered);
@@ -1884,6 +2155,10 @@ export function buildRenderedEmailForAttendee({
   cancellationReason?: string;
   bundleName?: string;
   bundleVouchers?: BundleIssuedVoucher[];
+  talkType?: string;
+  talkTitle?: string;
+  speakerHandbookUrl?: string;
+  presenterRole?: string;
 }): {
   firstName: string;
   lastName: string;

@@ -523,6 +523,13 @@ export type BevyUpdateEventInput = Partial<BevyCreateEventInput> & {
   event_type?: number;
   meetup_announce?: boolean;
   chapter?: number | string;
+  speakers?: BevySpeaker[];
+  mentors?: BevySpeaker[];
+  facilitators?: BevySpeaker[];
+  panelists?: BevySpeaker[];
+  judges?: BevySpeaker[];
+  moderators?: BevySpeaker[];
+  hosts?: BevySpeaker[];
 };
 
 export interface BevyAiEventGenerationResponse {

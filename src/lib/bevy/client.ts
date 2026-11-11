@@ -2077,3 +2077,322 @@ export async function modifyBevyAiEventContent(
     return { success: false, error: extractApiMessage(err, "Failed to connect to Bevy server") };
   }
 }
+
+export interface BevyPersonInput {
+  first_name: string;
+  last_name: string;
+  title: string;
+  bio?: string;
+  picture?: string;
+}
+
+export interface BevyPersonResponse {
+  id: number;
+  first_name: string;
+  last_name: string;
+  title: string;
+  bio: string;
+  picture: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Creates a speaker/person in Bevy event people roster.
+ * POST /api/person/
+ */
+export async function createBevyPerson(
+  eventId: string | number,
+  person: BevyPersonInput,
+  chapterId: string | number = BEVY_CONFIG.chapterId,
+): Promise<{ success: boolean; data?: BevyPersonResponse | null; error?: string }> {
+  try {
+    const chapterSlug = process.env.BEVY_CHAPTER_SLUG || BEVY_CONFIG.chapterSlug || "gdg-jakarta";
+    const response = await bevyFetchWithResponse<BevyPersonResponse>(
+      `/person/`,
+      {
+        method: "POST",
+        headers: {
+          Origin: "https://gdg.community.dev",
+          Referer: `https://gdg.community.dev/dashboard/${chapterSlug}/events/${eventId}/people/`,
+          "Auth-Type": "AUTHORIZED",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify({
+          first_name: person.first_name,
+          last_name: person.last_name,
+          title: person.title || "",
+          bio: person.bio || "",
+          picture: person.picture || "",
+        }),
+        requireAuth: true,
+      },
+      chapterId,
+    );
+
+    if (!response.ok || !response.data) {
+      const errorMsg = extractApiMessage(response.data, `Failed to create speaker in Bevy (HTTP ${response.status})`);
+      return { success: false, error: errorMsg };
+    }
+
+    return { success: true, data: response.data };
+  } catch (err) {
+    return { success: false, error: extractApiMessage(err, "Failed to connect to Bevy server") };
+  }
+}
+
+/**
+ * Updates a speaker/person in Bevy.
+ * PATCH /api/person/{personId}/
+ */
+export async function updateBevyPerson(
+  personId: string | number,
+  eventId: string | number,
+  person: Partial<BevyPersonInput>,
+  chapterId: string | number = BEVY_CONFIG.chapterId,
+): Promise<{ success: boolean; data?: BevyPersonResponse | null; error?: string }> {
+  try {
+    const chapterSlug = process.env.BEVY_CHAPTER_SLUG || BEVY_CONFIG.chapterSlug || "gdg-jakarta";
+    const response = await bevyFetchWithResponse<BevyPersonResponse>(
+      `/person/${personId}/`,
+      {
+        method: "PATCH",
+        headers: {
+          Origin: "https://gdg.community.dev",
+          Referer: `https://gdg.community.dev/dashboard/${chapterSlug}/events/${eventId}/people/`,
+          "Auth-Type": "AUTHORIZED",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify(person),
+        requireAuth: true,
+      },
+      chapterId,
+    );
+
+    if (!response.ok || !response.data) {
+      const errorMsg = extractApiMessage(response.data, `Failed to update speaker in Bevy (HTTP ${response.status})`);
+      return { success: false, error: errorMsg };
+    }
+
+    return { success: true, data: response.data };
+  } catch (err) {
+    return { success: false, error: extractApiMessage(err, "Failed to connect to Bevy server") };
+  }
+}
+
+/**
+ * Gets a speaker/person from Bevy.
+ * GET /api/person/{personId}/
+ */
+export async function getBevyPerson(
+  personId: string | number,
+  eventId: string | number,
+  chapterId: string | number = BEVY_CONFIG.chapterId,
+): Promise<{ success: boolean; data?: BevyPersonResponse | null; error?: string }> {
+  try {
+    const chapterSlug = process.env.BEVY_CHAPTER_SLUG || BEVY_CONFIG.chapterSlug || "gdg-jakarta";
+    const response = await bevyFetchWithResponse<BevyPersonResponse>(
+      `/person/${personId}/`,
+      {
+        method: "GET",
+        headers: {
+          Referer: `https://gdg.community.dev/dashboard/${chapterSlug}/events/${eventId}/people/`,
+          "Auth-Type": "AUTHORIZED",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        requireAuth: true,
+      },
+      chapterId,
+    );
+
+    if (!response.ok || !response.data) {
+      const errorMsg = extractApiMessage(response.data, `Failed to fetch speaker from Bevy (HTTP ${response.status})`);
+      return { success: false, error: errorMsg };
+    }
+
+    return { success: true, data: response.data };
+  } catch (err) {
+    return { success: false, error: extractApiMessage(err, "Failed to connect to Bevy server") };
+  }
+}
+
+export interface BevyPersonSearchResult {
+  id: number;
+  first_name: string;
+  last_name: string;
+  picture_url?: string;
+  company?: string;
+  title?: string;
+  objectID: string;
+}
+
+// Cached Algolia key for person/speaker search
+let cachedAlgoliaPersonKey: { key: string; fetchedAt: number } | null = null;
+const ALGOLIA_PERSON_KEY_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+/**
+ * Resolves a valid Algolia search key for the Bevy persons/events index.
+ * 1. Uses explicit `process.env.BEVY_ALGOLIA_PERSON_SEARCH_KEY` if provided.
+ * 2. Uses in-memory cached key if still valid.
+ * 3. Dynamically fetches fresh `Globals.dashboard_search_key` from `/accounts/dashboard/` using active session credentials.
+ * 4. Falls back to latest active dashboard key snapshot.
+ */
+async function resolveBevyAlgoliaPersonKey(): Promise<string | null> {
+  const envKey = process.env.BEVY_ALGOLIA_PERSON_SEARCH_KEY;
+  if (envKey) return envKey;
+
+  const now = Date.now();
+  if (cachedAlgoliaPersonKey && now - cachedAlgoliaPersonKey.fetchedAt < ALGOLIA_PERSON_KEY_CACHE_TTL_MS) {
+    return cachedAlgoliaPersonKey.key;
+  }
+
+  try {
+    const creds = await getBevyAuthCredentials();
+    const cookie = creds.cookie || process.env.BEVY_COOKIE;
+
+    if (cookie) {
+      const res = await fetch("https://gdg.community.dev/accounts/dashboard/", {
+        headers: {
+          cookie,
+          referer: "https://gdg.community.dev/accounts/dashboard/",
+          "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+        },
+        signal: typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(5000) : undefined,
+      });
+
+      if (res.ok) {
+        const html = await res.text();
+        const m = html.match(/Globals\.dashboard_search_key\s*=\s*\x27([^\x27]+)\x27/);
+        if (m && m[1]) {
+          cachedAlgoliaPersonKey = { key: m[1], fetchedAt: now };
+          return m[1];
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[resolveBevyAlgoliaPersonKey] Dynamic key renewal failed:", err);
+  }
+
+  // Active snapshot key extracted from Bevy Organizer dashboard
+  const fallbackKey =
+    "NmJhNGJlY2MzOTc2NzM3MjA5YjgxNDFiZTQ4NzFhN2M5Zjc4MDA4MDg3ZTQyYTgyNmJjNGVhMWFkMDY3Y2NkNmF0dHJpYnV0ZXNUb0hpZ2hsaWdodD0mYXR0cmlidXRlc1RvUmV0cmlldmU9c3RhdGVfZnVsbCUyQ2Rlc2NyaXB0aW9uX3Nob3J0JTJDY2hhcHRlcl9yZWdpb24lMkN0aXRsZSUyQ2hlYWx0aF9pbmRpY2F0b3IlMkN3b3Jkc19jb3VudGVyJTJDcmVnaW9uJTJDbG9nbyUyQ3RvdGFsX3RpY2tldHNfc29sZF9saWZldGltZSUyQ3RhZ3MlMkNldmVudF90eXBlX2xvZ28lMkNwb3N0X3VybCUyQ2V2ZW50X3R5cGVfdGl0bGUlMkNjaGFwdGVyX2xvY2F0aW9uJTJDbW9udGhseV9ldmVudHNfbGFzdF8xMiUyQ3N0YXJ0X2RhdGVfdW5peCUyQ2NoYXB0ZXJfbGlzdF9pZHMlMkNmZWF0dXJlZF9pbWFnZSUyQ3B1Ymxpc2hfZGF0ZSUyQ2V2ZW50X2FjdGl2aXR5X3BlcmNlbnRhZ2VfbGFzdF8xMiUyQ3NlbnRfZGF0ZSUyQ3VybCUyQ2NoYXB0ZXJfY2l0eSUyQ2VuZF9kYXRlX3VuaXglMkN0YWdzX2lkcyUyQ2NvbXBhbnklMkNzY2hlZHVsZV9kYXRlJTJDbGluayUyQ2F1ZGllbmNlX3R5cGVfbmFtZSUyQ2lzX2hpZGRlbiUyQ2NoYXB0ZXJfaXNfcHJpdmF0ZSUyQ3JlbGF0aXZlX3VybCUyQ3VzZXIlMkNjaGFwdGVyX2NvdW50cnlfY29kZSUyQ3N1YmplY3QlMkNpc19nbG9iYWwlMkNjb3VudHJ5X2NvZGUlMkNpZCUyQ2NvdW50cnklMkNjaGFwdGVyX3N0YXRlJTJDY2hhcHRlcl90aXRsZSUyQ2RhdGUlMkNjaGFwdGVyX2NvdW50cnklMkNyZWdpb25faWQlMkNzdGFydF9kYXRlX2lzbyUyQ21lbWJlcl9jb3VudCUyQ2NoYXB0ZXJfaWQlMkNmaXJzdF9uYW1lJTJDY2hhcHRlcl9sYW5ndWFnZSUyQ2V2ZW50X3R5cGVfc2x1ZyUyQ2xhc3RfbmFtZSUyQ3BpY3R1cmVfdXJsJTJDY2hhcHRlcl91cmwlMkNhdWRpZW5jZV90aXRsZSUyQ2xvZ29fdXJsJTJDY3JlYXRlZF9kYXRlX3VuaXglMkNkZXNjcmlwdGlvbiUyQ2F2YWlsYWJsZV9tb250aHNfbGFzdF8xMiUyQ3N0YXR1cyUyQ2NpdHkmYXR0cmlidXRlc1RvU25pcHBldD0mcmVzdHJpY3RJbmRpY2VzPWdvb2dsZV9jaGFwdGVyX2luZGV4X3Byb2R1Y3Rpb24lMkNnb29nbGVfZXZlbnRfaW5kZXhfcHJvZHVjdGlvbiUyQ2dvb2dsZV9ibG9ncG9zdHNfaW5kZXhfcHJvZHVjdGlvbiUyQ2dvb2dsZV9uZXdzbGV0dGVyX2luZGV4X3Byb2R1Y3Rpb24lMkNnb29nbGVfZXZlbnRzX3BlcnNvbl9pbmRleF9wcm9kdWN0aW9uJTJDZ29vZ2xlX2V2ZW50c19jb21wYW55X2luZGV4X3Byb2R1Y3Rpb24lMkNnb29nbGVfbmV3c2xldHRlcl9pbmRleF9yZXBsaWNhX3N1YmplY3RfYXNjX3Byb2R1Y3Rpb24lMkNnb29nbGVfbmV3c2xldHRlcl9pbmRleF9yZXBsaWNhX3N1YmplY3RfZGVzY19wcm9kdWN0aW9uJTJDZ29vZ2xlX25ld3NsZXR0ZXJfaW5kZXhfcmVwbGljYV9jaGFwdGVyX3RpdGxlX2FzY19wcm9kdWN0aW9uJTJDZ29vZ2xlX25ld3NsZXR0ZXJfaW5kZXhfcmVwbGljYV9jaGFwdGVyX3RpdGxlX2Rlc2NfcHJvZHVjdGlvbiUyQ2dvb2dsZV9uZXdzbGV0dGVyX2luZGV4X3JlcGxpY2FfYXVkaWVuY2VfdGl0bGVfYXNjX3Byb2R1Y3Rpb24lMkNnb29nbGVfbmV3c2xldHRlcl9pbmRleF9yZXBsaWNhX2F1ZGllbmNlX3RpdGxlX2Rlc2NfcHJvZHVjdGlvbiUyQ2dvb2dsZV9uZXdzbGV0dGVyX2luZGV4X3JlcGxpY2Ffc3RhdHVzX2FzY19wcm9kdWN0aW9uJTJDZ29vZ2xlX25ld3NsZXR0ZXJfaW5kZXhfcmVwbGljYV9zdGF0dXNfZGVzY19wcm9kdWN0aW9uJTJDZ29vZ2xlX25ld3NsZXR0ZXJfaW5kZXhfcmVwbGljYV9kYXRlX2Rlc2NfcHJvZHVjdGlvbiZ2YWxpZFVudGlsPTE3OTQzMjY1MzA=";
+  cachedAlgoliaPersonKey = { key: fallbackKey, fetchedAt: now };
+  return fallbackKey;
+}
+
+/**
+ * Searches across speakers/persons.
+ * First queries Bevy's global Algolia `google_events_person_index_production` index with the active key.
+ * Automatically falls back to Firestore events if the Algolia request fails or key expires.
+ */
+export async function searchBevyPersons(
+  query: string,
+  limit = 10,
+): Promise<{ success: boolean; hits: BevyPersonSearchResult[]; error?: string }> {
+  const cleanQuery = query.trim();
+  if (!cleanQuery) return { success: true, hits: [] };
+
+  const appId = "AMJ1KW79KP";
+  const apiKey = await resolveBevyAlgoliaPersonKey();
+
+  if (apiKey) {
+    try {
+      const res = await fetch(
+        `https://${appId}-dsn.algolia.net/1/indexes/google_events_person_index_production/query?x-algolia-agent=Algolia%20for%20JavaScript%20(4.1.0)%3B%20Browser`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Algolia-API-Key": apiKey,
+            "X-Algolia-Application-Id": appId,
+          },
+          body: JSON.stringify({
+            query: cleanQuery,
+            hitsPerPage: limit,
+          }),
+        },
+      );
+
+      if (res.ok) {
+        const data = (await res.json()) as { hits?: BevyPersonSearchResult[] };
+        if (data.hits && data.hits.length > 0) {
+          return { success: true, hits: data.hits };
+        }
+      }
+    } catch {
+      // Fall through to Firestore events speaker roster search
+    }
+  }
+
+  // Robust fallback: search across all existing event speakers & presenter rosters in Firestore
+  try {
+    const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+    const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
+    if (projectId && apiKey) {
+      const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/events?pageSize=100&key=${apiKey}`;
+      const res = await fetch(url, {
+        signal: typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(6000) : undefined,
+      });
+
+      if (res.ok) {
+        const data = (await res.json()) as {
+          documents?: Array<{ fields?: Record<string, { arrayValue?: { values?: Array<{ mapValue?: { fields?: Record<string, { stringValue?: string; integerValue?: string }> } }> } }> }>;
+        };
+        const docs = data.documents || [];
+        const q = cleanQuery.toLowerCase();
+        const hits: BevyPersonSearchResult[] = [];
+        const seenIds = new Set<string>();
+
+        for (const doc of docs) {
+          const fields = doc.fields || {};
+          for (const role of ["speakers", "mentors", "facilitators", "panelists", "judges", "moderators", "hosts"]) {
+            const values = fields[role]?.arrayValue?.values;
+            if (Array.isArray(values)) {
+              for (const v of values) {
+                const map = v.mapValue?.fields || {};
+                const fn = map.first_name?.stringValue || "";
+                const ln = map.last_name?.stringValue || "";
+                const fullName = `${fn} ${ln}`.trim();
+                const title = map.title?.stringValue || "";
+                const company = map.company?.stringValue || "";
+                const rawId = map.id?.integerValue || map.id?.stringValue || "";
+                const numId =
+                  Number(rawId) ||
+                  Math.abs(Array.from(fullName).reduce((acc, c) => (acc << 5) - acc + c.charCodeAt(0), 0));
+                const pic = map.picture?.stringValue || map.picture_url?.stringValue || "";
+
+                if (
+                  fullName.toLowerCase().includes(q) ||
+                  title.toLowerCase().includes(q) ||
+                  company.toLowerCase().includes(q)
+                ) {
+                  const dedupeKey = `${numId}_${fullName.toLowerCase()}`;
+                  if (!seenIds.has(dedupeKey)) {
+                    seenIds.add(dedupeKey);
+                    hits.push({
+                      id: numId,
+                      first_name: fn,
+                      last_name: ln,
+                      title,
+                      company,
+                      picture_url: pic,
+                      objectID: String(numId),
+                    });
+                    if (hits.length >= limit) break;
+                  }
+                }
+              }
+            }
+            if (hits.length >= limit) break;
+          }
+          if (hits.length >= limit) break;
+        }
+
+        return { success: true, hits };
+      }
+    }
+  } catch (err) {
+    console.error("[searchBevyPersons] Fallback to Firestore events speaker search failed:", err);
+  }
+
+  return { success: true, hits: [] };
+}

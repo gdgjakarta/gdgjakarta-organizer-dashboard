@@ -251,6 +251,60 @@ service cloud.firestore {
     //   - synced_from_bevy_at: string|null (optional, <= 50 chars) - Bevy sync timestamp
     //   - created_at: string|null (optional, <= 50 chars) - Creation timestamp
     //   - updated_at: string (required, <= 50 chars) - Last update timestamp
+    // Collection: event_speaker_confirmations
+    // Document ID: confirmationDocId (e.g. spkconf_xxxx or deterministic spkconf_${eventId}_${sanitizedEmail})
+    // Fields:
+    //   - id: string (required, immutable, <= 128 chars) - Confirmation document ID
+    //   - event_id: string (required, immutable, <= 64 chars) - Associated event ID
+    //   - full_name: string (required, 1..150 chars) - Speaker full name
+    //   - display_name: string|null (optional, <= 150 chars) - Speaker display / stage name
+    //   - speaker_email: string (required, valid email, <= 150 chars) - Speaker email address
+    //   - job_title: string (required, 1..150 chars) - Speaker job title
+    //   - company_institution: string (required, 1..150 chars) - Company or institution
+    //   - talk_title: string (required, 1..300 chars) - Talk session title
+    //   - talk_type: string (required, 1..100 chars) - Session / talk format
+    //   - created_at: string (required, immutable, <= 50 chars) - Submission timestamp ISO string
+    //   - updated_at: string (required, <= 50 chars) - Last update timestamp ISO string
+    //   - whatsapp_number: string|null (optional, <= 50 chars) - WhatsApp or contact number
+    //   - contact_channels: list|null (optional, <= 10 items) - Preferred communication channels
+    //   - linkedin_or_social_url: string|null (optional, <= 2000 chars) - Legacy LinkedIn or social profile URL
+    //   - linkedin_url: string|null (optional, <= 2000 chars) - Speaker LinkedIn profile URL
+    //   - twitter_url: string|null (optional, <= 2000 chars) - Speaker X / Twitter profile URL
+    //   - portfolio_url: string|null (optional, <= 2000 chars) - Speaker portfolio or personal site URL
+    //   - instagram_username: string|null (optional, <= 100 chars) - Speaker Instagram handle
+    //   - company_twitter_username: string|null (optional, <= 100 chars) - Company Twitter handle
+    //   - speaker_profile_url: string|null (optional, <= 2000 chars) - Avatar or speaker photo URL
+    //   - google_ecosystem_or_technology: string|null (optional, <= 100 chars) - Primary Google technology/ecosystem
+    //   - is_from_google_ecosystem: string|null (optional, <= 50 chars) - Google ecosystem affiliation
+    //   - ecosystem_details: string|null (optional, <= 200 chars) - Google ecosystem details
+    //   - presenter_role: string|null (optional, <= 50 chars) - Presenter role (speakers, featured, emcee, etc.)
+    //   - talk_description: string|null (optional, <= 1000 chars) - Session abstract or description
+    //   - biography: string|null (optional, <= 5000 chars) - Speaker biography
+    //   - can_share_slides: string|null (optional, <= 10 chars) - Slide sharing consent
+    //   - session_slot: string|null (optional, <= 100 chars) - Assigned session time slot
+    //   - presentation_slides_url: string|null (optional, <= 2000 chars) - Presentation slides URL
+    //   - tshirt_size: string|null (optional, <= 20 chars) - Speaker merchandise T-shirt size
+    //   - swag_selections: map|null (optional, <= 20 keys) - Custom swag choices
+    //   - dietary_restrictions: string|null (optional, <= 500 chars) - Dietary restrictions or food allergies
+    //   - dietary_restrictions_list: list|null (optional, <= 20 items) - Selected dietary tags
+    //   - additional_inquiry: string|null (optional, <= 2000 chars) - Questions or inquiries for organizers
+    //   - calendar_event_id: string|null (optional, <= 200 chars) - Google Calendar event ID
+    //   - calendar_event_url: string|null (optional, <= 2000 chars) - Google Calendar event HTML URL
+    //   - invitation_email_sent: bool|null (optional) - Confirmation email dispatched flag
+    //   - invitation_email_sent_at: string|null (optional, <= 50 chars) - Timestamp when confirmation email was dispatched
+    //   - invitation_email_error: string|null (optional, <= 1000 chars) - Error log if email dispatch failed
+    //   - calendar_invite_sent: bool|null (optional) - Google Calendar invite dispatched flag
+    //   - calendar_invite_sent_at: string|null (optional, <= 50 chars) - Timestamp when calendar invite was dispatched
+    //   - calendar_invite_error: string|null (optional, <= 1000 chars) - Error log if calendar webhook failed
+    //   - bevy_synced: bool|null (optional) - Bevy People roster sync flag
+    //   - bevy_person_id: int|float|null (optional, >= 0) - Associated Bevy Person identifier
+    //   - bevy_synced_at: string|null (optional, <= 50 chars) - Timestamp when Bevy roster was synced
+    // Permissions:
+    //   - get: Allowed by exact confirmationDocId (`if true;`) so a speaker or server action can retrieve their own submission by deterministic ID without allowing collection enumeration.
+    //   - list: Restricted strictly to team members (`hasTeamAccess()`) to prevent scraping or enumerating speaker confirmations.
+    //   - create: Allowed if document adheres to strict schema validation (`isValidSpeakerConfirmation`) and `data.id == confirmationDocId`, enabling public speaker confirmation submissions via share tokens.
+    //   - update: Allowed for team members (`hasTeamAccess()`), organizers (`isOrganizer()`), or speakers updating their own confirmation where `id`, `event_id`, `created_at`, and `speaker_email` remain unchanged, with full `isValidSpeakerConfirmation` validation.
+    //   - delete: Restricted to team members (`hasTeamAccess()`) or organizers.
     //
     // Collection: event_vouchers
     // Document ID: voucherDocId (e.g. `${eventId}_${normalizedCode}` or voucherId)
@@ -1303,6 +1357,63 @@ service cloud.firestore {
         (!('notes' in data) || data.notes == null || (data.notes is string && data.notes.size() <= 2000));
     }
 
+    // Compact optional collection/number helpers (keeps CEL expression evaluation well below the 1,000 limit)
+    function optList(data, field, maxLen) {
+      let v = data.get(field, null);
+      return v == null || (v is list && v.size() <= maxLen);
+    }
+
+    function optMap(data, field, maxLen) {
+      let v = data.get(field, null);
+      return v == null || (v is map && v.size() <= maxLen);
+    }
+
+    function optInt(data, field, minVal, maxVal) {
+      let v = data.get(field, null);
+      return v == null || ((v is int || v is float) && v >= minVal && v <= maxVal);
+    }
+
+    function optStr(data, field, maxLen) {
+      let v = data.get(field, null);
+      return v == null || (v is string && v.size() <= maxLen);
+    }
+
+    // Validates event_speaker_confirmations document structure, data types, and bounds
+    function isValidSpeakerConfirmation(data) {
+      return hasRequiredFields(data, [
+        'id', 'event_id', 'full_name', 'speaker_email', 'job_title',
+        'company_institution', 'talk_title', 'talk_type', 'created_at', 'updated_at'
+      ]) &&
+        hasOnlyAllowedFields(data, [
+          'id', 'event_id', 'full_name', 'display_name', 'speaker_email', 'job_title',
+          'company_institution', 'talk_title', 'talk_type', 'created_at', 'updated_at',
+          'whatsapp_number', 'contact_channels', 'linkedin_or_social_url', 'linkedin_url',
+          'twitter_url', 'portfolio_url', 'instagram_username', 'company_twitter_username',
+          'speaker_profile_url', 'google_ecosystem_or_technology', 'is_from_google_ecosystem',
+          'ecosystem_details', 'presenter_role', 'talk_description', 'biography',
+          'can_share_slides', 'session_slot', 'presentation_slides_url', 'tshirt_size',
+          'swag_selections', 'dietary_restrictions', 'dietary_restrictions_list',
+          'additional_inquiry', 'calendar_event_id', 'calendar_event_url',
+          'invitation_email_sent', 'invitation_email_sent_at', 'invitation_email_error',
+          'calendar_invite_sent', 'calendar_invite_sent_at', 'calendar_invite_error',
+          'bevy_synced', 'bevy_person_id', 'bevy_synced_at'
+        ]) &&
+        data.id is string && data.id.size() > 0 && data.id.size() <= 128 &&
+        data.event_id is string && data.event_id.size() > 0 && data.event_id.size() <= 64 &&
+        data.full_name is string && data.full_name.size() > 0 && data.full_name.size() <= 150 &&
+        isValidEmail(data.speaker_email) &&
+        data.job_title is string && data.job_title.size() > 0 && data.job_title.size() <= 150 &&
+        data.company_institution is string && data.company_institution.size() > 0 && data.company_institution.size() <= 150 &&
+        data.talk_title is string && data.talk_title.size() > 0 && data.talk_title.size() <= 300 &&
+        data.talk_type is string && data.talk_type.size() > 0 && data.talk_type.size() <= 100 &&
+        data.created_at is string && data.created_at.size() <= 50 &&
+        data.updated_at is string && data.updated_at.size() <= 50 &&
+        optList(data, 'contact_channels', 10) &&
+        optList(data, 'dietary_restrictions_list', 20) &&
+        optMap(data, 'swag_selections', 20) &&
+        optInt(data, 'bevy_person_id', 0, 2147483647);
+    }
+
     // ===============================================================
     // Collection Security Rules
     // ===============================================================
@@ -1821,6 +1932,34 @@ service cloud.firestore {
 
       // Delete: Team access (Organizers & Staff), or authenticated users.
       allow delete: if hasTeamAccess() || isOrganizer() || isAuthenticated();
+    }
+
+    // -------------------------------------------------------------
+    // Event Speaker Confirmations Collection
+    // -------------------------------------------------------------
+    match /event_speaker_confirmations/{confirmationDocId} {
+      // Get: Allows fetching a single confirmation document by exact confirmationDocId (e.g. spkconf_${eventId}_${sanitizedEmail})
+      // when verifying if a speaker already submitted or loading their existing response to edit, without allowing collection scanning.
+      allow get: if true;
+
+      // List: Strictly restricted to team members (Organizers & Staff) so no one can enumerate or list all speaker confirmations.
+      allow list: if hasTeamAccess();
+
+      // Create: Public speaker submissions via share tokens or team members.
+      // Validates complete domain schema, string/collection bounds, and document ID consistency.
+      allow create: if isValidSpeakerConfirmation(request.resource.data) &&
+        request.resource.data.id == confirmationDocId;
+
+      // Update: Speaker form updates matching immutable id, event_id, created_at, and speaker_email, or team members (Organizers & Staff).
+      // Evaluates speaker_email equality BEFORE hasTeamAccess() to avoid unnecessary role lookups on speaker self-updates.
+      allow update: if isValidSpeakerConfirmation(request.resource.data) &&
+        request.resource.data.id == resource.data.id &&
+        request.resource.data.event_id == resource.data.event_id &&
+        request.resource.data.created_at == resource.data.created_at &&
+        (request.resource.data.speaker_email == resource.data.speaker_email || hasTeamAccess());
+
+      // Delete: Team members (Organizers & Staff).
+      allow delete: if hasTeamAccess();
     }
   }
 }

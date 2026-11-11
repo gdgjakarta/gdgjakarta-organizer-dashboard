@@ -23,6 +23,12 @@ type EditorInstance = Parameters<OnMount>[0];
 interface HtmlEditorPreviewProps {
   value: string;
   onChange: (value: string) => void;
+  language?: "html" | "markdown";
+  editorTitle?: string;
+  editorSubTitle?: string;
+  customRender?: (value: string) => string;
+  showTokenPanel?: boolean;
+  hideSampleDataToggle?: boolean;
   selectedEvent?: PublishedEventOption;
   eventPlaceholders?: EventDynamicPlaceholders;
   attendeePlaceholders?: AttendeeDynamicPlaceholders;
@@ -33,11 +39,20 @@ interface HtmlEditorPreviewProps {
   customEventTokens?: CustomPlaceholderDefinition[];
   customAttendeeTokens?: CustomPlaceholderDefinition[];
   onOpenAddPlaceholder?: (category: "event" | "attendee") => void;
+  hideAttendeeTokens?: boolean;
+  hideSheetTokens?: boolean;
+  hideBlocks?: boolean;
 }
 
 export function HtmlEditorPreview({
   value,
   onChange,
+  language = "html",
+  editorTitle = "HTML Source Code",
+  editorSubTitle,
+  customRender,
+  showTokenPanel = true,
+  hideSampleDataToggle = false,
   selectedEvent,
   eventPlaceholders,
   attendeePlaceholders,
@@ -48,6 +63,9 @@ export function HtmlEditorPreview({
   customEventTokens,
   customAttendeeTokens,
   onOpenAddPlaceholder,
+  hideAttendeeTokens = false,
+  hideSheetTokens = false,
+  hideBlocks = false,
 }: HtmlEditorPreviewProps) {
   const editorRef = useRef<EditorInstance | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -117,13 +135,17 @@ export function HtmlEditorPreview({
 
   // Live rendered HTML with simulated or real event values
   const renderedHtml = useMemo(() => {
+    if (customRender) {
+      return customRender(value);
+    }
+
     if (!interpolatePreview) return value;
 
     let result = value;
 
     // 1. Interpolate all event placeholders (standard + custom)
     if (eventPlaceholders) {
-      if (!eventPlaceholders.VehicleTicketUrl?.trim()) {
+      if (!eventPlaceholders.VehicleTicketUrl.trim()) {
         result = result.replace(
           /<div\s+class=["']detail-row["'][^>]*>\s*<span\s+class=["']detail-icon["'][^>]*>\s*🚗\s*<\/span>[\s\S]*?\[\[\s*VehicleTicketUrl\s*\]\][\s\S]*?<\/div>\s*<\/div>/gi,
           "",
@@ -151,6 +173,9 @@ export function HtmlEditorPreview({
         selectedEvent?.descriptionShort ?? "Join the largest Google developer community conference in Jakarta!";
       const sessionTitle = "Keynote: Building Production AI Agents with Gemini";
       const vehicleTicketUrl = "https://drive.google.com/file/d/sample-vehicle-ticket/view";
+      const speakerHandbookUrl = selectedEvent?.id
+        ? `https://gdgjakarta.org/events/${selectedEvent.id}/speaker-handbook`
+        : "https://gdgjakarta.org/speaker-handbook";
 
       result = result
         .replace(/\[\[EventName\]\]/g, eventName)
@@ -164,7 +189,9 @@ export function HtmlEditorPreview({
         .replace(/\[\[EventBannerUrl\]\]/g, eventBannerUrl)
         .replace(/\[\[EventDescription\]\]/g, eventDesc)
         .replace(/\[\[SessionTitle\]\]/g, sessionTitle)
-        .replace(/\[\[VehicleTicketUrl\]\]/g, vehicleTicketUrl);
+        .replace(/\[\[VehicleTicketUrl\]\]/g, vehicleTicketUrl)
+        .replace(/\[\[SpeakerHandbookUrl\]\]/g, speakerHandbookUrl)
+        .replace(/\[\[PresenterRole\]\]/g, "Speaker");
     }
 
     if (headerUrl) {
@@ -200,19 +227,33 @@ export function HtmlEditorPreview({
     }
 
     return result;
-  }, [value, interpolatePreview, selectedEvent, eventPlaceholders, attendeePlaceholders, headerUrl, sheetSampleData]);
+  }, [
+    value,
+    customRender,
+    interpolatePreview,
+    selectedEvent,
+    eventPlaceholders,
+    attendeePlaceholders,
+    headerUrl,
+    sheetSampleData,
+  ]);
 
   return (
     <div className="flex w-full flex-col space-y-4">
       {/* Draggable Template Tokens & Component Blocks */}
-      <DraggableTokensPanel
-        onInsertToken={insertContent}
-        sheetTokens={availableTags}
-        isLoadingSheetTokens={isLoadingTags}
-        customEventTokens={customEventTokens}
-        customAttendeeTokens={customAttendeeTokens}
-        onOpenAddPlaceholder={onOpenAddPlaceholder}
-      />
+      {showTokenPanel && (
+        <DraggableTokensPanel
+          onInsertToken={insertContent}
+          sheetTokens={availableTags}
+          isLoadingSheetTokens={isLoadingTags}
+          customEventTokens={customEventTokens}
+          customAttendeeTokens={customAttendeeTokens}
+          onOpenAddPlaceholder={onOpenAddPlaceholder}
+          hideAttendeeTokens={hideAttendeeTokens}
+          hideSheetTokens={hideSheetTokens}
+          hideBlocks={hideBlocks}
+        />
+      )}
 
       {/* Editor & Preview Grid */}
       <div className="grid min-h-160 grid-cols-1 gap-4 xl:grid-cols-2">
@@ -224,9 +265,11 @@ export function HtmlEditorPreview({
           <div className="flex items-center justify-between border-b bg-muted/50 px-3 py-2">
             <div className="flex items-center gap-2">
               <Label className="font-semibold text-muted-foreground text-xs uppercase tracking-wider">
-                HTML Source Code
+                {editorTitle}
               </Label>
-              <span className="text-[10px] text-muted-foreground">(Drop tokens anywhere)</span>
+              <span className="text-[10px] text-muted-foreground">
+                {editorSubTitle ?? (language === "markdown" ? "(Markdown & HTML syntax)" : "(Drop tokens anywhere)")}
+              </span>
             </div>
             <Button
               type="button"
@@ -242,7 +285,8 @@ export function HtmlEditorPreview({
           <div className="relative h-full min-h-160 flex-1">
             <Editor
               height="100%"
-              defaultLanguage="html"
+              defaultLanguage={language}
+              language={language}
               value={value}
               keepCurrentModel
               onChange={(val) => onChange(val || "")}
@@ -273,17 +317,19 @@ export function HtmlEditorPreview({
               <Label className="font-semibold text-muted-foreground text-xs uppercase tracking-wider">
                 Live Preview
               </Label>
-              <Button
-                type="button"
-                variant={interpolatePreview ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => setInterpolatePreview(!interpolatePreview)}
-                className="h-6 gap-1 px-2 text-[11px]"
-                title="Toggle real interpolated values versus raw placeholder tags"
-              >
-                <Eye className="size-3" />
-                <span>{interpolatePreview ? "Sample Data" : "Raw Tags"}</span>
-              </Button>
+              {!hideSampleDataToggle && (
+                <Button
+                  type="button"
+                  variant={interpolatePreview ? "secondary" : "ghost"}
+                  size="sm"
+                  onClick={() => setInterpolatePreview(!interpolatePreview)}
+                  className="h-6 gap-1 px-2 text-[11px]"
+                  title="Toggle real interpolated values versus raw placeholder tags"
+                >
+                  <Eye className="size-3" />
+                  <span>{interpolatePreview ? "Sample Data" : "Raw Tags"}</span>
+                </Button>
+              )}
             </div>
             <div className="flex items-center gap-1 rounded-md border bg-background/50 p-0.5">
               <Button

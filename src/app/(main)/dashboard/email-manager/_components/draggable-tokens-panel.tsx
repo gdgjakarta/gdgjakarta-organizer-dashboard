@@ -32,6 +32,12 @@ export const EVENT_DATA_TOKENS: DraggableTokenItem[] = [
   { id: "event_address", tag: "[[EventAddress]]", label: "Venue Address", description: "Full street address" },
   { id: "event_url", tag: "[[EventUrl]]", label: "Event Link", description: "URL to the event details page" },
   {
+    id: "slide_templates",
+    tag: "[[SlideTemplates]]",
+    label: "Slide Decks Block",
+    description: "Interactive slide templates action cards for speakers",
+  },
+  {
     id: "event_banner",
     tag: "[[EventBannerUrl]]",
     label: "Banner Image URL",
@@ -43,6 +49,18 @@ export const EVENT_DATA_TOKENS: DraggableTokenItem[] = [
     tag: "[[SessionTitle]]",
     label: "Session Title",
     description: "Speaker session topic or talk title",
+  },
+  {
+    id: "presenter_role",
+    tag: "[[PresenterRole]]",
+    label: "Presenter / Speaker Role",
+    description: "Speaker, Panelist, Facilitator, Mentor, Judge, Moderator, or Host",
+  },
+  {
+    id: "speaker_handbook_url",
+    tag: "[[SpeakerHandbookUrl]]",
+    label: "Speaker Handbook URL",
+    description: "Link to event's interactive Speaker Handbook & Slide Templates",
   },
   {
     id: "vehicle_ticket_url",
@@ -110,7 +128,7 @@ export const PREBUILT_HTML_BLOCKS: DraggableTokenItem[] = [
     description: "Highlighted resource link to the GDG Jakarta Speaker Handbook and guidelines",
     snippet: `<div style="background-color: #e8f0fe; border-left: 4px solid #4285f4; border-radius: 4px; padding: 14px 18px; margin: 20px 0;">
   <p style="margin: 0; font-size: 0.9em; color: #1a73e8; line-height: 1.5;">
-    📘 <strong>Speaker Resource:</strong> Access the full <a href="https://gdgjakarta.org/speaker-handbook" target="_blank" style="color: #1a73e8; font-weight: 600; text-decoration: underline;">Speaker Handbook &amp; Guidelines</a> anytime for presentation tips, AV setup, and slide templates.
+    📘 <strong>Speaker Resource:</strong> Access the full <a href="[[SpeakerHandbookUrl]]" target="_blank" style="color: #1a73e8; font-weight: 600; text-decoration: underline;">Speaker Handbook &amp; Guidelines</a> anytime for presentation tips, AV setup, and slide templates.
   </p>
 </div>`,
   },
@@ -216,6 +234,10 @@ interface DraggableTokensPanelProps {
   customAttendeeTokens?: CustomPlaceholderDefinition[];
   onOpenAddPlaceholder?: (category: "event" | "attendee") => void;
   className?: string;
+  hideAttendeeTokens?: boolean;
+  hideSheetTokens?: boolean;
+  hideBlocks?: boolean;
+  defaultTab?: "event" | "attendee" | "sheet" | "blocks";
 }
 
 export function DraggableTokensPanel({
@@ -226,8 +248,12 @@ export function DraggableTokensPanel({
   customAttendeeTokens = [],
   onOpenAddPlaceholder,
   className,
+  hideAttendeeTokens = false,
+  hideSheetTokens = false,
+  hideBlocks = false,
+  defaultTab = "event",
 }: DraggableTokensPanelProps) {
-  const [activeTab, setActiveTab] = useState<string>("event");
+  const [activeTab, setActiveTab] = useState<string>(defaultTab);
 
   const validSheetTokens = useMemo(() => {
     return sheetTokens.map((t) => t.trim()).filter((t) => t.length > 0);
@@ -235,17 +261,27 @@ export function DraggableTokensPanel({
 
   // When sheet tokens are loaded and available, switch to sheet tab automatically
   useEffect(() => {
-    if (validSheetTokens.length > 0) {
+    if (!hideSheetTokens && validSheetTokens.length > 0) {
       setActiveTab("sheet");
     }
-  }, [validSheetTokens.length]);
+  }, [validSheetTokens.length, hideSheetTokens]);
 
   const handleDragStart = (e: React.DragEvent<HTMLElement>, content: string) => {
     e.dataTransfer.setData("text/plain", content);
     e.dataTransfer.effectAllowed = "copy";
   };
 
-  const hasSheetTokens = validSheetTokens.length > 0 || isLoadingSheetTokens;
+  const hasSheetTokens = !hideSheetTokens && (validSheetTokens.length > 0 || isLoadingSheetTokens);
+
+  // Compute number of visible tabs for dynamic grid
+  const visibleTabsCount = 1 + (!hideAttendeeTokens ? 1 : 0) + (hasSheetTokens ? 1 : 0) + (!hideBlocks ? 1 : 0);
+
+  const getGridColsClass = (count: number) => {
+    if (count === 4) return "grid-cols-4";
+    if (count === 3) return "grid-cols-3";
+    if (count === 2) return "grid-cols-2";
+    return "grid-cols-1";
+  };
 
   return (
     <div className={cn("flex flex-col rounded-lg border bg-card/60 p-3 shadow-xs", className)}>
@@ -258,7 +294,7 @@ export function DraggableTokensPanel({
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className={cn("grid h-8 w-full", hasSheetTokens ? "grid-cols-4" : "grid-cols-3")}>
+        <TabsList className={cn("grid h-8 w-full", getGridColsClass(visibleTabsCount))}>
           <TabsTrigger value="event" className="gap-1 text-[11px]">
             <Calendar className="size-3 text-sky-500" />
             Event Data
@@ -268,15 +304,17 @@ export function DraggableTokensPanel({
               </Badge>
             )}
           </TabsTrigger>
-          <TabsTrigger value="attendee" className="gap-1 text-[11px]">
-            <User className="size-3 text-emerald-500" />
-            Attendee Data
-            {customAttendeeTokens.length > 0 && (
-              <Badge variant="secondary" className="h-4 px-1 font-normal text-[9px]">
-                +{customAttendeeTokens.length}
-              </Badge>
-            )}
-          </TabsTrigger>
+          {!hideAttendeeTokens && (
+            <TabsTrigger value="attendee" className="gap-1 text-[11px]">
+              <User className="size-3 text-emerald-500" />
+              Attendee Data
+              {customAttendeeTokens.length > 0 && (
+                <Badge variant="secondary" className="h-4 px-1 font-normal text-[9px]">
+                  +{customAttendeeTokens.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+          )}
           {hasSheetTokens && (
             <TabsTrigger value="sheet" className="gap-1 text-[11px]">
               <FileSpreadsheet className="size-3 text-teal-500" />
@@ -288,10 +326,12 @@ export function DraggableTokensPanel({
               )}
             </TabsTrigger>
           )}
-          <TabsTrigger value="blocks" className="gap-1 text-[11px]">
-            <Code className="size-3 text-indigo-500" />
-            HTML Blocks
-          </TabsTrigger>
+          {!hideBlocks && (
+            <TabsTrigger value="blocks" className="gap-1 text-[11px]">
+              <Code className="size-3 text-indigo-500" />
+              HTML Blocks
+            </TabsTrigger>
+          )}
         </TabsList>
 
         {/* Tab 1: Event Data Tokens */}
@@ -362,71 +402,73 @@ export function DraggableTokensPanel({
         </TabsContent>
 
         {/* Tab 2: Attendee Data Tokens */}
-        <TabsContent value="attendee" className="mt-2.5 space-y-2">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {ATTENDEE_DATA_TOKENS.map((token) => (
-              <button
-                type="button"
-                key={token.id}
-                draggable
-                onDragStart={(e) => handleDragStart(e, token.tag)}
-                onClick={() => onInsertToken(token.tag)}
-                title={`${token.description} (Drag to editor or click to insert)`}
-                className="group flex cursor-grab items-center gap-1.5 rounded-md border border-emerald-500/20 bg-emerald-500/5 px-2 py-1.5 text-left transition-all hover:border-emerald-500/40 hover:bg-emerald-500/10 active:cursor-grabbing"
-              >
-                <GripVertical className="size-3 text-emerald-500/50 group-hover:text-emerald-500" />
-                <div className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate font-semibold text-[11px] text-emerald-700 dark:text-emerald-300">
-                    {token.label}
-                  </span>
-                  <span className="truncate font-mono text-[9px] text-muted-foreground">{token.tag}</span>
-                </div>
-              </button>
-            ))}
-
-            {customAttendeeTokens.map((token) => {
-              const tag = `[[${token.key}]]`;
-              return (
+        {!hideAttendeeTokens && (
+          <TabsContent value="attendee" className="mt-2.5 space-y-2">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {ATTENDEE_DATA_TOKENS.map((token) => (
                 <button
                   type="button"
-                  key={`custom_attendee_${token.key}`}
+                  key={token.id}
                   draggable
-                  onDragStart={(e) => handleDragStart(e, tag)}
-                  onClick={() => onInsertToken(tag)}
-                  title={`${token.description || token.label} (Custom Attendee Token - Drag or click to insert)`}
-                  className="group flex cursor-grab items-center gap-1.5 rounded-md border border-emerald-500/35 bg-emerald-500/10 px-2 py-1.5 text-left transition-all hover:border-emerald-500/60 hover:bg-emerald-500/15 active:cursor-grabbing"
+                  onDragStart={(e) => handleDragStart(e, token.tag)}
+                  onClick={() => onInsertToken(token.tag)}
+                  title={`${token.description} (Drag to editor or click to insert)`}
+                  className="group flex cursor-grab items-center gap-1.5 rounded-md border border-emerald-500/20 bg-emerald-500/5 px-2 py-1.5 text-left transition-all hover:border-emerald-500/40 hover:bg-emerald-500/10 active:cursor-grabbing"
                 >
-                  <GripVertical className="size-3 text-emerald-600/50 group-hover:text-emerald-600 dark:text-emerald-400" />
+                  <GripVertical className="size-3 text-emerald-500/50 group-hover:text-emerald-500" />
                   <div className="flex min-w-0 flex-1 flex-col">
-                    <div className="flex items-center gap-1 min-w-0">
-                      <span className="truncate font-semibold text-[11px] text-emerald-700 dark:text-emerald-300">
-                        {token.label}
-                      </span>
-                      <Badge
-                        variant="outline"
-                        className="h-3.5 px-1 font-normal text-[8px] border-emerald-500/40 text-emerald-600 dark:text-emerald-400"
-                      >
-                        Custom
-                      </Badge>
-                    </div>
-                    <span className="truncate font-mono text-[9px] text-muted-foreground">{tag}</span>
+                    <span className="truncate font-semibold text-[11px] text-emerald-700 dark:text-emerald-300">
+                      {token.label}
+                    </span>
+                    <span className="truncate font-mono text-[9px] text-muted-foreground">{token.tag}</span>
                   </div>
                 </button>
-              );
-            })}
+              ))}
 
-            {onOpenAddPlaceholder && (
-              <button
-                type="button"
-                onClick={() => onOpenAddPlaceholder("attendee")}
-                className="flex items-center justify-center gap-1.5 rounded-md border border-dashed border-emerald-500/40 bg-emerald-500/5 px-2 py-1.5 text-xs text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300 transition-colors"
-              >
-                <Plus className="size-3.5" />
-                <span className="text-[11px] font-medium">Add Attendee Token</span>
-              </button>
-            )}
-          </div>
-        </TabsContent>
+              {customAttendeeTokens.map((token) => {
+                const tag = `[[${token.key}]]`;
+                return (
+                  <button
+                    type="button"
+                    key={`custom_attendee_${token.key}`}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, tag)}
+                    onClick={() => onInsertToken(tag)}
+                    title={`${token.description || token.label} (Custom Attendee Token - Drag or click to insert)`}
+                    className="group flex cursor-grab items-center gap-1.5 rounded-md border border-emerald-500/35 bg-emerald-500/10 px-2 py-1.5 text-left transition-all hover:border-emerald-500/60 hover:bg-emerald-500/15 active:cursor-grabbing"
+                  >
+                    <GripVertical className="size-3 text-emerald-600/50 group-hover:text-emerald-600 dark:text-emerald-400" />
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <div className="flex items-center gap-1 min-w-0">
+                        <span className="truncate font-semibold text-[11px] text-emerald-700 dark:text-emerald-300">
+                          {token.label}
+                        </span>
+                        <Badge
+                          variant="outline"
+                          className="h-3.5 px-1 font-normal text-[8px] border-emerald-500/40 text-emerald-600 dark:text-emerald-400"
+                        >
+                          Custom
+                        </Badge>
+                      </div>
+                      <span className="truncate font-mono text-[9px] text-muted-foreground">{tag}</span>
+                    </div>
+                  </button>
+                );
+              })}
+
+              {onOpenAddPlaceholder && (
+                <button
+                  type="button"
+                  onClick={() => onOpenAddPlaceholder("attendee")}
+                  className="flex items-center justify-center gap-1.5 rounded-md border border-dashed border-emerald-500/40 bg-emerald-500/5 px-2 py-1.5 text-xs text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300 transition-colors"
+                >
+                  <Plus className="size-3.5" />
+                  <span className="text-[11px] font-medium">Add Attendee Token</span>
+                </button>
+              )}
+            </div>
+          </TabsContent>
+        )}
 
         {/* Tab 3: Sheet Data Column Tokens */}
         {hasSheetTokens && (
@@ -472,34 +514,36 @@ export function DraggableTokensPanel({
         )}
 
         {/* Tab 4: Pre-built HTML Blocks */}
-        <TabsContent value="blocks" className="mt-2.5 space-y-1.5">
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            {PREBUILT_HTML_BLOCKS.map((block) => (
-              <button
-                type="button"
-                key={block.id}
-                draggable
-                onDragStart={(e) => handleDragStart(e, block.snippet || block.tag)}
-                onClick={() => onInsertToken(block.snippet || block.tag)}
-                title={`${block.description} (Drag to editor or click to insert)`}
-                className="group flex cursor-grab items-center gap-2 rounded-md border border-indigo-500/20 bg-indigo-500/5 px-2.5 py-2 text-left transition-all hover:border-indigo-500/40 hover:bg-indigo-500/10 active:cursor-grabbing"
-              >
-                <GripVertical className="size-3.5 text-indigo-500/50 group-hover:text-indigo-500" />
-                <div className="flex min-w-0 flex-1 flex-col">
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-semibold text-[11px] text-indigo-700 dark:text-indigo-300">
-                      {block.label}
-                    </span>
-                    <Badge variant="outline" className="px-1 py-0 text-[9px]">
-                      HTML
-                    </Badge>
+        {!hideBlocks && (
+          <TabsContent value="blocks" className="mt-2.5 space-y-1.5">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              {PREBUILT_HTML_BLOCKS.map((block) => (
+                <button
+                  type="button"
+                  key={block.id}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, block.snippet || block.tag)}
+                  onClick={() => onInsertToken(block.snippet || block.tag)}
+                  title={`${block.description} (Drag to editor or click to insert)`}
+                  className="group flex cursor-grab items-center gap-2 rounded-md border border-indigo-500/20 bg-indigo-500/5 px-2.5 py-2 text-left transition-all hover:border-indigo-500/40 hover:bg-indigo-500/10 active:cursor-grabbing"
+                >
+                  <GripVertical className="size-3.5 text-indigo-500/50 group-hover:text-indigo-500" />
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-semibold text-[11px] text-indigo-700 dark:text-indigo-300">
+                        {block.label}
+                      </span>
+                      <Badge variant="outline" className="px-1 py-0 text-[9px]">
+                        HTML
+                      </Badge>
+                    </div>
+                    <span className="text-[10px] text-muted-foreground">{block.description}</span>
                   </div>
-                  <span className="text-[10px] text-muted-foreground">{block.description}</span>
-                </div>
-              </button>
-            ))}
-          </div>
-        </TabsContent>
+                </button>
+              ))}
+            </div>
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

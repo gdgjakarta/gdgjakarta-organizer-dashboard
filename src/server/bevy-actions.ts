@@ -5,6 +5,7 @@ import {
   type AddBevyChapterTeamMemberParams,
   addBevyChapterTeamMember,
   createBevyExternalEvent,
+  createBevyPerson,
   deleteBevyAttendee,
   deleteBevyChapterTeamMember,
   findBevyAttendeeIdByEmail,
@@ -15,14 +16,17 @@ import {
   getBevyChapterMembers,
   getBevyChapterTeams,
   getBevyEventAttendees,
+  getBevyPerson,
   getMemberById,
   importMemberToBevy,
   modifyBevyAiEventContent,
   putBevyAttendeeCheckIn,
   searchBevyChapterMembers,
+  searchBevyPersons,
   type UpdateBevyChapterTeamMemberParams,
   updateBevyChapterTeamMember,
   updateBevyEvent,
+  updateBevyPerson,
 } from "@/lib/bevy/client";
 import type {
   BevyAiContentModificationParams,
@@ -495,4 +499,49 @@ export async function modifyBevyAiEventContentAction(params: BevyAiContentModifi
   }
 
   return await modifyBevyAiEventContent(params);
+}
+
+/**
+ * Server action to create a speaker person on Bevy.
+ */
+export async function createBevySpeakerPersonAction(
+  eventId: string | number,
+  person: { first_name: string; last_name: string; title: string; bio?: string; picture?: string },
+) {
+  if (!(await isAuthorizedOrganizerSession())) {
+    return { success: false, error: "Unauthorized: Organizer privileges required" };
+  }
+  return await createBevyPerson(eventId, person);
+}
+
+/**
+ * Server action to update a speaker person on Bevy.
+ */
+export async function updateBevySpeakerPersonAction(
+  personId: string | number,
+  eventId: string | number,
+  person: Partial<{ first_name: string; last_name: string; title: string; bio?: string; picture?: string }>,
+) {
+  if (!(await isAuthorizedOrganizerSession())) {
+    return { success: false, error: "Unauthorized: Organizer privileges required" };
+  }
+  return await updateBevyPerson(personId, eventId, person);
+}
+
+/**
+ * Server action to get a speaker person from Bevy.
+ */
+export async function getBevySpeakerPersonAction(personId: string | number, eventId: string | number) {
+  if (!(await isAuthorizedOrganizerSession())) {
+    return { success: false, error: "Unauthorized: Organizer privileges required" };
+  }
+  return await getBevyPerson(personId, eventId);
+}
+
+/**
+ * Server action to search Bevy speakers/persons using Algolia index.
+ * Accessible for autocomplete in speaker confirmation and organizer manual add.
+ */
+export async function searchBevyPersonsAction(query: string, limit = 10) {
+  return await searchBevyPersons(query, limit);
 }

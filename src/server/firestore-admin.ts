@@ -249,11 +249,21 @@ export async function patchFirestoreDoc(
     if (authToken) {
       headers.Authorization = `Bearer ${authToken}`;
     }
+    const body = JSON.stringify({ fields: encodeFirestoreFields(data) });
     const res = await fetch(url, {
       method: "PATCH",
       headers,
-      body: JSON.stringify({ fields: encodeFirestoreFields(data) }),
+      body,
     });
+    if (res.status === 401 && authToken) {
+      // Retry without Authorization header if cookie token is stale/revoked on public-writable collections
+      const retryRes = await fetch(url, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body,
+      });
+      if (retryRes.ok) return true;
+    }
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
       console.warn(`[Firestore REST] PATCH ${collectionName}/${docId} returned ${res.status}: ${errText}`);
@@ -339,6 +349,79 @@ async function queryRegistrationDoc(
     return decoded ? { id, data: normalizeRegistrationDoc(decoded, id) } : null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Queries documents from a collection using Firestore REST runQuery.
+ */
+export async function queryFirestoreDocs<T = Record<string, unknown>>(
+  collectionId: string,
+  filters?: Array<{
+    fieldFilter: {
+      field: { fieldPath: string };
+      op: string;
+      value: Record<string, unknown>;
+    };
+  }>,
+  limit?: number,
+  token?: string,
+): Promise<T[]> {
+  try {
+    const url = `${FIRESTORE_BASE_URL}:runQuery?key=${getFirebaseApiKey()}`;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    };
+    const authToken = await resolveAuthToken(token);
+    if (authToken) {
+      headers.Authorization = `Bearer ${authToken}`;
+    }
+
+    const structuredQuery: Record<string, unknown> = {
+      from: [{ collectionId }],
+    };
+
+    if (filters && filters.length > 0) {
+      if (filters.length === 1) {
+        structuredQuery.where = filters[0];
+      } else {
+        structuredQuery.where = {
+          compositeFilter: {
+            op: "AND",
+            filters,
+          },
+        };
+      }
+    }
+
+    if (typeof limit === "number" && limit > 0) {
+      structuredQuery.limit = limit;
+    }
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ structuredQuery }),
+    });
+
+    if (!res.ok) return [];
+    const items = (await res.json()) as Array<{ document?: { name?: string; fields?: Record<string, unknown> } }>;
+    if (!Array.isArray(items)) return [];
+
+    const results: T[] = [];
+    for (const item of items) {
+      if (!item.document) continue;
+      const id = item.document.name?.split("/").pop() ?? "";
+      const decoded = decodeFirestoreDoc(item.document);
+      if (decoded) {
+        results.push({ id, ...decoded } as T);
+      }
+    }
+    return results;
+  } catch (err) {
+    console.error(`[queryFirestoreDocs] Failed to query ${collectionId}:`, err);
+    return [];
   }
 }
 
@@ -1059,13 +1142,118 @@ export async function updateRegistrationFromPayment(input: UpdateRegistrationFro
 export const getFirestoreEventByIdServer = cache(async (eventId: string): Promise<FirestoreEvent | null> => {
   try {
     const data = await getFirestoreDoc("events", String(eventId));
-    if (!data) return null;
-    const normalized = normalizeEventDoc(data, String(eventId));
-    if (normalized && "vouchers" in normalized) {
-      const { vouchers: _stripped, ...safe } = normalized;
-      return safe as FirestoreEvent;
+    let fsEvent: FirestoreEvent | null = null;
+    if (data) {
+      const normalized = normalizeEventDoc(data, String(eventId));
+      if (normalized && "vouchers" in normalized) {
+        const { vouchers: _stripped, ...safe } = normalized;
+        fsEvent = safe as FirestoreEvent;
+      } else {
+        fsEvent = normalized;
+      }
     }
-    return normalized;
+
+    // If Firestore document exists and already has rich upstream details (title, start_date, venue), return it directly
+    if (fsEvent && fsEvent.title && fsEvent.start_date && (fsEvent.venue || fsEvent.is_virtual)) {
+      return fsEvent;
+    }
+
+    // Otherwise (or if Firestore only contains dashboard settings like speaker_config), enrich with upstream Bevy event details
+    try {
+      const { getBevyEventById, resolveEventAudience } = await import("@/lib/bevy/client");
+      const bevyEv = await getBevyEventById(eventId);
+      if (bevyEv) {
+        const { audienceType, isVirtual } = resolveEventAudience(bevyEv.audience_type, bevyEv.is_virtual_event);
+        const pictureUrl =
+          bevyEv.picture?.url ??
+          bevyEv.picture?.thumbnail_url ??
+          bevyEv.cropped_picture_url ??
+          bevyEv.banner?.url ??
+          bevyEv.banner?.thumbnail_url ??
+          bevyEv.cropped_banner_url ??
+          (bevyEv as unknown as { picture_url?: string }).picture_url ??
+          undefined;
+        const bannerUrl =
+          bevyEv.banner?.url ??
+          bevyEv.banner?.thumbnail_url ??
+          bevyEv.cropped_banner_url ??
+          bevyEv.picture?.url ??
+          bevyEv.picture?.thumbnail_url ??
+          bevyEv.cropped_picture_url ??
+          (bevyEv as unknown as { banner_url?: string }).banner_url ??
+          undefined;
+
+        const venueObj =
+          bevyEv.venue_name || bevyEv.venue_address || bevyEv.venue_city || bevyEv.venue_zip_code
+            ? {
+                name: bevyEv.venue_name,
+                address: bevyEv.venue_address,
+                city: bevyEv.venue_city,
+                state: bevyEv.venue_state,
+                zip_code: bevyEv.venue_zip_code,
+                country: bevyEv.venue_country,
+                latitude: bevyEv.venue_latitude,
+                longitude: bevyEv.venue_longitude,
+              }
+            : undefined;
+
+        const baseEvent: FirestoreEvent = {
+          id: String(bevyEv.id),
+          title: bevyEv.title,
+          description: bevyEv.description ?? undefined,
+          description_short: bevyEv.description_short ?? undefined,
+          status: (bevyEv.status as FirestoreEvent["status"]) ?? "Published",
+          start_date: bevyEv.start_date,
+          end_date: bevyEv.end_date,
+          picture_url: pictureUrl,
+          banner_url: bannerUrl,
+          picture: bevyEv.picture,
+          banner: bevyEv.banner,
+          cropped_picture_url: bevyEv.cropped_picture_url,
+          cropped_banner_url: bevyEv.cropped_banner_url,
+          event_type_title: bevyEv.event_type_title ?? "Standard Event",
+          audience_type: audienceType,
+          is_virtual: isVirtual,
+          virtual_event_type: bevyEv.virtual_event_type ?? undefined,
+          attendee_virtual_venue_link: bevyEv.attendee_virtual_venue_link ?? undefined,
+          join_virtual_event_url: bevyEv.join_virtual_event_url ?? undefined,
+          venue: venueObj,
+          url: bevyEv.url ?? undefined,
+          static_url: bevyEv.static_url ?? undefined,
+          tags: bevyEv.tags ?? [],
+          requires_approval: false,
+          registration_status: "Closed",
+          custom_questions: [],
+          total_registrations: bevyEv.total_attendees ?? 0,
+          total_approved: bevyEv.total_attendees ?? 0,
+          total_checked_in: bevyEv.checkin_count ?? 0,
+          is_hidden: Boolean(bevyEv.is_hidden ?? (bevyEv as { hidden?: boolean }).hidden),
+          is_test: Boolean(bevyEv.is_test),
+          agenda: bevyEv.agenda,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+
+        const merged: FirestoreEvent = {
+          ...baseEvent,
+          ...(fsEvent ?? {}),
+          // Ensure core Bevy details populate if missing or empty in Firestore doc
+          title: fsEvent?.title || baseEvent.title,
+          start_date: fsEvent?.start_date || baseEvent.start_date,
+          end_date: fsEvent?.end_date || baseEvent.end_date,
+          venue: fsEvent?.venue || baseEvent.venue,
+          picture_url: fsEvent?.picture_url || baseEvent.picture_url,
+          banner_url: fsEvent?.banner_url || baseEvent.banner_url,
+          status: fsEvent?.status || baseEvent.status,
+        };
+        return merged;
+        return merged;
+      }
+    } catch (bevyErr) {
+      console.warn(`[Firestore Server] getFirestoreEventByIdServer Bevy fallback error for ${eventId}:`, bevyErr);
+    }
+
+    return fsEvent;
   } catch (err) {
     console.error(`[Firestore Server] getFirestoreEventByIdServer error for ${eventId}:`, err);
     return null;

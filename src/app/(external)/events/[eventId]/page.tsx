@@ -34,9 +34,13 @@ export async function generateMetadata({ params }: PublicEventDetailPageProps): 
     event.cropped_banner_url ??
     event.banner?.url;
 
-  const thumbnailImageUrl = rawThumbnailUrl && rawThumbnailUrl.includes("res.cloudinary.com")
-    ? rawThumbnailUrl.replace(/\/image\/upload\/(?:.+?\/)?v1\//, "/image/upload/c_fill,dpr_2.0,f_auto,g_center,q_auto:good/v1/")
-    : rawThumbnailUrl;
+  const thumbnailImageUrl =
+    rawThumbnailUrl && rawThumbnailUrl.includes("res.cloudinary.com")
+      ? rawThumbnailUrl.replace(
+          /\/image\/upload\/(?:.+?\/)?v1\//,
+          "/image/upload/c_fill,dpr_2.0,f_auto,g_center,q_auto:good/v1/",
+        )
+      : rawThumbnailUrl;
   const bannerImageUrl = event.cropped_banner_url ?? event.banner?.url ?? event.banner?.thumbnail_url;
 
   const ogImages = [];
@@ -85,11 +89,22 @@ export default async function PublicEventDetailPage({ params }: PublicEventDetai
     notFound();
   }
 
-  // Strip private vouchers before serializing into public client props
+  // Strip private vouchers and speaker secret tokens before serializing into public client props
   let safeFirestoreEvent = firestoreEvent;
-  if (safeFirestoreEvent && "vouchers" in safeFirestoreEvent) {
-    const { vouchers: _stripped, ...rest } = safeFirestoreEvent;
-    safeFirestoreEvent = rest as typeof firestoreEvent;
+  if (safeFirestoreEvent) {
+    const { vouchers: _stripped, speaker_config: rawSpeakerConfig, ...rest } = safeFirestoreEvent;
+    // Strip speaker_config.share_token so secret tokens are never exposed in public HTML props
+    const sanitizedSpeakerConfig = rawSpeakerConfig
+      ? {
+          ...rawSpeakerConfig,
+          share_token: "",
+        }
+      : undefined;
+
+    safeFirestoreEvent = {
+      ...rest,
+      ...(sanitizedSpeakerConfig ? { speaker_config: sanitizedSpeakerConfig } : {}),
+    } as typeof firestoreEvent;
   }
 
   return <PublicEventDetailView event={event} initialFirestoreEvent={safeFirestoreEvent} />;

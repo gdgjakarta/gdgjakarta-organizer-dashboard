@@ -10,7 +10,10 @@ import {
   DEFAULT_REJECTED_VIRTUAL_EMAIL_HTML,
   DEFAULT_REJECTED_WAITLISTED_EMAIL_HTML,
   DEFAULT_WAITLISTED_EMAIL_HTML,
+  convertTemplateToCleanTokens,
 } from "@/lib/events/email-templates";
+
+export { convertTemplateToCleanTokens };
 
 import {
   defaultHtmlTemplate,
@@ -31,93 +34,7 @@ export interface EmailFeatureTemplateItem {
   getRawHtml: () => string;
 }
 
-/**
- * Normalizes legacy n8n expressions inside template HTML and subjects to clean dashboard tokens
- * like [[EventName]], [[EventDate]], [[Name]], [[Email]], [[EventBannerUrl]], etc.
- */
-export function convertTemplateToCleanTokens(raw: string): string {
-  let text = raw;
 
-  // Event Name
-  text = text.replaceAll("{{ $('event-params').item.json.eventName }}", "[[EventName]]");
-  text = text.replaceAll("{ $('event-params').item.json.eventName }", "[[EventName]]");
-  text = text.replaceAll("{{ $('bevy-config').item.json.bevyEventName }}", "[[EventName]]");
-  text = text.replaceAll("{ $('bevy-config').item.json.bevyEventName }", "[[EventName]]");
-  text = text.replaceAll("{{ $('email-config').item.json.eventName }}", "[[EventName]]");
-  text = text.replaceAll("{ $('email-config').item.json.eventName }", "[[EventName]]");
-  text = text.replaceAll("{{ eventName }}", "[[EventName]]");
-
-  // Header Banner URL
-  text = text.replaceAll("{{ $('event-params').item.json.eventHeaderUrl }}", "[[EventBannerUrl]]");
-  text = text.replaceAll("{ $('event-params').item.json.eventHeaderUrl }", "[[EventBannerUrl]]");
-  text = text.replaceAll("{{ $('event-params').item.json.headerEmailUrl }}", "[[EventBannerUrl]]");
-  text = text.replaceAll("{ $('event-params').item.json.headerEmailUrl }", "[[EventBannerUrl]]");
-  text = text.replaceAll("{{ $('bevy-config').item.json.bevyEventHeaderEmailUrl }}", "[[EventBannerUrl]]");
-  text = text.replaceAll("{ $('bevy-config').item.json.bevyEventHeaderEmailUrl }", "[[EventBannerUrl]]");
-  text = text.replaceAll("{{ $('email-config').item.json.eventHeaderEmailUrl }}", "[[EventBannerUrl]]");
-  text = text.replaceAll("{ $('email-config').item.json.eventHeaderEmailUrl }", "[[EventBannerUrl]]");
-  text = text.replaceAll("{{ headerEmailUrl }}", "[[EventBannerUrl]]");
-
-  // Action / CTA URL
-  text = text.replaceAll("{{ $('event-params').item.json.eventActionUrl }}", "[[EventUrl]]");
-  text = text.replaceAll("{ $('event-params').item.json.eventActionUrl }", "[[EventUrl]]");
-  text = text.replaceAll("{{ $('event-params').item.json.eventCtaUrl }}", "[[EventUrl]]");
-  text = text.replaceAll("{ $('event-params').item.json.eventCtaUrl }", "[[EventUrl]]");
-  text = text.replaceAll("{{ $('email-config').item.json.actionButtonUrl }}", "[[EventUrl]]");
-  text = text.replaceAll("{ $('email-config').item.json.actionButtonUrl }", "[[EventUrl]]");
-  text = text.replaceAll("{{ eventCtaUrl }}", "[[EventUrl]]");
-
-  // Recipient / Attendee Name
-  text = text.replaceAll("{{ $('loop-send-email').item.json['Full Name'] }}", "[[Name]]");
-  text = text.replaceAll("{ $('loop-send-email').item.json['Full Name'] }", "[[Name]]");
-  text = text.replaceAll("{{ $('loop-send-rejected-email').item.json['Full Name'] }}", "[[Name]]");
-  text = text.replaceAll("{ $('loop-send-rejected-email').item.json['Full Name'] }", "[[Name]]");
-  text = text.replaceAll("{{ $('bevy-config').item.json.bevyUserName }}", "[[Name]]");
-  text = text.replaceAll("{ $('bevy-config').item.json.bevyUserName }", "[[Name]]");
-  text = text.replaceAll("{{ $('attendee-data').item.json.name }}", "[[Name]]");
-  text = text.replaceAll("{ $('attendee-data').item.json.name }", "[[Name]]");
-  text = text.replaceAll("{{ name }}", "[[Name]]");
-
-  // Recipient / Attendee Email
-  text = text.replaceAll("{{ $('loop-send-email').item.json['Email'] }}", "[[Email]]");
-  text = text.replaceAll("{ $('loop-send-email').item.json['Email'] }", "[[Email]]");
-  text = text.replaceAll("{{ $('bevy-config').item.json.bevyUserEmail }}", "[[Email]]");
-  text = text.replaceAll("{ $('bevy-config').item.json.bevyUserEmail }", "[[Email]]");
-  text = text.replaceAll("{{ $('attendee-data').item.json.email }}", "[[Email]]");
-  text = text.replaceAll("{ $('attendee-data').item.json.email }", "[[Email]]");
-  text = text.replaceAll("{{ email }}", "[[Email]]");
-
-  // Date, Session Time, Location
-  text = text.replaceAll("{{ $('bevy-config').item.json.bevyEventDate }}", "[[EventDate]]");
-  text = text.replaceAll("{ $('bevy-config').item.json.bevyEventDate }", "[[EventDate]]");
-  text = text.replaceAll("{{ $('session-config').item.json.bevySessionTime }}", "[[EventTime]]");
-  text = text.replaceAll("{ $('session-config').item.json.bevySessionTime }", "[[EventTime]]");
-  text = text.replaceAll("{{ $('bevy-config').item.json.bevyEventLocation }}", "[[EventVenue]]");
-  text = text.replaceAll("{ $('bevy-config').item.json.bevyEventLocation }", "[[EventVenue]]");
-  text = text.replaceAll("{{ $('bevy-config').item.json.bevyEventLocationUrl }}", "[[EventVenueUrl]]");
-  text = text.replaceAll("{ $('bevy-config').item.json.bevyEventLocationUrl }", "[[EventVenueUrl]]");
-
-  // Attendee Reference Code & Attendee ID
-  text = text.replaceAll("{{ $('Add Bevy Attendee API').item.json.attendee_code }}", "[[TicketCode]]");
-  text = text.replaceAll("{ $('Add Bevy Attendee API').item.json.attendee_code }", "[[TicketCode]]");
-  text = text.replaceAll("{{ $('add-bevy-attendee-api').item.json.attendee_code }}", "[[TicketCode]]");
-  text = text.replaceAll("{ $('add-bevy-attendee-api').item.json.attendee_code }", "[[TicketCode]]");
-  text = text.replaceAll("{{ $('Add Bevy Attendee API').item.json.id }}", "[[AttendeeId]]");
-  text = text.replaceAll("{ $('Add Bevy Attendee API').item.json.id }", "[[AttendeeId]]");
-  text = text.replaceAll("{{ $('add-bevy-attendee-api').item.json.id }}", "[[AttendeeId]]");
-  text = text.replaceAll("{ $('add-bevy-attendee-api').item.json.id }", "[[AttendeeId]]");
-  text = text.replaceAll("{{ attendeeId }}", "[[AttendeeId]]");
-
-  // Cancellation Reason
-  text = text.replaceAll("{{ $('event-params').item.json.cancellationReason }}", "[[CancellationReason]]");
-  text = text.replaceAll("{ $('event-params').item.json.cancellationReason }", "[[CancellationReason]]");
-  text = text.replaceAll("{{ cancellation_reason }}", "[[CancellationReason]]");
-  text = text.replaceAll("{ cancellation_reason }", "[[CancellationReason]]");
-  text = text.replaceAll("{{ cancellationReason }}", "[[CancellationReason]]");
-  text = text.replaceAll("{ cancellationReason }", "[[CancellationReason]]");
-
-  return text;
-}
 
 export function resolveFeatureTemplateContent(tpl: EmailFeatureTemplateItem): {
   subject: string;

@@ -2,11 +2,9 @@
 
 import { z } from "zod";
 
-import { splitFullName } from "@/lib/events/email-templates";
+import { convertTemplateToCleanTokens, splitFullName } from "@/lib/events/email-templates";
 import { extractApiMessage } from "@/lib/utils";
 import { sendEmailWebhookAction } from "@/server/email-template-actions";
-
-import { convertTemplateToCleanTokens } from "../_components/template-utils";
 
 const quickEmailSchema = z.object({
   eventId: z.string().min(1, "Target event is required"),
@@ -115,6 +113,8 @@ export async function sendQuickEmail(input: QuickEmailInput) {
       t = replaceToken(t, "EventDescription", eventDesc);
       t = replaceToken(t, "SessionTitle", sessionTitle);
       t = replaceToken(t, "VehicleTicketUrl", vehicleTicketUrl);
+      t = replaceToken(t, "SpeakerHandbookUrl", data.customEventPlaceholders?.SpeakerHandbookUrl || "https://gdgjakarta.org/speaker-handbook");
+      t = replaceToken(t, "PresenterRole", data.customEventPlaceholders?.PresenterRole || "Speaker");
       return t;
     };
 

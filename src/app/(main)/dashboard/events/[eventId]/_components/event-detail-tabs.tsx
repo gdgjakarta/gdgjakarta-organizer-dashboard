@@ -8,6 +8,7 @@ import {
   FileSpreadsheet,
   Layers,
   Mail,
+  Mic,
   Package,
   PackageCheck,
   Printer,
@@ -47,6 +48,7 @@ import { OnTheSpotMerchTab } from "./on-the-spot-merch-tab";
 import { PaymentGatewayTab } from "./payment-gateway-tab";
 import { RefundsTab } from "./refunds-tab";
 import { RegistrantsTab } from "./registrants-tab";
+import { SpeakersTab } from "./speakers-tab";
 import { TicketsTab } from "./tickets-tab";
 import { VouchersTab } from "./vouchers-tab";
 
@@ -286,7 +288,7 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
     if (Array.isArray(activeEvent.sessions) && activeEvent.sessions.length > 0) {
       return activeEvent.sessions.length;
     }
-    const days = (activeEvent.agenda as { days?: Array<unknown> })?.days;
+    const days = (activeEvent.agenda as { days?: Array<unknown> }).days;
     if (Array.isArray(days) && days.length > 1) {
       return days.length;
     }
@@ -390,6 +392,15 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
               >
                 <Ticket className="size-4" />
                 Tickets
+              </TabsTrigger>
+              <TabsTrigger
+                id="tab-trigger-speakers"
+                data-value="speakers"
+                value="speakers"
+                className="flex-none gap-1.5 px-3 py-1.5 text-xs sm:text-sm"
+              >
+                <Mic className="size-4" />
+                Speakers
               </TabsTrigger>
               <TabsTrigger
                 id="tab-trigger-merch"
@@ -534,6 +545,10 @@ export function EventDetailTabs({ eventId, event, registrations, initialRole }: 
 
           <TabsContent value="tickets" className="space-y-4">
             <TicketsTab event={activeEvent} />
+          </TabsContent>
+
+          <TabsContent value="speakers" className="space-y-4">
+            <SpeakersTab eventId={eventId} event={activeEvent} />
           </TabsContent>
 
           <TabsContent value="merch" className="space-y-4">

@@ -110,6 +110,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
       rejected_virtual: event.email_templates?.rejected_virtual ?? getDefaultTemplateByKey("rejected_virtual"),
       cancelled: cancelledHtml,
       cancelled_attendee: event.email_templates?.cancelled_attendee ?? getDefaultTemplateByKey("cancelled_attendee"),
+      speaker_invitation: event.email_templates?.speaker_invitation ?? getDefaultTemplateByKey("speaker_invitation"),
     };
   });
 
@@ -134,6 +135,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
       rejected_virtual: event.email_templates?.rejected_virtual ?? getDefaultTemplateByKey("rejected_virtual"),
       cancelled: cancelledHtml,
       cancelled_attendee: event.email_templates?.cancelled_attendee ?? getDefaultTemplateByKey("cancelled_attendee"),
+      speaker_invitation: event.email_templates?.speaker_invitation ?? getDefaultTemplateByKey("speaker_invitation"),
     };
   });
 
@@ -250,6 +252,8 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
               ),
               cancelled_attendee:
                 docData.email_templates.cancelled_attendee ?? getDefaultTemplateByKey("cancelled_attendee"),
+              speaker_invitation:
+                docData.email_templates.speaker_invitation ?? getDefaultTemplateByKey("speaker_invitation"),
             };
             setTemplates(loaded);
             setSavedTemplates(loaded);
@@ -380,6 +384,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
       rejected_virtual: getDefaultTemplateByKey("rejected_virtual"),
       cancelled: getDefaultTemplateByKey("cancelled"),
       cancelled_attendee: getDefaultTemplateByKey("cancelled_attendee"),
+      speaker_invitation: getDefaultTemplateByKey("speaker_invitation"),
     };
     setTemplates(allDefaults);
 
@@ -402,6 +407,7 @@ export function EmailTemplatesTab({ event }: EmailTemplatesTabProps) {
       rejected_virtual: getDefaultTemplateByKey("rejected_virtual"),
       cancelled: getDefaultTemplateByKey("cancelled"),
       cancelled_attendee: getDefaultTemplateByKey("cancelled_attendee"),
+      speaker_invitation: getDefaultTemplateByKey("speaker_invitation"),
     };
     const cleanData = getAllCleanDefaultTemplatesData(event);
     setTemplates(allDefaults);
