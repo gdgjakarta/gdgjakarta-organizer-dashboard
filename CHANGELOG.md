@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.15] - 2026-11-11
+
+### Added
+- **Transactions & QRIS Payments Dashboard (`/dashboard/payments`)**: Built dedicated real-time organizer dashboard for incoming DOKU QRIS payments, webhook notifications, and operational email dispatch status.
+- **DOKU Payment Status Checking & Bulk Actions**: Added individual and bulk live status verification against DOKU Check Status API with automatic sync and audit logs.
+- **Canonical Filtration Layout**: Standardized the payments table and filtration controls to replicate the canonical `registrants-tab.tsx` component hierarchy (Avatar + Customer info, InputGroup search, FilterSelect dropdowns, status pills, and batch actions toolbar).
+- **Payment & Email Status Persistence**: Track email delivery (`payment_email_status`, `payment_email_sent_at`, `payment_email_recipient`) on registrations and orders, and persist incoming payloads to `payment_transactions` collection.
+
+---
+
 ## [1.0.14] - 2026-11-11
 
 ### Fixed

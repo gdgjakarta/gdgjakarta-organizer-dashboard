@@ -17,7 +17,7 @@ import {
   resolveDokuNotificationWebhookUrl,
   resolvePaymentLinkWebhookUrl,
 } from "@/lib/events/doku-payment";
-import type { FirestoreRegistration, RegistrationStatusLog } from "@/lib/firestore/types";
+import type { FirestoreRegistration, PaymentTransactionRecord, RegistrationStatusLog } from "@/lib/firestore/types";
 import { assertSafeWebhookUrl } from "@/lib/security/webhook-validator";
 import { extractApiMessage } from "@/lib/utils";
 import { verifyFirebaseIdToken } from "@/server/auth-actions";
@@ -30,7 +30,9 @@ import {
 import {
   findRegistrationDoc,
   getFirestoreDoc,
+  getPaymentTransactionsServer,
   patchFirestoreDoc,
+  recordPaymentTransaction,
   updateMerchandiseOrderFromPayment,
   updateRegistrationFromPayment,
 } from "@/server/firestore-admin";
@@ -670,8 +672,27 @@ export async function checkDokuPaymentStatusInternal(
         console.error(`[DOKU Check Status] Failed to update Firestore registration:`, dbErr);
       }
 
+      // Persist status in payment_transactions collection
+      try {
+        await recordPaymentTransaction({
+          invoice_number: invoiceNumber,
+          customer_name: (dokuData?.customer?.name || existingRegistration?.member_name || "Customer").trim(),
+          customer_email: dokuData?.customer?.email || existingRegistration?.member_email || "",
+          customer_phone: dokuData?.customer?.phone || existingRegistration?.member_phone || null,
+          amount: amount ?? notificationPayload.order.amount ?? 0,
+          issuer: dokuData?.issuer?.name || dokuData?.channel?.id || "QRIS",
+          payment_channel: paymentChannel,
+          payment_status: "paid",
+          transaction_date: paidAt,
+          raw_payload: dokuData as unknown as Record<string, unknown>,
+        });
+      } catch (txErr) {
+        console.warn("[DOKU Check Status] Failed to record payment transaction:", txErr);
+      }
+
       // Revalidate dashboard paths
       try {
+        await revalidateDashboardPath("/dashboard/payments");
         await revalidateDashboardPath("/dashboard/events");
         if (eventId) {
           await revalidateDashboardPath(`/dashboard/events/${eventId}`);
@@ -708,6 +729,34 @@ export async function checkDokuPaymentStatusInternal(
       message = "Payment has expired. The attendee did not complete payment before the deadline.";
     } else if (txStatus === "FAILED") {
       message = "Payment failed or was declined by the issuer.";
+    }
+
+    // Persist pending / expired / failed status in payment_transactions collection
+    try {
+      let resolvedStatus = "pending";
+      const s = txStatus.toLowerCase();
+      if (s === "order_expired" || s === "expired") {
+        resolvedStatus = "expired";
+      } else if (s === "failed") {
+        resolvedStatus = "failed";
+      }
+
+      await recordPaymentTransaction({
+        invoice_number: invoiceNumber,
+        customer_name: (dokuData?.customer?.name || existingRegistration?.member_name || "Customer").trim(),
+        customer_email: dokuData?.customer?.email || existingRegistration?.member_email || "",
+        customer_phone: dokuData?.customer?.phone || existingRegistration?.member_phone || null,
+        amount: amount ?? 0,
+        issuer: dokuData?.issuer?.name || dokuData?.channel?.id || "QRIS",
+        payment_channel: paymentChannel,
+        payment_status: resolvedStatus,
+        transaction_date: dokuData?.transaction?.date ?? new Date().toISOString(),
+        raw_payload: dokuData as unknown as Record<string, unknown>,
+      });
+
+      await revalidateDashboardPath("/dashboard/payments");
+    } catch (txErr) {
+      console.warn("[DOKU Check Status] Failed to record pending/failed payment transaction:", txErr);
     }
 
     return {
@@ -1054,5 +1103,117 @@ export async function checkMemberEventPaymentStatusAction(
     checkCount: nextCount,
     limit,
     paymentChannel: dokuResult.paymentChannel,
+  };
+}
+
+/**
+ * Server Action: Fetches all payment transactions for the organizer dashboard.
+ * Requires authorized organizer session.
+ */
+export async function getPaymentTransactionsAction(): Promise<{
+  success: boolean;
+  transactions?: PaymentTransactionRecord[];
+  error?: string;
+}> {
+  try {
+    const isAuthorized = await isAuthorizedOrganizerSession();
+    if (!isAuthorized) {
+      return { success: false, error: "Unauthorized: Organizer access required." };
+    }
+
+    const transactions = await getPaymentTransactionsServer();
+    return { success: true, transactions };
+  } catch (err) {
+    console.error("[getPaymentTransactionsAction] Error:", err);
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+const bulkCheckPaymentStatusSchema = z.object({
+  invoiceNumbers: z.array(z.string().min(1)).min(1, "At least one invoice number is required"),
+  isProduction: z.boolean().optional(),
+});
+
+export type BulkCheckPaymentStatusInput = z.infer<typeof bulkCheckPaymentStatusSchema>;
+
+export interface BulkCheckPaymentStatusResult {
+  success: boolean;
+  error?: string;
+  results: DokuStatusCheckResult[];
+  summary: {
+    total: number;
+    paid: number;
+    pending: number;
+    failed: number;
+    errors: number;
+  };
+}
+
+/**
+ * Server Action: Bulk queries DOKU Check Status API for a list of invoice numbers.
+ * Reconciles payments and updates Firestore 'payment_transactions' and 'event_registrations'.
+ */
+export async function bulkCheckDokuPaymentStatusAction(
+  input: BulkCheckPaymentStatusInput,
+): Promise<BulkCheckPaymentStatusResult> {
+  const isAuthorized = await isAuthorizedOrganizerSession();
+  if (!isAuthorized) {
+    return {
+      success: false,
+      error: "Unauthorized: Organizer session required for bulk status check.",
+      results: [],
+      summary: { total: 0, paid: 0, pending: 0, failed: 0, errors: 0 },
+    };
+  }
+
+  const parsed = bulkCheckPaymentStatusSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: parsed.error.issues.map((i) => i.message).join(", "),
+      results: [],
+      summary: { total: 0, paid: 0, pending: 0, failed: 0, errors: 0 },
+    };
+  }
+
+  const uniqueInvoices = Array.from(new Set(parsed.data.invoiceNumbers.map((s) => s.trim()).filter(Boolean)));
+  const results: DokuStatusCheckResult[] = [];
+  const summary = { total: uniqueInvoices.length, paid: 0, pending: 0, failed: 0, errors: 0 };
+
+  const CHUNK_SIZE = 3;
+  for (let i = 0; i < uniqueInvoices.length; i += CHUNK_SIZE) {
+    const chunk = uniqueInvoices.slice(i, i + CHUNK_SIZE);
+    const chunkResults = await Promise.all(
+      chunk.map((invoiceNumber) =>
+        checkDokuPaymentStatusInternal({ invoiceNumber, isProduction: parsed.data.isProduction }, true),
+      ),
+    );
+
+    for (const res of chunkResults) {
+      results.push(res);
+      if (res.isPaid || res.dokuStatus === "SUCCESS") {
+        summary.paid += 1;
+      } else if (res.dokuStatus === "PENDING" || res.dokuStatus === "ORDER_GENERATED") {
+        summary.pending += 1;
+      } else if (res.dokuStatus === "ERROR" || !res.success) {
+        summary.errors += 1;
+      } else {
+        summary.failed += 1;
+      }
+    }
+  }
+
+  try {
+    await revalidateDashboardPath("/dashboard/payments");
+    await revalidateDashboardPath("/dashboard/events");
+    await revalidateDashboardPath("/dashboard/organizer");
+  } catch {
+    // Ignore in edge contexts
+  }
+
+  return {
+    success: true,
+    results,
+    summary,
   };
 }

@@ -13,6 +13,7 @@ import {
   Mail,
   Printer,
   QrCode,
+  ReceiptText,
   Sparkles,
   Trophy,
   Users,
@@ -170,6 +171,12 @@ export const organizerSidebarItems: NavGroup[] = [
     id: 5,
     label: "Payment (DOKU)",
     items: [
+      {
+        id: "transactions",
+        title: "Transactions & QRIS",
+        url: "/dashboard/payments",
+        icon: ReceiptText,
+      },
       {
         id: "doku-status-dashboard",
         title: "DOKU Status Dashboard",

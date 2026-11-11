@@ -1019,6 +1019,9 @@ export interface FirestoreRegistration {
   payment_fee_voluntary_covered?: boolean;
   payment_subtotal_amount?: number;
   payment_environment?: "production" | "sandbox";
+  payment_email_status?: "sent" | "not_sent" | "failed" | "pending";
+  payment_email_sent_at?: string;
+  payment_email_recipient?: string;
 
   // Member Payment Check Quota Tracking
   payment_check_count?: number; // Total number of times payment status has been checked
@@ -1212,12 +1215,50 @@ export interface EventMerchandiseOrder {
   payment_invoice_number?: string | null;
   payment_channel?: string | null;
   paid_at?: string | null;
+  payment_email_status?: "sent" | "not_sent" | "failed" | "pending";
+  payment_email_sent_at?: string | null;
+  payment_email_recipient?: string | null;
   status_logs: MerchandiseOrderStatusLog[];
   created_at: string;
   updated_at: string;
   created_by_id: string;
   created_by_name: string;
   notes?: string | null;
+}
+
+export interface PaymentTransactionItem {
+  id?: string;
+  name: string;
+  quantity: number;
+  price: number;
+  type?: string;
+}
+
+export interface PaymentTransactionRecord {
+  id: string; // Document ID: invoiceNumber e.g. "INV-1784377198342"
+  invoice_number: string;
+  customer_name: string;
+  customer_email: string;
+  customer_phone?: string | null;
+  amount: number;
+  issuer?: string | null;
+  payment_channel?: string | null;
+  payment_status: "paid" | "pending" | "failed" | "expired" | "refunded" | string;
+  email_status: "sent" | "not_sent" | "failed" | "pending";
+  email_recipient?: string | null;
+  email_sent_at?: string | null;
+  transaction_date: string;
+  source_type?: "registration" | "merchandise_order" | "direct_webhook";
+  event_id?: string | null;
+  event_title?: string | null;
+  registration_id?: string | null;
+  order_id?: string | null;
+  items?: PaymentTransactionItem[];
+  terminal_id?: string | null;
+  approval_code?: string | null;
+  raw_payload?: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export type { MaintenanceConfig } from "@/config/maintenance-config";

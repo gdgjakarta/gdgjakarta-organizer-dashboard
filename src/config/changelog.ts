@@ -16,10 +16,30 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.15",
+    releaseDate: "2026-11-11",
+    title: "Transactions & QRIS Dashboard and Bulk Verification",
+    badge: "Latest",
+    items: [
+      {
+        category: "Added",
+        text: "Real-time Transactions & QRIS Payments dashboard with DOKU webhook ingest and email status tracking.",
+      },
+      {
+        category: "Added",
+        text: "Individual and bulk live DOKU payment status checking with audit trail and auto-reconciliation.",
+      },
+      {
+        category: "Improved",
+        text: "Standardized table filtration container, status pill selectors, and batch action toolbar matching registrants tab.",
+      },
+    ],
+  },
+  {
     version: "1.0.14",
     releaseDate: "2026-11-11",
     title: "Agenda Slide Autofill & Domain Standard",
-    badge: "Latest",
+    badge: "Update",
     items: [
       {
         category: "Fixed",

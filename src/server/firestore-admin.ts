@@ -11,6 +11,8 @@ import type {
   FirestoreEvent,
   FirestoreRegistration,
   MerchandiseOrderStatusLog,
+  PaymentTransactionItem,
+  PaymentTransactionRecord,
   RefundRequest,
   RefundStatus,
   RegistrationStatus,
@@ -464,6 +466,14 @@ export interface UpdateRegistrationFromPaymentInput {
   paidAt?: string;
   errorReason?: string;
   isTeamAccess?: boolean;
+  emailStatus?: "sent" | "not_sent" | "failed" | "pending";
+  emailRecipient?: string;
+  emailSentAt?: string;
+  customerName?: string;
+  customerEmail?: string;
+  customerPhone?: string;
+  issuer?: string;
+  rawPayload?: Record<string, unknown>;
 }
 
 /**
@@ -704,6 +714,14 @@ export interface UpdateMerchandiseOrderFromPaymentInput {
   paidAt?: string;
   errorReason?: string;
   isTeamAccess?: boolean;
+  emailStatus?: "sent" | "not_sent" | "failed" | "pending";
+  emailRecipient?: string;
+  emailSentAt?: string;
+  customerName?: string;
+  customerEmail?: string;
+  customerPhone?: string;
+  issuer?: string;
+  rawPayload?: Record<string, unknown>;
 }
 
 /**
@@ -753,11 +771,15 @@ export async function updateMerchandiseOrderFromPayment(
       : `Payment confirmed via ${input.paymentChannel || "QRIS"} (${invoiceNumber || targetDoc.id}).`,
   };
 
+  const resolvedEmailSentAt = input.emailSentAt || (input.emailStatus === "sent" ? now : undefined);
   const updatePayload = sanitizePayload<Record<string, unknown>>({
     payment_status: nextPaymentStatus,
     ...(isFailed ? {} : { paid_at: input.paidAt || now }),
     ...(input.paymentChannel ? { payment_channel: input.paymentChannel } : {}),
     ...(invoiceNumber ? { payment_invoice_number: invoiceNumber } : {}),
+    ...(input.emailStatus ? { payment_email_status: input.emailStatus } : {}),
+    ...(input.emailRecipient ? { payment_email_recipient: input.emailRecipient } : {}),
+    ...(resolvedEmailSentAt ? { payment_email_sent_at: resolvedEmailSentAt } : {}),
     updated_at: now,
     status_logs: [...existingLogs, logEntry],
   });
@@ -975,6 +997,7 @@ export async function updateRegistrationFromPayment(input: UpdateRegistrationFro
 
   const isTeam = input.isTeamAccess ?? false;
 
+  const resolvedRegEmailSentAt = input.emailSentAt || (input.emailStatus === "sent" ? now : undefined);
   const updatePayload = sanitizePayload<Record<string, unknown>>({
     status: resolvedStatus,
     payment_status: input.errorReason ? "failed" : "paid",
@@ -982,6 +1005,9 @@ export async function updateRegistrationFromPayment(input: UpdateRegistrationFro
     ...(input.amount !== undefined ? { payment_amount: input.amount } : {}),
     ...(input.paymentChannel ? { payment_channel: input.paymentChannel } : {}),
     ...(input.paidAt ? { paid_at: input.paidAt } : { paid_at: now }),
+    ...(input.emailStatus ? { payment_email_status: input.emailStatus } : {}),
+    ...(input.emailRecipient ? { payment_email_recipient: input.emailRecipient } : {}),
+    ...(resolvedRegEmailSentAt ? { payment_email_sent_at: resolvedRegEmailSentAt } : {}),
     ...(isTeam
       ? {
           reviewed_at: now,
@@ -1247,7 +1273,6 @@ export const getFirestoreEventByIdServer = cache(async (eventId: string): Promis
           status: fsEvent?.status || baseEvent.status,
         };
         return merged;
-        return merged;
       }
     } catch (bevyErr) {
       console.warn(`[Firestore Server] getFirestoreEventByIdServer Bevy fallback error for ${eventId}:`, bevyErr);
@@ -1400,12 +1425,11 @@ export async function updateRefundStatusServer(
     }
 
     const existingLogs = Array.isArray(existing.status_logs) ? existing.status_logs : [];
-    const logStatus =
-      status === "refund_completed"
-        ? mergedRequest.refund_type === "merchandise" && existing.status === "attended"
-          ? "attended"
-          : "canceled"
-        : existing.status;
+    let logStatus = existing.status;
+    if (status === "refund_completed") {
+      logStatus =
+        mergedRequest.refund_type === "merchandise" && existing.status === "attended" ? "attended" : "canceled";
+    }
 
     const logEntry: RegistrationStatusLog = {
       id: `log_${Date.now()}_refund_${status}`,
@@ -1432,5 +1456,200 @@ export async function updateRefundStatusServer(
   } catch (err) {
     console.error(`[updateRefundStatusServer] Error updating refund status for ${registrationId}:`, err);
     return false;
+  }
+}
+
+/**
+ * Persists or updates a payment transaction record in Firestore collection 'payment_transactions'.
+ */
+export async function recordPaymentTransaction(
+  record: Partial<PaymentTransactionRecord> & { invoice_number: string },
+  token?: string,
+): Promise<{ success: boolean; error?: string; id?: string }> {
+  try {
+    const invoiceNumber = record.invoice_number.trim();
+    if (!invoiceNumber) {
+      return { success: false, error: "invoice_number is required" };
+    }
+
+    const now = new Date().toISOString();
+    const docId = invoiceNumber;
+
+    const existing = await getFirestoreDoc("payment_transactions", docId, token);
+    const existingDecoded = existing ? decodeFirestoreDoc(existing) : null;
+
+    const payload: PaymentTransactionRecord = {
+      id: docId,
+      invoice_number: invoiceNumber,
+      customer_name: (
+        record.customer_name ||
+        (existingDecoded?.customer_name as string) ||
+        "Anonymous Customer"
+      ).trim(),
+      customer_email: (record.customer_email || (existingDecoded?.customer_email as string) || "").trim(),
+      customer_phone: record.customer_phone ?? (existingDecoded?.customer_phone as string | null) ?? null,
+      amount: typeof record.amount === "number" ? record.amount : Number(existingDecoded?.amount) || 0,
+      issuer: record.issuer ?? (existingDecoded?.issuer as string | null) ?? "QRIS",
+      payment_channel: record.payment_channel ?? (existingDecoded?.payment_channel as string | null) ?? "QRIS",
+      payment_status: record.payment_status || (existingDecoded?.payment_status as string) || "paid",
+      email_status:
+        record.email_status || (existingDecoded?.email_status as "sent" | "not_sent" | "failed" | "pending") || "sent",
+      email_recipient:
+        record.email_recipient ?? (existingDecoded?.email_recipient as string | null) ?? "payment@gdgjakarta.org",
+      email_sent_at:
+        record.email_sent_at ??
+        (existingDecoded?.email_sent_at as string | null) ??
+        (record.email_status === "sent" ? now : null),
+      transaction_date: record.transaction_date || (existingDecoded?.transaction_date as string) || now,
+      source_type:
+        record.source_type ||
+        (existingDecoded?.source_type as "registration" | "merchandise_order" | "direct_webhook") ||
+        "direct_webhook",
+      event_id: record.event_id ?? (existingDecoded?.event_id as string | null) ?? null,
+      event_title: record.event_title ?? (existingDecoded?.event_title as string | null) ?? null,
+      registration_id: record.registration_id ?? (existingDecoded?.registration_id as string | null) ?? null,
+      order_id: record.order_id ?? (existingDecoded?.order_id as string | null) ?? null,
+      items: record.items ?? (existingDecoded?.items as PaymentTransactionItem[] | undefined) ?? [],
+      terminal_id: record.terminal_id ?? (existingDecoded?.terminal_id as string | null) ?? null,
+      approval_code: record.approval_code ?? (existingDecoded?.approval_code as string | null) ?? null,
+      raw_payload: record.raw_payload ?? (existingDecoded?.raw_payload as Record<string, unknown> | null) ?? null,
+      created_at: (existingDecoded?.created_at as string) || now,
+      updated_at: now,
+    };
+
+    await patchFirestoreDoc(
+      "payment_transactions",
+      docId,
+      sanitizePayload(payload as unknown as Record<string, unknown>),
+      true,
+      token,
+    );
+    return { success: true, id: docId };
+  } catch (err) {
+    console.error("[recordPaymentTransaction] Error:", err);
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * Loads all payment transactions for the organizer dashboard from 'payment_transactions',
+ * automatically combining historical registration & order payments that have invoice numbers.
+ */
+export async function getPaymentTransactionsServer(token?: string): Promise<PaymentTransactionRecord[]> {
+  try {
+    const txDocs = await queryFirestoreDocs<PaymentTransactionRecord>("payment_transactions", undefined, 500, token);
+    const txMap = new Map<string, PaymentTransactionRecord>();
+    for (const tx of txDocs) {
+      if (tx.invoice_number) {
+        txMap.set(tx.invoice_number, tx);
+      }
+    }
+
+    // Backfill from event_registrations with payment_status: 'paid'
+    try {
+      const regDocs = await queryFirestoreDocs<Record<string, unknown>>(
+        "event_registrations",
+        [
+          {
+            fieldFilter: {
+              field: { fieldPath: "payment_status" },
+              op: "EQUAL",
+              value: { stringValue: "paid" },
+            },
+          },
+        ],
+        300,
+        token,
+      );
+
+      for (const raw of regDocs) {
+        const answersObj = raw.answers as Record<string, unknown> | undefined;
+        const inv = (raw.payment_invoice_number || answersObj?.invoice_number || answersObj?.payment_invoice_number) as
+          | string
+          | undefined;
+        if (inv && !txMap.has(inv)) {
+          const paidAt = (raw.paid_at || raw.registered_at || new Date().toISOString()) as string;
+          const regAmount = Number(raw.payment_amount) || Number(raw.ticket_price) || Number(raw.bundle_price) || 0;
+          txMap.set(inv, {
+            id: inv,
+            invoice_number: inv,
+            customer_name: (raw.member_name as string) || (raw.user_name as string) || "Attendee",
+            customer_email: (raw.member_email as string) || (raw.user_email as string) || "",
+            customer_phone: (raw.phone_number as string) || (answersObj?.phone as string) || null,
+            amount: regAmount,
+            issuer: (raw.payment_channel as string) || "QRIS",
+            payment_channel: (raw.payment_channel as string) || "QRIS",
+            payment_status: "paid",
+            email_status: (raw.payment_email_status as "sent" | "not_sent" | "failed" | "pending") || "sent",
+            email_recipient: (raw.payment_email_recipient as string) || "payment@gdgjakarta.org",
+            email_sent_at: (raw.payment_email_sent_at as string) || paidAt,
+            transaction_date: paidAt,
+            source_type: "registration",
+            event_id: String(raw.event_id || ""),
+            event_title: (raw.event_title as string) || null,
+            registration_id: String(raw.id || ""),
+            created_at: paidAt,
+            updated_at: paidAt,
+          });
+        }
+      }
+    } catch (e) {
+      console.warn("[getPaymentTransactionsServer] Failed to backfill registrations:", e);
+    }
+
+    // Backfill from event_merchandise_orders with payment_status: 'paid'
+    try {
+      const orderDocs = await queryFirestoreDocs<Record<string, unknown>>(
+        "event_merchandise_orders",
+        [
+          {
+            fieldFilter: {
+              field: { fieldPath: "payment_status" },
+              op: "EQUAL",
+              value: { stringValue: "paid" },
+            },
+          },
+        ],
+        100,
+        token,
+      );
+
+      for (const ord of orderDocs) {
+        const inv = ord.payment_invoice_number as string | undefined;
+        if (inv && !txMap.has(inv)) {
+          const cust = ord.customer as Record<string, unknown> | undefined;
+          const paidAt = (ord.paid_at || ord.created_at || new Date().toISOString()) as string;
+          txMap.set(inv, {
+            id: inv,
+            invoice_number: inv,
+            customer_name: (cust?.name as string) || "Customer",
+            customer_email: (cust?.email as string) || "",
+            customer_phone: (cust?.phone as string) || null,
+            amount: Number(ord.total_amount) || 0,
+            issuer: (ord.payment_channel as string) || "QRIS",
+            payment_channel: (ord.payment_channel as string) || "QRIS",
+            payment_status: "paid",
+            email_status: (ord.payment_email_status as "sent" | "not_sent" | "failed" | "pending") || "sent",
+            email_recipient: (ord.payment_email_recipient as string) || "payment@gdgjakarta.org",
+            email_sent_at: (ord.payment_email_sent_at as string) || paidAt,
+            transaction_date: paidAt,
+            source_type: "merchandise_order",
+            event_id: String(ord.event_id || ""),
+            order_id: String(ord.id || ""),
+            created_at: paidAt,
+            updated_at: paidAt,
+          });
+        }
+      }
+    } catch (e) {
+      console.warn("[getPaymentTransactionsServer] Failed to backfill merchandise orders:", e);
+    }
+
+    const list = Array.from(txMap.values());
+    list.sort((a, b) => new Date(b.transaction_date).getTime() - new Date(a.transaction_date).getTime());
+    return list;
+  } catch (err) {
+    console.error("[getPaymentTransactionsServer] Error:", err);
+    return [];
   }
 }

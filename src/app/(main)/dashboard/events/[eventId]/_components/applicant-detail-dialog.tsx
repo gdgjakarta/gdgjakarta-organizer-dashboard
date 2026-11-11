@@ -22,6 +22,7 @@ import {
   Loader2,
   type LucideIcon,
   Mail,
+  MailCheck,
   MoreHorizontal,
   Package,
   PackageCheck,
@@ -2014,6 +2015,16 @@ export function ApplicantDetailDialog({
                           className="ml-1.5 border-emerald-500/30 bg-background/50 text-[10px] text-emerald-700 dark:text-emerald-300"
                         >
                           {registration.payment_channel}
+                        </Badge>
+                      )}
+                      {registration.payment_email_status === "sent" && (
+                        <Badge
+                          variant="outline"
+                          className="ml-1.5 border-emerald-500/30 bg-emerald-500/20 text-[10px] text-emerald-800 dark:text-emerald-300 inline-flex items-center gap-1"
+                          title={`Operational email notification sent to ${registration.payment_email_recipient || "payment@gdgjakarta.org"}`}
+                        >
+                          <MailCheck className="size-2.5" />
+                          Email Sent
                         </Badge>
                       )}
                     </div>
