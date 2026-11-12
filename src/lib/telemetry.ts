@@ -18,11 +18,22 @@ export async function getFirebaseAnalytics(): Promise<Analytics | null> {
   isAnalyticsInitializing = true;
   try {
     const supported = await isSupported();
+    console.log(
+      "[Analytics] Firebase isSupported():",
+      supported,
+      "app.options.measurementId:",
+      app.options.measurementId,
+    );
     if (supported) {
       analyticsInstance = getAnalytics(app);
+      console.log("[Analytics] ✅ getAnalytics(app) initialized successfully!");
+    } else {
+      console.warn(
+        "[Analytics] ⚠️ Firebase Analytics is NOT supported in this browser environment (or cookies/storage are disabled).",
+      );
     }
   } catch (err) {
-    console.warn("[Analytics] Firebase Analytics initialization warning:", err);
+    console.error("[Analytics] ❌ Firebase Analytics initialization error:", err);
   } finally {
     isAnalyticsInitializing = false;
   }
@@ -52,9 +63,9 @@ export async function trackTelemetryEvent(eventName: string, properties?: Record
     const analytics = await getFirebaseAnalytics();
     if (analytics) {
       // Firebase analytics only accepts primitive values in event params
-      // Add debug_mode: true so events instantly show in Firebase DebugView
+      // Add debug_mode: 1 (number 1 or boolean true) so events instantly show in Firebase DebugView
       const sanitizedParams: Record<string, string | number | boolean> = {
-        debug_mode: true,
+        debug_mode: 1,
       };
       if (properties) {
         for (const [key, val] of Object.entries(properties)) {
@@ -68,9 +79,12 @@ export async function trackTelemetryEvent(eventName: string, properties?: Record
         }
       }
       logEvent(analytics, eventName, sanitizedParams);
+      console.log(`[Analytics] 🚀 Sent "${eventName}" to Firebase Analytics!`, sanitizedParams);
+    } else {
+      console.warn(`[Analytics] ⚠️ Could not log "${eventName}" — analytics instance is null.`);
     }
   } catch (err) {
-    console.warn(`[Telemetry] Firebase Analytics event "${eventName}" failed:`, err);
+    console.error(`[Telemetry] ❌ Firebase Analytics logEvent failed for "${eventName}":`, err);
   }
 }
 
