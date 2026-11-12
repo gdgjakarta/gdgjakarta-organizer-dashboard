@@ -74,6 +74,19 @@ export async function fetchBevyChapterMembersAction(pageSize = 200, page = 1, or
 }
 
 /**
+ * Server action to fetch all or paginated Bevy chapter members up to maxMembers safely on the server.
+ * Protected: requires an active organizer session.
+ */
+export async function fetchAllBevyChapterMembersAction(maxMembers = 1000) {
+  if (!(await isAuthorizedOrganizerSession())) {
+    console.warn("[Security] Blocked unauthorized attempt to fetch all Bevy chapter members");
+    return { success: false, results: [], count: 0, error: "Unauthorized" };
+  }
+  const { getAllBevyChapterMembers } = await import("@/lib/bevy/client");
+  return await getAllBevyChapterMembers(undefined, maxMembers);
+}
+
+/**
  * Server action to search across all Bevy chapter members using Bevy's Algolia index.
  * Protected: requires an active organizer session.
  */

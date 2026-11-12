@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.21] - 2026-11-12
+
+### Fixed
+- **Bevy Sync Duplicate Resurrection Prevention (`syncBevyMembersToFirestore`)**: Fixed synchronization loop where syncing with Bevy would resurrect deleted numeric Bevy ID documents (`/members/{bevy_user_id}`). The sync service now maps incoming Bevy records against existing Firestore members by verified email and Bevy User ID, prioritizing primary Firebase Auth UID documents and merging directly into them without creating duplicate documents.
+- **Paginated Bulk Bevy Member Sync & Batch Chunking**: Adjusted Bevy sync to use `fetchAllBevyChapterMembersAction` with pagination (up to 1,000 members) and split Firestore operations across 400-doc batches, preventing the previous 230-member single-batch limitation and Firestore 500-doc writeBatch cap.
+
+---
+
 ## [1.0.20] - 2026-11-12
 
 ### Added

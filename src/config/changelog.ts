@@ -16,10 +16,25 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.21",
+    releaseDate: "2026-11-12",
+    title: "Deduplicated Bevy Member Sync & Higher Volume Ingestion",
+    badge: "Latest",
+    items: [
+      {
+        category: "Fixed",
+        text: "Prevented duplicate member resurrection during Bevy sync by resolving incoming Bevy users against existing Auth UID documents instead of spawning numeric ID documents.",
+      },
+      {
+        category: "Improved",
+        text: "Expanded bulk member sync to paginate Bevy records up to 1,000 members with chunked 400-doc Firestore batches, overcoming the previous 230-member single-batch cap.",
+      },
+    ],
+  },
+  {
     version: "1.0.20",
     releaseDate: "2026-11-12",
     title: "Member Merge System & Bulk Bevy Sync",
-    badge: "Latest",
     items: [
       {
         category: "Added",

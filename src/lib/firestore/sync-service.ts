@@ -5,8 +5,8 @@ import { collection, doc, getDocs, writeBatch } from "firebase/firestore";
 import { resolveEventAudience } from "@/lib/bevy/audience";
 import { splitFullName } from "@/lib/utils";
 import {
+  fetchAllBevyChapterMembersAction,
   fetchBevyChapterEventsAction,
-  fetchBevyChapterMembersAction,
   fetchBevyChapterTeamsAction,
 } from "@/server/bevy-actions";
 
@@ -132,17 +132,49 @@ export async function syncBevyEventsToFirestore(): Promise<{
 
 /**
  * Syncs chapter members & core team from Bevy into Firestore.
+ * Preserves primary Auth UID documents, never spawns duplicate numeric ID docs for existing members,
+ * and chunks writes across Firestore batches to safely support higher sync volumes.
  */
-export async function syncBevyMembersToFirestore(): Promise<{
+export async function syncBevyMembersToFirestore(maxMembers = 1000): Promise<{
   success: boolean;
   totalSynced: number;
   error?: string;
 }> {
   try {
-    const [teamMembers, membersResponse] = await Promise.all([
+    const [teamMembers, membersResponse, existingMembersSnap] = await Promise.all([
       fetchBevyChapterTeamsAction(),
-      fetchBevyChapterMembersAction(200, 1, "-created_date"),
+      fetchAllBevyChapterMembersAction(maxMembers),
+      getDocs(collection(db, "members")),
     ]);
+
+    // Build index of existing Firestore members to deduplicate and prevent resurrecting numeric Bevy doc IDs
+    const existingByEmail = new Map<string, { id: string; email: string; isAuthUid: boolean }>();
+    const existingByBevyId = new Map<string, { id: string; email: string; isAuthUid: boolean }>();
+
+    for (const d of existingMembersSnap.docs) {
+      const data = d.data();
+      const docId = d.id;
+      const isAuthUid = !/^\d+$/.test(docId) && docId.length > 15;
+      const email = typeof data.email === "string" ? data.email.trim().toLowerCase() : "";
+      const bevyId = data.bevy_user_id != null ? String(data.bevy_user_id).trim() : "";
+
+      const record = { id: docId, email, isAuthUid };
+
+      if (email && !email.includes("***") && !email.startsWith("user_") && email.includes("@")) {
+        const prev = existingByEmail.get(email);
+        // Prioritize Auth UID documents
+        if (!prev || (!prev.isAuthUid && isAuthUid)) {
+          existingByEmail.set(email, record);
+        }
+      }
+
+      if (bevyId && bevyId !== "none" && bevyId !== "null" && bevyId !== "0" && bevyId !== "undefined") {
+        const prev = existingByBevyId.get(bevyId);
+        if (!prev || (!prev.isAuthUid && isAuthUid)) {
+          existingByBevyId.set(bevyId, record);
+        }
+      }
+    }
 
     interface TeamInfo {
       roleTitle: string;
@@ -178,29 +210,56 @@ export async function syncBevyMembersToFirestore(): Promise<{
       return { success: true, totalSynced: 0 };
     }
 
-    const batch = writeBatch(db);
     const now = new Date().toISOString();
     let count = 0;
     const processedUserIds = new Set<string>();
 
+    // Chunking writes across 400-doc batches to remain strictly below Firestore's 500 limit
+    let currentBatch = writeBatch(db);
+    let batchOpsCount = 0;
+
+    const commitBatchIfFull = async () => {
+      if (batchOpsCount >= 400) {
+        await currentBatch.commit();
+        currentBatch = writeBatch(db);
+        batchOpsCount = 0;
+      }
+    };
+
     for (const m of fetchedMembers) {
-      const email = m.user.email || `user_${m.user.id}@community.dev`;
+      const rawEmail = (m.user.email || "").trim();
+      const cleanEmail = rawEmail.toLowerCase();
       const userId = String(m.user.id);
       processedUserIds.add(userId);
-      const teamInfo = teamMap.get(email.toLowerCase()) || teamMap.get(`id:${userId}`) || null;
+
+      // Determine authoritative target document ID:
+      // Check if an existing member doc exists by clean email or by Bevy ID
+      const existingMatch =
+        (cleanEmail && !cleanEmail.includes("***") && !cleanEmail.startsWith("user_")
+          ? existingByEmail.get(cleanEmail)
+          : null) || existingByBevyId.get(userId);
+
+      const targetDocId = existingMatch ? existingMatch.id : userId;
+
+      const teamInfo = teamMap.get(cleanEmail) || teamMap.get(`id:${userId}`) || null;
       const organizerRole = teamInfo?.roleTitle || null;
-      const displayName = m.user.full_name?.trim() || email.split("@")[0] || "Community Member";
+      const displayName = m.user.full_name?.trim() || cleanEmail.split("@")[0] || "Community Member";
       const { firstName, lastName } = splitFullName(m.user.full_name?.trim() || displayName);
 
-      const memberDocRef = doc(db, "members", userId);
+      const memberDocRef = doc(db, "members", targetDocId);
+
+      // Never replace a real clean email with a placeholder user_* email
+      const finalEmail =
+        rawEmail && !rawEmail.includes("***") ? rawEmail : existingMatch?.email || `user_${m.user.id}@community.dev`;
+
       const rawMemberPayload: Record<string, unknown> = {
-        id: userId,
+        id: targetDocId,
         bevy_user_id: m.user.id,
         bevy_member_id: m.id || null,
         name: displayName,
         first_name: firstName || null,
         last_name: lastName || null,
-        email,
+        email: finalEmail,
         role: organizerRole || "Member",
         chapter_role: organizerRole || null,
         team: organizerRole ? "Core Team" : "Community",
@@ -216,8 +275,10 @@ export async function syncBevyMembersToFirestore(): Promise<{
         updated_at: now,
       };
 
-      batch.set(memberDocRef, cleanPayload(rawMemberPayload), { merge: true });
+      currentBatch.set(memberDocRef, cleanPayload(rawMemberPayload), { merge: true });
+      batchOpsCount++;
       count++;
+      await commitBatchIfFull();
     }
 
     // Explicitly guarantee all Chapter Team Members are synced into Firestore members collection
@@ -226,24 +287,35 @@ export async function syncBevyMembersToFirestore(): Promise<{
       if (!userId || processedUserIds.has(userId)) continue;
       processedUserIds.add(userId);
 
-      const email = tm.user?.email || "";
-      const teamInfo = teamMap.get(email.toLowerCase()) || teamMap.get(`id:${userId}`) || null;
+      const rawEmail = (tm.user?.email || "").trim();
+      const cleanEmail = rawEmail.toLowerCase();
+
+      const existingMatch =
+        (cleanEmail && !cleanEmail.includes("***") && !cleanEmail.startsWith("user_")
+          ? existingByEmail.get(cleanEmail)
+          : null) || existingByBevyId.get(userId);
+
+      const targetDocId = existingMatch ? existingMatch.id : userId;
+
+      const teamInfo = teamMap.get(cleanEmail) || teamMap.get(`id:${userId}`) || null;
       const organizerRole = teamInfo?.roleTitle || "Organizer";
       const displayName =
         tm.user?.full_name?.trim() ||
         [tm.user?.first_name, tm.user?.last_name].filter(Boolean).join(" ").trim() ||
-        email.split("@")[0] ||
+        cleanEmail.split("@")[0] ||
         "Community Organizer";
       const { firstName, lastName } = splitFullName(displayName);
 
-      const memberDocRef = doc(db, "members", userId);
+      const memberDocRef = doc(db, "members", targetDocId);
+      const finalEmail = rawEmail || existingMatch?.email || "";
+
       const rawMemberPayload: Record<string, unknown> = {
-        id: userId,
+        id: targetDocId,
         bevy_user_id: tm.user?.id ?? tm.user_id ?? userId,
         name: displayName,
         first_name: firstName || null,
         last_name: lastName || null,
-        email,
+        email: finalEmail,
         role: organizerRole,
         chapter_role: organizerRole,
         team: "Core Team",
@@ -256,11 +328,15 @@ export async function syncBevyMembersToFirestore(): Promise<{
         updated_at: now,
       };
 
-      batch.set(memberDocRef, cleanPayload(rawMemberPayload), { merge: true });
+      currentBatch.set(memberDocRef, cleanPayload(rawMemberPayload), { merge: true });
+      batchOpsCount++;
       count++;
+      await commitBatchIfFull();
     }
 
-    await batch.commit();
+    if (batchOpsCount > 0) {
+      await currentBatch.commit();
+    }
 
     await updateSyncMetadata({
       last_synced_members_at: now,
