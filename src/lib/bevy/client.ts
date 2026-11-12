@@ -950,7 +950,9 @@ export async function validateBevyOrganizer(
         chapterRoleType: ChapterRole.ORGANIZER,
         roleId: 1,
         roleTitle: "GDG Organizer",
-        bevyUserId: bevyUserId ?? "1005761",
+        // Never write a fallback or synthetic Bevy ID. If Bevy hasn't returned a genuine user ID,
+        // leave it null so the member is marked as not synced yet and avoids duplicate/colliding IDs.
+        bevyUserId: bevyUserId ?? null,
         bevyUser,
         wasImported: false,
       };
