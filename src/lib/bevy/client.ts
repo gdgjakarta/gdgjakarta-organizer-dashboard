@@ -910,13 +910,25 @@ export async function validateBevyOrganizer(
       } else if (chapterRoleResult.roleId === 3) {
         role = "check_in_staff";
       } else if (chapterRoleResult.chapterRole === ChapterRole.GOOGLER) {
-        role = "googler";
+        // Googlers are executive organizers; normalise to "organizer" so session
+        // cookie, Firestore memberDoc.role, and all isDocOrg checks stay consistent.
+        role = "organizer";
       }
 
       return {
         isValidOrganizer: true,
         role,
-        chapterRole: chapterRoleResult.roleTitle,
+        // chapterRole must be a canonical role name (not the custom title) so it matches
+        // isOrganizerData() / isStaffData() in Firestore rules and all isDocOrg checks.
+        // e.g. "Community Manager" (roleId=1) → "Organizer"; "Regional Lead" (roleId=4) → "Googler"
+        chapterRole:
+          chapterRoleResult.chapterRole === ChapterRole.ORGANIZER
+            ? "Organizer"
+            : chapterRoleResult.chapterRole === ChapterRole.GOOGLER
+              ? "Googler"
+              : chapterRoleResult.chapterRole === ChapterRole.CORE_TEAM
+                ? "Core Team"
+                : chapterRoleResult.roleTitle,
         chapterRoleType: chapterRoleResult.chapterRole,
         roleId: chapterRoleResult.roleId,
         roleTitle: chapterRoleResult.roleTitle,
@@ -2254,7 +2266,8 @@ async function resolveBevyAlgoliaPersonKey(): Promise<string | null> {
         headers: {
           cookie,
           referer: "https://gdg.community.dev/accounts/dashboard/",
-          "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
+          "user-agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36",
         },
         signal: typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(5000) : undefined,
       });
@@ -2335,7 +2348,18 @@ export async function searchBevyPersons(
 
       if (res.ok) {
         const data = (await res.json()) as {
-          documents?: Array<{ fields?: Record<string, { arrayValue?: { values?: Array<{ mapValue?: { fields?: Record<string, { stringValue?: string; integerValue?: string }> } }> } }> }>;
+          documents?: Array<{
+            fields?: Record<
+              string,
+              {
+                arrayValue?: {
+                  values?: Array<{
+                    mapValue?: { fields?: Record<string, { stringValue?: string; integerValue?: string }> };
+                  }>;
+                };
+              }
+            >;
+          }>;
         };
         const docs = data.documents || [];
         const q = cleanQuery.toLowerCase();

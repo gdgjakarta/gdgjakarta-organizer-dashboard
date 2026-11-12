@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.16] - 2026-11-12
+
+### Fixed
+- **Googler & Regional Lead RBAC Normalization**: Fixed Bevy chapter role resolution for Regional Leads and Community Managers (`roleId=4` and `roleId=1` with custom titles like "Regional Lead" / "Community Manager") to correctly resolve as executive organizers with full dashboard access to event registrants and analytics.
+- **Defensive Role Hydration Guards**: Added fallback guards in client auth provider and session restoration for legacy Firestore member documents and session cookies storing `"googler"`, guaranteeing seamless access without requiring a manual sign-out.
+
+---
+
 ## [1.0.15] - 2026-11-11
 
 ### Added

@@ -16,10 +16,29 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.16",
+    releaseDate: "2026-11-12",
+    title: "Regional Lead & Community Manager Dashboard Access",
+    badge: "Latest",
+    items: [
+      {
+        category: "Fixed",
+        text: "Normalized Bevy roleId=4 (Googler / Regional Lead) and custom titles (e.g. Community Manager) to executive organizer permissions.",
+      },
+      {
+        category: "Fixed",
+        text: "Ensured Community Managers and Regional Leads have full access to view event registrants, check-ins, and analytics on dashboard.",
+      },
+      {
+        category: "Improved",
+        text: "Added defensive session and Firestore doc guards so legacy sessions self-heal without requiring manual re-login.",
+      },
+    ],
+  },
+  {
     version: "1.0.15",
     releaseDate: "2026-11-11",
     title: "Transactions & QRIS Dashboard and Bulk Verification",
-    badge: "Latest",
     items: [
       {
         category: "Added",

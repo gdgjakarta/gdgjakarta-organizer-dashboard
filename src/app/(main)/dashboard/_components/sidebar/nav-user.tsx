@@ -67,7 +67,7 @@ export function NavUser({
       if (result.success) {
         toast.success(result.message || "Permissions updated from Bevy!", { id: "refresh-role" });
         setTimeout(() => {
-          if (result.role === "organizer") {
+          if (result.role === "organizer" || result.role === "googler") {
             window.location.assign("/dashboard/organizer");
           } else {
             window.location.reload();

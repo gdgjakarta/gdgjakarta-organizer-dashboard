@@ -166,6 +166,8 @@ export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
           const isDocOrg =
             memberDoc?.role === "organizer" ||
             memberDoc?.role === "Organizer" ||
+            // "googler" may be stored in legacy memberDoc.role for Googler/Regional Lead accounts
+            memberDoc?.role === "googler" ||
             (typeof memberDoc?.chapter_role === "string" &&
               (memberDoc.chapter_role.toLowerCase().includes("organizer") ||
                 memberDoc.chapter_role.toLowerCase().includes("googler")));
@@ -215,7 +217,8 @@ export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
 
           const isOrg =
             restoreRes.role === "organizer" ||
-            (Boolean(restoreRes.isValidOrganizer) && restoreRes.roleId === 1) ||
+            restoreRes.role === "googler" ||
+            (Boolean(restoreRes.isValidOrganizer) && (restoreRes.roleId === 1 || restoreRes.roleId === 4)) ||
             isDocOrg;
           const isCheckInStaff =
             !isOrg &&
@@ -459,7 +462,7 @@ export async function refreshCurrentUserRole(): Promise<{
       });
 
       // 2. Update local Zustand state
-      const isOrg = result.role === "organizer";
+      const isOrg = result.role === "organizer" || result.role === "googler";
       const isStaff = !isOrg && (result.role === "core_team" || result.isValidOrganizer);
       const organizer: AuthOrganizer = {
         id: firebaseUser.uid,
