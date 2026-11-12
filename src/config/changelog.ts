@@ -16,10 +16,21 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.22",
+    releaseDate: "2026-11-12",
+    title: "Streamlined Member Table Actions",
+    badge: "Latest",
+    items: [
+      {
+        category: "Changed",
+        text: "Removed global chapter-wide sync button from the members table header, prioritizing granular table row selection and bulk Bevy ID sync action bar.",
+      },
+    ],
+  },
+  {
     version: "1.0.21",
     releaseDate: "2026-11-12",
     title: "Deduplicated Bevy Member Sync & Higher Volume Ingestion",
-    badge: "Latest",
     items: [
       {
         category: "Fixed",

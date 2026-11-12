@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.22] - 2026-11-12
+
+### Removed
+- **Header "Sync with Bevy" Button (`/dashboard/members`)**: Removed the heavy global chapter sync button from the table header to avoid unnecessary background queries; member verification is handled directly and transparently via table row selection and "Bulk sync Bevy ID" action bar.
+
+---
+
 ## [1.0.21] - 2026-11-12
 
 ### Fixed

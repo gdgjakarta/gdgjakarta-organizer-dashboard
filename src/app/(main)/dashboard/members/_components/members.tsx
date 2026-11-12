@@ -19,7 +19,6 @@ import {
   FileSpreadsheet,
   GitMerge,
   Loader2,
-  RefreshCw,
   Search,
   Shield,
   Users,
@@ -44,7 +43,7 @@ import { getBevyDashboardUrl } from "@/config/remote-config-utils";
 import type { BevyChapterTeamMember } from "@/lib/bevy/types";
 import { dataTableFeatures } from "@/lib/data-table-features";
 import { toTimezoneDate } from "@/lib/date-utils";
-import { cn, splitFullName } from "@/lib/utils";
+import { splitFullName } from "@/lib/utils";
 
 import { BulkMergeDialog } from "./bulk-merge-dialog";
 import { ChapterTeamTab } from "./chapter-team-tab";
@@ -627,29 +626,6 @@ export function Members({
     }
   }, [selectedRows]);
 
-  const [isFullBevySyncing, setIsFullBevySyncing] = React.useState(false);
-
-  const handleFullSyncFromBevy = React.useCallback(async () => {
-    setIsFullBevySyncing(true);
-    const toastId = toast.loading("Syncing chapter members and team from Bevy into Firestore...");
-    try {
-      const { triggerMembersSyncAction } = await import("@/lib/firestore/actions");
-      const res = await triggerMembersSyncAction();
-      if (res.success) {
-        toast.success(`Successfully synced ${res.totalSynced} member(s) and chapter team from Bevy!`, {
-          id: toastId,
-        });
-        router.refresh();
-      } else {
-        toast.error(res.error || "Failed to sync members from Bevy.", { id: toastId });
-      }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Error syncing from Bevy.", { id: toastId });
-    } finally {
-      setIsFullBevySyncing(false);
-    }
-  }, [router]);
-
   const handleSelectAll = React.useCallback(() => {
     table.toggleAllRowsSelected(true);
   }, [table]);
@@ -792,18 +768,6 @@ export function Members({
                     )}
                   </DropdownMenuContent>
                 </DropdownMenu>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void handleFullSyncFromBevy()}
-                  disabled={isFullBevySyncing}
-                  className="gap-1.5"
-                  title="Run chapter-wide member and team sync from Bevy"
-                >
-                  <RefreshCw className={cn("size-3.5 text-primary", isFullBevySyncing && "animate-spin")} />
-                  {isFullBevySyncing ? "Syncing Bevy..." : "Sync with Bevy"}
-                </Button>
 
                 <Button
                   variant="outline"
