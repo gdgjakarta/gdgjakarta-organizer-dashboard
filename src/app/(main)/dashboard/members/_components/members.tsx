@@ -580,6 +580,7 @@ export function Members({
 
     let successCount = 0;
     let failCount = 0;
+    let isRateLimited = false;
 
     try {
       const { syncSingleMemberToBevyAction } = await import("@/server/auth-actions");
@@ -607,14 +608,30 @@ export function Members({
             );
             successCount++;
           } else {
+            // Check if Bevy returned rate limiting (429)
+            const errStr = String(result.error || "");
+            if (errStr.includes("429") || errStr.toLowerCase().includes("rate limit")) {
+              isRateLimited = true;
+              break;
+            }
             failCount++;
           }
-        } catch {
+        } catch (innerErr) {
+          const errStr = String(innerErr instanceof Error ? innerErr.message : innerErr);
+          if (errStr.includes("429") || errStr.toLowerCase().includes("rate limit")) {
+            isRateLimited = true;
+            break;
+          }
           failCount++;
         }
       }
 
-      if (failCount === 0) {
+      if (isRateLimited) {
+        toast.warning(
+          `Bevy API rate limit (429) reached. Sync paused. Successfully synced ${successCount} member(s) before stopping.`,
+          { id: toastId, duration: 6000 },
+        );
+      } else if (failCount === 0) {
         toast.success(`Successfully verified/synced all ${successCount} member(s) with Bevy!`, { id: toastId });
       } else {
         toast.info(`Synced ${successCount} member(s), ${failCount} could not be updated.`, { id: toastId });

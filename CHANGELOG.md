@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.23] - 2026-11-12
+
+### Fixed
+- **Rate Limit Circuit Breaker on Bulk Bevy Member Sync (`/dashboard/members`)**: Added automatic circuit breaker detection for Bevy API 429 rate limit responses during bulk member sync. When Bevy triggers a rate limit, the loop halts immediately and displays a clear toast notification reporting the exact count of members successfully verified and updated before the limit was reached.
+
+---
+
 ## [1.0.22] - 2026-11-12
 
 ### Removed

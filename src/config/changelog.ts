@@ -16,10 +16,21 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.23",
+    releaseDate: "2026-11-12",
+    title: "Bevy API Rate-Limit Circuit Breaker for Bulk Sync",
+    badge: "Latest",
+    items: [
+      {
+        category: "Fixed",
+        text: "Added graceful rate-limit (429) circuit breaker during bulk Bevy member sync, immediately halting execution and surfacing the exact count of successfully synced members.",
+      },
+    ],
+  },
+  {
     version: "1.0.22",
     releaseDate: "2026-11-12",
     title: "Streamlined Member Table Actions",
-    badge: "Latest",
     items: [
       {
         category: "Changed",
