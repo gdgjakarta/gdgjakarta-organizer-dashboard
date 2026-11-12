@@ -46,13 +46,13 @@ import { dataTableFeatures } from "@/lib/data-table-features";
 import { toTimezoneDate } from "@/lib/date-utils";
 import { cn, splitFullName } from "@/lib/utils";
 
+import { BulkMergeDialog } from "./bulk-merge-dialog";
 import { ChapterTeamTab } from "./chapter-team-tab";
 import type { MemberRow, MemberStatus } from "./data";
 import { MembersBulkActions } from "./members-bulk-actions";
 import { getMembersColumns } from "./members-columns";
 import { MembersTable } from "./members-table";
 import { MergeMemberDialog } from "./merge-member-dialog";
-import { BulkMergeDialog } from "./bulk-merge-dialog";
 
 export function Members({
   members,
@@ -665,7 +665,7 @@ export function Members({
           <TabsList className="grid h-10 w-full grid-cols-2 rounded-lg bg-transparent p-0">
             <TabsTrigger
               value="members"
-              className="gap-2 rounded-md font-medium text-xs transition-all data-active:border-border/60 data-active:bg-background data-active:text-foreground data-active:shadow-xs dark:data-active:border-border dark:data-active:bg-muted sm:text-sm"
+              className="gap-2 rounded-md font-medium text-xs transition-all data-active:border-border/60 data-active:bg-background data-active:text-foreground data-active:shadow-xs sm:text-sm dark:data-active:border-border dark:data-active:bg-muted"
             >
               <Users className="size-4 shrink-0" />
               <span className="truncate">Community Members</span>
@@ -675,7 +675,7 @@ export function Members({
             </TabsTrigger>
             <TabsTrigger
               value="team"
-              className="gap-2 rounded-md font-medium text-xs transition-all data-active:border-border/60 data-active:bg-background data-active:text-foreground data-active:shadow-xs dark:data-active:border-border dark:data-active:bg-muted sm:text-sm"
+              className="gap-2 rounded-md font-medium text-xs transition-all data-active:border-border/60 data-active:bg-background data-active:text-foreground data-active:shadow-xs sm:text-sm dark:data-active:border-border dark:data-active:bg-muted"
             >
               <Shield className="size-4 shrink-0" />
               <span className="truncate">Chapter Team</span>
