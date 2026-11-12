@@ -259,6 +259,24 @@ export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
 
           store.getState().setUser(authoritativeUser, firebaseUser);
 
+          // Telemetry logging for auth role resolution (helps diagnose permissions)
+          void (async () => {
+            try {
+              const { trackTelemetryEvent } = await import("@/lib/telemetry");
+              await trackTelemetryEvent("auth_role_resolved", {
+                email,
+                role: finalRole,
+                chapter_role: finalChapterRole,
+                role_id: finalRoleId ?? -1,
+                bevy_user_id: finalBevyUserId || "none",
+                is_valid_organizer: isOrg || isStaff,
+                source: "onAuthStateChanged",
+              });
+            } catch {
+              // Non-blocking telemetry
+            }
+          })();
+
           // Sync freshly resolved permissions or Bevy ID to Firestore if needed
           if (!memberDoc?.bevy_user_id && finalBevyUserId) {
             await syncBevyUserToFirestore(firebaseUser.uid, email);
@@ -371,6 +389,25 @@ export async function signInWithGoogle(): Promise<{ organizer: AuthOrganizer; is
     if (globalStore) {
       globalStore.getState().setUser(organizer, user);
     }
+
+    // Telemetry logging for post-login role resolution
+    void (async () => {
+      try {
+        const { trackTelemetryEvent } = await import("@/lib/telemetry");
+        await trackTelemetryEvent("auth_login_resolved", {
+          email: organizer.email,
+          role: organizer.role,
+          chapter_role: organizer.chapterRole,
+          role_id: organizer.roleId ?? -1,
+          bevy_user_id: organizer.bevyUserId || "none",
+          is_valid_organizer: validation.isValidOrganizer,
+          was_imported: Boolean(validation.wasImported),
+          source: "signInWithGoogle",
+        });
+      } catch {
+        // Non-blocking telemetry
+      }
+    })();
 
     // Only sync Bevy User ID in background if it wasn't resolved yet and user was newly imported
     if (!validation.bevyUserId && validation.wasImported) {

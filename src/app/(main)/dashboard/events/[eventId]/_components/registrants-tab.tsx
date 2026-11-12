@@ -718,6 +718,22 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
         // Non-team users lack permissions to list all event registrations in Firestore rules.
         if (!hasTeamOperationalAccess(currentUser)) {
           setIsLoading(false);
+          // Telemetry: record client-side RBAC restriction
+          void (async () => {
+            try {
+              const { trackTelemetryEvent } = await import("@/lib/telemetry");
+              await trackTelemetryEvent("registrants_access_denied_client", {
+                event_id: eventId,
+                email: currentUser?.email || "anonymous",
+                role: currentUser?.role || "none",
+                chapter_role: currentUser?.chapterRole || "none",
+                role_id: currentUser?.roleId ?? -1,
+                reason: "hasTeamOperationalAccess returned false",
+              });
+            } catch {
+              // Non-blocking telemetry
+            }
+          })();
           return;
         }
 
@@ -750,6 +766,23 @@ export function RegistrantsTab({ eventId, registrations, event, onSwitchTab }: R
                   (err as { message?: string }).message?.includes("permission"));
             if (isPermission) {
               console.warn(`[RegistrantsTab] Live registrations listener restricted for event: ${eventId}`);
+              // Telemetry: record Firestore Security Rule permission denied
+              void (async () => {
+                try {
+                  const { trackTelemetryEvent } = await import("@/lib/telemetry");
+                  await trackTelemetryEvent("registrants_access_denied_firestore", {
+                    event_id: eventId,
+                    email: currentUser?.email || "anonymous",
+                    role: currentUser?.role || "none",
+                    chapter_role: currentUser?.chapterRole || "none",
+                    role_id: currentUser?.roleId ?? -1,
+                    error_code: (err as { code?: string }).code || "permission-denied",
+                    error_message: (err as { message?: string }).message || "Permission denied",
+                  });
+                } catch {
+                  // Non-blocking telemetry
+                }
+              })();
             } else {
               console.warn("[RegistrantsTab] Live registrations listener warning:", err);
             }

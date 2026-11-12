@@ -5,6 +5,7 @@ import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 
 import { identifyMixpanelUser, initMixpanel, resetMixpanelUser, trackMixpanelEvent } from "@/lib/mixpanel";
+import { getFirebaseAnalytics } from "@/lib/telemetry";
 import { useAuthStore } from "@/stores/auth/auth-provider";
 
 export function MixpanelProvider() {
@@ -12,9 +13,10 @@ export function MixpanelProvider() {
   const user = useAuthStore((s) => s.user);
   const prevUserIdRef = useRef<string | null>(null);
 
-  // Initialize Mixpanel once on client mount
+  // Initialize Mixpanel and Firebase Analytics on client mount
   useEffect(() => {
     initMixpanel();
+    void getFirebaseAnalytics();
   }, []);
 
   // Track page views on route transitions
