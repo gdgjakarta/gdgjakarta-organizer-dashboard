@@ -9,6 +9,7 @@ import {
   getUserById,
   importMemberToBevy,
   isBevyUserNotFoundError,
+  searchBevyChapterMembers,
   validateBevyOrganizer,
 } from "@/lib/bevy/client";
 import { type BevyUser, ChapterRole, type OrganizerValidationResult } from "@/lib/bevy/types";
@@ -148,7 +149,27 @@ export async function syncSingleMemberToBevyAction(params: {
   const normalizedEmail = email.toLowerCase().trim();
   console.log(`[Sync Single Member] Checking Bevy status for: ${normalizedEmail}`);
 
-  // 1. Check if user already exists in Bevy
+  // 1. Fast-Path: Check Bevy's Algolia chapter member index first (high-throughput, no 429 rate limit)
+  try {
+    const algoliaHits = await searchBevyChapterMembers(normalizedEmail, undefined, 5);
+    const matchedHit = algoliaHits.find((hit) => {
+      const hitEmail = hit.user?.email?.toLowerCase().trim();
+      return hitEmail && hitEmail === normalizedEmail;
+    });
+
+    if (matchedHit?.user?.id != null) {
+      const bevyUserId = String(matchedHit.user.id);
+      console.log(`[Sync Single Member] User ${normalizedEmail} found via Algolia fast-path (ID: ${bevyUserId})`);
+      return { success: true, bevyUserId, isAlreadyMember: true };
+    }
+  } catch (algoliaErr) {
+    console.warn(
+      `[Sync Single Member] Algolia fast-path check failed for ${normalizedEmail}, falling back to REST:`,
+      algoliaErr,
+    );
+  }
+
+  // 2. Fallback: Check if user exists via Bevy REST API
   try {
     const memberResponse = await getMemberById(normalizedEmail);
     if (memberResponse.data?.id !== undefined && memberResponse.data?.id !== null) {

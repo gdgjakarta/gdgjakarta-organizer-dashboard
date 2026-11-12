@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.24] - 2026-11-12
+
+### Improved
+- **Algolia Fast-Path for Member Bevy Sync (`/dashboard/members`)**: Integrated Bevy's official high-throughput chapter Algolia index (`google_chapter_member_index_production`) as a pre-check fast path in `syncSingleMemberToBevyAction`. Syncing members with existing Bevy accounts resolves their Bevy User ID instantly via Algolia with zero Bevy REST calls, avoiding HTTP 429 rate limits during bulk sync operations.
+
+---
+
 ## [1.0.23] - 2026-11-12
 
 ### Fixed

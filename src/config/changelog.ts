@@ -16,10 +16,21 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.24",
+    releaseDate: "2026-11-12",
+    title: "Algolia Fast-Path for Bulk Bevy Member Sync",
+    badge: "Latest",
+    items: [
+      {
+        category: "Improved",
+        text: "Integrated Bevy's Algolia chapter member search as an instant fast-path for Bevy ID resolution, preventing 429 rate limits and speeding up bulk member sync.",
+      },
+    ],
+  },
+  {
     version: "1.0.23",
     releaseDate: "2026-11-12",
     title: "Bevy API Rate-Limit Circuit Breaker for Bulk Sync",
-    badge: "Latest",
     items: [
       {
         category: "Fixed",
