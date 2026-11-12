@@ -140,8 +140,14 @@ export function Members({
     const merged = bevyRows.map((row) => ({ ...row }));
 
     for (const rawFs of fsMembers) {
-      const fs = rawFs as Record<string, string | number | boolean | null | undefined>;
-      const emailKey = (fs.email || "").trim().toLowerCase();
+      const fs = rawFs as {
+        id?: string | number | null;
+        email?: string | null;
+        bevy_user_id?: string | number | null;
+        bevy_member_id?: string | number | null;
+      };
+      const email = typeof fs.email === "string" ? fs.email : "";
+      const emailKey = email.trim().toLowerCase();
       if (!emailKey && !fs.bevy_user_id && !fs.id) continue;
       const existing =
         (emailKey ? existingMap.get(emailKey) : undefined) ||
@@ -153,11 +159,11 @@ export function Members({
       if (existing) {
         existing.syncStatus = isSynced ? "synced" : "not_synced";
         if (
-          fs.email &&
-          !fs.email.includes("*") &&
+          email &&
+          !email.includes("*") &&
           (!existing.email || existing.email.includes("*") || existing.email.startsWith("user_"))
         ) {
-          existing.email = fs.email;
+          existing.email = email;
         }
         if (fs.bevy_user_id) {
           existing.bevyUserId = fs.bevy_user_id;
