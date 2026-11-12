@@ -32,9 +32,13 @@ export async function getFirebaseAnalytics(): Promise<Analytics | null> {
 /**
  * Universal telemetry event dispatcher:
  * Logs event to both Mixpanel and Firebase Analytics with sanitized properties.
+ * Includes `debug_mode: true` so events immediately appear in Firebase Console DebugView.
  */
 export async function trackTelemetryEvent(eventName: string, properties?: Record<string, unknown>): Promise<void> {
   if (typeof window === "undefined") return;
+
+  // Verbose console logging for immediate local debugging
+  console.log(`[Telemetry] 📡 Event: "${eventName}"`, properties ?? {});
 
   // 1. Dispatch to Mixpanel
   try {
@@ -48,7 +52,10 @@ export async function trackTelemetryEvent(eventName: string, properties?: Record
     const analytics = await getFirebaseAnalytics();
     if (analytics) {
       // Firebase analytics only accepts primitive values in event params
-      const sanitizedParams: Record<string, string | number | boolean> = {};
+      // Add debug_mode: true so events instantly show in Firebase DebugView
+      const sanitizedParams: Record<string, string | number | boolean> = {
+        debug_mode: true,
+      };
       if (properties) {
         for (const [key, val] of Object.entries(properties)) {
           if (val === null || val === undefined) {
