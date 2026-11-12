@@ -16,10 +16,33 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.25",
+    releaseDate: "2026-11-12",
+    title: "17.8k Member Server Pagination & Algolia Search Fix",
+    badge: "Latest",
+    items: [
+      {
+        category: "Fixed",
+        text: "Corrected Bevy API Accept headers and protected auth paths for /config/algolia, enabling Algolia chapter member search and real-time search hits across 17.8k members.",
+      },
+      {
+        category: "Improved",
+        text: "Implemented server-driven manual pagination with multi-ellipsis support for thousands of pages, retaining member state across tab switches.",
+      },
+      {
+        category: "Added",
+        text: "Added pulsating shimmer skeleton loading states during pagination, remote searching, and deferred tab composition.",
+      },
+      {
+        category: "Improved",
+        text: "Enhanced Google Sign-In with redirect authentication mode and /__/auth/ rewrites for WebKit and custom browsers where popups fail.",
+      },
+    ],
+  },
+  {
     version: "1.0.24",
     releaseDate: "2026-11-12",
     title: "Algolia Fast-Path for Bulk Bevy Member Sync",
-    badge: "Latest",
     items: [
       {
         category: "Improved",

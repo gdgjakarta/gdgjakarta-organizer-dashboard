@@ -47,7 +47,7 @@ import { splitFullName } from "@/lib/utils";
 
 import { BulkMergeDialog } from "./bulk-merge-dialog";
 import { ChapterTeamTab } from "./chapter-team-tab";
-import type { MemberRow, MemberStatus } from "./data";
+import type { MemberRow } from "./data";
 import { MembersBulkActions } from "./members-bulk-actions";
 import { getMembersColumns } from "./members-columns";
 import { MembersTable } from "./members-table";
@@ -67,17 +67,44 @@ export function Members({
   const searchParams = useSearchParams();
 
   const tabParam = searchParams.get("tab");
-  const activeTab = tabParam === "team" ? "team" : "members";
+  const [activeTab, setActiveTab] = React.useState<"members" | "team">(tabParam === "team" ? "team" : "members");
+
+  // Keep state in sync if URL changes externally (e.g. browser back/forward or direct link)
+  React.useEffect(() => {
+    setActiveTab(tabParam === "team" ? "team" : "members");
+  }, [tabParam]);
+
+  const [hasVisitedTeam, setHasVisitedTeam] = React.useState(tabParam === "team");
+  const [isTabComposing, setIsTabComposing] = React.useState(false);
+  const [isFetchingPage, setIsFetchingPage] = React.useState(false);
+  const [serverTotalCount, setServerTotalCount] = React.useState<number>(totalCount ?? members.length);
+  const firestoreMembersRef = React.useRef<unknown[] | null>(null);
 
   const handleTabChange = (value: string) => {
-    const params = new URLSearchParams(searchParams.toString());
-    if (value === "team") {
-      params.set("tab", "team");
-    } else {
-      params.delete("tab");
-    }
-    const query = params.toString();
-    router.replace(`${pathname}${query ? `?${query}` : ""}`, { scroll: false });
+    if (value === activeTab) return;
+    const nextTab = value === "team" ? "team" : "members";
+
+    // 1. Immediately change active tab state to switch the UI instantly without delay
+    setActiveTab(nextTab);
+    if (nextTab === "team") setHasVisitedTeam(true);
+
+    // 2. Trigger brief composition shimmer while tab contents compose
+    setIsTabComposing(true);
+    React.startTransition(() => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (nextTab === "team") {
+        params.set("tab", "team");
+      } else {
+        params.delete("tab");
+      }
+      const query = params.toString();
+      window.history.replaceState(null, "", `${pathname}${query ? `?${query}` : ""}`);
+    });
+
+    const timer = setTimeout(() => {
+      setIsTabComposing(false);
+    }, 150);
+    return () => clearTimeout(timer);
   };
 
   const [data, setData] = React.useState<MemberRow[]>(members);
@@ -98,12 +125,65 @@ export function Members({
   const [memberToMerge, setMemberToMerge] = React.useState<MemberRow | null>(null);
   const searchInputRef = React.useRef<HTMLInputElement>(null);
 
-  // Sync state if initial props change
-  React.useEffect(() => {
-    setData(members);
-  }, [members]);
+  // Helper to merge Bevy member rows with cached Firestore records
+  const mergeWithFirestore = React.useCallback((bevyRows: MemberRow[], fsMembers: unknown[]): MemberRow[] => {
+    if (!fsMembers || fsMembers.length === 0) return bevyRows;
 
-  // Load Firestore members and merge with Bevy chapter members on client
+    const existingMap = new Map<string, MemberRow>();
+    const existingById = new Map<string, MemberRow>();
+    for (const m of bevyRows) {
+      if (m.email) existingMap.set(m.email.toLowerCase(), m);
+      if (m.id != null) existingById.set(String(m.id), m);
+      if (m.bevyUserId != null) existingById.set(String(m.bevyUserId), m);
+    }
+
+    const merged = bevyRows.map((row) => ({ ...row }));
+
+    for (const rawFs of fsMembers) {
+      const fs = rawFs as Record<string, string | number | boolean | null | undefined>;
+      const emailKey = (fs.email || "").trim().toLowerCase();
+      if (!emailKey && !fs.bevy_user_id && !fs.id) continue;
+      const existing =
+        (emailKey ? existingMap.get(emailKey) : undefined) ||
+        (fs.id ? existingById.get(String(fs.id)) : undefined) ||
+        (fs.bevy_user_id ? existingById.get(String(fs.bevy_user_id)) : undefined) ||
+        (fs.bevy_member_id ? existingById.get(String(fs.bevy_member_id)) : undefined);
+      const isSynced = Boolean(fs.bevy_user_id || existing);
+
+      if (existing) {
+        existing.syncStatus = isSynced ? "synced" : "not_synced";
+        if (
+          fs.email &&
+          !fs.email.includes("*") &&
+          (!existing.email || existing.email.includes("*") || existing.email.startsWith("user_"))
+        ) {
+          existing.email = fs.email;
+        }
+        if (fs.bevy_user_id) {
+          existing.bevyUserId = fs.bevy_user_id;
+          existingById.set(String(fs.bevy_user_id), existing);
+        }
+        if (fs.id) existingById.set(String(fs.id), existing);
+        if (fs.bevy_member_id) existingById.set(String(fs.bevy_member_id), existing);
+      }
+    }
+
+    return merged;
+  }, []);
+
+  // Sync state if initial props change without wiping cached Firestore members
+  React.useEffect(() => {
+    if (totalCount !== undefined) {
+      setServerTotalCount(totalCount);
+    }
+    if (firestoreMembersRef.current) {
+      setData(mergeWithFirestore(members, firestoreMembersRef.current));
+    } else {
+      setData(members);
+    }
+  }, [members, totalCount, mergeWithFirestore]);
+
+  // Load Firestore members on client and cache in ref
   React.useEffect(() => {
     async function loadFirestoreMembers() {
       try {
@@ -111,87 +191,15 @@ export function Members({
         const fsMembers = await getFirestoreMembers();
         if (!fsMembers || fsMembers.length === 0) return;
 
-        setData((prev) => {
-          const existingMap = new Map<string, MemberRow>();
-          const existingById = new Map<string, MemberRow>();
-          for (const m of prev) {
-            if (m.email) existingMap.set(m.email.toLowerCase(), m);
-            if (m.id != null) existingById.set(String(m.id), m);
-            if (m.bevyUserId != null) existingById.set(String(m.bevyUserId), m);
-          }
-
-          const merged = [...prev];
-
-          for (const fs of fsMembers) {
-            const emailKey = (fs.email || "").trim().toLowerCase();
-            if (!emailKey && !fs.bevy_user_id && !fs.id) continue;
-            const existing =
-              (emailKey ? existingMap.get(emailKey) : undefined) ||
-              (fs.id ? existingById.get(String(fs.id)) : undefined) ||
-              (fs.bevy_user_id ? existingById.get(String(fs.bevy_user_id)) : undefined) ||
-              (fs.bevy_member_id ? existingById.get(String(fs.bevy_member_id)) : undefined);
-            const isSynced = Boolean(fs.bevy_user_id || existing);
-
-            if (existing) {
-              existing.syncStatus = isSynced ? "synced" : "not_synced";
-              // Update email to unmasked email if current email is placeholder/masked
-              if (
-                fs.email &&
-                !fs.email.includes("*") &&
-                (!existing.email || existing.email.includes("*") || existing.email.startsWith("user_"))
-              ) {
-                existing.email = fs.email;
-              }
-              if (fs.bevy_user_id) {
-                existing.bevyUserId = fs.bevy_user_id;
-                existingById.set(String(fs.bevy_user_id), existing);
-              }
-              if (fs.id) existingById.set(String(fs.id), existing);
-              if (fs.bevy_member_id) existingById.set(String(fs.bevy_member_id), existing);
-            } else {
-              let joinedDateFormatted = "Recent";
-              if (fs.joined_date) {
-                try {
-                  joinedDateFormatted = format(toTimezoneDate(parseISO(fs.joined_date)), "dd MMM yyyy, h:mm a");
-                } catch {
-                  joinedDateFormatted = fs.joined_date;
-                }
-              }
-
-              const newRow: MemberRow = {
-                id: fs.id,
-                bevyUserId: fs.bevy_user_id ?? undefined,
-                name: fs.name || (fs.email ? fs.email.split("@")[0] : "") || "Community Member",
-                firstName: fs.first_name ?? undefined,
-                lastName: fs.last_name ?? undefined,
-                email: fs.email || "",
-                role: fs.role || "Member",
-                status: (fs.status as MemberStatus) || "Active",
-                team: fs.team || "Community",
-                joinedDate: joinedDateFormatted,
-                rawCreatedDate: fs.joined_date ?? undefined,
-                avatarUrl: fs.avatar_url ?? undefined,
-                eventsCount: fs.events_registered_count ?? 0,
-                syncStatus: fs.bevy_user_id ? "synced" : "not_synced",
-              };
-
-              merged.push(newRow);
-              if (emailKey) existingMap.set(emailKey, newRow);
-              if (newRow.id != null) existingById.set(String(newRow.id), newRow);
-              if (newRow.bevyUserId != null) existingById.set(String(newRow.bevyUserId), newRow);
-              if (fs.bevy_member_id != null) existingById.set(String(fs.bevy_member_id), newRow);
-            }
-          }
-
-          return merged;
-        });
+        firestoreMembersRef.current = fsMembers;
+        setData((prev) => mergeWithFirestore(prev, fsMembers));
       } catch (err) {
         console.warn("[Members] Error loading Firestore members:", err);
       }
     }
 
     void loadFirestoreMembers();
-  }, []);
+  }, [mergeWithFirestore]);
 
   // Shortcut for ⌘K to focus search input
   React.useEffect(() => {
@@ -271,10 +279,19 @@ export function Members({
     [handleSyncSingleMember, handleOpenMergeDialog],
   );
 
+  const searchQuery = (columnFilters.find((f) => f.id === "search")?.value as string | undefined) ?? "";
+  const syncStatusFilter = (columnFilters.find((f) => f.id === "syncStatus")?.value as string | undefined) ?? "all";
+  const isSearchActive = searchQuery.trim().length >= 2;
+  const pageCount = isSearchActive
+    ? Math.max(Math.ceil(data.length / pagination.pageSize), 1)
+    : Math.max(Math.ceil(serverTotalCount / pagination.pageSize), 1);
+
   const table = useTable({
     features: dataTableFeatures,
     data,
     columns,
+    pageCount,
+    manualPagination: !isSearchActive,
     state: {
       rowSelection,
       sorting,
@@ -292,8 +309,47 @@ export function Members({
     onPaginationChange: setPagination,
   });
 
-  const searchQuery = (columnFilters.find((f) => f.id === "search")?.value as string | undefined) ?? "";
-  const syncStatusFilter = (columnFilters.find((f) => f.id === "syncStatus")?.value as string | undefined) ?? "all";
+  // Fetch paginated members from Bevy whenever pageIndex or pageSize changes (and not actively searching)
+  React.useEffect(() => {
+    if (isSearchActive) return;
+
+    let cancelled = false;
+    setIsFetchingPage(true);
+
+    const currentPageNum = pagination.pageIndex + 1;
+    const currentPageSize = pagination.pageSize;
+
+    void (async () => {
+      try {
+        const { fetchBevyChapterMembersAction } = await import("@/server/bevy-actions");
+        const res = await fetchBevyChapterMembersAction(currentPageSize, currentPageNum, "-created_date");
+        if (cancelled || !res) return;
+
+        if (res.count !== undefined) {
+          setServerTotalCount(res.count);
+        }
+
+        const rawResults = res.results as MemberRow[];
+        if (rawResults.length > 0) {
+          if (firestoreMembersRef.current) {
+            setData(mergeWithFirestore(rawResults, firestoreMembersRef.current));
+          } else {
+            setData(rawResults);
+          }
+        }
+      } catch (err) {
+        console.warn("[Members] Error loading paginated Bevy members:", err);
+      } finally {
+        if (!cancelled) {
+          setIsFetchingPage(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pagination.pageIndex, pagination.pageSize, isSearchActive, mergeWithFirestore]);
 
   // Debounced server-side search across all Bevy chapter members (via Algolia)
   React.useEffect(() => {
@@ -418,7 +474,7 @@ export function Members({
   const filteredRows = table.getFilteredRowModel().rows;
   const selectedRows = table.getFilteredSelectedRowModel().rows;
   const selectedCount = selectedRows.length;
-  const countToDisplay = totalCount ?? data.length;
+  const countToDisplay = isSearchActive ? filteredRows.length : serverTotalCount;
 
   const handleExportCsv = React.useCallback(
     (onlySelected = false) => {
@@ -824,13 +880,36 @@ export function Members({
                 isBulkSyncing={isBulkSyncing}
               />
 
-              <MembersTable table={table} />
+              <MembersTable
+                table={table}
+                isLoading={
+                  isSearchingRemote ||
+                  (!isSearchActive && isFetchingPage) ||
+                  (isTabComposing && activeTab === "members")
+                }
+              />
             </CardContent>
           </Card>
         </TabsContent>
 
         <TabsContent value="team" className="space-y-4 focus-visible:outline-none">
-          <ChapterTeamTab initialTeamMembers={teamMembers} />
+          {!hasVisitedTeam || (isTabComposing && activeTab === "team") ? (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {["team-skel-1", "team-skel-2", "team-skel-3", "team-skel-4", "team-skel-5", "team-skel-6"].map((key) => (
+                <Card key={key} className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="size-10 shrink-0 animate-pulse rounded-full bg-muted" />
+                    <div className="flex-1 space-y-1.5">
+                      <div className="h-4 w-32 animate-pulse rounded bg-muted" />
+                      <div className="h-3 w-24 animate-pulse rounded bg-muted" />
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <ChapterTeamTab initialTeamMembers={teamMembers} />
+          )}
         </TabsContent>
       </Tabs>
 

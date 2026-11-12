@@ -70,7 +70,93 @@ export async function fetchBevyChapterMembersAction(pageSize = 200, page = 1, or
     console.warn("[Security] Blocked unauthorized attempt to fetch Bevy chapter members");
     return { count: 0, results: [] };
   }
-  return await getBevyChapterMembers(undefined, pageSize, page, orderBy);
+  const [teamMembers, membersResponse] = await Promise.all([
+    getBevyChapterTeams(),
+    getBevyChapterMembers(undefined, pageSize, page, orderBy),
+  ]);
+
+  if (!membersResponse) {
+    return { count: 0, results: [] };
+  }
+
+  interface TeamInfo {
+    roleTitle: string;
+    avatarUrl?: string;
+    company?: string;
+  }
+  const teamMap = new Map<string, TeamInfo>();
+  for (const tm of teamMembers || []) {
+    const email = tm.user?.email?.toLowerCase();
+    const userId = tm.user?.id ? String(tm.user.id) : String(tm.user_id || "");
+    let roleTitle = "Organizer";
+
+    if (typeof tm.role === "object" && tm.role !== null && "name" in tm.role && tm.role.name) {
+      roleTitle = tm.role.name;
+    } else if (typeof tm.role === "string" && tm.role) {
+      roleTitle = tm.role;
+    } else if (tm.title) {
+      roleTitle = tm.title;
+    }
+
+    const teamInfo: TeamInfo = {
+      roleTitle,
+      avatarUrl: tm.user?.avatar?.url || tm.user?.avatar?.thumbnail_url,
+      company: tm.user?.company,
+    };
+
+    if (email) teamMap.set(email, teamInfo);
+    if (userId) teamMap.set(`id:${userId}`, teamInfo);
+  }
+
+  const { format, parseISO } = await import("date-fns");
+  const { toTimezoneDate } = await import("@/lib/date-utils");
+  const { splitFullName } = await import("@/lib/utils");
+
+  const results = (membersResponse.results || []).map((m) => {
+    const email = m.user.email || `user_${m.user.id}@community.dev`;
+    const userId = String(m.user.id);
+    const teamInfo = teamMap.get(email.toLowerCase()) || teamMap.get(`id:${userId}`) || null;
+    const organizerRole = teamInfo?.roleTitle || null;
+    const displayName = m.user.full_name?.trim() || email.split("@")[0] || "Community Member";
+    const { firstName, lastName } = splitFullName(m.user.full_name?.trim() || displayName);
+
+    let joinedDateFormatted = "Recent";
+    if (m.created_date) {
+      try {
+        joinedDateFormatted = format(toTimezoneDate(parseISO(m.created_date)), "dd MMM yyyy, h:mm a");
+      } catch {
+        joinedDateFormatted = m.created_date;
+      }
+    }
+
+    const role = organizerRole ? organizerRole : "Member";
+    const team = organizerRole ? "Core Team" : "Community";
+
+    return {
+      id: m.id || m.user.id,
+      bevyUserId: m.user.id,
+      name: displayName,
+      firstName: firstName || undefined,
+      lastName: lastName || undefined,
+      email: email,
+      role: role,
+      status: "Active" as const,
+      team: team,
+      joinedDate: joinedDateFormatted,
+      rawCreatedDate: m.created_date,
+      avatarUrl: teamInfo?.avatarUrl || m.user.avatar?.url,
+      eventsCount: m.events_registered_count ?? 0,
+      profileUrl: m.user.profile_url,
+      isEmailVerified: Boolean(m.user.is_email_verified),
+      company: teamInfo?.company,
+      syncStatus: "synced" as const,
+    };
+  });
+
+  return {
+    count: membersResponse.count,
+    results,
+  };
 }
 
 /**

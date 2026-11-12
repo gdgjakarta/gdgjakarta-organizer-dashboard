@@ -90,6 +90,7 @@ export async function bevyFetchWithResponse<T>(
     endpoint.includes("/event/") ||
     endpoint.includes("/team/") ||
     endpoint.includes("/teammember") ||
+    endpoint.includes("/config/algolia") ||
     endpoint.startsWith("/user/") ||
     endpoint.startsWith("user/");
   const needsAuth = isExplicitAuth || isMutation || isProtectedPath;
@@ -107,7 +108,7 @@ export async function bevyFetchWithResponse<T>(
   }
 
   const buildHeaders = (includeAuth: boolean) => ({
-    Accept: "application/json, version=bevy.1.0",
+    Accept: "application/json; version=bevy.1.0",
     "User-Agent": "GDGJakartaDashboard/2.2 (compatible; CloudflareWorkers/1.0)",
     ...(options.body ? { "Content-Type": "application/json" } : {}),
     ...(includeAuth && csrfToken ? { "X-Csrftoken": csrfToken } : {}),

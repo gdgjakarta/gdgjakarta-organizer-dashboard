@@ -91,6 +91,15 @@ const nextConfig = {
       },
     ];
   },
+  async rewrites() {
+    const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "gdgjakarta-app";
+    return [
+      {
+        source: "/__/auth/:path*",
+        destination: `https://${projectId}.firebaseapp.com/__/auth/:path*`,
+      },
+    ];
+  },
   async redirects() {
     return [
       {

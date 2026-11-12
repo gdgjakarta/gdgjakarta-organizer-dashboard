@@ -4,11 +4,14 @@ import { createContext, use, useEffect, useState } from "react";
 
 import {
   getAdditionalUserInfo,
+  getRedirectResult,
   onAuthStateChanged,
   onIdTokenChanged,
   signInWithPopup,
+  signInWithRedirect,
   signOut,
   type User,
+  type UserCredential,
 } from "firebase/auth";
 import { type StoreApi, useStore } from "zustand";
 
@@ -330,6 +333,97 @@ export function useAuthStore<T>(selector: (state: AuthState) => T): T {
 }
 
 /**
+ * Shared post-sign-in pipeline for both popup and redirect credentials.
+ */
+async function processUserCredential(
+  result: UserCredential,
+  source: "signInWithGoogle" | "signInWithRedirect",
+): Promise<{ organizer: AuthOrganizer; isAllowed: boolean }> {
+  const user = result.user;
+  console.log(
+    `[Auth Flow Step 2 - Client] Firebase Google Sign-In (${source}) successful for: ${user.email} (UID: ${user.uid})`,
+  );
+
+  // Extract first_name and last_name from Google profile or fallback to user displayName
+  let firstName: string | undefined;
+  let lastName: string | undefined;
+  try {
+    const additionalInfo = getAdditionalUserInfo(result);
+    const profile = additionalInfo?.profile as { given_name?: string; family_name?: string } | undefined;
+    firstName = profile?.given_name;
+    lastName = profile?.family_name;
+  } catch {
+    // additionalUserInfo not available
+  }
+
+  if (!firstName && user.displayName) {
+    const split = splitFullName(user.displayName);
+    firstName = split.firstName;
+    lastName = split.lastName;
+  }
+
+  // Step 2: Validate against Bevy API directly upon Google Sign-In to always establish fresh permissions
+  const email = user.email ?? "";
+  const token = await user.getIdToken();
+
+  console.log(`[Auth Flow Step 3 - Client] Calling handleUserPostLoginAction on server for ${email}...`);
+  const validation = await handleUserPostLoginAction({
+    uid: user.uid,
+    email,
+    name: user.displayName ?? undefined,
+    avatar: user.photoURL ?? undefined,
+    token,
+    firstName: firstName?.trim() ? firstName : undefined,
+    lastName: lastName?.trim() ? lastName : undefined,
+  });
+
+  const organizer = mapFirebaseUserToOrganizer(user, validation);
+  console.log("[Auth Flow Step 4 - Client] Post-login sync response:", {
+    email: organizer.email,
+    role: organizer.role,
+    chapterRole: organizer.chapterRole,
+    isAllowed: validation.isValidOrganizer,
+  });
+
+  // Step 5: Sync member profile in Firestore on the client (browser-only)
+  await syncMemberToFirestore(user, validation);
+
+  // Update client AuthState immediately
+  if (globalStore) {
+    globalStore.getState().setUser(organizer, user);
+  }
+
+  // Telemetry logging for post-login role resolution
+  void (async () => {
+    try {
+      const { trackTelemetryEvent } = await import("@/lib/telemetry");
+      await trackTelemetryEvent("auth_login_resolved", {
+        email: organizer.email,
+        role: organizer.role,
+        chapter_role: organizer.chapterRole,
+        role_id: organizer.roleId ?? -1,
+        bevy_user_id: organizer.bevyUserId || "none",
+        is_valid_organizer: validation.isValidOrganizer,
+        was_imported: Boolean(validation.wasImported),
+        source,
+      });
+    } catch {
+      // Non-blocking telemetry
+    }
+  })();
+
+  // Only sync Bevy User ID in background if it wasn't resolved yet and user was newly imported
+  if (!validation.bevyUserId && validation.wasImported) {
+    await syncBevyUserToFirestore(user.uid, email);
+  }
+
+  return {
+    organizer,
+    isAllowed: validation.isValidOrganizer,
+  };
+}
+
+/**
  * Triggers Google Sign In with Firebase auth popup, validates against Bevy Chapter Team,
  * syncs member profile to Firestore, and establishes the role-based session.
  */
@@ -338,88 +432,38 @@ export async function signInWithGoogle(): Promise<{ organizer: AuthOrganizer; is
   try {
     console.log("[Auth Flow Step 1 - Client] Initiating Firebase signInWithPopup (Google Provider)...");
     const result = await signInWithPopup(auth, googleProvider);
-    const user = result.user;
-    console.log(`[Auth Flow Step 2 - Client] Firebase Google Sign-In successful for: ${user.email} (UID: ${user.uid})`);
-
-    // Extract first_name and last_name from Google profile or fallback to user displayName
-    let firstName: string | undefined;
-    let lastName: string | undefined;
-    try {
-      const additionalInfo = getAdditionalUserInfo(result);
-      const profile = additionalInfo?.profile as { given_name?: string; family_name?: string } | undefined;
-      firstName = profile?.given_name;
-      lastName = profile?.family_name;
-    } catch {
-      // additionalUserInfo not available
-    }
-
-    if (!firstName && user.displayName) {
-      const split = splitFullName(user.displayName);
-      firstName = split.firstName;
-      lastName = split.lastName;
-    }
-
-    // Step 2: Validate against Bevy API directly upon Google Sign-In to always establish fresh permissions
-    const email = user.email ?? "";
-    const token = await user.getIdToken();
-
-    console.log(`[Auth Flow Step 3 - Client] Calling handleUserPostLoginAction on server for ${email}...`);
-    const validation = await handleUserPostLoginAction({
-      uid: user.uid,
-      email,
-      name: user.displayName ?? undefined,
-      avatar: user.photoURL ?? undefined,
-      token,
-      firstName: firstName?.trim() ? firstName : undefined,
-      lastName: lastName?.trim() ? lastName : undefined,
-    });
-
-    const organizer = mapFirebaseUserToOrganizer(user, validation);
-    console.log("[Auth Flow Step 4 - Client] Post-login sync response:", {
-      email: organizer.email,
-      role: organizer.role,
-      chapterRole: organizer.chapterRole,
-      isAllowed: validation.isValidOrganizer,
-    });
-
-    // Step 5: Sync member profile in Firestore on the client (browser-only)
-    await syncMemberToFirestore(user, validation);
-
-    // Update client AuthState immediately
-    if (globalStore) {
-      globalStore.getState().setUser(organizer, user);
-    }
-
-    // Telemetry logging for post-login role resolution
-    void (async () => {
-      try {
-        const { trackTelemetryEvent } = await import("@/lib/telemetry");
-        await trackTelemetryEvent("auth_login_resolved", {
-          email: organizer.email,
-          role: organizer.role,
-          chapter_role: organizer.chapterRole,
-          role_id: organizer.roleId ?? -1,
-          bevy_user_id: organizer.bevyUserId || "none",
-          is_valid_organizer: validation.isValidOrganizer,
-          was_imported: Boolean(validation.wasImported),
-          source: "signInWithGoogle",
-        });
-      } catch {
-        // Non-blocking telemetry
-      }
-    })();
-
-    // Only sync Bevy User ID in background if it wasn't resolved yet and user was newly imported
-    if (!validation.bevyUserId && validation.wasImported) {
-      await syncBevyUserToFirestore(user.uid, email);
-    }
-
-    return {
-      organizer,
-      isAllowed: validation.isValidOrganizer,
-    };
+    return await processUserCredential(result, "signInWithGoogle");
   } finally {
     isSigningInWithGoogle = false;
+  }
+}
+
+/**
+ * Initiates Google Sign In via redirect (essential for WebKit/custom browsers like Yab where popups fail).
+ */
+export async function signInWithGoogleRedirect(): Promise<void> {
+  console.log("[Auth Flow Step 1 - Client] Initiating Firebase signInWithRedirect (Google Provider)...");
+  await signInWithRedirect(auth, googleProvider);
+}
+
+/**
+ * Consumes pending redirect result upon app mount or page load.
+ */
+export async function handleGoogleRedirectResult(): Promise<{ organizer: AuthOrganizer; isAllowed: boolean } | null> {
+  try {
+    const result = await getRedirectResult(auth);
+    if (!result || !result.user) {
+      return null;
+    }
+    isSigningInWithGoogle = true;
+    try {
+      return await processUserCredential(result, "signInWithRedirect");
+    } finally {
+      isSigningInWithGoogle = false;
+    }
+  } catch (err) {
+    console.error("[Auth Flow - Client] Error during handleGoogleRedirectResult:", err);
+    throw err;
   }
 }
 

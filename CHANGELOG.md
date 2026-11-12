@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.25] - 2026-11-12
+
+### Fixed
+- **Algolia Member Search Authentication & Content Negotiation (`/dashboard/members`)**: Added `/config/algolia` to protected Bevy API endpoints to inject organizer session credentials, and updated client `Accept` headers to `application/json; version=bevy.1.0` (semicolon). This enables Bevy to return the dynamic secured `chapter_member_key` and allows real-time member searches across all ~17.8k chapter members via Algolia.
+- **Server-Driven Pagination & Full 17.8k Member Count**: Configured TanStack Table with manual server-side pagination (10 rows/page) and an enhanced multi-ellipsis pagination bar supporting thousands of pages. Switching between Community Members and Chapter Team tabs now preserves cached member state without falling back to 20 pages.
+- **Tab Switching & Search Loading Shimmer States**: Integrated pulsating skeleton shimmer rows on table page fetching and debounced search, with deferred composition to keep tab navigation responsive.
+- **Google Auth Redirect Fallback for WebKit Browsers**: Added Firebase `signInWithRedirect` and mount-time `getRedirectResult` handling alongside rewrites for `/__/auth/` to ensure reliable sign-in on browsers where popups fail.
+
+---
+
 ## [1.0.24] - 2026-11-12
 
 ### Improved

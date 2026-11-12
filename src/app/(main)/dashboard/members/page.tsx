@@ -24,7 +24,7 @@ export default async function Page() {
   try {
     const [teamMembers, membersResponse] = await Promise.all([
       getBevyChapterTeams(),
-      getBevyChapterMembers(undefined, 200, 1, "-created_date"),
+      getBevyChapterMembers(undefined, 10, 1, "-created_date"),
     ]);
 
     fetchedTeamMembers = teamMembers || [];

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import Image from "next/image";
 
@@ -11,13 +11,54 @@ import googleFavicon from "@/app/Google_Favicon.webp";
 import { Button } from "@/components/ui/button";
 import { getDashboardHomeUrl, isCoreTeamOrStaff, isExecutiveOrganizer } from "@/lib/auth-roles";
 import { cn } from "@/lib/utils";
-import { signInWithGoogle } from "@/stores/auth/auth-provider";
+import { handleGoogleRedirectResult, signInWithGoogle, signInWithGoogleRedirect } from "@/stores/auth/auth-provider";
 import type { AuthOrganizer } from "@/stores/auth/auth-store";
 
 export interface GoogleButtonProps extends React.ComponentProps<typeof Button> {
   redirect?: boolean;
   callbackUrl?: string;
+  authMode?: "redirect" | "popup";
   onSuccess?: (result: { organizer: AuthOrganizer; isAllowed: boolean }) => void;
+}
+
+const PENDING_CALLBACK_URL_KEY = "gdg_auth_callback_url";
+
+function navigateAfterLogin(organizer: AuthOrganizer, isAllowed: boolean, callbackUrl: string | null) {
+  const isExecutive = isExecutiveOrganizer(organizer);
+  const isStaff = isCoreTeamOrStaff(organizer);
+
+  if (isExecutive) {
+    toast.success(`Welcome back, ${organizer.name}! (${organizer.chapterRole ?? "Organizer"})`);
+    const targetUrl = callbackUrl?.startsWith("/") ? callbackUrl : "/dashboard/organizer";
+    console.log(`[Google Auth] Navigating organizer (${organizer.email}) to: ${targetUrl}`);
+    window.location.assign(targetUrl);
+  } else if (isStaff) {
+    toast.success(`Welcome back, ${organizer.name}! (${organizer.chapterRole ?? "Core Team"})`);
+    const isRestrictedForStaff =
+      callbackUrl?.startsWith("/dashboard/organizer") ||
+      callbackUrl?.startsWith("/dashboard/email-manager") ||
+      callbackUrl?.startsWith("/dashboard/members") ||
+      callbackUrl?.startsWith("/dashboard/referrals") ||
+      callbackUrl?.startsWith("/dashboard/partnership") ||
+      callbackUrl?.startsWith("/dashboard/crm") ||
+      callbackUrl?.startsWith("/dashboard/roles");
+
+    const targetUrl = callbackUrl?.startsWith("/") && !isRestrictedForStaff ? callbackUrl : "/dashboard/member";
+    console.log(`[Google Auth] Navigating core team/staff (${organizer.email}) to: ${targetUrl}`);
+    window.location.assign(targetUrl);
+  } else {
+    toast.success(`Welcome, ${organizer.name}!`);
+    const isOrganizerOnlyCallback =
+      callbackUrl?.startsWith("/dashboard/organizer") ||
+      callbackUrl?.startsWith("/dashboard/events") ||
+      callbackUrl?.startsWith("/dashboard/email-manager") ||
+      callbackUrl?.startsWith("/dashboard/members") ||
+      callbackUrl?.startsWith("/dashboard/referrals");
+
+    const targetUrl = callbackUrl?.startsWith("/") && !isOrganizerOnlyCallback ? callbackUrl : "/dashboard/member";
+    console.log(`[Google Auth] Navigating member (${organizer.email}) to: ${targetUrl}`);
+    window.location.assign(targetUrl);
+  }
 }
 
 export function GoogleButton({
@@ -26,12 +67,57 @@ export function GoogleButton({
   disabled,
   children,
   redirect = true,
+  authMode = "redirect",
   callbackUrl: propCallbackUrl,
   onSuccess,
   ...props
 }: GoogleButtonProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [loadingText, setLoadingText] = useState("Signing in…");
+
+  // Consume any redirect result upon mount (e.g. returning from Google Sign-In redirect flow)
+  useEffect(() => {
+    let isMounted = true;
+
+    async function checkRedirectResult() {
+      try {
+        const result = await handleGoogleRedirectResult();
+        if (!result || !isMounted) return;
+
+        setIsLoading(true);
+        setLoadingText("Navigating to dashboard…");
+
+        const savedCallback = typeof window !== "undefined" ? sessionStorage.getItem(PENDING_CALLBACK_URL_KEY) : null;
+        if (typeof window !== "undefined") {
+          sessionStorage.removeItem(PENDING_CALLBACK_URL_KEY);
+        }
+
+        const queryCallback =
+          typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("callbackUrl") : null;
+        const callbackUrl = propCallbackUrl ?? savedCallback ?? queryCallback;
+
+        if (!redirect) {
+          setIsLoading(false);
+          onSuccess?.(result);
+          return;
+        }
+
+        navigateAfterLogin(result.organizer, result.isAllowed, callbackUrl);
+      } catch (err) {
+        if (!isMounted) return;
+        setIsLoading(false);
+        const error = err as { code?: string; message?: string };
+        console.error("[Google Button] Redirect login error:", error);
+        toast.error(error.message ?? "Failed to complete sign in. Please try again.");
+      }
+    }
+
+    void checkRedirectResult();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [propCallbackUrl, redirect, onSuccess]);
 
   const handleGoogleSignIn = async (e: React.MouseEvent<HTMLButtonElement>) => {
     onClick?.(e);
@@ -40,65 +126,32 @@ export function GoogleButton({
     try {
       setIsLoading(true);
       setLoadingText("Signing in…");
-      console.log("[Google Button] User clicked Sign in with Google (using Popup)");
 
-      const { organizer, isAllowed } = await signInWithGoogle();
-
-      if (!redirect) {
-        setIsLoading(false);
-        onSuccess?.({ organizer, isAllowed });
-        return;
-      }
-
-      setLoadingText("Navigating to dashboard…");
       const callbackUrl =
         propCallbackUrl ??
         (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("callbackUrl") : null);
 
-      console.log(
-        "[Google Button] Processing redirection. Role allowed as organizer:",
-        isAllowed,
-        "callbackUrl:",
-        callbackUrl,
-      );
-
-      const isExecutive = isExecutiveOrganizer(organizer);
-      const isStaff = isCoreTeamOrStaff(organizer);
-
-      if (isExecutive) {
-        toast.success(`Welcome back, ${organizer.name}! (${organizer.chapterRole ?? "Organizer"})`);
-        const targetUrl = callbackUrl?.startsWith("/") ? callbackUrl : "/dashboard/organizer";
-        console.log(`[Google Button] Navigating organizer (${organizer.email}) to: ${targetUrl}`);
-        window.location.assign(targetUrl);
-      } else if (isStaff) {
-        toast.success(`Welcome back, ${organizer.name}! (${organizer.chapterRole ?? "Core Team"})`);
-        const isRestrictedForStaff =
-          callbackUrl?.startsWith("/dashboard/organizer") ||
-          callbackUrl?.startsWith("/dashboard/email-manager") ||
-          callbackUrl?.startsWith("/dashboard/members") ||
-          callbackUrl?.startsWith("/dashboard/referrals") ||
-          callbackUrl?.startsWith("/dashboard/partnership") ||
-          callbackUrl?.startsWith("/dashboard/crm") ||
-          callbackUrl?.startsWith("/dashboard/roles");
-
-        const targetUrl = callbackUrl?.startsWith("/") && !isRestrictedForStaff ? callbackUrl : "/dashboard/member";
-        console.log(`[Google Button] Navigating core team/staff (${organizer.email}) to: ${targetUrl}`);
-        window.location.assign(targetUrl);
-      } else {
-        toast.success(`Welcome, ${organizer.name}!`);
-        const isOrganizerOnlyCallback =
-          callbackUrl?.startsWith("/dashboard/organizer") ||
-          callbackUrl?.startsWith("/dashboard/events") ||
-          callbackUrl?.startsWith("/dashboard/email-manager") ||
-          callbackUrl?.startsWith("/dashboard/members") ||
-          callbackUrl?.startsWith("/dashboard/referrals");
-
-        const targetUrl = callbackUrl?.startsWith("/") && !isOrganizerOnlyCallback ? callbackUrl : "/dashboard/member";
-        console.log(`[Google Button] Navigating member (${organizer.email}) to: ${targetUrl}`);
-        window.location.assign(targetUrl);
+      if (authMode === "popup") {
+        console.log("[Google Button] User clicked Sign in with Google (Popup mode)");
+        const result = await signInWithGoogle();
+        if (!redirect) {
+          setIsLoading(false);
+          onSuccess?.(result);
+          return;
+        }
+        setLoadingText("Navigating to dashboard…");
+        navigateAfterLogin(result.organizer, result.isAllowed, callbackUrl);
+        return;
       }
-      // Note: We deliberately do not call setIsLoading(false) on success so the button
-      // stays in a clean loading state until the new page load completes.
+
+      // Default redirect mode
+      if (callbackUrl && typeof window !== "undefined") {
+        sessionStorage.setItem(PENDING_CALLBACK_URL_KEY, callbackUrl);
+      }
+
+      console.log("[Google Button] User clicked Sign in with Google (Redirect mode)");
+      await signInWithGoogleRedirect();
+      // Browser immediately redirects to accounts.google.com
     } catch (err: unknown) {
       setIsLoading(false);
       const error = err as { code?: string; message?: string };
