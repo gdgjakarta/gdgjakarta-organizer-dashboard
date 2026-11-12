@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.20] - 2026-11-12
+
+### Added
+- **Single & Bulk Member Merge System (`/dashboard/members`)**: Added intelligent duplicate detection and merging for Firestore member records with duplicate entries by shared email or Bevy User ID.
+  - Automatically identifies duplicate clusters, scores authoritative documents (retains primary Firebase Auth UID and unmasked real email address), and re-links event registrations before deleting secondary documents.
+  - Added individual "Merge duplicate..." dialog from row actions and top-bar "Bulk merge duplicates" scanner dialog.
+- **Top-Level Chapter Bulk Sync to Bevy (`/dashboard/members`)**: Added top-bar "Sync with Bevy" button to run chapter-wide synchronization of members and chapter team roster directly from Bevy into Firestore.
+
+### Fixed
+- **Strict Bevy ID Assignment without Synthetic Fallbacks**: Completely eliminated fallback Bevy User IDs (e.g. `"1005761"`) in Bevy organizer authentication resolution; members without a verified Bevy user ID are marked as `null` and treated as `not_synced` to prevent cross-account collisions.
+
 ## [1.0.16] - 2026-11-12
 
 ### Fixed

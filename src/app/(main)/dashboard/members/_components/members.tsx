@@ -17,7 +17,9 @@ import {
   ExternalLink,
   FileJson,
   FileSpreadsheet,
+  GitMerge,
   Loader2,
+  RefreshCw,
   Search,
   Shield,
   Users,
@@ -36,18 +38,21 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Kbd } from "@/components/ui/kbd";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { getBevyDashboardUrl } from "@/config/remote-config-utils";
 import type { BevyChapterTeamMember } from "@/lib/bevy/types";
 import { dataTableFeatures } from "@/lib/data-table-features";
 import { toTimezoneDate } from "@/lib/date-utils";
-import { splitFullName } from "@/lib/utils";
+import { cn, splitFullName } from "@/lib/utils";
 
 import { ChapterTeamTab } from "./chapter-team-tab";
 import type { MemberRow, MemberStatus } from "./data";
 import { MembersBulkActions } from "./members-bulk-actions";
 import { getMembersColumns } from "./members-columns";
 import { MembersTable } from "./members-table";
+import { MergeMemberDialog } from "./merge-member-dialog";
+import { BulkMergeDialog } from "./bulk-merge-dialog";
 
 export function Members({
   members,
@@ -89,6 +94,9 @@ export function Members({
   });
   const [isBulkSyncing, setIsBulkSyncing] = React.useState(false);
   const [isSearchingRemote, setIsSearchingRemote] = React.useState(false);
+  const [mergeDialogOpen, setMergeDialogOpen] = React.useState(false);
+  const [bulkMergeDialogOpen, setBulkMergeDialogOpen] = React.useState(false);
+  const [memberToMerge, setMemberToMerge] = React.useState<MemberRow | null>(null);
   const searchInputRef = React.useRef<HTMLInputElement>(null);
 
   // Sync state if initial props change
@@ -237,7 +245,32 @@ export function Members({
     }
   }, []);
 
-  const columns = React.useMemo(() => getMembersColumns(handleSyncSingleMember), [handleSyncSingleMember]);
+  const handleOpenMergeDialog = React.useCallback((member: MemberRow) => {
+    setMemberToMerge(member);
+    setMergeDialogOpen(true);
+  }, []);
+
+  const handleMergedSuccess = React.useCallback(() => {
+    // Reload firestore members to refresh local table state
+    void (async () => {
+      try {
+        const { getFirestoreMembers } = await import("@/lib/firestore/client");
+        const fsMembers = await getFirestoreMembers();
+        if (!fsMembers) return;
+        setData((prev) => {
+          const removedDupId = memberToMerge ? String(memberToMerge.id) : null;
+          return prev.filter((m) => String(m.id) !== removedDupId);
+        });
+      } catch {
+        // non-blocking
+      }
+    })();
+  }, [memberToMerge]);
+
+  const columns = React.useMemo(
+    () => getMembersColumns(handleSyncSingleMember, handleOpenMergeDialog),
+    [handleSyncSingleMember, handleOpenMergeDialog],
+  );
 
   const table = useTable({
     features: dataTableFeatures,
@@ -261,6 +294,7 @@ export function Members({
   });
 
   const searchQuery = (columnFilters.find((f) => f.id === "search")?.value as string | undefined) ?? "";
+  const syncStatusFilter = (columnFilters.find((f) => f.id === "syncStatus")?.value as string | undefined) ?? "all";
 
   // Debounced server-side search across all Bevy chapter members (via Algolia)
   React.useEffect(() => {
@@ -593,6 +627,29 @@ export function Members({
     }
   }, [selectedRows]);
 
+  const [isFullBevySyncing, setIsFullBevySyncing] = React.useState(false);
+
+  const handleFullSyncFromBevy = React.useCallback(async () => {
+    setIsFullBevySyncing(true);
+    const toastId = toast.loading("Syncing chapter members and team from Bevy into Firestore...");
+    try {
+      const { triggerMembersSyncAction } = await import("@/lib/firestore/actions");
+      const res = await triggerMembersSyncAction();
+      if (res.success) {
+        toast.success(`Successfully synced ${res.totalSynced} member(s) and chapter team from Bevy!`, {
+          id: toastId,
+        });
+        router.refresh();
+      } else {
+        toast.error(res.error || "Failed to sync members from Bevy.", { id: toastId });
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error syncing from Bevy.", { id: toastId });
+    } finally {
+      setIsFullBevySyncing(false);
+    }
+  }, [router]);
+
   const handleSelectAll = React.useCallback(() => {
     table.toggleAllRowsSelected(true);
   }, [table]);
@@ -639,7 +696,7 @@ export function Members({
                 Manage GDG Jakarta community members, attendees, and organizers.
               </CardDescription>
               <CardAction className="col-start-1 row-start-auto flex w-full flex-wrap justify-start gap-2 justify-self-stretch md:col-start-2 md:row-span-2 md:row-start-1 md:w-auto md:flex-nowrap md:justify-end md:justify-self-end">
-                <InputGroup className="h-7 w-full md:w-64">
+                <InputGroup className="h-7 w-full md:w-56 lg:w-64">
                   <InputGroupAddon align="inline-start">
                     {isSearchingRemote ? (
                       <Loader2 className="size-3.5 animate-spin" />
@@ -661,6 +718,35 @@ export function Members({
                     <Kbd className="h-4 text-[10px]">⌘K</Kbd>
                   </InputGroupAddon>
                 </InputGroup>
+
+                <Select
+                  value={syncStatusFilter}
+                  onValueChange={(val) => {
+                    table.getColumn("syncStatus")?.setFilterValue(val === "all" ? undefined : val);
+                    table.setPageIndex(0);
+                  }}
+                >
+                  <SelectTrigger size="sm" className="h-7 min-w-[130px] text-xs">
+                    <SelectValue placeholder="Sync status" />
+                  </SelectTrigger>
+                  <SelectContent align="end">
+                    <SelectItem value="all" className="text-xs">
+                      All sync statuses
+                    </SelectItem>
+                    <SelectItem value="synced" className="text-xs">
+                      <div className="flex items-center gap-1.5">
+                        <span className="size-1.5 rounded-full bg-emerald-500" />
+                        <span>Synced</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="not_synced" className="text-xs">
+                      <div className="flex items-center gap-1.5">
+                        <span className="size-1.5 rounded-full bg-amber-500" />
+                        <span>Not sync</span>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
 
                 {/* Header Export Dropdown: dynamic based on selection */}
                 <DropdownMenu>
@@ -707,6 +793,29 @@ export function Members({
                   </DropdownMenuContent>
                 </DropdownMenu>
 
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void handleFullSyncFromBevy()}
+                  disabled={isFullBevySyncing}
+                  className="gap-1.5"
+                  title="Run chapter-wide member and team sync from Bevy"
+                >
+                  <RefreshCw className={cn("size-3.5 text-primary", isFullBevySyncing && "animate-spin")} />
+                  {isFullBevySyncing ? "Syncing Bevy..." : "Sync with Bevy"}
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setBulkMergeDialogOpen(true)}
+                  className="gap-1.5"
+                  title="Scan for duplicate members across Firestore and bulk merge them"
+                >
+                  <GitMerge className="size-3.5 text-primary" />
+                  Bulk merge duplicates
+                </Button>
+
                 <Button variant="outline" size="sm" asChild>
                   <a
                     href={getBevyDashboardUrl("members")}
@@ -743,6 +852,34 @@ export function Members({
           <ChapterTeamTab initialTeamMembers={teamMembers} />
         </TabsContent>
       </Tabs>
+
+      <MergeMemberDialog
+        open={mergeDialogOpen}
+        onOpenChange={setMergeDialogOpen}
+        primaryMember={memberToMerge}
+        allMembers={data}
+        onMerged={handleMergedSuccess}
+      />
+
+      <BulkMergeDialog
+        open={bulkMergeDialogOpen}
+        onOpenChange={setBulkMergeDialogOpen}
+        onMergedSuccess={() => {
+          // Re-fetch all Firestore members to clean up merged duplicates from UI
+          void (async () => {
+            try {
+              const { getFirestoreMembers } = await import("@/lib/firestore/client");
+              const fsMembers = await getFirestoreMembers();
+              if (fsMembers) {
+                // Trigger page refresh to synchronize server & client states
+                router.refresh();
+              }
+            } catch {
+              // non-blocking
+            }
+          })();
+        }}
+      />
     </div>
   );
 }

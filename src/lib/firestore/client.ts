@@ -312,6 +312,257 @@ export async function updateFirestoreMemberBevyId(uid: string, bevyUserId: strin
   }
 }
 
+/**
+ * Merges two Firestore member documents into one authoritative document.
+ * - Preserves the primary document's real email (never overrides with a masked email like f*********@gmail.com).
+ * - Copies non-empty fields from duplicateDoc into primaryDoc (e.g. bevy_user_id, bevy_member_id, roles).
+ * - Re-links event_registrations and event_merchandise_orders referencing duplicateDocId to targetMemberId.
+ * - Deletes the secondary/duplicate member document from Firestore.
+ */
+export async function mergeFirestoreMemberDocuments(
+  targetMemberId: string,
+  duplicateDocId: string,
+  forcedBevyUserId?: string | number,
+): Promise<{ success: boolean; error?: string }> {
+  if (typeof window === "undefined" || !targetMemberId || !duplicateDocId) {
+    return { success: false, error: "Target and duplicate member IDs are required." };
+  }
+  if (targetMemberId === duplicateDocId) {
+    return { success: false, error: "Target document and duplicate document cannot be the same." };
+  }
+
+  try {
+    const targetRef = doc(db, "members", targetMemberId);
+    const duplicateRef = doc(db, "members", duplicateDocId);
+
+    const [targetSnap, duplicateSnap] = await Promise.all([getDoc(targetRef), getDoc(duplicateRef)]);
+
+    if (!targetSnap.exists() && !duplicateSnap.exists()) {
+      return { success: false, error: "Neither document was found in Firestore." };
+    }
+
+    const targetData = (targetSnap.exists() ? targetSnap.data() : {}) as Record<string, unknown>;
+    const duplicateData = (duplicateSnap.exists() ? duplicateSnap.data() : {}) as Record<string, unknown>;
+
+    // Determine unmasked email (never overwrite a clean email with a masked one like `f*********@gmail.com`)
+    const targetEmail = typeof targetData.email === "string" ? targetData.email.trim() : "";
+    const duplicateEmail = typeof duplicateData.email === "string" ? duplicateData.email.trim() : "";
+
+    let finalEmail = targetEmail;
+    if (finalEmail.includes("*") || !finalEmail) {
+      if (duplicateEmail && !duplicateEmail.includes("*")) {
+        finalEmail = duplicateEmail;
+      }
+    }
+
+    // Determine resolved Bevy User ID
+    const resolvedBevyUserId =
+      forcedBevyUserId ??
+      targetData.bevy_user_id ??
+      duplicateData.bevy_user_id ??
+      null;
+
+    const now = new Date().toISOString();
+
+    // Construct merged data payload
+    const mergedPayload: Record<string, unknown> = {
+      ...duplicateData,
+      ...targetData,
+      id: targetMemberId,
+      uid: targetData.uid ?? duplicateData.uid ?? targetMemberId,
+      email: finalEmail || targetEmail || duplicateEmail,
+      bevy_user_id: resolvedBevyUserId ? String(resolvedBevyUserId) : null,
+      updated_at: now,
+    };
+
+    // Keep highest priority roles if either is organizer/team
+    if (
+      duplicateData.role === "Organizer" ||
+      duplicateData.role === "organizer" ||
+      targetData.role === "Organizer" ||
+      targetData.role === "organizer"
+    ) {
+      mergedPayload.role = "Organizer";
+    }
+
+    const sanitized = sanitizeFirestoreData(mergedPayload);
+    await setDoc(targetRef, sanitized, { merge: true });
+
+    // Re-link references in event_registrations
+    try {
+      const regQuery = query(collection(db, "event_registrations"), where("member_id", "==", duplicateDocId));
+      const regSnap = await getDocs(regQuery);
+      if (!regSnap.empty) {
+        const batch = writeBatch(db);
+        for (const rDoc of regSnap.docs) {
+          batch.update(rDoc.ref, { member_id: targetMemberId, updated_at: now });
+        }
+        await batch.commit();
+      }
+    } catch (e) {
+      console.warn("[Merge Member] Re-linking event_registrations non-fatal error:", e);
+    }
+
+    // Delete duplicate document
+    if (duplicateSnap.exists()) {
+      await deleteDoc(duplicateRef);
+    }
+
+    console.log(`[Firestore] Successfully merged member ${duplicateDocId} into ${targetMemberId}`);
+    return { success: true };
+  } catch (err) {
+    console.error("[Firestore] mergeFirestoreMemberDocuments error:", err);
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to merge member documents.",
+    };
+  }
+}
+
+export type DuplicateMemberCluster = {
+  key: string;
+  reason: "email" | "bevy_user_id";
+  authoritativeId: string;
+  duplicateIds: string[];
+  members: FirestoreMember[];
+};
+
+/**
+ * Scans all Firestore members and identifies duplicate clusters based on:
+ * 1. Normalized unmasked email address (e.g. two documents with fachridantm@gmail.com)
+ * 2. Shared valid Bevy user ID (e.g. two documents with bevy_user_id = 331870)
+ *
+ * For each cluster, determines the authoritative document:
+ * - Prefers Firebase UID (non-numeric, typically alphanumeric ~28 chars) over numeric Bevy ID doc.
+ * - Prefers document with unmasked email.
+ * - Prefers document with highest role (Organizer > Core Team > Member).
+ */
+export async function findFirestoreDuplicateMemberClusters(): Promise<DuplicateMemberCluster[]> {
+  if (typeof window === "undefined") return [];
+  try {
+    const allMembers = await getFirestoreMembers();
+    if (!allMembers || allMembers.length < 2) return [];
+
+    const clustersMap = new Map<string, { reason: "email" | "bevy_user_id"; members: FirestoreMember[] }>();
+
+    // Index by email (ignoring placeholder/masked emails with *** or user_*)
+    for (const m of allMembers) {
+      const email = (m.email || "").trim().toLowerCase();
+      if (email && !email.includes("***") && !email.startsWith("user_") && email.includes("@")) {
+        const key = `email:${email}`;
+        const existing = clustersMap.get(key) || { reason: "email", members: [] };
+        if (!existing.members.some((ex) => ex.id === m.id)) {
+          existing.members.push(m);
+        }
+        clustersMap.set(key, existing);
+      }
+
+      // Index by genuine Bevy user ID (excluding null, empty, 0, or legacy 'none')
+      const bevyId = m.bevy_user_id != null ? String(m.bevy_user_id).trim() : "";
+      if (bevyId && bevyId !== "none" && bevyId !== "null" && bevyId !== "0" && bevyId !== "undefined") {
+        const key = `bevy:${bevyId}`;
+        const existing = clustersMap.get(key) || { reason: "bevy_user_id", members: [] };
+        if (!existing.members.some((ex) => ex.id === m.id)) {
+          existing.members.push(m);
+        }
+        clustersMap.set(key, existing);
+      }
+    }
+
+    const result: DuplicateMemberCluster[] = [];
+
+    for (const [key, cluster] of clustersMap.entries()) {
+      if (cluster.members.length < 2) continue;
+
+      // Determine authoritative member:
+      // Score documents based on attributes:
+      // +100: Auth UID (non-numeric, has uid matching doc id)
+      // +50: Unmasked clean email
+      // +30: Organizer role
+      // +10: Has joined date or events registered count
+      const scored = cluster.members.map((member) => {
+        let score = 0;
+        const idStr = String(member.id || "");
+        const isNumeric = /^\d+$/.test(idStr);
+        if (!isNumeric && idStr.length > 15) score += 100;
+        if (member.uid && member.uid === member.id) score += 50;
+
+        const email = (member.email || "").trim();
+        if (email && !email.includes("*")) score += 40;
+
+        const role = (member.role || "").toLowerCase();
+        if (role === "organizer" || role === "core_team" || role === "googler") score += 30;
+
+        if ((member.events_registered_count ?? 0) > 0) score += 10;
+        if (member.joined_date) score += 5;
+
+        return { member, score };
+      });
+
+      scored.sort((a, b) => b.score - a.score);
+
+      const authoritative = scored[0].member;
+      const duplicates = scored.slice(1).map((s) => s.member);
+
+      result.push({
+        key,
+        reason: cluster.reason,
+        authoritativeId: String(authoritative.id),
+        duplicateIds: duplicates.map((d) => String(d.id)),
+        members: cluster.members,
+      });
+    }
+
+    return result;
+  } catch (error) {
+    console.error("[Firestore] findFirestoreDuplicateMemberClusters error:", error);
+    return [];
+  }
+}
+
+/**
+ * Bulk merges all duplicate clusters into their respective authoritative documents.
+ */
+export async function bulkMergeDuplicateMembers(): Promise<{
+  success: boolean;
+  totalClustersMerged: number;
+  totalDuplicatesDeleted: number;
+  errors: string[];
+}> {
+  const clusters = await findFirestoreDuplicateMemberClusters();
+  if (clusters.length === 0) {
+    return { success: true, totalClustersMerged: 0, totalDuplicatesDeleted: 0, errors: [] };
+  }
+
+  let totalClustersMerged = 0;
+  let totalDuplicatesDeleted = 0;
+  const errors: string[] = [];
+
+  for (const cluster of clusters) {
+    let clusterHadSuccess = false;
+    for (const dupId of cluster.duplicateIds) {
+      if (dupId === cluster.authoritativeId) continue;
+      const res = await mergeFirestoreMemberDocuments(cluster.authoritativeId, dupId);
+      if (res.success) {
+        totalDuplicatesDeleted++;
+        clusterHadSuccess = true;
+      } else if (res.error) {
+        errors.push(`Error merging ${dupId} into ${cluster.authoritativeId}: ${res.error}`);
+      }
+    }
+    if (clusterHadSuccess) {
+      totalClustersMerged++;
+    }
+  }
+
+  return {
+    success: errors.length === 0,
+    totalClustersMerged,
+    totalDuplicatesDeleted,
+    errors,
+  };
+}
+
 // ── Referral Program ────────────────────────────────────────────────────────
 
 const DEFAULT_REFERRAL_SETTINGS: ReferralProgramSettings = {

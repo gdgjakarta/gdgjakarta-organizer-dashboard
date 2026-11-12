@@ -16,6 +16,26 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.20",
+    releaseDate: "2026-11-12",
+    title: "Member Merge System & Bulk Bevy Sync",
+    badge: "Latest",
+    items: [
+      {
+        category: "Added",
+        text: "Added individual and bulk duplicate member merge tools on the Members page with automatic cluster detection, registration re-linking, and clean secondary doc deletion.",
+      },
+      {
+        category: "Added",
+        text: "Added chapter-wide bulk sync button to refresh members and chapter team roster directly from Bevy into Firestore.",
+      },
+      {
+        category: "Fixed",
+        text: "Eliminated synthetic fallback Bevy User IDs in auth resolution to ensure unsynced accounts are cleanly marked as not synced and prevent ID collisions.",
+      },
+    ],
+  },
+  {
     version: "1.0.16",
     releaseDate: "2026-11-12",
     title: "Regional Lead & Community Manager Dashboard Access",

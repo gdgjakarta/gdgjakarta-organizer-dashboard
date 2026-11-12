@@ -2,7 +2,7 @@
 import type { ColumnDef } from "@tanstack/react-table";
 import { Subscribe } from "@tanstack/react-table";
 import { parse } from "date-fns";
-import { Copy, ExternalLink, MoreHorizontal, RefreshCw } from "lucide-react";
+import { Copy, ExternalLink, GitMerge, MoreHorizontal, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -47,6 +47,7 @@ function AvatarCell({ name, avatarUrl }: { name: string; avatarUrl?: string }) {
 
 export function getMembersColumns(
   onSyncMember?: (member: MemberRow) => Promise<void>,
+  onMergeMember?: (member: MemberRow) => void,
 ): ColumnDef<DataTableFeatures, MemberRow>[] {
   return [
     {
@@ -128,8 +129,13 @@ export function getMembersColumns(
     },
     {
       id: "syncStatus",
-      accessorKey: "syncStatus",
+      accessorFn: (row) => (row.syncStatus === "synced" || row.bevyUserId ? "synced" : "not_synced"),
       header: "Sync status",
+      filterFn: (row, columnId, filterValue) => {
+        if (!filterValue || filterValue === "all") return true;
+        const status = row.getValue(columnId);
+        return status === filterValue;
+      },
       cell: ({ row }) => {
         const isSynced = row.original.syncStatus === "synced" || Boolean(row.original.bevyUserId);
         if (isSynced) {
@@ -222,6 +228,17 @@ export function getMembersColumns(
                 >
                   <Copy className="size-3.5" />
                   Copy Bevy ID
+                </DropdownMenuItem>
+              ) : null}
+              {onMergeMember ? (
+                <DropdownMenuItem
+                  className="flex items-center gap-2 text-primary"
+                  onClick={() => {
+                    onMergeMember(row.original);
+                  }}
+                >
+                  <GitMerge className="size-3.5" />
+                  Merge duplicate...
                 </DropdownMenuItem>
               ) : null}
             </DropdownMenuContent>
