@@ -20,9 +20,21 @@ interface AccountChapterTabProps {
 }
 
 export function AccountChapterTab({ user, member }: AccountChapterTabProps) {
-  const rawRole = member?.chapter_role ?? user.chapterRole ?? member?.role ?? user.role;
-  const isOrganizer = isExecutiveOrganizer(user) || isExecutiveOrganizer(member?.role);
-  const isStaff = !isOrganizer && (isCoreTeamOrStaff(user) || isCoreTeamOrStaff(member?.role));
+  // Prioritize active session organizer role if the stored member record is stale
+  const sessionRole = user.chapterRole ?? user.role;
+  const isSessionPrivileged = Boolean(
+    user.role === "organizer" ||
+      user.role === "core_team" ||
+      user.role === "check_in_staff" ||
+      user.role === "googler" ||
+      (typeof user.chapterRole === "string" && !user.chapterRole.toLowerCase().includes("member")),
+  );
+  const rawRole = isSessionPrivileged
+    ? sessionRole || member?.chapter_role || member?.role
+    : (member?.chapter_role ?? member?.role ?? sessionRole);
+  const isOrganizer =
+    isExecutiveOrganizer(user) || isExecutiveOrganizer(member?.role) || isExecutiveOrganizer(member?.chapter_role);
+  const isStaff = !isOrganizer && (isCoreTeamOrStaff(user) || isCoreTeamOrStaff(member?.role, member?.chapter_role));
   const isMember = !isOrganizer && !isStaff;
 
   const bevyUserId = member?.bevy_user_id ?? user.bevyUserId;

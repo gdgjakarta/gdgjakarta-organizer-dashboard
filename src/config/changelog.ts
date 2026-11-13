@@ -16,10 +16,25 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.27",
+    releaseDate: "2026-11-13",
+    title: "Organizer Role Authority & Chapter Role Persistence",
+    badge: "Latest",
+    items: [
+      {
+        category: "Fixed",
+        text: "Resolved role display discrepancy on the account screen by prioritizing active session organizer and core team roles over stale Firestore member records.",
+      },
+      {
+        category: "Fixed",
+        text: "Updated member persistence in Firestore to retain and preserve chapter_role alongside user profile saves.",
+      },
+    ],
+  },
+  {
     version: "1.0.26",
     releaseDate: "2026-11-13",
     title: "Google Sign-In Redirect Loop & Popup Fallback Fix",
-    badge: "Latest",
     items: [
       {
         category: "Fixed",

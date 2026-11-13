@@ -19,7 +19,18 @@ export function AccountHero({ user, member }: AccountHeroProps) {
   const displayName = member?.name ?? user.name;
   const email = member?.email ?? user.email;
   const avatarUrl = member?.avatar_url ?? user.avatar;
-  const rawRole = member?.chapter_role ?? user.chapterRole ?? member?.role ?? user.role;
+  // Prioritize active session organizer role if the stored member record is stale
+  const sessionRole = user.chapterRole ?? user.role;
+  const isSessionPrivileged = Boolean(
+    user.role === "organizer" ||
+      user.role === "core_team" ||
+      user.role === "check_in_staff" ||
+      user.role === "googler" ||
+      (typeof user.chapterRole === "string" && !user.chapterRole.toLowerCase().includes("member")),
+  );
+  const rawRole = isSessionPrivileged
+    ? sessionRole || member?.chapter_role || member?.role
+    : (member?.chapter_role ?? member?.role ?? sessionRole);
 
   const registeredCount = member?.events_registered_count ?? 0;
   const attendedCount = member?.events_attended_count ?? 0;

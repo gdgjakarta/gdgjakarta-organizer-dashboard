@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.27] - 2026-11-13
+
+### Fixed
+- **Organizer Role Authority & Chapter Role Persistence**: Resolved role display discrepancy on the account screen by prioritizing active session organizer and core team roles over stale Firestore member records. Updated `saveFirestoreMember` to preserve and persist `chapter_role` alongside user profiles.
+
+---
+
 ## [1.0.26] - 2026-11-13
 
 ### Fixed

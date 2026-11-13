@@ -231,6 +231,11 @@ export async function saveFirestoreMember(member: Partial<FirestoreMember> | Rec
       } else if (existing.role) {
         updatePayload.role = existing.role;
       }
+      if (member.chapter_role !== undefined) {
+        updatePayload.chapter_role = member.chapter_role;
+      } else if (existing.chapter_role !== undefined) {
+        updatePayload.chapter_role = existing.chapter_role;
+      }
       if (member.team) {
         updatePayload.team = member.team;
       } else if (existing.team) {
