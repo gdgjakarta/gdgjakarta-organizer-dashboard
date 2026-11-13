@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.26] - 2026-11-13
+
+### Fixed
+- **Google Sign-In Redirect Loop & Popup Fallback**: Restored `signInWithPopup` as the primary authentication mode with seamless automatic fallback to `signInWithRedirect` when popups are blocked or unsupported by the browser. Memoized `handleGoogleRedirectResult` across concurrent callers and synchronized `onAuthStateChanged` to eliminate auth state race conditions and premature navigation before session cookies settle.
+
+---
+
 ## [1.0.25] - 2026-11-12
 
 ### Fixed

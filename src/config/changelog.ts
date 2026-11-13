@@ -16,10 +16,25 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.26",
+    releaseDate: "2026-11-13",
+    title: "Google Sign-In Redirect Loop & Popup Fallback Fix",
+    badge: "Latest",
+    items: [
+      {
+        category: "Fixed",
+        text: "Restored popup mode as default with automatic redirect fallback when popups are blocked or unsupported by the browser.",
+      },
+      {
+        category: "Fixed",
+        text: "Memoized redirect result handling and synchronized onAuthStateChanged listener to eliminate auth race conditions and premature navigation.",
+      },
+    ],
+  },
+  {
     version: "1.0.25",
     releaseDate: "2026-11-12",
     title: "17.8k Member Server Pagination & Algolia Search Fix",
-    badge: "Latest",
     items: [
       {
         category: "Fixed",

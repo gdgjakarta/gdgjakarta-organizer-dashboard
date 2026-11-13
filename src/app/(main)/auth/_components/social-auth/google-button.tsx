@@ -9,7 +9,7 @@ import { toast } from "sonner";
 
 import googleFavicon from "@/app/Google_Favicon.webp";
 import { Button } from "@/components/ui/button";
-import { getDashboardHomeUrl, isCoreTeamOrStaff, isExecutiveOrganizer } from "@/lib/auth-roles";
+import { isCoreTeamOrStaff, isExecutiveOrganizer } from "@/lib/auth-roles";
 import { cn } from "@/lib/utils";
 import { handleGoogleRedirectResult, signInWithGoogle, signInWithGoogleRedirect } from "@/stores/auth/auth-provider";
 import type { AuthOrganizer } from "@/stores/auth/auth-store";
@@ -67,7 +67,7 @@ export function GoogleButton({
   disabled,
   children,
   redirect = true,
-  authMode = "redirect",
+  authMode = "popup",
   callbackUrl: propCallbackUrl,
   onSuccess,
   ...props
@@ -102,6 +102,8 @@ export function GoogleButton({
           return;
         }
 
+        // Allow server cookie setting from handleUserPostLoginAction to settle before navigating
+        await new Promise((resolve) => setTimeout(resolve, 150));
         navigateAfterLogin(result.organizer, result.isAllowed, callbackUrl);
       } catch (err) {
         if (!isMounted) return;
@@ -133,15 +135,33 @@ export function GoogleButton({
 
       if (authMode === "popup") {
         console.log("[Google Button] User clicked Sign in with Google (Popup mode)");
-        const result = await signInWithGoogle();
-        if (!redirect) {
-          setIsLoading(false);
-          onSuccess?.(result);
+        try {
+          const result = await signInWithGoogle();
+          if (!redirect) {
+            setIsLoading(false);
+            onSuccess?.(result);
+            return;
+          }
+          setLoadingText("Navigating to dashboard…");
+          navigateAfterLogin(result.organizer, result.isAllowed, callbackUrl);
           return;
+        } catch (popupErr: unknown) {
+          const error = popupErr as { code?: string; message?: string };
+          // If popup was blocked or unsupported, seamlessly fall back to redirect
+          if (
+            error.code === "auth/popup-blocked" ||
+            error.code === "auth/operation-not-supported-in-this-environment" ||
+            error.code === "auth/cancelled-popup-request"
+          ) {
+            console.warn("[Google Button] Popup blocked or not supported. Falling back to redirect mode:", error.code);
+            if (callbackUrl && typeof window !== "undefined") {
+              sessionStorage.setItem(PENDING_CALLBACK_URL_KEY, callbackUrl);
+            }
+            await signInWithGoogleRedirect();
+            return;
+          }
+          throw popupErr;
         }
-        setLoadingText("Navigating to dashboard…");
-        navigateAfterLogin(result.organizer, result.isAllowed, callbackUrl);
-        return;
       }
 
       // Default redirect mode

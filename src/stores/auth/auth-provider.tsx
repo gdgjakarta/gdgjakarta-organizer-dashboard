@@ -35,6 +35,7 @@ const AuthStoreContext = createContext<StoreApi<AuthState> | null>(null);
 
 let globalStore: StoreApi<AuthState> | null = null;
 let isSigningInWithGoogle = false;
+let redirectResultPromise: Promise<{ organizer: AuthOrganizer; isAllowed: boolean } | null> | null = null;
 
 function mapFirebaseUserToOrganizer(user: User, validation?: OrganizerValidationResult): AuthOrganizer {
   const isOrg = validation?.isValidOrganizer ?? false;
@@ -150,10 +151,25 @@ export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
       if (firebaseUser) {
         console.log(`[Auth Provider] Firebase user detected: ${firebaseUser.email} (UID: ${firebaseUser.uid})`);
 
-        // Skip duplicate server sync if signInWithGoogle popup is actively handling it
+        // Check if redirect result is pending/processing; if so, await it so we don't race
+        if (redirectResultPromise !== null) {
+          try {
+            const redirectOutcome = await redirectResultPromise;
+            if (redirectOutcome) {
+              console.log(
+                "[Auth Provider] Redirect result handled auth sync. Skipping duplicate onAuthStateChanged sync.",
+              );
+              return;
+            }
+          } catch {
+            // Proceed to standard session restoration if redirect handling threw
+          }
+        }
+
+        // Skip duplicate server sync if signInWithGoogle popup or redirect is actively handling it
         if (isSigningInWithGoogle) {
           console.log(
-            "[Auth Provider] signInWithGoogle is actively syncing. Skipping duplicate onAuthStateChanged sync.",
+            "[Auth Provider] Google Sign-In is actively syncing. Skipping duplicate onAuthStateChanged sync.",
           );
           return;
         }
@@ -448,23 +464,32 @@ export async function signInWithGoogleRedirect(): Promise<void> {
 
 /**
  * Consumes pending redirect result upon app mount or page load.
+ * Memoized so concurrent calls (e.g. AuthStoreProvider and GoogleButton) share the exact same promise.
  */
 export async function handleGoogleRedirectResult(): Promise<{ organizer: AuthOrganizer; isAllowed: boolean } | null> {
-  try {
-    const result = await getRedirectResult(auth);
-    if (!result || !result.user) {
-      return null;
-    }
-    isSigningInWithGoogle = true;
-    try {
-      return await processUserCredential(result, "signInWithRedirect");
-    } finally {
-      isSigningInWithGoogle = false;
-    }
-  } catch (err) {
-    console.error("[Auth Flow - Client] Error during handleGoogleRedirectResult:", err);
-    throw err;
+  if (redirectResultPromise !== null) {
+    return redirectResultPromise;
   }
+
+  redirectResultPromise = (async () => {
+    try {
+      const result = await getRedirectResult(auth);
+      if (!result || !result.user) {
+        return null;
+      }
+      isSigningInWithGoogle = true;
+      try {
+        return await processUserCredential(result, "signInWithRedirect");
+      } finally {
+        isSigningInWithGoogle = false;
+      }
+    } catch (err) {
+      console.error("[Auth Flow - Client] Error during handleGoogleRedirectResult:", err);
+      throw err;
+    }
+  })();
+
+  return redirectResultPromise;
 }
 
 /**
