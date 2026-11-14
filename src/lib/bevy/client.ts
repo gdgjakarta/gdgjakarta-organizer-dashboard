@@ -117,10 +117,8 @@ export async function bevyFetchWithResponse<T>(
     ...(options.headers as Record<string, string>),
   });
 
-  const timeoutSignal = typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(6_000) : undefined;
-  const signal = options.signal || timeoutSignal;
-
   const executeFetch = async (headers: Record<string, string>) => {
+    const signal = options.signal || (typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(10_000) : undefined);
     const response = await fetch(url, {
       ...options,
       headers,
@@ -709,13 +707,12 @@ export function isEmailMatch(candidateEmail?: string | null, targetEmail?: strin
     const [tLocal, tDomain] = t.split("@");
     if (!cLocal || !cDomain || !tLocal || !tDomain) return false;
     if (cDomain !== tDomain) return false;
-    if (cLocal.length !== tLocal.length) return false;
-    for (let i = 0; i < cLocal.length; i++) {
-      if (cLocal[i] !== "*" && cLocal[i] !== tLocal[i]) {
-        return false;
-      }
-    }
-    return true;
+    const firstStar = cLocal.indexOf("*");
+    const lastStar = cLocal.lastIndexOf("*");
+    const prefix = cLocal.slice(0, firstStar);
+    const suffix = cLocal.slice(lastStar + 1);
+    if (tLocal.length < prefix.length + suffix.length + 1) return false;
+    return tLocal.startsWith(prefix) && (suffix.length === 0 || tLocal.endsWith(suffix));
   }
 
   return false;

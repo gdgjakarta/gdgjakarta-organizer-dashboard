@@ -16,10 +16,29 @@ export interface ChangelogRelease {
  */
 export const CHANGELOG_RELEASES: ChangelogRelease[] = [
   {
+    version: "1.0.28",
+    releaseDate: "2026-11-14",
+    title: "Organizer Role Bootstrap, Masked Email Matching & Role Sync",
+    badge: "Latest",
+    items: [
+      {
+        category: "Fixed",
+        text: "Resolved Firestore permission deadlock by introducing bootstrap organizer verification and Bevy masked email matching in security rules.",
+      },
+      {
+        category: "Fixed",
+        text: "Prevented accidental organizer/staff demotions during profile saves or transient Bevy API timeouts.",
+      },
+      {
+        category: "Improved",
+        text: "Standardized Bevy role resolution and regional lead handling via centralized isGooglerRole and added 1-click role sync actions.",
+      },
+    ],
+  },
+  {
     version: "1.0.27",
     releaseDate: "2026-11-13",
     title: "Organizer Role Authority & Chapter Role Persistence",
-    badge: "Latest",
     items: [
       {
         category: "Fixed",

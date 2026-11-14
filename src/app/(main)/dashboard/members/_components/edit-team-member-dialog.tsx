@@ -86,7 +86,13 @@ export function EditTeamMemberDialog({ open, onOpenChange, member, onSuccess }: 
   const displayName =
     member.user?.full_name?.trim() || `${firstName} ${lastName}`.trim() || member.user?.email || "Team Member";
 
-  const userId = member.user?.id || member.user_id;
+  const userId =
+    member.user?.id ??
+    member.user_id ??
+    (typeof (member as unknown as { user?: unknown }).user === "number" ||
+    typeof (member as unknown as { user?: unknown }).user === "string"
+      ? (member as unknown as { user: string | number }).user
+      : undefined);
 
   const handleUpdate = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();

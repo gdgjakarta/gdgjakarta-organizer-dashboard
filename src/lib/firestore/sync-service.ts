@@ -3,6 +3,7 @@
 import { collection, doc, getDocs, writeBatch } from "firebase/firestore";
 
 import { resolveEventAudience } from "@/lib/bevy/audience";
+import { type BevyChapterTeamMember, getChapterRoleById, isGooglerRole } from "@/lib/bevy/types";
 import { splitFullName } from "@/lib/utils";
 import {
   fetchAllBevyChapterMembersAction,
@@ -15,6 +16,61 @@ import type { FirestoreEvent } from "./types";
 
 function cleanPayload<T extends Record<string, unknown>>(obj: T): Partial<T> {
   return sanitizeFirestoreData(obj);
+}
+
+function isMaskedEmailMatch(maskedEmail: string, candidateEmail: string): boolean {
+  if (!maskedEmail || !candidateEmail) return false;
+  const c = maskedEmail.toLowerCase().trim();
+  const t = candidateEmail.toLowerCase().trim();
+  if (c === t) return true;
+  if (!c.includes("*")) return false;
+  const [cLocal, cDomain] = c.split("@");
+  const [tLocal, tDomain] = t.split("@");
+  if (!cLocal || !cDomain || !tLocal || !tDomain || cDomain !== tDomain) return false;
+  const firstStar = cLocal.indexOf("*");
+  const lastStar = cLocal.lastIndexOf("*");
+  const prefix = cLocal.slice(0, firstStar);
+  const suffix = cLocal.slice(lastStar + 1);
+  if (tLocal.length < prefix.length + suffix.length + 1) return false;
+  return tLocal.startsWith(prefix) && (suffix.length === 0 || tLocal.endsWith(suffix));
+}
+
+function resolveCanonicalTeamRole(tm: BevyChapterTeamMember): {
+  role: string;
+  chapterRole: string;
+  roleTitle: string;
+} {
+  const roleObj = tm.role;
+  const roleId =
+    typeof roleObj === "object" && roleObj !== null && typeof roleObj.id === "number"
+      ? roleObj.id
+      : typeof roleObj === "number"
+        ? roleObj
+        : null;
+  const roleName =
+    typeof roleObj === "object" && roleObj !== null && typeof roleObj.name === "string"
+      ? roleObj.name
+      : typeof roleObj === "string"
+        ? roleObj
+        : "";
+  const lower = `${roleName} ${tm.title || ""}`.toLowerCase();
+
+  let role = "organizer";
+  let chapterRole = "Organizer";
+
+  if (isGooglerRole(getChapterRoleById(roleId)) || isGooglerRole(lower)) {
+    role = "organizer";
+    chapterRole = "Googler";
+  } else if (roleId === 3 || lower.includes("check-in") || lower.includes("checkin")) {
+    role = "check_in_staff";
+    chapterRole = "Check-in Staff";
+  } else if (roleId === 2 || (roleId !== 1 && (lower.includes("team member") || lower.includes("core team") || lower.includes("staff")))) {
+    role = "core_team";
+    chapterRole = "Core Team";
+  }
+
+  const roleTitle = tm.title?.trim() || roleName.trim() || chapterRole;
+  return { role, chapterRole, roleTitle };
 }
 
 /**
@@ -148,8 +204,8 @@ export async function syncBevyMembersToFirestore(maxMembers = 1000): Promise<{
     ]);
 
     // Build index of existing Firestore members to deduplicate and prevent resurrecting numeric Bevy doc IDs
-    const existingByEmail = new Map<string, { id: string; email: string; isAuthUid: boolean }>();
-    const existingByBevyId = new Map<string, { id: string; email: string; isAuthUid: boolean }>();
+    const existingByEmail = new Map<string, { id: string; email: string; isAuthUid: boolean; role?: string; chapter_role?: string; team?: string }>();
+    const existingByBevyId = new Map<string, { id: string; email: string; isAuthUid: boolean; role?: string; chapter_role?: string; team?: string }>();
 
     for (const d of existingMembersSnap.docs) {
       const data = d.data();
@@ -158,7 +214,14 @@ export async function syncBevyMembersToFirestore(maxMembers = 1000): Promise<{
       const email = typeof data.email === "string" ? data.email.trim().toLowerCase() : "";
       const bevyId = data.bevy_user_id != null ? String(data.bevy_user_id).trim() : "";
 
-      const record = { id: docId, email, isAuthUid };
+      const record = {
+        id: docId,
+        email,
+        isAuthUid,
+        role: typeof data.role === "string" ? data.role : undefined,
+        chapter_role: typeof data.chapter_role === "string" ? data.chapter_role : undefined,
+        team: typeof data.team === "string" ? data.team : undefined,
+      };
 
       if (email && !email.includes("***") && !email.startsWith("user_") && email.includes("@")) {
         const prev = existingByEmail.get(email);
@@ -177,6 +240,8 @@ export async function syncBevyMembersToFirestore(maxMembers = 1000): Promise<{
     }
 
     interface TeamInfo {
+      role: string;
+      chapterRole: string;
       roleTitle: string;
       avatarUrl?: string | null;
       company?: string | null;
@@ -185,17 +250,11 @@ export async function syncBevyMembersToFirestore(maxMembers = 1000): Promise<{
     for (const tm of teamMembers) {
       const email = tm.user?.email?.toLowerCase();
       const userId = tm.user?.id ? String(tm.user.id) : String(tm.user_id || "");
-      let roleTitle = "Organizer";
-
-      if (typeof tm.role === "object" && tm.role !== null && "name" in tm.role && tm.role.name) {
-        roleTitle = tm.role.name;
-      } else if (typeof tm.role === "string" && tm.role) {
-        roleTitle = tm.role;
-      } else if (tm.title) {
-        roleTitle = tm.title;
-      }
+      const { role, chapterRole, roleTitle } = resolveCanonicalTeamRole(tm);
 
       const teamInfo: TeamInfo = {
+        role,
+        chapterRole,
         roleTitle,
         avatarUrl: tm.user?.avatar?.url || tm.user?.avatar?.thumbnail_url || null,
         company: tm.user?.company || null,
@@ -242,7 +301,18 @@ export async function syncBevyMembersToFirestore(maxMembers = 1000): Promise<{
       const targetDocId = existingMatch ? existingMatch.id : userId;
 
       const teamInfo = teamMap.get(cleanEmail) || teamMap.get(`id:${userId}`) || null;
-      const organizerRole = teamInfo?.roleTitle || null;
+      const existingIsTeam =
+        existingMatch?.team === "Core Team" ||
+        (existingMatch?.role && existingMatch.role.toLowerCase() !== "member");
+      const preserveExistingTeam = !teamInfo && teamMembers.length === 0 && existingIsTeam;
+
+      const resolvedRole = teamInfo ? teamInfo.role : preserveExistingTeam ? existingMatch?.role || "Organizer" : "Member";
+      const resolvedChapterRole = teamInfo
+        ? teamInfo.chapterRole
+        : preserveExistingTeam
+          ? existingMatch?.chapter_role || "Organizer"
+          : null;
+      const resolvedTeam = teamInfo || preserveExistingTeam ? "Core Team" : "Community";
       const displayName = m.user.full_name?.trim() || cleanEmail.split("@")[0] || "Community Member";
       const { firstName, lastName } = splitFullName(m.user.full_name?.trim() || displayName);
 
@@ -254,15 +324,16 @@ export async function syncBevyMembersToFirestore(maxMembers = 1000): Promise<{
 
       const rawMemberPayload: Record<string, unknown> = {
         id: targetDocId,
-        bevy_user_id: m.user.id,
+        bevy_user_id: String(m.user.id),
         bevy_member_id: m.id || null,
         name: displayName,
         first_name: firstName || null,
         last_name: lastName || null,
         email: finalEmail,
-        role: organizerRole || "Member",
-        chapter_role: organizerRole || null,
-        team: organizerRole ? "Core Team" : "Community",
+        role: resolvedRole,
+        chapter_role: resolvedChapterRole,
+        team: resolvedTeam,
+        ...(teamInfo?.roleTitle ? { title: teamInfo.roleTitle } : {}),
         status: "Active",
         joined_date: m.created_date || now,
         raw_created_date: m.created_date || now,
@@ -290,15 +361,23 @@ export async function syncBevyMembersToFirestore(maxMembers = 1000): Promise<{
       const rawEmail = (tm.user?.email || "").trim();
       const cleanEmail = rawEmail.toLowerCase();
 
-      const existingMatch =
+      let existingMatch =
         (cleanEmail && !cleanEmail.includes("***") && !cleanEmail.startsWith("user_")
           ? existingByEmail.get(cleanEmail)
           : null) || existingByBevyId.get(userId);
 
+      if (!existingMatch && cleanEmail.includes("*")) {
+        for (const [candidateEmail, rec] of existingByEmail.entries()) {
+          if (isMaskedEmailMatch(cleanEmail, candidateEmail)) {
+            existingMatch = rec;
+            break;
+          }
+        }
+      }
+
       const targetDocId = existingMatch ? existingMatch.id : userId;
 
-      const teamInfo = teamMap.get(cleanEmail) || teamMap.get(`id:${userId}`) || null;
-      const organizerRole = teamInfo?.roleTitle || "Organizer";
+      const teamInfo = teamMap.get(cleanEmail) || teamMap.get(`id:${userId}`) || resolveCanonicalTeamRole(tm);
       const displayName =
         tm.user?.full_name?.trim() ||
         [tm.user?.first_name, tm.user?.last_name].filter(Boolean).join(" ").trim() ||
@@ -307,23 +386,25 @@ export async function syncBevyMembersToFirestore(maxMembers = 1000): Promise<{
       const { firstName, lastName } = splitFullName(displayName);
 
       const memberDocRef = doc(db, "members", targetDocId);
-      const finalEmail = rawEmail || existingMatch?.email || "";
+      const finalEmail =
+        rawEmail && !rawEmail.includes("***") ? rawEmail : existingMatch?.email || rawEmail || "";
 
       const rawMemberPayload: Record<string, unknown> = {
         id: targetDocId,
-        bevy_user_id: tm.user?.id ?? tm.user_id ?? userId,
+        bevy_user_id: String(tm.user?.id ?? tm.user_id ?? userId),
         name: displayName,
         first_name: firstName || null,
         last_name: lastName || null,
         email: finalEmail,
-        role: organizerRole,
-        chapter_role: organizerRole,
+        role: teamInfo.role,
+        chapter_role: teamInfo.chapterRole,
+        title: teamInfo.roleTitle,
         team: "Core Team",
         status: "Active",
         joined_date: now,
         raw_created_date: now,
-        avatar_url: teamInfo?.avatarUrl || tm.user?.avatar?.url || null,
-        company: teamInfo?.company || tm.user?.company || null,
+        avatar_url: ("avatarUrl" in teamInfo ? teamInfo.avatarUrl : null) || tm.user?.avatar?.url || null,
+        company: ("company" in teamInfo ? teamInfo.company : null) || tm.user?.company || null,
         synced_from_bevy_at: now,
         updated_at: now,
       };
@@ -349,6 +430,121 @@ export async function syncBevyMembersToFirestore(maxMembers = 1000): Promise<{
     const errorMsg = error instanceof Error ? error.message : String(error);
     console.error("[Sync Service] syncBevyMembersToFirestore failed:", error);
     await updateSyncMetadata({ status: "error", error_message: errorMsg });
+    return { success: false, totalSynced: 0, error: errorMsg };
+  }
+}
+
+/**
+ * Syncs only the Chapter Team (Organizers, Core Team, Check-in Staff, Googlers) from Bevy into Firestore.
+ * Updates existing `/members/{uid}` documents (matching by Bevy User ID, exact email, or masked email)
+ * and ensures a `/members/{bevyUserId}` mirror exists for unbootstrapped team members so `firestore.rules`
+ * (`hasCallerVerifiedBevyTeamDoc`) immediately grants team access on first login.
+ */
+export async function syncChapterTeamRolesToFirestore(
+  passedTeamMembers?: BevyChapterTeamMember[],
+): Promise<{
+  success: boolean;
+  totalSynced: number;
+  error?: string;
+}> {
+  try {
+    const [teamMembers, existingMembersSnap] = await Promise.all([
+      passedTeamMembers && passedTeamMembers.length > 0 ? Promise.resolve(passedTeamMembers) : fetchBevyChapterTeamsAction(),
+      getDocs(collection(db, "members")),
+    ]);
+
+    if (!teamMembers || teamMembers.length === 0) {
+      return { success: false, totalSynced: 0, error: "Could not retrieve chapter team from Bevy (empty or timed out)." };
+    }
+
+    const existingByEmail = new Map<string, { id: string; email: string; isAuthUid: boolean }>();
+    const existingByBevyId = new Map<string, { id: string; email: string; isAuthUid: boolean }>();
+
+    for (const d of existingMembersSnap.docs) {
+      const data = d.data();
+      const docId = d.id;
+      const isAuthUid = !/^\d+$/.test(docId) && docId.length > 15;
+      const email = typeof data.email === "string" ? data.email.trim().toLowerCase() : "";
+      const bevyId = data.bevy_user_id != null ? String(data.bevy_user_id).trim() : "";
+
+      const record = { id: docId, email, isAuthUid };
+      if (email && !email.includes("***") && !email.startsWith("user_") && email.includes("@")) {
+        const prev = existingByEmail.get(email);
+        if (!prev || (!prev.isAuthUid && isAuthUid)) {
+          existingByEmail.set(email, record);
+        }
+      }
+      if (bevyId && bevyId !== "none" && bevyId !== "null" && bevyId !== "0" && bevyId !== "undefined") {
+        const prev = existingByBevyId.get(bevyId);
+        if (!prev || (!prev.isAuthUid && isAuthUid)) {
+          existingByBevyId.set(bevyId, record);
+        }
+      }
+    }
+
+    const now = new Date().toISOString();
+    const batch = writeBatch(db);
+    let count = 0;
+
+    for (const tm of teamMembers) {
+      const userId = tm.user?.id ? String(tm.user.id) : String(tm.user_id || "");
+      if (!userId) continue;
+
+      const rawEmail = (tm.user?.email || "").trim();
+      const cleanEmail = rawEmail.toLowerCase();
+
+      let existingMatch =
+        (cleanEmail && !cleanEmail.includes("***") && !cleanEmail.startsWith("user_")
+          ? existingByEmail.get(cleanEmail)
+          : null) || existingByBevyId.get(userId);
+
+      if (!existingMatch && cleanEmail.includes("*")) {
+        for (const [candidateEmail, rec] of existingByEmail.entries()) {
+          if (isMaskedEmailMatch(cleanEmail, candidateEmail)) {
+            existingMatch = rec;
+            break;
+          }
+        }
+      }
+
+      const targetDocId = existingMatch ? existingMatch.id : userId;
+      const { role, chapterRole, roleTitle } = resolveCanonicalTeamRole(tm);
+      const displayName =
+        tm.user?.full_name?.trim() ||
+        [tm.user?.first_name, tm.user?.last_name].filter(Boolean).join(" ").trim() ||
+        (existingMatch?.email ? existingMatch.email.split("@")[0] : cleanEmail.split("@")[0]) ||
+        "Community Organizer";
+      const { firstName, lastName } = splitFullName(displayName);
+      const finalEmail =
+        rawEmail && !rawEmail.includes("***") ? rawEmail : existingMatch?.email || rawEmail || "";
+
+      const rawMemberPayload: Record<string, unknown> = {
+        id: targetDocId,
+        bevy_user_id: userId,
+        name: displayName,
+        first_name: firstName || null,
+        last_name: lastName || null,
+        email: finalEmail,
+        role,
+        chapter_role: chapterRole,
+        title: roleTitle,
+        team: "Core Team",
+        status: "Active",
+        avatar_url: tm.user?.avatar?.url || tm.user?.avatar?.thumbnail_url || null,
+        company: tm.user?.company || null,
+        synced_from_bevy_at: now,
+        updated_at: now,
+      };
+
+      batch.set(doc(db, "members", targetDocId), cleanPayload(rawMemberPayload), { merge: true });
+      count++;
+    }
+
+    await batch.commit();
+    return { success: true, totalSynced: count };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error("[Sync Service] syncChapterTeamRolesToFirestore failed:", error);
     return { success: false, totalSynced: 0, error: errorMsg };
   }
 }

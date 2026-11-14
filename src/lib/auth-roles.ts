@@ -1,4 +1,4 @@
-import { ChapterRole } from "@/lib/bevy/types";
+import { ChapterRole, isGooglerRole } from "@/lib/bevy/types";
 
 export interface UserRoleLike {
   role?: string | null;
@@ -56,19 +56,19 @@ export function isExecutiveOrganizer(userOrRole?: UserRoleLike | string | null):
   const lower = (roleStr ?? "").toLowerCase().trim();
 
   if (typeof userOrRole !== "string") {
-    if (userOrRole.chapterRoleType === ChapterRole.ORGANIZER || userOrRole.chapterRoleType === ChapterRole.GOOGLER) {
+    if (userOrRole.chapterRoleType === ChapterRole.ORGANIZER || isGooglerRole(userOrRole.chapterRoleType)) {
       return true;
     }
     if (userOrRole.roleId === 1 || userOrRole.roleId === 4) {
       return true;
     }
     const cr = (userOrRole.chapterRole ?? "").toLowerCase().trim();
-    if (cr.includes("organizer") || cr.includes("googler")) {
+    if (cr.includes("organizer") || isGooglerRole(cr)) {
       return true;
     }
   }
 
-  return lower === "organizer" || lower === "googler";
+  return lower === "organizer" || isGooglerRole(lower);
 }
 
 /**

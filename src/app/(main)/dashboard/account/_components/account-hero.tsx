@@ -6,6 +6,7 @@ import { GdgLogo } from "@/components/gdg-logo";
 import { RoleBadge } from "@/components/role-badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent } from "@/components/ui/card";
+import { hasTeamOperationalAccess } from "@/lib/auth-roles";
 import type { FirestoreMember } from "@/lib/firestore/types";
 import { getInitials } from "@/lib/utils";
 import type { AuthOrganizer } from "@/stores/auth/auth-store";
@@ -21,13 +22,7 @@ export function AccountHero({ user, member }: AccountHeroProps) {
   const avatarUrl = member?.avatar_url ?? user.avatar;
   // Prioritize active session organizer role if the stored member record is stale
   const sessionRole = user.chapterRole ?? user.role;
-  const isSessionPrivileged = Boolean(
-    user.role === "organizer" ||
-      user.role === "core_team" ||
-      user.role === "check_in_staff" ||
-      user.role === "googler" ||
-      (typeof user.chapterRole === "string" && !user.chapterRole.toLowerCase().includes("member")),
-  );
+  const isSessionPrivileged = hasTeamOperationalAccess(user);
   const rawRole = isSessionPrivileged
     ? sessionRole || member?.chapter_role || member?.role
     : (member?.chapter_role ?? member?.role ?? sessionRole);

@@ -16,7 +16,7 @@ import {
 import { type StoreApi, useStore } from "zustand";
 
 import { auth, googleProvider } from "@/config/firebase";
-import { ChapterRole, type OrganizerValidationResult } from "@/lib/bevy/types";
+import { ChapterRole, isGooglerRole, type OrganizerValidationResult } from "@/lib/bevy/types";
 import type { FirestoreMember } from "@/lib/firestore/types";
 import { splitFullName } from "@/lib/utils";
 import { clearAuthSessionCookie, handleUserPostLoginAction, restoreSessionCookieAction } from "@/server/auth-actions";
@@ -185,11 +185,9 @@ export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
           const isDocOrg =
             memberDoc?.role === "organizer" ||
             memberDoc?.role === "Organizer" ||
-            // "googler" may be stored in legacy memberDoc.role for Googler/Regional Lead accounts
-            memberDoc?.role === "googler" ||
+            isGooglerRole(memberDoc?.role) ||
             (typeof memberDoc?.chapter_role === "string" &&
-              (memberDoc.chapter_role.toLowerCase().includes("organizer") ||
-                memberDoc.chapter_role.toLowerCase().includes("googler")));
+              (memberDoc.chapter_role.toLowerCase().includes("organizer") || isGooglerRole(memberDoc.chapter_role)));
           const isDocStaff =
             !isDocOrg &&
             (memberDoc?.team === "Core Team" ||
@@ -236,7 +234,7 @@ export function AuthStoreProvider({ children }: { children: React.ReactNode }) {
 
           const isOrg =
             restoreRes.role === "organizer" ||
-            restoreRes.role === "googler" ||
+            isGooglerRole(restoreRes.role) ||
             (Boolean(restoreRes.isValidOrganizer) && (restoreRes.roleId === 1 || restoreRes.roleId === 4)) ||
             isDocOrg;
           const isCheckInStaff =
@@ -568,7 +566,7 @@ export async function refreshCurrentUserRole(): Promise<{
       });
 
       // 2. Update local Zustand state
-      const isOrg = result.role === "organizer" || result.role === "googler";
+      const isOrg = result.role === "organizer" || isGooglerRole(result.role);
       const isStaff = !isOrg && (result.role === "core_team" || result.isValidOrganizer);
       const organizer: AuthOrganizer = {
         id: firebaseUser.uid,

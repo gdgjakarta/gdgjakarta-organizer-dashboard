@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Briefcase, Building2, CheckCircle2, Loader2, Phone, Save, User } from "lucide-react";
 import { toast } from "sonner";
@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { hasTeamOperationalAccess } from "@/lib/auth-roles";
 import type { FirestoreMember } from "@/lib/firestore/types";
 import { splitFullName } from "@/lib/utils";
 import type { AuthOrganizer } from "@/stores/auth/auth-store";
@@ -30,6 +31,18 @@ export function AccountProfileTab({ user, member, onProfileUpdated }: AccountPro
   const [notes, setNotes] = useState(member?.notes ?? "");
   const [isSaving, setIsSaving] = useState(false);
 
+  // Sync form fields when async Firestore member data arrives after initial mount
+  useEffect(() => {
+    if (!member) return;
+    const names = splitFullName(member.name ?? user.name);
+    setFirstName(member.first_name ?? names.firstName);
+    setLastName(member.last_name ?? names.lastName);
+    setPhone(member.phone ?? "");
+    setTitle(member.title ?? "");
+    setCompany(member.company ?? member.company_or_institution ?? "");
+    setNotes(member.notes ?? "");
+  }, [member, user.name]);
+
   const email = member?.email ?? user.email;
 
   const handleSave = async (e: React.FormEvent) => {
@@ -42,6 +55,18 @@ export function AccountProfileTab({ user, member, onProfileUpdated }: AccountPro
 
     setIsSaving(true);
     try {
+      const isOrgOrStaff =
+        hasTeamOperationalAccess(user) ||
+        hasTeamOperationalAccess({ role: member?.role, chapterRole: member?.chapter_role }) ||
+        member?.team === "Core Team";
+
+      const resolvedRole = isOrgOrStaff ? user.role || member?.role : (member?.role ?? user.role);
+      const resolvedChapterRole = isOrgOrStaff
+        ? user.chapterRole || member?.chapter_role
+        : (member?.chapter_role ?? user.chapterRole);
+      const resolvedTeam = isOrgOrStaff ? "Core Team" : (member?.team ?? "Community");
+      const resolvedBevyId = member?.bevy_user_id ?? user.bevyUserId;
+
       const payload: Partial<FirestoreMember> & { id: string } = {
         id: member?.id ?? user.id,
         uid: user.id,
@@ -54,8 +79,10 @@ export function AccountProfileTab({ user, member, onProfileUpdated }: AccountPro
         company: company.trim(),
         company_or_institution: company.trim(),
         notes: notes.trim(),
-        ...(member?.role ? { role: member.role } : {}),
-        ...(member?.team ? { team: member.team } : {}),
+        ...(resolvedRole ? { role: resolvedRole } : {}),
+        ...(resolvedChapterRole ? { chapter_role: resolvedChapterRole } : {}),
+        ...(resolvedTeam ? { team: resolvedTeam } : {}),
+        ...(resolvedBevyId ? { bevy_user_id: String(resolvedBevyId) } : {}),
       };
 
       const { saveFirestoreMember } = await import("@/lib/firestore/client");

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.28] - 2026-11-14
+
+### Fixed
+- **Organizer Role Bootstrap & Firestore Permission Deadlock**: Added `isBootstrapOrganizerEmail()` and extended `isMatchingEmail()` in `firestore.rules` to handle Bevy's masked team email format (`f**********@gmail.com`). Prevented chicken-and-egg permission-denied loops when accessing `event_registrations` and updating member documents.
+- **Accidental Role Downgrade Prevention**: Hardened `saveFirestoreMember` and `account-profile-tab` so transient Bevy API timeouts or regular profile updates never demote existing organizers/Core Team members back to `"member"`.
+- **Bevy Role Standardization & Regional Lead Handling**: Normalized Bevy `roleId: 4` and `"regional_lead"` roles through helper `isGooglerRole()`, ensuring seamless executive permissions across the dashboard.
+- **Interactive Role Sync Controls**: Added 1-click **"Sync Roles to Firestore"** on the Chapter Team tab (`/dashboard/members?tab=team`) and **"Sync Role"** on the Account Chapter tab (`/dashboard/account`).
+
+---
+
 ## [1.0.27] - 2026-11-13
 
 ### Fixed

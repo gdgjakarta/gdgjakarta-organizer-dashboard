@@ -679,14 +679,31 @@ service cloud.firestore {
         (idVal is float ? string(int(idVal)) : ''));
     }
 
-    // Case-insensitive verified email comparison
+    // Case-insensitive verified email comparison (supports exact match or Bevy masked email format e.g. f**********@gmail.com)
     function isMatchingEmail(memberData, tokenEmail) {
       return memberData != null &&
         'email' in memberData &&
         memberData.email is string &&
         tokenEmail is string &&
         tokenEmail.size() > 0 &&
-        memberData.email.lower() == tokenEmail.lower();
+        (
+          memberData.email.lower() == tokenEmail.lower() ||
+          (
+            memberData.email.matches('^[^*@]+\\*+@[^*@]+$') &&
+            memberData.email.lower()[0:1] == tokenEmail.lower()[0:1] &&
+            memberData.email.lower().split('@').size() == 2 &&
+            tokenEmail.lower().split('@').size() == 2 &&
+            memberData.email.lower().split('@')[1] == tokenEmail.lower().split('@')[1]
+          )
+        );
+    }
+
+    // Bootstrap organizer email allowlist to prevent initial Bevy / custom claims chicken-and-egg deadlock
+    function isBootstrapOrganizerEmail() {
+      return isAuthenticated() &&
+        request.auth.token.email != null &&
+        (!('email_verified' in request.auth.token) || request.auth.token.email_verified == true) &&
+        request.auth.token.email.lower() in ['fachridantm@gmail.com', 'info@gdgjakarta.org'];
     }
 
     // Verify if a given Bevy user ID points to an existing team doc in members matching caller email
@@ -757,6 +774,7 @@ service cloud.firestore {
     // or linked Bevy organizer document with verified matching email.
     function isOrganizer() {
       return isAuthenticated() && (
+        isBootstrapOrganizerEmail() ||
         ('role' in request.auth.token && (request.auth.token.role in ['organizer', 'core_team', 'googler'])) ||
         (
           exists(/databases/$(database)/documents/members/$(request.auth.uid)) &&
@@ -800,6 +818,7 @@ service cloud.firestore {
     // circular get() / exists() evaluation on the active document being written.
     function hasMemberTeamAccess(targetMemberId, existingResource) {
       return isAuthenticated() && (
+        isBootstrapOrganizerEmail() ||
         ('role' in request.auth.token && (request.auth.token.role in [
           'organizer', 'core_team', 'core-team', 'Core Team',
           'googler', 'check_in_staff', 'checkin_staff', 'Check-in Staff',
@@ -816,6 +835,7 @@ service cloud.firestore {
     // Safely check organizer permission for operations in /members/{targetMemberId}.
     function isMemberOrganizer(targetMemberId, existingResource) {
       return isAuthenticated() && (
+        isBootstrapOrganizerEmail() ||
         ('role' in request.auth.token && (request.auth.token.role in ['organizer', 'core_team', 'googler'])) ||
         (
           isMemberDocOwner(targetMemberId, existingResource) ?
@@ -859,6 +879,7 @@ service cloud.firestore {
     // Uses MapDiff to safely verify only changed keys without accessing undefined properties.
     function isValidMemberOwnerUpdate(existingData, newData, authUid, memberId) {
       let isVerifiedTeam = isTeamData(existingData) ||
+        isBootstrapOrganizerEmail() ||
         ('role' in request.auth.token && (request.auth.token.role in ['organizer', 'core_team', 'googler', 'check_in_staff', 'team_member'])) ||
         hasCallerVerifiedBevyTeamDoc(existingData) ||
         hasCallerVerifiedBevyTeamDoc(newData);
@@ -1447,9 +1468,9 @@ service cloud.firestore {
           (!('uid' in request.resource.data) || request.resource.data.uid == null || request.resource.data.uid == request.auth.uid) &&
           (!('referral_points' in request.resource.data) || request.resource.data.referral_points == 0) &&
           (!('referrals_count' in request.resource.data) || request.resource.data.referrals_count == 0) &&
-          (!('role' in request.resource.data) || request.resource.data.role.lower() == 'member' || hasCallerVerifiedBevyTeamDoc(request.resource.data)) &&
-          (!('team' in request.resource.data) || request.resource.data.team.lower() in ['community'] || hasCallerVerifiedBevyTeamDoc(request.resource.data)) &&
-          (!('chapter_role' in request.resource.data) || request.resource.data.chapter_role == null || request.resource.data.chapter_role.lower() == 'member' || hasCallerVerifiedBevyTeamDoc(request.resource.data))
+          (!('role' in request.resource.data) || request.resource.data.role.lower() == 'member' || isBootstrapOrganizerEmail() || hasCallerVerifiedBevyTeamDoc(request.resource.data)) &&
+          (!('team' in request.resource.data) || request.resource.data.team.lower() in ['community'] || isBootstrapOrganizerEmail() || hasCallerVerifiedBevyTeamDoc(request.resource.data)) &&
+          (!('chapter_role' in request.resource.data) || request.resource.data.chapter_role == null || request.resource.data.chapter_role.lower() == 'member' || isBootstrapOrganizerEmail() || hasCallerVerifiedBevyTeamDoc(request.resource.data))
         ) ||
         hasTeamAccess()
       );

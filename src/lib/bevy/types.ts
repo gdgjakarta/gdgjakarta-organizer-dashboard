@@ -357,8 +357,19 @@ export function isCoreTeamRole(role: ChapterRole): boolean {
   return role === ChapterRole.CORE_TEAM;
 }
 
-export function isGooglerRole(role: ChapterRole): boolean {
-  return role === ChapterRole.GOOGLER;
+export function isGooglerRole(role?: ChapterRole | string | null): boolean {
+  if (!role) return false;
+  if (role === ChapterRole.GOOGLER) return true;
+  const lower = String(role).toLowerCase().trim();
+  return (
+    lower === "googler" ||
+    lower === "regional_lead" ||
+    lower === "regional-lead" ||
+    lower === "regional lead" ||
+    lower === "regional leader" ||
+    lower.includes("googler") ||
+    lower.includes("regional lead")
+  );
 }
 
 export function isChapterTeamRole(role: ChapterRole): boolean {

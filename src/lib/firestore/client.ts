@@ -192,7 +192,10 @@ export async function getFirestoreMemberById(memberId: string): Promise<Firestor
   }
 }
 
-export async function saveFirestoreMember(member: Partial<FirestoreMember> | Record<string, unknown>): Promise<void> {
+export async function saveFirestoreMember(
+  member: Partial<FirestoreMember> | Record<string, unknown>,
+  options?: { allowRoleDowngrade?: boolean },
+): Promise<void> {
   if (typeof window === "undefined") return;
   if (typeof auth.authStateReady === "function") {
     await auth.authStateReady();
@@ -226,20 +229,43 @@ export async function saveFirestoreMember(member: Partial<FirestoreMember> | Rec
         updated_at: now,
       };
 
-      if (member.role) {
-        updatePayload.role = member.role;
-      } else if (existing.role) {
-        updatePayload.role = existing.role;
-      }
-      if (member.chapter_role !== undefined) {
-        updatePayload.chapter_role = member.chapter_role;
-      } else if (existing.chapter_role !== undefined) {
-        updatePayload.chapter_role = existing.chapter_role;
-      }
-      if (member.team) {
-        updatePayload.team = member.team;
-      } else if (existing.team) {
-        updatePayload.team = existing.team;
+      const isExistingTeam =
+        existing.team === "Core Team" ||
+        (typeof existing.role === "string" &&
+          existing.role.toLowerCase() !== "member" &&
+          existing.role.trim().length > 0) ||
+        (typeof existing.chapter_role === "string" &&
+          existing.chapter_role.toLowerCase() !== "member" &&
+          existing.chapter_role.trim().length > 0);
+
+      const isIncomingMemberOnly =
+        (!member.role || String(member.role).toLowerCase() === "member") &&
+        (!member.chapter_role || String(member.chapter_role).toLowerCase() === "member") &&
+        (!member.team || String(member.team).toLowerCase() === "community");
+
+      // Prevent transient Bevy timeouts or profile saves from accidentally demoting an existing team member
+      const preserveExistingTeamRole = isExistingTeam && isIncomingMemberOnly && !options?.allowRoleDowngrade;
+
+      if (preserveExistingTeamRole) {
+        if (existing.role) updatePayload.role = existing.role;
+        if (existing.chapter_role !== undefined) updatePayload.chapter_role = existing.chapter_role;
+        if (existing.team) updatePayload.team = existing.team;
+      } else {
+        if (member.role) {
+          updatePayload.role = member.role;
+        } else if (existing.role) {
+          updatePayload.role = existing.role;
+        }
+        if (member.chapter_role !== undefined) {
+          updatePayload.chapter_role = member.chapter_role;
+        } else if (existing.chapter_role !== undefined) {
+          updatePayload.chapter_role = existing.chapter_role;
+        }
+        if (member.team) {
+          updatePayload.team = member.team;
+        } else if (existing.team) {
+          updatePayload.team = existing.team;
+        }
       }
       if (typeof existing.referral_points === "number") {
         updatePayload.referral_points = existing.referral_points;

@@ -68,6 +68,7 @@ function getRoleBadgeVariant(roleName: string) {
 export function ChapterTeamTab({ initialTeamMembers }: ChapterTeamTabProps) {
   const [team, setTeam] = React.useState<BevyChapterTeamMember[]>(initialTeamMembers);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
+  const [isSyncingRoles, setIsSyncingRoles] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState("");
 
   // Dialog states
@@ -80,16 +81,43 @@ export function ChapterTeamTab({ initialTeamMembers }: ChapterTeamTabProps) {
     setTeam(initialTeamMembers);
   }, [initialTeamMembers]);
 
-  const handleRefresh = async () => {
+  const handleRefresh = async (syncToFirestore = false) => {
     setIsRefreshing(true);
     try {
       const freshTeam = await fetchBevyChapterTeamsAction();
       setTeam(freshTeam);
+      if (syncToFirestore && freshTeam.length > 0) {
+        const { syncChapterTeamRolesToFirestore } = await import("@/lib/firestore/sync-service");
+        await syncChapterTeamRolesToFirestore(freshTeam);
+      }
       toast.success("Team roster refreshed.");
     } catch {
       toast.error("Failed to refresh team roster.");
     } finally {
       setIsRefreshing(false);
+    }
+  };
+
+  const handleSyncRolesToFirestore = async () => {
+    if (isSyncingRoles) return;
+    setIsSyncingRoles(true);
+    try {
+      const freshTeam = await fetchBevyChapterTeamsAction();
+      const rosterToSync = freshTeam.length > 0 ? freshTeam : team;
+      if (freshTeam.length > 0) {
+        setTeam(freshTeam);
+      }
+      const { syncChapterTeamRolesToFirestore } = await import("@/lib/firestore/sync-service");
+      const res = await syncChapterTeamRolesToFirestore(rosterToSync);
+      if (res.success) {
+        toast.success(`Synced ${res.totalSynced} chapter team roles to Firestore!`);
+      } else {
+        toast.error(res.error || "Failed to sync chapter team roles to Firestore.");
+      }
+    } catch {
+      toast.error("Failed to sync chapter team roles to Firestore.");
+    } finally {
+      setIsSyncingRoles(false);
     }
   };
 
@@ -123,7 +151,7 @@ export function ChapterTeamTab({ initialTeamMembers }: ChapterTeamTabProps) {
           <Button
             variant="outline"
             size="icon"
-            onClick={handleRefresh}
+            onClick={() => void handleRefresh(false)}
             disabled={isRefreshing}
             className="size-9 shrink-0 rounded-lg"
             title="Refresh team roster"
@@ -133,6 +161,17 @@ export function ChapterTeamTab({ initialTeamMembers }: ChapterTeamTabProps) {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleSyncRolesToFirestore}
+            disabled={isSyncingRoles}
+            className="h-9 gap-1.5 rounded-lg font-medium text-xs sm:text-sm"
+            title="Sync all chapter team roles into Firestore member profiles"
+          >
+            <RefreshCw className={`size-3.5 ${isSyncingRoles ? "animate-spin" : ""}`} />
+            <span>{isSyncingRoles ? "Syncing Roles..." : "Sync Roles to Firestore"}</span>
+          </Button>
           <Button
             size="sm"
             onClick={() => setIsAddOpen(true)}
@@ -264,7 +303,7 @@ export function ChapterTeamTab({ initialTeamMembers }: ChapterTeamTabProps) {
         open={isAddOpen}
         onOpenChange={setIsAddOpen}
         onSuccess={() => {
-          void handleRefresh();
+          void handleRefresh(true);
         }}
       />
 
@@ -277,7 +316,7 @@ export function ChapterTeamTab({ initialTeamMembers }: ChapterTeamTabProps) {
         member={memberToEdit}
         onSuccess={() => {
           setMemberToEdit(null);
-          void handleRefresh();
+          void handleRefresh(true);
         }}
       />
 
